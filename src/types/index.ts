@@ -1,0 +1,100 @@
+/**
+ * =============================================================================
+ * TYPES INDEX
+ * =============================================================================
+ *
+ * Centralny plik eksportujący wszystkie typy TypeScript.
+ *
+ * Użycie:
+ *   import type { User, Post, ApiResponse } from "@/types";
+ *
+ * Organizacja:
+ * - Typy domenowe (User, Post, Comment)
+ * - Typy API (ApiResponse, PaginatedResponse)
+ * - Typy utility (WithId, Nullable)
+ */
+
+// =============================================================================
+// API TYPES
+// =============================================================================
+
+/**
+ * Standardowa odpowiedź API
+ */
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
+/**
+ * Odpowiedź z paginacją
+ */
+export interface PaginatedResponse<T> {
+  items: T[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+/**
+ * Status zdrowia serwera
+ */
+export interface HealthStatus {
+  status: "healthy" | "degraded" | "unhealthy";
+  timestamp: string;
+  uptime: number;
+  environment: string;
+}
+
+// =============================================================================
+// UTILITY TYPES
+// =============================================================================
+
+/**
+ * Dodaje pole id do typu
+ */
+export type WithId<T> = T & { id: string };
+
+/**
+ * Umożliwia null dla typu
+ */
+export type Nullable<T> = T | null;
+
+/**
+ * Partial z głębokim zagnieżdżeniem
+ */
+export type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+};
+
+// =============================================================================
+// DOMAIN TYPES
+// =============================================================================
+
+/**
+ * Dodaj tutaj typy domenowe:
+ *
+ * export interface User {
+ *   id: string;
+ *   email: string;
+ *   name: string;
+ *   createdAt: Date;
+ *   updatedAt: Date;
+ * }
+ *
+ * export interface Post {
+ *   id: string;
+ *   title: string;
+ *   content: string;
+ *   authorId: string;
+ *   published: boolean;
+ *   createdAt: Date;
+ * }
+ */
