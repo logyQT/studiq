@@ -1,0 +1,11 @@
+{
+  "Errors": {
+    "ERROR_VALIDATION_FAILED": "Please fix the errors in the form.",
+    "ERROR_PASSWORD_TOO_SHORT": "Password must be at least 6 characters long.",
+    "ERROR_INVALID_CREDENTIALS": "Invalid email or password."
+  },
+  "Auth": {
+    "login_button": "Sign in",
+    "register_button": "Sign up"
+  }
+}

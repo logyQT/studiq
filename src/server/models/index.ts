@@ -59,4 +59,5 @@
  */
 
 // Dodaj eksporty modeli tutaj:
-// export * from "./user.model";
+
+export * from "./user.model";

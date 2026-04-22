@@ -50,14 +50,10 @@
  */
 
 // Controllers
-export * from "./controllers/health.controller";
-// export * from "./controllers/user.controller";
-// export * from "./controllers/post.controller";
+export * from "./controllers/index";
 
 // Services
-export * from "./services/health.service";
-// export * from "./services/user.service";
-// export * from "./services/post.service";
+export * from "./services/index";
 
 // Models
-export * from "./models";
+export * from "./models/index";

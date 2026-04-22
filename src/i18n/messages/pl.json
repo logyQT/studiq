@@ -1,0 +1,11 @@
+{
+  "Errors": {
+    "ERROR_VALIDATION_FAILED": "Proszę poprawić błędy w formularzu.",
+    "ERROR_PASSWORD_TOO_SHORT": "Hasło musi mieć co najmniej 6 znaków.",
+    "ERROR_INVALID_CREDENTIALS": "Nieprawidłowy adres e-mail lub hasło."
+  },
+  "Auth": {
+    "login_button": "Zaloguj się",
+    "register_button": "Zarejestruj się"
+  }
+}
