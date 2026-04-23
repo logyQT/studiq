@@ -1,11 +1,17 @@
 {
-  "Errors": {
-    "ERROR_VALIDATION_FAILED": "Proszę poprawić błędy w formularzu.",
-    "ERROR_PASSWORD_TOO_SHORT": "Hasło musi mieć co najmniej 6 znaków.",
-    "ERROR_INVALID_CREDENTIALS": "Nieprawidłowy adres e-mail lub hasło."
-  },
-  "Auth": {
+  "LoginPage": {
+    "header": "Witaj ponownie",
+    "sub_header": "Zaloguj się do swojego konta Studiq",
+    "email_label": "Adres e-mail",
+    "password_label": "Hasło",
     "login_button": "Zaloguj się",
-    "register_button": "Zarejestruj się"
+    "no_account": "Nie masz konta?",
+    "register_link": "Zarejestruj się",
+    "ERROR_EMAIL_INVALID": "Wprowadź poprawny adres e-mail.",
+    "ERROR_PASSWORD_REQUIRED": "Hasło jest wymagane.",
+    "ERROR_PASSWORD_TOO_SHORT": "Hasło musi mieć co najmniej 6 znaków.",
+    "ERROR_NAME_REQUIRED": "Imię jest wymagane.",
+    "ERROR_NAME_TOO_SHORT": "Imię jest za krótkie.",
+    "ERROR_NAME_INVALID_FORMAT": "Imię zawiera niedozwolone znaki."
   }
 }

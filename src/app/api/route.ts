@@ -6,6 +6,8 @@ import { NextResponse } from "next/server";
  *   get:
  *     summary: Sprawdzenie stanu API
  *     description: Endpoint zwracający informację o wersji i statusie API.
+ *     tags:
+ *       - General
  *     responses:
  *       200:
  *         description: API działa poprawnie

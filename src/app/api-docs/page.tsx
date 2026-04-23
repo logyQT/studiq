@@ -1,4 +1,3 @@
-// src/app/api-docs/page.tsx
 import { getApiDocs } from "@/lib/swagger";
 import ReactSwagger from "./react-swagger";
 
