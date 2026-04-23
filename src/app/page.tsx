@@ -108,37 +108,56 @@
  * =============================================================================
  */
 
+// import Link from "next/link";
+
+// export default function HomePage() {
+//   return (
+//     <main className="flex min-h-screen flex-col items-center justify-center p-8">
+//       {/*
+//         GŁÓWNY KONTENER
+//         ================
+//         Zamień poniższy kod na własne komponenty.
+//         Przykład struktury:
+
+//         <Header />
+//         <HeroSection />
+//         <FeaturesSection />
+//         <Footer />
+//       */}
+
+//       <div className="text-center">
+//         <h1 className="text-4xl font-bold tracking-tight text-foreground">Boilerplate Ready</h1>
+
+//         <p className="mt-4 text-lg text-muted-foreground">Next.js 14+ • TypeScript • Tailwind CSS</p>
+
+//         <div className="mt-8 flex flex-col gap-2 text-sm text-muted-foreground">
+//           <code className="rounded bg-muted px-2 py-1">
+//             <Link href="/api">GET /api/ → API status</Link>
+//           </code>
+
+//           <code className="rounded bg-muted px-2 py-1">
+//             <Link href="/api/v1/health">GET /api/v1/health → Health check</Link>
+//           </code>
+//         </div>
+//       </div>
+//     </main>
+//   );
+// }
+
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
-export default function HomePage() {
+export default function Home() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      {/* 
-        GŁÓWNY KONTENER
-        ================
-        Zamień poniższy kod na własne komponenty.
-        Przykład struktury:
-        
-        <Header />
-        <HeroSection />
-        <FeaturesSection />
-        <Footer />
-      */}
-
-      <div className="text-center">
-        <h1 className="text-4xl font-bold tracking-tight text-foreground">Boilerplate Ready</h1>
-
-        <p className="mt-4 text-lg text-muted-foreground">Next.js 14+ • TypeScript • Tailwind CSS</p>
-
-        <div className="mt-8 flex flex-col gap-2 text-sm text-muted-foreground">
-          <code className="rounded bg-muted px-2 py-1">
-            <Link href="/api">GET /api/ → API status</Link>
-          </code>
-
-          <code className="rounded bg-muted px-2 py-1">
-            <Link href="/api/v1/health">GET /api/v1/health → Health check</Link>
-          </code>
-        </div>
+    <main className="flex flex-col items-center justify-center min-h-screen">
+      <h1 className="text-4xl font-bold mb-8">StudiQ</h1>
+      <div className="flex gap-4">
+        <Link href="/login">
+          <Button variant="outline">Zaloguj się</Button>
+        </Link>
+        <Link href="/register">
+          <Button>Załóż konto</Button>
+        </Link>
       </div>
     </main>
   );

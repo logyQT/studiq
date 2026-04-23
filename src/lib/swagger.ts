@@ -1,6 +1,11 @@
+import { registry } from "@/lib/zod";
+import { OpenApiGeneratorV3 } from "@asteasolutions/zod-to-openapi";
 import { createSwaggerSpec } from "next-swagger-doc";
+import {} from "@/server/models";
 
 export const getApiDocs = async () => {
+  const generator = new OpenApiGeneratorV3(registry.definitions);
+  const zodComponents = generator.generateComponents();
   const spec = createSwaggerSpec({
     apiFolder: "src/app/api", // Ścieżka do Twoich endpointów
     definition: {
@@ -10,6 +15,7 @@ export const getApiDocs = async () => {
         version: "1.0.0",
       },
       components: {
+        ...(zodComponents.components as any),
         securitySchemes: {
           BearerAuth: {
             type: "http",

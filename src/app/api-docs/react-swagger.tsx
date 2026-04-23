@@ -1,4 +1,3 @@
-// src/app/api-docs/react-swagger.tsx
 "use client";
 
 import SwaggerUI from "swagger-ui-react";
