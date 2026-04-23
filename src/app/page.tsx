@@ -108,6 +108,8 @@
  * =============================================================================
  */
 
+import Link from "next/link";
+
 export default function HomePage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-8">
@@ -122,29 +124,19 @@ export default function HomePage() {
         <FeaturesSection />
         <Footer />
       */}
-      
-      <div className="text-center">
-        <h1 className="text-4xl font-bold tracking-tight text-foreground">
-          Boilerplate Ready
-        </h1>
-        
-        <p className="mt-4 text-lg text-muted-foreground">
-          Next.js 14+ • TypeScript • Tailwind CSS
-        </p>
 
-        {/* 
-          PRZYKŁADOWE LINKI DO API
-          ========================
-          Możesz przetestować endpointy otwierając:
-          - /api/
-          - /api/v1/health
-        */}
+      <div className="text-center">
+        <h1 className="text-4xl font-bold tracking-tight text-foreground">Boilerplate Ready</h1>
+
+        <p className="mt-4 text-lg text-muted-foreground">Next.js 14+ • TypeScript • Tailwind CSS</p>
+
         <div className="mt-8 flex flex-col gap-2 text-sm text-muted-foreground">
           <code className="rounded bg-muted px-2 py-1">
-            GET /api/ → API status
+            <Link href="/api">GET /api/ → API status</Link>
           </code>
+
           <code className="rounded bg-muted px-2 py-1">
-            GET /api/v1/health → Health check
+            <Link href="/api/v1/health">GET /api/v1/health → Health check</Link>
           </code>
         </div>
       </div>

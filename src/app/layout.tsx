@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { getLocale, getMessages } from "next-intl/server";
 import { NextIntlClientProvider } from "next-intl";
-import { getMessages } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { locales } from "@/i18n/request";
-import "./globals.css";
+import "@/app/globals.css";
 
 /**
  * =============================================================================
@@ -67,14 +67,12 @@ export const viewport: Viewport = {
  */
 export default async function RootLayout({
   children,
-  params,
 }: Readonly<{
   children: React.ReactNode;
-  params: Promise<{ locale: string }>;
 }>) {
-  const { locale } = await params;
+  const locale = await getLocale();
 
-  if (!locales.includes(locale)) notFound();
+  // if (!locales.includes(locale)) notFound();
 
   const messages = await getMessages();
 

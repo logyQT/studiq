@@ -1,17 +1,18 @@
+// src/i18n/request.ts
 import { getRequestConfig } from "next-intl/server";
+import { cookies } from "next/headers";
 
 export const locales = ["pl", "en"];
 const defaultLocale = "pl";
 
-export default getRequestConfig(async ({ requestLocale }) => {
-  let locale = await requestLocale;
+export default getRequestConfig(async () => {
+  const cookieStore = await cookies();
+  const locale = cookieStore.get("NEXT_LOCALE")?.value || defaultLocale;
 
-  if (!locale || !locales.includes(locale)) {
-    locale = defaultLocale;
-  }
+  const activeLocale = locales.includes(locale) ? locale : defaultLocale;
 
   return {
-    locale,
-    messages: (await import(`./messages/${locale}.json`)).default,
+    locale: activeLocale,
+    messages: (await import(`./messages/${activeLocale}.json`)).default,
   };
 });
