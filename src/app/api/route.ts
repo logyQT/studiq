@@ -1,23 +1,25 @@
 import { NextResponse } from "next/server";
 
 /**
- * =============================================================================
- * API ROOT ENDPOINT
- * =============================================================================
- *
- * Endpoint: GET /api/
- * Opis: Prosty endpoint sprawdzający czy API działa.
- *
- * Użycie:
- *   fetch('/api/')
- *     .then(res => res.json())
- *     .then(data => console.log(data));
- *
- * Response:
- *   {
- *     "message": "API is running",
- *     "version": "1.0.0"
- *   }
+ * @swagger
+ * /api:
+ *   get:
+ *     summary: Sprawdzenie stanu API
+ *     description: Endpoint zwracający informację o wersji i statusie API.
+ *     responses:
+ *       200:
+ *         description: API działa poprawnie
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: API is running
+ *                 version:
+ *                   type: string
+ *                   example: "1.0.0"
  */
 export async function GET() {
   return NextResponse.json({
