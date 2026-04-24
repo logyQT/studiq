@@ -1,4 +1,8 @@
 {
+  "HomePage": {
+    "login_button": "Zaloguj się",
+    "register_button": "Zarejestruj się"
+  },
   "LoginPage": {
     "header": "Witaj ponownie",
     "sub_header": "Zaloguj się, aby kontynuować naukę",
@@ -12,7 +16,29 @@
     "ERROR_EMAIL_INVALID": "Wprowadź poprawny adres e-mail.",
     "ERROR_EMAIL_REQUIRED": "Adres e-mail jest wymagany.",
     "ERROR_PASSWORD_REQUIRED": "Hasło jest wymagane.",
-    "ERROR_PASSWORD_TOO_SHORT": "Hasło musi mieć co najmniej 6 znaków."
+    "ERROR_PASSWORD_TOO_SHORT": "Hasło musi mieć co najmniej 8 znaków."
+  },
+  "RegisterPage": {
+    "header": "Utwórz konto",
+    "sub_header": "Dołącz do Studiq i rozpocznij naukę",
+    "name_label": "Imię i Nazwisko",
+    "name_placeholder": "Jan Kowalski",
+    "email_label": "Adres e-mail",
+    "email_placeholder": "twoj@email.com",
+    "password_label": "Hasło",
+    "register_button": "Zarejestruj się",
+    "have_account": "Masz już konto?",
+    "login_link": "Zaloguj się",
+    "ERROR_EMAIL_REQUIRED": "Adres e-mail jest wymagany.",
+    "ERROR_EMAIL_INVALID": "Wprowadź poprawny adres e-mail.",
+    "ERROR_PASSWORD_REQUIRED": "Hasło jest wymagane.",
+    "ERROR_PASSWORD_TOO_SHORT": "Hasło musi mieć co najmniej 8 znaków.",
+    "ERROR_NAME_REQUIRED": "Imię jest wymagane.",
+    "ERROR_NAME_TOO_SHORT": "Imię jest za krótkie.",
+    "ERROR_NAME_INVALID_FORMAT": "Imię zawiera niedozwolone znaki.",
+    "ERROR_SURNAME_REQUIRED": "Nazwisko jest wymagane.",
+    "ERROR_SURNAME_TOO_SHORT": "Nazwisko jest za krótkie.",
+    "ERROR_SURNAME_INVALID_FORMAT": "Nazwisko zawiera niedozwolone znaki."
   },
   "NotFoundPage": {
     "title": "Nie znaleziono strony",

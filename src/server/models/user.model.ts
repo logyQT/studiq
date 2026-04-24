@@ -9,8 +9,7 @@ export const RegisterSchema = registry.register(
       .regex(/^[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ\s]+$/, { error: "ERROR_NAME_INVALID_FORMAT" }),
 
     email: z.email({ error: "ERROR_EMAIL_INVALID" }),
-
-    password: z.string({ error: "ERROR_PASSWORD_REQUIRED" }).min(6, { error: "ERROR_PASSWORD_TOO_SHORT" }),
+    password: z.string({ error: "ERROR_PASSWORD_REQUIRED" }).min(8, { error: "ERROR_PASSWORD_TOO_SHORT" }),
   }),
 );
 

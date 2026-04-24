@@ -5,7 +5,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { Toaster } from "sonner";
 import { notFound } from "next/navigation";
 import { locales } from "@/i18n/request";
-import { ThemeProvider } from "next-themes";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import "@/app/globals.css";
 
 /**
@@ -34,8 +34,8 @@ const geistMono = Geist_Mono({
  */
 export const metadata: Metadata = {
   title: {
-    default: "Next.js Boilerplate",
-    template: "%s | Next.js Boilerplate",
+    default: "Studiq",
+    template: "%s | Studiq",
   },
   description: "Professional Next.js 14+ boilerplate with TypeScript and Tailwind CSS",
   keywords: ["Next.js", "React", "TypeScript", "Tailwind CSS"],
@@ -54,7 +54,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#000000" },
+    { media: "(prefers-color-scheme: dark)", color: "#181818" },
   ],
 };
 
@@ -67,6 +67,7 @@ export const viewport: Viewport = {
  * - Globalne komponenty (Toaster, Analytics, etc.)
  * - Skrypty analityczne
  */
+
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -94,8 +95,8 @@ export default async function RootLayout({
             <Toaster />
             <Analytics />
           */}
+            <Toaster />
           </NextIntlClientProvider>
-          <Toaster />
         </ThemeProvider>
       </body>
     </html>

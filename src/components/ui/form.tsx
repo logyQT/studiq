@@ -81,6 +81,7 @@ function FormDescription({ className, ...props }: React.ComponentProps<"p">) {
   return <p data-slot="form-description" id={formDescriptionId} className={cn("text-muted-foreground text-sm", className)} {...props} />;
 }
 
+// modfiied FormMessage to take in a translator for i18n.
 function FormMessage({ className, translator, ...props }: React.ComponentProps<"p"> & { translator?: (key: string) => string }) {
   const { error, formMessageId } = useFormField();
   const rawMessage = error ? String(error?.message ?? "") : undefined;

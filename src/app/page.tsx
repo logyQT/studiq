@@ -108,56 +108,29 @@
  * =============================================================================
  */
 
-// import Link from "next/link";
-
-// export default function HomePage() {
-//   return (
-//     <main className="flex min-h-screen flex-col items-center justify-center p-8">
-//       {/*
-//         GŁÓWNY KONTENER
-//         ================
-//         Zamień poniższy kod na własne komponenty.
-//         Przykład struktury:
-
-//         <Header />
-//         <HeroSection />
-//         <FeaturesSection />
-//         <Footer />
-//       */}
-
-//       <div className="text-center">
-//         <h1 className="text-4xl font-bold tracking-tight text-foreground">Boilerplate Ready</h1>
-
-//         <p className="mt-4 text-lg text-muted-foreground">Next.js 14+ • TypeScript • Tailwind CSS</p>
-
-//         <div className="mt-8 flex flex-col gap-2 text-sm text-muted-foreground">
-//           <code className="rounded bg-muted px-2 py-1">
-//             <Link href="/api">GET /api/ → API status</Link>
-//           </code>
-
-//           <code className="rounded bg-muted px-2 py-1">
-//             <Link href="/api/v1/health">GET /api/v1/health → Health check</Link>
-//           </code>
-//         </div>
-//       </div>
-//     </main>
-//   );
-// }
+"use client";
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { LanguageToggle } from "@/components/layout/LanguageToggle";
+import { useTranslations } from "next-intl";
 
 export default function Home() {
+  const t = useTranslations("HomePage");
+
   return (
     <main className="flex flex-col items-center justify-center min-h-screen">
       <h1 className="text-4xl font-bold mb-8">StudiQ</h1>
       <div className="flex gap-4">
         <Link href="/login">
-          <Button variant="outline">Zaloguj się</Button>
+          <Button variant="outline">{t("login_button")}</Button>
         </Link>
         <Link href="/register">
-          <Button>Załóż konto</Button>
+          <Button>{t("register_button")}</Button>
         </Link>
+        <ThemeToggle></ThemeToggle>
+        <LanguageToggle></LanguageToggle>
       </div>
     </main>
   );

@@ -1,11 +1,49 @@
 {
-  "Errors": {
-    "ERROR_VALIDATION_FAILED": "Please fix the errors in the form.",
-    "ERROR_PASSWORD_TOO_SHORT": "Password must be at least 6 characters long.",
-    "ERROR_INVALID_CREDENTIALS": "Invalid email or password."
-  },
-  "Auth": {
-    "login_button": "Sign in",
+  "HomePage": {
+    "login_button": "Log in",
     "register_button": "Sign up"
+  },
+  "LoginPage": {
+    "header": "Welcome back",
+    "sub_header": "Log in to continue learning",
+    "email_label": "Email address",
+    "email_placeholder": "your@email.com",
+    "password_label": "Password",
+    "login_button": "Log in",
+    "no_account": "Don't have an account?",
+    "register_link": "Sign up",
+    "forgot_password": "Forgot your password?",
+    "ERROR_EMAIL_INVALID": "Please enter a valid email address.",
+    "ERROR_EMAIL_REQUIRED": "Email address is required.",
+    "ERROR_PASSWORD_REQUIRED": "Password is required.",
+    "ERROR_PASSWORD_TOO_SHORT": "Password must be at least 8 characters long."
+  },
+  "RegisterPage": {
+    "header": "Create an account",
+    "sub_header": "Join Studiq and start learning",
+    "name_label": "Full Name",
+    "name_placeholder": "John Doe",
+    "email_label": "Email address",
+    "email_placeholder": "your@email.com",
+    "password_label": "Password",
+    "register_button": "Sign up",
+    "have_account": "Already have an account?",
+    "login_link": "Log in",
+    "ERROR_EMAIL_REQUIRED": "Email address is required.",
+    "ERROR_EMAIL_INVALID": "Please enter a valid email address.",
+    "ERROR_PASSWORD_REQUIRED": "Password is required.",
+    "ERROR_PASSWORD_TOO_SHORT": "Password must be at least 8 characters long.",
+    "ERROR_NAME_REQUIRED": "First name is required.",
+    "ERROR_NAME_TOO_SHORT": "First name is too short.",
+    "ERROR_NAME_INVALID_FORMAT": "First name contains invalid characters.",
+    "ERROR_SURNAME_REQUIRED": "Last name is required.",
+    "ERROR_SURNAME_TOO_SHORT": "Last name is too short.",
+    "ERROR_SURNAME_INVALID_FORMAT": "Last name contains invalid characters."
+  },
+  "NotFoundPage": {
+    "title": "Page not found",
+    "description": "Sorry, we can't find the page you're looking for. It might have been moved or deleted.",
+    "back_home": "Back to home page",
+    "system_status": "Check system status"
   }
 }
