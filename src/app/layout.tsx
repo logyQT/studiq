@@ -2,8 +2,10 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { getLocale, getMessages } from "next-intl/server";
 import { NextIntlClientProvider } from "next-intl";
+import { Toaster } from "sonner";
 import { notFound } from "next/navigation";
 import { locales } from "@/i18n/request";
+import { ThemeProvider } from "next-themes";
 import "@/app/globals.css";
 
 /**
@@ -71,30 +73,30 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = await getLocale();
-
-  // if (!locales.includes(locale)) notFound();
-
   const messages = await getMessages();
 
   return (
     <html lang={locale} className="bg-background" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
-        <NextIntlClientProvider messages={messages}>
-          {/*
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          <NextIntlClientProvider messages={messages}>
+            {/*
             PROVIDERS - Dodaj tutaj swoje providery:
             <ThemeProvider>
             <AuthProvider>
             <QueryClientProvider>
           */}
 
-          {children}
+            {children}
 
-          {/*
+            {/*
             GLOBAL COMPONENTS - Dodaj tutaj globalne komponenty:
             <Toaster />
             <Analytics />
           */}
-        </NextIntlClientProvider>
+          </NextIntlClientProvider>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

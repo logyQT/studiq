@@ -1,4 +1,3 @@
-// src/app/(auth)/login/page.tsx
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -9,11 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl"; //
+import { useTranslations } from "next-intl";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
+
+import { Mail, Lock, LogIn } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
-  const t = useTranslations("LoginPage"); //
+  const t = useTranslations("LoginPage");
 
   const form = useForm<LoginInput>({
     resolver: zodResolver(LoginSchema),
@@ -45,6 +48,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/50 p-6">
       <div className="w-full max-w-md space-y-8 bg-background p-8 rounded-xl shadow-lg border">
+        {/* HEADER */}
         <div className="text-center">
           <h1 className="text-2xl font-bold tracking-tight">{t("header")}</h1>
           <p className="text-sm text-muted-foreground">{t("sub_header")}</p>
@@ -52,50 +56,62 @@ export default function LoginPage() {
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {/* EMAIL */}
             <FormField
               control={form.control}
               name="email"
-              render={(
-                { field, fieldState }, // Dodajemy fieldState
-              ) => (
+              render={({ field, fieldState }) => (
                 <FormItem>
                   <FormLabel>{t("email_label")}</FormLabel>
                   <FormControl>
-                    <Input placeholder="twoj@email.com" {...field} />
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input placeholder={t("email_placeholder")} className={cn("pl-9", fieldState.error && "border-destructive focus-visible:ring-destructive")} {...field} />
+                    </div>
                   </FormControl>
-                  <FormMessage>
-                    {/* {t("ERROR_EMAIL_INVALID")} */}
-                    {/* KLUCZOWE: Jeśli jest błąd, szukamy tłumaczenia dla klucza zwróconego przez Zod */}
-                    {fieldState.error?.message && t(`${fieldState.error.message}`)}
-                  </FormMessage>
+                  <FormMessage translator={t} />
                 </FormItem>
               )}
             />
 
+            {/* PASSWORD */}
             <FormField
               control={form.control}
               name="password"
-              render={(
-                { field, fieldState }, // Dodajemy fieldState
-              ) => (
+              render={({ field, fieldState }) => (
                 <FormItem>
                   <FormLabel>{t("password_label")}</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} />
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input type="password" placeholder="••••••••" className={cn("pl-9", fieldState.error && "border-destructive focus-visible:ring-destructive")} {...field} />
+                    </div>
                   </FormControl>
-                  <FormMessage>
-                    {/* KLUCZOWE: Mapowanie klucza błędu na tłumaczenie */}
-                    {fieldState.error?.message && t(fieldState.error.message)}
-                  </FormMessage>
+                  <FormMessage translator={t} />
                 </FormItem>
               )}
             />
+
+            {/* FORGOT PASSWORD */}
+            <div className="flex justify-end -mt-2">
+              <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+                {t("forgot_password")}
+              </Link>
+            </div>
 
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? "..." : t("login_button")}
             </Button>
           </form>
         </Form>
+
+        {/* REGISTER */}
+        <p className="text-center text-sm text-muted-foreground">
+          {t("no_account")}{" "}
+          <Link href="/register" className="text-primary hover:underline">
+            {t("register_link")}
+          </Link>
+        </p>
       </div>
     </div>
   );

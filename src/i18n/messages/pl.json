@@ -1,17 +1,23 @@
 {
   "LoginPage": {
     "header": "Witaj ponownie",
-    "sub_header": "Zaloguj się do swojego konta Studiq",
+    "sub_header": "Zaloguj się, aby kontynuować naukę",
     "email_label": "Adres e-mail",
+    "email_placeholder": "twoj@email.pl",
     "password_label": "Hasło",
     "login_button": "Zaloguj się",
     "no_account": "Nie masz konta?",
     "register_link": "Zarejestruj się",
+    "forgot_password": "Nie pamiętasz hasła?",
     "ERROR_EMAIL_INVALID": "Wprowadź poprawny adres e-mail.",
+    "ERROR_EMAIL_REQUIRED": "Adres e-mail jest wymagany.",
     "ERROR_PASSWORD_REQUIRED": "Hasło jest wymagane.",
-    "ERROR_PASSWORD_TOO_SHORT": "Hasło musi mieć co najmniej 6 znaków.",
-    "ERROR_NAME_REQUIRED": "Imię jest wymagane.",
-    "ERROR_NAME_TOO_SHORT": "Imię jest za krótkie.",
-    "ERROR_NAME_INVALID_FORMAT": "Imię zawiera niedozwolone znaki."
+    "ERROR_PASSWORD_TOO_SHORT": "Hasło musi mieć co najmniej 6 znaków."
+  },
+  "NotFoundPage": {
+    "title": "Nie znaleziono strony",
+    "description": "Przepraszamy, nie możemy znaleźć strony, której szukasz. Mogła zostać przeniesiona lub usunięta.",
+    "back_home": "Wróć do strony głównej",
+    "system_status": "Sprawdź status systemu"
   }
 }

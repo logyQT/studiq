@@ -25,7 +25,6 @@ export class AuthService {
     const user = usersMockDB.find((u) => u.email === data.email);
 
     if (!user || user.password !== data.password) {
-      // Zwracamy kod błędu
       throw new Error("ERROR_INVALID_CREDENTIALS");
     }
 
