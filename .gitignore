@@ -38,3 +38,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+.branches
+.temp
+
+# dotenvx
+.env.keys
+.env.local
+.env.*.local
