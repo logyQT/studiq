@@ -17,10 +17,11 @@ export const getApiDocs = async () => {
       components: {
         ...(zodComponents.components as any),
         securitySchemes: {
-          BearerAuth: {
-            type: "http",
-            scheme: "bearer",
-            bearerFormat: "JWT",
+        cookieAuth: {
+            type: "apiKey",
+            in: "cookie",
+            name: "sb-127-auth-token",
+            description: "Supabase session cookie. Automatically handled by the browser.",
           },
         },
       },

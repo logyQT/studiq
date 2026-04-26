@@ -1,39 +1,53 @@
-import { User, RegisterInput, LoginInput } from "../models/user.model";
-
-const usersMockDB: User[] = [];
+import { RegisterInput, LoginInput } from "@/server/models"
+import { createClient } from "@/lib/supabase/server";
 
 export class AuthService {
   async register(data: RegisterInput): Promise<void> {
-    const existingUser = usersMockDB.find((u) => u.email === data.email);
+    const supabase = await createClient();
 
-    if (existingUser) {
-      console.log(`[Mock Mailer] Wysłano info o istniejącym koncie na: ${data.email}`);
-      return;
+    // Supabase Auth automatycznie obsłuży wysyłkę maila potwierdzającego
+    // i sprawdzi, czy użytkownik już istnieje (zgodnie z config.toml)
+    const { error } = await supabase.auth.signUp({
+      email: data.email,
+      password: data.password,
+      options: {
+        data: {
+          name: data.name,
+        },
+      },
+    });
+
+    if (error) {
+      throw new Error(error.message);
     }
 
-    const newUser: User = {
-      id: crypto.randomUUID(),
-      ...data,
-    };
-
-    usersMockDB.push(newUser);
-
-    console.log(`[Mock Mailer] Wysłano link aktywacyjny na: ${data.email}`);
+    console.log(`[Supabase Auth] Proces rejestracji rozpoczęty dla: ${data.email}`);
   }
 
-  async login(data: LoginInput): Promise<{ token: string; user: Omit<User, "password"> }> {
-    const user = usersMockDB.find((u) => u.email === data.email);
+  async login(data: LoginInput): Promise<{ user: any }> {
+    const supabase = await createClient();
 
-    if (!user || user.password !== data.password) {
+    const { data: authData, error } = await supabase.auth.signInWithPassword({
+      email: data.email,
+      password: data.password,
+    });
+
+    if (error) {
       throw new Error("ERROR_INVALID_CREDENTIALS");
     }
 
-    const { password, ...userWithoutPassword } = user;
-
     return {
-      token: `mock-jwt-token-${crypto.randomUUID()}`,
-      user: userWithoutPassword,
+      user: authData.user,
     };
+  }
+
+  async logout(): Promise<void> {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      throw new Error(error.message);
+    }
   }
 }
 
