@@ -1,55 +1,61 @@
-import type { HealthStatus } from "@/types";
+import type { HealthStatus, ServiceStatus, AppStatus } from "@/types";
+import { createClient } from "@/lib/supabase/server";
 
-/**
- * =============================================================================
- * HEALTH SERVICE
- * =============================================================================
- *
- * Serwisy odpowiadają za:
- * - Logikę biznesową aplikacji
- * - Komunikację z bazą danych (przez modele)
- * - Integrację z zewnętrznymi API
- * - Transformację danych
- *
- * Serwisy są wywoływane przez kontrolery i mogą korzystać z modeli.
- *
- * Przykład struktury serwisu:
- *   UserService.ts
- *   ├── create(data)     → tworzy użytkownika
- *   ├── findById(id)     → znajduje użytkownika
- *   ├── update(id, data) → aktualizuje użytkownika
- *   └── delete(id)       → usuwa użytkownika
- */
 export class HealthService {
-  /**
-   * Sprawdza stan zdrowia aplikacji
-   *
-   * W produkcyjnej aplikacji możesz dodać:
-   * - Sprawdzenie połączenia z bazą danych
-   * - Sprawdzenie dostępności zewnętrznych serwisów
-   * - Sprawdzenie pamięci i CPU
-   *
-   * @returns Obiekt HealthStatus
-   */
-  static checkHealth(): HealthStatus {
+  private static TIMEOUT_MS = 3000;
+
+  static async checkHealth(): Promise<HealthStatus> {
+    const start = Date.now();
+
+    const [supabase] = await Promise.all([
+      this.withTimeout(this.checkSupabase(), this.TIMEOUT_MS),
+    ]);
+
+    const services = {
+      supabase: supabase ? "up" : "down" as ServiceStatus,
+    };
+
+    const status = this.calculateStatus(services);
+
     return {
-      status: "healthy",
+      status,
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       environment: process.env.NODE_ENV || "development",
+      services,
+      responseTime: Date.now() - start,
     };
   }
 
-  /**
-   * Przykład metody sprawdzającej bazę danych (do implementacji)
-   *
-   * static async checkDatabase(): Promise<boolean> {
-   *   try {
-   *     await db.query("SELECT 1");
-   *     return true;
-   *   } catch {
-   *     return false;
-   *   }
-   * }
-   */
+  private static async checkSupabase(): Promise<boolean> {
+    try {
+      const supabase = await createClient();
+
+      const { error } = await supabase.auth.getSession();
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  private static async withTimeout<T>(
+    promise: Promise<T>,
+    ms: number
+  ): Promise<T | null> {
+    const timeout = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), ms)
+    );
+
+    return Promise.race([promise, timeout]);
+  }
+
+  private static calculateStatus(
+    services: Record<string, ServiceStatus>
+  ): AppStatus {
+    const values = Object.values(services);
+
+    if (values.every((s) => s === "up")) return "healthy";
+    if (values.every((s) => s === "down")) return "unhealthy";
+    return "degraded";
+  }
 }
