@@ -1,12 +1,10 @@
-import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import { getLocale, getMessages } from "next-intl/server";
-import { NextIntlClientProvider } from "next-intl";
-import { Toaster } from "sonner";
-import { notFound } from "next/navigation";
-import { locales } from "@/i18n/request";
-import { ThemeProvider } from "@/components/ThemeProvider";
-import "@/app/globals.css";
+import type { Metadata, Viewport } from 'next';
+import { Geist, Geist_Mono } from 'next/font/google';
+import { getLocale, getMessages } from 'next-intl/server';
+import { NextIntlClientProvider } from 'next-intl';
+import { Toaster } from 'sonner';
+import { ThemeProvider } from '@/components/ThemeProvider';
+import '@/app/globals.css';
 
 /**
  * =============================================================================
@@ -16,13 +14,13 @@ import "@/app/globals.css";
  * Dodaj nowe czcionki importując je z 'next/font/google'.
  */
 const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+  variable: '--font-geist-sans',
+  subsets: ['latin'],
 });
 
 const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  variable: '--font-geist-mono',
+  subsets: ['latin'],
 });
 
 /**
@@ -34,13 +32,13 @@ const geistMono = Geist_Mono({
  */
 export const metadata: Metadata = {
   title: {
-    default: "Studiq",
-    template: "%s | Studiq",
+    default: 'Studiq',
+    template: '%s | Studiq',
   },
-  description: "Professional Next.js 14+ boilerplate with TypeScript and Tailwind CSS",
-  keywords: ["Next.js", "React", "TypeScript", "Tailwind CSS"],
-  authors: [{ name: "Your Name" }],
-  creator: "Your Name",
+  description: 'Professional Next.js 14+ boilerplate with TypeScript and Tailwind CSS',
+  keywords: ['Next.js', 'React', 'TypeScript', 'Tailwind CSS'],
+  authors: [{ name: 'Your Name' }],
+  creator: 'Your Name',
 };
 
 /**
@@ -50,11 +48,11 @@ export const metadata: Metadata = {
  * Konfiguracja viewport dla responsywności i PWA.
  */
 export const viewport: Viewport = {
-  width: "device-width",
+  width: 'device-width',
   initialScale: 1,
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#181818" },
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#181818' },
   ],
 };
 
@@ -79,7 +77,12 @@ export default async function RootLayout({
   return (
     <html lang={locale} className="bg-background" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
           <NextIntlClientProvider messages={messages}>
             {/*
             PROVIDERS - Dodaj tutaj swoje providery:

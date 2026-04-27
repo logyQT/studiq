@@ -6,8 +6,8 @@
  * Dokumentacja: https://tailwindcss.com/docs
  */
 
-@import "tailwindcss";
-@import "tw-animate-css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -76,8 +76,8 @@
  * Mapowanie zmiennych CSS na kolory Tailwind.
  */
 @theme inline {
-  --font-sans: "Geist", "Geist Fallback", system-ui, sans-serif;
-  --font-mono: "Geist Mono", "Geist Mono Fallback", monospace;
+  --font-sans: 'Geist', 'Geist Fallback', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback', monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

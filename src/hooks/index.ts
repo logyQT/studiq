@@ -22,8 +22,8 @@
  */
 
 // Eksportuj hooki tutaj:
-export * from "./use-mobile";
-export * from "./use-toast";
+export * from './use-mobile';
+export * from './use-toast';
 
 // Dodaj własne hooki:
 // export * from "./use-debounce";

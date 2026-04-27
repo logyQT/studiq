@@ -108,26 +108,26 @@
  * =============================================================================
  */
 
-"use client";
+'use client';
 
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/layout/ThemeToggle";
-import { LanguageToggle } from "@/components/layout/LanguageToggle";
-import { useTranslations } from "next-intl";
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/layout/ThemeToggle';
+import { LanguageToggle } from '@/components/layout/LanguageToggle';
+import { useTranslations } from 'next-intl';
 
 export default function Home() {
-  const t = useTranslations("HomePage");
+  const t = useTranslations('HomePage');
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen">
       <h1 className="text-4xl font-bold mb-8">StudiQ</h1>
       <div className="flex gap-4">
         <Link href="/login">
-          <Button variant="outline">{t("login_button")}</Button>
+          <Button variant="outline">{t('login_button')}</Button>
         </Link>
         <Link href="/register">
-          <Button>{t("register_button")}</Button>
+          <Button>{t('register_button')}</Button>
         </Link>
         <ThemeToggle></ThemeToggle>
         <LanguageToggle></LanguageToggle>

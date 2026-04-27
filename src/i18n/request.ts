@@ -1,13 +1,13 @@
 // src/i18n/request.ts
-import { getRequestConfig } from "next-intl/server";
-import { cookies } from "next/headers";
+import { getRequestConfig } from 'next-intl/server';
+import { cookies } from 'next/headers';
 
-export const locales = ["pl", "en"];
-const defaultLocale = "pl";
+export const locales = ['pl', 'en'];
+const defaultLocale = 'pl';
 
 export default getRequestConfig(async () => {
   const cookieStore = await cookies();
-  const locale = cookieStore.get("NEXT_LOCALE")?.value || defaultLocale;
+  const locale = cookieStore.get('NEXT_LOCALE')?.value || defaultLocale;
 
   const activeLocale = locales.includes(locale) ? locale : defaultLocale;
 

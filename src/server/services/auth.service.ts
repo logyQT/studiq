@@ -1,5 +1,5 @@
-import { RegisterInput, LoginInput } from "@/server/models"
-import { createClient } from "@/lib/supabase/server";
+import { RegisterInput, LoginInput } from '@/server/models';
+import { createClient } from '@/lib/supabase/server';
 
 export class AuthService {
   async register(data: RegisterInput): Promise<void> {
@@ -33,7 +33,8 @@ export class AuthService {
     });
 
     if (error) {
-      throw new Error("ERROR_INVALID_CREDENTIALS");
+      console.error(error);
+      throw new Error('ERROR_INVALID_CREDENTIALS');
     }
 
     return {

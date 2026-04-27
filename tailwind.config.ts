@@ -1,4 +1,4 @@
-import type { Config } from "tailwindcss";
+import type { Config } from 'tailwindcss';
 
 /**
  * =============================================================================
@@ -26,10 +26,10 @@ const config: Config = {
    * Dostosuj jeśli zmieniasz strukturę folderów.
    */
   content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
-    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+    './components/**/*.{js,ts,jsx,tsx,mdx}',
   ],
 
   /**
@@ -43,8 +43,8 @@ const config: Config = {
        * Używaj: font-sans, font-mono
        */
       fontFamily: {
-        sans: ["var(--font-geist-sans)", "system-ui", "sans-serif"],
-        mono: ["var(--font-geist-mono)", "monospace"],
+        sans: ['var(--font-geist-sans)', 'system-ui', 'sans-serif'],
+        mono: ['var(--font-geist-mono)', 'monospace'],
       },
 
       /**
@@ -52,17 +52,17 @@ const config: Config = {
        * Używaj: animate-fadeIn, animate-slideUp
        */
       animation: {
-        "fade-in": "fadeIn 0.5s ease-in-out",
-        "slide-up": "slideUp 0.3s ease-out",
+        'fade-in': 'fadeIn 0.5s ease-in-out',
+        'slide-up': 'slideUp 0.3s ease-out',
       },
       keyframes: {
         fadeIn: {
-          from: { opacity: "0" },
-          to: { opacity: "1" },
+          from: { opacity: '0' },
+          to: { opacity: '1' },
         },
         slideUp: {
-          from: { transform: "translateY(10px)", opacity: "0" },
-          to: { transform: "translateY(0)", opacity: "1" },
+          from: { transform: 'translateY(10px)', opacity: '0' },
+          to: { transform: 'translateY(0)', opacity: '1' },
         },
       },
     },

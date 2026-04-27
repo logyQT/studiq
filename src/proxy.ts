@@ -1,35 +1,28 @@
-import { createServerClient } from '@supabase/ssr'
-import { type NextRequest, NextResponse } from 'next/server'
+import { type NextRequest } from 'next/server';
+import { updateSession } from './lib/supabase/middleware';
+import { authGuard } from './server/guards/auth.guard';
+import { roleGuard } from './server/guards/role.guard';
 
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  })
+  const { user, response } = await updateSession(request);
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
-          response = NextResponse.next({
-            request,
-          })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
+  const path = request.nextUrl.pathname;
 
-  await supabase.auth.getUser()
+  if (path.startsWith('/api/v1/admin')) {
+    const auth = authGuard(user);
+    if (!auth.isAuthorized) return auth.response;
 
-  return response
+    const role = roleGuard(user, ['admin']);
+    if (!role.hasRole) return role.response;
+  }
+
+  if (path.startsWith('/api/v1/teacher')) {
+    const auth = authGuard(user);
+    if (!auth.isAuthorized) return auth.response;
+
+    const role = roleGuard(user, ['teacher', 'admin']);
+    if (!role.hasRole) return role.response;
+  }
+
+  return response;
 }

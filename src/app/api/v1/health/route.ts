@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { HealthController } from "@/server/controllers/health.controller";
+import { NextResponse } from 'next/server';
+import { HealthController } from '@/server/controllers/health.controller';
 
 /**
  * @swagger
