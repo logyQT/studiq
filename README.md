@@ -110,26 +110,26 @@ bunx supabase db reset     # (opcjonalnie) ładuje świeży seed z danymi testow
 
 ## 🔄 Przydatne komendy
 
-| Komenda | Opis |
-|---|---|
-| `bunx supabase start` | Uruchom lokalne Supabase |
-| `bunx supabase stop` | Zatrzymaj lokalne Supabase |
-| `bunx supabase status` | Sprawdź status i wyświetl klucze API |
-| `bunx supabase db reset` | Zresetuj bazę danych (+ seed) |
-| `bunx supabase db diff -f <nazwa>` | Wygeneruj migrację z aktualnych zmian |
-| `bunx supabase migration new <nazwa>` | Utwórz pustą migrację ręcznie |
-| `bunx supabase db push` | Wypchnij migracje do bazy |
+| Komenda                               | Opis                                  |
+| ------------------------------------- | ------------------------------------- |
+| `bunx supabase start`                 | Uruchom lokalne Supabase              |
+| `bunx supabase stop`                  | Zatrzymaj lokalne Supabase            |
+| `bunx supabase status`                | Sprawdź status i wyświetl klucze API  |
+| `bunx supabase db reset`              | Zresetuj bazę danych (+ seed)         |
+| `bunx supabase db diff -f <nazwa>`    | Wygeneruj migrację z aktualnych zmian |
+| `bunx supabase migration new <nazwa>` | Utwórz pustą migrację ręcznie         |
+| `bunx supabase db push`               | Wypchnij migracje do bazy             |
 
 ---
 
 ## 🔗 Lokalne adresy
 
-| Usługa | URL |
-|---|---|
-| Supabase Studio | http://127.0.0.1:54323 |
-| API (REST) | http://127.0.0.1:54321 |
-| Auth | http://127.0.0.1:54321/auth/v1 |
-| Inbucket (e-maile) | http://127.0.0.1:54324 |
+| Usługa             | URL                            |
+| ------------------ | ------------------------------ |
+| Supabase Studio    | http://127.0.0.1:54323         |
+| API (REST)         | http://127.0.0.1:54321         |
+| Auth               | http://127.0.0.1:54321/auth/v1 |
+| Inbucket (e-maile) | http://127.0.0.1:54324         |
 
 ---
 

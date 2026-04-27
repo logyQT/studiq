@@ -1,4 +1,4 @@
-import { authController } from "@/server/controllers";
+import { authController } from '@/server/controllers';
 
 /**
  * @swagger

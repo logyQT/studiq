@@ -46,8 +46,8 @@ export interface PaginatedResponse<T> {
 /**
  * Status zdrowia serwera
  */
-export type ServiceStatus = "up" | "down";
-export type AppStatus = "healthy" | "degraded" | "unhealthy";
+export type ServiceStatus = 'up' | 'down';
+export type AppStatus = 'healthy' | 'degraded' | 'unhealthy';
 
 export interface HealthStatus {
   status: AppStatus;

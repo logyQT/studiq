@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
-import { authService } from "@/server/services";
-import { RegisterSchema, LoginSchema } from "@/server/models";
+import { NextResponse } from 'next/server';
+import { authService } from '@/server/services';
+import { RegisterSchema, LoginSchema } from '@/server/models';
 
 export class AuthController {
   async register(req: Request) {
@@ -13,7 +13,7 @@ export class AuthController {
         return NextResponse.json(
           {
             success: false,
-            error: "ERROR_VALIDATION_FAILED",
+            error: 'ERROR_VALIDATION_FAILED',
             issues: validationResult.error.flatten().fieldErrors,
           },
           { status: 400 },
@@ -25,12 +25,12 @@ export class AuthController {
       return NextResponse.json(
         {
           success: true,
-          message: "SUCCESS_ACTIVATION_LINK_SENT",
+          message: 'SUCCESS_ACTIVATION_LINK_SENT',
         },
         { status: 200 },
       );
     } catch (error: any) {
-      return NextResponse.json({ success: false, error: "ERROR_INTERNAL_SERVER" }, { status: 500 });
+      return NextResponse.json({ success: false, error: 'ERROR_INTERNAL_SERVER' }, { status: 500 });
     }
   }
 
@@ -41,16 +41,23 @@ export class AuthController {
 
       if (!validationResult.success) {
         return NextResponse.json(
-        { success: false, error: "ERROR_VALIDATION_FAILED", issues: validationResult.error.flatten().fieldErrors },
-        { status: 400 }
+          {
+            success: false,
+            error: 'ERROR_VALIDATION_FAILED',
+            issues: validationResult.error.flatten().fieldErrors,
+          },
+          { status: 400 },
         );
       }
 
       const result = await authService.login(validationResult.data);
-    
+
       return NextResponse.json({ success: true, user: result.user }, { status: 200 });
     } catch (error: any) {
-      return NextResponse.json({ success: false, error: error.message || "ERROR_LOGIN_FAILED" }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: error.message || 'ERROR_LOGIN_FAILED' },
+        { status: 401 },
+      );
     }
   }
 
@@ -61,15 +68,12 @@ export class AuthController {
       return NextResponse.json(
         {
           success: true,
-          message: "SUCCESS_LOGOUT",
+          message: 'SUCCESS_LOGOUT',
         },
         { status: 200 },
       );
     } catch (error: any) {
-      return NextResponse.json(
-        { success: false, error: "ERROR_LOGOUT_FAILED" },
-        { status: 500 },
-      );
+      return NextResponse.json({ success: false, error: 'ERROR_LOGOUT_FAILED' }, { status: 500 });
     }
   }
 }

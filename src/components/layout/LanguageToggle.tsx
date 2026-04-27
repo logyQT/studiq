@@ -1,29 +1,34 @@
-"use client";
+'use client';
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { ChevronDown } from "lucide-react";
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
+import { ChevronDown } from 'lucide-react';
 
 export function LanguageToggle() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const [locale, setLocale] = useState<"pl" | "en">("pl");
+  const [locale, setLocale] = useState<'pl' | 'en'>('pl');
 
   useEffect(() => {
     setMounted(true);
     const match = document.cookie.match(/NEXT_LOCALE=(pl|en)/);
-    if (match) setLocale(match[1] as "pl" | "en");
+    if (match) setLocale(match[1] as 'pl' | 'en');
   }, []);
 
-  const changeLanguage = (newLocale: "pl" | "en") => {
+  const changeLanguage = (newLocale: 'pl' | 'en') => {
     document.cookie = `NEXT_LOCALE=${newLocale}; path=/; max-age=31536000`;
     setLocale(newLocale);
     router.refresh();
   };
 
-  const label = locale === "pl" ? "🇵🇱 PL" : "🇬🇧 EN";
+  const label = locale === 'pl' ? '🇵🇱 PL' : '🇬🇧 EN';
 
   if (!mounted) {
     return <div className="h-9 w-[90px]" />;
@@ -39,11 +44,17 @@ export function LanguageToggle() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-36">
-        <DropdownMenuItem onClick={() => changeLanguage("pl")} className={locale === "pl" ? "font-medium" : ""}>
+        <DropdownMenuItem
+          onClick={() => changeLanguage('pl')}
+          className={locale === 'pl' ? 'font-medium' : ''}
+        >
           🇵🇱 Polski
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => changeLanguage("en")} className={locale === "en" ? "font-medium" : ""}>
+        <DropdownMenuItem
+          onClick={() => changeLanguage('en')}
+          className={locale === 'en' ? 'font-medium' : ''}
+        >
           🇬🇧 English
         </DropdownMenuItem>
       </DropdownMenuContent>

@@ -1,5 +1,5 @@
-import { HealthService } from "@/server/services";
-import type { HealthStatus } from "@/types";
+import { HealthService } from '@/server/services';
+import type { HealthStatus } from '@/types';
 
 export class HealthController {
   /**
@@ -22,15 +22,13 @@ export class HealthController {
   /**
    * Maps app health → HTTP status (for Kubernetes / Docker / Vercel)
    */
-  private static mapStatusToHttp(
-    status: HealthStatus["status"]
-  ): number {
+  private static mapStatusToHttp(status: HealthStatus['status']): number {
     switch (status) {
-      case "healthy":
+      case 'healthy':
         return 200;
-      case "degraded":
+      case 'degraded':
         return 200; // still alive, don't restart container
-      case "unhealthy":
+      case 'unhealthy':
         return 503; // trigger restart
       default:
         return 500;
