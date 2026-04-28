@@ -3,15 +3,13 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import { getLocale, getMessages } from 'next-intl/server';
 import { NextIntlClientProvider } from 'next-intl';
 import { Toaster } from 'sonner';
-import { ThemeProvider } from '@/components/ThemeProvider';
+import { AuthProvider, ThemeProvider } from '@/components/providers';
 import '@/app/globals.css';
 
 /**
  * =============================================================================
  * FONTS CONFIGURATION
  * =============================================================================
- * Konfiguracja czcionek Google Fonts z optymalizacją Next.js.
- * Dodaj nowe czcionki importując je z 'next/font/google'.
  */
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -60,10 +58,6 @@ export const viewport: Viewport = {
  * =============================================================================
  * ROOT LAYOUT
  * =============================================================================
- * Główny layout aplikacji. Tutaj dodawaj:
- * - Providery kontekstu (ThemeProvider, AuthProvider, etc.)
- * - Globalne komponenty (Toaster, Analytics, etc.)
- * - Skrypty analityczne
  */
 
 export default async function RootLayout({
@@ -84,21 +78,10 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <NextIntlClientProvider messages={messages}>
-            {/*
-            PROVIDERS - Dodaj tutaj swoje providery:
-            <ThemeProvider>
             <AuthProvider>
-            <QueryClientProvider>
-          */}
-
-            {children}
-
-            {/*
-            GLOBAL COMPONENTS - Dodaj tutaj globalne komponenty:
-            <Toaster />
-            <Analytics />
-          */}
-            <Toaster />
+              {children}
+              <Toaster />
+            </AuthProvider>
           </NextIntlClientProvider>
         </ThemeProvider>
       </body>

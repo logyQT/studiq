@@ -1,49 +1,46 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDown } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Globe } from 'lucide-react';
+
+type Locale = 'pl' | 'en';
+
+function getLocale(): Locale {
+  if (typeof document === 'undefined') return 'pl';
+  const match = document.cookie.match(/NEXT_LOCALE=(pl|en)/);
+  return (match?.[1] as Locale) || 'pl';
+}
 
 export function LanguageToggle() {
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
-  const [locale, setLocale] = useState<'pl' | 'en'>('pl');
+  const locale = getLocale();
 
-  useEffect(() => {
-    setMounted(true);
-    const match = document.cookie.match(/NEXT_LOCALE=(pl|en)/);
-    if (match) setLocale(match[1] as 'pl' | 'en');
-  }, []);
-
-  const changeLanguage = (newLocale: 'pl' | 'en') => {
-    document.cookie = `NEXT_LOCALE=${newLocale}; path=/; max-age=31536000`;
-    setLocale(newLocale);
+  const changeLanguage = (lang: Locale) => {
+    document.cookie = `NEXT_LOCALE=${lang}; path=/; max-age=31536000`;
     router.refresh();
   };
-
-  const label = locale === 'pl' ? '🇵🇱 PL' : '🇬🇧 EN';
-
-  if (!mounted) {
-    return <div className="h-9 w-[90px]" />;
-  }
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="flex gap-2">
-          {label}
-          <ChevronDown className="h-4 w-4 opacity-60" />
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-9 w-9 relative hover:scale-[1.03] transition"
+          title="Language"
+        >
+          <Globe className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-36">
+      <DropdownMenuContent align="end" className="min-w-32">
         <DropdownMenuItem
           onClick={() => changeLanguage('pl')}
           className={locale === 'pl' ? 'font-medium' : ''}

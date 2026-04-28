@@ -1,7 +1,13 @@
 {
-  "HomePage": {
-    "login_button": "Log in",
-    "register_button": "Sign up"
+  "Navbar": {
+    "logo": "StudiQ",
+    "dashboard": "Dashboard",
+    "quiz": "Quiz",
+    "flashcards": "Flashcards",
+    "ai_powered_exam": "AI Powered Exam",
+    "stat": "Statistics",
+    "login": "Login",
+    "register": "Register"
   },
   "LoginPage": {
     "header": "Welcome back",
