@@ -1,7 +1,13 @@
 {
-  "HomePage": {
-    "login_button": "Zaloguj się",
-    "register_button": "Zarejestruj się"
+  "Navbar": {
+    "logo": "StudiQ",
+    "dashboard": "Dashboard",
+    "quiz": "Testy",
+    "flashcards": "Fiszki",
+    "ai_powered_exam": "Egzamin AI",
+    "stat": "Statystyki",
+    "login": "Logowanie",
+    "register": "Rejestracja"
   },
   "LoginPage": {
     "header": "Witaj ponownie",
@@ -20,7 +26,7 @@
   },
   "RegisterPage": {
     "header": "Utwórz konto",
-    "sub_header": "Dołącz do Studiq i rozpocznij naukę",
+    "sub_header": "Dołącz do StudiQ i rozpocznij naukę",
     "name_label": "Imię i Nazwisko",
     "name_placeholder": "Jan Kowalski",
     "email_label": "Adres e-mail",
