@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function ClientSessionTest() {
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<import('@supabase/supabase-js').Session | null>(null);
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
@@ -19,7 +19,6 @@ export default function ClientSessionTest() {
 
     getInitialSession();
 
-    // Nasłuchiwanie zmian sesji (np. po wygaśnięciu tokena lub wylogowaniu)
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });

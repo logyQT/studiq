@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { updatePasswordSchema, type UpdatePasswordInput } from '@/server/models/auth.model';
+import { AppErrorCode } from '@/lib/errors';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -22,6 +23,7 @@ import { cn } from '@/lib/utils';
 
 export default function PasswordUpdatePage() {
   const t = useTranslations('PasswordUpdatePage');
+  const tErr = useTranslations('Errors');
   const router = useRouter();
 
   const form = useForm<UpdatePasswordInput>({
@@ -44,7 +46,7 @@ export default function PasswordUpdatePage() {
       const result = await response.json();
 
       if (!result.success) {
-        toast.error(t(result.error || 'ERROR_PASSWORD_UPDATE_FAILED'));
+        toast.error(tErr(result.error || AppErrorCode.PASSWORD_UPDATE_FAILED));
         return;
       }
 
@@ -53,7 +55,7 @@ export default function PasswordUpdatePage() {
       router.push('/dashboard');
       router.refresh();
     } catch {
-      toast.error(t('ERROR_INTERNAL_SERVER'));
+      toast.error(tErr(AppErrorCode.INTERNAL_SERVER));
     }
   }
 
@@ -72,7 +74,7 @@ export default function PasswordUpdatePage() {
                 name="password"
                 render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel>{t('newPasswordLabel')}</FormLabel>
+                    <FormLabel>{t('new_password_label')}</FormLabel>
                     <FormControl>
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -97,7 +99,7 @@ export default function PasswordUpdatePage() {
                 name="confirmPassword"
                 render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel>{t('confirmPasswordLabel')}</FormLabel>
+                    <FormLabel>{t('confirm_password_label')}</FormLabel>
                     <FormControl>
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -119,7 +121,7 @@ export default function PasswordUpdatePage() {
               />
               <Button type="submit" className="w-full flex items-center gap-2" disabled={isLoading}>
                 {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                {t('submitButton')}
+                {t('submit_button')}
               </Button>
             </form>
           </Form>

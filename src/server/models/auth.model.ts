@@ -1,20 +1,21 @@
 import { z, registry } from '@/lib/zod';
+import { AppErrorCode } from '@/lib/errors';
 
 const passwordSchema = z
-  .string({ error: 'ERROR_PASSWORD_REQUIRED' })
-  .min(8, { error: 'ERROR_PASSWORD_TOO_SHORT' })
-  .max(128, { error: 'ERROR_PASSWORD_TOO_LONG' })
-  .regex(/[A-Z]/, { error: 'ERROR_PASSWORD_MISSING_UPPERCASE' })
-  .regex(/[0-9]/, { error: 'ERROR_PASSWORD_MISSING_NUMBER' });
+  .string({ error: AppErrorCode.PASSWORD_REQUIRED })
+  .min(8, { error: AppErrorCode.PASSWORD_TOO_SHORT })
+  .max(128, { error: AppErrorCode.PASSWORD_TOO_LONG })
+  .regex(/[A-Z]/, { error: AppErrorCode.PASSWORD_MISSING_UPPERCASE })
+  .regex(/[0-9]/, { error: AppErrorCode.PASSWORD_MISSING_NUMBER });
 
 export const RegisterSchema = registry.register(
   'RegisterRequest',
   z.object({
     name: z
-      .string({ error: 'ERROR_NAME_REQUIRED' })
-      .min(2, { error: 'ERROR_NAME_TOO_SHORT' })
-      .regex(/^[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ\s]+$/, { error: 'ERROR_NAME_INVALID_FORMAT' }),
-    email: z.email({ error: 'ERROR_EMAIL_INVALID' }),
+      .string({ error: AppErrorCode.NAME_REQUIRED })
+      .min(2, { error: AppErrorCode.NAME_TOO_SHORT })
+      .regex(/^[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ\s]+$/, { error: AppErrorCode.NAME_INVALID_FORMAT }),
+    email: z.email({ error: AppErrorCode.EMAIL_INVALID }),
     password: passwordSchema,
   }),
 );
@@ -22,17 +23,17 @@ export const RegisterSchema = registry.register(
 export const LoginSchema = registry.register(
   'LoginRequest',
   z.object({
-    email: z.email({ error: 'ERROR_EMAIL_INVALID' }),
+    email: z.email({ error: AppErrorCode.EMAIL_INVALID }),
     password: z
-      .string({ error: 'ERROR_PASSWORD_REQUIRED' })
-      .min(1, { error: 'ERROR_PASSWORD_REQUIRED' }),
+      .string({ error: AppErrorCode.PASSWORD_REQUIRED })
+      .min(1, { error: AppErrorCode.PASSWORD_REQUIRED }),
   }),
 );
 
 export const forgotPasswordSchema = registry.register(
   'ForgotPasswordRequest',
   z.object({
-    email: z.email({ error: 'ERROR_INVALID_EMAIL' }),
+    email: z.email({ error: AppErrorCode.EMAIL_INVALID }),
   }),
 );
 
@@ -45,7 +46,7 @@ export const updatePasswordSchema = registry
     }),
   )
   .refine((data) => data.password === data.confirmPassword, {
-    message: 'ERROR_PASSWORDS_DO_NOT_MATCH',
+    message: AppErrorCode.PASSWORDS_DO_NOT_MATCH,
     path: ['confirmPassword'],
   });
 

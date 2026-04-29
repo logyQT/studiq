@@ -82,28 +82,3 @@ export type Nullable<T> = T | null;
 export type DeepPartial<T> = {
   [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
 };
-
-// =============================================================================
-// DOMAIN TYPES
-// =============================================================================
-
-/**
- * Dodaj tutaj typy domenowe:
- *
- * export interface User {
- *   id: string;
- *   email: string;
- *   name: string;
- *   createdAt: Date;
- *   updatedAt: Date;
- * }
- *
- * export interface Post {
- *   id: string;
- *   title: string;
- *   content: string;
- *   authorId: string;
- *   published: boolean;
- *   createdAt: Date;
- * }
- */

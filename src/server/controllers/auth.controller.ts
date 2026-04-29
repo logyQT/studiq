@@ -6,13 +6,8 @@ import {
   forgotPasswordSchema,
   updatePasswordSchema,
 } from '@/server/models';
-import { AppError, getErrorMessage } from '@/lib/errors';
+import { AppErrorCode, handleApiError } from '@/lib/errors';
 import { z } from '@/lib/zod';
-
-function handleError(error: unknown, fallback: string) {
-  const status = error instanceof AppError ? error.statusCode : 500;
-  return NextResponse.json({ success: false, error: getErrorMessage(error, fallback) }, { status });
-}
 
 export class AuthController {
   async register(req: NextRequest) {
@@ -24,7 +19,7 @@ export class AuthController {
         return NextResponse.json(
           {
             success: false,
-            error: 'ERROR_VALIDATION_FAILED',
+            error: AppErrorCode.VALIDATION_FAILED,
             issues: z.treeifyError(parsed.error),
           },
           { status: 400 },
@@ -38,7 +33,7 @@ export class AuthController {
         { status: 200 },
       );
     } catch (error) {
-      return handleError(error, 'ERROR_INTERNAL_SERVER');
+      return handleApiError(error, AppErrorCode.INTERNAL_SERVER);
     }
   }
 
@@ -51,7 +46,7 @@ export class AuthController {
         return NextResponse.json(
           {
             success: false,
-            error: 'ERROR_VALIDATION_FAILED',
+            error: AppErrorCode.VALIDATION_FAILED,
             issues: z.treeifyError(parsed.error),
           },
           { status: 400 },
@@ -62,17 +57,16 @@ export class AuthController {
 
       return NextResponse.json({ success: true, user: result.user }, { status: 200 });
     } catch (error) {
-      return handleError(error, 'ERROR_LOGIN_FAILED');
+      return handleApiError(error, AppErrorCode.LOGIN_FAILED);
     }
   }
 
   async logout() {
     try {
       await authService.logout();
-
       return NextResponse.json({ success: true, message: 'SUCCESS_LOGOUT' }, { status: 200 });
     } catch (error) {
-      return handleError(error, 'ERROR_LOGOUT_FAILED');
+      return handleApiError(error, AppErrorCode.LOGOUT_FAILED);
     }
   }
 
@@ -85,7 +79,7 @@ export class AuthController {
         return NextResponse.json(
           {
             success: false,
-            error: 'ERROR_VALIDATION_FAILED',
+            error: AppErrorCode.VALIDATION_FAILED,
             issues: z.treeifyError(parsed.error),
           },
           { status: 400 },
@@ -99,7 +93,7 @@ export class AuthController {
         { status: 200 },
       );
     } catch (error) {
-      return handleError(error, 'ERROR_INTERNAL_SERVER');
+      return handleApiError(error, AppErrorCode.INTERNAL_SERVER);
     }
   }
 
@@ -112,7 +106,7 @@ export class AuthController {
         return NextResponse.json(
           {
             success: false,
-            error: 'ERROR_VALIDATION_FAILED',
+            error: AppErrorCode.VALIDATION_FAILED,
             issues: z.treeifyError(parsed.error),
           },
           { status: 400 },
@@ -126,7 +120,7 @@ export class AuthController {
         { status: 200 },
       );
     } catch (error) {
-      return handleError(error, 'ERROR_PASSWORD_UPDATE_FAILED');
+      return handleApiError(error, AppErrorCode.PASSWORD_UPDATE_FAILED);
     }
   }
 }

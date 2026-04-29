@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { forgotPasswordSchema, type ForgotPasswordInput } from '@/server/models/auth.model';
+import { AppErrorCode } from '@/lib/errors';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -19,9 +20,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Mail } from 'lucide-react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 
 export default function PasswordResetPage() {
   const t = useTranslations('PasswordResetPage');
+  const tErr = useTranslations('Errors');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
   const form = useForm<ForgotPasswordInput>({
@@ -41,17 +44,22 @@ export default function PasswordResetPage() {
       });
 
       const result = await response.json();
-      if (!result.success) throw new Error(result.error);
+
+      if (!result.success) {
+        toast.error(tErr(result.error || AppErrorCode.INTERNAL_SERVER));
+        setStatus('error');
+        return;
+      }
 
       setStatus('success');
     } catch (error) {
       console.error(error);
+      toast.error(tErr(AppErrorCode.INTERNAL_SERVER));
       setStatus('error');
     }
   }
 
   return (
-    // Ujednolicone tło z LoginPage i RegisterPage
     <div className="flex min-h-screen items-center justify-center bg-muted/50 p-6">
       <Card className="w-full max-w-md shadow-lg border">
         <CardHeader className="space-y-1">
@@ -61,17 +69,14 @@ export default function PasswordResetPage() {
         <CardContent>
           {status === 'success' ? (
             <div className="space-y-4">
-              {/* Alert sukcesu z wyśrodkowaniem i odpowiednimi kolorami */}
               <Alert className="items-center border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                {/* Nadpisujemy domyślne przesunięcie ikonki w dół z shadcn */}
                 <Mail className="h-4 w-4 !translate-y-0" />
-                {/* Nadpisujemy domyślny text-muted-foreground w AlertDescription */}
                 <AlertDescription className="text-emerald-600 dark:text-emerald-400 font-medium">
                   {t('SUCCESS_PASSWORD_RESET_REQUESTED')}
                 </AlertDescription>
               </Alert>
               <Button asChild className="w-full" variant="outline">
-                <Link href="/login">{t('backToLogin')}</Link>
+                <Link href="/login">{t('back_to_login')}</Link>
               </Button>
             </div>
           ) : (
@@ -82,10 +87,10 @@ export default function PasswordResetPage() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('emailLabel')}</FormLabel>
+                      <FormLabel>{t('email_label')}</FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="name@example.com"
+                          placeholder={t('email_placeholder')}
                           {...field}
                           disabled={status === 'loading'}
                         />
@@ -96,14 +101,14 @@ export default function PasswordResetPage() {
                 />
                 <Button type="submit" className="w-full" disabled={status === 'loading'}>
                   {status === 'loading' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {t('submitButton')}
+                  {t('submit_button')}
                 </Button>
                 <div className="text-center text-sm">
                   <Link
                     href="/login"
-                    className="text-muted-foreground hover:text-primary underline underline-offset-4"
+                    className="text-muted-foreground hover:text-primary hover:underline underline-offset-4"
                   >
-                    {t('backToLogin')}
+                    {t('back_to_login')}
                   </Link>
                 </div>
               </form>
