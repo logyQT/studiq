@@ -3,7 +3,7 @@ import { OpenApiGeneratorV3 } from '@asteasolutions/zod-to-openapi';
 import { createSwaggerSpec } from 'next-swagger-doc';
 import {} from '@/server/models';
 
-export const getApiDocs = async () => {
+export const getApiDocs = () => {
   const generator = new OpenApiGeneratorV3(registry.definitions);
   const zodComponents = generator.generateComponents();
   const spec = createSwaggerSpec({

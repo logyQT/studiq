@@ -1,30 +1,24 @@
-import { RegisterInput, LoginInput } from '@/server/models';
+import { RegisterInput, LoginInput, User } from '@/server/models';
 import { createClient } from '@/lib/supabase/server';
+import { AppError } from '@/lib/errors';
 
 export class AuthService {
   async register(data: RegisterInput): Promise<void> {
     const supabase = await createClient();
 
-    // Supabase Auth automatycznie obsłuży wysyłkę maila potwierdzającego
-    // i sprawdzi, czy użytkownik już istnieje (zgodnie z config.toml)
     const { error } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
       options: {
-        data: {
-          name: data.name,
-        },
+        data: { name: data.name },
       },
     });
-
     if (error) {
-      throw new Error(error.message);
+      console.error('Supabase register error:', error);
     }
-
-    console.log(`[Supabase Auth] Proces rejestracji rozpoczęty dla: ${data.email}`);
   }
 
-  async login(data: LoginInput): Promise<{ user: any }> {
+  async login(data: LoginInput): Promise<{ user: User }> {
     const supabase = await createClient();
 
     const { data: authData, error } = await supabase.auth.signInWithPassword({
@@ -33,20 +27,47 @@ export class AuthService {
     });
 
     if (error) {
-      throw new Error('ERROR_INVALID_CREDENTIALS');
+      throw new AppError('ERROR_INVALID_CREDENTIALS', 401);
     }
 
-    return {
-      user: authData.user,
-    };
+    return { user: authData.user };
   }
 
   async logout(): Promise<void> {
     const supabase = await createClient();
-    const { error } = await supabase.auth.signOut();
+
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
 
     if (error) {
-      throw new Error(error.message);
+      console.error('Supabase logout error:', error);
+      throw new AppError('ERROR_LOGOUT_FAILED', 500);
+    }
+  }
+
+  async requestPasswordReset(email: string): Promise<void> {
+    const supabase = await createClient();
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+
+    if (error) {
+      console.error('Supabase password reset error:', error);
+      throw new AppError('ERROR_PASSWORD_RESET_FAILED', 500);
+    }
+  }
+
+  async updatePassword(password: string): Promise<void> {
+    const supabase = await createClient();
+
+    const { error } = await supabase.auth.updateUser({ password });
+
+    if (error) {
+      console.error('Supabase update password error:', error);
+
+      if (error.code === 'same_password') {
+        throw new AppError('ERROR_SAME_PASSWORD', 400);
+      }
+
+      throw new AppError('ERROR_PASSWORD_UPDATE_FAILED', 400);
     }
   }
 }

@@ -2,7 +2,7 @@
 
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { LoginSchema, type LoginInput } from '@/server/models/user.model';
+import { LoginSchema, type LoginInput } from '@/server/models/auth.model';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -45,10 +45,10 @@ export default function LoginPage() {
 
       if (!response.ok) throw new Error('Błędne dane logowania');
 
-      toast.success('Zalogowano pomyślnie!');
+      toast.success(t('SUCCESS_LOGGED_IN'));
       router.push('/dashboard');
-    } catch (error) {
-      toast.error('Wystąpił błąd podczas logowania');
+    } catch {
+      toast.error(t('ERROR_LOGIN_FAILED'));
     }
   }
 
@@ -116,7 +116,7 @@ export default function LoginPage() {
 
             {/* FORGOT PASSWORD */}
             <div className="flex justify-end -mt-2">
-              <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+              <Link href="/password/reset" className="text-sm text-primary hover:underline">
                 {t('forgot_password')}
               </Link>
             </div>

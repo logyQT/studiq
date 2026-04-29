@@ -1,4 +1,10 @@
 {
+  "NotFoundPage": {
+    "title": "Nie znaleziono strony",
+    "description": "Przepraszamy, nie możemy znaleźć strony, której szukasz. Mogła zostać przeniesiona lub usunięta.",
+    "back_home": "Wróć do strony głównej",
+    "system_status": "Sprawdź status systemu"
+  },
   "Navbar": {
     "logo": "StudiQ",
     "dashboard": "Dashboard",
@@ -46,10 +52,22 @@
     "ERROR_SURNAME_TOO_SHORT": "Nazwisko jest za krótkie.",
     "ERROR_SURNAME_INVALID_FORMAT": "Nazwisko zawiera niedozwolone znaki."
   },
-  "NotFoundPage": {
-    "title": "Nie znaleziono strony",
-    "description": "Przepraszamy, nie możemy znaleźć strony, której szukasz. Mogła zostać przeniesiona lub usunięta.",
-    "back_home": "Wróć do strony głównej",
-    "system_status": "Sprawdź status systemu"
+  "PasswordResetPage": {
+    "title": "Zapomniałeś hasła?",
+    "description": "Podaj swój adres e-mail, a wyślemy Ci link do zresetowania hasła.",
+    "emailLabel": "E-mail",
+    "submitButton": "Wyślij link",
+    "backToLogin": "Wróć do logowania",
+    "SUCCESS_PASSWORD_RESET_REQUESTED": "Instrukcje zostały wysłane. Sprawdź swoją skrzynkę e-mail."
+  },
+  "PasswordUpdatePage": {
+    "title": "Ustaw nowe hasło",
+    "description": "Twoja tożsamość została zweryfikowana. Możesz teraz ustawić nowe bezpieczne hasło.",
+    "newPasswordLabel": "Nowe hasło",
+    "confirmPasswordLabel": "Potwierdź nowe hasło",
+    "submitButton": "Zapisz hasło",
+    "SUCCESS_PASSWORD_UPDATED": "Hasło zostało zmienione. Witaj z powrotem!",
+    "ERROR_PASSWORD_UPDATE_FAILED": "Nie udało się zmienić hasła. Link mógł wygasnąć.",
+    "ERROR_INTERNAL_SERVER": "Wystąpił wewnętrzny błąd serwera."
   }
 }

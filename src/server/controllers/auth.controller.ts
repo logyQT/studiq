@@ -1,63 +1,68 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { authService } from '@/server/services';
-import { RegisterSchema, LoginSchema } from '@/server/models';
+import {
+  RegisterSchema,
+  LoginSchema,
+  forgotPasswordSchema,
+  updatePasswordSchema,
+} from '@/server/models';
+import { AppError, getErrorMessage } from '@/lib/errors';
+import { z } from '@/lib/zod';
+
+function handleError(error: unknown, fallback: string) {
+  const status = error instanceof AppError ? error.statusCode : 500;
+  return NextResponse.json({ success: false, error: getErrorMessage(error, fallback) }, { status });
+}
 
 export class AuthController {
-  async register(req: Request) {
+  async register(req: NextRequest) {
     try {
       const body = await req.json();
+      const parsed = RegisterSchema.safeParse(body);
 
-      const validationResult = RegisterSchema.safeParse(body);
-
-      if (!validationResult.success) {
+      if (!parsed.success) {
         return NextResponse.json(
           {
             success: false,
             error: 'ERROR_VALIDATION_FAILED',
-            issues: validationResult.error.flatten().fieldErrors,
+            issues: z.treeifyError(parsed.error),
           },
           { status: 400 },
         );
       }
 
-      await authService.register(validationResult.data);
+      await authService.register(parsed.data);
 
       return NextResponse.json(
-        {
-          success: true,
-          message: 'SUCCESS_ACTIVATION_LINK_SENT',
-        },
+        { success: true, message: 'SUCCESS_ACTIVATION_LINK_SENT' },
         { status: 200 },
       );
-    } catch (error: any) {
-      return NextResponse.json({ success: false, error: 'ERROR_INTERNAL_SERVER' }, { status: 500 });
+    } catch (error) {
+      return handleError(error, 'ERROR_INTERNAL_SERVER');
     }
   }
 
-  async login(req: Request) {
+  async login(req: NextRequest) {
     try {
       const body = await req.json();
-      const validationResult = LoginSchema.safeParse(body);
+      const parsed = LoginSchema.safeParse(body);
 
-      if (!validationResult.success) {
+      if (!parsed.success) {
         return NextResponse.json(
           {
             success: false,
             error: 'ERROR_VALIDATION_FAILED',
-            issues: validationResult.error.flatten().fieldErrors,
+            issues: z.treeifyError(parsed.error),
           },
           { status: 400 },
         );
       }
 
-      const result = await authService.login(validationResult.data);
+      const result = await authService.login(parsed.data);
 
       return NextResponse.json({ success: true, user: result.user }, { status: 200 });
-    } catch (error: any) {
-      return NextResponse.json(
-        { success: false, error: error.message || 'ERROR_LOGIN_FAILED' },
-        { status: 401 },
-      );
+    } catch (error) {
+      return handleError(error, 'ERROR_LOGIN_FAILED');
     }
   }
 
@@ -65,15 +70,63 @@ export class AuthController {
     try {
       await authService.logout();
 
+      return NextResponse.json({ success: true, message: 'SUCCESS_LOGOUT' }, { status: 200 });
+    } catch (error) {
+      return handleError(error, 'ERROR_LOGOUT_FAILED');
+    }
+  }
+
+  async requestPasswordResetHandler(req: NextRequest) {
+    try {
+      const body = await req.json();
+      const parsed = forgotPasswordSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'ERROR_VALIDATION_FAILED',
+            issues: z.treeifyError(parsed.error),
+          },
+          { status: 400 },
+        );
+      }
+
+      await authService.requestPasswordReset(parsed.data.email);
+
       return NextResponse.json(
-        {
-          success: true,
-          message: 'SUCCESS_LOGOUT',
-        },
+        { success: true, message: 'SUCCESS_PASSWORD_RESET_REQUESTED' },
         { status: 200 },
       );
-    } catch (error: any) {
-      return NextResponse.json({ success: false, error: 'ERROR_LOGOUT_FAILED' }, { status: 500 });
+    } catch (error) {
+      return handleError(error, 'ERROR_INTERNAL_SERVER');
+    }
+  }
+
+  async updatePasswordHandler(req: NextRequest) {
+    try {
+      const body = await req.json();
+      const parsed = updatePasswordSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'ERROR_VALIDATION_FAILED',
+            issues: z.treeifyError(parsed.error),
+          },
+          { status: 400 },
+        );
+      }
+
+      await authService.updatePassword(parsed.data.password);
+
+      return NextResponse.json(
+        { success: true, message: 'SUCCESS_PASSWORD_UPDATED' },
+        { status: 200 },
+      );
+    } catch (error) {
+      return handleError(error, 'ERROR_PASSWORD_UPDATE_FAILED');
     }
   }
 }
