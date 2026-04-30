@@ -14,11 +14,14 @@ export class AuthService {
       },
     });
 
+    // ! Supabase CLI doesn't provide a flag to enable email enumaration protection, so we need to ignore the error in development mode.
+    // ! In production Supabase we need to enable email enumaration protection.
     if (error) {
       if (
-        error.status === 422 ||
-        error.code === 'user_already_exists' ||
-        error.message.includes('already registered')
+        process.env.NODE_ENV === 'development' &&
+        (error.status === 422 ||
+          error.code === 'user_already_exists' ||
+          error.message.includes('already registered'))
       ) {
         return;
       }

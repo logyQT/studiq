@@ -2,9 +2,10 @@
   "Errors": {
     "ERROR_INTERNAL_SERVER": "An unexpected server error occurred. Please try again later.",
     "ERROR_INVALID_INPUT": "The provided data is invalid.",
-    "ERROR_UNAUTHORIZED": "You do not have permission to access this resource.",
     "ERROR_VALIDATION_FAILED": "Data validation failed. Please check the form.",
 
+    "ERROR_UNAUTHORIZED": "You do not have permission to access this resource.",
+    "ERROR_FORBIDDEN": "You do not have permission to perform this action.",
     "ERROR_INVALID_CREDENTIALS": "Invalid email address or password.",
     "ERROR_USER_ALREADY_EXISTS": "An account with this email address already exists.",
     "ERROR_LOGIN_FAILED": "Login failed. Please try again.",

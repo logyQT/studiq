@@ -2,9 +2,10 @@
   "Errors": {
     "ERROR_INTERNAL_SERVER": "Wystąpił nieoczekiwany błąd serwera. Spróbuj ponownie później.",
     "ERROR_INVALID_INPUT": "Przekazane dane są niepoprawne.",
-    "ERROR_UNAUTHORIZED": "Nie masz dostępu do tego zasobu.",
     "ERROR_VALIDATION_FAILED": "Błąd walidacji danych. Sprawdź formularz.",
 
+    "ERROR_UNAUTHORIZED": "Nie masz dostępu do tego zasobu.",
+    "ERROR_FORBIDDEN": "Nie masz uprawnień do wykonania tej akcji.",
     "ERROR_INVALID_CREDENTIALS": "Nieprawidłowy adres e-mail lub hasło.",
     "ERROR_LOGIN_FAILED": "Logowanie nie powiodło się. Spróbuj ponownie.",
     "ERROR_LOGOUT_FAILED": "Wylogowanie nie powiodło się.",
