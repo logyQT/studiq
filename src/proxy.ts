@@ -1,67 +1,70 @@
-import { type NextRequest } from 'next/server';
-import { updateSession } from './lib/supabase/middleware';
+import { type NextRequest, NextResponse } from 'next/server';
+import { updateSession } from './lib/supabase/session';
 import { authGuard } from './server/guards/auth.guard';
 import { roleGuard } from './server/guards/role.guard';
-import { NextResponse } from 'next/server';
+import { routeRules } from './server/config/routes.config';
+import { AppErrorCode } from '@/lib/errors';
+
+function preserveCookies(originalResponse: NextResponse, newResponse: NextResponse) {
+  originalResponse.cookies.getAll().forEach((cookie) => {
+    newResponse.cookies.set(cookie.name, cookie.value);
+  });
+  return newResponse;
+}
 
 export async function proxy(request: NextRequest) {
-  const { user, response } = await updateSession(request);
-
+  const { user, response: supabaseResponse } = await updateSession(request);
   const path = request.nextUrl.pathname;
 
-  // --- 1. OCHRONA TRAS API (v1) ---
+  const matchedRule = routeRules.find((rule) => rule.matcher.test(path));
 
-  // Ochrona endpointów administratora
-  if (path.startsWith('/api/v1/admin')) {
-    const auth = authGuard(user);
-    if (!auth.isAuthorized) return auth.response;
-
-    const role = roleGuard(user, ['admin']);
-    if (!role.hasRole) return role.response;
+  // If no rule matches, let the request pass through (public route)
+  if (!matchedRule) {
+    return supabaseResponse;
   }
 
-  // Ochrona endpointów wykładowcy
-  if (path.startsWith('/api/v1/teacher')) {
-    const auth = authGuard(user);
-    if (!auth.isAuthorized) return auth.response;
-
-    const role = roleGuard(user, ['teacher', 'admin']);
-    if (!role.hasRole) return role.response;
+  // 2. Handle "Redirect if Authenticated" (e.g., /login -> /dashboard)
+  if (matchedRule.redirectIfAuthenticated && user) {
+    const url = new URL(matchedRule.redirectIfAuthenticated, request.url);
+    return preserveCookies(supabaseResponse, NextResponse.redirect(url));
   }
 
-  // --- 2. PRZEKIEROWANIA INTERFEJSU (UI) ---
-
-  // Jeśli niezalogowany próbuje wejść na dashboard -> wyrzuć go do logowania
-  if (path.startsWith('/dashboard') && !user) {
-    const loginUrl = new URL('/login', request.url);
-    // Zachowujemy informację, gdzie użytkownik chciał wejść (next parameter)
-    loginUrl.searchParams.set('next', path);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  // Jeśli zalogowany próbuje wejść na /login lub /register -> przenieś go na główny dashboard
-  if ((path === '/login' || path === '/register') && user) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
-  }
-
-  // --- 3. RBAC DLA WIDOKÓW DASHBOARDU (UI) ---
-
-  // Ochrona stron administratora w przeglądarce
-  if (path.startsWith('/dashboard/admin')) {
-    const role = roleGuard(user, ['admin']);
-    if (!role.hasRole) {
-      // Jeśli brak roli, wróć na ogólny dashboard
-      return NextResponse.redirect(new URL('/dashboard', request.url));
+  // 3. Handle Authentication Requirement
+  if (matchedRule.requireAuth && !authGuard(user)) {
+    if (matchedRule.isApi) {
+      const res = NextResponse.json(
+        { success: false, error: AppErrorCode.UNAUTHORIZED },
+        { status: 401 },
+      );
+      return preserveCookies(supabaseResponse, res);
+    } else {
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('next', path);
+      return preserveCookies(supabaseResponse, NextResponse.redirect(loginUrl));
     }
   }
 
-  // Ochrona stron wykładowcy w przeglądarce
-  if (path.startsWith('/dashboard/teacher')) {
-    const role = roleGuard(user, ['teacher', 'admin']);
-    if (!role.hasRole) {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
+  // 4. Handle RBAC (Role-Based Access Control) Requirement
+  if (matchedRule.allowedRoles && matchedRule.allowedRoles.length > 0) {
+    if (!roleGuard(user, matchedRule.allowedRoles)) {
+      if (matchedRule.isApi) {
+        const res = NextResponse.json(
+          { success: false, error: AppErrorCode.FORBIDDEN },
+          { status: 403 },
+        );
+        return preserveCookies(supabaseResponse, res);
+      } else {
+        // Redirect unauthorized UI access back to the base dashboard
+        const dashboardUrl = new URL('/dashboard', request.url);
+        return preserveCookies(supabaseResponse, NextResponse.redirect(dashboardUrl));
+      }
     }
   }
 
-  return response;
+  // 5. If all checks pass, proceed
+  return supabaseResponse;
 }
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+};

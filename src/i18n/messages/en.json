@@ -1,4 +1,40 @@
 {
+  "Errors": {
+    "ERROR_INTERNAL_SERVER": "An unexpected server error occurred. Please try again later.",
+    "ERROR_INVALID_INPUT": "The provided data is invalid.",
+    "ERROR_VALIDATION_FAILED": "Data validation failed. Please check the form.",
+
+    "ERROR_UNAUTHORIZED": "You do not have permission to access this resource.",
+    "ERROR_FORBIDDEN": "You do not have permission to perform this action.",
+    "ERROR_INVALID_CREDENTIALS": "Invalid email address or password.",
+    "ERROR_USER_ALREADY_EXISTS": "An account with this email address already exists.",
+    "ERROR_LOGIN_FAILED": "Login failed. Please try again.",
+    "ERROR_LOGOUT_FAILED": "Logout failed.",
+    "ERROR_AUTH_CALLBACK_FAILED": "The verification link is invalid or has expired.",
+    "ERROR_SESSION_EXPIRED": "Your session has expired. Please log in again.",
+
+    "ERROR_SAME_PASSWORD": "The new password cannot be the same as the current one.",
+    "ERROR_PASSWORD_UPDATE_FAILED": "Failed to update password. The link might have expired.",
+    "ERROR_PASSWORD_RESET_FAILED": "Failed to send the reset link.",
+
+    "ERROR_EMAIL_INVALID": "Please enter a valid email address.",
+    "ERROR_EMAIL_REQUIRED": "Email address is required.",
+
+    "ERROR_PASSWORD_REQUIRED": "Password is required.",
+    "ERROR_PASSWORD_TOO_SHORT": "Password must be at least 8 characters long.",
+    "ERROR_PASSWORD_TOO_LONG": "Password cannot exceed 128 characters.",
+    "ERROR_PASSWORD_MISSING_UPPERCASE": "Password must contain at least one uppercase letter.",
+    "ERROR_PASSWORD_MISSING_NUMBER": "Password must contain at least one number.",
+    "ERROR_PASSWORDS_DO_NOT_MATCH": "Passwords do not match.",
+
+    "ERROR_NAME_REQUIRED": "Full name is required.",
+    "ERROR_NAME_TOO_SHORT": "Full name is too short.",
+    "ERROR_NAME_INVALID_FORMAT": "Full name contains invalid characters.",
+
+    "ERROR_SURNAME_REQUIRED": "Last name is required.",
+    "ERROR_SURNAME_TOO_SHORT": "Last name is too short.",
+    "ERROR_SURNAME_INVALID_FORMAT": "Last name contains invalid characters."
+  },
   "Navbar": {
     "logo": "StudiQ",
     "dashboard": "Dashboard",
@@ -26,7 +62,9 @@
   },
   "RegisterPage": {
     "header": "Create an account",
-    "sub_header": "Join Studiq and start learning",
+    "sub_header": "Join StudiQ and start learning",
+    "success_header": "Account created",
+    "success_description": "Almost there! Just one more step.",
     "name_label": "Full Name",
     "name_placeholder": "John Doe",
     "email_label": "Email address",
@@ -35,6 +73,9 @@
     "register_button": "Sign up",
     "have_account": "Already have an account?",
     "login_link": "Log in",
+    "back_to_login": "Go to login",
+    "activation_instructions": "To activate your account, click the link sent to your email address. If you don't see the message, check your SPAM folder.",
+    "SUCCESS_ACTIVATION_LINK_SENT": "Activation link has been sent. Please check your inbox.",
     "ERROR_EMAIL_REQUIRED": "Email address is required.",
     "ERROR_EMAIL_INVALID": "Please enter a valid email address.",
     "ERROR_PASSWORD_REQUIRED": "Password is required.",
@@ -51,5 +92,22 @@
     "description": "Sorry, we can't find the page you're looking for. It might have been moved or deleted.",
     "back_home": "Back to home page",
     "system_status": "Check system status"
+  },
+  "PasswordResetPage": {
+    "title": "Forgot your password?",
+    "description": "Enter your email address and we'll send you a link to reset your password.",
+    "email_label": "Email",
+    "email_placeholder": "your@email.com",
+    "submit_button": "Send link",
+    "back_to_login": "Back to login",
+    "SUCCESS_PASSWORD_RESET_REQUESTED": "Instructions have been sent. Please check your inbox."
+  },
+  "PasswordUpdatePage": {
+    "title": "Set a new password",
+    "description": "Your identity has been verified. You can now set a new secure password.",
+    "new_password_label": "New password",
+    "confirm_password_label": "Confirm new password",
+    "submit_button": "Save password",
+    "SUCCESS_PASSWORD_UPDATED": "Password has been updated. Welcome back!"
   }
 }

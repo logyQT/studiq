@@ -36,7 +36,7 @@ export class HealthService {
       }
 
       return true;
-    } catch (err: any) {
+    } catch {
       return false;
     }
   }

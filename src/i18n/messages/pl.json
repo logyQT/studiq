@@ -1,4 +1,41 @@
 {
+  "Errors": {
+    "ERROR_INTERNAL_SERVER": "Wystąpił nieoczekiwany błąd serwera. Spróbuj ponownie później.",
+    "ERROR_INVALID_INPUT": "Przekazane dane są niepoprawne.",
+    "ERROR_VALIDATION_FAILED": "Błąd walidacji danych. Sprawdź formularz.",
+
+    "ERROR_UNAUTHORIZED": "Nie masz dostępu do tego zasobu.",
+    "ERROR_FORBIDDEN": "Nie masz uprawnień do wykonania tej akcji.",
+    "ERROR_INVALID_CREDENTIALS": "Nieprawidłowy adres e-mail lub hasło.",
+    "ERROR_LOGIN_FAILED": "Logowanie nie powiodło się. Spróbuj ponownie.",
+    "ERROR_LOGOUT_FAILED": "Wylogowanie nie powiodło się.",
+    "ERROR_AUTH_CALLBACK_FAILED": "Link weryfikacyjny jest nieprawidłowy lub wygasł.",
+    "ERROR_SESSION_EXPIRED": "Twoja sesja wygasła. Zaloguj się ponownie.",
+
+    "ERROR_SAME_PASSWORD": "Nowe hasło nie może być takie samo jak obecne.",
+    "ERROR_PASSWORD_UPDATE_FAILED": "Nie udało się zmienić hasła. Link mógł wygasnąć.",
+    "ERROR_PASSWORD_RESET_FAILED": "Nie udało się wysłać linku resetującego.",
+
+    "ERROR_EMAIL_INVALID": "Wprowadź poprawny adres e-mail.",
+    "ERROR_EMAIL_REQUIRED": "Adres e-mail jest wymagany.",
+
+    "ERROR_PASSWORD_REQUIRED": "Hasło jest wymagane.",
+    "ERROR_PASSWORD_TOO_SHORT": "Hasło musi mieć co najmniej 8 znaków.",
+    "ERROR_PASSWORD_TOO_LONG": "Hasło nie może przekraczać 128 znaków.",
+    "ERROR_PASSWORD_MISSING_UPPERCASE": "Hasło musi zawierać co najmniej jedną wielką literę.",
+    "ERROR_PASSWORD_MISSING_NUMBER": "Hasło musi zawierać co najmniej jedną cyfrę.",
+    "ERROR_PASSWORDS_DO_NOT_MATCH": "Podane hasła nie są identyczne.",
+
+    "ERROR_NAME_REQUIRED": "Imię i nazwisko jest wymagane.",
+    "ERROR_NAME_TOO_SHORT": "Imię i nazwisko jest za krótkie.",
+    "ERROR_NAME_INVALID_FORMAT": "Imię i nazwisko zawiera niedozwolone znaki."
+  },
+  "NotFoundPage": {
+    "title": "Nie znaleziono strony",
+    "description": "Przepraszamy, nie możemy znaleźć strony, której szukasz. Mogła zostać przeniesiona lub usunięta.",
+    "back_home": "Wróć do strony głównej",
+    "system_status": "Sprawdź status systemu"
+  },
   "Navbar": {
     "logo": "StudiQ",
     "dashboard": "Dashboard",
@@ -18,15 +55,13 @@
     "login_button": "Zaloguj się",
     "no_account": "Nie masz konta?",
     "register_link": "Zarejestruj się",
-    "forgot_password": "Nie pamiętasz hasła?",
-    "ERROR_EMAIL_INVALID": "Wprowadź poprawny adres e-mail.",
-    "ERROR_EMAIL_REQUIRED": "Adres e-mail jest wymagany.",
-    "ERROR_PASSWORD_REQUIRED": "Hasło jest wymagane.",
-    "ERROR_PASSWORD_TOO_SHORT": "Hasło musi mieć co najmniej 8 znaków."
+    "forgot_password": "Nie pamiętasz hasła?"
   },
   "RegisterPage": {
     "header": "Utwórz konto",
     "sub_header": "Dołącz do StudiQ i rozpocznij naukę",
+    "success_header": "Konto zostało utworzone",
+    "success_description": "Prawie gotowe! Brakuje jeszcze tylko jednego kroku.",
     "name_label": "Imię i Nazwisko",
     "name_placeholder": "Jan Kowalski",
     "email_label": "Adres e-mail",
@@ -35,21 +70,25 @@
     "register_button": "Zarejestruj się",
     "have_account": "Masz już konto?",
     "login_link": "Zaloguj się",
-    "ERROR_EMAIL_REQUIRED": "Adres e-mail jest wymagany.",
-    "ERROR_EMAIL_INVALID": "Wprowadź poprawny adres e-mail.",
-    "ERROR_PASSWORD_REQUIRED": "Hasło jest wymagane.",
-    "ERROR_PASSWORD_TOO_SHORT": "Hasło musi mieć co najmniej 8 znaków.",
-    "ERROR_NAME_REQUIRED": "Imię jest wymagane.",
-    "ERROR_NAME_TOO_SHORT": "Imię jest za krótkie.",
-    "ERROR_NAME_INVALID_FORMAT": "Imię zawiera niedozwolone znaki.",
-    "ERROR_SURNAME_REQUIRED": "Nazwisko jest wymagane.",
-    "ERROR_SURNAME_TOO_SHORT": "Nazwisko jest za krótkie.",
-    "ERROR_SURNAME_INVALID_FORMAT": "Nazwisko zawiera niedozwolone znaki."
+    "back_to_login": "Przejdź do logowania",
+    "activation_instructions": "Aby aktywować konto, kliknij w link przesłany w wiadomości e-mail. Jeśli nie widzisz wiadomości, sprawdź folder SPAM.",
+    "SUCCESS_ACTIVATION_LINK_SENT": "Link aktywacyjny został wysłany. Sprawdź swoją skrzynkę e-mail."
   },
-  "NotFoundPage": {
-    "title": "Nie znaleziono strony",
-    "description": "Przepraszamy, nie możemy znaleźć strony, której szukasz. Mogła zostać przeniesiona lub usunięta.",
-    "back_home": "Wróć do strony głównej",
-    "system_status": "Sprawdź status systemu"
+  "PasswordResetPage": {
+    "title": "Zapomniałeś hasła?",
+    "description": "Podaj swój adres e-mail, a wyślemy Ci link do zresetowania hasła.",
+    "email_label": "E-mail",
+    "email_placeholder": "twoj@email.com",
+    "submit_button": "Wyślij link",
+    "back_to_login": "Wróć do logowania",
+    "SUCCESS_PASSWORD_RESET_REQUESTED": "Instrukcje zostały wysłane. Sprawdź swoją skrzynkę e-mail."
+  },
+  "PasswordUpdatePage": {
+    "title": "Ustaw nowe hasło",
+    "description": "Twoja tożsamość została zweryfikowana. Możesz teraz ustawić nowe bezpieczne hasło.",
+    "new_password_label": "Nowe hasło",
+    "confirm_password_label": "Potwierdź nowe hasło",
+    "submit_button": "Zapisz hasło",
+    "SUCCESS_PASSWORD_UPDATED": "Hasło zostało zmienione. Witaj z powrotem!"
   }
 }

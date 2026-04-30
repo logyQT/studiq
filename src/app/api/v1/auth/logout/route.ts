@@ -1,5 +1,3 @@
-import { authController } from '@/server/controllers';
-
 /**
  * @swagger
  * /api/v1/auth/logout:
@@ -36,6 +34,8 @@ import { authController } from '@/server/controllers';
  *                   type: string
  *                   example: "ERROR_LOGOUT_FAILED"
  */
+import { authController } from '@/server/controllers';
+
 export async function POST() {
   return authController.logout();
 }

@@ -1,12 +1,5 @@
-import { User } from '@supabase/supabase-js';
-import { NextResponse } from 'next/server';
+import { User } from '@/server/models';
 
 export function authGuard(user: User | null) {
-  if (!user) {
-    return {
-      isAuthorized: false,
-      response: NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 }),
-    };
-  }
-  return { isAuthorized: true };
+  return !!user;
 }

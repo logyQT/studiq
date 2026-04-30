@@ -10,6 +10,14 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  async rewrites() {
+    return [
+      {
+        source: '/auth/callback',
+        destination: '/api/v1/auth/callback',
+      },
+    ];
+  },
 };
 
 export default withNextIntl(nextConfig);

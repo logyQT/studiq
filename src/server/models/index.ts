@@ -1,1 +1,1 @@
-export * from './user.model';
+export * from '@/server/models/auth.model';

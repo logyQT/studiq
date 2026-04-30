@@ -1,10 +1,16 @@
+import { notFound } from 'next/navigation';
+import ReactSwagger from '@/app/api-docs/react-swagger';
 import { getApiDocs } from '@/lib/swagger';
-import ReactSwagger from './react-swagger';
 
-export default async function IndexPage() {
-  const spec = await getApiDocs();
+export default function ApiDocsPage() {
+  if (!(process.env.NODE_ENV === 'development')) {
+    notFound();
+  }
+
+  const spec = getApiDocs();
+
   return (
-    <section className="container py-10">
+    <section className="container mx-auto p-4">
       <ReactSwagger spec={spec} />
     </section>
   );

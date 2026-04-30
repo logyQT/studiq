@@ -1,6 +1,3 @@
-import { NextResponse } from 'next/server';
-import { HealthController } from '@/server/controllers/health.controller';
-
 /**
  * @swagger
  * /api/v1/health:
@@ -75,6 +72,9 @@ import { HealthController } from '@/server/controllers/health.controller';
  *                       enum: [up, down]
  *                       example: "down"
  */
+import { NextResponse } from 'next/server';
+import { HealthController } from '@/server/controllers/health.controller';
+
 export async function GET() {
   const { body, statusCode } = await HealthController.getStatus();
 

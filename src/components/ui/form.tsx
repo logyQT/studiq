@@ -16,6 +16,8 @@ import {
 import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
 
+import { useTranslations } from 'next-intl';
+
 const Form = FormProvider;
 
 type FormFieldContextValue<
@@ -120,15 +122,23 @@ function FormDescription({ className, ...props }: React.ComponentProps<'p'>) {
   );
 }
 
-// modfiied FormMessage to take in a translator for i18n.
+// Adapted Form Message to support translation of error messages using next-intl, while still allowing custom messages passed as children.
+// If an error exists, it will use the translator (either provided via props or the global one) to translate the error message.
+// If no error exists, it will render the children as is.
 function FormMessage({
   className,
   translator,
   ...props
 }: React.ComponentProps<'p'> & { translator?: (key: string) => string }) {
   const { error, formMessageId } = useFormField();
+
+  const globalErrTranslator = useTranslations('Errors');
+
   const rawMessage = error ? String(error?.message ?? '') : undefined;
-  const body = rawMessage ? (translator ? translator(rawMessage) : rawMessage) : props.children;
+
+  const activeTranslator = translator || globalErrTranslator;
+
+  const body = rawMessage ? activeTranslator(rawMessage) : props.children;
 
   if (!body) {
     return null;
@@ -138,7 +148,7 @@ function FormMessage({
     <p
       data-slot="form-message"
       id={formMessageId}
-      className={cn('text-destructive text-sm', className)}
+      className={cn('text-destructive text-sm font-medium', className)}
       {...props}
     >
       {body}

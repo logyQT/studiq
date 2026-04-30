@@ -1,0 +1,187 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html
+  xmlns="http://www.w3.org/1999/xhtml"
+  xmlns:v="urn:schemas-microsoft-com:vml"
+  xmlns:o="urn:schemas-microsoft-com:office:office"
+>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>Reset Your Password</title>
+    <style type="text/css">
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100% !important;
+        -webkit-text-size-adjust: 100%;
+        -ms-text-size-adjust: 100%;
+        background-color: #f9fafb;
+      }
+      img {
+        line-height: 100%;
+        outline: none;
+        text-decoration: none;
+        border: 0;
+      }
+      table {
+        border-collapse: collapse !important;
+      }
+      .content-table {
+        width: 100%;
+        max-width: 600px !important;
+        margin: 0 auto;
+        background-color: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+      }
+      @media only screen and (max-width: 600px) {
+        .content-table {
+          width: 100% !important;
+          border-radius: 0 !important;
+        }
+        .padding-mobile {
+          padding: 20px !important;
+        }
+      }
+    </style>
+  </head>
+  <body style="background-color: #f9fafb; padding: 40px 0">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+      <tr>
+        <td align="center">
+          <table
+            role="presentation"
+            class="content-table"
+            cellspacing="0"
+            cellpadding="0"
+            border="0"
+            align="center"
+            style="background-color: #ffffff; border-radius: 8px; overflow: hidden"
+          >
+            <tr>
+              <td class="padding-mobile" style="padding: 40px 32px">
+                <h1
+                  style="
+                    margin: 0 0 16px 0;
+                    font-family:
+                      -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+                      sans-serif;
+                    font-size: 24px;
+                    line-height: 32px;
+                    font-weight: 700;
+                    color: #111827;
+                  "
+                >
+                  Resetowanie hasła
+                </h1>
+                <p
+                  style="
+                    margin: 0 0 24px 0;
+                    font-family:
+                      -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+                      sans-serif;
+                    font-size: 16px;
+                    line-height: 24px;
+                    color: #4b5563;
+                  "
+                >
+                  Otrzymaliśmy prośbę o zresetowanie hasła dla Twojego konta. Aby ustawić nowe
+                  hasło, kliknij poniższy przycisk:
+                </p>
+
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td align="center" bgcolor="#000000" style="border-radius: 6px">
+                      <a
+                        href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=recovery&next=/password/update"
+                        target="_blank"
+                        style="
+                          display: inline-block;
+                          padding: 14px 28px;
+                          font-family:
+                            -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+                            sans-serif;
+                          font-size: 16px;
+                          font-weight: 600;
+                          color: #ffffff;
+                          text-decoration: none;
+                          border-radius: 6px;
+                        "
+                      >
+                        Ustaw nowe hasło
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <p
+                  style="
+                    margin: 24px 0 8px 0;
+                    font-family:
+                      -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+                      sans-serif;
+                    font-size: 14px;
+                    line-height: 20px;
+                    color: #6b7280;
+                  "
+                >
+                  Jeśli przycisk nie działa, skopiuj i wklej poniższy link do przeglądarki:
+                </p>
+                <p
+                  style="
+                    margin: 0;
+                    font-family:
+                      -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+                      sans-serif;
+                    font-size: 14px;
+                    line-height: 20px;
+                    color: #2563eb;
+                    word-break: break-all;
+                  "
+                >
+                  <a
+                    href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=recovery&next=/password/update"
+                    style="color: #2563eb; text-decoration: underline"
+                  >
+                    {{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash
+                    }}&type=recovery&next=/password/update
+                  </a>
+                </p>
+
+                <table
+                  role="presentation"
+                  width="100%"
+                  cellspacing="0"
+                  cellpadding="0"
+                  border="0"
+                  style="margin-top: 32px; border-top: 1px solid #e5e7eb"
+                >
+                  <tr>
+                    <td style="padding-top: 24px">
+                      <p
+                        style="
+                          margin: 0;
+                          font-family:
+                            -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+                            sans-serif;
+                          font-size: 12px;
+                          line-height: 18px;
+                          color: #9ca3af;
+                        "
+                      >
+                        Jeśli to nie Ty prosiłeś o reset hasła, możesz zignorować tę wiadomość. Link
+                        wygaśnie za 24 godziny.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

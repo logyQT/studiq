@@ -1,4 +1,3 @@
-// src/i18n/request.ts
 import { getRequestConfig } from 'next-intl/server';
 import { cookies } from 'next/headers';
 

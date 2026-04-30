@@ -1,5 +1,3 @@
-import { authController } from '@/server/controllers';
-
 /**
  * @swagger
  * /api/v1/auth/register:
@@ -31,6 +29,9 @@ import { authController } from '@/server/controllers';
  *       400:
  *         description: Input validation error.
  */
-export async function POST(req: Request) {
+import { authController } from '@/server/controllers';
+import { NextRequest } from 'next/server';
+
+export async function POST(req: NextRequest) {
   return authController.register(req);
 }
