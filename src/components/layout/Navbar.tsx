@@ -19,6 +19,12 @@ import { Button } from '@/components/ui/button';
 import { ThemeToggle } from './ThemeToggle';
 import { LanguageToggle } from './LanguageToggle';
 import { useTranslations } from 'next-intl';
+import { useAuth } from '@/components/providers';
+import Avatar from 'boring-avatars';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { AppError } from '@/lib/errors';
+import { useEffect, useState } from 'react';
 
 const NAV_LINKS = [
   { name: 'dashboard', icon: LayoutDashboard, href: '/dashboard' },
@@ -30,6 +36,29 @@ const NAV_LINKS = [
 
 export function Navbar() {
   const t = useTranslations('Navbar');
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      const { ok } = await fetch('api/v1/auth/logout', { method: 'POST' });
+      if (!ok) throw new AppError('LOGOUT_FAILED');
+      router.replace('/login');
+      toast.success(t('LOGOUT_SUCCESS'));
+    } catch {
+      toast.error(t('LOGOUT_FAILED'));
+    }
+  };
+
+  useEffect(() => {
+    const handleClickOutside = () => setOpen(false);
+    if (open) {
+      window.addEventListener('click', handleClickOutside);
+    }
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, [open]);
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/70 backdrop-blur-xl">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -61,21 +90,77 @@ export function Navbar() {
 
           {/* RIGHT */}
           <div className="flex items-center gap-2">
-            {/* compact controls group */}
-            <div className="flex items-center gap-2">
-              <ThemeToggle />
-              <LanguageToggle />
-            </div>
+            <ThemeToggle />
+            <LanguageToggle />
 
-            {/* auth */}
-            <div className="hidden sm:flex items-center gap-2 ml-2">
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/login">{t('login')}</Link>
-              </Button>
+            {/* AUTH */}
+            <div className="ml-2">
+              {isLoading ? null : user ? (
+                <div className="relative">
+                  {/* AVATAR */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpen((prev) => !prev);
+                    }}
+                    className="rounded-full transition hover:scale-105 active:scale-95"
+                  >
+                    <Avatar
+                      size={36}
+                      name={user.email || 'User'}
+                      variant="beam"
+                      colors={['#444', '#555', '#666', '#777', '#888']}
+                    />
+                  </button>
 
-              <Button size="sm" asChild>
-                <Link href="/register">{t('register')}</Link>
-              </Button>
+                  {/* DROPDOWN */}
+                  {open && (
+                    <div className="absolute right-0 mt-3 w-64 rounded-xl border bg-background/95 backdrop-blur-xl shadow-xl p-4 z-50 animate-in fade-in zoom-in-95">
+                      {/* USER INFO */}
+                      <div className="flex items-center gap-3 mb-3">
+                        <Avatar
+                          size={36}
+                          name={user.email || 'User'}
+                          variant="beam"
+                          colors={['#444', '#555', '#666', '#777', '#888']}
+                        />
+
+                        <div className="flex flex-col leading-tight">
+                          <span className="font-semibold text-sm">
+                            {user.user_metadata.name || 'User'}
+                          </span>
+                          <p className="text-xs text-muted-foreground truncate max-w-[160px]">
+                            {user.email}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* DIVIDER */}
+                      <div className="h-px bg-border my-2" />
+
+                      {/* ACTION */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-sm"
+                        onClick={handleLogout}
+                      >
+                        {t('logout') || 'Logout'}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="hidden sm:flex items-center gap-2">
+                  <Button variant="ghost" size="sm" asChild>
+                    <Link href="/login">{t('login')}</Link>
+                  </Button>
+
+                  <Button size="sm" asChild>
+                    <Link href="/register">{t('register')}</Link>
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -6,11 +6,42 @@ export class AuthService {
   async register(data: RegisterInput): Promise<void> {
     const supabase = await createClient();
 
+    if (data.inviteToken) {
+      const { data: invite, error: inviteError } = await supabase
+        .from('invitations')
+        .select('email, name, expires_at')
+        .eq('token', data.inviteToken)
+        .single();
+
+      if (inviteError || !invite) {
+        throw new AppError(AppErrorCode.INVALID_INPUT, 400); // Invalid token
+      }
+
+      // Check if email or name matches
+      if (invite.email !== data.email || invite.name !== data.name) {
+        console.error('Invite token does not match email or name:', {
+          tokenEmail: invite.email,
+          tokenName: invite.name,
+          inputEmail: data.email,
+          inputName: data.name,
+        });
+        throw new AppError(AppErrorCode.VALIDATION_FAILED, 400);
+      }
+
+      // Check expiry
+      if (new Date(invite.expires_at) < new Date()) {
+        throw new AppError(AppErrorCode.GONE, 410);
+      }
+    }
+
     const { error } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
       options: {
-        data: { name: data.name },
+        data: {
+          name: data.name,
+          invite_token: data.inviteToken,
+        },
       },
     });
 

@@ -56,7 +56,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push('/dashboard');
+      // router.push('/login');
       router.refresh();
     } catch {
       toast.error(tErr(AppErrorCode.INTERNAL_SERVER));

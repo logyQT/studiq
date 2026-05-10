@@ -44,7 +44,10 @@
     "ai_powered_exam": "Egzamin AI",
     "stat": "Statystyki",
     "login": "Logowanie",
-    "register": "Rejestracja"
+    "register": "Rejestracja",
+    "logout": "Wyloguj się",
+    "LOGOUT_SUCCESS": "Zostałeś wylogowany.",
+    "LOGOUT_FAILED": "Nie udało się wylogować. Spróbuj ponownie."
   },
   "LoginPage": {
     "header": "Witaj ponownie",

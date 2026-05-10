@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import ReactSwagger from '@/app/api-docs/react-swagger';
+import ReactSwagger from '@/app/(backend)/docs/api/react-swagger';
 import { getApiDocs } from '@/lib/swagger';
 
 export default function ApiDocsPage() {

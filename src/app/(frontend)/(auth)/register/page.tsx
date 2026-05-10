@@ -93,11 +93,13 @@ export default function RegisterPage() {
                   name="name"
                   render={({ field, fieldState }) => (
                     <FormItem>
-                      <FormLabel>{t('name_label')}</FormLabel>
+                      <FormLabel htmlFor={field.name}>{t('name_label')}</FormLabel>
                       <FormControl>
                         <div className="relative">
-                          <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                           <Input
+                            autoComplete="name"
+                            id={field.name}
                             placeholder={t('name_placeholder')}
                             className={cn(
                               'pl-9',
@@ -118,11 +120,12 @@ export default function RegisterPage() {
                   name="email"
                   render={({ field, fieldState }) => (
                     <FormItem>
-                      <FormLabel>{t('email_label')}</FormLabel>
+                      <FormLabel htmlFor={field.name}>{t('email_label')}</FormLabel>
                       <FormControl>
                         <div className="relative">
-                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                           <Input
+                            id={field.name}
                             placeholder={t('email_placeholder')}
                             className={cn(
                               'pl-9',
@@ -143,13 +146,14 @@ export default function RegisterPage() {
                   name="password"
                   render={({ field, fieldState }) => (
                     <FormItem>
-                      <FormLabel>{t('password_label')}</FormLabel>
+                      <FormLabel htmlFor={field.name}>{t('password_label')}</FormLabel>
                       <FormControl>
                         <div className="relative">
-                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                           <Input
+                            id={field.name}
                             type="password"
-                            placeholder="••••••••"
+                            placeholder="********"
                             className={cn(
                               'pl-9',
                               fieldState.error &&

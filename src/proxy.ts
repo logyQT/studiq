@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { updateSession } from './lib/supabase/session';
-import { authGuard } from './server/guards/auth.guard';
-import { roleGuard } from './server/guards/role.guard';
-import { routeRules } from './server/config/routes.config';
+import { updateSession } from '@/lib/supabase/session';
+import { authGuard, roleGuard } from '@/server/guards';
+import { routeRules } from '@/server/config/routes.config';
 import { AppErrorCode } from '@/lib/errors';
+import { UserRole } from '@/types';
 
 function preserveCookies(originalResponse: NextResponse, newResponse: NextResponse) {
   originalResponse.cookies.getAll().forEach((cookie) => {
@@ -18,15 +18,28 @@ export async function proxy(request: NextRequest) {
 
   const matchedRule = routeRules.find((rule) => rule.matcher.test(path));
 
-  // If no rule matches, let the request pass through (public route)
+  // 1. If no rule matches, let the request pass through (public route)
   if (!matchedRule) {
     return supabaseResponse;
   }
 
   // 2. Handle "Redirect if Authenticated" (e.g., /login -> /dashboard)
-  if (matchedRule.redirectIfAuthenticated && user) {
-    const url = new URL(matchedRule.redirectIfAuthenticated, request.url);
-    return preserveCookies(supabaseResponse, NextResponse.redirect(url));
+  if (user) {
+    // Role-based redirect takes priority over the generic one
+    if (matchedRule.redirectIfAuthenticatedByRole) {
+      const userRole = user.app_metadata.role as UserRole;
+      const destination = matchedRule.redirectIfAuthenticatedByRole[userRole];
+
+      if (destination) {
+        const url = new URL(destination, request.url);
+        return preserveCookies(supabaseResponse, NextResponse.redirect(url));
+      }
+    }
+
+    if (matchedRule.redirectIfAuthenticated) {
+      const url = new URL(matchedRule.redirectIfAuthenticated, request.url);
+      return preserveCookies(supabaseResponse, NextResponse.redirect(url));
+    }
   }
 
   // 3. Handle Authentication Requirement
@@ -54,8 +67,7 @@ export async function proxy(request: NextRequest) {
         );
         return preserveCookies(supabaseResponse, res);
       } else {
-        // Redirect unauthorized UI access back to the base dashboard
-        const dashboardUrl = new URL('/dashboard', request.url);
+        const dashboardUrl = new URL('/', request.url);
         return preserveCookies(supabaseResponse, NextResponse.redirect(dashboardUrl));
       }
     }

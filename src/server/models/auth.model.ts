@@ -1,8 +1,18 @@
 import { z, registry } from '@/lib/zod';
 import { AppErrorCode } from '@/lib/errors';
+import { User as SupabaseUser } from '@supabase/supabase-js';
+import { UserRole } from '@/types';
+import { User } from 'lucide-react';
 
-const passwordSchema = z
+export const NameSchema = z
+  .string({ error: AppErrorCode.NAME_REQUIRED })
+  .nonempty({ error: AppErrorCode.NAME_REQUIRED })
+  .min(2, { error: AppErrorCode.NAME_TOO_SHORT })
+  .regex(/^[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ\s]+$/, { error: AppErrorCode.NAME_INVALID_FORMAT });
+
+export const passwordSchema = z
   .string({ error: AppErrorCode.PASSWORD_REQUIRED })
+  .nonempty({ error: AppErrorCode.PASSWORD_REQUIRED })
   .min(8, { error: AppErrorCode.PASSWORD_TOO_SHORT })
   .max(128, { error: AppErrorCode.PASSWORD_TOO_LONG })
   .regex(/[A-Z]/, { error: AppErrorCode.PASSWORD_MISSING_UPPERCASE })
@@ -11,29 +21,34 @@ const passwordSchema = z
 export const RegisterSchema = registry.register(
   'RegisterRequest',
   z.object({
-    name: z
-      .string({ error: AppErrorCode.NAME_REQUIRED })
-      .min(2, { error: AppErrorCode.NAME_TOO_SHORT })
-      .regex(/^[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ\s]+$/, { error: AppErrorCode.NAME_INVALID_FORMAT }),
-    email: z.email({ error: AppErrorCode.EMAIL_INVALID }),
+    name: NameSchema,
+    email: z
+      .string({ error: AppErrorCode.EMAIL_REQUIRED })
+      .nonempty({ error: AppErrorCode.EMAIL_REQUIRED })
+      .email({ error: AppErrorCode.EMAIL_INVALID }),
     password: passwordSchema,
+    inviteToken: z.string().optional(),
   }),
 );
 
 export const LoginSchema = registry.register(
   'LoginRequest',
   z.object({
-    email: z.email({ error: AppErrorCode.EMAIL_INVALID }),
+    email: z
+      .email({ error: AppErrorCode.EMAIL_INVALID })
+      .nonempty({ error: AppErrorCode.EMAIL_REQUIRED }),
     password: z
       .string({ error: AppErrorCode.PASSWORD_REQUIRED })
-      .min(1, { error: AppErrorCode.PASSWORD_REQUIRED }),
+      .nonempty({ error: AppErrorCode.PASSWORD_REQUIRED }),
   }),
 );
 
 export const forgotPasswordSchema = registry.register(
   'ForgotPasswordRequest',
   z.object({
-    email: z.email({ error: AppErrorCode.EMAIL_INVALID }),
+    email: z
+      .email({ error: AppErrorCode.EMAIL_INVALID })
+      .nonempty({ error: AppErrorCode.EMAIL_REQUIRED }),
   }),
 );
 
@@ -42,7 +57,7 @@ export const updatePasswordSchema = registry
     'UpdatePasswordRequest',
     z.object({
       password: passwordSchema,
-      confirmPassword: z.string(),
+      confirmPassword: z.string().nonempty({ error: AppErrorCode.PASSWORD_CONFIRMATION_REQUIRED }),
     }),
   )
   .refine((data) => data.password === data.confirmPassword, {
@@ -55,4 +70,8 @@ export type LoginInput = z.infer<typeof LoginSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type UpdatePasswordInput = z.infer<typeof updatePasswordSchema>;
 
-export type { User } from '@supabase/supabase-js';
+export type User = SupabaseUser & {
+  app_metadata: SupabaseUser['app_metadata'] & {
+    role?: UserRole;
+  };
+};

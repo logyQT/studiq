@@ -43,7 +43,10 @@
     "ai_powered_exam": "AI Powered Exam",
     "stat": "Statistics",
     "login": "Login",
-    "register": "Register"
+    "register": "Register",
+    "logout": "Logout",
+    "LOGOUT_SUCCESS": "You have been logged out.",
+    "LOGOUT_FAILED": "Failed to log out. Please try again."
   },
   "LoginPage": {
     "header": "Welcome back",
