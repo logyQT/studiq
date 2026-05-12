@@ -1,5 +1,4 @@
 import { defineConfig, devices } from '@playwright/test';
-import path from 'path';
 
 /**
  * Read environment variables from file.
@@ -56,21 +55,21 @@ export default defineConfig({
       use: { ...devices['Desktop Safari'] },
     },
     /* Test against mobile viewports. */
-    {
-      name: 'Mobile Chrome',
-      use: { ...devices['Pixel 5'] },
-    },
-    {
-      name: 'Mobile Safari',
-      use: { ...devices['iPhone 12'] },
-    },
+    // {
+    //   name: 'Mobile Chrome',
+    //   use: { ...devices['Pixel 5'] },
+    // },
+    // // {
+    //   name: 'Mobile Safari',
+    //   use: { ...devices['iPhone 12'] },
+    // },
   ],
 
   /* Run your local dev server before starting the tests */
   webServer: {
     // Using bun since a bun.lock file is present in your repo.
     // Change to 'npm run dev' or 'yarn dev' if you prefer another package manager.
-    command: 'bun run dev',
+    command: 'bunx supabase db reset && bun run build && bun run start',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,

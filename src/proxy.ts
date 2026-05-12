@@ -67,8 +67,17 @@ export async function proxy(request: NextRequest) {
         );
         return preserveCookies(supabaseResponse, res);
       } else {
-        const dashboardUrl = new URL('/', request.url);
-        return preserveCookies(supabaseResponse, NextResponse.redirect(dashboardUrl));
+        const roleRedirects: Record<string, string> = {
+          [UserRole.SYS_ADMIN]: '/admin',
+          [UserRole.TEACHER]: '/edu',
+          [UserRole.UNIVERSITY_ADMIN]: '/manage',
+          [UserRole.STUDENT]: '/app',
+          [UserRole.FREE]: '/app',
+          [UserRole.PREMIUM]: '/app',
+        };
+        const userRole = (user?.app_metadata?.role as string) || 'free';
+        const fallbackUrl = new URL(roleRedirects[userRole] || '/login', request.url);
+        return preserveCookies(supabaseResponse, NextResponse.redirect(fallbackUrl));
       }
     }
   }

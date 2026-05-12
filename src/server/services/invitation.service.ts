@@ -72,7 +72,7 @@ export class InvitationService {
     const inviteLink = `${baseUrl}/join?token=${invitation.token}`;
 
     // ! TEMP
-    console.log(`Generated invite link for ${data.email}: ${inviteLink}`);
+    console.warn(`[DEV] Generated invite link for ${data.email}: ${inviteLink}`);
 
     // await mailService.sendInvitationEmail(data.email, inviteLink, data.role);
 

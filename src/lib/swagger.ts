@@ -2,6 +2,7 @@ import { registry } from '@/lib/zod';
 import { OpenApiGeneratorV3 } from '@asteasolutions/zod-to-openapi';
 import { createSwaggerSpec } from 'next-swagger-doc';
 import {} from '@/server/models';
+import type { OpenAPIV3 } from 'openapi-types';
 
 export const getApiDocs = () => {
   const generator = new OpenApiGeneratorV3(registry.definitions);
@@ -15,7 +16,7 @@ export const getApiDocs = () => {
         version: '1.0.0',
       },
       components: {
-        ...(zodComponents.components as any),
+        schemas: (zodComponents.components as OpenAPIV3.ComponentsObject)?.schemas,
         securitySchemes: {
           cookieAuth: {
             type: 'apiKey',

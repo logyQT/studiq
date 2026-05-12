@@ -35,8 +35,9 @@ export const LoginSchema = registry.register(
   'LoginRequest',
   z.object({
     email: z
-      .email({ error: AppErrorCode.EMAIL_INVALID })
-      .nonempty({ error: AppErrorCode.EMAIL_REQUIRED }),
+      .string({ error: AppErrorCode.EMAIL_REQUIRED })
+      .nonempty({ error: AppErrorCode.EMAIL_REQUIRED })
+      .email({ error: AppErrorCode.EMAIL_INVALID }),
     password: z
       .string({ error: AppErrorCode.PASSWORD_REQUIRED })
       .nonempty({ error: AppErrorCode.PASSWORD_REQUIRED }),
@@ -47,8 +48,9 @@ export const forgotPasswordSchema = registry.register(
   'ForgotPasswordRequest',
   z.object({
     email: z
-      .email({ error: AppErrorCode.EMAIL_INVALID })
-      .nonempty({ error: AppErrorCode.EMAIL_REQUIRED }),
+      .string({ error: AppErrorCode.EMAIL_REQUIRED })
+      .nonempty({ error: AppErrorCode.EMAIL_REQUIRED })
+      .email({ error: AppErrorCode.EMAIL_INVALID }),
   }),
 );
 

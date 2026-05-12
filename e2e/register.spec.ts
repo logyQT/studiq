@@ -1,24 +1,5 @@
-// e2e/register.spec.ts
-
 import { test, expect } from '@playwright/test';
-import en from '../src/i18n/messages/en.json';
-import pl from '../src/i18n/messages/pl.json';
-
-const t = (path: string) => {
-  const getNested = (obj: any, path: string) =>
-    path.split('.').reduce((prev, curr) => prev?.[curr], obj);
-
-  const enVal = getNested(en, path);
-  const plVal = getNested(pl, path);
-
-  if (!enVal || !plVal) {
-    throw new Error(`Translation key "${path}" missing in en or pl json`);
-  }
-
-  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-  return new RegExp(`${escape(enVal)}|${escape(plVal)}`, 'i');
-};
+import { t } from './utils';
 
 const heading = t('RegisterPage.header');
 const nameLabel = t('RegisterPage.name_label');
@@ -52,7 +33,10 @@ test.describe('Registration Flow', () => {
   test('Positive: valid submission shows activation-email confirmation', async ({ page }) => {
     const uniqueEmail = `testuser_${Date.now()}@example.com`;
 
-    await page.getByLabel(nameLabel).fill('Jan Kowalski');
+    const nameInput = page.getByLabel(nameLabel);
+    await nameInput.click();
+    await nameInput.fill('Jan Kowalski');
+    await expect(nameInput).toHaveValue('Jan Kowalski');
     await page.getByLabel(emailLabel).fill(uniqueEmail);
     await page.getByLabel(passwordLabel).fill('StrongPassword1');
 
@@ -87,7 +71,10 @@ test.describe('Registration Flow', () => {
   // -------------------------------------------------------------------------
 
   test('Negative: malformed email shows invalid-email error', async ({ page }) => {
-    await page.getByLabel(nameLabel).fill('Jan Kowalski');
+    const nameInput = page.getByLabel(nameLabel);
+    await nameInput.click();
+    await nameInput.fill('Jan Kowalski');
+    await expect(nameInput).toHaveValue('Jan Kowalski');
     await page.getByLabel(emailLabel).fill('not-an-email');
     await page.getByLabel(passwordLabel).fill('StrongPassword1');
 
@@ -103,7 +90,10 @@ test.describe('Registration Flow', () => {
   // -------------------------------------------------------------------------
 
   test('Negative: password shorter than 8 characters shows length error', async ({ page }) => {
-    await page.getByLabel(nameLabel).fill('Jan Kowalski');
+    const nameInput = page.getByLabel(nameLabel);
+    await nameInput.click();
+    await nameInput.fill('Jan Kowalski');
+    await expect(nameInput).toHaveValue('Jan Kowalski');
     await page.getByLabel(emailLabel).fill('test@example.com');
     await page.getByLabel(passwordLabel).fill('Ab1');
 
@@ -117,7 +107,10 @@ test.describe('Registration Flow', () => {
   // -------------------------------------------------------------------------
 
   test('Negative: password without uppercase shows missing-uppercase error', async ({ page }) => {
-    await page.getByLabel(nameLabel).fill('Jan Kowalski');
+    const nameInput = page.getByLabel(nameLabel);
+    await nameInput.click();
+    await nameInput.fill('Jan Kowalski');
+    await expect(nameInput).toHaveValue('Jan Kowalski');
     await page.getByLabel(emailLabel).fill('test@example.com');
     await page.getByLabel(passwordLabel).fill('nouppercase1');
 
@@ -131,7 +124,10 @@ test.describe('Registration Flow', () => {
   // -------------------------------------------------------------------------
 
   test('Negative: password without a digit shows missing-number error', async ({ page }) => {
-    await page.getByLabel(nameLabel).fill('Jan Kowalski');
+    const nameInput = page.getByLabel(nameLabel);
+    await nameInput.click();
+    await nameInput.fill('Jan Kowalski');
+    await expect(nameInput).toHaveValue('Jan Kowalski');
     await page.getByLabel(emailLabel).fill('test@example.com');
     await page.getByLabel(passwordLabel).fill('NoDigitPassword');
 
@@ -145,7 +141,10 @@ test.describe('Registration Flow', () => {
   // -------------------------------------------------------------------------
 
   test('Negative: name with invalid characters shows format error', async ({ page }) => {
-    await page.getByLabel(nameLabel).fill('J4n K0w4lski!!');
+    const nameInput = page.getByLabel(nameLabel);
+    await nameInput.click();
+    await nameInput.fill('J4n K0w4lski!!');
+    await expect(nameInput).toHaveValue('J4n K0w4lski!!');
     await page.getByLabel(emailLabel).fill('test@example.com');
     await page.getByLabel(passwordLabel).fill('StrongPassword1');
 

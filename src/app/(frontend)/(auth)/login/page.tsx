@@ -32,6 +32,17 @@ export default function LoginPage() {
 
   const errorParam = searchParams.get('error');
 
+  const rawNext = searchParams.get('next');
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+
+  let nextParam: string | null = null;
+  if (rawNext && URL.canParse(rawNext, origin)) {
+    const parsed = new URL(rawNext, origin);
+    if (parsed.origin === origin) {
+      nextParam = parsed.pathname + parsed.search + parsed.hash;
+    }
+  }
+
   const form = useForm<LoginInput>({
     resolver: zodResolver(LoginSchema),
     defaultValues: { email: '', password: '' },
@@ -56,8 +67,11 @@ export default function LoginPage() {
         return;
       }
 
-      // router.push('/login');
-      router.refresh();
+      if (nextParam) {
+        router.push(nextParam);
+      } else {
+        router.refresh();
+      }
     } catch {
       toast.error(tErr(AppErrorCode.INTERNAL_SERVER));
     }
@@ -90,11 +104,13 @@ export default function LoginPage() {
                 name="email"
                 render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel>{t('email_label')}</FormLabel>
+                    <FormLabel htmlFor={field.name}>{t('email_label')}</FormLabel>
                     <FormControl>
                       <div className="relative">
                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
+                          autoComplete="email"
+                          id={field.name}
                           placeholder={t('email_placeholder')}
                           className={cn(
                             'pl-9',
@@ -115,7 +131,7 @@ export default function LoginPage() {
                 render={({ field, fieldState }) => (
                   <FormItem>
                     <div className="flex items-center justify-between">
-                      <FormLabel>{t('password_label')}</FormLabel>
+                      <FormLabel htmlFor={field.name}>{t('password_label')}</FormLabel>
                       <Link
                         href="/password/reset"
                         className="text-sm font-medium text-muted-foreground hover:text-primary underline-offset-4 hover:underline"
@@ -129,6 +145,7 @@ export default function LoginPage() {
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           type="password"
+                          id={field.name}
                           placeholder="••••••••"
                           className={cn(
                             'pl-9',
