@@ -45,7 +45,7 @@ export default function FlashcardTopicsPage() {
 
   useEffect(() => {
     fetch('/api/v1/flashcard-topics')
-      .then((r) => r.ok ? r.json() : [])
+      .then((r) => (r.ok ? r.json() : []))
       .then((data) => {
         setTopics(data);
         setLoading(false);
@@ -119,7 +119,9 @@ export default function FlashcardTopicsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Flashcard Topics</h2>
-        <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" /> New Topic</Button>
+        <Button onClick={openCreate}>
+          <Plus className="mr-2 h-4 w-4" /> New Topic
+        </Button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -132,10 +134,20 @@ export default function FlashcardTopicsPage() {
                   <CardDescription>{topic.flashcard_count} flashcards</CardDescription>
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(topic)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => openEdit(topic)}
+                  >
                     <Pencil className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteId(topic.id)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => setDeleteId(topic.id)}
+                  >
                     <Trash2 className="h-3 w-3 text-destructive" />
                   </Button>
                 </div>
@@ -154,7 +166,9 @@ export default function FlashcardTopicsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit Topic' : 'New Topic'}</DialogTitle>
-            <DialogDescription>{editing ? 'Update the topic name' : 'Create a new topic for flashcards'}</DialogDescription>
+            <DialogDescription>
+              {editing ? 'Update the topic name' : 'Create a new topic for flashcards'}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
@@ -167,7 +181,15 @@ export default function FlashcardTopicsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }}>Cancel</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDialogOpen(false);
+                resetForm();
+              }}
+            >
+              Cancel
+            </Button>
             <Button onClick={handleSubmit}>{editing ? 'Update' : 'Create'}</Button>
           </DialogFooter>
         </DialogContent>
@@ -178,12 +200,18 @@ export default function FlashcardTopicsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Topic</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove the topic from all flashcards. Flashcards themselves will not be deleted.
+              This will remove the topic from all flashcards. Flashcards themselves will not be
+              deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">Delete</AlertDialogAction>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground"
+            >
+              Delete
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

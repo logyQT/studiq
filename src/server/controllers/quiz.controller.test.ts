@@ -30,11 +30,14 @@ describe('QuizController', () => {
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
-      const response = await quizController.generate({ questionTypes: [], questionCount: 0 }, userId);
+      const response = await quizController.generate(
+        { questionTypes: [], questionCount: 0 },
+        userId,
+      );
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service throws AppError', async () => {

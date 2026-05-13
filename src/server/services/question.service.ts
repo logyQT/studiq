@@ -68,7 +68,8 @@ export class QuestionService {
       .eq('id', id)
       .single();
 
-    if (error || !data || (Array.isArray(data) && data.length === 0)) throw new AppError('NOT_FOUND');
+    if (error || !data || (Array.isArray(data) && data.length === 0))
+      throw new AppError('NOT_FOUND');
     return data;
   }
 
@@ -91,7 +92,8 @@ export class QuestionService {
       .single();
 
     if (qError && qError.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
-    if (!question || (Array.isArray(question) && question.length === 0)) throw new AppError('FORBIDDEN');
+    if (!question || (Array.isArray(question) && question.length === 0))
+      throw new AppError('FORBIDDEN');
 
     if (data.answers) {
       await supabase.from('question_answers').delete().eq('question_id', id);
@@ -133,10 +135,7 @@ export class QuestionService {
     const { data: attempts } = await supabase
       .from('quiz_answers')
       .select('question_id, is_correct')
-      .in(
-        'question_id',
-        questions?.map((q) => q.id) ?? [],
-      );
+      .in('question_id', questions?.map((q) => q.id) ?? []);
 
     const correctMap = new Map<string, { correct: number; total: number }>();
     attempts?.forEach((a) => {

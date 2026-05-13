@@ -26,12 +26,18 @@ export function Footer() {
             <h3 className="text-sm font-semibold mb-3">{t('product')}</h3>
             <ul className="space-y-2">
               <li>
-                <Link href="/features" className="text-sm text-muted-foreground hover:text-foreground transition">
+                <Link
+                  href="/features"
+                  className="text-sm text-muted-foreground hover:text-foreground transition"
+                >
                   {t('features')}
                 </Link>
               </li>
               <li>
-                <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition">
+                <Link
+                  href="/pricing"
+                  className="text-sm text-muted-foreground hover:text-foreground transition"
+                >
                   {t('pricing')}
                 </Link>
               </li>
@@ -43,7 +49,10 @@ export function Footer() {
             <h3 className="text-sm font-semibold mb-3">{t('company')}</h3>
             <ul className="space-y-2">
               <li>
-                <Link href="/contact" className="text-sm text-muted-foreground hover:text-foreground transition">
+                <Link
+                  href="/contact"
+                  className="text-sm text-muted-foreground hover:text-foreground transition"
+                >
                   {t('contact')}
                 </Link>
               </li>
@@ -55,12 +64,18 @@ export function Footer() {
             <h3 className="text-sm font-semibold mb-3">{t('legal')}</h3>
             <ul className="space-y-2">
               <li>
-                <Link href="/privacy" className="text-sm text-muted-foreground hover:text-foreground transition">
+                <Link
+                  href="/privacy"
+                  className="text-sm text-muted-foreground hover:text-foreground transition"
+                >
                   {t('privacy')}
                 </Link>
               </li>
               <li>
-                <Link href="/terms" className="text-sm text-muted-foreground hover:text-foreground transition">
+                <Link
+                  href="/terms"
+                  className="text-sm text-muted-foreground hover:text-foreground transition"
+                >
                   {t('terms')}
                 </Link>
               </li>

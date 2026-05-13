@@ -28,7 +28,11 @@ export class QuestionController {
     }
   }
 
-  async list(filters?: { subjectId?: string; type?: string; difficulty?: string }): Promise<ControllerResponse> {
+  async list(filters?: {
+    subjectId?: string;
+    type?: string;
+    difficulty?: string;
+  }): Promise<ControllerResponse> {
     try {
       const questions = await questionService.list(filters);
 

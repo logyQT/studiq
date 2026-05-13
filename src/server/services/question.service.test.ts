@@ -15,7 +15,6 @@ describe('QuestionService', () => {
   describe('create', () => {
     it('inserts question and answers and returns it', async () => {
       const mockQuestion = { id: 'q-1', type: 'mcq', content: 'Q1' };
-      const fromMock = vi.fn();
       mockSupabase.from.mockReturnValue({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
@@ -25,7 +24,12 @@ describe('QuestionService', () => {
       });
 
       const result = await questionService.create(
-        { type: 'mcq', content: 'Q1', answers: [{ content: 'A1', isCorrect: true }] },
+        {
+          type: 'mcq',
+          content: 'Q1',
+          difficulty: 'easy',
+          answers: [{ content: 'A1', isCorrect: true, orderIndex: 0 }],
+        },
         userId,
       );
 
@@ -44,7 +48,12 @@ describe('QuestionService', () => {
 
       await expect(
         questionService.create(
-          { type: 'mcq', content: 'Q1', answers: [{ content: 'A1', isCorrect: true }] },
+          {
+            type: 'mcq',
+            content: 'Q1',
+            difficulty: 'easy',
+            answers: [{ content: 'A1', isCorrect: true, orderIndex: 0 }],
+          },
           userId,
         ),
       ).rejects.toThrow('ERROR_INTERNAL_SERVER');
@@ -86,9 +95,7 @@ describe('QuestionService', () => {
       mockSupabase.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({ data: question, error: null }),
-            }),
+            single: vi.fn().mockResolvedValue({ data: question, error: null }),
           }),
         }),
       });
@@ -102,9 +109,7 @@ describe('QuestionService', () => {
       mockSupabase.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({ data: null, error: null }),
-            }),
+            single: vi.fn().mockResolvedValue({ data: null, error: null }),
           }),
         }),
       });
@@ -131,9 +136,7 @@ describe('QuestionService', () => {
       mockSupabase.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({ data: updated, error: null }),
-            }),
+            single: vi.fn().mockResolvedValue({ data: updated, error: null }),
           }),
         }),
       });
@@ -167,7 +170,11 @@ describe('QuestionService', () => {
       mockSupabase.from.mockReturnValue({
         delete: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({ error: null }),
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: { id: 'q-1' }, error: null }),
+              }),
+            }),
           }),
         }),
       });

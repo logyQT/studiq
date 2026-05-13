@@ -38,7 +38,7 @@ describe('FlashcardTopicController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service throws AppError', async () => {
@@ -103,7 +103,7 @@ describe('FlashcardTopicController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns FORBIDDEN when service throws FORBIDDEN', async () => {

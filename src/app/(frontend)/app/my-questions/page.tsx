@@ -77,7 +77,13 @@ export default function MyQuestionsPage() {
   }, []);
 
   function resetForm() {
-    setFormData({ content: '', type: 'mcq', difficulty: 'medium', explanation: '', answers: [{ content: '', isCorrect: false }] });
+    setFormData({
+      content: '',
+      type: 'mcq',
+      difficulty: 'medium',
+      explanation: '',
+      answers: [{ content: '', isCorrect: false }],
+    });
     setEditing(null);
   }
 
@@ -109,7 +115,9 @@ export default function MyQuestionsPage() {
   function updateAnswer(index: number, field: string, value: string | boolean) {
     const newAnswers = [...formData.answers];
     if (field === 'isCorrect' && value === true) {
-      newAnswers.forEach((a, i) => { if (i !== index) a.isCorrect = false; });
+      newAnswers.forEach((a, i) => {
+        if (i !== index) a.isCorrect = false;
+      });
     }
     newAnswers[index] = { ...newAnswers[index], [field]: value };
     setFormData({ ...formData, answers: newAnswers });
@@ -125,12 +133,18 @@ export default function MyQuestionsPage() {
       type: formData.type,
       difficulty: formData.difficulty,
       explanation: formData.explanation || undefined,
-      answers: formData.answers.filter((a) => a.content.trim()).map((a, i) => ({ content: a.content, isCorrect: a.isCorrect, orderIndex: i })),
+      answers: formData.answers
+        .filter((a) => a.content.trim())
+        .map((a, i) => ({ content: a.content, isCorrect: a.isCorrect, orderIndex: i })),
     };
     try {
       const url = editing ? `/api/v1/questions/${editing.id}` : '/api/v1/questions';
       const method = editing ? 'PUT' : 'POST';
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
       if (!res.ok) throw new Error();
       const data = await res.json();
       if (editing) {
@@ -165,7 +179,9 @@ export default function MyQuestionsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">My Questions</h2>
-        <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" /> Create Question</Button>
+        <Button onClick={openCreate}>
+          <Plus className="mr-2 h-4 w-4" /> Create Question
+        </Button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -181,10 +197,20 @@ export default function MyQuestionsPage() {
                   </div>
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(q)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => openEdit(q)}
+                  >
                     <Pencil className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteId(q.id)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => setDeleteId(q.id)}
+                  >
                     <Trash2 className="h-3 w-3 text-destructive" />
                   </Button>
                 </div>
@@ -203,13 +229,20 @@ export default function MyQuestionsPage() {
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit Question' : 'Create Question'}</DialogTitle>
-            <DialogDescription>{editing ? 'Update your question' : 'Add a new question to your pool'}</DialogDescription>
+            <DialogDescription>
+              {editing ? 'Update your question' : 'Add a new question to your pool'}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
               <Label>Question Type</Label>
-              <Select value={formData.type} onValueChange={(v) => setFormData({ ...formData, type: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                value={formData.type}
+                onValueChange={(v) => setFormData({ ...formData, type: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="mcq">Multiple Choice</SelectItem>
                   <SelectItem value="true_false">True / False</SelectItem>
@@ -218,8 +251,13 @@ export default function MyQuestionsPage() {
             </div>
             <div>
               <Label>Difficulty</Label>
-              <Select value={formData.difficulty} onValueChange={(v) => setFormData({ ...formData, difficulty: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                value={formData.difficulty}
+                onValueChange={(v) => setFormData({ ...formData, difficulty: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="easy">Easy</SelectItem>
                   <SelectItem value="medium">Medium</SelectItem>
@@ -229,28 +267,65 @@ export default function MyQuestionsPage() {
             </div>
             <div>
               <Label>Question</Label>
-              <Textarea value={formData.content} onChange={(e) => setFormData({ ...formData, content: e.target.value })} placeholder="Your question..." rows={3} />
+              <Textarea
+                value={formData.content}
+                onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                placeholder="Your question..."
+                rows={3}
+              />
             </div>
             <div>
               <Label>Answers</Label>
               <div className="space-y-2">
                 {formData.answers.map((a, i) => (
                   <div key={i} className="flex gap-2 items-start">
-                    <input type="radio" name="correctAnswer" checked={a.isCorrect} onChange={() => updateAnswer(i, 'isCorrect', true)} className="mt-2" />
-                    <Input value={a.content} onChange={(e) => updateAnswer(i, 'content', e.target.value)} placeholder={`Answer ${i + 1}`} className="flex-1" />
-                    {formData.answers.length > 1 && <Button variant="ghost" size="icon" onClick={() => removeAnswer(i)}><X className="h-4 w-4" /></Button>}
+                    <input
+                      type="radio"
+                      name="correctAnswer"
+                      checked={a.isCorrect}
+                      onChange={() => updateAnswer(i, 'isCorrect', true)}
+                      className="mt-2"
+                    />
+                    <Input
+                      value={a.content}
+                      onChange={(e) => updateAnswer(i, 'content', e.target.value)}
+                      placeholder={`Answer ${i + 1}`}
+                      className="flex-1"
+                    />
+                    {formData.answers.length > 1 && (
+                      <Button variant="ghost" size="icon" onClick={() => removeAnswer(i)}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>
-              {formData.type === 'mcq' && <Button variant="outline" size="sm" className="mt-2" onClick={addAnswer}><Plus className="mr-1 h-3 w-3" /> Add Answer</Button>}
+              {formData.type === 'mcq' && (
+                <Button variant="outline" size="sm" className="mt-2" onClick={addAnswer}>
+                  <Plus className="mr-1 h-3 w-3" /> Add Answer
+                </Button>
+              )}
             </div>
             <div>
               <Label>Explanation (optional)</Label>
-              <Textarea value={formData.explanation} onChange={(e) => setFormData({ ...formData, explanation: e.target.value })} placeholder="Why is this the correct answer?" rows={2} />
+              <Textarea
+                value={formData.explanation}
+                onChange={(e) => setFormData({ ...formData, explanation: e.target.value })}
+                placeholder="Why is this the correct answer?"
+                rows={2}
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }}>Cancel</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDialogOpen(false);
+                resetForm();
+              }}
+            >
+              Cancel
+            </Button>
             <Button onClick={handleSubmit}>{editing ? 'Update' : 'Create'}</Button>
           </DialogFooter>
         </DialogContent>
@@ -264,7 +339,12 @@ export default function MyQuestionsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">Delete</AlertDialogAction>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground"
+            >
+              Delete
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

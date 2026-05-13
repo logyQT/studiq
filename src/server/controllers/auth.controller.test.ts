@@ -32,7 +32,7 @@ describe('AuthController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect(response.data).toEqual({ message: 'SUCCESS_ACTIVATION_LINK_SENT' });
+      expect((response as any).data).toEqual({ message: 'SUCCESS_ACTIVATION_LINK_SENT' });
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid input', async () => {
@@ -40,7 +40,7 @@ describe('AuthController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns INTERNAL_SERVER when service throws', async () => {
@@ -72,7 +72,7 @@ describe('AuthController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect(response.data).toEqual({ user: mockUser });
+      expect((response as any).data).toEqual({ user: mockUser });
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid input', async () => {
@@ -80,7 +80,7 @@ describe('AuthController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service throws', async () => {

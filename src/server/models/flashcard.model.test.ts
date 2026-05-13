@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { CreateFlashcardSchema, BulkCreateFlashcardsSchema, UpdateFlashcardSchema } from './flashcard.model';
+import {
+  CreateFlashcardSchema,
+  BulkCreateFlashcardsSchema,
+  UpdateFlashcardSchema,
+} from './flashcard.model';
 import { ValidationErrorCode } from '@/lib/validation-errors';
 
 describe('CreateFlashcardSchema', () => {
@@ -46,7 +50,10 @@ describe('CreateFlashcardSchema', () => {
 describe('BulkCreateFlashcardsSchema', () => {
   it('passes with valid input', () => {
     const result = BulkCreateFlashcardsSchema.safeParse({
-      cards: [{ front: 'Q1', back: 'A1' }, { front: 'Q2', back: 'A2' }],
+      cards: [
+        { front: 'Q1', back: 'A1' },
+        { front: 'Q2', back: 'A2' },
+      ],
     });
     expect(result.success).toBe(true);
   });

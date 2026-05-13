@@ -1,8 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GET as teacherGet } from '@/app/(backend)/api/v1/stats/teacher/route';
 import { GET as studentGet } from '@/app/(backend)/api/v1/stats/student/route';
-import { TEST_USERS, mockUser, cleanupSubjects, cleanupQuestions, cleanupFlashcards, cleanupQuizAttempts } from './helpers';
+import {
+  TEST_USERS,
+  mockUser,
+  cleanupSubjects,
+  cleanupQuestions,
+  cleanupFlashcards,
+  cleanupQuizAttempts,
+} from './helpers';
 import { createClient } from '@/lib/supabase/server';
+import { createNextRequest } from './test-utils';
 
 describe('Stats Integration', () => {
   beforeEach(async () => {
@@ -19,7 +27,7 @@ describe('Stats Integration', () => {
     it('returns teacher stats', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/stats/teacher');
+      const req = createNextRequest('http://localhost/api/v1/stats/teacher');
       const response = await teacherGet(req);
       const body = await response.json();
 
@@ -49,7 +57,9 @@ describe('Stats Integration', () => {
         });
       }
 
-      const req = new Request(`http://localhost/api/v1/stats/teacher?subjectId=${subject.id}`);
+      const req = createNextRequest(
+        `http://localhost/api/v1/stats/teacher?subjectId=${subject.id}`,
+      );
       const response = await teacherGet(req);
       const body = await response.json();
 
@@ -61,7 +71,7 @@ describe('Stats Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/stats/teacher');
+      const req = createNextRequest('http://localhost/api/v1/stats/teacher');
       const response = await teacherGet(req);
       const body = await response.json();
 
@@ -74,8 +84,7 @@ describe('Stats Integration', () => {
     it('returns student stats', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const req = new Request('http://localhost/api/v1/stats/student');
-      const response = await studentGet(req);
+      const response = await studentGet();
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -88,8 +97,7 @@ describe('Stats Integration', () => {
     it('returns zero stats when no data exists', async () => {
       mockUser(TEST_USERS.PREMIUM);
 
-      const req = new Request('http://localhost/api/v1/stats/student');
-      const response = await studentGet(req);
+      const response = await studentGet();
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -101,8 +109,7 @@ describe('Stats Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/stats/student');
-      const response = await studentGet(req);
+      const response = await studentGet();
       const body = await response.json();
 
       expect(response.status).toBe(401);

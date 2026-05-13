@@ -51,21 +51,27 @@ export default function FlashcardSpacesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Space | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({ name: '', description: '', flashcardIds: [] as string[] });
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    flashcardIds: [] as string[],
+  });
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/v1/flashcard-spaces').then((r) => r.ok ? r.json() : []),
-      fetch('/api/v1/flashcards').then((r) => r.ok ? r.json() : []),
-    ]).then(([s, f]) => {
-      setSpaces(s);
-      setFlashcards(f);
-      setLoading(false);
-    }).catch(() => {
-      setSpaces([]);
-      setFlashcards([]);
-      setLoading(false);
-    });
+      fetch('/api/v1/flashcard-spaces').then((r) => (r.ok ? r.json() : [])),
+      fetch('/api/v1/flashcards').then((r) => (r.ok ? r.json() : [])),
+    ])
+      .then(([s, f]) => {
+        setSpaces(s);
+        setFlashcards(f);
+        setLoading(false);
+      })
+      .catch(() => {
+        setSpaces([]);
+        setFlashcards([]);
+        setLoading(false);
+      });
   }, []);
 
   function resetForm() {
@@ -110,7 +116,11 @@ export default function FlashcardSpacesPage() {
         description: formData.description || undefined,
         flashcardIds: formData.flashcardIds.length > 0 ? formData.flashcardIds : undefined,
       };
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
       if (!res.ok) throw new Error();
       const data = await res.json();
       if (editing) {
@@ -152,7 +162,9 @@ export default function FlashcardSpacesPage() {
           </Link>
           <h2 className="text-2xl font-bold">My Spaces</h2>
         </div>
-        <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" /> New Space</Button>
+        <Button onClick={openCreate}>
+          <Plus className="mr-2 h-4 w-4" /> New Space
+        </Button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -162,13 +174,27 @@ export default function FlashcardSpacesPage() {
               <div className="flex items-start justify-between">
                 <div className="min-w-0">
                   <CardTitle className="text-lg truncate">{space.name}</CardTitle>
-                  {space.description && <CardDescription className="line-clamp-2">{space.description}</CardDescription>}
+                  {space.description && (
+                    <CardDescription className="line-clamp-2">{space.description}</CardDescription>
+                  )}
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Edit" onClick={() => openEdit(space)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    aria-label="Edit"
+                    onClick={() => openEdit(space)}
+                  >
                     <Pencil className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Delete" onClick={() => setDeleteId(space.id)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    aria-label="Delete"
+                    onClick={() => setDeleteId(space.id)}
+                  >
                     <Trash2 className="h-3 w-3 text-destructive" />
                   </Button>
                 </div>
@@ -190,7 +216,9 @@ export default function FlashcardSpacesPage() {
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit Space' : 'New Space'}</DialogTitle>
-            <DialogDescription>{editing ? 'Update your space' : 'Create a new collection of flashcards'}</DialogDescription>
+            <DialogDescription>
+              {editing ? 'Update your space' : 'Create a new collection of flashcards'}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
@@ -233,7 +261,15 @@ export default function FlashcardSpacesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }}>Cancel</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDialogOpen(false);
+                resetForm();
+              }}
+            >
+              Cancel
+            </Button>
             <Button onClick={handleSubmit}>{editing ? 'Update' : 'Create'}</Button>
           </DialogFooter>
         </DialogContent>
@@ -249,7 +285,12 @@ export default function FlashcardSpacesPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">Delete</AlertDialogAction>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground"
+            >
+              Delete
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

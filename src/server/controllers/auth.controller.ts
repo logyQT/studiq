@@ -84,7 +84,11 @@ export class AuthController {
 
       await authService.requestPasswordReset(parsed.data.email);
 
-      return { success: true, statusCode: 200, data: { message: 'SUCCESS_PASSWORD_RESET_REQUESTED' } };
+      return {
+        success: true,
+        statusCode: 200,
+        data: { message: 'SUCCESS_PASSWORD_RESET_REQUESTED' },
+      };
     } catch (error) {
       if (error instanceof AppError) {
         return { success: false, statusCode: error.statusCode, error: error.code };

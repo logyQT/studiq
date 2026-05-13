@@ -77,14 +77,19 @@ export default function PricingPage() {
       {/* HERO */}
       <section className="text-center py-12 sm:py-20">
         <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">{t('title')}</h1>
-        <p className="mt-4 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto">{t('subtitle')}</p>
+        <p className="mt-4 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto">
+          {t('subtitle')}
+        </p>
       </section>
 
       {/* PRICING CARDS */}
       <section className="py-8 sm:py-12">
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
           {plans.map((plan) => (
-            <Card key={plan.name} className={plan.popular ? 'border-primary shadow-lg relative' : 'border-border/50'}>
+            <Card
+              key={plan.name}
+              className={plan.popular ? 'border-primary shadow-lg relative' : 'border-border/50'}
+            >
               {plan.popular && (
                 <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">Most Popular</Badge>
               )}
@@ -95,7 +100,9 @@ export default function PricingPage() {
               <CardContent>
                 <div className="mb-6">
                   <span className="text-4xl font-bold">{plan.price}</span>
-                  {plan.period && <p className="text-sm text-muted-foreground mt-1">{plan.period}</p>}
+                  {plan.period && (
+                    <p className="text-sm text-muted-foreground mt-1">{plan.period}</p>
+                  )}
                 </div>
                 <ul className="space-y-3 mb-8">
                   {plan.features.map((f) => (
@@ -116,7 +123,9 @@ export default function PricingPage() {
 
       {/* FAQ */}
       <section className="py-12 sm:py-16 max-w-3xl mx-auto">
-        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center mb-8">{t('faq_title')}</h2>
+        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-center mb-8">
+          {t('faq_title')}
+        </h2>
         <div className="space-y-6">
           {faqs.map(({ q, a }) => (
             <div key={q} className="border-b border-border/50 pb-6">
@@ -130,7 +139,9 @@ export default function PricingPage() {
       {/* CTA */}
       <section className="py-12 text-center">
         <Button size="lg" asChild>
-          <Link href="/register">{t('free_cta')} <ArrowRight className="ml-2 h-4 w-4" /></Link>
+          <Link href="/register">
+            {t('free_cta')} <ArrowRight className="ml-2 h-4 w-4" />
+          </Link>
         </Button>
       </section>
     </MainLayout>

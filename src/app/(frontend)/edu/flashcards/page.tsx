@@ -58,17 +58,19 @@ export default function FlashcardsPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/v1/flashcards').then((r) => r.ok ? r.json() : []),
-      fetch('/api/v1/flashcard-topics').then((r) => r.ok ? r.json() : []),
-    ]).then(([f, s]) => {
-      setFlashcards(f);
-      setTopics(s);
-      setLoading(false);
-    }).catch(() => {
-      setFlashcards([]);
-      setTopics([]);
-      setLoading(false);
-    });
+      fetch('/api/v1/flashcards').then((r) => (r.ok ? r.json() : [])),
+      fetch('/api/v1/flashcard-topics').then((r) => (r.ok ? r.json() : [])),
+    ])
+      .then(([f, s]) => {
+        setFlashcards(f);
+        setTopics(s);
+        setLoading(false);
+      })
+      .catch(() => {
+        setFlashcards([]);
+        setTopics([]);
+        setLoading(false);
+      });
   }, []);
 
   function resetForm() {
@@ -113,7 +115,11 @@ export default function FlashcardsPage() {
     try {
       const url = editing ? `/api/v1/flashcards/${editing.id}` : '/api/v1/flashcards';
       const method = editing ? 'PUT' : 'POST';
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
       if (!res.ok) throw new Error();
       const data = await res.json();
       if (editing) {
@@ -131,10 +137,12 @@ export default function FlashcardsPage() {
 
   async function handleBulkCreate() {
     const lines = bulkText.split('\n').filter((l) => l.trim());
-    const cards = lines.map((line) => {
-      const parts = line.split('|').map((p) => p.trim());
-      return { front: parts[0] || '', back: parts[1] || '' };
-    }).filter((c) => c.front && c.back);
+    const cards = lines
+      .map((line) => {
+        const parts = line.split('|').map((p) => p.trim());
+        return { front: parts[0] || '', back: parts[1] || '' };
+      })
+      .filter((c) => c.front && c.back);
 
     if (cards.length === 0) {
       toast.error(t('no_valid_cards'));
@@ -179,7 +187,9 @@ export default function FlashcardsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">{t('title')}</h2>
-        <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" /> {t('create_flashcard')}</Button>
+        <Button onClick={openCreate}>
+          <Plus className="mr-2 h-4 w-4" /> {t('create_flashcard')}
+        </Button>
       </div>
 
       <Tabs defaultValue="grid">
@@ -193,34 +203,52 @@ export default function FlashcardsPage() {
               <Card key={fc.id} className="group relative">
                 <CardContent className="p-6">
                   <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(fc)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => openEdit(fc)}
+                    >
                       <Pencil className="h-3 w-3" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteId(fc.id)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => setDeleteId(fc.id)}
+                    >
                       <Trash2 className="h-3 w-3 text-destructive" />
                     </Button>
                   </div>
                   <div className="space-y-3">
                     <div>
-                      <p className="text-xs font-medium text-muted-foreground uppercase">{t('front')}</p>
+                      <p className="text-xs font-medium text-muted-foreground uppercase">
+                        {t('front')}
+                      </p>
                       <p className="mt-1 text-sm font-medium">{fc.front}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-muted-foreground uppercase">{t('back')}</p>
+                      <p className="text-xs font-medium text-muted-foreground uppercase">
+                        {t('back')}
+                      </p>
                       <p className="mt-1 text-sm text-muted-foreground">{fc.back}</p>
                     </div>
-                    {fc.flashcard_topic_assignments && fc.flashcard_topic_assignments.length > 0 && (
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        {fc.flashcard_topic_assignments.map((a) => {
-                          const topic = topics.find((t) => t.id === a.topic_id);
-                          return topic ? (
-                            <span key={a.topic_id} className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                              {topic.name}
-                            </span>
-                          ) : null;
-                        })}
-                      </div>
-                    )}
+                    {fc.flashcard_topic_assignments &&
+                      fc.flashcard_topic_assignments.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {fc.flashcard_topic_assignments.map((a) => {
+                            const topic = topics.find((t) => t.id === a.topic_id);
+                            return topic ? (
+                              <span
+                                key={a.topic_id}
+                                className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary"
+                              >
+                                {topic.name}
+                              </span>
+                            ) : null;
+                          })}
+                        </div>
+                      )}
                   </div>
                 </CardContent>
               </Card>
@@ -248,7 +276,9 @@ export default function FlashcardsPage() {
                     </div>
                   ))}
                   {topics.length === 0 && (
-                    <p className="text-sm text-muted-foreground">No topics yet. Create topics first.</p>
+                    <p className="text-sm text-muted-foreground">
+                      No topics yet. Create topics first.
+                    </p>
                   )}
                 </div>
               </div>
@@ -263,7 +293,9 @@ export default function FlashcardsPage() {
                 />
                 <p className="text-xs text-muted-foreground mt-1">{t('paste_hint')}</p>
               </div>
-              <Button onClick={handleBulkCreate}><Upload className="mr-2 h-4 w-4" /> {t('create_all')}</Button>
+              <Button onClick={handleBulkCreate}>
+                <Upload className="mr-2 h-4 w-4" /> {t('create_all')}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -289,21 +321,41 @@ export default function FlashcardsPage() {
                   </div>
                 ))}
                 {topics.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No topics yet. Create topics first.</p>
+                  <p className="text-sm text-muted-foreground">
+                    No topics yet. Create topics first.
+                  </p>
                 )}
               </div>
             </div>
             <div>
               <Label>{t('front_label')}</Label>
-              <Textarea value={formData.front} onChange={(e) => setFormData({ ...formData, front: e.target.value })} placeholder={t('front_placeholder')} rows={3} />
+              <Textarea
+                value={formData.front}
+                onChange={(e) => setFormData({ ...formData, front: e.target.value })}
+                placeholder={t('front_placeholder')}
+                rows={3}
+              />
             </div>
             <div>
               <Label>{t('back_label')}</Label>
-              <Textarea value={formData.back} onChange={(e) => setFormData({ ...formData, back: e.target.value })} placeholder={t('back_placeholder')} rows={3} />
+              <Textarea
+                value={formData.back}
+                onChange={(e) => setFormData({ ...formData, back: e.target.value })}
+                placeholder={t('back_placeholder')}
+                rows={3}
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }}>{t('cancel')}</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDialogOpen(false);
+                resetForm();
+              }}
+            >
+              {t('cancel')}
+            </Button>
             <Button onClick={handleSubmit}>{editing ? t('update') : t('create')}</Button>
           </DialogFooter>
         </DialogContent>
@@ -317,7 +369,12 @@ export default function FlashcardsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">{t('delete')}</AlertDialogAction>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground"
+            >
+              {t('delete')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

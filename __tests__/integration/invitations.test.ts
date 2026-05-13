@@ -1,8 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { POST as invitePost, GET as inviteGet } from '@/app/(backend)/api/v1/university/invitations/route';
+import {
+  POST as invitePost,
+  GET as inviteGet,
+} from '@/app/(backend)/api/v1/university/invitations/route';
 import { POST as bulkPost } from '@/app/(backend)/api/v1/university/invitations/bulk/route';
 import { TEST_USERS, mockUser, cleanupInvitations } from './helpers';
 import { createClient } from '@/lib/supabase/server';
+import { createNextRequest } from './test-utils';
 
 describe('Invitations Integration', () => {
   beforeEach(async () => {
@@ -16,7 +20,7 @@ describe('Invitations Integration', () => {
     it('creates an invitation as university_admin and returns 201', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = new Request('http://localhost/api/v1/university/invitations', {
+      const req = createNextRequest('http://localhost/api/v1/university/invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -35,7 +39,7 @@ describe('Invitations Integration', () => {
     it('returns 422 when email is invalid', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = new Request('http://localhost/api/v1/university/invitations', {
+      const req = createNextRequest('http://localhost/api/v1/university/invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'not-an-email', role: 'student' }),
@@ -51,7 +55,7 @@ describe('Invitations Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/university/invitations', {
+      const req = createNextRequest('http://localhost/api/v1/university/invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'test@example.com', role: 'student' }),
@@ -67,7 +71,7 @@ describe('Invitations Integration', () => {
     it('returns 403 when student tries to invite', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const req = new Request('http://localhost/api/v1/university/invitations', {
+      const req = createNextRequest('http://localhost/api/v1/university/invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'test@example.com', role: 'student' }),
@@ -99,7 +103,9 @@ describe('Invitations Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/university/invitations?token=${invitation.token}`);
+      const req = createNextRequest(
+        `http://localhost/api/v1/university/invitations?token=${invitation.token}`,
+      );
       const response = await inviteGet(req);
       const body = await response.json();
 
@@ -108,7 +114,9 @@ describe('Invitations Integration', () => {
     });
 
     it('returns 404 when token does not exist', async () => {
-      const req = new Request('http://localhost/api/v1/university/invitations?token=nonexistent-token');
+      const req = createNextRequest(
+        'http://localhost/api/v1/university/invitations?token=nonexistent-token',
+      );
       const response = await inviteGet(req);
       const body = await response.json();
 
@@ -129,7 +137,9 @@ describe('Invitations Integration', () => {
         university_id: '00000000-0000-0000-0000-000000000001',
       });
 
-      const req = new Request('http://localhost/api/v1/university/invitations?token=expired-token-123');
+      const req = createNextRequest(
+        'http://localhost/api/v1/university/invitations?token=expired-token-123',
+      );
       const response = await inviteGet(req);
       const body = await response.json();
 
@@ -138,7 +148,7 @@ describe('Invitations Integration', () => {
     });
 
     it('returns 400 when token is empty', async () => {
-      const req = new Request('http://localhost/api/v1/university/invitations?token=');
+      const req = createNextRequest('http://localhost/api/v1/university/invitations?token=');
       const response = await inviteGet(req);
       const body = await response.json();
 
@@ -151,7 +161,7 @@ describe('Invitations Integration', () => {
     it('bulk creates invitations and returns 200', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = new Request('http://localhost/api/v1/university/invitations/bulk', {
+      const req = createNextRequest('http://localhost/api/v1/university/invitations/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -171,7 +181,7 @@ describe('Invitations Integration', () => {
     it('returns 422 when emails array is empty', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = new Request('http://localhost/api/v1/university/invitations/bulk', {
+      const req = createNextRequest('http://localhost/api/v1/university/invitations/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ emails: [], role: 'student' }),

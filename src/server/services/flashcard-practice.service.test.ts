@@ -69,7 +69,9 @@ describe('FlashcardPracticeService', () => {
         }),
       });
 
-      await expect(flashcardPracticeService.getHistory(userId)).rejects.toThrow('ERROR_INTERNAL_SERVER');
+      await expect(flashcardPracticeService.getHistory(userId)).rejects.toThrow(
+        'ERROR_INTERNAL_SERVER',
+      );
     });
   });
 });

@@ -85,7 +85,9 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3">
-            <Badge variant="default" className="text-sm px-3 py-1">Basic Plan</Badge>
+            <Badge variant="default" className="text-sm px-3 py-1">
+              Basic Plan
+            </Badge>
             <span className="text-sm text-muted-foreground">Managed by system administrators</span>
           </div>
         </CardContent>

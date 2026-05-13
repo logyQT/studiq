@@ -6,7 +6,7 @@ const mockSupabase = {
   from: vi.fn(),
 };
 
-vi.mocked(createClient).mockResolvedValue(mockSupabase as unknown as ReturnType<typeof createClient>);
+vi.mocked(createClient).mockResolvedValue(mockSupabase as any);
 
 describe('UniversityService', () => {
   beforeEach(() => {
@@ -45,9 +45,9 @@ describe('UniversityService', () => {
       };
       mockSupabase.from.mockReturnValue(mockChain);
 
-      await expect(
-        universityService.create({ name: 'Test', slug: 'taken' }),
-      ).rejects.toThrow('ERROR_CONFLICT');
+      await expect(universityService.create({ name: 'Test', slug: 'taken' })).rejects.toThrow(
+        'ERROR_CONFLICT',
+      );
     });
 
     it('throws INTERNAL_SERVER on other errors', async () => {
@@ -63,9 +63,9 @@ describe('UniversityService', () => {
       };
       mockSupabase.from.mockReturnValue(mockChain);
 
-      await expect(
-        universityService.create({ name: 'Test', slug: 'test' }),
-      ).rejects.toThrow('ERROR_INTERNAL_SERVER');
+      await expect(universityService.create({ name: 'Test', slug: 'test' })).rejects.toThrow(
+        'ERROR_INTERNAL_SERVER',
+      );
     });
   });
 });

@@ -51,7 +51,12 @@ interface Question {
   difficulty: string;
   subject_id: string | null;
   explanation: string | null;
-  question_answers: Array<{ id: string; content: string; is_correct: boolean; order_index: number }>;
+  question_answers: Array<{
+    id: string;
+    content: string;
+    is_correct: boolean;
+    order_index: number;
+  }>;
   created_at: string;
 }
 
@@ -90,17 +95,19 @@ export default function QuestionsPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/v1/questions').then((r) => r.ok ? r.json() : []),
-      fetch('/api/v1/subjects').then((r) => r.ok ? r.json() : []),
-    ]).then(([q, s]) => {
-      setQuestions(q);
-      setSubjects(s);
-      setLoading(false);
-    }).catch(() => {
-      setQuestions([]);
-      setSubjects([]);
-      setLoading(false);
-    });
+      fetch('/api/v1/questions').then((r) => (r.ok ? r.json() : [])),
+      fetch('/api/v1/subjects').then((r) => (r.ok ? r.json() : [])),
+    ])
+      .then(([q, s]) => {
+        setQuestions(q);
+        setSubjects(s);
+        setLoading(false);
+      })
+      .catch(() => {
+        setQuestions([]);
+        setSubjects([]);
+        setLoading(false);
+      });
   }, []);
 
   const filtered = questions.filter((q) => {
@@ -111,7 +118,14 @@ export default function QuestionsPage() {
   });
 
   function resetForm() {
-    setFormData({ content: '', type: 'mcq', difficulty: 'medium', explanation: '', subjectId: 'none', answers: [{ content: '', isCorrect: false }] });
+    setFormData({
+      content: '',
+      type: 'mcq',
+      difficulty: 'medium',
+      explanation: '',
+      subjectId: 'none',
+      answers: [{ content: '', isCorrect: false }],
+    });
     setEditingQuestion(null);
   }
 
@@ -270,7 +284,15 @@ export default function QuestionsPage() {
               <TableRow key={q.id}>
                 <TableCell className="max-w-md truncate font-medium">{q.content}</TableCell>
                 <TableCell>
-                  <Badge variant="secondary">{t(q.type === 'mcq' ? 'mcq' : q.type === 'true_false' ? 'true_false_label' : 'open_label')}</Badge>
+                  <Badge variant="secondary">
+                    {t(
+                      q.type === 'mcq'
+                        ? 'mcq'
+                        : q.type === 'true_false'
+                          ? 'true_false_label'
+                          : 'open_label',
+                    )}
+                  </Badge>
                 </TableCell>
                 <TableCell>
                   <Badge className={DIFFICULTY_COLORS[q.difficulty]}>{q.difficulty}</Badge>
@@ -310,18 +332,32 @@ export default function QuestionsPage() {
           <div className="space-y-4 py-4">
             <div>
               <Label>{t('subject')}</Label>
-              <Select value={formData.subjectId} onValueChange={(v) => setFormData({ ...formData, subjectId: v })}>
-                <SelectTrigger><SelectValue placeholder={t('select_subject')} /></SelectTrigger>
+              <Select
+                value={formData.subjectId}
+                onValueChange={(v) => setFormData({ ...formData, subjectId: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t('select_subject')} />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">{t('none')}</SelectItem>
-                  {subjects.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  {subjects.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             <div>
               <Label>{t('question_type')}</Label>
-              <Select value={formData.type} onValueChange={(v) => setFormData({ ...formData, type: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                value={formData.type}
+                onValueChange={(v) => setFormData({ ...formData, type: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="mcq">{t('multiple_choice')}</SelectItem>
                   <SelectItem value="true_false">{t('true_false')}</SelectItem>
@@ -331,8 +367,13 @@ export default function QuestionsPage() {
             </div>
             <div>
               <Label>{t('difficulty')}</Label>
-              <Select value={formData.difficulty} onValueChange={(v) => setFormData({ ...formData, difficulty: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                value={formData.difficulty}
+                onValueChange={(v) => setFormData({ ...formData, difficulty: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="easy">{t('easy')}</SelectItem>
                   <SelectItem value="medium">{t('medium')}</SelectItem>
@@ -382,7 +423,23 @@ export default function QuestionsPage() {
                   </Button>
                 )}
                 {formData.type === 'true_false' && formData.answers.length < 2 && (
-                  <Button variant="outline" size="sm" className="mt-2" onClick={() => setFormData({ ...formData, answers: [...formData.answers, { content: formData.answers.length === 0 ? 'True' : 'False', isCorrect: formData.answers.length === 0 }] })}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() =>
+                      setFormData({
+                        ...formData,
+                        answers: [
+                          ...formData.answers,
+                          {
+                            content: formData.answers.length === 0 ? 'True' : 'False',
+                            isCorrect: formData.answers.length === 0,
+                          },
+                        ],
+                      })
+                    }
+                  >
                     {t('generate_tf')}
                   </Button>
                 )}
@@ -400,7 +457,15 @@ export default function QuestionsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }}>{t('cancel')}</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDialogOpen(false);
+                resetForm();
+              }}
+            >
+              {t('cancel')}
+            </Button>
             <Button onClick={handleSubmit}>{editingQuestion ? t('update') : t('create')}</Button>
           </DialogFooter>
         </DialogContent>
@@ -410,13 +475,16 @@ export default function QuestionsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('delete_title')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('delete_desc')}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t('delete_desc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">{t('delete')}</AlertDialogAction>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {t('delete')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -42,8 +42,14 @@ test.describe('Student Flashcard Flow', () => {
     await expect(page.getByText('Updated Space')).toBeVisible();
 
     await page.getByText('Updated Space').hover();
-    await page.getByRole('button', { name: /Delete/ }).first().click();
-    await page.getByRole('button', { name: /Delete/ }).last().click();
+    await page
+      .getByRole('button', { name: /Delete/ })
+      .first()
+      .click();
+    await page
+      .getByRole('button', { name: /Delete/ })
+      .last()
+      .click();
 
     await expect(page.getByText('Updated Space')).not.toBeVisible();
   });
@@ -93,7 +99,9 @@ test.describe('Student Flashcard Flow', () => {
 
     await expect(page.getByRole('heading', { name: /Session Complete/ })).toBeVisible();
     await expect(page.getByText('100%')).toBeVisible();
-    await expect(page.getByRole('button', { name: t('AppFlashcardsPage.practice_again') })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: t('AppFlashcardsPage.practice_again') }),
+    ).toBeVisible();
   });
 
   test('sees flashcard setup page before starting practice', async ({ page }) => {

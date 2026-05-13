@@ -54,7 +54,7 @@ export class FlashcardService {
         data.topicIds!.map((topicId) => ({
           flashcard_id: fc.id,
           topic_id: topicId,
-        }))
+        })),
       );
       await supabase.from('flashcard_topic_assignments').insert(assignments);
     }

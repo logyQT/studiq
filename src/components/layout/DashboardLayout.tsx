@@ -99,7 +99,12 @@ function getDashboardTitleKey(pathname: string): string {
 
 function getInitials(name: string | null | undefined): string {
   if (!name) return '?';
-  return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 }
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -147,10 +152,17 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         <SidebarContent className="py-2">
           <SidebarMenu className="gap-1">
             {navItems.map((item) => {
-              const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href + '/'));
+              const isActive =
+                pathname === item.href ||
+                (item.href !== '/' && pathname.startsWith(item.href + '/'));
               return (
                 <SidebarMenuItem key={item.titleKey}>
-                  <SidebarMenuButton asChild isActive={isActive} tooltip={t(item.titleKey)} className="h-10 px-4">
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive}
+                    tooltip={t(item.titleKey)}
+                    className="h-10 px-4"
+                  >
                     <Link href={item.href}>
                       <item.icon className="h-4 w-4 shrink-0" />
                       <span>{t(item.titleKey)}</span>
@@ -172,7 +184,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleLogout} className="w-full justify-start h-9 px-3 text-muted-foreground hover:text-foreground">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogout}
+            className="w-full justify-start h-9 px-3 text-muted-foreground hover:text-foreground"
+          >
             <LogOut className="h-4 w-4 mr-2" />
             <span>{t('logout')}</span>
           </Button>

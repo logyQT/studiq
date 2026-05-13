@@ -31,8 +31,16 @@ export default function EduOverviewPage() {
   return (
     <div className="space-y-8">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard title={t('total_questions')} value={loading ? '...' : stats?.totalQuestions ?? 0} icon={FileText} />
-        <StatCard title={t('flashcards')} value={loading ? '...' : stats?.totalFlashcards ?? 0} icon={Layers} />
+        <StatCard
+          title={t('total_questions')}
+          value={loading ? '...' : (stats?.totalQuestions ?? 0)}
+          icon={FileText}
+        />
+        <StatCard
+          title={t('flashcards')}
+          value={loading ? '...' : (stats?.totalFlashcards ?? 0)}
+          icon={Layers}
+        />
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -44,13 +52,17 @@ export default function EduOverviewPage() {
           <CardContent className="space-y-3">
             <Link href="/edu/questions">
               <Button variant="outline" className="w-full justify-between">
-                <span className="flex items-center gap-2"><Plus className="h-4 w-4" /> {t('create_question')}</span>
+                <span className="flex items-center gap-2">
+                  <Plus className="h-4 w-4" /> {t('create_question')}
+                </span>
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
             <Link href="/edu/flashcards">
               <Button variant="outline" className="w-full justify-between">
-                <span className="flex items-center gap-2"><Plus className="h-4 w-4" /> {t('create_flashcard')}</span>
+                <span className="flex items-center gap-2">
+                  <Plus className="h-4 w-4" /> {t('create_flashcard')}
+                </span>
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
@@ -72,7 +84,9 @@ export default function EduOverviewPage() {
                     <p className="text-xs text-muted-foreground">Practice questions for students</p>
                   </div>
                 </div>
-                <span className="text-2xl font-bold">{loading ? '...' : stats?.totalQuestions ?? 0}</span>
+                <span className="text-2xl font-bold">
+                  {loading ? '...' : (stats?.totalQuestions ?? 0)}
+                </span>
               </div>
               <div className="flex items-center justify-between p-3 rounded-lg border">
                 <div className="flex items-center gap-3">
@@ -82,7 +96,9 @@ export default function EduOverviewPage() {
                     <p className="text-xs text-muted-foreground">Study flashcards for students</p>
                   </div>
                 </div>
-                <span className="text-2xl font-bold">{loading ? '...' : stats?.totalFlashcards ?? 0}</span>
+                <span className="text-2xl font-bold">
+                  {loading ? '...' : (stats?.totalFlashcards ?? 0)}
+                </span>
               </div>
             </div>
           </CardContent>

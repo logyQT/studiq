@@ -32,10 +32,14 @@ interface AttemptDetails {
 
 function getDifficultyColor(difficulty: string) {
   switch (difficulty) {
-    case 'easy': return '#10b981';
-    case 'medium': return '#f59e0b';
-    case 'hard': return '#ef4444';
-    default: return '#6b7280';
+    case 'easy':
+      return '#10b981';
+    case 'medium':
+      return '#f59e0b';
+    case 'hard':
+      return '#ef4444';
+    default:
+      return '#6b7280';
   }
 }
 
@@ -72,14 +76,13 @@ export default function QuizTakingPage() {
   async function submitQuiz() {
     if (!attempt) return;
 
-    const quizAnswers = attempt.questions
-      .map((q) => {
-        const selectedAnswerId = answers[q.id];
-        return {
-          questionId: q.id,
-          ...(selectedAnswerId ? { selectedAnswerId } : {}),
-        };
-      });
+    const quizAnswers = attempt.questions.map((q) => {
+      const selectedAnswerId = answers[q.id];
+      return {
+        questionId: q.id,
+        ...(selectedAnswerId ? { selectedAnswerId } : {}),
+      };
+    });
 
     try {
       const res = await fetch(`/api/v1/quiz-attempts/${attemptId}`, {
@@ -127,7 +130,13 @@ export default function QuizTakingPage() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Badge variant="outline">{currentQuestion.type.replace('_', ' ')}</Badge>
-            <Badge variant="secondary" style={{ backgroundColor: getDifficultyColor(currentQuestion.difficulty), color: 'white' }}>
+            <Badge
+              variant="secondary"
+              style={{
+                backgroundColor: getDifficultyColor(currentQuestion.difficulty),
+                color: 'white',
+              }}
+            >
               {currentQuestion.difficulty}
             </Badge>
           </div>
@@ -135,11 +144,19 @@ export default function QuizTakingPage() {
         </CardHeader>
         <CardContent>
           {currentQuestion.type === 'mcq' && (
-            <RadioGroup value={answers[currentQuestion.id] || ''} onValueChange={(v) => selectAnswer(currentQuestion.id, v)}>
+            <RadioGroup
+              value={answers[currentQuestion.id] || ''}
+              onValueChange={(v) => selectAnswer(currentQuestion.id, v)}
+            >
               {currentQuestion.question_answers.map((a) => (
-                <div key={a.id} className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent/50 cursor-pointer">
+                <div
+                  key={a.id}
+                  className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent/50 cursor-pointer"
+                >
                   <RadioGroupItem value={a.id} id={a.id} />
-                  <Label htmlFor={a.id} className="flex-1 cursor-pointer">{a.content}</Label>
+                  <Label htmlFor={a.id} className="flex-1 cursor-pointer">
+                    {a.content}
+                  </Label>
                 </div>
               ))}
             </RadioGroup>

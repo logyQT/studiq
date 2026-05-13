@@ -3,12 +3,11 @@ import { flashcardSpaceController } from '@/server/controllers';
 import { toNextResponse } from '@/lib/http-utils';
 import { createClient } from '@/lib/supabase/server';
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
@@ -19,12 +18,11 @@ export async function GET(
   return toNextResponse(response);
 }
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
@@ -36,12 +34,11 @@ export async function PUT(
   return toNextResponse(response);
 }
 
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });

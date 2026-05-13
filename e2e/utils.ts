@@ -3,7 +3,9 @@ import pl from '../src/i18n/messages/pl.json';
 
 export const t = (path: string) => {
   const getNested = (obj: Record<string, unknown>, keyPath: string): unknown =>
-    keyPath.split('.').reduce<unknown>((prev, curr) => (prev as Record<string, unknown>)?.[curr], obj);
+    keyPath
+      .split('.')
+      .reduce<unknown>((prev, curr) => (prev as Record<string, unknown>)?.[curr], obj);
 
   const enVal = getNested(en, path);
   const plVal = getNested(pl, path);

@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST, GET } from '@/app/(backend)/api/v1/flashcard-topics/route';
-import { GET as getById, PUT as update, DELETE as deleteFn } from '@/app/(backend)/api/v1/flashcard-topics/[id]/route';
+import {
+  GET as getById,
+  PUT as update,
+  DELETE as deleteFn,
+} from '@/app/(backend)/api/v1/flashcard-topics/[id]/route';
 import { TEST_USERS, mockUser, cleanupFlashcardTopics } from './helpers';
 import { createClient } from '@/lib/supabase/server';
+import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Flashcard Topics Integration', () => {
   beforeEach(async () => {
@@ -16,7 +21,7 @@ describe('Flashcard Topics Integration', () => {
     it('creates a topic and returns 201', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/flashcard-topics', {
+      const req = createNextRequest('http://localhost/api/v1/flashcard-topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Math Topics' }),
@@ -33,7 +38,7 @@ describe('Flashcard Topics Integration', () => {
     it('returns 422 when name is empty', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/flashcard-topics', {
+      const req = createNextRequest('http://localhost/api/v1/flashcard-topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: '' }),
@@ -49,7 +54,7 @@ describe('Flashcard Topics Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/flashcard-topics', {
+      const req = createNextRequest('http://localhost/api/v1/flashcard-topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Math Topics' }),
@@ -67,8 +72,7 @@ describe('Flashcard Topics Integration', () => {
     it('lists topics for user', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/flashcard-topics');
-      const response = await GET(req);
+      const response = await GET();
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -78,8 +82,7 @@ describe('Flashcard Topics Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/flashcard-topics');
-      const response = await GET(req);
+      const response = await GET();
       const body = await response.json();
 
       expect(response.status).toBe(401);
@@ -98,8 +101,11 @@ describe('Flashcard Topics Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcard-topics/${topic.id}`);
-      const response = await getById(req, { params: Promise.resolve({ id: topic.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcard-topics/${topic.id}`,
+        { id: topic.id },
+      );
+      const response = await getById(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -110,8 +116,11 @@ describe('Flashcard Topics Integration', () => {
       mockUser(TEST_USERS.TEACHER);
 
       const fakeId = '00000000-0000-0000-0000-000000000099';
-      const req = new Request(`http://localhost/api/v1/flashcard-topics/${fakeId}`);
-      const response = await getById(req, { params: Promise.resolve({ id: fakeId }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcard-topics/${fakeId}`,
+        { id: fakeId },
+      );
+      const response = await getById(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(404);
@@ -130,13 +139,16 @@ describe('Flashcard Topics Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcard-topics/${topic.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Updated' }),
-      });
-
-      const response = await update(req, { params: Promise.resolve({ id: topic.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcard-topics/${topic.id}`,
+        { id: topic.id },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Updated' }),
+        },
+      );
+      const response = await update(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -153,13 +165,16 @@ describe('Flashcard Topics Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcard-topics/${topic.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Hacked' }),
-      });
-
-      const response = await update(req, { params: Promise.resolve({ id: topic.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcard-topics/${topic.id}`,
+        { id: topic.id },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Hacked' }),
+        },
+      );
+      const response = await update(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(403);
@@ -178,11 +193,12 @@ describe('Flashcard Topics Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcard-topics/${topic.id}`, {
-        method: 'DELETE',
-      });
-
-      const response = await deleteFn(req, { params: Promise.resolve({ id: topic.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcard-topics/${topic.id}`,
+        { id: topic.id },
+        { method: 'DELETE' },
+      );
+      const response = await deleteFn(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -199,11 +215,12 @@ describe('Flashcard Topics Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcard-topics/${topic.id}`, {
-        method: 'DELETE',
-      });
-
-      const response = await deleteFn(req, { params: Promise.resolve({ id: topic.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcard-topics/${topic.id}`,
+        { id: topic.id },
+        { method: 'DELETE' },
+      );
+      const response = await deleteFn(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(403);

@@ -6,7 +6,10 @@ describe('SubmitQuizAttemptSchema', () => {
     const result = SubmitQuizAttemptSchema.safeParse({
       attemptId: '550e8400-e29b-41d4-a716-446655440000',
       answers: [
-        { questionId: '550e8400-e29b-41d4-a716-446655440001', selectedAnswerId: '550e8400-e29b-41d4-a716-446655440002' },
+        {
+          questionId: '550e8400-e29b-41d4-a716-446655440001',
+          selectedAnswerId: '550e8400-e29b-41d4-a716-446655440002',
+        },
       ],
     });
     expect(result.success).toBe(true);
@@ -15,9 +18,7 @@ describe('SubmitQuizAttemptSchema', () => {
   it('passes with optional selectedAnswerId', () => {
     const result = SubmitQuizAttemptSchema.safeParse({
       attemptId: '550e8400-e29b-41d4-a716-446655440000',
-      answers: [
-        { questionId: '550e8400-e29b-41d4-a716-446655440001' },
-      ],
+      answers: [{ questionId: '550e8400-e29b-41d4-a716-446655440001' }],
     });
     expect(result.success).toBe(true);
   });

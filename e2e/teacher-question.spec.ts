@@ -30,22 +30,37 @@ test.describe('Teacher Question Flow', () => {
     await page.getByRole('button', { name: createButton }).click();
     await expect(page.getByRole('heading', { name: createTitle })).toBeVisible();
 
-    await page.locator('button:has-text("MCQ"), button:has-text("Multiple Choice"), button:has-text("Wielokrotny wybór")').first().click();
+    await page
+      .locator(
+        'button:has-text("MCQ"), button:has-text("Multiple Choice"), button:has-text("Wielokrotny wybór")',
+      )
+      .first()
+      .click();
     await page.waitForTimeout(500);
     await page.getByRole('option', { name: t('EduQuestionsPage.multiple_choice') }).click();
 
     await page.getByPlaceholder(t('EduQuestionsPage.question_placeholder')).fill('What is 2 + 2?');
 
-    await page.getByPlaceholder(/Answer|Odpowiedź/).first().fill('3');
+    await page
+      .getByPlaceholder(/Answer|Odpowiedź/)
+      .first()
+      .fill('3');
     await page.getByRole('button', { name: t('EduQuestionsPage.add_answer') }).click();
-    await page.getByPlaceholder(/Answer|Odpowiedź/).nth(1).fill('4');
+    await page
+      .getByPlaceholder(/Answer|Odpowiedź/)
+      .nth(1)
+      .fill('4');
 
     await page.locator('input[type="radio"]').nth(1).check();
 
     await page.getByRole('button', { name: saveButton }).click();
-    await page.waitForResponse(resp => resp.url().includes('/api/v1/questions') && resp.request().method() === 'POST');
+    await page.waitForResponse(
+      (resp) => resp.url().includes('/api/v1/questions') && resp.request().method() === 'POST',
+    );
     await page.waitForTimeout(1000);
-    await expect(page.locator('tbody').getByText('What is 2 + 2?').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('tbody').getByText('What is 2 + 2?').first()).toBeVisible({
+      timeout: 10000,
+    });
   });
 
   test('Teacher sees existing seeded questions', async ({ page }) => {

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST } from '@/app/(backend)/api/v1/admin/universities/route';
 import { TEST_USERS, mockUser } from './helpers';
 import { createClient } from '@/lib/supabase/server';
+import { createNextRequest } from './test-utils';
 
 describe('University Integration', () => {
   beforeEach(async () => {
@@ -13,7 +14,7 @@ describe('University Integration', () => {
       mockUser(TEST_USERS.SYS_ADMIN);
 
       const uniqueSlug = `test-uni-${Date.now()}`;
-      const req = new Request('http://localhost/api/v1/admin/universities', {
+      const req = createNextRequest('http://localhost/api/v1/admin/universities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Test University', slug: uniqueSlug }),
@@ -34,7 +35,7 @@ describe('University Integration', () => {
       const uniqueSlug = `dup-uni-${Date.now()}`;
       await supabase.from('universities').insert({ name: 'Existing', slug: uniqueSlug });
 
-      const req = new Request('http://localhost/api/v1/admin/universities', {
+      const req = createNextRequest('http://localhost/api/v1/admin/universities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Duplicate', slug: uniqueSlug }),
@@ -50,7 +51,7 @@ describe('University Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/admin/universities', {
+      const req = createNextRequest('http://localhost/api/v1/admin/universities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Test University', slug: 'test-uni' }),
@@ -66,7 +67,7 @@ describe('University Integration', () => {
     it('returns 403 when non-sys-admin tries to create', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/admin/universities', {
+      const req = createNextRequest('http://localhost/api/v1/admin/universities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Test University', slug: 'test-uni' }),
@@ -82,7 +83,7 @@ describe('University Integration', () => {
     it('returns 422 when name is too short', async () => {
       mockUser(TEST_USERS.SYS_ADMIN);
 
-      const req = new Request('http://localhost/api/v1/admin/universities', {
+      const req = createNextRequest('http://localhost/api/v1/admin/universities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'AB', slug: 'test-uni' }),
@@ -98,7 +99,7 @@ describe('University Integration', () => {
     it('returns 422 when slug has invalid format', async () => {
       mockUser(TEST_USERS.SYS_ADMIN);
 
-      const req = new Request('http://localhost/api/v1/admin/universities', {
+      const req = createNextRequest('http://localhost/api/v1/admin/universities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Test University', slug: 'Invalid_Slug!' }),

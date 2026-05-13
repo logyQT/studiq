@@ -1,7 +1,9 @@
 import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
 
-const uuid = z.string().regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/);
+const uuid = z
+  .string()
+  .regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/);
 
 export const CreateFlashcardSchema = registry.register(
   'CreateFlashcardRequest',
@@ -16,12 +18,14 @@ export const BulkCreateFlashcardsSchema = registry.register(
   'BulkCreateFlashcardsRequest',
   z.object({
     topicIds: z.array(uuid).optional(),
-    cards: z.array(
-      z.object({
-        front: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
-        back: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
-      }),
-    ).min(1),
+    cards: z
+      .array(
+        z.object({
+          front: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
+          back: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
+        }),
+      )
+      .min(1),
   }),
 );
 

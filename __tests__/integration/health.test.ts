@@ -1,11 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { GET } from '@/app/(backend)/api/v1/health/route';
 
 describe('Health Integration', () => {
   describe('GET /api/v1/health', () => {
     it('returns health status and 200', async () => {
-      const req = new Request('http://localhost/api/v1/health');
-      const response = await GET(req);
+      const response = await GET();
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -14,8 +13,7 @@ describe('Health Integration', () => {
     });
 
     it('returns required fields', async () => {
-      const req = new Request('http://localhost/api/v1/health');
-      const response = await GET(req);
+      const response = await GET();
       const body = await response.json();
 
       expect(body.data.timestamp).toBeDefined();
@@ -26,8 +24,7 @@ describe('Health Integration', () => {
     });
 
     it('returns services object with supabase', async () => {
-      const req = new Request('http://localhost/api/v1/health');
-      const response = await GET(req);
+      const response = await GET();
       const body = await response.json();
 
       expect(body.data.services.supabase).toBeDefined();

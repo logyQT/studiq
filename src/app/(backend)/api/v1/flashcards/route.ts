@@ -5,7 +5,9 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
@@ -24,13 +26,17 @@ export async function GET(req: NextRequest) {
   if (topicIds && topicIds.length > 0) filters.topicIds = topicIds;
   if (spaceIds && spaceIds.length > 0) filters.spaceIds = spaceIds;
 
-  const response = await flashcardController.list(Object.keys(filters).length > 0 ? filters : undefined);
+  const response = await flashcardController.list(
+    Object.keys(filters).length > 0 ? filters : undefined,
+  );
   return toNextResponse(response);
 }
 
 export async function PUT(req: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });

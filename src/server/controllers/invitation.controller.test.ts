@@ -47,7 +47,7 @@ describe('InvitationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns NOT_FOUND when inviter profile not found', async () => {
@@ -145,8 +145,8 @@ describe('InvitationController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect(response.data).toHaveProperty('results');
-      expect((response.data as any).results.length).toBe(2);
+      expect((response as any).data).toHaveProperty('results');
+      expect((response as any).data.results.length).toBe(2);
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid bulk input', async () => {

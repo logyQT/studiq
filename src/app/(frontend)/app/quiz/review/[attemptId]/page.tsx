@@ -36,10 +36,14 @@ interface AttemptDetails {
 
 function getDifficultyColor(difficulty: string) {
   switch (difficulty) {
-    case 'easy': return '#10b981';
-    case 'medium': return '#f59e0b';
-    case 'hard': return '#ef4444';
-    default: return '#6b7280';
+    case 'easy':
+      return '#10b981';
+    case 'medium':
+      return '#f59e0b';
+    case 'hard':
+      return '#ef4444';
+    default:
+      return '#6b7280';
   }
 }
 
@@ -85,7 +89,9 @@ export default function QuizReviewPage() {
       <Card>
         <CardHeader className="text-center">
           <CardTitle className="text-3xl">Score: {percentage}%</CardTitle>
-          <CardDescription>{attempt.score} out of {attempt.total_questions} correct</CardDescription>
+          <CardDescription>
+            {attempt.score} out of {attempt.total_questions} correct
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-4 text-sm text-muted-foreground justify-center">
@@ -93,7 +99,10 @@ export default function QuizReviewPage() {
               <span>{new Date(attempt.started_at).toLocaleDateString()}</span>
             </span>
             {attempt.config?.difficulty && (
-              <Badge variant="outline" style={{ borderColor: getDifficultyColor(attempt.config.difficulty) }}>
+              <Badge
+                variant="outline"
+                style={{ borderColor: getDifficultyColor(attempt.config.difficulty) }}
+              >
                 {attempt.config.difficulty}
               </Badge>
             )}
@@ -106,15 +115,27 @@ export default function QuizReviewPage() {
           const userAnswer = attempt.answers[q.id];
           const isCorrect = userAnswer?.is_correct ?? false;
           const correctAnswer = q.question_answers.find((a) => a.is_correct);
-          const selectedAnswer = q.question_answers.find((a) => a.id === userAnswer?.selected_answer_id);
+          const selectedAnswer = q.question_answers.find(
+            (a) => a.id === userAnswer?.selected_answer_id,
+          );
 
           return (
-            <Card key={q.id} className={isCorrect ? 'border-green-200 dark:border-green-800' : 'border-red-200 dark:border-red-800'}>
+            <Card
+              key={q.id}
+              className={
+                isCorrect
+                  ? 'border-green-200 dark:border-green-800'
+                  : 'border-red-200 dark:border-red-800'
+              }
+            >
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline">Q{i + 1}</Badge>
                   <Badge variant="outline">{q.type.replace('_', ' ')}</Badge>
-                  <Badge variant="secondary" style={{ backgroundColor: getDifficultyColor(q.difficulty), color: 'white' }}>
+                  <Badge
+                    variant="secondary"
+                    style={{ backgroundColor: getDifficultyColor(q.difficulty), color: 'white' }}
+                  >
                     {q.difficulty}
                   </Badge>
                   <Badge variant={isCorrect ? 'default' : 'destructive'} className="ml-auto">
@@ -136,14 +157,24 @@ export default function QuizReviewPage() {
                             isCorrectAnswer
                               ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
                               : isSelected
-                              ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                              : 'border-border'
+                                ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                                : 'border-border'
                           }`}
                         >
                           <div className="flex items-center gap-2">
-                            {isCorrectAnswer && <span className="text-green-600 font-medium">✓</span>}
-                            {isSelected && !isCorrectAnswer && <span className="text-red-600 font-medium">✗</span>}
-                            <span className={isSelected && !isCorrectAnswer ? 'line-through text-muted-foreground' : ''}>
+                            {isCorrectAnswer && (
+                              <span className="text-green-600 font-medium">✓</span>
+                            )}
+                            {isSelected && !isCorrectAnswer && (
+                              <span className="text-red-600 font-medium">✗</span>
+                            )}
+                            <span
+                              className={
+                                isSelected && !isCorrectAnswer
+                                  ? 'line-through text-muted-foreground'
+                                  : ''
+                              }
+                            >
                               {a.content}
                             </span>
                           </div>
@@ -160,7 +191,9 @@ export default function QuizReviewPage() {
                       return (
                         <Button
                           key={a.id}
-                          variant={isCorrectAnswer ? 'default' : isSelected ? 'destructive' : 'outline'}
+                          variant={
+                            isCorrectAnswer ? 'default' : isSelected ? 'destructive' : 'outline'
+                          }
                           className="h-16 text-lg"
                           disabled
                         >
@@ -174,7 +207,9 @@ export default function QuizReviewPage() {
                   <div className="space-y-2">
                     <div className="p-3 rounded-lg border bg-muted">
                       <span className="text-sm text-muted-foreground">Your answer: </span>
-                      <span className="font-medium">{selectedAnswer?.content || '(no answer)'}</span>
+                      <span className="font-medium">
+                        {selectedAnswer?.content || '(no answer)'}
+                      </span>
                     </div>
                     <div className="p-3 rounded-lg border bg-green-50 dark:bg-green-900/20">
                       <span className="text-sm text-green-600">Correct answer: </span>

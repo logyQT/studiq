@@ -2,8 +2,8 @@ import { vi } from 'vitest';
 
 function createMockSupabase() {
   return {
-    from: vi.fn((table: string) => ({
-      select: vi.fn((columns?: string) => ({
+    from: vi.fn((_table: string) => ({
+      select: vi.fn((_columns?: string) => ({
         eq: vi.fn((_col: string, _val: unknown) => ({
           single: vi.fn(() => ({ data: null, error: null })),
           order: vi.fn((_col: string, _opts: unknown) => ({ data: [], error: null })),
@@ -16,19 +16,30 @@ function createMockSupabase() {
         limit: vi.fn((_n: number) => ({ data: [], error: null })),
       })),
       insert: vi.fn((_data: unknown) => ({
-        select: vi.fn((columns?: string) => ({
+        select: vi.fn((_columns?: string) => ({
           single: vi.fn(() => ({ data: null, error: null })),
         })),
       })),
       update: vi.fn((_data: unknown) => ({
         eq: vi.fn((_col: string, _val: unknown) => ({
-          select: vi.fn((columns?: string) => ({
+          eq: vi.fn((_col2: string, _val2: unknown) => ({
+            select: vi.fn((_columns?: string) => ({
+              single: vi.fn(() => ({ data: null, error: null })),
+            })),
+          })),
+          select: vi.fn((_columns?: string) => ({
             single: vi.fn(() => ({ data: null, error: null })),
           })),
         })),
       })),
       delete: vi.fn(() => ({
-        eq: vi.fn((_col: string, _val: unknown) => ({ error: null })),
+        eq: vi.fn((_col: string, _val: unknown) => ({
+          eq: vi.fn((_col2: string, _val2: unknown) => ({
+            select: vi.fn(() => ({
+              single: vi.fn(() => ({ data: { id: 'deleted-id' }, error: null })),
+            })),
+          })),
+        })),
         neq: vi.fn((_col: string, _val: unknown) => ({ error: null })),
       })),
       rpc: vi.fn((_fn: string, _params: unknown) => ({ error: null })),

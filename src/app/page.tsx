@@ -63,7 +63,15 @@ export default function HomePage() {
       price: '$9.99',
       period: '/month',
       desc: t('pricing_premium_desc'),
-      features: [t('free_questions'), t('free_flashcards'), t('free_quizzes'), t('free_stats'), t('ai_generate_questions'), t('ai_generate_flashcards'), t('ai_exam_sim')],
+      features: [
+        t('free_questions'),
+        t('free_flashcards'),
+        t('free_quizzes'),
+        t('free_stats'),
+        t('ai_generate_questions'),
+        t('ai_generate_flashcards'),
+        t('ai_exam_sim'),
+      ],
       cta: 'Start Premium Trial',
       href: '/register',
       variant: 'default' as const,
@@ -74,7 +82,14 @@ export default function HomePage() {
       price: 'Custom',
       period: '',
       desc: t('pricing_university_desc'),
-      features: ['Everything in Premium', 'Organization management', 'Role-based access', 'Bulk invitations', 'University analytics', 'Dedicated support'],
+      features: [
+        'Everything in Premium',
+        'Organization management',
+        'Role-based access',
+        'Bulk invitations',
+        'University analytics',
+        'Dedicated support',
+      ],
       cta: 'Contact Sales',
       href: '/pricing',
       variant: 'outline' as const,
@@ -89,15 +104,21 @@ export default function HomePage() {
         <div className="absolute top-1/4 left-1/4 -z-10 h-72 w-72 rounded-full bg-violet-500/20 blur-3xl" />
         <div className="absolute bottom-1/4 right-1/4 -z-10 h-72 w-72 rounded-full bg-cyan-500/20 blur-3xl" />
         <div className="mx-auto max-w-4xl text-center">
-          <Badge variant="secondary" className="mb-6">AI-Powered Learning Platform</Badge>
+          <Badge variant="secondary" className="mb-6">
+            AI-Powered Learning Platform
+          </Badge>
           <h1 className="text-4xl sm:text-6xl font-bold tracking-tight">{t('hero_title')}</h1>
-          <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto">{t('hero_subtitle')}</p>
+          <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto">
+            {t('hero_subtitle')}
+          </p>
           <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button size="lg" asChild>
               <Link href="/register">{t('cta_start')}</Link>
             </Button>
             <Button size="lg" variant="outline" asChild>
-              <Link href="/features">{t('cta_features')} <ArrowRight className="ml-2 h-4 w-4" /></Link>
+              <Link href="/features">
+                {t('cta_features')} <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
             </Button>
           </div>
         </div>
@@ -107,7 +128,9 @@ export default function HomePage() {
       <section className="py-16 sm:py-24">
         <div className="mx-auto max-w-5xl">
           <div className="text-center mb-12">
-            <Badge variant="secondary" className="mb-4">Free Forever</Badge>
+            <Badge variant="secondary" className="mb-4">
+              Free Forever
+            </Badge>
             <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">{t('free_title')}</h2>
             <p className="mt-4 text-lg text-muted-foreground">{t('free_desc')}</p>
           </div>
@@ -115,7 +138,9 @@ export default function HomePage() {
             {freeFeatures.map(({ icon: Icon, title, desc }, i) => (
               <Card key={title} className="border-border/50">
                 <CardHeader>
-                  <div className={`h-10 w-10 rounded-lg ${iconColors[i].bg} flex items-center justify-center mb-2`}>
+                  <div
+                    className={`h-10 w-10 rounded-lg ${iconColors[i].bg} flex items-center justify-center mb-2`}
+                  >
                     <Icon className={`h-5 w-5 ${iconColors[i].text}`} />
                   </div>
                   <CardTitle className="text-lg">{title}</CardTitle>
@@ -141,7 +166,9 @@ export default function HomePage() {
             {aiFeatures.map(({ icon: Icon, title, desc }, i) => (
               <Card key={title} className="border-border/50">
                 <CardHeader>
-                  <div className={`h-10 w-10 rounded-lg ${aiIconColors[i].bg} flex items-center justify-center mb-2`}>
+                  <div
+                    className={`h-10 w-10 rounded-lg ${aiIconColors[i].bg} flex items-center justify-center mb-2`}
+                  >
                     <Icon className={`h-5 w-5 ${aiIconColors[i].text}`} />
                   </div>
                   <CardTitle className="text-lg">{title}</CardTitle>
@@ -164,7 +191,10 @@ export default function HomePage() {
           </div>
           <div className="grid sm:grid-cols-3 gap-6">
             {plans.map((plan) => (
-              <Card key={plan.name} className={plan.popular ? 'border-primary shadow-lg relative' : 'border-border/50'}>
+              <Card
+                key={plan.name}
+                className={plan.popular ? 'border-primary shadow-lg relative' : 'border-border/50'}
+              >
                 {plan.popular && (
                   <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">Most Popular</Badge>
                 )}
@@ -194,7 +224,9 @@ export default function HomePage() {
           </div>
           <div className="text-center mt-8">
             <Button variant="link" asChild>
-              <Link href="/pricing">{t('pricing_cta')} <ArrowRight className="ml-1 h-4 w-4" /></Link>
+              <Link href="/pricing">
+                {t('pricing_cta')} <ArrowRight className="ml-1 h-4 w-4" />
+              </Link>
             </Button>
           </div>
         </div>

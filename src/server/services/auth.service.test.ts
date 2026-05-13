@@ -13,7 +13,7 @@ const mockSupabase = {
   },
 };
 
-vi.mocked(createClient).mockResolvedValue(mockSupabase as unknown as ReturnType<typeof createClient>);
+vi.mocked(createClient).mockResolvedValue(mockSupabase as any);
 
 describe('AuthService', () => {
   beforeEach(() => {

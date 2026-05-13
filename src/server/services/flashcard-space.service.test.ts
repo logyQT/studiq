@@ -113,7 +113,9 @@ describe('FlashcardSpaceService', () => {
         }),
       });
 
-      await expect(flashcardSpaceService.getById('nonexistent', userId)).rejects.toThrow('ERROR_NOT_FOUND');
+      await expect(flashcardSpaceService.getById('nonexistent', userId)).rejects.toThrow(
+        'ERROR_NOT_FOUND',
+      );
     });
   });
 
@@ -160,9 +162,9 @@ describe('FlashcardSpaceService', () => {
         }),
       });
 
-      await expect(flashcardSpaceService.update('s-1', { name: 'Updated' }, userId)).rejects.toThrow(
-        'ERROR_FORBIDDEN',
-      );
+      await expect(
+        flashcardSpaceService.update('s-1', { name: 'Updated' }, userId),
+      ).rejects.toThrow('ERROR_FORBIDDEN');
     });
   });
 
@@ -171,7 +173,11 @@ describe('FlashcardSpaceService', () => {
       mockSupabase.from.mockReturnValue({
         delete: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({ error: null }),
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: { id: 's-1' }, error: null }),
+              }),
+            }),
           }),
         }),
       });

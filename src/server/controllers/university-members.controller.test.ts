@@ -23,9 +23,9 @@ describe('UniversityMembersController', () => {
 
   describe('listMembers', () => {
     it('returns members when user has university', async () => {
-      mockService.getProfile.mockResolvedValueOnce({ id: userId, university_id: 'uni-1' });
+      mockService.getProfile.mockResolvedValueOnce({ id: userId, university_id: 'uni-1' } as any);
       const members = [{ id: 'user-1', role: 'student' }];
-      mockService.listMembers.mockResolvedValueOnce(members);
+      mockService.listMembers.mockResolvedValueOnce(members as any);
 
       const response = await universityMembersController.listMembers(userId);
 
@@ -33,7 +33,7 @@ describe('UniversityMembersController', () => {
     });
 
     it('returns FORBIDDEN when user has no university', async () => {
-      mockService.getProfile.mockResolvedValueOnce({ id: userId, university_id: null });
+      mockService.getProfile.mockResolvedValueOnce({ id: userId, university_id: null } as any);
 
       const response = await universityMembersController.listMembers(userId);
 
@@ -41,7 +41,7 @@ describe('UniversityMembersController', () => {
     });
 
     it('passes roleFilter to service', async () => {
-      mockService.getProfile.mockResolvedValueOnce({ id: userId, university_id: 'uni-1' });
+      mockService.getProfile.mockResolvedValueOnce({ id: userId, university_id: 'uni-1' } as any);
       mockService.listMembers.mockResolvedValueOnce([]);
 
       await universityMembersController.listMembers(userId, 'student');
@@ -68,7 +68,7 @@ describe('UniversityMembersController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service throws AppError', async () => {

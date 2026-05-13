@@ -66,8 +66,8 @@ describe('StatsService', () => {
 
       expect(result.totalQuestions).toBe(1);
       expect(result.totalFlashcards).toBe(1);
-      expect(result.subject).toBeDefined();
-      expect(result.subject?.totalQuestions).toBe(5);
+      expect((result as any).subject).toBeDefined();
+      expect((result as any).subject?.totalQuestions).toBe(5);
     });
   });
 

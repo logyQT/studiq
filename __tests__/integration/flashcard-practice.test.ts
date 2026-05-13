@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST, GET } from '@/app/(backend)/api/v1/flashcard-practice/route';
 import { TEST_USERS, mockUser, cleanupFlashcardPractice, cleanupFlashcards } from './helpers';
 import { createClient } from '@/lib/supabase/server';
+import { createNextRequest } from './test-utils';
 
 describe('Flashcard Practice Integration', () => {
   let flashcardId: string;
@@ -26,7 +27,7 @@ describe('Flashcard Practice Integration', () => {
     it('logs practice and returns 201', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const req = new Request('http://localhost/api/v1/flashcard-practice', {
+      const req = createNextRequest('http://localhost/api/v1/flashcard-practice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ flashcardId, wasCorrect: true }),
@@ -42,7 +43,7 @@ describe('Flashcard Practice Integration', () => {
     it('returns 422 when flashcardId is invalid', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const req = new Request('http://localhost/api/v1/flashcard-practice', {
+      const req = createNextRequest('http://localhost/api/v1/flashcard-practice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ flashcardId: 'not-a-uuid', wasCorrect: true }),
@@ -58,7 +59,7 @@ describe('Flashcard Practice Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/flashcard-practice', {
+      const req = createNextRequest('http://localhost/api/v1/flashcard-practice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ flashcardId, wasCorrect: true }),
@@ -76,8 +77,7 @@ describe('Flashcard Practice Integration', () => {
     it('returns practice history for user', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const req = new Request('http://localhost/api/v1/flashcard-practice');
-      const response = await GET(req);
+      const response = await GET();
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -87,8 +87,7 @@ describe('Flashcard Practice Integration', () => {
     it('returns empty array when no practice exists', async () => {
       mockUser(TEST_USERS.PREMIUM);
 
-      const req = new Request('http://localhost/api/v1/flashcard-practice');
-      const response = await GET(req);
+      const response = await GET();
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -98,8 +97,7 @@ describe('Flashcard Practice Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/flashcard-practice');
-      const response = await GET(req);
+      const response = await GET();
       const body = await response.json();
 
       expect(response.status).toBe(401);

@@ -83,10 +83,9 @@ export function mockUser(user: { id: string; role: string } | null) {
       }
     : null;
 
-  vi.mocked(supabaseModule.createClient).mockImplementation(() => {
+  vi.mocked(supabaseModule.createClient).mockImplementation(async () => {
     const realClient = createRealClient();
-    const originalGetUser = realClient.auth.getUser;
-    realClient.auth.getUser = async () => ({ data: { user: mockUserObj }, error: null });
+    realClient.auth.getUser = async () => ({ data: { user: mockUserObj as any }, error: null });
     return realClient;
   });
 }
@@ -167,7 +166,11 @@ export async function cleanupInvitations(userId: string) {
 // ============================================================
 // Seed Helpers (use real client directly)
 // ============================================================
-export async function seedSubject(data: { name: string; created_by: string; university_id?: string }) {
+export async function seedSubject(data: {
+  name: string;
+  created_by: string;
+  university_id?: string;
+}) {
   const supabase = createRealClient();
   const { data: subject, error } = await supabase
     .from('subjects')
@@ -182,7 +185,13 @@ export async function seedSubject(data: { name: string; created_by: string; univ
   return subject;
 }
 
-export async function seedQuestion(data: { type: string; content: string; difficulty: string; created_by: string; subject_id?: string }) {
+export async function seedQuestion(data: {
+  type: string;
+  content: string;
+  difficulty: string;
+  created_by: string;
+  subject_id?: string;
+}) {
   const supabase = createRealClient();
   const { data: question, error } = await supabase
     .from('questions')

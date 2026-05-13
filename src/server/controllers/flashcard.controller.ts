@@ -1,5 +1,9 @@
 import { flashcardService } from '@/server/services';
-import { CreateFlashcardSchema, BulkCreateFlashcardsSchema, UpdateFlashcardSchema } from '@/server/models';
+import {
+  CreateFlashcardSchema,
+  BulkCreateFlashcardsSchema,
+  UpdateFlashcardSchema,
+} from '@/server/models';
 import { AppError } from '@/lib/errors';
 import { ControllerResponse } from '@/lib/controller-response';
 

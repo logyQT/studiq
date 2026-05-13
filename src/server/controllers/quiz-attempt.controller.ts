@@ -32,7 +32,10 @@ export class QuizAttemptController {
 
   async submit(body: unknown, attemptId: string, userId: string): Promise<ControllerResponse> {
     try {
-      const parsed = SubmitQuizAttemptSchema.safeParse({ ...(body as Record<string, unknown>), attemptId });
+      const parsed = SubmitQuizAttemptSchema.safeParse({
+        ...(body as Record<string, unknown>),
+        attemptId,
+      });
 
       if (!parsed.success) {
         return {

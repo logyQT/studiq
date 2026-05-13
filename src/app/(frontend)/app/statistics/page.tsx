@@ -37,8 +37,16 @@ export default function AppStatsPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Quizzes Taken" value={stats?.totalQuizzes ?? 0} icon={BookOpen} />
         <StatCard title="Avg Score" value={`${stats?.avgScore ?? 0}%`} icon={TrendingUp} />
-        <StatCard title="Flashcards Practiced" value={stats?.flashcardsPracticed ?? 0} icon={Brain} />
-        <StatCard title="Flashcard Accuracy" value={`${stats?.flashcardAccuracy ?? 0}%`} icon={ListPlus} />
+        <StatCard
+          title="Flashcards Practiced"
+          value={stats?.flashcardsPracticed ?? 0}
+          icon={Brain}
+        />
+        <StatCard
+          title="Flashcard Accuracy"
+          value={`${stats?.flashcardAccuracy ?? 0}%`}
+          icon={ListPlus}
+        />
       </div>
 
       {stats?.attemptsOverTime && stats.attemptsOverTime.length > 0 && (
@@ -53,13 +61,20 @@ export default function AppStatsPage() {
                 <div key={i} className="flex items-center justify-between p-3 rounded-lg border">
                   <div>
                     <p className="text-sm font-medium">Quiz Attempt</p>
-                    <p className="text-xs text-muted-foreground">{new Date(attempt.date).toLocaleDateString()}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(attempt.date).toLocaleDateString()}
+                    </p>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold" style={{ color: attempt.percentage >= 70 ? '#10b981' : '#ef4444' }}>
+                    <p
+                      className="font-bold"
+                      style={{ color: attempt.percentage >= 70 ? '#10b981' : '#ef4444' }}
+                    >
                       {attempt.percentage}%
                     </p>
-                    <p className="text-xs text-muted-foreground">{attempt.score}/{attempt.total}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {attempt.score}/{attempt.total}
+                    </p>
                   </div>
                 </div>
               ))}

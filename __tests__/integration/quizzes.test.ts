@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST } from '@/app/(backend)/api/v1/quizzes/route';
-import { TEST_USERS, mockUser, cleanupQuizAttempts, cleanupQuestions, cleanupSubjects } from './helpers';
+import { TEST_USERS, mockUser, cleanupQuizAttempts, cleanupQuestions } from './helpers';
 import { createClient } from '@/lib/supabase/server';
+import { createNextRequest } from './test-utils';
 
 describe('Quizzes Integration', () => {
   let subjectId: string;
@@ -36,7 +37,7 @@ describe('Quizzes Integration', () => {
     it('generates a quiz and returns 201', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const req = new Request('http://localhost/api/v1/quizzes', {
+      const req = createNextRequest('http://localhost/api/v1/quizzes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -59,7 +60,7 @@ describe('Quizzes Integration', () => {
     it('generates a quiz without subjectId', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const req = new Request('http://localhost/api/v1/quizzes', {
+      const req = createNextRequest('http://localhost/api/v1/quizzes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -78,7 +79,7 @@ describe('Quizzes Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/quizzes', {
+      const req = createNextRequest('http://localhost/api/v1/quizzes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -97,7 +98,7 @@ describe('Quizzes Integration', () => {
     it('returns 422 when questionTypes is empty', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const req = new Request('http://localhost/api/v1/quizzes', {
+      const req = createNextRequest('http://localhost/api/v1/quizzes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -116,7 +117,7 @@ describe('Quizzes Integration', () => {
     it('returns 404 when no matching questions exist', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const req = new Request('http://localhost/api/v1/quizzes', {
+      const req = createNextRequest('http://localhost/api/v1/quizzes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -135,7 +136,7 @@ describe('Quizzes Integration', () => {
     it('generates quiz as free user', async () => {
       mockUser(TEST_USERS.FREE);
 
-      const req = new Request('http://localhost/api/v1/quizzes', {
+      const req = createNextRequest('http://localhost/api/v1/quizzes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

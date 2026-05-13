@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GET as attemptsGet } from '@/app/(backend)/api/v1/quiz-attempts/route';
-import { GET as attemptGet, POST as attemptPost } from '@/app/(backend)/api/v1/quiz-attempts/[attemptId]/route';
+import {
+  GET as attemptGet,
+  POST as attemptPost,
+} from '@/app/(backend)/api/v1/quiz-attempts/[attemptId]/route';
 import { POST as quizPost } from '@/app/(backend)/api/v1/quizzes/route';
 import { TEST_USERS, mockUser, cleanupQuizAttempts, cleanupQuestions } from './helpers';
 import { createClient } from '@/lib/supabase/server';
+import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Quiz Attempts Integration', () => {
   let subjectId: string;
@@ -46,7 +50,7 @@ describe('Quiz Attempts Integration', () => {
     }
 
     mockUser(TEST_USERS.STUDENT);
-    const quizReq = new Request('http://localhost/api/v1/quizzes', {
+    const quizReq = createNextRequest('http://localhost/api/v1/quizzes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -65,8 +69,7 @@ describe('Quiz Attempts Integration', () => {
     it('lists attempts for user', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const req = new Request('http://localhost/api/v1/quiz-attempts');
-      const response = await attemptsGet(req);
+      const response = await attemptsGet();
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -77,8 +80,7 @@ describe('Quiz Attempts Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/quiz-attempts');
-      const response = await attemptsGet(req);
+      const response = await attemptsGet();
       const body = await response.json();
 
       expect(response.status).toBe(401);
@@ -90,8 +92,11 @@ describe('Quiz Attempts Integration', () => {
     it('returns attempt details with questions and answers', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const req = new Request(`http://localhost/api/v1/quiz-attempts/${attemptId}`);
-      const response = await attemptGet(req, { params: Promise.resolve({ attemptId }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz-attempts/${attemptId}`,
+        { attemptId },
+      );
+      const response = await attemptGet(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -102,8 +107,11 @@ describe('Quiz Attempts Integration', () => {
     it('returns 404 for another user attempt', async () => {
       mockUser(TEST_USERS.PREMIUM);
 
-      const req = new Request(`http://localhost/api/v1/quiz-attempts/${attemptId}`);
-      const response = await attemptGet(req, { params: Promise.resolve({ attemptId }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz-attempts/${attemptId}`,
+        { attemptId },
+      );
+      const response = await attemptGet(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(404);
@@ -124,20 +132,26 @@ describe('Quiz Attempts Integration', () => {
       const { data: answers } = await supabase
         .from('question_answers')
         .select('id, question_id, is_correct')
-        .in('question_id', attemptQuestions.map((q) => q.question_id));
+        .in(
+          'question_id',
+          attemptQuestions!.map((q) => q.question_id),
+        );
 
-      const submittedAnswers = answers.map((a) => ({
+      const submittedAnswers = answers!.map((a) => ({
         questionId: a.question_id,
         selectedAnswerId: a.id,
       }));
 
-      const req = new Request(`http://localhost/api/v1/quiz-attempts/${attemptId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers: submittedAnswers }),
-      });
-
-      const response = await attemptPost(req, { params: Promise.resolve({ attemptId }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz-attempts/${attemptId}`,
+        { attemptId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers: submittedAnswers }),
+        },
+      );
+      const response = await attemptPost(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -157,21 +171,24 @@ describe('Quiz Attempts Integration', () => {
       const { data: answers } = await supabase
         .from('question_answers')
         .select('id, question_id')
-        .in('question_id', attemptQuestions.map((q) => q.question_id));
+        .in(
+          'question_id',
+          attemptQuestions!.map((q) => q.question_id),
+        );
 
-      const submittedAnswers = answers.map((a) => ({
+      const submittedAnswers = answers!.map((a) => ({
         questionId: a.question_id,
         selectedAnswerId: a.id,
       }));
 
-      const submitReq = new Request(`http://localhost/api/v1/quiz-attempts/${attemptId}`, {
+      const submitReq = createNextRequest(`http://localhost/api/v1/quiz-attempts/${attemptId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ answers: submittedAnswers }),
       });
       await attemptPost(submitReq, { params: Promise.resolve({ attemptId }) });
 
-      const resubmitReq = new Request(`http://localhost/api/v1/quiz-attempts/${attemptId}`, {
+      const resubmitReq = createNextRequest(`http://localhost/api/v1/quiz-attempts/${attemptId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ answers: submittedAnswers }),
@@ -187,13 +204,16 @@ describe('Quiz Attempts Integration', () => {
       mockUser(TEST_USERS.STUDENT);
 
       const fakeId = '00000000-0000-0000-0000-000000000099';
-      const req = new Request(`http://localhost/api/v1/quiz-attempts/${fakeId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers: [] }),
-      });
-
-      const response = await attemptPost(req, { params: Promise.resolve({ attemptId: fakeId }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz-attempts/${fakeId}`,
+        { attemptId: fakeId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers: [] }),
+        },
+      );
+      const response = await attemptPost(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(404);
@@ -203,13 +223,16 @@ describe('Quiz Attempts Integration', () => {
     it('returns 422 when answers have invalid questionId', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const req = new Request(`http://localhost/api/v1/quiz-attempts/${attemptId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers: [{ questionId: 'not-a-uuid' }] }),
-      });
-
-      const response = await attemptPost(req, { params: Promise.resolve({ attemptId }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz-attempts/${attemptId}`,
+        { attemptId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers: [{ questionId: 'not-a-uuid' }] }),
+        },
+      );
+      const response = await attemptPost(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(422);
@@ -219,13 +242,16 @@ describe('Quiz Attempts Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request(`http://localhost/api/v1/quiz-attempts/${attemptId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers: [] }),
-      });
-
-      const response = await attemptPost(req, { params: Promise.resolve({ attemptId }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz-attempts/${attemptId}`,
+        { attemptId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers: [] }),
+        },
+      );
+      const response = await attemptPost(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(401);

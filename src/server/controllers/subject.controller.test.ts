@@ -44,9 +44,9 @@ describe('SubjectController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect(response.error).toBe('UNPROCESSABLE_ENTITY');
-      expect(response.details).toBeDefined();
-      expect(response.details!.length).toBeGreaterThan(0);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).details).toBeDefined();
+      expect((response as any).details!.length).toBeGreaterThan(0);
     });
 
     it('returns INTERNAL_SERVER when service throws AppError', async () => {

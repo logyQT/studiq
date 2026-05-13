@@ -72,7 +72,9 @@ export default function MembersPage() {
   async function handleRemove() {
     if (!removeId) return;
     try {
-      const res = await fetch(`/api/v1/university/members?userId=${removeId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/v1/university/members?userId=${removeId}`, {
+        method: 'DELETE',
+      });
       if (!res.ok) throw new Error();
       setMembers(members.map((m) => (m.id === removeId ? { ...m, role: UserRole.FREE } : m)));
       toast.success('Member removed from organization');
@@ -91,7 +93,9 @@ export default function MembersPage() {
         body: JSON.stringify({ targetUserId: changingRole.id, newRole: changingRole.role }),
       });
       if (!res.ok) throw new Error();
-      setMembers(members.map((m) => (m.id === changingRole.id ? { ...m, role: changingRole.role } : m)));
+      setMembers(
+        members.map((m) => (m.id === changingRole.id ? { ...m, role: changingRole.role } : m)),
+      );
       toast.success('Role updated');
     } catch {
       toast.error('Failed to update role');
@@ -101,7 +105,12 @@ export default function MembersPage() {
 
   function getInitials(name: string | null): string {
     if (!name) return '?';
-    return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+    return name
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
   }
 
   if (loading) return <div className="flex justify-center py-12">Loading...</div>;
@@ -116,7 +125,12 @@ export default function MembersPage() {
       <div className="flex gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search members..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input
+            placeholder="Search members..."
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
         <Select value={filterRole} onValueChange={setFilterRole}>
           <SelectTrigger className="w-40">
@@ -124,7 +138,11 @@ export default function MembersPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Roles</SelectItem>
-            {UNIVERSITY_ROLES.map((r) => <SelectItem key={r} value={r}>{r.replace('_', ' ')}</SelectItem>)}
+            {UNIVERSITY_ROLES.map((r) => (
+              <SelectItem key={r} value={r}>
+                {r.replace('_', ' ')}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -145,7 +163,9 @@ export default function MembersPage() {
                 <TableCell>
                   <div className="flex items-center gap-3">
                     <Avatar className="h-8 w-8">
-                      <AvatarFallback className="text-xs">{getInitials(m.full_name)}</AvatarFallback>
+                      <AvatarFallback className="text-xs">
+                        {getInitials(m.full_name)}
+                      </AvatarFallback>
                     </Avatar>
                     <div>
                       <p className="font-medium">{m.full_name || 'Unnamed'}</p>
@@ -153,7 +173,9 @@ export default function MembersPage() {
                     </div>
                   </div>
                 </TableCell>
-                <TableCell><RoleBadge role={m.role as UserRole} /></TableCell>
+                <TableCell>
+                  <RoleBadge role={m.role as UserRole} />
+                </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {new Date(m.created_at).toLocaleDateString()}
                 </TableCell>
@@ -168,7 +190,11 @@ export default function MembersPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {UNIVERSITY_ROLES.map((r) => <SelectItem key={r} value={r}>{r.replace('_', ' ')}</SelectItem>)}
+                        {UNIVERSITY_ROLES.map((r) => (
+                          <SelectItem key={r} value={r}>
+                            {r.replace('_', ' ')}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <Button variant="ghost" size="icon" onClick={() => setRemoveId(m.id)}>
@@ -199,7 +225,12 @@ export default function MembersPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemove} className="bg-destructive text-destructive-foreground">Remove</AlertDialogAction>
+            <AlertDialogAction
+              onClick={handleRemove}
+              className="bg-destructive text-destructive-foreground"
+            >
+              Remove
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -209,7 +240,8 @@ export default function MembersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Change Role?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to change this member's role to {changingRole?.role.replace('_', ' ')}?
+              Are you sure you want to change this member's role to{' '}
+              {changingRole?.role.replace('_', ' ')}?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

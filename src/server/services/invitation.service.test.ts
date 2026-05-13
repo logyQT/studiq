@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { invitationService } from './invitation.service';
 import { createClient } from '@/lib/supabase/server';
+import { UserRole } from '@/types';
 
 const mockSupabase = {
   from: vi.fn(),
@@ -9,7 +10,7 @@ const mockSupabase = {
   },
 };
 
-vi.mocked(createClient).mockResolvedValue(mockSupabase as unknown as ReturnType<typeof createClient>);
+vi.mocked(createClient).mockResolvedValue(mockSupabase as any);
 
 describe('InvitationService', () => {
   const userId = 'test-user-id';
@@ -33,7 +34,7 @@ describe('InvitationService', () => {
         invitationService.createInvitation(userId, {
           name: 'John Doe',
           email: 'john@example.com',
-          role: 'student',
+          role: UserRole.STUDENT,
         }),
       ).rejects.toThrow('ERROR_NOT_FOUND');
     });
@@ -55,7 +56,7 @@ describe('InvitationService', () => {
         invitationService.createInvitation(userId, {
           name: 'John Doe',
           email: 'john@example.com',
-          role: 'student',
+          role: UserRole.STUDENT,
         }),
       ).rejects.toThrow('ERROR_FORBIDDEN');
     });
@@ -77,7 +78,7 @@ describe('InvitationService', () => {
         invitationService.createInvitation(userId, {
           name: 'John Doe',
           email: 'john@example.com',
-          role: 'student',
+          role: UserRole.STUDENT,
         }),
       ).rejects.toThrow('ERROR_NOT_FOUND');
     });

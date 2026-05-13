@@ -36,29 +36,27 @@ export default function FlashcardsPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/v1/flashcard-topics').then((r) => r.ok ? r.json() : []),
-      fetch('/api/v1/flashcard-spaces').then((r) => r.ok ? r.json() : []),
-    ]).then(([t, s]) => {
-      setTopics(t);
-      setSpaces(s);
-      setLoading(false);
-    }).catch(() => {
-      setTopics([]);
-      setSpaces([]);
-      setLoading(false);
-    });
+      fetch('/api/v1/flashcard-topics').then((r) => (r.ok ? r.json() : [])),
+      fetch('/api/v1/flashcard-spaces').then((r) => (r.ok ? r.json() : [])),
+    ])
+      .then(([t, s]) => {
+        setTopics(t);
+        setSpaces(s);
+        setLoading(false);
+      })
+      .catch(() => {
+        setTopics([]);
+        setSpaces([]);
+        setLoading(false);
+      });
   }, []);
 
   function toggleTopic(id: string) {
-    setSelectedTopics((prev) =>
-      prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]
-    );
+    setSelectedTopics((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
   }
 
   function toggleSpace(id: string) {
-    setSelectedSpaces((prev) =>
-      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
-    );
+    setSelectedSpaces((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
   }
 
   function startSession() {
@@ -73,9 +71,10 @@ export default function FlashcardsPage() {
     router.push(`/app/flashcards/session?${params.toString()}`);
   }
 
-  const totalCards = topics
-    .filter((t) => selectedTopics.includes(t.id))
-    .reduce((sum, t) => sum + t.flashcard_count, 0) +
+  const totalCards =
+    topics
+      .filter((t) => selectedTopics.includes(t.id))
+      .reduce((sum, t) => sum + t.flashcard_count, 0) +
     spaces
       .filter((s) => selectedSpaces.includes(s.id))
       .reduce((sum, s) => sum + s.flashcard_count, 0);
@@ -116,7 +115,9 @@ export default function FlashcardsPage() {
                 </div>
               ))}
               {topics.length === 0 && (
-                <p className="text-center py-4 text-muted-foreground text-sm">No topics available yet</p>
+                <p className="text-center py-4 text-muted-foreground text-sm">
+                  No topics available yet
+                </p>
               )}
             </div>
           </CardContent>
@@ -144,7 +145,9 @@ export default function FlashcardsPage() {
                 </div>
               ))}
               {spaces.length === 0 && (
-                <p className="text-center py-4 text-muted-foreground text-sm">No spaces yet. Create one!</p>
+                <p className="text-center py-4 text-muted-foreground text-sm">
+                  No spaces yet. Create one!
+                </p>
               )}
             </div>
           </CardContent>
@@ -186,7 +189,9 @@ export default function FlashcardsPage() {
                 min={1}
                 max={100}
                 value={targetCount}
-                onChange={(e) => setTargetCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                onChange={(e) =>
+                  setTargetCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))
+                }
                 className="mt-2 max-w-32"
               />
             </div>

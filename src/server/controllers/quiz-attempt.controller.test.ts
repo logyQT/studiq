@@ -62,13 +62,20 @@ describe('QuizAttemptController', () => {
     it('returns success when service submits successfully', async () => {
       const body = {
         answers: [
-          { questionId: '550e8400-e29b-41d4-a716-446655440001', selectedAnswerId: '550e8400-e29b-41d4-a716-446655440002' },
+          {
+            questionId: '550e8400-e29b-41d4-a716-446655440001',
+            selectedAnswerId: '550e8400-e29b-41d4-a716-446655440002',
+          },
         ],
       };
       const result = { score: 1, totalQuestions: 1 };
       mockService.submit.mockResolvedValueOnce(result);
 
-      const response = await quizAttemptController.submit(body, '550e8400-e29b-41d4-a716-446655440000', userId);
+      const response = await quizAttemptController.submit(
+        body,
+        '550e8400-e29b-41d4-a716-446655440000',
+        userId,
+      );
 
       expect(response).toEqual({ success: true, statusCode: 200, data: result });
     });
@@ -82,7 +89,7 @@ describe('QuizAttemptController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
-      expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('returns error when service throws AppError', async () => {
@@ -90,9 +97,7 @@ describe('QuizAttemptController', () => {
 
       const response = await quizAttemptController.submit(
         {
-          answers: [
-            { questionId: '550e8400-e29b-41d4-a716-446655440001' },
-          ],
+          answers: [{ questionId: '550e8400-e29b-41d4-a716-446655440001' }],
         },
         '550e8400-e29b-41d4-a716-446655440000',
         userId,

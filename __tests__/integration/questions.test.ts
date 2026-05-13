@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST, GET as GET_LIST } from '@/app/(backend)/api/v1/questions/route';
 import { GET, PUT, DELETE } from '@/app/(backend)/api/v1/questions/[id]/route';
-import { TEST_USERS, mockUser, cleanupQuestions, cleanupSubjects, createRealClient } from './helpers';
+import { TEST_USERS, mockUser, cleanupQuestions, createRealClient } from './helpers';
+import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Questions Integration', () => {
   let subjectId: string;
@@ -25,7 +26,7 @@ describe('Questions Integration', () => {
     it('creates a question and returns 201', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/questions', {
+      const req = createNextRequest('http://localhost/api/v1/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -52,7 +53,7 @@ describe('Questions Integration', () => {
     it('returns 422 when content is empty', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/questions', {
+      const req = createNextRequest('http://localhost/api/v1/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -72,7 +73,7 @@ describe('Questions Integration', () => {
     it('returns 422 when answers array is empty', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/questions', {
+      const req = createNextRequest('http://localhost/api/v1/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -92,7 +93,7 @@ describe('Questions Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/questions', {
+      const req = createNextRequest('http://localhost/api/v1/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -114,7 +115,7 @@ describe('Questions Integration', () => {
     it('returns questions list', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/questions');
+      const req = createNextRequest('http://localhost/api/v1/questions');
       const response = await GET_LIST(req);
       const body = await response.json();
 
@@ -134,7 +135,7 @@ describe('Questions Integration', () => {
         created_by: TEST_USERS.TEACHER.id,
       });
 
-      const req = new Request(`http://localhost/api/v1/questions?subjectId=${subjectId}`);
+      const req = createNextRequest(`http://localhost/api/v1/questions?subjectId=${subjectId}`);
       const response = await GET_LIST(req);
       const body = await response.json();
 
@@ -154,7 +155,7 @@ describe('Questions Integration', () => {
         created_by: TEST_USERS.TEACHER.id,
       });
 
-      const req = new Request('http://localhost/api/v1/questions?type=true_false');
+      const req = createNextRequest('http://localhost/api/v1/questions?type=true_false');
       const response = await GET_LIST(req);
       const body = await response.json();
 
@@ -180,8 +181,11 @@ describe('Questions Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/questions/${question.id}`);
-      const response = await GET(req, { params: Promise.resolve({ id: question.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${question.id}`,
+        { id: question.id },
+      );
+      const response = await GET(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -192,8 +196,11 @@ describe('Questions Integration', () => {
       mockUser(TEST_USERS.TEACHER);
 
       const fakeId = '00000000-0000-0000-0000-000000000099';
-      const req = new Request(`http://localhost/api/v1/questions/${fakeId}`);
-      const response = await GET(req, { params: Promise.resolve({ id: fakeId }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${fakeId}`,
+        { id: fakeId },
+      );
+      const response = await GET(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(404);
@@ -217,13 +224,16 @@ describe('Questions Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/questions/${question.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: 'Updated' }),
-      });
-
-      const response = await PUT(req, { params: Promise.resolve({ id: question.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${question.id}`,
+        { id: question.id },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: 'Updated' }),
+        },
+      );
+      const response = await PUT(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -245,13 +255,16 @@ describe('Questions Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/questions/${question.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: 'Hacked' }),
-      });
-
-      const response = await PUT(req, { params: Promise.resolve({ id: question.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${question.id}`,
+        { id: question.id },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: 'Hacked' }),
+        },
+      );
+      const response = await PUT(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(403);
@@ -275,11 +288,12 @@ describe('Questions Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/questions/${question.id}`, {
-        method: 'DELETE',
-      });
-
-      const response = await DELETE(req, { params: Promise.resolve({ id: question.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${question.id}`,
+        { id: question.id },
+        { method: 'DELETE' },
+      );
+      const response = await DELETE(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -301,11 +315,12 @@ describe('Questions Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/questions/${question.id}`, {
-        method: 'DELETE',
-      });
-
-      const response = await DELETE(req, { params: Promise.resolve({ id: question.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${question.id}`,
+        { id: question.id },
+        { method: 'DELETE' },
+      );
+      const response = await DELETE(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(403);

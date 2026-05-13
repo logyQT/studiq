@@ -167,9 +167,9 @@ describe('FlashcardTopicService', () => {
         }),
       });
 
-      await expect(flashcardTopicService.update('t-1', { name: 'Updated' }, userId)).rejects.toThrow(
-        'ERROR_FORBIDDEN',
-      );
+      await expect(
+        flashcardTopicService.update('t-1', { name: 'Updated' }, userId),
+      ).rejects.toThrow('ERROR_FORBIDDEN');
     });
   });
 
@@ -178,7 +178,11 @@ describe('FlashcardTopicService', () => {
       mockSupabase.from.mockReturnValue({
         delete: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({ error: null }),
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: { id: 't-1' }, error: null }),
+              }),
+            }),
           }),
         }),
       });

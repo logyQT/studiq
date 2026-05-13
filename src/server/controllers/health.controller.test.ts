@@ -18,14 +18,14 @@ describe('HealthController', () => {
   describe('getStatus', () => {
     it('returns 200 when healthy', async () => {
       const healthStatus = {
-        status: 'healthy',
+        status: 'healthy' as const,
         timestamp: '2024-01-01T00:00:00.000Z',
         uptime: 100,
         environment: 'test',
         services: { supabase: 'up' },
         responseTime: 50,
       };
-      mockHealthService.checkHealth.mockResolvedValueOnce(healthStatus);
+      mockHealthService.checkHealth.mockResolvedValueOnce(healthStatus as any);
 
       const response = await healthController.getStatus();
 
@@ -38,14 +38,14 @@ describe('HealthController', () => {
 
     it('returns 200 when degraded', async () => {
       const healthStatus = {
-        status: 'degraded',
+        status: 'degraded' as const,
         timestamp: '2024-01-01T00:00:00.000Z',
         uptime: 100,
         environment: 'test',
         services: { supabase: 'up' },
         responseTime: 50,
       };
-      mockHealthService.checkHealth.mockResolvedValueOnce(healthStatus);
+      mockHealthService.checkHealth.mockResolvedValueOnce(healthStatus as any);
 
       const response = await healthController.getStatus();
 
@@ -58,14 +58,14 @@ describe('HealthController', () => {
 
     it('returns 503 when unhealthy', async () => {
       const healthStatus = {
-        status: 'unhealthy',
+        status: 'unhealthy' as const,
         timestamp: '2024-01-01T00:00:00.000Z',
         uptime: 100,
         environment: 'test',
         services: { supabase: 'down' },
         responseTime: 50,
       };
-      mockHealthService.checkHealth.mockResolvedValueOnce(healthStatus);
+      mockHealthService.checkHealth.mockResolvedValueOnce(healthStatus as any);
 
       const response = await healthController.getStatus();
 

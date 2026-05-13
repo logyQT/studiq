@@ -47,9 +47,13 @@ export class QuizAttemptService {
       .sort((a, b) => a.order_index - b.order_index)
       .map((aq) => aq.questions);
 
-    const answerObj: Record<string, { selected_answer_id: string | null; is_correct: boolean }> = {};
+    const answerObj: Record<string, { selected_answer_id: string | null; is_correct: boolean }> =
+      {};
     (answers ?? []).forEach((a) => {
-      answerObj[a.question_id] = { selected_answer_id: a.selected_answer_id, is_correct: a.is_correct };
+      answerObj[a.question_id] = {
+        selected_answer_id: a.selected_answer_id,
+        is_correct: a.is_correct,
+      };
     });
 
     return {
@@ -104,9 +108,7 @@ export class QuizAttemptService {
 
     if (updateError) throw new AppError('INTERNAL_SERVER');
 
-    const { error: answersError } = await supabase
-      .from('quiz_answers')
-      .insert(answerRecords);
+    const { error: answersError } = await supabase.from('quiz_answers').insert(answerRecords);
 
     if (answersError) throw new AppError('INTERNAL_SERVER');
 

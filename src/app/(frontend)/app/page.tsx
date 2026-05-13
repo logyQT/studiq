@@ -34,10 +34,26 @@ export default function AppOverviewPage() {
   return (
     <div className="space-y-8">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard title={t('quizzes_taken')} value={loading ? '...' : stats?.totalQuizzes ?? 0} icon={BookOpen} />
-        <StatCard title={t('avg_score')} value={loading ? '...' : `${stats?.avgScore ?? 0}%`} icon={BookOpen} />
-        <StatCard title={t('flashcards_practiced')} value={loading ? '...' : stats?.flashcardsPracticed ?? 0} icon={Brain} />
-        <StatCard title={t('questions_created')} value={loading ? '...' : stats?.totalQuestionsCreated ?? 0} icon={ListPlus} />
+        <StatCard
+          title={t('quizzes_taken')}
+          value={loading ? '...' : (stats?.totalQuizzes ?? 0)}
+          icon={BookOpen}
+        />
+        <StatCard
+          title={t('avg_score')}
+          value={loading ? '...' : `${stats?.avgScore ?? 0}%`}
+          icon={BookOpen}
+        />
+        <StatCard
+          title={t('flashcards_practiced')}
+          value={loading ? '...' : (stats?.flashcardsPracticed ?? 0)}
+          icon={Brain}
+        />
+        <StatCard
+          title={t('questions_created')}
+          value={loading ? '...' : (stats?.totalQuestionsCreated ?? 0)}
+          icon={ListPlus}
+        />
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -49,19 +65,25 @@ export default function AppOverviewPage() {
           <CardContent className="space-y-3">
             <Link href="/app/quiz">
               <Button variant="outline" className="w-full justify-between">
-                <span className="flex items-center gap-2"><BookOpen className="h-4 w-4" /> {t('take_quiz')}</span>
+                <span className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4" /> {t('take_quiz')}
+                </span>
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
             <Link href="/app/flashcards">
               <Button variant="outline" className="w-full justify-between">
-                <span className="flex items-center gap-2"><Brain className="h-4 w-4" /> {t('practice_flashcards')}</span>
+                <span className="flex items-center gap-2">
+                  <Brain className="h-4 w-4" /> {t('practice_flashcards')}
+                </span>
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
             <Link href="/app/my-questions">
               <Button variant="outline" className="w-full justify-between">
-                <span className="flex items-center gap-2"><ListPlus className="h-4 w-4" /> {t('create_question')}</span>
+                <span className="flex items-center gap-2">
+                  <ListPlus className="h-4 w-4" /> {t('create_question')}
+                </span>
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
@@ -76,13 +98,17 @@ export default function AppOverviewPage() {
           <CardContent className="space-y-3">
             <Link href="/app/quiz">
               <Button className="w-full justify-between">
-                <span className="flex items-center gap-2"><BookOpen className="h-4 w-4" /> Generate Practice Quiz</span>
+                <span className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4" /> Generate Practice Quiz
+                </span>
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
             <Link href="/app/flashcards">
               <Button variant="outline" className="w-full justify-between">
-                <span className="flex items-center gap-2"><Brain className="h-4 w-4" /> Practice Flashcards</span>
+                <span className="flex items-center gap-2">
+                  <Brain className="h-4 w-4" /> Practice Flashcards
+                </span>
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>

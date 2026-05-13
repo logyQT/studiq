@@ -36,7 +36,11 @@ export class UniversityMembersController {
         };
       }
 
-      await universityMembersService.changeRole(userId, parsed.data.targetUserId, parsed.data.newRole);
+      await universityMembersService.changeRole(
+        userId,
+        parsed.data.targetUserId,
+        parsed.data.newRole,
+      );
 
       return { success: true, statusCode: 200, data: { success: true } };
     } catch (error) {

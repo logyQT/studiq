@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GET, PUT, DELETE } from '@/app/(backend)/api/v1/university/members/route';
 import { TEST_USERS, mockUser } from './helpers';
+import { createNextRequest } from './test-utils';
 
 describe('Members Integration', () => {
   beforeEach(() => {
@@ -11,7 +12,7 @@ describe('Members Integration', () => {
     it('lists members for university_admin', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = new Request('http://localhost/api/v1/university/members');
+      const req = createNextRequest('http://localhost/api/v1/university/members');
       const response = await GET(req);
       const body = await response.json();
 
@@ -22,7 +23,7 @@ describe('Members Integration', () => {
     it('filters members by role', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = new Request('http://localhost/api/v1/university/members?role=student');
+      const req = createNextRequest('http://localhost/api/v1/university/members?role=student');
       const response = await GET(req);
       const body = await response.json();
 
@@ -33,7 +34,7 @@ describe('Members Integration', () => {
     it('returns 403 when user has no university', async () => {
       mockUser(TEST_USERS.FREE);
 
-      const req = new Request('http://localhost/api/v1/university/members');
+      const req = createNextRequest('http://localhost/api/v1/university/members');
       const response = await GET(req);
       const body = await response.json();
 
@@ -44,7 +45,7 @@ describe('Members Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/university/members');
+      const req = createNextRequest('http://localhost/api/v1/university/members');
       const response = await GET(req);
       const body = await response.json();
 
@@ -57,7 +58,7 @@ describe('Members Integration', () => {
     it('changes role successfully', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = new Request('http://localhost/api/v1/university/members', {
+      const req = createNextRequest('http://localhost/api/v1/university/members', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -76,7 +77,7 @@ describe('Members Integration', () => {
     it('returns 422 when input is invalid', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = new Request('http://localhost/api/v1/university/members', {
+      const req = createNextRequest('http://localhost/api/v1/university/members', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -95,7 +96,7 @@ describe('Members Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/university/members', {
+      const req = createNextRequest('http://localhost/api/v1/university/members', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -116,9 +117,12 @@ describe('Members Integration', () => {
     it('removes member successfully', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = new Request(`http://localhost/api/v1/university/members?userId=${TEST_USERS.STUDENT.id}`, {
-        method: 'DELETE',
-      });
+      const req = createNextRequest(
+        `http://localhost/api/v1/university/members?userId=${TEST_USERS.STUDENT.id}`,
+        {
+          method: 'DELETE',
+        },
+      );
 
       const response = await DELETE(req);
       const body = await response.json();
@@ -130,7 +134,7 @@ describe('Members Integration', () => {
     it('returns 400 when userId is empty', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = new Request('http://localhost/api/v1/university/members?userId=', {
+      const req = createNextRequest('http://localhost/api/v1/university/members?userId=', {
         method: 'DELETE',
       });
 
@@ -144,9 +148,12 @@ describe('Members Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request(`http://localhost/api/v1/university/members?userId=${TEST_USERS.STUDENT.id}`, {
-        method: 'DELETE',
-      });
+      const req = createNextRequest(
+        `http://localhost/api/v1/university/members?userId=${TEST_USERS.STUDENT.id}`,
+        {
+          method: 'DELETE',
+        },
+      );
 
       const response = await DELETE(req);
       const body = await response.json();

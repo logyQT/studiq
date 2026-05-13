@@ -27,7 +27,11 @@ interface InvitationResult {
 
 export default function InvitationsPage() {
   const [results, setResults] = useState<InvitationResult[]>([]);
-  const [singleForm, setSingleForm] = useState<{ name: string; email: string; role: UniversityRole }>({ name: '', email: '', role: UNIVERSITY_ROLES[0] });
+  const [singleForm, setSingleForm] = useState<{
+    name: string;
+    email: string;
+    role: UniversityRole;
+  }>({ name: '', email: '', role: UNIVERSITY_ROLES[0] });
   const [bulkText, setBulkText] = useState('');
   const [bulkRole, setBulkRole] = useState<UniversityRole>(UNIVERSITY_ROLES[0]);
   const [loading, setLoading] = useState(false);
@@ -58,7 +62,10 @@ export default function InvitationsPage() {
   }
 
   async function handleBulkInvite() {
-    const lines = bulkText.split(/[\n,]+/).map((l) => l.trim()).filter((l) => l);
+    const lines = bulkText
+      .split(/[\n,]+/)
+      .map((l) => l.trim())
+      .filter((l) => l);
     if (lines.length === 0) {
       toast.error('No emails found');
       return;
@@ -79,7 +86,9 @@ export default function InvitationsPage() {
       const data = await res.json();
       setResults([...data.results, ...results]);
       setBulkText('');
-      toast.success(`${data.results.filter((r: InvitationResult) => r.success).length} invitations created`);
+      toast.success(
+        `${data.results.filter((r: InvitationResult) => r.success).length} invitations created`,
+      );
     } catch {
       toast.error('Failed to create bulk invitations');
     }
@@ -114,18 +123,36 @@ export default function InvitationsPage() {
             <CardContent className="space-y-4">
               <div>
                 <Label>Full Name</Label>
-                <Input value={singleForm.name} onChange={(e) => setSingleForm({ ...singleForm, name: e.target.value })} placeholder="Jan Kowalski" />
+                <Input
+                  value={singleForm.name}
+                  onChange={(e) => setSingleForm({ ...singleForm, name: e.target.value })}
+                  placeholder="Jan Kowalski"
+                />
               </div>
               <div>
                 <Label>Email</Label>
-                <Input type="email" value={singleForm.email} onChange={(e) => setSingleForm({ ...singleForm, email: e.target.value })} placeholder="jan@university.edu" />
+                <Input
+                  type="email"
+                  value={singleForm.email}
+                  onChange={(e) => setSingleForm({ ...singleForm, email: e.target.value })}
+                  placeholder="jan@university.edu"
+                />
               </div>
               <div>
                 <Label>Role</Label>
-                <Select value={singleForm.role} onValueChange={(v) => setSingleForm({ ...singleForm, role: v as UniversityRole })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Select
+                  value={singleForm.role}
+                  onValueChange={(v) => setSingleForm({ ...singleForm, role: v as UniversityRole })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
-                    {UNIVERSITY_ROLES.map((r) => <SelectItem key={r} value={r}>{r.replace('_', ' ')}</SelectItem>)}
+                    {UNIVERSITY_ROLES.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {r.replace('_', ' ')}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -146,9 +173,15 @@ export default function InvitationsPage() {
               <div>
                 <Label>Role for all invitees</Label>
                 <Select value={bulkRole} onValueChange={(v) => setBulkRole(v as UniversityRole)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
-                    {UNIVERSITY_ROLES.map((r) => <SelectItem key={r} value={r}>{r.replace('_', ' ')}</SelectItem>)}
+                    {UNIVERSITY_ROLES.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {r.replace('_', ' ')}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -157,7 +190,9 @@ export default function InvitationsPage() {
                 <Textarea
                   value={bulkText}
                   onChange={(e) => setBulkText(e.target.value)}
-                  placeholder={'student1@university.edu\nstudent2@university.edu\nstudent3@university.edu'}
+                  placeholder={
+                    'student1@university.edu\nstudent2@university.edu\nstudent3@university.edu'
+                  }
                   rows={8}
                   className="font-mono text-sm"
                 />
@@ -173,14 +208,18 @@ export default function InvitationsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Bulk Invite via CSV</CardTitle>
-              <CardDescription>Upload a CSV file with columns: name, email, role (optional)</CardDescription>
+              <CardDescription>
+                Upload a CSV file with columns: name, email, role (optional)
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
                 <Label>CSV File</Label>
                 <div className="border-2 border-dashed rounded-lg p-8 text-center">
                   <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
-                  <p className="mt-2 text-sm text-muted-foreground">Drop your CSV here or click to browse</p>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Drop your CSV here or click to browse
+                  </p>
                   <input type="file" accept=".csv" onChange={handleCsvUpload} className="mt-2" />
                 </div>
               </div>
@@ -188,7 +227,12 @@ export default function InvitationsPage() {
                 <>
                   <div>
                     <Label>Parsed Data</Label>
-                    <Textarea value={bulkText} onChange={(e) => setBulkText(e.target.value)} rows={8} className="font-mono text-sm" />
+                    <Textarea
+                      value={bulkText}
+                      onChange={(e) => setBulkText(e.target.value)}
+                      rows={8}
+                      className="font-mono text-sm"
+                    />
                   </div>
                   <Button onClick={handleBulkInvite} disabled={loading}>
                     <Send className="mr-2 h-4 w-4" /> Send Invitations
@@ -208,28 +252,40 @@ export default function InvitationsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {results.filter((r) => r.success && r.data?.inviteLink).map((r, i) => (
-                <div key={i} className="flex items-center gap-2 p-2 rounded-lg border">
-                  <Badge variant="default" className="shrink-0">Success</Badge>
-                  <Input readOnly value={r.data!.inviteLink} className="text-xs font-mono flex-1" />
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={() => {
-                      navigator.clipboard.writeText(r.data!.inviteLink!);
-                      toast.success('Copied!');
-                    }}
-                  >
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
-              ))}
-              {results.filter((r) => !r.success).map((r, i) => (
-                <div key={i} className="flex items-center gap-2 p-2 rounded-lg border">
-                  <Badge variant="destructive">Failed</Badge>
-                  <span className="text-sm text-muted-foreground">{typeof r.error === 'string' ? r.error : 'Unknown error'}</span>
-                </div>
-              ))}
+              {results
+                .filter((r) => r.success && r.data?.inviteLink)
+                .map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 p-2 rounded-lg border">
+                    <Badge variant="default" className="shrink-0">
+                      Success
+                    </Badge>
+                    <Input
+                      readOnly
+                      value={r.data!.inviteLink}
+                      className="text-xs font-mono flex-1"
+                    />
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(r.data!.inviteLink!);
+                        toast.success('Copied!');
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              {results
+                .filter((r) => !r.success)
+                .map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 p-2 rounded-lg border">
+                    <Badge variant="destructive">Failed</Badge>
+                    <span className="text-sm text-muted-foreground">
+                      {typeof r.error === 'string' ? r.error : 'Unknown error'}
+                    </span>
+                  </div>
+                ))}
             </div>
           </CardContent>
         </Card>

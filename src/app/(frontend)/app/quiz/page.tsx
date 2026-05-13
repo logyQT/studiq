@@ -4,7 +4,14 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
@@ -61,17 +68,19 @@ export default function QuizPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/v1/quiz-attempts').then((r) => r.ok ? r.json() : []),
-      fetch('/api/v1/subjects').then((r) => r.ok ? r.json() : []),
-    ]).then(([a, s]) => {
-      setAttempts(a);
-      setSubjects(s);
-      setLoading(false);
-    }).catch(() => {
-      setAttempts([]);
-      setSubjects([]);
-      setLoading(false);
-    });
+      fetch('/api/v1/quiz-attempts').then((r) => (r.ok ? r.json() : [])),
+      fetch('/api/v1/subjects').then((r) => (r.ok ? r.json() : [])),
+    ])
+      .then(([a, s]) => {
+        setAttempts(a);
+        setSubjects(s);
+        setLoading(false);
+      })
+      .catch(() => {
+        setAttempts([]);
+        setSubjects([]);
+        setLoading(false);
+      });
   }, []);
 
   function toggleQuestionType(type: string) {
@@ -133,7 +142,9 @@ export default function QuizPage() {
       {attempts.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground mb-4">No quiz attempts yet. Generate your first practice quiz!</p>
+            <p className="text-muted-foreground mb-4">
+              No quiz attempts yet. Generate your first practice quiz!
+            </p>
             <Button onClick={() => setModalOpen(true)}>
               <Plus className="mr-2 h-4 w-4" /> Generate Quiz
             </Button>
@@ -142,9 +153,10 @@ export default function QuizPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {attempts.map((attempt) => {
-            const percentage = attempt.total_questions > 0
-              ? Math.round((attempt.score / attempt.total_questions) * 100)
-              : 0;
+            const percentage =
+              attempt.total_questions > 0
+                ? Math.round((attempt.score / attempt.total_questions) * 100)
+                : 0;
             const isCompleted = attempt.completed_at !== null;
 
             return (
@@ -170,7 +182,9 @@ export default function QuizPage() {
                     {attempt.config?.difficulty && (
                       <>
                         <span>·</span>
-                        <Badge variant="outline" className="text-xs">{attempt.config.difficulty}</Badge>
+                        <Badge variant="outline" className="text-xs">
+                          {attempt.config.difficulty}
+                        </Badge>
                       </>
                     )}
                   </div>
@@ -205,11 +219,20 @@ export default function QuizPage() {
           <div className="space-y-4 py-4">
             <div>
               <Label>Subject (optional)</Label>
-              <Select value={formData.subjectId} onValueChange={(v) => setFormData({ ...formData, subjectId: v })}>
-                <SelectTrigger><SelectValue placeholder="All subjects" /></SelectTrigger>
+              <Select
+                value={formData.subjectId}
+                onValueChange={(v) => setFormData({ ...formData, subjectId: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All subjects" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">All Subjects</SelectItem>
-                  {subjects.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  {subjects.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -235,8 +258,13 @@ export default function QuizPage() {
 
             <div>
               <Label>Difficulty</Label>
-              <Select value={formData.difficulty} onValueChange={(v) => setFormData({ ...formData, difficulty: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                value={formData.difficulty}
+                onValueChange={(v) => setFormData({ ...formData, difficulty: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="mixed">Mixed</SelectItem>
                   <SelectItem value="easy">Easy</SelectItem>
@@ -253,7 +281,9 @@ export default function QuizPage() {
                 min={1}
                 max={50}
                 value={formData.questionCount}
-                onChange={(e) => setFormData({ ...formData, questionCount: parseInt(e.target.value) })}
+                onChange={(e) =>
+                  setFormData({ ...formData, questionCount: parseInt(e.target.value) })
+                }
                 className="w-full mt-2"
               />
               <div className="flex justify-between text-xs text-muted-foreground mt-1">
@@ -263,7 +293,9 @@ export default function QuizPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setModalOpen(false)}>
+              Cancel
+            </Button>
             <Button onClick={generateQuiz}>Generate Quiz</Button>
           </DialogFooter>
         </DialogContent>

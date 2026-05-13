@@ -8,7 +8,9 @@ export async function GET(
   { params }: { params: Promise<{ attemptId: string }> },
 ) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
@@ -24,7 +26,9 @@ export async function POST(
   { params }: { params: Promise<{ attemptId: string }> },
 ) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });

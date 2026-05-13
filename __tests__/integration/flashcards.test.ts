@@ -1,8 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST, GET, PUT as bulkPut } from '@/app/(backend)/api/v1/flashcards/route';
-import { GET as getById, PUT as update, DELETE as deleteFn } from '@/app/(backend)/api/v1/flashcards/[id]/route';
-import { TEST_USERS, mockUser, cleanupFlashcards, cleanupFlashcardTopics, cleanupFlashcardSpaces } from './helpers';
-import { createClient } from '@/lib/supabase/server';
+import {
+  GET as getById,
+  PUT as update,
+  DELETE as deleteFn,
+} from '@/app/(backend)/api/v1/flashcards/[id]/route';
+import {
+  TEST_USERS,
+  mockUser,
+  cleanupFlashcards,
+  cleanupFlashcardTopics,
+  cleanupFlashcardSpaces,
+  createRealClient,
+} from './helpers';
+import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Flashcards Integration', () => {
   let topicId: string;
@@ -15,7 +26,7 @@ describe('Flashcards Integration', () => {
       await cleanupFlashcardSpaces(user.id);
     }
 
-    const supabase = await createClient();
+    const supabase = createRealClient();
     const { data: topic } = await supabase
       .from('flashcard_topics')
       .insert({ name: 'Flashcard Topic', created_by: TEST_USERS.TEACHER.id })
@@ -28,7 +39,7 @@ describe('Flashcards Integration', () => {
     it('creates a flashcard and returns 201', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/flashcards', {
+      const req = createNextRequest('http://localhost/api/v1/flashcards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ front: 'What is 2+2?', back: '4' }),
@@ -45,7 +56,7 @@ describe('Flashcards Integration', () => {
     it('creates a flashcard with topicIds', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/flashcards', {
+      const req = createNextRequest('http://localhost/api/v1/flashcards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ front: 'Topic Card', back: 'Answer', topicIds: [topicId] }),
@@ -61,7 +72,7 @@ describe('Flashcards Integration', () => {
     it('returns 422 when front is empty', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/flashcards', {
+      const req = createNextRequest('http://localhost/api/v1/flashcards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ front: '', back: 'Answer' }),
@@ -77,7 +88,7 @@ describe('Flashcards Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/flashcards', {
+      const req = createNextRequest('http://localhost/api/v1/flashcards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ front: 'Q', back: 'A' }),
@@ -95,7 +106,7 @@ describe('Flashcards Integration', () => {
     it('returns flashcards list', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/flashcards');
+      const req = createNextRequest('http://localhost/api/v1/flashcards');
       const response = await GET(req);
       const body = await response.json();
 
@@ -106,7 +117,7 @@ describe('Flashcards Integration', () => {
     it('filters by topicIds', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: fc } = await supabase
         .from('flashcards')
         .insert({ front: 'Filtered Card', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
@@ -118,7 +129,7 @@ describe('Flashcards Integration', () => {
         topic_id: topicId,
       });
 
-      const req = new Request(`http://localhost/api/v1/flashcards?topicIds=${topicId}`);
+      const req = createNextRequest(`http://localhost/api/v1/flashcards?topicIds=${topicId}`);
       const response = await GET(req);
       const body = await response.json();
 
@@ -132,7 +143,7 @@ describe('Flashcards Integration', () => {
     it('bulk creates flashcards and returns 201', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/flashcards', {
+      const req = createNextRequest('http://localhost/api/v1/flashcards', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -154,7 +165,7 @@ describe('Flashcards Integration', () => {
     it('returns 422 when cards array is empty', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/flashcards', {
+      const req = createNextRequest('http://localhost/api/v1/flashcards', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cards: [] }),
@@ -172,15 +183,18 @@ describe('Flashcards Integration', () => {
     it('returns flashcard when found', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: fc } = await supabase
         .from('flashcards')
         .insert({ front: 'Get Me', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcards/${fc.id}`);
-      const response = await getById(req, { params: Promise.resolve({ id: fc.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcards/${fc.id}`,
+        { id: fc.id },
+      );
+      const response = await getById(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -192,20 +206,23 @@ describe('Flashcards Integration', () => {
     it('updates own flashcard and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: fc } = await supabase
         .from('flashcards')
         .insert({ front: 'Original', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcards/${fc.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ front: 'Updated' }),
-      });
-
-      const response = await update(req, { params: Promise.resolve({ id: fc.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcards/${fc.id}`,
+        { id: fc.id },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ front: 'Updated' }),
+        },
+      );
+      const response = await update(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -215,20 +232,23 @@ describe('Flashcards Integration', () => {
     it('returns 403 when updating another user flashcard', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: fc } = await supabase
         .from('flashcards')
         .insert({ front: 'Teacher Card', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcards/${fc.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ front: 'Hacked' }),
-      });
-
-      const response = await update(req, { params: Promise.resolve({ id: fc.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcards/${fc.id}`,
+        { id: fc.id },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ front: 'Hacked' }),
+        },
+      );
+      const response = await update(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(403);
@@ -240,18 +260,19 @@ describe('Flashcards Integration', () => {
     it('deletes own flashcard and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: fc } = await supabase
         .from('flashcards')
         .insert({ front: 'To Delete', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcards/${fc.id}`, {
-        method: 'DELETE',
-      });
-
-      const response = await deleteFn(req, { params: Promise.resolve({ id: fc.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcards/${fc.id}`,
+        { id: fc.id },
+        { method: 'DELETE' },
+      );
+      const response = await deleteFn(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -261,18 +282,19 @@ describe('Flashcards Integration', () => {
     it('returns 403 when deleting another user flashcard', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: fc } = await supabase
         .from('flashcards')
         .insert({ front: 'Teacher Card', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcards/${fc.id}`, {
-        method: 'DELETE',
-      });
-
-      const response = await deleteFn(req, { params: Promise.resolve({ id: fc.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcards/${fc.id}`,
+        { id: fc.id },
+        { method: 'DELETE' },
+      );
+      const response = await deleteFn(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(403);

@@ -1,7 +1,9 @@
 import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
 
-const uuid = z.string().regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/);
+const uuid = z
+  .string()
+  .regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/);
 
 export const CreateSpaceSchema = registry.register(
   'CreateFlashcardSpaceRequest',

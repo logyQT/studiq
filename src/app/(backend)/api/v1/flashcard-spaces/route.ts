@@ -5,7 +5,9 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
@@ -18,7 +20,9 @@ export async function POST(req: NextRequest) {
 
 export async function GET() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });

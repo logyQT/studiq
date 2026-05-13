@@ -151,7 +151,11 @@ describe('SubjectService', () => {
       mockSupabase.from.mockReturnValue({
         delete: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({ error: null }),
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: { id: 'sub-1' }, error: null }),
+              }),
+            }),
           }),
         }),
       });

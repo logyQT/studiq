@@ -14,7 +14,12 @@ describe('UniversityMembersService', () => {
 
   describe('getProfile', () => {
     it('returns profile when found', async () => {
-      const profile = { id: userId, email: 'test@test.com', role: 'student', university_id: 'uni-1' };
+      const profile = {
+        id: userId,
+        email: 'test@test.com',
+        role: 'student',
+        university_id: 'uni-1',
+      };
       mockSupabase.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
@@ -85,7 +90,9 @@ describe('UniversityMembersService', () => {
         }),
       });
 
-      await expect(universityMembersService.listMembers('uni-1')).rejects.toThrow('ERROR_INTERNAL_SERVER');
+      await expect(universityMembersService.listMembers('uni-1')).rejects.toThrow(
+        'ERROR_INTERNAL_SERVER',
+      );
     });
   });
 
@@ -93,7 +100,11 @@ describe('UniversityMembersService', () => {
     it('changes role successfully', async () => {
       mockSupabase.rpc.mockResolvedValue({ error: null });
 
-      const result = await universityMembersService.changeRole(userId, 'user-123', 'university_admin');
+      const result = await universityMembersService.changeRole(
+        userId,
+        'user-123',
+        'university_admin',
+      );
 
       expect(result).toEqual({ success: true });
       expect(mockSupabase.rpc).toHaveBeenCalledWith('admin_change_role', {

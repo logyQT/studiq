@@ -5,6 +5,7 @@ import { POST as logoutPost } from '@/app/(backend)/api/v1/auth/logout/route';
 import { POST as resetPost } from '@/app/(backend)/api/v1/auth/password/reset/route';
 import { POST as updatePasswordPost } from '@/app/(backend)/api/v1/auth/password/update/route';
 import { TEST_USERS } from './helpers';
+import { createNextRequest } from './test-utils';
 
 describe('Auth Integration', () => {
   beforeEach(() => {
@@ -14,7 +15,7 @@ describe('Auth Integration', () => {
   describe('POST /api/v1/auth/register', () => {
     it('registers a new user and returns 201', async () => {
       const uniqueEmail = `test-${Date.now()}@example.com`;
-      const req = new Request('http://localhost/api/v1/auth/register', {
+      const req = createNextRequest('http://localhost/api/v1/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -33,7 +34,7 @@ describe('Auth Integration', () => {
     });
 
     it('returns 422 when email is invalid', async () => {
-      const req = new Request('http://localhost/api/v1/auth/register', {
+      const req = createNextRequest('http://localhost/api/v1/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -53,7 +54,7 @@ describe('Auth Integration', () => {
     });
 
     it('returns 422 when password is too short', async () => {
-      const req = new Request('http://localhost/api/v1/auth/register', {
+      const req = createNextRequest('http://localhost/api/v1/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -74,7 +75,7 @@ describe('Auth Integration', () => {
 
   describe('POST /api/v1/auth/login', () => {
     it('logs in with valid credentials and returns 200', async () => {
-      const req = new Request('http://localhost/api/v1/auth/login', {
+      const req = createNextRequest('http://localhost/api/v1/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -91,7 +92,7 @@ describe('Auth Integration', () => {
     });
 
     it('returns 401 with wrong password', async () => {
-      const req = new Request('http://localhost/api/v1/auth/login', {
+      const req = createNextRequest('http://localhost/api/v1/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -108,7 +109,7 @@ describe('Auth Integration', () => {
     });
 
     it('returns 422 when email is missing', async () => {
-      const req = new Request('http://localhost/api/v1/auth/login', {
+      const req = createNextRequest('http://localhost/api/v1/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: 'TestPass123' }),
@@ -134,7 +135,7 @@ describe('Auth Integration', () => {
 
   describe('POST /api/v1/auth/password/reset', () => {
     it('accepts password reset request and returns 200', async () => {
-      const req = new Request('http://localhost/api/v1/auth/password/reset', {
+      const req = createNextRequest('http://localhost/api/v1/auth/password/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: TEST_USERS.TEACHER.email }),
@@ -148,7 +149,7 @@ describe('Auth Integration', () => {
     });
 
     it('returns 422 when email is invalid', async () => {
-      const req = new Request('http://localhost/api/v1/auth/password/reset', {
+      const req = createNextRequest('http://localhost/api/v1/auth/password/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'not-an-email' }),
@@ -164,7 +165,7 @@ describe('Auth Integration', () => {
 
   describe('POST /api/v1/auth/password/update', () => {
     it('returns 422 when passwords do not match', async () => {
-      const req = new Request('http://localhost/api/v1/auth/password/update', {
+      const req = createNextRequest('http://localhost/api/v1/auth/password/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

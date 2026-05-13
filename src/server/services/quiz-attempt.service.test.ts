@@ -87,7 +87,9 @@ describe('QuizAttemptService', () => {
         select: vi.fn().mockReturnValue({ eq: eqFirst }),
       });
 
-      await expect(quizAttemptService.getById('nonexistent', userId)).rejects.toThrow('ERROR_NOT_FOUND');
+      await expect(quizAttemptService.getById('nonexistent', userId)).rejects.toThrow(
+        'ERROR_NOT_FOUND',
+      );
     });
   });
 
@@ -146,10 +148,7 @@ describe('QuizAttemptService', () => {
       });
 
       await expect(
-        quizAttemptService.submit(
-          { attemptId: 'nonexistent', answers: [] },
-          userId,
-        ),
+        quizAttemptService.submit({ attemptId: 'nonexistent', answers: [] }, userId),
       ).rejects.toThrow('ERROR_NOT_FOUND');
     });
 
@@ -166,10 +165,7 @@ describe('QuizAttemptService', () => {
       });
 
       await expect(
-        quizAttemptService.submit(
-          { attemptId: 'a-1', answers: [] },
-          userId,
-        ),
+        quizAttemptService.submit({ attemptId: 'a-1', answers: [] }, userId),
       ).rejects.toThrow('ERROR_BAD_REQUEST');
     });
   });

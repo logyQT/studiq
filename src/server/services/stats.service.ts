@@ -52,7 +52,7 @@ export class StatsService {
     const avgScore =
       attempts && attempts.length > 0
         ? Math.round(
-            (attempts.reduce((sum, a) => sum + (a.score / Math.max(a.total_questions, 1)), 0) /
+            (attempts.reduce((sum, a) => sum + a.score / Math.max(a.total_questions, 1), 0) /
               attempts.length) *
               100,
           )
@@ -66,13 +66,15 @@ export class StatsService {
       avgScore,
       totalQuestionsCreated: questions?.length ?? 0,
       flashcardsPracticed: flashcardTotal,
-      flashcardAccuracy: flashcardTotal > 0 ? Math.round((flashcardCorrect / flashcardTotal) * 100) : 0,
-      attemptsOverTime: attempts?.map((a) => ({
-        date: a.started_at,
-        score: a.score,
-        total: a.total_questions,
-        percentage: Math.round((a.score / Math.max(a.total_questions, 1)) * 100),
-      })) ?? [],
+      flashcardAccuracy:
+        flashcardTotal > 0 ? Math.round((flashcardCorrect / flashcardTotal) * 100) : 0,
+      attemptsOverTime:
+        attempts?.map((a) => ({
+          date: a.started_at,
+          score: a.score,
+          total: a.total_questions,
+          percentage: Math.round((a.score / Math.max(a.total_questions, 1)) * 100),
+        })) ?? [],
     };
   }
 }

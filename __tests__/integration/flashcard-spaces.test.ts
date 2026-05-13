@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST, GET } from '@/app/(backend)/api/v1/flashcard-spaces/route';
-import { GET as getById, PUT as update, DELETE as deleteFn } from '@/app/(backend)/api/v1/flashcard-spaces/[id]/route';
+import {
+  GET as getById,
+  PUT as update,
+  DELETE as deleteFn,
+} from '@/app/(backend)/api/v1/flashcard-spaces/[id]/route';
 import { TEST_USERS, mockUser, cleanupFlashcardSpaces } from './helpers';
 import { createClient } from '@/lib/supabase/server';
+import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Flashcard Spaces Integration', () => {
   beforeEach(async () => {
@@ -16,7 +21,7 @@ describe('Flashcard Spaces Integration', () => {
     it('creates a space and returns 201', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/flashcard-spaces', {
+      const req = createNextRequest('http://localhost/api/v1/flashcard-spaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Study Space' }),
@@ -33,7 +38,7 @@ describe('Flashcard Spaces Integration', () => {
     it('returns 422 when name is empty', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/flashcard-spaces', {
+      const req = createNextRequest('http://localhost/api/v1/flashcard-spaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: '' }),
@@ -49,7 +54,7 @@ describe('Flashcard Spaces Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/flashcard-spaces', {
+      const req = createNextRequest('http://localhost/api/v1/flashcard-spaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Study Space' }),
@@ -67,8 +72,7 @@ describe('Flashcard Spaces Integration', () => {
     it('lists spaces for user', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = new Request('http://localhost/api/v1/flashcard-spaces');
-      const response = await GET(req);
+      const response = await GET();
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -78,8 +82,7 @@ describe('Flashcard Spaces Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = new Request('http://localhost/api/v1/flashcard-spaces');
-      const response = await GET(req);
+      const response = await GET();
       const body = await response.json();
 
       expect(response.status).toBe(401);
@@ -98,8 +101,11 @@ describe('Flashcard Spaces Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcard-spaces/${space.id}`);
-      const response = await getById(req, { params: Promise.resolve({ id: space.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcard-spaces/${space.id}`,
+        { id: space.id },
+      );
+      const response = await getById(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -116,8 +122,11 @@ describe('Flashcard Spaces Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcard-spaces/${space.id}`);
-      const response = await getById(req, { params: Promise.resolve({ id: space.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcard-spaces/${space.id}`,
+        { id: space.id },
+      );
+      const response = await getById(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(404);
@@ -136,13 +145,16 @@ describe('Flashcard Spaces Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcard-spaces/${space.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Updated' }),
-      });
-
-      const response = await update(req, { params: Promise.resolve({ id: space.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcard-spaces/${space.id}`,
+        { id: space.id },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Updated' }),
+        },
+      );
+      const response = await update(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -159,13 +171,16 @@ describe('Flashcard Spaces Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcard-spaces/${space.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Hacked' }),
-      });
-
-      const response = await update(req, { params: Promise.resolve({ id: space.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcard-spaces/${space.id}`,
+        { id: space.id },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Hacked' }),
+        },
+      );
+      const response = await update(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(403);
@@ -184,11 +199,12 @@ describe('Flashcard Spaces Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcard-spaces/${space.id}`, {
-        method: 'DELETE',
-      });
-
-      const response = await deleteFn(req, { params: Promise.resolve({ id: space.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcard-spaces/${space.id}`,
+        { id: space.id },
+        { method: 'DELETE' },
+      );
+      const response = await deleteFn(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -205,11 +221,12 @@ describe('Flashcard Spaces Integration', () => {
         .select()
         .single();
 
-      const req = new Request(`http://localhost/api/v1/flashcard-spaces/${space.id}`, {
-        method: 'DELETE',
-      });
-
-      const response = await deleteFn(req, { params: Promise.resolve({ id: space.id }) });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcard-spaces/${space.id}`,
+        { id: space.id },
+        { method: 'DELETE' },
+      );
+      const response = await deleteFn(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(403);

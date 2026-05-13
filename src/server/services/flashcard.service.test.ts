@@ -65,7 +65,12 @@ describe('FlashcardService', () => {
       });
 
       const result = await flashcardService.bulkCreate(
-        { cards: [{ front: 'Q1', back: 'A1' }, { front: 'Q2', back: 'A2' }] },
+        {
+          cards: [
+            { front: 'Q1', back: 'A1' },
+            { front: 'Q2', back: 'A2' },
+          ],
+        },
         userId,
       );
 
@@ -204,7 +209,11 @@ describe('FlashcardService', () => {
       mockSupabase.from.mockReturnValue({
         delete: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({ error: null }),
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: { id: 'fc-1' }, error: null }),
+              }),
+            }),
           }),
         }),
       });

@@ -17,7 +17,11 @@ export class FlashcardPracticeController {
         };
       }
 
-      const result = await flashcardPracticeService.log(parsed.data.flashcardId, parsed.data.wasCorrect, userId);
+      const result = await flashcardPracticeService.log(
+        parsed.data.flashcardId,
+        parsed.data.wasCorrect,
+        userId,
+      );
 
       return { success: true, statusCode: 201, data: result };
     } catch (error) {

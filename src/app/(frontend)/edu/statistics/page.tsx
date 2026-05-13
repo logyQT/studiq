@@ -19,7 +19,13 @@ interface TeacherStats {
     totalQuestions: number;
     byType: Record<string, number>;
     byDifficulty: Record<string, number>;
-    problematicQuestions: Array<{ id: string; content: string; type: string; difficulty: string; correctRate: number }>;
+    problematicQuestions: Array<{
+      id: string;
+      content: string;
+      type: string;
+      difficulty: string;
+      correctRate: number;
+    }>;
   };
 }
 
@@ -35,15 +41,21 @@ export default function EduStatsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/v1/subjects').then((r) => r.json()).then(setSubjects);
+    fetch('/api/v1/subjects')
+      .then((r) => r.json())
+      .then(setSubjects);
   }, []);
 
   useEffect(() => {
-    const url = selectedSubject ? `/api/v1/stats/teacher?subjectId=${selectedSubject}` : '/api/v1/stats/teacher';
-    fetch(url).then((r) => r.json()).then((data) => {
-      setStats(data);
-      setLoading(false);
-    });
+    const url = selectedSubject
+      ? `/api/v1/stats/teacher?subjectId=${selectedSubject}`
+      : '/api/v1/stats/teacher';
+    fetch(url)
+      .then((r) => r.json())
+      .then((data) => {
+        setStats(data);
+        setLoading(false);
+      });
   }, [selectedSubject]);
 
   if (loading) return <div className="flex justify-center py-12">Loading...</div>;
@@ -58,7 +70,11 @@ export default function EduStatsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="">All Subjects</SelectItem>
-            {subjects.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+            {subjects.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -110,16 +126,24 @@ export default function EduStatsPage() {
                 <TrendingDown className="h-5 w-5 text-red-500" />
                 Problematic Questions
               </CardTitle>
-              <CardDescription>Questions with less than 50% correct rate — consider adding more practice on these topics</CardDescription>
+              <CardDescription>
+                Questions with less than 50% correct rate — consider adding more practice on these
+                topics
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {stats.subject.problematicQuestions.length > 0 ? (
                 <div className="space-y-3">
                   {stats.subject.problematicQuestions.map((q) => (
-                    <div key={q.id} className="flex items-center justify-between p-3 rounded-lg border">
+                    <div
+                      key={q.id}
+                      className="flex items-center justify-between p-3 rounded-lg border"
+                    >
                       <div>
                         <p className="font-medium text-sm">{q.content}</p>
-                        <p className="text-xs text-muted-foreground">{q.type} · {q.difficulty}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {q.type} · {q.difficulty}
+                        </p>
                       </div>
                       <span className="text-sm font-bold text-red-600">
                         {Math.round(q.correctRate * 100)}% correct
