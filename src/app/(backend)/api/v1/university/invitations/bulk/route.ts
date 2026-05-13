@@ -1,37 +1,19 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { invitationService } from '@/server/services';
-import { CreateInviteSchema } from '@/server/models';
-import { AppErrorCode, handleApiError } from '@/lib/errors';
+import { NextRequest } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { invitationController } from '@/server/controllers/invitation.controller';
+import { toNextResponse } from '@/lib/http-utils';
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const { invitations } = body;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-    if (!Array.isArray(invitations) || invitations.length === 0) {
-      return NextResponse.json(
-        { success: false, error: AppErrorCode.INVALID_INPUT },
-        { status: 400 },
-      );
-    }
-
-    const results = [];
-    for (const invite of invitations) {
-      const parsed = CreateInviteSchema.safeParse(invite);
-      if (!parsed.success) {
-        results.push({ success: false, error: parsed.error.issues });
-        continue;
-      }
-      try {
-        const result = await invitationService.createInvitation(parsed.data);
-        results.push({ success: true, data: result });
-      } catch {
-        results.push({ success: false, error: 'Failed to create invitation' });
-      }
-    }
-
-    return NextResponse.json({ results });
-  } catch (error) {
-    return handleApiError(error, AppErrorCode.INTERNAL_SERVER);
+  if (!user) {
+    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
   }
+
+  const body = await req.json();
+  const response = await invitationController.createBulk(user.id, body);
+  return toNextResponse(response);
 }

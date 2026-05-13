@@ -1,19 +1,15 @@
 import { createClient } from '@/lib/supabase/server';
-import { AppError, AppErrorCode } from '@/lib/errors';
+import { AppError } from '@/lib/errors';
 import type { CreateTopicInput, UpdateTopicInput } from '@/server/models';
 
 export class FlashcardTopicService {
-  async create(data: CreateTopicInput) {
+  async create(data: CreateTopicInput, userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
     const { data: profile } = await supabase
       .from('profiles')
       .select('university_id')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single();
 
     const { data: topic, error } = await supabase
@@ -21,26 +17,22 @@ export class FlashcardTopicService {
       .insert({
         name: data.name,
         university_id: profile?.university_id ?? null,
-        created_by: user.id,
+        created_by: userId,
       })
       .select()
       .single();
 
-    if (error || !topic) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+    if (error || !topic) throw new AppError('INTERNAL_SERVER');
     return topic;
   }
 
-  async list() {
+  async list(userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
     const { data: profile } = await supabase
       .from('profiles')
       .select('university_id')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single();
 
     let query = supabase
@@ -53,7 +45,7 @@ export class FlashcardTopicService {
     }
 
     const { data, error } = await query;
-    if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+    if (error) throw new AppError('INTERNAL_SERVER');
 
     return (data ?? []).map((topic) => ({
       ...topic,
@@ -68,44 +60,39 @@ export class FlashcardTopicService {
       .select('*')
       .eq('id', id)
       .single();
-    if (error || !data) throw new AppError(AppErrorCode.NOT_FOUND, 404);
+    if (error || !data) throw new AppError('NOT_FOUND');
     return data;
   }
 
-  async update(id: string, data: UpdateTopicInput) {
+  async update(id: string, data: UpdateTopicInput, userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
     const { data: topic, error } = await supabase
       .from('flashcard_topics')
       .update({ name: data.name })
       .eq('id', id)
-      .eq('created_by', user.id)
+      .eq('created_by', userId)
       .select()
       .single();
 
-    if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
-    if (!topic) throw new AppError(AppErrorCode.FORBIDDEN, 403);
+    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (!topic) throw new AppError('FORBIDDEN');
     return topic;
   }
 
-  async delete(id: string) {
+  async delete(id: string, userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('flashcard_topics')
       .delete()
       .eq('id', id)
-      .eq('created_by', user.id);
+      .eq('created_by', userId)
+      .select()
+      .single();
 
-    if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (!data) throw new AppError('FORBIDDEN');
   }
 }
 

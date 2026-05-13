@@ -35,7 +35,9 @@
  *                   example: "ERROR_LOGOUT_FAILED"
  */
 import { authController } from '@/server/controllers';
+import { toNextResponse } from '@/lib/http-utils';
 
 export async function POST() {
-  return authController.logout();
+  const response = await authController.logout();
+  return toNextResponse(response);
 }

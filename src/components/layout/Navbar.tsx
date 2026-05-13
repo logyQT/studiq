@@ -13,7 +13,6 @@ import { LanguageToggle } from './LanguageToggle';
 import Avatar from 'boring-avatars';
 import { Menu, X, LayoutDashboard, GraduationCap, Sparkles, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
-import { AppError } from '@/lib/errors';
 
 const ROLE_DASHBOARD: Record<UserRole, string> = {
   [UserRole.SYS_ADMIN]: '/admin',
@@ -43,7 +42,7 @@ export function Navbar() {
   const handleLogout = async () => {
     try {
       const res = await fetch('/api/v1/auth/logout', { method: 'POST' });
-      if (!res.ok) throw new AppError('LOGOUT_FAILED');
+      if (!res.ok) throw new Error('logout_failed');
       router.replace('/login');
       toast.success(t('LOGOUT_SUCCESS'));
     } catch {
@@ -61,7 +60,10 @@ export function Navbar() {
           {/* LEFT */}
           <div className="flex items-center gap-8">
             {/* LOGO */}
-            <Link href="/" className="flex items-center gap-2 text-xl font-bold tracking-tight hover:opacity-80 transition">
+            <Link
+              href="/"
+              className="flex items-center gap-2 text-xl font-bold tracking-tight hover:opacity-80 transition"
+            >
               <GraduationCap className="h-6 w-6 text-primary" />
               {t('logo')}
             </Link>
@@ -244,10 +246,14 @@ export function Navbar() {
               ) : (
                 <div className="space-y-2">
                   <Button variant="outline" className="w-full" asChild>
-                    <Link href="/login" onClick={() => setMobileOpen(false)}>{t('login')}</Link>
+                    <Link href="/login" onClick={() => setMobileOpen(false)}>
+                      {t('login')}
+                    </Link>
                   </Button>
                   <Button className="w-full" asChild>
-                    <Link href="/register" onClick={() => setMobileOpen(false)}>{t('register')}</Link>
+                    <Link href="/register" onClick={() => setMobileOpen(false)}>
+                      {t('register')}
+                    </Link>
                   </Button>
                 </div>
               )}

@@ -1,37 +1,32 @@
 import { HealthService } from '@/server/services';
 import type { HealthStatus } from '@/types';
+import { ControllerResponse } from '@/lib/controller-response';
 
 export class HealthController {
-  /**
-   * Returns health + proper HTTP status for probes
-   */
-  static async getStatus(): Promise<{
-    body: HealthStatus;
-    statusCode: number;
-  }> {
+  async getStatus(): Promise<ControllerResponse<HealthStatus>> {
     const health = await HealthService.checkHealth();
 
     const statusCode = this.mapStatusToHttp(health.status);
 
     return {
-      body: health,
+      success: true,
       statusCode,
+      data: health,
     };
   }
 
-  /**
-   * Maps app health → HTTP status (for Kubernetes / Docker / Vercel)
-   */
-  private static mapStatusToHttp(status: HealthStatus['status']): number {
+  private mapStatusToHttp(status: HealthStatus['status']): number {
     switch (status) {
       case 'healthy':
         return 200;
       case 'degraded':
-        return 200; // still alive, don't restart container
+        return 200;
       case 'unhealthy':
-        return 503; // trigger restart
+        return 503;
       default:
         return 500;
     }
   }
 }
+
+export const healthController = new HealthController();

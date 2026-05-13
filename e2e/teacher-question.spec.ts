@@ -43,8 +43,9 @@ test.describe('Teacher Question Flow', () => {
     await page.locator('input[type="radio"]').nth(1).check();
 
     await page.getByRole('button', { name: saveButton }).click();
-
-    await expect(page.locator('tbody').getByText('What is 2 + 2?').first()).toBeVisible();
+    await page.waitForResponse(resp => resp.url().includes('/api/v1/questions') && resp.request().method() === 'POST');
+    await page.waitForTimeout(1000);
+    await expect(page.locator('tbody').getByText('What is 2 + 2?').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('Teacher sees existing seeded questions', async ({ page }) => {

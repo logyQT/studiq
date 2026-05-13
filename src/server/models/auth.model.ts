@@ -1,31 +1,30 @@
 import { z, registry } from '@/lib/zod';
-import { AppErrorCode } from '@/lib/errors';
+import { ValidationErrorCode } from '@/lib/validation-errors';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 import { UserRole } from '@/types';
-import { User } from 'lucide-react';
 
 export const NameSchema = z
-  .string({ error: AppErrorCode.NAME_REQUIRED })
-  .nonempty({ error: AppErrorCode.NAME_REQUIRED })
-  .min(2, { error: AppErrorCode.NAME_TOO_SHORT })
-  .regex(/^[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ\s]+$/, { error: AppErrorCode.NAME_INVALID_FORMAT });
+  .string({ error: ValidationErrorCode.NAME_REQUIRED })
+  .nonempty({ error: ValidationErrorCode.NAME_REQUIRED })
+  .min(2, { error: ValidationErrorCode.NAME_TOO_SHORT })
+  .regex(/^[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ\s]+$/, { error: ValidationErrorCode.NAME_INVALID_FORMAT });
 
 export const passwordSchema = z
-  .string({ error: AppErrorCode.PASSWORD_REQUIRED })
-  .nonempty({ error: AppErrorCode.PASSWORD_REQUIRED })
-  .min(8, { error: AppErrorCode.PASSWORD_TOO_SHORT })
-  .max(128, { error: AppErrorCode.PASSWORD_TOO_LONG })
-  .regex(/[A-Z]/, { error: AppErrorCode.PASSWORD_MISSING_UPPERCASE })
-  .regex(/[0-9]/, { error: AppErrorCode.PASSWORD_MISSING_NUMBER });
+  .string({ error: ValidationErrorCode.PASSWORD_REQUIRED })
+  .nonempty({ error: ValidationErrorCode.PASSWORD_REQUIRED })
+  .min(8, { error: ValidationErrorCode.PASSWORD_TOO_SHORT })
+  .max(128, { error: ValidationErrorCode.PASSWORD_TOO_LONG })
+  .regex(/[A-Z]/, { error: ValidationErrorCode.PASSWORD_MISSING_UPPERCASE })
+  .regex(/[0-9]/, { error: ValidationErrorCode.PASSWORD_MISSING_NUMBER });
 
 export const RegisterSchema = registry.register(
   'RegisterRequest',
   z.object({
     name: NameSchema,
     email: z
-      .string({ error: AppErrorCode.EMAIL_REQUIRED })
-      .nonempty({ error: AppErrorCode.EMAIL_REQUIRED })
-      .email({ error: AppErrorCode.EMAIL_INVALID }),
+      .string({ error: ValidationErrorCode.EMAIL_REQUIRED })
+      .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED })
+      .email({ error: ValidationErrorCode.EMAIL_INVALID }),
     password: passwordSchema,
     inviteToken: z.string().optional(),
   }),
@@ -35,12 +34,12 @@ export const LoginSchema = registry.register(
   'LoginRequest',
   z.object({
     email: z
-      .string({ error: AppErrorCode.EMAIL_REQUIRED })
-      .nonempty({ error: AppErrorCode.EMAIL_REQUIRED })
-      .email({ error: AppErrorCode.EMAIL_INVALID }),
+      .string({ error: ValidationErrorCode.EMAIL_REQUIRED })
+      .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED })
+      .email({ error: ValidationErrorCode.EMAIL_INVALID }),
     password: z
-      .string({ error: AppErrorCode.PASSWORD_REQUIRED })
-      .nonempty({ error: AppErrorCode.PASSWORD_REQUIRED }),
+      .string({ error: ValidationErrorCode.PASSWORD_REQUIRED })
+      .nonempty({ error: ValidationErrorCode.PASSWORD_REQUIRED }),
   }),
 );
 
@@ -48,9 +47,9 @@ export const forgotPasswordSchema = registry.register(
   'ForgotPasswordRequest',
   z.object({
     email: z
-      .string({ error: AppErrorCode.EMAIL_REQUIRED })
-      .nonempty({ error: AppErrorCode.EMAIL_REQUIRED })
-      .email({ error: AppErrorCode.EMAIL_INVALID }),
+      .string({ error: ValidationErrorCode.EMAIL_REQUIRED })
+      .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED })
+      .email({ error: ValidationErrorCode.EMAIL_INVALID }),
   }),
 );
 
@@ -59,11 +58,11 @@ export const updatePasswordSchema = registry
     'UpdatePasswordRequest',
     z.object({
       password: passwordSchema,
-      confirmPassword: z.string().nonempty({ error: AppErrorCode.PASSWORD_CONFIRMATION_REQUIRED }),
+      confirmPassword: z.string().nonempty({ error: ValidationErrorCode.PASSWORD_CONFIRMATION_REQUIRED }),
     }),
   )
   .refine((data) => data.password === data.confirmPassword, {
-    message: AppErrorCode.PASSWORDS_DO_NOT_MATCH,
+    message: ValidationErrorCode.PASSWORDS_DO_NOT_MATCH,
     path: ['confirmPassword'],
   });
 

@@ -33,7 +33,10 @@
  */
 import { authController } from '@/server/controllers/auth.controller';
 import { NextRequest } from 'next/server';
+import { toNextResponse } from '@/lib/http-utils';
 
 export async function POST(req: NextRequest) {
-  return authController.requestPasswordResetHandler(req);
+  const body = await req.json();
+  const response = await authController.requestPasswordReset(body);
+  return toNextResponse(response);
 }

@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
-import { AppError, AppErrorCode } from '@/lib/errors';
+import { AppError } from '@/lib/errors';
 import type {
   CreateFlashcardInput,
   BulkCreateFlashcardsInput,
@@ -7,24 +7,20 @@ import type {
 } from '@/server/models';
 
 export class FlashcardService {
-  async create(data: CreateFlashcardInput) {
+  async create(data: CreateFlashcardInput, userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
     const { data: flashcard, error } = await supabase
       .from('flashcards')
       .insert({
         front: data.front,
         back: data.back,
-        created_by: user.id,
+        created_by: userId,
       })
       .select()
       .single();
 
-    if (error || !flashcard) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+    if (error || !flashcard) throw new AppError('INTERNAL_SERVER');
 
     if (data.topicIds && data.topicIds.length > 0) {
       const assignments = data.topicIds.map((topicId) => ({
@@ -37,17 +33,13 @@ export class FlashcardService {
     return this.getById(flashcard.id);
   }
 
-  async bulkCreate(data: BulkCreateFlashcardsInput) {
+  async bulkCreate(data: BulkCreateFlashcardsInput, userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
     const cardsToInsert = data.cards.map((c) => ({
       front: c.front,
       back: c.back,
-      created_by: user.id,
+      created_by: userId,
     }));
 
     const { data: flashcards, error } = await supabase
@@ -55,7 +47,7 @@ export class FlashcardService {
       .insert(cardsToInsert)
       .select();
 
-    if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+    if (error) throw new AppError('INTERNAL_SERVER');
 
     if (data.topicIds && data.topicIds.length > 0 && flashcards) {
       const assignments = flashcards.flatMap((fc) =>
@@ -88,7 +80,7 @@ export class FlashcardService {
         .in('id', flashcardIds)
         .order('created_at', { ascending: false });
 
-      if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+      if (error) throw new AppError('INTERNAL_SERVER');
       return data;
     }
 
@@ -107,7 +99,7 @@ export class FlashcardService {
         .in('id', flashcardIds)
         .order('created_at', { ascending: false });
 
-      if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+      if (error) throw new AppError('INTERNAL_SERVER');
       return data;
     }
 
@@ -116,7 +108,7 @@ export class FlashcardService {
       .select('*, flashcard_topic_assignments(topic_id)')
       .order('created_at', { ascending: false });
 
-    if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+    if (error) throw new AppError('INTERNAL_SERVER');
     return data;
   }
 
@@ -127,16 +119,12 @@ export class FlashcardService {
       .select('*, flashcard_topic_assignments(topic_id)')
       .eq('id', id)
       .single();
-    if (error || !data) throw new AppError(AppErrorCode.NOT_FOUND, 404);
+    if (error || !data) throw new AppError('NOT_FOUND');
     return data;
   }
 
-  async update(id: string, data: UpdateFlashcardInput) {
+  async update(id: string, data: UpdateFlashcardInput, userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
     const updateFields: Record<string, unknown> = {};
     if (data.front) updateFields.front = data.front;
@@ -146,12 +134,12 @@ export class FlashcardService {
       .from('flashcards')
       .update(updateFields)
       .eq('id', id)
-      .eq('created_by', user.id)
+      .eq('created_by', userId)
       .select()
       .single();
 
-    if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
-    if (!flashcard) throw new AppError(AppErrorCode.FORBIDDEN, 403);
+    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (!flashcard) throw new AppError('FORBIDDEN');
 
     if (data.topicIds !== undefined) {
       await supabase.from('flashcard_topic_assignments').delete().eq('flashcard_id', id);
@@ -167,59 +155,19 @@ export class FlashcardService {
     return this.getById(id);
   }
 
-  async delete(id: string) {
+  async delete(id: string, userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('flashcards')
       .delete()
       .eq('id', id)
-      .eq('created_by', user.id);
-
-    if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
-  }
-
-  async logPractice(flashcardId: string, wasCorrect: boolean) {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
-
-    const { data, error } = await supabase
-      .from('flashcard_practice')
-      .insert({
-        user_id: user.id,
-        flashcard_id: flashcardId,
-        was_correct: wasCorrect,
-      })
+      .eq('created_by', userId)
       .select()
       .single();
 
-    if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
-    return data;
-  }
-
-  async getPracticeHistory(userId?: string) {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
-
-    const targetUserId = userId ?? user.id;
-    const { data, error } = await supabase
-      .from('flashcard_practice')
-      .select('*, flashcards(front, back)')
-      .eq('user_id', targetUserId)
-      .order('practiced_at', { ascending: false });
-
-    if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
-    return data;
+    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (!data) throw new AppError('FORBIDDEN');
   }
 }
 

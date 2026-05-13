@@ -16,55 +16,96 @@ test.describe('Student Flashcard Flow', () => {
     await page.waitForURL(/\/app/);
   });
 
-  test('Student practices flashcards and completes a session', async ({ page }) => {
+  test('manages spaces: create, edit, and delete', async ({ page }) => {
     await page.getByRole('link', { name: /^(Flashcards|Fiszki)$/i }).click();
     await page.waitForURL(/\/app\/flashcards/);
 
-    await expect(page.getByText(t('AppFlashcardsPage.title'))).toBeVisible();
+    await page.getByRole('button', { name: /Manage Spaces/ }).click();
+    await page.waitForURL(/\/app\/flashcards\/spaces/);
 
-    await expect(page.getByText('closure')).toBeVisible();
+    await page.getByRole('button', { name: /New Space/ }).click();
+    await page.getByLabel('Name').fill('Test Space');
+    await page.getByLabel('Description').fill('Test description');
+    await page.getByRole('checkbox').first().click();
+    await page.getByRole('button', { name: /Create/ }).click();
+
+    await expect(page.getByText('Test Space').first()).toBeVisible();
+    await expect(page.getByText('1 flashcards').first()).toBeVisible();
+    await expect(page.getByText('Test description').first()).toBeVisible();
+
+    await page.getByText('Test Space').hover();
+    await page.getByRole('button', { name: /Edit/ }).first().click();
+
+    await page.getByLabel('Name').fill('Updated Space');
+    await page.getByRole('button', { name: /Update/ }).click();
+
+    await expect(page.getByText('Updated Space')).toBeVisible();
+
+    await page.getByText('Updated Space').hover();
+    await page.getByRole('button', { name: /Delete/ }).first().click();
+    await page.getByRole('button', { name: /Delete/ }).last().click();
+
+    await expect(page.getByText('Updated Space')).not.toBeVisible();
+  });
+
+  test('practices in endless mode with topics and spaces', async ({ page }) => {
+    await page.getByRole('link', { name: /^(Flashcards|Fiszki)$/i }).click();
+    await page.waitForURL(/\/app\/flashcards/);
+
+    await page.getByRole('checkbox').first().click();
+    await page.getByRole('checkbox').nth(3).click();
+
+    await expect(page.getByRole('button', { name: /Endless/ })).toHaveClass(/border-primary/);
 
     await page.getByRole('button', { name: /Start Practice/ }).click();
+    await page.waitForURL(/\/app\/flashcards\/session/);
 
-    await expect(page.getByText(/Card 1 of/)).toBeVisible();
-
-    await expect(page.getByText('Co to jest closure?')).toBeVisible();
-
-    await page.getByText('Co to jest closure?').click();
-
-    await expect(page.getByText('Funkcja, która ma dostęp')).toBeVisible();
-
+    await page.locator('.cursor-pointer').click();
     await page.getByRole('button', { name: t('AppFlashcardsPage.got_it') }).click();
 
-    await expect(page.getByText(/Card 2 of/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Session Complete/ })).not.toBeVisible();
+    await expect(page.locator('.cursor-pointer')).toBeVisible();
 
-    await page.getByText(/let.*var/).click();
-
-    await page.getByRole('button', { name: t('AppFlashcardsPage.still_learning') }).click();
-
-    await expect(page.getByText(/Card 3 of/)).toBeVisible();
-
-    await page.getByText(/indeks/).click();
-
+    await page.locator('.cursor-pointer').click();
     await page.getByRole('button', { name: t('AppFlashcardsPage.got_it') }).click();
 
-    await expect(page.getByText(/Card 4 of/)).toBeVisible();
+    await expect(page.getByText(/correct$/)).toBeVisible();
+  });
 
-    await page.getByText(/macierz/).click();
+  test('completes limited session after target count', async ({ page }) => {
+    await page.getByRole('link', { name: /^(Flashcards|Fiszki)$/i }).click();
+    await page.waitForURL(/\/app\/flashcards/);
 
-    await page.getByRole('button', { name: t('AppFlashcardsPage.got_it') }).click();
+    await page.getByRole('checkbox').first().click();
 
-    await expect(page.getByText(/%\s*$/)).toBeVisible();
+    await page.getByRole('button', { name: /Limited/ }).click();
+
+    const targetInput = page.getByRole('spinbutton');
+    await targetInput.fill('3');
+
+    await page.getByRole('button', { name: /Start Practice/ }).click();
+    await page.waitForURL(/\/app\/flashcards\/session/);
+
+    for (let i = 0; i < 3; i++) {
+      await page.locator('.cursor-pointer').click();
+      await page.getByRole('button', { name: t('AppFlashcardsPage.got_it') }).click();
+    }
+
+    await expect(page.getByRole('heading', { name: /Session Complete/ })).toBeVisible();
+    await expect(page.getByText('100%')).toBeVisible();
     await expect(page.getByRole('button', { name: t('AppFlashcardsPage.practice_again') })).toBeVisible();
   });
 
-  test('Student sees flashcard grid before starting practice', async ({ page }) => {
+  test('sees flashcard setup page before starting practice', async ({ page }) => {
     await page.getByRole('link', { name: /^(Flashcards|Fiszki)$/i }).click();
     await page.waitForURL(/\/app\/flashcards/);
 
-    await expect(page.getByText('closure')).toBeVisible();
-    await expect(page.locator('.font-medium').filter({ hasText: /let.*var/ })).toBeVisible();
-    await expect(page.getByText('indeks')).toBeVisible();
-    await expect(page.getByText('macierz')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Flashcards' })).toBeVisible();
+    await expect(page.getByText('Topics', { exact: true })).toBeVisible();
+    await expect(page.getByText('Your Spaces', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Manage Spaces' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Endless' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Limited' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Start Practice' })).toBeVisible();
   });
 });

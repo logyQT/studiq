@@ -1,37 +1,32 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { questionService } from '@/server/services';
-import { CreateQuestionSchema } from '@/server/models';
-import { AppErrorCode, handleApiError } from '@/lib/errors';
-import { z } from '@/lib/zod';
+import { NextRequest } from 'next/server';
+import { questionController } from '@/server/controllers';
+import { toNextResponse } from '@/lib/http-utils';
+import { createClient } from '@/lib/supabase/server';
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const parsed = CreateQuestionSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json(
-        { success: false, error: AppErrorCode.VALIDATION_FAILED, issues: z.treeifyError(parsed.error) },
-        { status: 400 },
-      );
-    }
-    const question = await questionService.create(parsed.data);
-    return NextResponse.json(question, { status: 201 });
-  } catch (error) {
-    return handleApiError(error, AppErrorCode.INTERNAL_SERVER);
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
   }
+
+  const body = await req.json();
+  const response = await questionController.create(body, user.id);
+  return toNextResponse(response);
 }
 
 export async function GET(req: NextRequest) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const filters = {
-      subjectId: searchParams.get('subjectId') || undefined,
-      type: searchParams.get('type') || undefined,
-      difficulty: searchParams.get('difficulty') || undefined,
-    };
-    const questions = await questionService.list(filters);
-    return NextResponse.json(questions);
-  } catch (error) {
-    return handleApiError(error, AppErrorCode.INTERNAL_SERVER);
-  }
+  const { searchParams } = new URL(req.url);
+  const subjectId = searchParams.get('subjectId') || undefined;
+  const type = searchParams.get('type') || undefined;
+  const difficulty = searchParams.get('difficulty') || undefined;
+
+  const filters: { subjectId?: string; type?: string; difficulty?: string } = {};
+  if (subjectId) filters.subjectId = subjectId;
+  if (type) filters.type = type;
+  if (difficulty) filters.difficulty = difficulty;
+
+  const response = await questionController.list(Object.keys(filters).length > 0 ? filters : undefined);
+  return toNextResponse(response);
 }

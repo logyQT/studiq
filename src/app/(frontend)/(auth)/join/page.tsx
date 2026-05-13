@@ -21,7 +21,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
-import { AppErrorCode } from '@/lib/errors';
+import { APP_ERRORS } from '@/lib/errors';
 
 function JoinSkeleton() {
   return (
@@ -83,7 +83,7 @@ function JoinContent() {
         const result = await res.json();
 
         if (!res.ok || !result.success) {
-          toast.error(AppErrorCode.INVALID_INPUT);
+          toast.error(APP_ERRORS.BAD_REQUEST.code);
           router.replace('/register');
           return;
         }
@@ -91,7 +91,7 @@ function JoinContent() {
         form.setValue('email', result.data.email);
         form.setValue('name', result.data.name);
       } catch {
-        toast.error(AppErrorCode.INTERNAL_SERVER);
+        toast.error(APP_ERRORS.INTERNAL_SERVER.code);
         router.replace('/register');
       } finally {
         setIsVerifying(false);

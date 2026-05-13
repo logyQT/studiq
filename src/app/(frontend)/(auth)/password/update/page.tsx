@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { updatePasswordSchema, type UpdatePasswordInput } from '@/server/models/auth.model';
-import { AppErrorCode } from '@/lib/errors';
+import { APP_ERRORS } from '@/lib/errors';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -46,7 +46,7 @@ export default function PasswordUpdatePage() {
       const result = await response.json();
 
       if (!result.success) {
-        toast.error(tErr(result.error || AppErrorCode.PASSWORD_UPDATE_FAILED));
+        toast.error(tErr(result.error || APP_ERRORS.UNPROCESSABLE_ENTITY.code));
         return;
       }
 
@@ -55,7 +55,7 @@ export default function PasswordUpdatePage() {
       router.push('/dashboard');
       router.refresh();
     } catch {
-      toast.error(tErr(AppErrorCode.INTERNAL_SERVER));
+      toast.error(tErr(APP_ERRORS.INTERNAL_SERVER.code));
     }
   }
 

@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { LoginSchema, type LoginInput } from '@/server/models/auth.model';
-import { AppErrorCode } from '@/lib/errors';
+import { APP_ERRORS } from '@/lib/errors';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -63,7 +63,7 @@ export default function LoginPage() {
       const result = await response.json();
 
       if (!result.success) {
-        toast.error(tErr(result.error || AppErrorCode.INTERNAL_SERVER));
+        toast.error(tErr(result.error || APP_ERRORS.INTERNAL_SERVER.code));
         return;
       }
 
@@ -73,7 +73,7 @@ export default function LoginPage() {
         router.refresh();
       }
     } catch {
-      toast.error(tErr(AppErrorCode.INTERNAL_SERVER));
+      toast.error(tErr(APP_ERRORS.INTERNAL_SERVER.code));
     }
   }
 
@@ -92,7 +92,7 @@ export default function LoginPage() {
             >
               <AlertCircle className="h-4 w-4" />
               <AlertDescription className="font-medium">
-                {tErr(errorParam || AppErrorCode.AUTH_CALLBACK_FAILED)}
+                {tErr(errorParam || APP_ERRORS.INTERNAL_SERVER.code)}
               </AlertDescription>
             </Alert>
           )}

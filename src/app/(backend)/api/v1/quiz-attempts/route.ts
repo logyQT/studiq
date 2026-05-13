@@ -1,12 +1,15 @@
-import { NextResponse } from 'next/server';
-import { quizService } from '@/server/services';
-import { AppErrorCode, handleApiError } from '@/lib/errors';
+import { quizAttemptController } from '@/server/controllers';
+import { toNextResponse } from '@/lib/http-utils';
+import { createClient } from '@/lib/supabase/server';
 
 export async function GET() {
-  try {
-    const attempts = await quizService.getUserAttempts();
-    return NextResponse.json(attempts);
-  } catch (error) {
-    return handleApiError(error, AppErrorCode.INTERNAL_SERVER);
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
   }
+
+  const response = await quizAttemptController.list(user.id);
+  return toNextResponse(response);
 }

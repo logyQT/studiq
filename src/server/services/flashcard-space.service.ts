@@ -1,26 +1,22 @@
 import { createClient } from '@/lib/supabase/server';
-import { AppError, AppErrorCode } from '@/lib/errors';
+import { AppError } from '@/lib/errors';
 import type { CreateSpaceInput, UpdateSpaceInput } from '@/server/models';
 
 export class FlashcardSpaceService {
-  async create(data: CreateSpaceInput) {
+  async create(data: CreateSpaceInput, userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
     const { data: space, error } = await supabase
       .from('flashcard_spaces')
       .insert({
         name: data.name,
         description: data.description ?? null,
-        created_by: user.id,
+        created_by: userId,
       })
       .select()
       .single();
 
-    if (error || !space) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+    if (error || !space) throw new AppError('INTERNAL_SERVER');
 
     if (data.flashcardIds && data.flashcardIds.length > 0) {
       const assignments = data.flashcardIds.map((flashcardId) => ({
@@ -30,23 +26,19 @@ export class FlashcardSpaceService {
       await supabase.from('flashcard_space_assignments').insert(assignments);
     }
 
-    return this.getById(space.id);
+    return this.getById(space.id, userId);
   }
 
-  async list() {
+  async list(userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
     const { data, error } = await supabase
       .from('flashcard_spaces')
       .select('*, flashcard_space_assignments(flashcard_id)')
-      .eq('created_by', user.id)
+      .eq('created_by', userId)
       .order('created_at', { ascending: false });
 
-    if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+    if (error) throw new AppError('INTERNAL_SERVER');
 
     return (data ?? []).map((space) => ({
       ...space,
@@ -54,21 +46,17 @@ export class FlashcardSpaceService {
     }));
   }
 
-  async getById(id: string) {
+  async getById(id: string, userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
     const { data: space, error } = await supabase
       .from('flashcard_spaces')
       .select('*, flashcard_space_assignments(flashcard_id)')
       .eq('id', id)
-      .eq('created_by', user.id)
+      .eq('created_by', userId)
       .single();
 
-    if (error || !space) throw new AppError(AppErrorCode.NOT_FOUND, 404);
+    if (error || !space) throw new AppError('NOT_FOUND');
 
     return {
       ...space,
@@ -76,12 +64,8 @@ export class FlashcardSpaceService {
     };
   }
 
-  async update(id: string, data: UpdateSpaceInput) {
+  async update(id: string, data: UpdateSpaceInput, userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
     const updateFields: Record<string, unknown> = {};
     if (data.name !== undefined) updateFields.name = data.name;
@@ -91,12 +75,12 @@ export class FlashcardSpaceService {
       .from('flashcard_spaces')
       .update(updateFields)
       .eq('id', id)
-      .eq('created_by', user.id)
+      .eq('created_by', userId)
       .select()
       .single();
 
-    if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
-    if (!space) throw new AppError(AppErrorCode.FORBIDDEN, 403);
+    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (!space) throw new AppError('FORBIDDEN');
 
     if (data.flashcardIds !== undefined) {
       await supabase.from('flashcard_space_assignments').delete().eq('space_id', id);
@@ -109,23 +93,22 @@ export class FlashcardSpaceService {
       }
     }
 
-    return this.getById(id);
+    return this.getById(id, userId);
   }
 
-  async delete(id: string) {
+  async delete(id: string, userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('flashcard_spaces')
       .delete()
       .eq('id', id)
-      .eq('created_by', user.id);
+      .eq('created_by', userId)
+      .select()
+      .single();
 
-    if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (!data) throw new AppError('FORBIDDEN');
   }
 }
 

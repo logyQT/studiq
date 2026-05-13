@@ -1,43 +1,53 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { flashcardSpaceService } from '@/server/services';
-import { UpdateSpaceSchema } from '@/server/models';
-import { AppErrorCode, handleApiError } from '@/lib/errors';
-import { z } from '@/lib/zod';
+import { NextRequest } from 'next/server';
+import { flashcardSpaceController } from '@/server/controllers';
+import { toNextResponse } from '@/lib/http-utils';
+import { createClient } from '@/lib/supabase/server';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params;
-    const space = await flashcardSpaceService.getById(id);
-    return NextResponse.json(space);
-  } catch (error) {
-    return handleApiError(error, AppErrorCode.INTERNAL_SERVER);
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
   }
+
+  const { id } = await params;
+  const response = await flashcardSpaceController.getById(id, user.id);
+  return toNextResponse(response);
 }
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params;
-    const body = await req.json();
-    const parsed = UpdateSpaceSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json(
-        { success: false, error: AppErrorCode.VALIDATION_FAILED, issues: z.treeifyError(parsed.error) },
-        { status: 400 },
-      );
-    }
-    const space = await flashcardSpaceService.update(id, parsed.data);
-    return NextResponse.json(space);
-  } catch (error) {
-    return handleApiError(error, AppErrorCode.INTERNAL_SERVER);
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
   }
+
+  const { id } = await params;
+  const body = await req.json();
+  const response = await flashcardSpaceController.update(id, body, user.id);
+  return toNextResponse(response);
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params;
-    await flashcardSpaceService.delete(id);
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    return handleApiError(error, AppErrorCode.INTERNAL_SERVER);
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
   }
+
+  const { id } = await params;
+  const response = await flashcardSpaceController.delete(id, user.id);
+  return toNextResponse(response);
 }

@@ -48,7 +48,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { EmailOtpType } from '@supabase/supabase-js';
-import { AppErrorCode } from '@/lib/errors';
+import { APP_ERRORS } from '@/lib/errors';
 
 export async function GET(req: NextRequest) {
   const FALLBACK_REDIRECT = '/';
@@ -95,5 +95,5 @@ export async function GET(req: NextRequest) {
     console.error('Auth Callback Error (PKCE):', error.message);
   }
 
-  return NextResponse.redirect(`${origin}/login?error=${AppErrorCode.AUTH_CALLBACK_FAILED}`);
+  return NextResponse.redirect(`${origin}/login?error=${APP_ERRORS.INTERNAL_SERVER.code}`);
 }

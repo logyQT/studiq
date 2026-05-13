@@ -1,32 +1,30 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { CreateUniversitySchema } from '@/server/models';
 import { universityService } from '@/server/services';
-import { AppErrorCode, handleApiError } from '@/lib/errors';
+import { AppError } from '@/lib/errors';
+import { ControllerResponse } from '@/lib/controller-response';
 
 export class UniversityController {
-  async create(req: NextRequest): Promise<NextResponse> {
+  async create(body: unknown): Promise<ControllerResponse> {
     try {
-      const body = (await req.json()) as unknown;
+      const parsedData = CreateUniversitySchema.safeParse(body);
 
-      const parsedData = CreateUniversitySchema.parse(body);
-
-      const result = await universityService.create(parsedData);
-
-      return NextResponse.json(result, { status: 201 });
-    } catch (error: unknown) {
-      if (error instanceof z.ZodError) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: AppErrorCode.VALIDATION_FAILED,
-            details: error.issues,
-          },
-          { status: 400 },
-        );
+      if (!parsedData.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsedData.error.issues,
+        };
       }
 
-      return handleApiError(error, AppErrorCode.INTERNAL_SERVER);
+      const result = await universityService.create(parsedData.data);
+
+      return { success: true, statusCode: 201, data: result };
+    } catch (error) {
+      if (error instanceof AppError) {
+        return { success: false, statusCode: error.statusCode, error: error.code };
+      }
+      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
     }
   }
 }

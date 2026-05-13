@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { forgotPasswordSchema, type ForgotPasswordInput } from '@/server/models/auth.model';
-import { AppErrorCode } from '@/lib/errors';
+import { APP_ERRORS } from '@/lib/errors';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -46,7 +46,7 @@ export default function PasswordResetPage() {
       const result = await response.json();
 
       if (!result.success) {
-        toast.error(tErr(result.error || AppErrorCode.INTERNAL_SERVER));
+        toast.error(tErr(result.error || APP_ERRORS.INTERNAL_SERVER.code));
         setStatus('error');
         return;
       }
@@ -54,7 +54,7 @@ export default function PasswordResetPage() {
       setStatus('success');
     } catch (error) {
       console.error(error);
-      toast.error(tErr(AppErrorCode.INTERNAL_SERVER));
+      toast.error(tErr(APP_ERRORS.INTERNAL_SERVER.code));
       setStatus('error');
     }
   }

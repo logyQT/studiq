@@ -31,7 +31,10 @@
  */
 import { authController } from '@/server/controllers';
 import { NextRequest } from 'next/server';
+import { toNextResponse } from '@/lib/http-utils';
 
 export async function POST(req: NextRequest) {
-  return authController.register(req);
+  const body = await req.json();
+  const response = await authController.register(body);
+  return toNextResponse(response);
 }

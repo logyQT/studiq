@@ -1,41 +1,19 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { questionService } from '@/server/services';
+import { NextRequest } from 'next/server';
+import { statsController } from '@/server/controllers';
+import { toNextResponse } from '@/lib/http-utils';
 import { createClient } from '@/lib/supabase/server';
-import { AppErrorCode, handleApiError } from '@/lib/errors';
 
 export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: AppErrorCode.UNAUTHORIZED }, { status: 401 });
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-    const { searchParams } = new URL(req.url);
-    const subjectId = searchParams.get('subjectId') || undefined;
-
-    const { data: questions } = await supabase
-      .from('questions')
-      .select('id')
-      .eq('created_by', user.id);
-
-    const { data: flashcards } = await supabase
-      .from('flashcards')
-      .select('id')
-      .eq('created_by', user.id);
-
-    const stats = {
-      totalQuestions: questions?.length ?? 0,
-      totalFlashcards: flashcards?.length ?? 0,
-    };
-
-    if (subjectId) {
-      const questionStats = await questionService.getStatsBySubject(subjectId);
-      return NextResponse.json({ ...stats, subject: questionStats });
-    }
-
-    return NextResponse.json(stats);
-  } catch (error) {
-    return handleApiError(error, AppErrorCode.INTERNAL_SERVER);
+  if (!user) {
+    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
   }
+
+  const { searchParams } = new URL(req.url);
+  const subjectId = searchParams.get('subjectId') || undefined;
+
+  const response = await statsController.getTeacherStats(user.id, subjectId);
+  return toNextResponse(response);
 }

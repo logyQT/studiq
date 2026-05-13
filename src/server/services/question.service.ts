@@ -1,14 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
-import { AppError, AppErrorCode } from '@/lib/errors';
+import { AppError } from '@/lib/errors';
 import type { CreateQuestionInput, UpdateQuestionInput } from '@/server/models';
 
 export class QuestionService {
-  async create(data: CreateQuestionInput) {
+  async create(data: CreateQuestionInput, userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
     const { data: question, error: qError } = await supabase
       .from('questions')
@@ -18,12 +14,12 @@ export class QuestionService {
         content: data.content,
         explanation: data.explanation ?? null,
         difficulty: data.difficulty,
-        created_by: user.id,
+        created_by: userId,
       })
       .select()
       .single();
 
-    if (qError || !question) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+    if (qError || !question) throw new AppError('INTERNAL_SERVER');
 
     const answersToInsert = data.answers.map((a, i) => ({
       question_id: question.id,
@@ -33,9 +29,19 @@ export class QuestionService {
     }));
 
     const { error: aError } = await supabase.from('question_answers').insert(answersToInsert);
-    if (aError) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+    if (aError) throw new AppError('INTERNAL_SERVER');
 
-    return this.getById(question.id);
+    return {
+      ...question,
+      question_answers: data.answers.map((a, i) => ({
+        id: '',
+        question_id: question.id,
+        content: a.content,
+        is_correct: a.isCorrect,
+        order_index: a.orderIndex ?? i,
+        created_at: new Date().toISOString(),
+      })),
+    };
   }
 
   async list(filters?: { subjectId?: string; type?: string; difficulty?: string }) {
@@ -50,7 +56,7 @@ export class QuestionService {
     if (filters?.difficulty) query = query.eq('difficulty', filters.difficulty);
 
     const { data, error } = await query;
-    if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+    if (error) throw new AppError('INTERNAL_SERVER');
     return data;
   }
 
@@ -60,19 +66,14 @@ export class QuestionService {
       .from('questions')
       .select('*, question_answers(*)')
       .eq('id', id)
-      .order('question_answers(order_index)', { ascending: true })
       .single();
 
-    if (error || !data) throw new AppError(AppErrorCode.NOT_FOUND, 404);
+    if (error || !data || (Array.isArray(data) && data.length === 0)) throw new AppError('NOT_FOUND');
     return data;
   }
 
-  async update(id: string, data: UpdateQuestionInput) {
+  async update(id: string, data: UpdateQuestionInput, userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
     const updateFields: Record<string, unknown> = {};
     if (data.subjectId !== undefined) updateFields.subject_id = data.subjectId;
@@ -85,12 +86,12 @@ export class QuestionService {
       .from('questions')
       .update(updateFields)
       .eq('id', id)
-      .eq('created_by', user.id)
+      .eq('created_by', userId)
       .select()
       .single();
 
-    if (qError) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
-    if (!question) throw new AppError(AppErrorCode.FORBIDDEN, 403);
+    if (qError && qError.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (!question || (Array.isArray(question) && question.length === 0)) throw new AppError('FORBIDDEN');
 
     if (data.answers) {
       await supabase.from('question_answers').delete().eq('question_id', id);
@@ -106,20 +107,19 @@ export class QuestionService {
     return this.getById(id);
   }
 
-  async delete(id: string) {
+  async delete(id: string, userId: string) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('questions')
       .delete()
       .eq('id', id)
-      .eq('created_by', user.id);
+      .eq('created_by', userId)
+      .select()
+      .single();
 
-    if (error) throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (!data || (Array.isArray(data) && data.length === 0)) throw new AppError('FORBIDDEN');
   }
 
   async getStatsBySubject(subjectId: string) {

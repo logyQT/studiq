@@ -31,7 +31,10 @@
 
 import { NextRequest } from 'next/server';
 import { universityController } from '@/server/controllers/university.controller';
+import { toNextResponse } from '@/lib/http-utils';
 
 export async function POST(req: NextRequest) {
-  return universityController.create(req);
+  const body = await req.json();
+  const response = await universityController.create(body);
+  return toNextResponse(response);
 }

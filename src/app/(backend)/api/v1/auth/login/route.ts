@@ -32,7 +32,10 @@
  */
 import { authController } from '@/server/controllers';
 import { NextRequest } from 'next/server';
+import { toNextResponse } from '@/lib/http-utils';
 
 export async function POST(req: NextRequest) {
-  return authController.login(req);
+  const body = await req.json();
+  const response = await authController.login(body);
+  return toNextResponse(response);
 }

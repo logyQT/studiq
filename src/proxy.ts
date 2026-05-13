@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { updateSession } from '@/lib/supabase/session';
 import { authGuard, roleGuard } from '@/server/guards';
 import { routeRules } from '@/server/config/routes.config';
-import { AppErrorCode } from '@/lib/errors';
+import { APP_ERRORS } from '@/lib/errors';
 import { UserRole } from '@/types';
 
 function preserveCookies(originalResponse: NextResponse, newResponse: NextResponse) {
@@ -46,7 +46,7 @@ export async function proxy(request: NextRequest) {
   if (matchedRule.requireAuth && !authGuard(user)) {
     if (matchedRule.isApi) {
       const res = NextResponse.json(
-        { success: false, error: AppErrorCode.UNAUTHORIZED },
+        { success: false, error: APP_ERRORS.UNAUTHORIZED.code },
         { status: 401 },
       );
       return preserveCookies(supabaseResponse, res);
@@ -62,7 +62,7 @@ export async function proxy(request: NextRequest) {
     if (!roleGuard(user, matchedRule.allowedRoles)) {
       if (matchedRule.isApi) {
         const res = NextResponse.json(
-          { success: false, error: AppErrorCode.FORBIDDEN },
+          { success: false, error: APP_ERRORS.FORBIDDEN.code },
           { status: 403 },
         );
         return preserveCookies(supabaseResponse, res);

@@ -29,7 +29,7 @@ import {
 import { CreateUniversitySchema } from '@/server/models/university.model';
 import { CreateInviteSchema } from '@/server/models/invitation.model';
 import { UserRole } from '@/types';
-import { AppError, AppErrorCode } from '@/lib/errors';
+import { AppError } from '@/lib/errors';
 
 export default function SysAdminDashboard() {
   const t = useTranslations('AdminPage');
@@ -54,13 +54,15 @@ export default function SysAdminDashboard() {
       });
 
       if (!res.ok) {
-        if (res.status == 409) throw new AppError(AppErrorCode.SLUG_ALREADY_EXISTS, 409);
-        throw new AppError(AppErrorCode.INTERNAL_SERVER, res.status);
+        if (res.status == 409) throw new AppError('CONFLICT');
+        throw new AppError('INTERNAL_SERVER');
       }
 
       const data = await res.json();
 
-      toast.success(t('success_university'), { description: t('success_university_desc', { id: data.id }) });
+      toast.success(t('success_university'), {
+        description: t('success_university_desc', { id: data.id }),
+      });
 
       formInvite.setValue('universityId', data.id);
       formUniversity.reset();

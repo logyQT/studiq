@@ -1,51 +1,38 @@
 import { createClient } from '@/lib/supabase/server';
-import { AppError, AppErrorCode } from '@/lib/errors';
+import { AppError } from '@/lib/errors';
 import { CreateInviteInput } from '@/server/models';
 import { UserRole } from '@/types';
 
 export class InvitationService {
-  async createInvitation(data: CreateInviteInput) {
+  async createInvitation(userId: string, data: CreateInviteInput) {
     const supabase = await createClient();
-
-    // 1. Autoryzacja i pobranie profilu zapraszającego
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      throw new AppError(AppErrorCode.UNAUTHORIZED, 401);
-    }
 
     const { data: inviter } = await supabase
       .from('profiles')
       .select('id, university_id, role')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single();
 
     if (!inviter) {
-      throw new AppError(AppErrorCode.NOT_FOUND, 404);
+      throw new AppError('NOT_FOUND');
     }
 
-    // 2. Logika wyboru uniwersytetu (SSoT)
     let targetUniversityId: string | undefined;
 
     if (inviter.role === UserRole.SYS_ADMIN) {
-      if (!data.universityId) throw new AppError(AppErrorCode.UNIVERSITY_NOT_FOUND, 400);
+      if (!data.universityId) throw new AppError('NOT_FOUND');
       targetUniversityId = data.universityId;
     } else if (inviter.role === UserRole.UNIVERSITY_ADMIN) {
       targetUniversityId = inviter.university_id ?? undefined;
     }
 
-    // 3. Weryfikacja: Jeśli nie jesteś Sys Adminem, musisz mieć przypisaną uczelnię
     if (!targetUniversityId && inviter.role !== UserRole.SYS_ADMIN) {
-      throw new AppError(AppErrorCode.FORBIDDEN, 403);
+      throw new AppError('FORBIDDEN');
     }
 
-    // 4. Ważność zaproszenia: 7 dni
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
-    // 5. Zapis w bazie (Token generuje Postgres automatycznie)
     const { data: invitation, error: insertError } = await supabase
       .from('invitations')
       .insert({
@@ -61,20 +48,17 @@ export class InvitationService {
 
     if (insertError) {
       console.error('Database Error:', insertError);
-      throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+      throw new AppError('INTERNAL_SERVER');
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
     if (!baseUrl) {
       console.warn('NEXT_PUBLIC_SITE_URL is not set. Invitation link will not be generated.');
-      throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+      throw new AppError('INTERNAL_SERVER');
     }
     const inviteLink = `${baseUrl}/join?token=${invitation.token}`;
 
-    // ! TEMP
     console.warn(`[DEV] Generated invite link for ${data.email}: ${inviteLink}`);
-
-    // await mailService.sendInvitationEmail(data.email, inviteLink, data.role);
 
     return {
       success: true,
@@ -92,11 +76,11 @@ export class InvitationService {
       .single();
 
     if (error || !data) {
-      throw new AppError(AppErrorCode.NOT_FOUND, 404);
+      throw new AppError('NOT_FOUND');
     }
 
     if (new Date(data.expires_at) < new Date()) {
-      throw new AppError(AppErrorCode.GONE, 410); // Token expired
+      throw new AppError('GONE');
     }
 
     return { email: data.email, name: data.name };

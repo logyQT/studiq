@@ -165,10 +165,10 @@ export default function FlashcardSpacesPage() {
                   {space.description && <CardDescription className="line-clamp-2">{space.description}</CardDescription>}
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(space)}>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Edit" onClick={() => openEdit(space)}>
                     <Pencil className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteId(space.id)}>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Delete" onClick={() => setDeleteId(space.id)}>
                     <Trash2 className="h-3 w-3 text-destructive" />
                   </Button>
                 </div>
@@ -194,16 +194,18 @@ export default function FlashcardSpacesPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label>Name</Label>
+              <Label htmlFor="space-name">Name</Label>
               <Input
+                id="space-name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g., Exam Prep"
               />
             </div>
             <div>
-              <Label>Description (optional)</Label>
+              <Label htmlFor="space-description">Description (optional)</Label>
               <Textarea
+                id="space-description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="What is this space for?"

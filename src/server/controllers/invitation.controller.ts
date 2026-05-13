@@ -1,48 +1,78 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
-import { CreateInviteSchema } from '@/server/models';
+import { CreateInviteSchema, BulkInviteSchema } from '@/server/models/invitation.model';
 import { invitationService } from '@/server/services';
-import { AppErrorCode, handleApiError } from '@/lib/errors';
+import { AppError } from '@/lib/errors';
+import { ControllerResponse } from '@/lib/controller-response';
 
 export class InvitationController {
-  async create(req: NextRequest): Promise<NextResponse> {
+  async create(userId: string, body: unknown): Promise<ControllerResponse> {
     try {
-      const body = (await req.json()) as unknown;
+      const parsedData = CreateInviteSchema.safeParse(body);
 
-      const parsedData = CreateInviteSchema.parse(body);
-
-      const result = await invitationService.createInvitation(parsedData);
-
-      return NextResponse.json(result, { status: 201 });
-    } catch (error: unknown) {
-      if (error instanceof z.ZodError) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: AppErrorCode.VALIDATION_FAILED,
-            details: error.issues,
-          },
-          { status: 400 },
-        );
+      if (!parsedData.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsedData.error.issues,
+        };
       }
 
-      return handleApiError(error, AppErrorCode.INTERNAL_SERVER);
+      const result = await invitationService.createInvitation(userId, parsedData.data);
+
+      return { success: true, statusCode: 201, data: result };
+    } catch (error) {
+      if (error instanceof AppError) {
+        return { success: false, statusCode: error.statusCode, error: error.code };
+      }
+      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
     }
   }
 
-  async getByToken(req: NextRequest): Promise<NextResponse> {
+  async getByToken(token: string): Promise<ControllerResponse> {
     try {
-      const { searchParams } = new URL(req.url);
-      const token = searchParams.get('token');
-
       if (!token) {
-        return NextResponse.json({ success: false, error: 'MISSING_TOKEN' }, { status: 400 });
+        return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
       }
 
       const invitation = await invitationService.getInvitationByToken(token);
-      return NextResponse.json({ success: true, data: invitation });
+      return { success: true, statusCode: 200, data: invitation };
     } catch (error) {
-      return handleApiError(error, AppErrorCode.INTERNAL_SERVER);
+      if (error instanceof AppError) {
+        return { success: false, statusCode: error.statusCode, error: error.code };
+      }
+      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
+    }
+  }
+
+  async createBulk(userId: string, body: unknown): Promise<ControllerResponse> {
+    try {
+      const parsed = BulkInviteSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const results = [];
+      for (const invite of parsed.data.invitations) {
+        try {
+          const result = await invitationService.createInvitation(userId, invite);
+          results.push({ success: true, data: result });
+        } catch {
+          results.push({ success: false, error: 'Failed to create invitation' });
+        }
+      }
+
+      return { success: true, statusCode: 200, data: { results } };
+    } catch (error) {
+      if (error instanceof AppError) {
+        return { success: false, statusCode: error.statusCode, error: error.code };
+      }
+      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
     }
   }
 }
