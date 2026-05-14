@@ -45,4 +45,9 @@ next-env.d.ts
 # dotenvx
 .env.keys
 .env.local
+.env.test
 .env.*.local
+
+.opencode
+playwright-report
+test-results
