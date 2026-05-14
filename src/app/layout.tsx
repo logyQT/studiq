@@ -5,6 +5,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { Toaster } from 'sonner';
 import { AuthProvider, ThemeProvider } from '@/components/providers';
 import '@/app/globals.css';
+import { ToastProvider } from '@/components/ui/toast';
 
 /**
  * =============================================================================
@@ -79,7 +80,7 @@ export default async function RootLayout({
         >
           <NextIntlClientProvider messages={messages}>
             <AuthProvider>
-              {children}
+              <ToastProvider>{children}</ToastProvider>
               <Toaster />
             </AuthProvider>
           </NextIntlClientProvider>

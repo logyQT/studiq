@@ -1,21 +1,48 @@
 import { RegisterInput, LoginInput, User } from '@/server/models';
 import { createClient } from '@/lib/supabase/server';
-import { AppError, AppErrorCode } from '@/lib/errors';
+import { AppError } from '@/lib/errors';
 
 export class AuthService {
   async register(data: RegisterInput): Promise<void> {
     const supabase = await createClient();
 
+    if (data.inviteToken) {
+      const { data: invite, error: inviteError } = await supabase
+        .from('invitations')
+        .select('email, name, expires_at')
+        .eq('token', data.inviteToken)
+        .single();
+
+      if (inviteError || !invite) {
+        throw new AppError('BAD_REQUEST');
+      }
+
+      if (invite.email !== data.email || invite.name !== data.name) {
+        console.error('Invite token does not match email or name:', {
+          tokenEmail: invite.email,
+          tokenName: invite.name,
+          inputEmail: data.email,
+          inputName: data.name,
+        });
+        throw new AppError('UNPROCESSABLE_ENTITY');
+      }
+
+      if (new Date(invite.expires_at) < new Date()) {
+        throw new AppError('GONE');
+      }
+    }
+
     const { error } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
       options: {
-        data: { name: data.name },
+        data: {
+          name: data.name,
+          invite_token: data.inviteToken,
+        },
       },
     });
 
-    // ! Supabase CLI doesn't provide a flag to enable email enumaration protection, so we need to ignore the error in development mode.
-    // ! In production Supabase we need to enable email enumaration protection.
     if (error) {
       if (
         process.env.NODE_ENV === 'development' &&
@@ -27,7 +54,7 @@ export class AuthService {
       }
 
       console.error('Supabase register error:', error);
-      throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+      throw new AppError('INTERNAL_SERVER');
     }
   }
 
@@ -41,11 +68,11 @@ export class AuthService {
 
     if (error) {
       console.error('Supabase login error:', error);
-      throw new AppError(AppErrorCode.INVALID_CREDENTIALS, 401);
+      throw new AppError('UNAUTHORIZED');
     }
 
     if (!authData.user) {
-      throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+      throw new AppError('INTERNAL_SERVER');
     }
 
     return { user: authData.user };
@@ -58,7 +85,7 @@ export class AuthService {
 
     if (error) {
       console.error('Supabase logout error:', error);
-      throw new AppError(AppErrorCode.INTERNAL_SERVER, 500);
+      throw new AppError('INTERNAL_SERVER');
     }
   }
 
@@ -69,7 +96,7 @@ export class AuthService {
 
     if (error) {
       console.error('Supabase password reset error:', error);
-      throw new AppError(AppErrorCode.PASSWORD_RESET_FAILED, 400);
+      throw new AppError('BAD_REQUEST');
     }
   }
 
@@ -82,10 +109,10 @@ export class AuthService {
       console.error('Supabase update password error:', error);
 
       if (error.code === 'same_password') {
-        throw new AppError(AppErrorCode.SAME_PASSWORD, 422);
+        throw new AppError('UNPROCESSABLE_ENTITY');
       }
 
-      throw new AppError(AppErrorCode.PASSWORD_UPDATE_FAILED, 400);
+      throw new AppError('BAD_REQUEST');
     }
   }
 }

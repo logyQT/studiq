@@ -1,4 +1,3 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { authService } from '@/server/services';
 import {
   RegisterSchema,
@@ -6,121 +5,119 @@ import {
   forgotPasswordSchema,
   updatePasswordSchema,
 } from '@/server/models';
-import { AppErrorCode, handleApiError } from '@/lib/errors';
-import { z } from '@/lib/zod';
+import { AppError } from '@/lib/errors';
+import { ControllerResponse } from '@/lib/controller-response';
 
 export class AuthController {
-  async register(req: NextRequest) {
+  async register(body: unknown): Promise<ControllerResponse> {
     try {
-      const body = await req.json();
       const parsed = RegisterSchema.safeParse(body);
 
       if (!parsed.success) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: AppErrorCode.VALIDATION_FAILED,
-            issues: z.treeifyError(parsed.error),
-          },
-          { status: 400 },
-        );
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
       }
 
       await authService.register(parsed.data);
 
-      return NextResponse.json(
-        { success: true, message: 'SUCCESS_ACTIVATION_LINK_SENT' },
-        { status: 200 },
-      );
+      return { success: true, statusCode: 202, data: { message: 'SUCCESS_ACTIVATION_LINK_SENT' } };
     } catch (error) {
-      return handleApiError(error, AppErrorCode.INTERNAL_SERVER);
+      if (error instanceof AppError) {
+        return { success: false, statusCode: error.statusCode, error: error.code };
+      }
+      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
     }
   }
 
-  async login(req: NextRequest) {
+  async login(body: unknown): Promise<ControllerResponse> {
     try {
-      const body = await req.json();
       const parsed = LoginSchema.safeParse(body);
 
       if (!parsed.success) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: AppErrorCode.VALIDATION_FAILED,
-            issues: z.treeifyError(parsed.error),
-          },
-          { status: 400 },
-        );
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
       }
 
       const result = await authService.login(parsed.data);
 
-      return NextResponse.json({ success: true, user: result.user }, { status: 200 });
+      return { success: true, statusCode: 200, data: { user: result.user } };
     } catch (error) {
-      return handleApiError(error, AppErrorCode.LOGIN_FAILED);
+      if (error instanceof AppError) {
+        return { success: false, statusCode: error.statusCode, error: error.code };
+      }
+      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
     }
   }
 
-  async logout() {
+  async logout(): Promise<ControllerResponse> {
     try {
       await authService.logout();
-      return NextResponse.json({ success: true, message: 'SUCCESS_LOGOUT' }, { status: 200 });
+      return { success: true, statusCode: 200, data: { message: 'SUCCESS_LOGOUT' } };
     } catch (error) {
-      return handleApiError(error, AppErrorCode.LOGOUT_FAILED);
+      if (error instanceof AppError) {
+        return { success: false, statusCode: error.statusCode, error: error.code };
+      }
+      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
     }
   }
 
-  async requestPasswordResetHandler(req: NextRequest) {
+  async requestPasswordReset(body: unknown): Promise<ControllerResponse> {
     try {
-      const body = await req.json();
       const parsed = forgotPasswordSchema.safeParse(body);
 
       if (!parsed.success) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: AppErrorCode.VALIDATION_FAILED,
-            issues: z.treeifyError(parsed.error),
-          },
-          { status: 400 },
-        );
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
       }
 
       await authService.requestPasswordReset(parsed.data.email);
 
-      return NextResponse.json(
-        { success: true, message: 'SUCCESS_PASSWORD_RESET_REQUESTED' },
-        { status: 200 },
-      );
+      return {
+        success: true,
+        statusCode: 200,
+        data: { message: 'SUCCESS_PASSWORD_RESET_REQUESTED' },
+      };
     } catch (error) {
-      return handleApiError(error, AppErrorCode.INTERNAL_SERVER);
+      if (error instanceof AppError) {
+        return { success: false, statusCode: error.statusCode, error: error.code };
+      }
+      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
     }
   }
 
-  async updatePasswordHandler(req: NextRequest) {
+  async updatePassword(body: unknown): Promise<ControllerResponse> {
     try {
-      const body = await req.json();
       const parsed = updatePasswordSchema.safeParse(body);
 
       if (!parsed.success) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: AppErrorCode.VALIDATION_FAILED,
-            issues: z.treeifyError(parsed.error),
-          },
-          { status: 400 },
-        );
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
       }
 
       await authService.updatePassword(parsed.data.password);
 
-      return NextResponse.json(
-        { success: true, message: 'SUCCESS_PASSWORD_UPDATED' },
-        { status: 200 },
-      );
+      return { success: true, statusCode: 200, data: { message: 'SUCCESS_PASSWORD_UPDATED' } };
     } catch (error) {
-      return handleApiError(error, AppErrorCode.PASSWORD_UPDATE_FAILED);
+      if (error instanceof AppError) {
+        return { success: false, statusCode: error.statusCode, error: error.code };
+      }
+      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
     }
   }
 }

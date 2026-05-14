@@ -58,11 +58,8 @@ enabled = true
 schema_paths = []
 
 [db.seed]
-# If enabled, seeds the database after migrations during a db reset.
 enabled = true
-# Specifies an ordered list of seed files to load during db reset.
-# Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+sql_paths = ['./seeds/*.sql']
 
 [db.network_restrictions]
 # Enable management of network restrictions.
@@ -413,3 +410,7 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 [auth.email.template.recovery]
 subject = "StudiQ - Password Reset"
 content_path = "./supabase/templates/auth.email.template.recovery.html"
+
+[auth.email.template.confirmation]
+subject = "StudiQ - Confirm Your Email"
+content_path = "./supabase/templates/auth.email.template.confirmation.html"

@@ -82,3 +82,23 @@ export type Nullable<T> = T | null;
 export type DeepPartial<T> = {
   [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
 };
+
+export enum UserRole {
+  FREE = 'free',
+  PREMIUM = 'premium',
+  STUDENT = 'student',
+  TEACHER = 'teacher',
+  UNIVERSITY_ADMIN = 'university_admin',
+  SYS_ADMIN = 'sys_admin',
+}
+
+/**
+ * Role, które mogą być nadawane wewnątrz uniwersytetu (np. przez zaproszenia)
+ */
+export const UNIVERSITY_ROLES = [
+  UserRole.STUDENT,
+  UserRole.TEACHER,
+  UserRole.UNIVERSITY_ADMIN,
+] as const;
+
+export type UniversityRole = (typeof UNIVERSITY_ROLES)[number];

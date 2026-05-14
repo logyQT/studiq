@@ -21,12 +21,26 @@ export default [
 
       // TS replaces base rules
       'no-unused-vars': 'off',
-      '@typescript-eslint/no-unused-vars': ['warn'],
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
 
       'no-undef': 'off',
 
       // sensible defaults
       'no-console': ['warn', { allow: ['warn', 'error'] }],
+    },
+  },
+
+  {
+    files: ['**/*.test.ts', '**/mocks/**/*.ts', '__tests__/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
 
