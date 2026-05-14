@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST, GET as GET_LIST } from '@/app/(backend)/api/v1/questions/route';
 import { GET, PUT, DELETE } from '@/app/(backend)/api/v1/questions/[id]/route';
-import { TEST_USERS, mockUser, cleanupQuestions, createRealClient } from './helpers';
+import { TEST_USERS, mockUser, cleanupQuestions, cleanupSubjects, createRealClient } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Questions Integration', () => {
@@ -11,14 +11,16 @@ describe('Questions Integration', () => {
     vi.clearAllMocks();
     for (const user of Object.values(TEST_USERS)) {
       await cleanupQuestions(user.id);
+      await cleanupSubjects(user.id, 'question-');
     }
 
     const supabase = createRealClient();
-    const { data: subject } = await supabase
+    const { data: subject, error: subjectError } = await supabase
       .from('subjects')
-      .insert({ name: 'Question Test Subject', created_by: TEST_USERS.TEACHER.id })
+      .insert({ name: 'question-Question Test Subject', created_by: TEST_USERS.TEACHER.id })
       .select()
       .single();
+    if (subjectError || !subject) throw new Error(`Failed to create subject: ${subjectError?.message}`);
     subjectId = subject.id;
   });
 
@@ -127,13 +129,14 @@ describe('Questions Integration', () => {
       mockUser(TEST_USERS.TEACHER);
 
       const supabase = createRealClient();
-      await supabase.from('questions').insert({
+      const { error: insertError } = await supabase.from('questions').insert({
         subject_id: subjectId,
         type: 'mcq',
         content: 'Filtered Question',
         difficulty: 'medium',
         created_by: TEST_USERS.TEACHER.id,
       });
+      if (insertError) throw new Error(`Failed to insert question: ${insertError.message}`);
 
       const req = createNextRequest(`http://localhost/api/v1/questions?subjectId=${subjectId}`);
       const response = await GET_LIST(req);

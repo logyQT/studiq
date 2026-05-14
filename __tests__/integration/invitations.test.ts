@@ -4,8 +4,7 @@ import {
   GET as inviteGet,
 } from '@/app/(backend)/api/v1/university/invitations/route';
 import { POST as bulkPost } from '@/app/(backend)/api/v1/university/invitations/bulk/route';
-import { TEST_USERS, mockUser, cleanupInvitations } from './helpers';
-import { createClient } from '@/lib/supabase/server';
+import { TEST_USERS, mockUser, cleanupInvitations, createRealClient } from './helpers';
 import { createNextRequest } from './test-utils';
 
 describe('Invitations Integration', () => {
@@ -24,6 +23,7 @@ describe('Invitations Integration', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          name: 'Invitee Name',
           email: `invite-${Date.now()}@example.com`,
           role: 'student',
         }),
@@ -74,7 +74,7 @@ describe('Invitations Integration', () => {
       const req = createNextRequest('http://localhost/api/v1/university/invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'test@example.com', role: 'student' }),
+        body: JSON.stringify({ name: 'Invitee', email: 'test@example.com', role: 'student' }),
       });
 
       const response = await invitePost(req);
@@ -89,19 +89,21 @@ describe('Invitations Integration', () => {
     it('returns invitation when token is valid', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = await createClient();
-      const { data: invitation } = await supabase
+      const supabase = createRealClient();
+      const { data: invitation, error: insertError } = await supabase
         .from('invitations')
         .insert({
+          name: 'Valid Invitee',
           email: 'valid@example.com',
-          role: 'student',
+          target_role: 'student',
           token: 'valid-token-123',
           expires_at: new Date(Date.now() + 86400000).toISOString(),
-          created_by: TEST_USERS.UNIVERSITY_ADMIN.id,
+          inviter_id: TEST_USERS.UNIVERSITY_ADMIN.id,
           university_id: '00000000-0000-0000-0000-000000000001',
         })
         .select()
         .single();
+      if (insertError || !invitation) throw new Error(`Failed to insert invitation: ${insertError?.message}`);
 
       const req = createNextRequest(
         `http://localhost/api/v1/university/invitations?token=${invitation.token}`,
@@ -127,13 +129,14 @@ describe('Invitations Integration', () => {
     it('returns 410 when token is expired', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       await supabase.from('invitations').insert({
+        name: 'Expired Invitee',
         email: 'expired@example.com',
-        role: 'student',
+        target_role: 'student',
         token: 'expired-token-123',
         expires_at: new Date(Date.now() - 86400000).toISOString(),
-        created_by: TEST_USERS.UNIVERSITY_ADMIN.id,
+        inviter_id: TEST_USERS.UNIVERSITY_ADMIN.id,
         university_id: '00000000-0000-0000-0000-000000000001',
       });
 
@@ -165,8 +168,10 @@ describe('Invitations Integration', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          emails: [`bulk1-${Date.now()}@example.com`, `bulk2-${Date.now()}@example.com`],
-          role: 'student',
+          invitations: [
+            { name: 'Bulk User Alpha', email: `bulk1-${Date.now()}@example.com`, role: 'student' },
+            { name: 'Bulk User Beta', email: `bulk2-${Date.now()}@example.com`, role: 'student' },
+          ],
         }),
       });
 
@@ -175,7 +180,7 @@ describe('Invitations Integration', () => {
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
-      expect(Array.isArray(body.data)).toBe(true);
+      expect(Array.isArray(body.data.results)).toBe(true);
     });
 
     it('returns 422 when emails array is empty', async () => {
@@ -184,7 +189,7 @@ describe('Invitations Integration', () => {
       const req = createNextRequest('http://localhost/api/v1/university/invitations/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emails: [], role: 'student' }),
+        body: JSON.stringify({ invitations: [] }),
       });
 
       const response = await bulkPost(req);

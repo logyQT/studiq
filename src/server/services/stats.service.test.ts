@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { statsService } from './stats.service';
-import { createClient } from '@/lib/supabase/server';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { questionService } from '@/server/services';
 
 vi.mock('@/server/services', async (importOriginal) => {
@@ -15,23 +15,22 @@ vi.mock('@/server/services', async (importOriginal) => {
 
 describe('StatsService', () => {
   const userId = 'test-user-id';
-  let mockSupabase: any;
+  let mock: ReturnType<typeof mockClient>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSupabase = { from: vi.fn() };
-    vi.mocked(createClient).mockResolvedValue(mockSupabase);
+    mock = mockSupabaseClient();
   });
 
   describe('getTeacherStats', () => {
     it('returns basic stats without subjectId', async () => {
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ data: [{ id: 'q-1' }], error: null }),
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ data: [{ id: 'fc-1' }], error: null }),
         }),
@@ -43,13 +42,13 @@ describe('StatsService', () => {
     });
 
     it('returns stats with subject details when subjectId provided', async () => {
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ data: [{ id: 'q-1' }], error: null }),
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ data: [{ id: 'fc-1' }], error: null }),
         }),
@@ -82,7 +81,7 @@ describe('StatsService', () => {
         { was_correct: false, practiced_at: '2024-01-02' },
       ];
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             order: vi.fn().mockResolvedValue({ data: attempts, error: null }),
@@ -90,7 +89,7 @@ describe('StatsService', () => {
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             order: vi.fn().mockResolvedValue({ data: practice, error: null }),
@@ -98,7 +97,7 @@ describe('StatsService', () => {
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ data: [{ id: 'q-1' }], error: null }),
         }),
@@ -115,7 +114,7 @@ describe('StatsService', () => {
     });
 
     it('returns zero stats when no data exists', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             order: vi.fn().mockResolvedValue({ data: [], error: null }),

@@ -1,21 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { quizAttemptService } from './quiz-attempt.service';
-import { createClient } from '@/lib/supabase/server';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 describe('QuizAttemptService', () => {
   const userId = 'test-user-id';
-  let mockSupabase: any;
+  let mock: ReturnType<typeof mockClient>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSupabase = { from: vi.fn() };
-    vi.mocked(createClient).mockResolvedValue(mockSupabase);
+    mock = mockSupabaseClient();
   });
 
   describe('list', () => {
     it('returns attempts for user', async () => {
       const attempts = [{ id: 'a-1', user_id: userId, score: 5 }];
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             order: vi.fn().mockResolvedValue({ data: attempts, error: null }),
@@ -29,7 +28,7 @@ describe('QuizAttemptService', () => {
     });
 
     it('throws INTERNAL_SERVER when query fails', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             order: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
@@ -52,11 +51,11 @@ describe('QuizAttemptService', () => {
       });
       const eqFirst = vi.fn().mockReturnValue({ eq: eqChain });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({ eq: eqFirst }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             order: vi.fn().mockResolvedValue({ data: attemptQuestions, error: null }),
@@ -64,7 +63,7 @@ describe('QuizAttemptService', () => {
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ data: answers, error: null }),
         }),
@@ -83,7 +82,7 @@ describe('QuizAttemptService', () => {
       });
       const eqFirst = vi.fn().mockReturnValue({ eq: eqChain });
 
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({ eq: eqFirst }),
       });
 
@@ -103,11 +102,11 @@ describe('QuizAttemptService', () => {
       });
       const eqFirst = vi.fn().mockReturnValue({ eq: eqChain });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({ eq: eqFirst }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: answer, error: null }),
@@ -115,13 +114,13 @@ describe('QuizAttemptService', () => {
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ error: null }),
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         insert: vi.fn().mockResolvedValue({ error: null }),
       });
 
@@ -143,7 +142,7 @@ describe('QuizAttemptService', () => {
       });
       const eqFirst = vi.fn().mockReturnValue({ eq: eqChain });
 
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({ eq: eqFirst }),
       });
 
@@ -160,7 +159,7 @@ describe('QuizAttemptService', () => {
       });
       const eqFirst = vi.fn().mockReturnValue({ eq: eqChain });
 
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({ eq: eqFirst }),
       });
 

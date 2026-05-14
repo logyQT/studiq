@@ -4,12 +4,13 @@ import { POST as loginPost } from '@/app/(backend)/api/v1/auth/login/route';
 import { POST as logoutPost } from '@/app/(backend)/api/v1/auth/logout/route';
 import { POST as resetPost } from '@/app/(backend)/api/v1/auth/password/reset/route';
 import { POST as updatePasswordPost } from '@/app/(backend)/api/v1/auth/password/update/route';
-import { TEST_USERS } from './helpers';
+import { TEST_USERS, useRealSupabase } from './helpers';
 import { createNextRequest } from './test-utils';
 
 describe('Auth Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useRealSupabase();
   });
 
   describe('POST /api/v1/auth/register', () => {
@@ -39,8 +40,7 @@ describe('Auth Integration', () => {
         body: JSON.stringify({
           email: 'not-an-email',
           password: 'TestPass123',
-          firstName: 'Test',
-          lastName: 'User',
+          name: 'Test User',
         }),
       });
 
@@ -59,8 +59,7 @@ describe('Auth Integration', () => {
         body: JSON.stringify({
           email: 'test@example.com',
           password: 'short',
-          firstName: 'Test',
-          lastName: 'User',
+          name: 'Test User',
         }),
       });
 

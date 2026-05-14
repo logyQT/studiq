@@ -1,21 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flashcardSpaceService } from './flashcard-space.service';
-import { createClient } from '@/lib/supabase/server';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 describe('FlashcardSpaceService', () => {
   const userId = 'test-user-id';
-  let mockSupabase: any;
+  let mock: ReturnType<typeof mockClient>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSupabase = { from: vi.fn() };
-    vi.mocked(createClient).mockResolvedValue(mockSupabase);
+    mock = mockSupabaseClient();
   });
 
   describe('create', () => {
     it('inserts space and returns it', async () => {
       const mockSpace = { id: 's-1', name: 'Study Space', created_by: userId };
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: mockSpace, error: null }),
@@ -23,7 +22,7 @@ describe('FlashcardSpaceService', () => {
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -36,11 +35,11 @@ describe('FlashcardSpaceService', () => {
       const result = await flashcardSpaceService.create({ name: 'Study Space' }, userId);
 
       expect(result).toBeDefined();
-      expect(mockSupabase.from).toHaveBeenCalledWith('flashcard_spaces');
+      expect(mock.from).toHaveBeenCalledWith('flashcard_spaces');
     });
 
     it('throws INTERNAL_SERVER when insert fails', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
@@ -57,7 +56,7 @@ describe('FlashcardSpaceService', () => {
   describe('list', () => {
     it('returns spaces for user', async () => {
       const spaces = [{ id: 's-1', name: 'Study Space', flashcard_space_assignments: [] }];
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             order: vi.fn().mockResolvedValue({ data: spaces, error: null }),
@@ -72,7 +71,7 @@ describe('FlashcardSpaceService', () => {
     });
 
     it('throws INTERNAL_SERVER when query fails', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             order: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
@@ -87,7 +86,7 @@ describe('FlashcardSpaceService', () => {
   describe('getById', () => {
     it('returns space when found', async () => {
       const space = { id: 's-1', name: 'Study Space', flashcard_space_assignments: [] };
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -103,7 +102,7 @@ describe('FlashcardSpaceService', () => {
     });
 
     it('throws NOT_FOUND when space does not exist', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -122,7 +121,7 @@ describe('FlashcardSpaceService', () => {
   describe('update', () => {
     it('updates space and returns it', async () => {
       const updated = { id: 's-1', name: 'Updated', flashcard_space_assignments: [] };
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -134,7 +133,7 @@ describe('FlashcardSpaceService', () => {
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -150,7 +149,7 @@ describe('FlashcardSpaceService', () => {
     });
 
     it('throws FORBIDDEN when space not owned by user', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -170,7 +169,7 @@ describe('FlashcardSpaceService', () => {
 
   describe('delete', () => {
     it('deletes space successfully', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         delete: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({

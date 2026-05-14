@@ -1,21 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { questionService } from './question.service';
-import { createClient } from '@/lib/supabase/server';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 describe('QuestionService', () => {
   const userId = 'test-user-id';
-  let mockSupabase: any;
+  let mock: ReturnType<typeof mockClient>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSupabase = { from: vi.fn() };
-    vi.mocked(createClient).mockResolvedValue(mockSupabase);
+    mock = mockSupabaseClient();
   });
 
   describe('create', () => {
     it('inserts question and answers and returns it', async () => {
       const mockQuestion = { id: 'q-1', type: 'mcq', content: 'Q1' };
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: mockQuestion, error: null }),
@@ -34,11 +33,11 @@ describe('QuestionService', () => {
       );
 
       expect(result).toBeDefined();
-      expect(mockSupabase.from).toHaveBeenCalledWith('questions');
+      expect(mock.from).toHaveBeenCalledWith('questions');
     });
 
     it('throws INTERNAL_SERVER when insert fails', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
@@ -63,7 +62,7 @@ describe('QuestionService', () => {
   describe('list', () => {
     it('returns all questions when no filter', async () => {
       const questions = [{ id: 'q-1', content: 'Q1' }];
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           order: vi.fn().mockResolvedValue({ data: questions, error: null }),
         }),
@@ -77,7 +76,7 @@ describe('QuestionService', () => {
     it('filters by subjectId when provided', async () => {
       const questions = [{ id: 'q-1', content: 'Q1' }];
       const eqFn = vi.fn().mockResolvedValue({ data: questions, error: null });
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           order: vi.fn().mockReturnValue({ eq: eqFn }),
         }),
@@ -92,7 +91,7 @@ describe('QuestionService', () => {
   describe('getById', () => {
     it('returns question when found', async () => {
       const question = { id: 'q-1', content: 'Q1' };
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: question, error: null }),
@@ -106,7 +105,7 @@ describe('QuestionService', () => {
     });
 
     it('throws NOT_FOUND when question does not exist', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: null, error: null }),
@@ -121,7 +120,7 @@ describe('QuestionService', () => {
   describe('update', () => {
     it('updates question and returns it', async () => {
       const updated = { id: 'q-1', content: 'Updated' };
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -133,7 +132,7 @@ describe('QuestionService', () => {
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: updated, error: null }),
@@ -147,7 +146,7 @@ describe('QuestionService', () => {
     });
 
     it('throws FORBIDDEN when question not owned by user', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -167,7 +166,7 @@ describe('QuestionService', () => {
 
   describe('delete', () => {
     it('deletes question successfully', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         delete: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({

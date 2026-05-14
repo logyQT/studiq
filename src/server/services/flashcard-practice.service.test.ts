@@ -1,21 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flashcardPracticeService } from './flashcard-practice.service';
-import { createClient } from '@/lib/supabase/server';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 describe('FlashcardPracticeService', () => {
   const userId = 'test-user-id';
-  let mockSupabase: any;
+  let mock: ReturnType<typeof mockClient>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSupabase = { from: vi.fn() };
-    vi.mocked(createClient).mockResolvedValue(mockSupabase);
+    mock = mockSupabaseClient();
   });
 
   describe('log', () => {
     it('inserts practice record and returns it', async () => {
       const mockRecord = { id: 'p-1', user_id: userId, flashcard_id: 'fc-1', was_correct: true };
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: mockRecord, error: null }),
@@ -26,11 +25,11 @@ describe('FlashcardPracticeService', () => {
       const result = await flashcardPracticeService.log('fc-1', true, userId);
 
       expect(result).toEqual(mockRecord);
-      expect(mockSupabase.from).toHaveBeenCalledWith('flashcard_practice');
+      expect(mock.from).toHaveBeenCalledWith('flashcard_practice');
     });
 
     it('throws INTERNAL_SERVER when insert fails', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
@@ -47,7 +46,7 @@ describe('FlashcardPracticeService', () => {
   describe('getHistory', () => {
     it('returns practice history for user', async () => {
       const history = [{ id: 'p-1', user_id: userId, flashcard_id: 'fc-1', was_correct: true }];
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             order: vi.fn().mockResolvedValue({ data: history, error: null }),
@@ -61,7 +60,7 @@ describe('FlashcardPracticeService', () => {
     });
 
     it('throws INTERNAL_SERVER when query fails', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             order: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),

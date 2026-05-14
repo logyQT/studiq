@@ -68,6 +68,18 @@ export function createRealClient() {
 }
 
 // ============================================================
+// Use Real Supabase (for integration tests that need full DB access)
+// Overrides the global mock with an unmodified real Supabase client.
+// Use this for auth endpoints (register, login, etc.) that don't
+// require a mocked auth identity.
+// ============================================================
+export function useRealSupabase() {
+  vi.mocked(supabaseModule.createClient).mockImplementation(async () => {
+    return createRealClient();
+  });
+}
+
+// ============================================================
 // Auth Mocking
 // Combines mocked getUser() with real Supabase DB operations
 // ============================================================
@@ -93,49 +105,63 @@ export function mockUser(user: { id: string; role: string } | null) {
 // ============================================================
 // Cleanup Functions (use real client directly)
 // ============================================================
-export async function cleanupSubjects(userId: string) {
+export async function cleanupSubjects(userId: string, namePrefix?: string) {
   const supabase = createRealClient();
-  await supabase.from('subjects').delete().eq('created_by', userId);
+  let query = supabase.from('subjects').delete().eq('created_by', userId);
+  if (namePrefix) {
+    query = query.ilike('name', `${namePrefix}%`);
+  }
+  await query;
 }
 
-export async function cleanupQuestions(userId: string) {
+export async function cleanupQuestions(userId: string, contentPrefix?: string) {
   const supabase = createRealClient();
-  const { data: questions } = await supabase
-    .from('questions')
-    .select('id')
-    .eq('created_by', userId);
+  let query = supabase.from('questions').select('id').eq('created_by', userId);
+  if (contentPrefix) {
+    query = query.ilike('content', `${contentPrefix}%`);
+  }
+  const { data: questions } = await query;
 
   if (questions && questions.length > 0) {
     const questionIds = questions.map((q) => q.id);
     await supabase.from('question_answers').delete().in('question_id', questionIds);
-    await supabase.from('questions').delete().eq('created_by', userId);
+    await supabase.from('questions').delete().in('id', questionIds);
   }
 }
 
-export async function cleanupFlashcards(userId: string) {
+export async function cleanupFlashcards(userId: string, frontPrefix?: string) {
   const supabase = createRealClient();
-  const { data: flashcards } = await supabase
-    .from('flashcards')
-    .select('id')
-    .eq('created_by', userId);
+  let query = supabase.from('flashcards').select('id').eq('created_by', userId);
+  if (frontPrefix) {
+    query = query.ilike('front', `${frontPrefix}%`);
+  }
+  const { data: flashcards } = await query;
 
   if (flashcards && flashcards.length > 0) {
     const flashcardIds = flashcards.map((f) => f.id);
     await supabase.from('flashcard_topic_assignments').delete().in('flashcard_id', flashcardIds);
     await supabase.from('flashcard_space_assignments').delete().in('flashcard_id', flashcardIds);
     await supabase.from('flashcard_practice').delete().in('flashcard_id', flashcardIds);
-    await supabase.from('flashcards').delete().eq('created_by', userId);
+    await supabase.from('flashcards').delete().in('id', flashcardIds);
   }
 }
 
-export async function cleanupFlashcardTopics(userId: string) {
+export async function cleanupFlashcardTopics(userId: string, namePrefix?: string) {
   const supabase = createRealClient();
-  await supabase.from('flashcard_topics').delete().eq('created_by', userId);
+  let query = supabase.from('flashcard_topics').delete().eq('created_by', userId);
+  if (namePrefix) {
+    query = query.ilike('name', `${namePrefix}%`);
+  }
+  await query;
 }
 
-export async function cleanupFlashcardSpaces(userId: string) {
+export async function cleanupFlashcardSpaces(userId: string, namePrefix?: string) {
   const supabase = createRealClient();
-  await supabase.from('flashcard_spaces').delete().eq('created_by', userId);
+  let query = supabase.from('flashcard_spaces').delete().eq('created_by', userId);
+  if (namePrefix) {
+    query = query.ilike('name', `${namePrefix}%`);
+  }
+  await query;
 }
 
 export async function cleanupFlashcardPractice(userId: string) {
@@ -160,7 +186,7 @@ export async function cleanupQuizAttempts(userId: string) {
 
 export async function cleanupInvitations(userId: string) {
   const supabase = createRealClient();
-  await supabase.from('invitations').delete().eq('created_by', userId);
+  await supabase.from('invitations').delete().eq('inviter_id', userId);
 }
 
 // ============================================================

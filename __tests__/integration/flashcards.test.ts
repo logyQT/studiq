@@ -21,15 +21,15 @@ describe('Flashcards Integration', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     for (const user of Object.values(TEST_USERS)) {
-      await cleanupFlashcards(user.id);
-      await cleanupFlashcardTopics(user.id);
-      await cleanupFlashcardSpaces(user.id);
+      await cleanupFlashcards(user.id, 'fc-');
+      await cleanupFlashcardTopics(user.id, 'fc-topic-');
+      await cleanupFlashcardSpaces(user.id, 'fc-space-');
     }
 
     const supabase = createRealClient();
     const { data: topic } = await supabase
       .from('flashcard_topics')
-      .insert({ name: 'Flashcard Topic', created_by: TEST_USERS.TEACHER.id })
+      .insert({ name: 'fc-topic-Flashcard Topic', created_by: TEST_USERS.TEACHER.id })
       .select()
       .single();
     topicId = topic.id;
@@ -42,7 +42,7 @@ describe('Flashcards Integration', () => {
       const req = createNextRequest('http://localhost/api/v1/flashcards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ front: 'What is 2+2?', back: '4' }),
+        body: JSON.stringify({ front: 'fc-What is 2+2?', back: '4' }),
       });
 
       const response = await POST(req);
@@ -50,7 +50,7 @@ describe('Flashcards Integration', () => {
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
-      expect(body.data.front).toBe('What is 2+2?');
+      expect(body.data.front).toBe('fc-What is 2+2?');
     });
 
     it('creates a flashcard with topicIds', async () => {
@@ -59,7 +59,7 @@ describe('Flashcards Integration', () => {
       const req = createNextRequest('http://localhost/api/v1/flashcards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ front: 'Topic Card', back: 'Answer', topicIds: [topicId] }),
+        body: JSON.stringify({ front: 'fc-Topic Card', back: 'Answer', topicIds: [topicId] }),
       });
 
       const response = await POST(req);
@@ -120,7 +120,7 @@ describe('Flashcards Integration', () => {
       const supabase = createRealClient();
       const { data: fc } = await supabase
         .from('flashcards')
-        .insert({ front: 'Filtered Card', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
+        .insert({ front: 'fc-Filtered Card', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
@@ -135,7 +135,7 @@ describe('Flashcards Integration', () => {
 
       expect(response.status).toBe(200);
       expect(body.data.length).toBe(1);
-      expect(body.data[0].front).toBe('Filtered Card');
+      expect(body.data[0].front).toBe('fc-Filtered Card');
     });
   });
 
@@ -186,7 +186,7 @@ describe('Flashcards Integration', () => {
       const supabase = createRealClient();
       const { data: fc } = await supabase
         .from('flashcards')
-        .insert({ front: 'Get Me', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
+        .insert({ front: 'fc-Get Me', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
@@ -198,7 +198,7 @@ describe('Flashcards Integration', () => {
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.data.front).toBe('Get Me');
+      expect(body.data.front).toBe('fc-Get Me');
     });
   });
 
@@ -209,7 +209,7 @@ describe('Flashcards Integration', () => {
       const supabase = createRealClient();
       const { data: fc } = await supabase
         .from('flashcards')
-        .insert({ front: 'Original', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
+        .insert({ front: 'fc-Original', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
@@ -235,7 +235,7 @@ describe('Flashcards Integration', () => {
       const supabase = createRealClient();
       const { data: fc } = await supabase
         .from('flashcards')
-        .insert({ front: 'Teacher Card', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
+        .insert({ front: 'fc-Teacher Card', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
@@ -263,7 +263,7 @@ describe('Flashcards Integration', () => {
       const supabase = createRealClient();
       const { data: fc } = await supabase
         .from('flashcards')
-        .insert({ front: 'To Delete', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
+        .insert({ front: 'fc-To Delete', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
@@ -285,7 +285,7 @@ describe('Flashcards Integration', () => {
       const supabase = createRealClient();
       const { data: fc } = await supabase
         .from('flashcards')
-        .insert({ front: 'Teacher Card', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
+        .insert({ front: 'fc-Teacher Card', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 

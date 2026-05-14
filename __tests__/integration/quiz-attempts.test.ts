@@ -5,8 +5,7 @@ import {
   POST as attemptPost,
 } from '@/app/(backend)/api/v1/quiz-attempts/[attemptId]/route';
 import { POST as quizPost } from '@/app/(backend)/api/v1/quizzes/route';
-import { TEST_USERS, mockUser, cleanupQuizAttempts, cleanupQuestions } from './helpers';
-import { createClient } from '@/lib/supabase/server';
+import { TEST_USERS, mockUser, cleanupQuizAttempts, cleanupQuestions, cleanupSubjects, createRealClient } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Quiz Attempts Integration', () => {
@@ -17,29 +16,32 @@ describe('Quiz Attempts Integration', () => {
     vi.clearAllMocks();
     for (const user of Object.values(TEST_USERS)) {
       await cleanupQuizAttempts(user.id);
-      await cleanupQuestions(user.id);
+      await cleanupQuestions(user.id, 'qa-');
+      await cleanupSubjects(user.id, 'quiz-attempt-');
     }
 
-    const supabase = await createClient();
-    const { data: subject } = await supabase
+    const supabase = createRealClient();
+    const { data: subject, error: subjectError } = await supabase
       .from('subjects')
-      .insert({ name: 'Quiz Attempt Subject', created_by: TEST_USERS.TEACHER.id })
+      .insert({ name: 'quiz-attempt-Quiz Attempt Subject', created_by: TEST_USERS.TEACHER.id })
       .select()
       .single();
+    if (subjectError || !subject) throw new Error(`Failed to create subject: ${subjectError?.message}`);
     subjectId = subject.id;
 
     for (let i = 0; i < 3; i++) {
-      const { data: question } = await supabase
+      const { data: question, error: questionError } = await supabase
         .from('questions')
         .insert({
           subject_id: subjectId,
           type: 'mcq',
-          content: `Question ${i}`,
+          content: `qa-Question ${i}`,
           difficulty: 'easy',
           created_by: TEST_USERS.TEACHER.id,
         })
         .select()
         .single();
+      if (questionError || !question) throw new Error(`Failed to create question ${i}: ${questionError?.message}`);
 
       await supabase.from('question_answers').insert({
         question_id: question.id,
@@ -62,6 +64,7 @@ describe('Quiz Attempts Integration', () => {
     });
     const quizRes = await quizPost(quizReq);
     const quizBody = await quizRes.json();
+    if (!quizBody.data?.id) throw new Error(`Failed to create quiz: ${JSON.stringify(quizBody)}`);
     attemptId = quizBody.data.id;
   });
 
@@ -123,7 +126,7 @@ describe('Quiz Attempts Integration', () => {
     it('submits attempt and returns score', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: attemptQuestions } = await supabase
         .from('quiz_attempt_questions')
         .select('question_id')
@@ -162,7 +165,7 @@ describe('Quiz Attempts Integration', () => {
     it('returns 400 when submitting already completed attempt', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: attemptQuestions } = await supabase
         .from('quiz_attempt_questions')
         .select('question_id')

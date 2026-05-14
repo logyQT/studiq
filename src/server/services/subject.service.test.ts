@@ -1,23 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { subjectService } from './subject.service';
-import { createClient } from '@/lib/supabase/server';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 describe('SubjectService', () => {
   const userId = 'test-user-id';
-  let mockSupabase: any;
+  let mock: ReturnType<typeof mockClient>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSupabase = {
-      from: vi.fn(),
-    };
-    vi.mocked(createClient).mockResolvedValue(mockSupabase);
+    mock = mockSupabaseClient();
   });
 
   describe('create', () => {
     it('inserts subject and returns it', async () => {
       const mockSubject = { id: 'sub-1', name: 'Math 101' };
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: mockSubject, error: null }),
@@ -28,11 +25,11 @@ describe('SubjectService', () => {
       const result = await subjectService.create({ name: 'Math 101' }, userId);
 
       expect(result).toEqual(mockSubject);
-      expect(mockSupabase.from).toHaveBeenCalledWith('subjects');
+      expect(mock.from).toHaveBeenCalledWith('subjects');
     });
 
     it('throws INTERNAL_SERVER when insert fails', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
@@ -49,7 +46,7 @@ describe('SubjectService', () => {
   describe('list', () => {
     it('returns all subjects when no filter', async () => {
       const subjects = [{ id: 'sub-1', name: 'Math 101' }];
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           order: vi.fn().mockResolvedValue({ data: subjects, error: null }),
         }),
@@ -66,7 +63,7 @@ describe('SubjectService', () => {
       const eqFn = vi.fn().mockResolvedValue(eqResult);
       const orderResult = { data: subjects, error: null, eq: eqFn };
       orderResult.eq = eqFn;
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           order: vi.fn().mockReturnValue(orderResult),
         }),
@@ -81,7 +78,7 @@ describe('SubjectService', () => {
   describe('getById', () => {
     it('returns subject when found', async () => {
       const subject = { id: 'sub-1', name: 'Math 101' };
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: subject, error: null }),
@@ -95,7 +92,7 @@ describe('SubjectService', () => {
     });
 
     it('throws NOT_FOUND when subject does not exist', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: null, error: null }),
@@ -110,7 +107,7 @@ describe('SubjectService', () => {
   describe('update', () => {
     it('updates subject and returns it', async () => {
       const updated = { id: 'sub-1', name: 'Updated' };
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -128,7 +125,7 @@ describe('SubjectService', () => {
     });
 
     it('throws FORBIDDEN when subject not owned by user', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -148,7 +145,7 @@ describe('SubjectService', () => {
 
   describe('delete', () => {
     it('deletes subject successfully', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         delete: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({

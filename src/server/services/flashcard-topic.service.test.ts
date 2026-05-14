@@ -1,15 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flashcardTopicService } from './flashcard-topic.service';
-import { createClient } from '@/lib/supabase/server';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 describe('FlashcardTopicService', () => {
   const userId = 'test-user-id';
-  let mockSupabase: any;
+  let mock: ReturnType<typeof mockClient>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSupabase = { from: vi.fn() };
-    vi.mocked(createClient).mockResolvedValue(mockSupabase);
+    mock = mockSupabaseClient();
   });
 
   describe('create', () => {
@@ -17,7 +16,7 @@ describe('FlashcardTopicService', () => {
       const mockProfile = { id: userId, university_id: 'uni-1' };
       const mockTopic = { id: 't-1', name: 'Math Topics' };
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: mockProfile, error: null }),
@@ -25,7 +24,7 @@ describe('FlashcardTopicService', () => {
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: mockTopic, error: null }),
@@ -39,7 +38,7 @@ describe('FlashcardTopicService', () => {
     });
 
     it('throws INTERNAL_SERVER when insert fails', async () => {
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: null, error: null }),
@@ -47,7 +46,7 @@ describe('FlashcardTopicService', () => {
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
@@ -66,7 +65,7 @@ describe('FlashcardTopicService', () => {
       const mockProfile = { id: userId, university_id: null };
       const topics = [{ id: 't-1', name: 'Math Topics', flashcard_topic_assignments: [] }];
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: mockProfile, error: null }),
@@ -74,7 +73,7 @@ describe('FlashcardTopicService', () => {
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           order: vi.fn().mockResolvedValue({ data: topics, error: null }),
         }),
@@ -87,7 +86,7 @@ describe('FlashcardTopicService', () => {
     });
 
     it('throws INTERNAL_SERVER when query fails', async () => {
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: null, error: null }),
@@ -95,7 +94,7 @@ describe('FlashcardTopicService', () => {
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           order: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
         }),
@@ -108,7 +107,7 @@ describe('FlashcardTopicService', () => {
   describe('getById', () => {
     it('returns topic when found', async () => {
       const topic = { id: 't-1', name: 'Math Topics' };
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: topic, error: null }),
@@ -122,7 +121,7 @@ describe('FlashcardTopicService', () => {
     });
 
     it('throws NOT_FOUND when topic does not exist', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: null, error: null }),
@@ -137,7 +136,7 @@ describe('FlashcardTopicService', () => {
   describe('update', () => {
     it('updates topic and returns it', async () => {
       const updated = { id: 't-1', name: 'Updated' };
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -155,7 +154,7 @@ describe('FlashcardTopicService', () => {
     });
 
     it('throws FORBIDDEN when topic not owned by user', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -175,7 +174,7 @@ describe('FlashcardTopicService', () => {
 
   describe('delete', () => {
     it('deletes topic successfully', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         delete: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({

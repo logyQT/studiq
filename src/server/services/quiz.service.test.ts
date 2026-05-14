@@ -1,15 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { quizService } from './quiz.service';
-import { createClient } from '@/lib/supabase/server';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 describe('QuizService', () => {
   const userId = 'test-user-id';
-  let mockSupabase: any;
+  let mock: ReturnType<typeof mockClient>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSupabase = { from: vi.fn() };
-    vi.mocked(createClient).mockResolvedValue(mockSupabase);
+    mock = mockSupabaseClient();
   });
 
   describe('generateQuiz', () => {
@@ -27,11 +26,11 @@ describe('QuizService', () => {
       queryChain.then = promise.then.bind(promise);
       queryChain.catch = promise.catch.bind(promise);
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({ in: vi.fn().mockReturnValue(queryChain) }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: attempt, error: null }),
@@ -39,7 +38,7 @@ describe('QuizService', () => {
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         insert: vi.fn().mockResolvedValue({ error: null }),
       });
 
@@ -60,7 +59,7 @@ describe('QuizService', () => {
       queryChain.then = promise.then.bind(promise);
       queryChain.catch = promise.catch.bind(promise);
 
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({ in: vi.fn().mockReturnValue(queryChain) }),
       });
 
@@ -77,7 +76,7 @@ describe('QuizService', () => {
       queryChain.then = promise.then.bind(promise);
       queryChain.catch = promise.catch.bind(promise);
 
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({ in: vi.fn().mockReturnValue(queryChain) }),
       });
 

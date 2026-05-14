@@ -9,7 +9,7 @@
     "lint": "tsc && eslint .",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
-    "test": "vitest run",
+    "test": "supabase db reset &&vitest run",
     "test:unit": "vitest run src/server",
     "test:integration": "vitest run __tests__/integration",
     "test:watch": "vitest",

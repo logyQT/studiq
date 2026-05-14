@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST, GET } from '@/app/(backend)/api/v1/flashcard-practice/route';
-import { TEST_USERS, mockUser, cleanupFlashcardPractice, cleanupFlashcards } from './helpers';
-import { createClient } from '@/lib/supabase/server';
+import { TEST_USERS, mockUser, cleanupFlashcardPractice, cleanupFlashcards, createRealClient } from './helpers';
 import { createNextRequest } from './test-utils';
 
 describe('Flashcard Practice Integration', () => {
@@ -11,13 +10,13 @@ describe('Flashcard Practice Integration', () => {
     vi.clearAllMocks();
     for (const user of Object.values(TEST_USERS)) {
       await cleanupFlashcardPractice(user.id);
-      await cleanupFlashcards(user.id);
+      await cleanupFlashcards(user.id, 'practice-');
     }
 
-    const supabase = await createClient();
+    const supabase = createRealClient();
     const { data: fc } = await supabase
       .from('flashcards')
-      .insert({ front: 'Practice Card', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
+      .insert({ front: 'practice-Practice Card', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
       .select()
       .single();
     flashcardId = fc.id;

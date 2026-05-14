@@ -1,15 +1,22 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST, GET as GET_LIST } from '@/app/(backend)/api/v1/subjects/route';
 import { PUT, DELETE, GET } from '@/app/(backend)/api/v1/subjects/[id]/route';
-import { TEST_USERS, mockUser, cleanupSubjects, TEST_UNIVERSITY_ID, seedSubject } from './helpers';
+import { TEST_USERS, mockUser, cleanupSubjects, TEST_UNIVERSITY_ID, seedSubject, createRealClient } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Subjects Integration', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     for (const user of Object.values(TEST_USERS)) {
-      await cleanupSubjects(user.id);
+      await cleanupSubjects(user.id, 'subject-');
     }
+
+    const supabase = createRealClient();
+    await supabase.from('subjects').delete().in('id', [
+      '00000000-0000-0000-0003-000000000001',
+      '00000000-0000-0000-0003-000000000002',
+      '00000000-0000-0000-0003-000000000003',
+    ]);
   });
 
   describe('POST /api/v1/subjects', () => {
@@ -19,7 +26,7 @@ describe('Subjects Integration', () => {
       const req = createNextRequest('http://localhost/api/v1/subjects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Math 101' }),
+        body: JSON.stringify({ name: 'subject-Math 101' }),
       });
 
       const response = await POST(req);
@@ -27,7 +34,7 @@ describe('Subjects Integration', () => {
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
-      expect(body.data.name).toBe('Math 101');
+      expect(body.data.name).toBe('subject-Math 101');
       expect(body.data.id).toBeDefined();
     });
 
@@ -54,7 +61,7 @@ describe('Subjects Integration', () => {
       const req = createNextRequest('http://localhost/api/v1/subjects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Math 101' }),
+        body: JSON.stringify({ name: 'subject-Math 101' }),
       });
 
       const response = await POST(req);
@@ -81,7 +88,7 @@ describe('Subjects Integration', () => {
       mockUser(TEST_USERS.TEACHER);
 
       await seedSubject({
-        name: 'Filtered Subject',
+        name: 'subject-Filtered Subject',
         university_id: TEST_UNIVERSITY_ID,
         created_by: TEST_USERS.TEACHER.id,
       });
@@ -94,7 +101,7 @@ describe('Subjects Integration', () => {
 
       expect(response.status).toBe(200);
       expect(body.data.length).toBe(1);
-      expect(body.data[0].name).toBe('Filtered Subject');
+      expect(body.data[0].name).toBe('subject-Filtered Subject');
     });
   });
 
@@ -103,7 +110,7 @@ describe('Subjects Integration', () => {
       mockUser(TEST_USERS.TEACHER);
 
       const subject = await seedSubject({
-        name: 'Test Subject',
+        name: 'subject-Test Subject',
         created_by: TEST_USERS.TEACHER.id,
       });
 
@@ -116,7 +123,7 @@ describe('Subjects Integration', () => {
 
       expect(response.status).toBe(200);
       const data = Array.isArray(body.data) ? body.data[0] : body.data;
-      expect(data.name).toBe('Test Subject');
+      expect(data.name).toBe('subject-Test Subject');
     });
 
     it('returns 404 when subject does not exist', async () => {
@@ -140,7 +147,7 @@ describe('Subjects Integration', () => {
       mockUser(TEST_USERS.TEACHER);
 
       const subject = await seedSubject({
-        name: 'Original Name',
+        name: 'subject-Original Name',
         created_by: TEST_USERS.TEACHER.id,
       });
 
@@ -164,7 +171,7 @@ describe('Subjects Integration', () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
       const subject = await seedSubject({
-        name: 'Teacher Subject',
+        name: 'subject-Teacher Subject',
         created_by: TEST_USERS.TEACHER.id,
       });
 
@@ -189,7 +196,7 @@ describe('Subjects Integration', () => {
     it('deletes own subject and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const subject = await seedSubject({ name: 'To Delete', created_by: TEST_USERS.TEACHER.id });
+      const subject = await seedSubject({ name: 'subject-To Delete', created_by: TEST_USERS.TEACHER.id });
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/subjects/${subject.id}`,
@@ -207,7 +214,7 @@ describe('Subjects Integration', () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
       const subject = await seedSubject({
-        name: 'Teacher Subject',
+        name: 'subject-Teacher Subject',
         created_by: TEST_USERS.TEACHER.id,
       });
 

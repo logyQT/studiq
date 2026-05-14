@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST } from '@/app/(backend)/api/v1/quizzes/route';
-import { TEST_USERS, mockUser, cleanupQuizAttempts, cleanupQuestions } from './helpers';
-import { createClient } from '@/lib/supabase/server';
+import { TEST_USERS, mockUser, cleanupQuizAttempts, cleanupQuestions, cleanupSubjects, createRealClient } from './helpers';
 import { createNextRequest } from './test-utils';
 
 describe('Quizzes Integration', () => {
@@ -11,25 +10,28 @@ describe('Quizzes Integration', () => {
     vi.clearAllMocks();
     for (const user of Object.values(TEST_USERS)) {
       await cleanupQuizAttempts(user.id);
-      await cleanupQuestions(user.id);
+      await cleanupQuestions(user.id, 'quiz-');
+      await cleanupSubjects(user.id, 'quiz-');
     }
 
-    const supabase = await createClient();
-    const { data: subject } = await supabase
+    const supabase = createRealClient();
+    const { data: subject, error: subjectError } = await supabase
       .from('subjects')
-      .insert({ name: 'Quiz Test Subject', created_by: TEST_USERS.TEACHER.id })
+      .insert({ name: 'quiz-Quiz Test Subject', created_by: TEST_USERS.TEACHER.id })
       .select()
       .single();
+    if (subjectError || !subject) throw new Error(`Failed to create subject: ${subjectError?.message}`);
     subjectId = subject.id;
 
     for (let i = 0; i < 5; i++) {
-      await supabase.from('questions').insert({
+      const { error: questionError } = await supabase.from('questions').insert({
         subject_id: subjectId,
         type: 'mcq',
-        content: `Quiz Question ${i}`,
+        content: `quiz-Quiz Question ${i}`,
         difficulty: 'easy',
         created_by: TEST_USERS.TEACHER.id,
       });
+      if (questionError) throw new Error(`Failed to create question ${i}: ${questionError.message}`);
     }
   });
 

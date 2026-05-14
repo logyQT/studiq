@@ -1,19 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { HealthService } from './health.service';
-import { createClient } from '@/lib/supabase/server';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 describe('HealthService', () => {
-  let mockSupabase: any;
+  let mock: ReturnType<typeof mockClient>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSupabase = { from: vi.fn() };
-    vi.mocked(createClient).mockResolvedValue(mockSupabase);
+    mock = mockSupabaseClient();
   });
 
   describe('checkHealth', () => {
     it('returns healthy when supabase is up', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           limit: vi.fn().mockResolvedValue({ error: { code: 'PGRST205' } }),
         }),
@@ -26,7 +25,7 @@ describe('HealthService', () => {
     });
 
     it('returns unhealthy when supabase is down', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           limit: vi.fn().mockResolvedValue({ error: { code: 'OTHER_ERROR' } }),
         }),
@@ -39,7 +38,7 @@ describe('HealthService', () => {
     });
 
     it('returns healthy when supabase query succeeds', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           limit: vi.fn().mockResolvedValue({ error: null }),
         }),
@@ -52,7 +51,7 @@ describe('HealthService', () => {
     });
 
     it('includes timestamp and uptime', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           limit: vi.fn().mockResolvedValue({ error: { code: 'PGRST205' } }),
         }),

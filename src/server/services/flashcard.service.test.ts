@@ -1,21 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flashcardService } from './flashcard.service';
-import { createClient } from '@/lib/supabase/server';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 describe('FlashcardService', () => {
   const userId = 'test-user-id';
-  let mockSupabase: any;
+  let mock: ReturnType<typeof mockClient>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSupabase = { from: vi.fn() };
-    vi.mocked(createClient).mockResolvedValue(mockSupabase);
+    mock = mockSupabaseClient();
   });
 
   describe('create', () => {
     it('inserts flashcard and returns it', async () => {
       const mockFlashcard = { id: 'fc-1', front: 'Q', back: 'A' };
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: mockFlashcard, error: null }),
@@ -23,7 +22,7 @@ describe('FlashcardService', () => {
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: mockFlashcard, error: null }),
@@ -34,11 +33,11 @@ describe('FlashcardService', () => {
       const result = await flashcardService.create({ front: 'Q', back: 'A' }, userId);
 
       expect(result).toBeDefined();
-      expect(mockSupabase.from).toHaveBeenCalledWith('flashcards');
+      expect(mock.from).toHaveBeenCalledWith('flashcards');
     });
 
     it('throws INTERNAL_SERVER when insert fails', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
@@ -58,7 +57,7 @@ describe('FlashcardService', () => {
         { id: 'fc-1', front: 'Q1', back: 'A1' },
         { id: 'fc-2', front: 'Q2', back: 'A2' },
       ];
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockResolvedValue({ data: flashcards, error: null }),
         }),
@@ -78,7 +77,7 @@ describe('FlashcardService', () => {
     });
 
     it('throws INTERNAL_SERVER when insert fails', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
         }),
@@ -93,7 +92,7 @@ describe('FlashcardService', () => {
   describe('list', () => {
     it('returns all flashcards when no filter', async () => {
       const flashcards = [{ id: 'fc-1', front: 'Q', back: 'A' }];
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           order: vi.fn().mockResolvedValue({ data: flashcards, error: null }),
         }),
@@ -108,13 +107,13 @@ describe('FlashcardService', () => {
       const assignments = [{ flashcard_id: 'fc-1' }];
       const flashcards = [{ id: 'fc-1', front: 'Q', back: 'A' }];
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           in: vi.fn().mockResolvedValue({ data: assignments, error: null }),
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           in: vi.fn().mockReturnValue({
             order: vi.fn().mockResolvedValue({ data: flashcards, error: null }),
@@ -131,7 +130,7 @@ describe('FlashcardService', () => {
   describe('getById', () => {
     it('returns flashcard when found', async () => {
       const flashcard = { id: 'fc-1', front: 'Q', back: 'A' };
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: flashcard, error: null }),
@@ -145,7 +144,7 @@ describe('FlashcardService', () => {
     });
 
     it('throws NOT_FOUND when flashcard does not exist', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: null, error: null }),
@@ -160,7 +159,7 @@ describe('FlashcardService', () => {
   describe('update', () => {
     it('updates flashcard and returns it', async () => {
       const updated = { id: 'fc-1', front: 'Updated', back: 'A' };
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -172,7 +171,7 @@ describe('FlashcardService', () => {
         }),
       });
 
-      mockSupabase.from.mockReturnValueOnce({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: updated, error: null }),
@@ -186,7 +185,7 @@ describe('FlashcardService', () => {
     });
 
     it('throws FORBIDDEN when flashcard not owned by user', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -206,7 +205,7 @@ describe('FlashcardService', () => {
 
   describe('delete', () => {
     it('deletes flashcard successfully', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         delete: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({

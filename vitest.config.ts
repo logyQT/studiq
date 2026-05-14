@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
       'process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY': JSON.stringify(
         env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
       ),
+      'process.env.NEXT_PUBLIC_SITE_URL': JSON.stringify(env.NEXT_PUBLIC_SITE_URL || ''),
     },
     test: {
       globals: true,
@@ -17,6 +18,9 @@ export default defineConfig(({ mode }) => {
       setupFiles: ['./__tests__/setup.ts'],
       include: ['src/**/*.test.ts', '__tests__/integration/**/*.test.ts'],
       exclude: ['node_modules', 'dist', '.next'],
+      sequence: {
+        concurrent: false,
+      },
       coverage: {
         provider: 'v8',
         include: ['src/server/**/*.ts'],
@@ -26,6 +30,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
+        '#test': path.resolve(__dirname, './__tests__'),
       },
     },
   };

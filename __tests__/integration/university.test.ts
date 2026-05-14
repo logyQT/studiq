@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST } from '@/app/(backend)/api/v1/admin/universities/route';
-import { TEST_USERS, mockUser } from './helpers';
-import { createClient } from '@/lib/supabase/server';
+import { TEST_USERS, mockUser, createRealClient } from './helpers';
 import { createNextRequest } from './test-utils';
 
 describe('University Integration', () => {
@@ -31,7 +30,7 @@ describe('University Integration', () => {
     it('returns 409 when slug already exists', async () => {
       mockUser(TEST_USERS.SYS_ADMIN);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const uniqueSlug = `dup-uni-${Date.now()}`;
       await supabase.from('universities').insert({ name: 'Existing', slug: uniqueSlug });
 

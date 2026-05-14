@@ -5,15 +5,14 @@ import {
   PUT as update,
   DELETE as deleteFn,
 } from '@/app/(backend)/api/v1/flashcard-topics/[id]/route';
-import { TEST_USERS, mockUser, cleanupFlashcardTopics } from './helpers';
-import { createClient } from '@/lib/supabase/server';
+import { TEST_USERS, mockUser, cleanupFlashcardTopics, createRealClient } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Flashcard Topics Integration', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     for (const user of Object.values(TEST_USERS)) {
-      await cleanupFlashcardTopics(user.id);
+      await cleanupFlashcardTopics(user.id, 'topic-');
     }
   });
 
@@ -24,7 +23,7 @@ describe('Flashcard Topics Integration', () => {
       const req = createNextRequest('http://localhost/api/v1/flashcard-topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Math Topics' }),
+        body: JSON.stringify({ name: 'topic-Math Topics' }),
       });
 
       const response = await POST(req);
@@ -32,7 +31,7 @@ describe('Flashcard Topics Integration', () => {
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
-      expect(body.data.name).toBe('Math Topics');
+      expect(body.data.name).toBe('topic-Math Topics');
     });
 
     it('returns 422 when name is empty', async () => {
@@ -57,7 +56,7 @@ describe('Flashcard Topics Integration', () => {
       const req = createNextRequest('http://localhost/api/v1/flashcard-topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Math Topics' }),
+        body: JSON.stringify({ name: 'topic-Math Topics' }),
       });
 
       const response = await POST(req);
@@ -94,10 +93,10 @@ describe('Flashcard Topics Integration', () => {
     it('returns topic when found', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: topic } = await supabase
         .from('flashcard_topics')
-        .insert({ name: 'Get Me', created_by: TEST_USERS.TEACHER.id })
+        .insert({ name: 'topic-Get Me', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
@@ -109,7 +108,7 @@ describe('Flashcard Topics Integration', () => {
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.data.name).toBe('Get Me');
+      expect(body.data.name).toBe('topic-Get Me');
     });
 
     it('returns 404 when topic does not exist', async () => {
@@ -132,10 +131,10 @@ describe('Flashcard Topics Integration', () => {
     it('updates own topic and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: topic } = await supabase
         .from('flashcard_topics')
-        .insert({ name: 'Original', created_by: TEST_USERS.TEACHER.id })
+        .insert({ name: 'topic-Original', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
@@ -158,10 +157,10 @@ describe('Flashcard Topics Integration', () => {
     it('returns 403 when updating another user topic', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: topic } = await supabase
         .from('flashcard_topics')
-        .insert({ name: 'Teacher Topic', created_by: TEST_USERS.TEACHER.id })
+        .insert({ name: 'topic-Teacher Topic', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
@@ -186,10 +185,10 @@ describe('Flashcard Topics Integration', () => {
     it('deletes own topic and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: topic } = await supabase
         .from('flashcard_topics')
-        .insert({ name: 'To Delete', created_by: TEST_USERS.TEACHER.id })
+        .insert({ name: 'topic-To Delete', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
@@ -208,10 +207,10 @@ describe('Flashcard Topics Integration', () => {
     it('returns 403 when deleting another user topic', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: topic } = await supabase
         .from('flashcard_topics')
-        .insert({ name: 'Teacher Topic', created_by: TEST_USERS.TEACHER.id })
+        .insert({ name: 'topic-Teacher Topic', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 

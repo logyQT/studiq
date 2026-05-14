@@ -1,16 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { universityService } from './university.service';
-import { createClient } from '@/lib/supabase/server';
-
-const mockSupabase = {
-  from: vi.fn(),
-};
-
-vi.mocked(createClient).mockResolvedValue(mockSupabase as any);
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 describe('UniversityService', () => {
+  let mock: ReturnType<typeof mockSupabaseClient>;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mock = mockSupabaseClient();
   });
 
   describe('create', () => {
@@ -23,12 +20,12 @@ describe('UniversityService', () => {
           }),
         }),
       };
-      mockSupabase.from.mockReturnValue(mockChain);
+      mock.from.mockReturnValue(mockChain);
 
       const result = await universityService.create({ name: 'Test University', slug: 'test' });
 
       expect(result).toEqual(university);
-      expect(mockSupabase.from).toHaveBeenCalledWith('universities');
+      expect(mock.from).toHaveBeenCalledWith('universities');
       expect(mockChain.insert).toHaveBeenCalledWith({ name: 'Test University', slug: 'test' });
     });
 
@@ -43,7 +40,7 @@ describe('UniversityService', () => {
           }),
         }),
       };
-      mockSupabase.from.mockReturnValue(mockChain);
+      mock.from.mockReturnValue(mockChain);
 
       await expect(universityService.create({ name: 'Test', slug: 'taken' })).rejects.toThrow(
         'ERROR_CONFLICT',
@@ -61,7 +58,7 @@ describe('UniversityService', () => {
           }),
         }),
       };
-      mockSupabase.from.mockReturnValue(mockChain);
+      mock.from.mockReturnValue(mockChain);
 
       await expect(universityService.create({ name: 'Test', slug: 'test' })).rejects.toThrow(
         'ERROR_INTERNAL_SERVER',

@@ -1,7 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GET } from '@/app/(backend)/api/v1/health/route';
+import { useRealSupabase } from './helpers';
 
 describe('Health Integration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useRealSupabase();
+  });
   describe('GET /api/v1/health', () => {
     it('returns health status and 200', async () => {
       const response = await GET();

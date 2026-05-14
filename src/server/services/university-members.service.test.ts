@@ -1,15 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { universityMembersService } from './university-members.service';
-import { createClient } from '@/lib/supabase/server';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 describe('UniversityMembersService', () => {
   const userId = 'test-user-id';
-  let mockSupabase: any;
+  let mock: ReturnType<typeof mockClient>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSupabase = { from: vi.fn(), rpc: vi.fn() };
-    vi.mocked(createClient).mockResolvedValue(mockSupabase);
+    mock = mockSupabaseClient();
   });
 
   describe('getProfile', () => {
@@ -20,7 +19,7 @@ describe('UniversityMembersService', () => {
         role: 'student',
         university_id: 'uni-1',
       };
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: profile, error: null }),
@@ -34,7 +33,7 @@ describe('UniversityMembersService', () => {
     });
 
     it('throws NOT_FOUND when profile does not exist', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({ data: null, error: null }),
@@ -49,7 +48,7 @@ describe('UniversityMembersService', () => {
   describe('listMembers', () => {
     it('returns members for university', async () => {
       const members = [{ id: 'user-1', role: 'student', university_id: 'uni-1' }];
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             order: vi.fn().mockResolvedValue({ data: members, error: null }),
@@ -70,7 +69,7 @@ describe('UniversityMembersService', () => {
           order: vi.fn().mockResolvedValue({ data: members, error: null }),
         }),
       });
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: eqFirst,
         }),
@@ -82,7 +81,7 @@ describe('UniversityMembersService', () => {
     });
 
     it('throws INTERNAL_SERVER when query fails', async () => {
-      mockSupabase.from.mockReturnValue({
+      mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             order: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
@@ -98,7 +97,7 @@ describe('UniversityMembersService', () => {
 
   describe('changeRole', () => {
     it('changes role successfully', async () => {
-      mockSupabase.rpc.mockResolvedValue({ error: null });
+      mock.rpc.mockResolvedValue({ error: null });
 
       const result = await universityMembersService.changeRole(
         userId,
@@ -107,14 +106,14 @@ describe('UniversityMembersService', () => {
       );
 
       expect(result).toEqual({ success: true });
-      expect(mockSupabase.rpc).toHaveBeenCalledWith('admin_change_role', {
+      expect(mock.rpc).toHaveBeenCalledWith('admin_change_role', {
         p_target_user: 'user-123',
         p_new_role: 'university_admin',
       });
     });
 
     it('throws FORBIDDEN when RPC returns Unauthorized', async () => {
-      mockSupabase.rpc.mockResolvedValue({ error: { message: 'Unauthorized' } });
+      mock.rpc.mockResolvedValue({ error: { message: 'Unauthorized' } });
 
       await expect(
         universityMembersService.changeRole(userId, 'user-123', 'university_admin'),
@@ -122,7 +121,7 @@ describe('UniversityMembersService', () => {
     });
 
     it('throws INTERNAL_SERVER when RPC fails with other error', async () => {
-      mockSupabase.rpc.mockResolvedValue({ error: { message: 'Some other error' } });
+      mock.rpc.mockResolvedValue({ error: { message: 'Some other error' } });
 
       await expect(
         universityMembersService.changeRole(userId, 'user-123', 'university_admin'),
@@ -132,7 +131,7 @@ describe('UniversityMembersService', () => {
 
   describe('removeMember', () => {
     it('removes member successfully', async () => {
-      mockSupabase.rpc.mockResolvedValue({ error: null });
+      mock.rpc.mockResolvedValue({ error: null });
 
       const result = await universityMembersService.removeMember(userId, 'user-123');
 
@@ -140,7 +139,7 @@ describe('UniversityMembersService', () => {
     });
 
     it('throws FORBIDDEN when RPC returns Unauthorized', async () => {
-      mockSupabase.rpc.mockResolvedValue({ error: { message: 'Unauthorized' } });
+      mock.rpc.mockResolvedValue({ error: { message: 'Unauthorized' } });
 
       await expect(universityMembersService.removeMember(userId, 'user-123')).rejects.toThrow(
         'ERROR_FORBIDDEN',

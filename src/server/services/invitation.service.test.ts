@@ -1,22 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { invitationService } from './invitation.service';
-import { createClient } from '@/lib/supabase/server';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { UserRole } from '@/types';
 
-const mockSupabase = {
-  from: vi.fn(),
-  auth: {
-    getUser: vi.fn(),
-  },
-};
-
-vi.mocked(createClient).mockResolvedValue(mockSupabase as any);
-
 describe('InvitationService', () => {
+  let mock: ReturnType<typeof mockSupabaseClient>;
   const userId = 'test-user-id';
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mock = mockSupabaseClient();
   });
 
   describe('createInvitation', () => {
@@ -28,7 +21,7 @@ describe('InvitationService', () => {
           }),
         }),
       };
-      mockSupabase.from.mockReturnValue(mockChain);
+      mock.from.mockReturnValue(mockChain);
 
       await expect(
         invitationService.createInvitation(userId, {
@@ -50,7 +43,7 @@ describe('InvitationService', () => {
           }),
         }),
       };
-      mockSupabase.from.mockReturnValue(mockChain);
+      mock.from.mockReturnValue(mockChain);
 
       await expect(
         invitationService.createInvitation(userId, {
@@ -72,7 +65,7 @@ describe('InvitationService', () => {
           }),
         }),
       };
-      mockSupabase.from.mockReturnValue(mockChain);
+      mock.from.mockReturnValue(mockChain);
 
       await expect(
         invitationService.createInvitation(userId, {
@@ -100,7 +93,7 @@ describe('InvitationService', () => {
           }),
         }),
       };
-      mockSupabase.from.mockReturnValue(mockChain);
+      mock.from.mockReturnValue(mockChain);
 
       const result = await invitationService.getInvitationByToken('valid-token');
 
@@ -115,7 +108,7 @@ describe('InvitationService', () => {
           }),
         }),
       };
-      mockSupabase.from.mockReturnValue(mockChain);
+      mock.from.mockReturnValue(mockChain);
 
       await expect(invitationService.getInvitationByToken('invalid')).rejects.toThrow(
         'ERROR_NOT_FOUND',
@@ -137,7 +130,7 @@ describe('InvitationService', () => {
           }),
         }),
       };
-      mockSupabase.from.mockReturnValue(mockChain);
+      mock.from.mockReturnValue(mockChain);
 
       await expect(invitationService.getInvitationByToken('expired')).rejects.toThrow('ERROR_GONE');
     });

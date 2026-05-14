@@ -5,15 +5,14 @@ import {
   PUT as update,
   DELETE as deleteFn,
 } from '@/app/(backend)/api/v1/flashcard-spaces/[id]/route';
-import { TEST_USERS, mockUser, cleanupFlashcardSpaces } from './helpers';
-import { createClient } from '@/lib/supabase/server';
+import { TEST_USERS, mockUser, cleanupFlashcardSpaces, createRealClient } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Flashcard Spaces Integration', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     for (const user of Object.values(TEST_USERS)) {
-      await cleanupFlashcardSpaces(user.id);
+      await cleanupFlashcardSpaces(user.id, 'space-');
     }
   });
 
@@ -24,7 +23,7 @@ describe('Flashcard Spaces Integration', () => {
       const req = createNextRequest('http://localhost/api/v1/flashcard-spaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Study Space' }),
+        body: JSON.stringify({ name: 'space-Study Space' }),
       });
 
       const response = await POST(req);
@@ -32,7 +31,7 @@ describe('Flashcard Spaces Integration', () => {
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
-      expect(body.data.name).toBe('Study Space');
+      expect(body.data.name).toBe('space-Study Space');
     });
 
     it('returns 422 when name is empty', async () => {
@@ -57,7 +56,7 @@ describe('Flashcard Spaces Integration', () => {
       const req = createNextRequest('http://localhost/api/v1/flashcard-spaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Study Space' }),
+        body: JSON.stringify({ name: 'space-Study Space' }),
       });
 
       const response = await POST(req);
@@ -94,10 +93,10 @@ describe('Flashcard Spaces Integration', () => {
     it('returns space when found and owned by user', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: space } = await supabase
         .from('flashcard_spaces')
-        .insert({ name: 'Get Me', created_by: TEST_USERS.TEACHER.id })
+        .insert({ name: 'space-Get Me', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
@@ -109,16 +108,16 @@ describe('Flashcard Spaces Integration', () => {
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.data.name).toBe('Get Me');
+      expect(body.data.name).toBe('space-Get Me');
     });
 
     it('returns 404 for another user space', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: space } = await supabase
         .from('flashcard_spaces')
-        .insert({ name: 'Teacher Space', created_by: TEST_USERS.TEACHER.id })
+        .insert({ name: 'space-Teacher Space', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
@@ -138,12 +137,13 @@ describe('Flashcard Spaces Integration', () => {
     it('updates own space and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = await createClient();
-      const { data: space } = await supabase
+      const supabase = createRealClient();
+      const { data: space, error: insertError } = await supabase
         .from('flashcard_spaces')
-        .insert({ name: 'Original', created_by: TEST_USERS.TEACHER.id })
+        .insert({ name: 'space-Original', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
+      if (insertError || !space) throw new Error(`Failed to create space: ${insertError?.message}`);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcard-spaces/${space.id}`,
@@ -164,10 +164,10 @@ describe('Flashcard Spaces Integration', () => {
     it('returns 403 when updating another user space', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: space } = await supabase
         .from('flashcard_spaces')
-        .insert({ name: 'Teacher Space', created_by: TEST_USERS.TEACHER.id })
+        .insert({ name: 'space-Teacher Space', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
@@ -192,12 +192,13 @@ describe('Flashcard Spaces Integration', () => {
     it('deletes own space and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = await createClient();
-      const { data: space } = await supabase
+      const supabase = createRealClient();
+      const { data: space, error: insertError } = await supabase
         .from('flashcard_spaces')
-        .insert({ name: 'To Delete', created_by: TEST_USERS.TEACHER.id })
+        .insert({ name: 'space-To Delete', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
+      if (insertError || !space) throw new Error(`Failed to create space: ${insertError?.message}`);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcard-spaces/${space.id}`,
@@ -214,10 +215,10 @@ describe('Flashcard Spaces Integration', () => {
     it('returns 403 when deleting another user space', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = await createClient();
+      const supabase = createRealClient();
       const { data: space } = await supabase
         .from('flashcard_spaces')
-        .insert({ name: 'Teacher Space', created_by: TEST_USERS.TEACHER.id })
+        .insert({ name: 'space-Teacher Space', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
