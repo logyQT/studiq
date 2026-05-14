@@ -47,7 +47,10 @@ function createMockSupabase() {
     auth: {
       getUser: vi.fn(() => ({ data: { user: { id: 'test-user-id' } }, error: null })),
       signUp: vi.fn(() => ({ data: { user: null }, error: null })),
-      signInWithPassword: vi.fn(() => ({ data: { user: null, session: null }, error: null })),
+      signInWithPassword: vi.fn(() => ({
+        data: { user: { id: 'test-user-id' }, session: null },
+        error: null,
+      })),
       signOut: vi.fn(() => ({ error: null })),
       resetPasswordForEmail: vi.fn(() => ({ error: null })),
       updateUser: vi.fn(() => ({ data: { user: null }, error: null })),

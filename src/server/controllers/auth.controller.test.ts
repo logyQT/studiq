@@ -31,7 +31,7 @@ describe('AuthController', () => {
       });
 
       expect(response.success).toBe(true);
-      expect(response.statusCode).toBe(200);
+      expect(response.statusCode).toBe(202);
       expect((response as any).data).toEqual({ message: 'SUCCESS_ACTIVATION_LINK_SENT' });
     });
 

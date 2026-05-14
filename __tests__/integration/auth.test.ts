@@ -21,15 +21,14 @@ describe('Auth Integration', () => {
         body: JSON.stringify({
           email: uniqueEmail,
           password: 'TestPass123',
-          firstName: 'Test',
-          lastName: 'User',
+          name: 'Test User',
         }),
       });
 
       const response = await registerPost(req);
       const body = await response.json();
 
-      expect(response.status).toBe(201);
+      expect(response.status).toBe(202);
       expect(body.success).toBe(true);
     });
 

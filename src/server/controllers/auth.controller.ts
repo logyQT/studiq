@@ -24,7 +24,7 @@ export class AuthController {
 
       await authService.register(parsed.data);
 
-      return { success: true, statusCode: 200, data: { message: 'SUCCESS_ACTIVATION_LINK_SENT' } };
+      return { success: true, statusCode: 202, data: { message: 'SUCCESS_ACTIVATION_LINK_SENT' } };
     } catch (error) {
       if (error instanceof AppError) {
         return { success: false, statusCode: error.statusCode, error: error.code };
