@@ -1,140 +1,95 @@
-# 🗄️ Local Supabase Setup
+# Studiq
 
-Instrukcja uruchamiania Supabase lokalnie dla członków zespołu.
+An educational platform with quizzes, flashcards, AI-powered learning flows, and university management.
 
----
+## Features
 
-## ✅ Wymagania wstępne
+- Authentication with role-based access control
+- Quiz generation and attempt tracking
+- Flashcard practice with spaced repetition
+- Teacher and student statistics dashboards
+- University and membership management
+- Invitation system with token-based registration
+- AI-powered exam flows
+- Multi-language support (i18n)
 
-- **Docker Desktop** — musi być zainstalowany i uruchomiony przed jakimikolwiek krokami  
-  👉 [Pobierz Docker Desktop](https://www.docker.com/products/docker-desktop/)
+## Tech Stack
 
----
+| Layer           | Technology                 |
+| --------------- | -------------------------- |
+| Framework       | Next.js 16 (App Router)    |
+| Language        | TypeScript                 |
+| Database / Auth | Supabase (PostgreSQL)      |
+| Styling         | TailwindCSS v4 + shadcn/ui |
+| i18n            | next-intl                  |
+| Validation      | Zod                        |
+| Testing         | Vitest + Playwright        |
+| API Docs        | Swagger / OpenAPI          |
 
-## 🚀 Uruchomienie
-
-### 1. Wystartuj lokalne Supabase
+## Quick Start
 
 ```bash
+bun install
 bunx supabase start
+bun dev
 ```
 
-> Pierwsze uruchomienie może potrwać kilka minut — Docker pobiera obrazy.
+See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions.
 
-Po zakończeniu w terminalu pojawią się lokalne adresy i klucze API.
+## Documentation
 
----
+| Document                                       | Description                          |
+| ---------------------------------------------- | ------------------------------------ |
+| [Onboarding](docs/ONBOARDING.md)               | Local setup, Supabase, team workflow |
+| [Architecture](docs/architecture.md)           | High-level design, layers, data flow |
+| [Authentication](docs/authentication.md)       | Auth flow, RBAC, route rules         |
+| [Database](docs/database.md)                   | Schema, migrations, seeds            |
+| [API](docs/api.md)                             | API routes, controllers, services    |
+| [Project Structure](docs/project-structure.md) | Folder layout, conventions           |
+| [Testing](docs/testing.md)                     | Test strategy, running tests         |
+| [Deployment](docs/deployment.md)               | Hosting, environment, production     |
+| [Decisions](docs/decisions/)                   | Architecture Decision Records        |
 
-### 2. Utwórz plik `.env.local`
+## Available Scripts
 
-W katalogu głównym projektu utwórz plik `.env.local`:
+| Command                | Description              |
+| ---------------------- | ------------------------ |
+| `bun dev`              | Start development server |
+| `bun build`            | Build for production     |
+| `bun start`            | Start production server  |
+| `bun lint`             | Type check + lint        |
+| `bun test`             | Reset DB + run all tests |
+| `bun test:unit`        | Run unit tests           |
+| `bun test:integration` | Run integration tests    |
+| `bun test:watch`       | Watch mode               |
+| `bun test:coverage`    | Run with coverage        |
 
-```bash
-touch .env.local
-```
-
----
-
-### 3. Skopiuj zmienne środowiskowe
-
-1. Wejdź na [http://127.0.0.1:54323/](http://127.0.0.1:54323/) — to lokalne Supabase Studio
-2. Kliknij przycisk **Connect** (prawy górny róg)
-3. Skopiuj zawartość i wklej ją do `.env.local`
-
-Przykładowy wygląd `.env.local`:
+## Environment Variables
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_SITE_URL=
 ```
 
----
+## Folder Structure
 
-## 🛑 Zatrzymanie
-
-```bash
-bunx supabase stop
+```
+src/
+  app/
+    (frontend)/        # UI routes (pages, layouts)
+    (backend)/         # API routes + Swagger docs
+  components/          # React components
+  hooks/               # Custom React hooks
+  i18n/                # Internationalization
+  lib/                 # Shared utilities
+  server/              # Business logic (controllers, services, guards)
+  types/               # TypeScript type definitions
+supabase/
+  migrations/          # Database migrations
+  seeds/               # Seed data
 ```
 
-> Dane zostają zachowane. Aby wyczyścić bazę danych, dodaj flagę `--no-backup`.
+## License
 
----
-
-## 👥 Współpraca zespołowa
-
-Dane lokalne **nie są synchronizowane przez git** — każdy ma swoją lokalną bazę. Żeby wszyscy mieli to samo, używamy migracji i seedów.
-
-### Schemat (struktura tabel)
-
-Po wprowadzeniu zmian w tabelach przez Supabase Studio, wygeneruj migrację:
-
-```bash
-bunx supabase db diff -f nazwa_migracji
-```
-
-Supabase automatycznie porówna aktualny stan bazy z poprzednią migracją i zapisze różnice do `supabase/migrations/`. **Ten plik committujesz do gita.**
-
-### Dane testowe
-
-Edytuj plik `supabase/seed.sql` z przykładowymi danymi:
-
-```sql
-INSERT INTO products (name, price) VALUES ('Produkt testowy', 99.99);
-```
-
-Plik `seed.sql` też wchodzi do gita.
-
-### Flow po stronie autora zmian
-
-```bash
-# 1. Wprowadź zmiany w Studio (http://127.0.0.1:54323)
-# 2. Wygeneruj migrację
-bunx supabase db diff -f nazwa_migracji
-# 3. Zaktualizuj seed.sql jeśli potrzeba
-# 4. Committuj i pushuj
-git add supabase/
-git commit -m "migration: nazwa_migracji"
-```
-
-### Flow dla reszty zespołu
-
-```bash
-git pull
-bunx supabase start        # aplikuje migracje automatycznie
-bunx supabase db reset     # (opcjonalnie) ładuje świeży seed z danymi testowymi
-```
-
-> ⚠️ `db reset` **kasuje wszystkie lokalne dane** i ładuje seed od nowa — używaj świadomie.
-
----
-
-## 🔄 Przydatne komendy
-
-| Komenda                               | Opis                                  |
-| ------------------------------------- | ------------------------------------- |
-| `bunx supabase start`                 | Uruchom lokalne Supabase              |
-| `bunx supabase stop`                  | Zatrzymaj lokalne Supabase            |
-| `bunx supabase status`                | Sprawdź status i wyświetl klucze API  |
-| `bunx supabase db reset`              | Zresetuj bazę danych (+ seed)         |
-| `bunx supabase db diff -f <nazwa>`    | Wygeneruj migrację z aktualnych zmian |
-| `bunx supabase migration new <nazwa>` | Utwórz pustą migrację ręcznie         |
-| `bunx supabase db push`               | Wypchnij migracje do bazy             |
-
----
-
-## 🔗 Lokalne adresy
-
-| Usługa             | URL                            |
-| ------------------ | ------------------------------ |
-| Supabase Studio    | http://127.0.0.1:54323         |
-| API (REST)         | http://127.0.0.1:54321         |
-| Auth               | http://127.0.0.1:54321/auth/v1 |
-| Inbucket (e-maile) | http://127.0.0.1:54324         |
-
----
-
-## ⚠️ Uwagi
-
-- Plik `.env.local` jest w `.gitignore` — **nie commituj go do repozytorium**
-- Każdy członek zespołu musi wykonać te kroki samodzielnie na swoim komputerze
-- Upewnij się, że Docker Desktop jest uruchomiony **przed** `bunx supabase start`
+Private — all rights reserved.
