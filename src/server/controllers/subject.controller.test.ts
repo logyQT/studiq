@@ -74,6 +74,20 @@ describe('SubjectController', () => {
     });
   });
 
+  describe('create with FORBIDDEN', () => {
+    it('returns FORBIDDEN when service throws FORBIDDEN', async () => {
+      mockService.create.mockRejectedValueOnce(new AppError('FORBIDDEN'));
+
+      const response = await subjectController.create({ name: 'Math 101' }, userId);
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 403,
+        error: 'FORBIDDEN',
+      });
+    });
+  });
+
   describe('list', () => {
     it('returns subjects without requiring userId', async () => {
       const subjects = [{ id: 'sub-1', name: 'Math 101' }];
@@ -94,6 +108,18 @@ describe('SubjectController', () => {
       await subjectController.list('uni-123');
 
       expect(mockService.list).toHaveBeenCalledWith('uni-123');
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.list.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await subjectController.list();
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 500,
+        error: 'INTERNAL_SERVER',
+      });
     });
   });
 
@@ -120,6 +146,18 @@ describe('SubjectController', () => {
         success: false,
         statusCode: 404,
         error: 'NOT_FOUND',
+      });
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.getById.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await subjectController.getById('sub-1');
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 500,
+        error: 'INTERNAL_SERVER',
       });
     });
   });
@@ -150,6 +188,18 @@ describe('SubjectController', () => {
         error: 'FORBIDDEN',
       });
     });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.update.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await subjectController.update('sub-1', { name: 'Updated' }, userId);
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 500,
+        error: 'INTERNAL_SERVER',
+      });
+    });
   });
 
   describe('delete', () => {
@@ -162,6 +212,30 @@ describe('SubjectController', () => {
         success: true,
         statusCode: 200,
         data: { success: true },
+      });
+    });
+
+    it('returns FORBIDDEN when service throws FORBIDDEN', async () => {
+      mockService.delete.mockRejectedValueOnce(new AppError('FORBIDDEN'));
+
+      const response = await subjectController.delete('sub-1', userId);
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 403,
+        error: 'FORBIDDEN',
+      });
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.delete.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await subjectController.delete('sub-1', userId);
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 500,
+        error: 'INTERNAL_SERVER',
       });
     });
   });

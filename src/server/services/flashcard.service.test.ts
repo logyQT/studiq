@@ -87,6 +87,36 @@ describe('FlashcardService', () => {
         flashcardService.bulkCreate({ cards: [{ front: 'Q1', back: 'A1' }] }, userId),
       ).rejects.toThrow('ERROR_INTERNAL_SERVER');
     });
+
+    it('creates topic assignments when topicIds provided', async () => {
+      const flashcards = [
+        { id: 'fc-1', front: 'Q1', back: 'A1' },
+        { id: 'fc-2', front: 'Q2', back: 'A2' },
+      ];
+      mock.from.mockReturnValueOnce({
+        insert: vi.fn().mockReturnValue({
+          select: vi.fn().mockResolvedValue({ data: flashcards, error: null }),
+        }),
+      });
+
+      mock.from.mockReturnValueOnce({
+        insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+      });
+
+      const result = await flashcardService.bulkCreate(
+        {
+          cards: [
+            { front: 'Q1', back: 'A1' },
+            { front: 'Q2', back: 'A2' },
+          ],
+          topicIds: ['t-1'],
+        },
+        userId,
+      );
+
+      expect(result).toEqual(flashcards);
+      expect(mock.from).toHaveBeenCalledWith('flashcard_topic_assignments');
+    });
   });
 
   describe('list', () => {
@@ -122,6 +152,29 @@ describe('FlashcardService', () => {
       });
 
       const result = await flashcardService.list({ topicIds: ['t-1'] });
+
+      expect(result).toEqual(flashcards);
+    });
+
+    it('filters by spaceIds when provided', async () => {
+      const assignments = [{ flashcard_id: 'fc-1' }];
+      const flashcards = [{ id: 'fc-1', front: 'Q', back: 'A' }];
+
+      mock.from.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          in: vi.fn().mockResolvedValue({ data: assignments, error: null }),
+        }),
+      });
+
+      mock.from.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          in: vi.fn().mockReturnValue({
+            order: vi.fn().mockResolvedValue({ data: flashcards, error: null }),
+          }),
+        }),
+      });
+
+      const result = await flashcardService.list({ spaceIds: ['s-1'] });
 
       expect(result).toEqual(flashcards);
     });
@@ -201,6 +254,80 @@ describe('FlashcardService', () => {
         'ERROR_FORBIDDEN',
       );
     });
+
+    it('updates topic assignments when topicIds provided', async () => {
+      const updated = { id: 'fc-1', front: 'Updated', back: 'A' };
+      mock.from.mockReturnValueOnce({
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: updated, error: null }),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      mock.from.mockReturnValueOnce({
+        delete: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+        }),
+      });
+
+      mock.from.mockReturnValueOnce({
+        insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+      });
+
+      mock.from.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: updated, error: null }),
+          }),
+        }),
+      });
+
+      const result = await flashcardService.update(
+        'fc-1',
+        { front: 'Updated', topicIds: ['t-1'] },
+        userId,
+      );
+
+      expect(result).toBeDefined();
+    });
+
+    it('clears topic assignments when topicIds is empty array', async () => {
+      const updated = { id: 'fc-1', front: 'Updated', back: 'A' };
+      mock.from.mockReturnValueOnce({
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: updated, error: null }),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      mock.from.mockReturnValueOnce({
+        delete: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+        }),
+      });
+
+      mock.from.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: updated, error: null }),
+          }),
+        }),
+      });
+
+      const result = await flashcardService.update('fc-1', { topicIds: [] }, userId);
+
+      expect(result).toBeDefined();
+    });
   });
 
   describe('delete', () => {
@@ -218,6 +345,22 @@ describe('FlashcardService', () => {
       });
 
       await expect(flashcardService.delete('fc-1', userId)).resolves.toBeUndefined();
+    });
+
+    it('throws FORBIDDEN when flashcard not owned by user', async () => {
+      mock.from.mockReturnValue({
+        delete: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: null, error: null }),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      await expect(flashcardService.delete('fc-1', userId)).rejects.toThrow('ERROR_FORBIDDEN');
     });
   });
 });

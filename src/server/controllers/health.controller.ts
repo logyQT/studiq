@@ -1,18 +1,26 @@
 import { HealthService } from '@/server/services';
+import { AppError } from '@/lib/errors';
 import type { HealthStatus } from '@/types';
 import { ControllerResponse } from '@/lib/controller-response';
 
 export class HealthController {
   async getStatus(): Promise<ControllerResponse<HealthStatus>> {
-    const health = await HealthService.checkHealth();
+    try {
+      const health = await HealthService.checkHealth();
 
-    const statusCode = this.mapStatusToHttp(health.status);
+      const statusCode = this.mapStatusToHttp(health.status);
 
-    return {
-      success: true,
-      statusCode,
-      data: health,
-    };
+      return {
+        success: true,
+        statusCode,
+        data: health,
+      };
+    } catch (error) {
+      if (error instanceof AppError) {
+        return { success: false, statusCode: error.statusCode, error: error.code };
+      }
+      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
+    }
   }
 
   private mapStatusToHttp(status: HealthStatus['status']): number {

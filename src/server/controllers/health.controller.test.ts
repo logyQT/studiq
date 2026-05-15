@@ -75,5 +75,25 @@ describe('HealthController', () => {
         data: healthStatus,
       });
     });
+
+    it('returns 500 for unknown status', async () => {
+      const healthStatus = {
+        status: 'unknown' as any,
+        timestamp: '2024-01-01T00:00:00.000Z',
+        uptime: 100,
+        environment: 'test',
+        services: { supabase: 'unknown' },
+        responseTime: 50,
+      };
+      mockHealthService.checkHealth.mockResolvedValueOnce(healthStatus as any);
+
+      const response = await healthController.getStatus();
+
+      expect(response).toEqual({
+        success: true,
+        statusCode: 500,
+        data: healthStatus,
+      });
+    });
   });
 });

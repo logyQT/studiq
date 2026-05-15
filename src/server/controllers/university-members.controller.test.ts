@@ -48,6 +48,15 @@ describe('UniversityMembersController', () => {
 
       expect(mockService.listMembers).toHaveBeenCalledWith('uni-1', 'student');
     });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.getProfile.mockResolvedValueOnce({ id: userId, university_id: 'uni-1' } as any);
+      mockService.listMembers.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await universityMembersController.listMembers(userId);
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    });
   });
 
   describe('changeRole', () => {
@@ -81,6 +90,17 @@ describe('UniversityMembersController', () => {
 
       expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
     });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.changeRole.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await universityMembersController.changeRole(userId, {
+        targetUserId: 'user-123',
+        newRole: 'university_admin',
+      });
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    });
   });
 
   describe('removeMember', () => {
@@ -104,6 +124,14 @@ describe('UniversityMembersController', () => {
       const response = await universityMembersController.removeMember(userId, 'user-123');
 
       expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.removeMember.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await universityMembersController.removeMember(userId, 'user-123');
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
   });
 });

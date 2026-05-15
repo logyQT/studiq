@@ -68,6 +68,14 @@ describe('FlashcardController', () => {
 
       expect(mockService.list).toHaveBeenCalledWith({ topicIds: ['t-1'], spaceIds: ['s-1'] });
     });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.list.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await flashcardController.list();
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    });
   });
 
   describe('bulkCreate', () => {
@@ -88,6 +96,17 @@ describe('FlashcardController', () => {
       expect(response.statusCode).toBe(422);
       expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.bulkCreate.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await flashcardController.bulkCreate(
+        { cards: [{ front: 'Q', back: 'A' }] },
+        userId,
+      );
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    });
   });
 
   describe('getById', () => {
@@ -106,6 +125,14 @@ describe('FlashcardController', () => {
       const response = await flashcardController.getById('nonexistent');
 
       expect(response).toEqual({ success: false, statusCode: 404, error: 'NOT_FOUND' });
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.getById.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await flashcardController.getById('fc-1');
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
   });
 
@@ -134,6 +161,14 @@ describe('FlashcardController', () => {
 
       expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
     });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.update.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await flashcardController.update('fc-1', { front: 'Updated' }, userId);
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    });
   });
 
   describe('delete', () => {
@@ -151,6 +186,14 @@ describe('FlashcardController', () => {
       const response = await flashcardController.delete('fc-1', userId);
 
       expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.delete.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await flashcardController.delete('fc-1', userId);
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
   });
 });

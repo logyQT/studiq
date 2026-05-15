@@ -49,5 +49,17 @@ describe('UniversityController', () => {
         error: 'CONFLICT',
       });
     });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.create.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await universityController.create({ name: 'Test', slug: 'test' });
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 500,
+        error: 'INTERNAL_SERVER',
+      });
+    });
   });
 });

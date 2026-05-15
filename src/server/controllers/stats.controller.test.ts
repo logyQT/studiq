@@ -49,6 +49,14 @@ describe('StatsController', () => {
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.getTeacherStats.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await statsController.getTeacherStats(userId);
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    });
   });
 
   describe('getStudentStats', () => {
@@ -70,6 +78,14 @@ describe('StatsController', () => {
 
     it('returns error when service throws', async () => {
       mockService.getStudentStats.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
+
+      const response = await statsController.getStudentStats(userId);
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.getStudentStats.mockRejectedValueOnce(new Error('unexpected'));
 
       const response = await statsController.getStudentStats(userId);
 

@@ -24,7 +24,11 @@ export default defineConfig(({ mode }) => {
       coverage: {
         provider: 'v8',
         include: ['src/server/**/*.ts'],
-        exclude: ['src/server/**/*.test.ts', 'src/server/**/index.ts'],
+        exclude: [
+          'src/server/**/*.test.ts',
+          'src/server/**/index.ts',
+          'src/server/**/routes.config.ts',
+        ],
       },
     },
     resolve: {

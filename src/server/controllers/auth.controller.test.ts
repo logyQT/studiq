@@ -117,6 +117,18 @@ describe('AuthController', () => {
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
     });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.logout.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await authController.logout();
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 500,
+        error: 'INTERNAL_SERVER',
+      });
+    });
   });
 
   describe('requestPasswordReset', () => {
@@ -134,6 +146,18 @@ describe('AuthController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.requestPasswordReset.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await authController.requestPasswordReset({ email: 'john@example.com' });
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 500,
+        error: 'INTERNAL_SERVER',
+      });
     });
   });
 
@@ -172,6 +196,21 @@ describe('AuthController', () => {
         success: false,
         statusCode: 422,
         error: 'UNPROCESSABLE_ENTITY',
+      });
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.updatePassword.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await authController.updatePassword({
+        password: 'NewSecure1',
+        confirmPassword: 'NewSecure1',
+      });
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 500,
+        error: 'INTERNAL_SERVER',
       });
     });
   });
