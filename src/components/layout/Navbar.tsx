@@ -129,7 +129,7 @@ export function Navbar() {
                   >
                     <Avatar
                       size={36}
-                      name={user.email || 'User'}
+                      name={user.email || t('default_user')}
                       variant="beam"
                       colors={['#444', '#555', '#666', '#777', '#888']}
                     />
@@ -140,13 +140,13 @@ export function Navbar() {
                       <div className="flex items-center gap-3 mb-3">
                         <Avatar
                           size={36}
-                          name={user.email || 'User'}
+                          name={user.email || t('default_user')}
                           variant="beam"
                           colors={['#444', '#555', '#666', '#777', '#888']}
                         />
                         <div className="flex flex-col leading-tight">
                           <span className="font-semibold text-sm">
-                            {user.user_metadata.name || 'User'}
+                            {user.user_metadata.name || t('default_user')}
                           </span>
                           <p className="text-xs text-muted-foreground truncate max-w-[160px]">
                             {user.email}

@@ -71,8 +71,8 @@ export default function EduOverviewPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Content Overview</CardTitle>
-            <CardDescription>Your teaching materials at a glance</CardDescription>
+            <CardTitle>{t('content_overview_title')}</CardTitle>
+            <CardDescription>{t('content_overview_desc')}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -80,8 +80,8 @@ export default function EduOverviewPage() {
                 <div className="flex items-center gap-3">
                   <FileText className="h-5 w-5 text-primary" />
                   <div>
-                    <p className="font-medium text-sm">Questions</p>
-                    <p className="text-xs text-muted-foreground">Practice questions for students</p>
+                    <p className="font-medium text-sm">{t('questions_card_title')}</p>
+                    <p className="text-xs text-muted-foreground">{t('questions_card_desc')}</p>
                   </div>
                 </div>
                 <span className="text-2xl font-bold">
@@ -92,8 +92,8 @@ export default function EduOverviewPage() {
                 <div className="flex items-center gap-3">
                   <Layers className="h-5 w-5 text-primary" />
                   <div>
-                    <p className="font-medium text-sm">Flashcards</p>
-                    <p className="text-xs text-muted-foreground">Study flashcards for students</p>
+                    <p className="font-medium text-sm">{t('flashcards_card_title')}</p>
+                    <p className="text-xs text-muted-foreground">{t('flashcards_card_desc')}</p>
                   </div>
                 </div>
                 <span className="text-2xl font-bold">

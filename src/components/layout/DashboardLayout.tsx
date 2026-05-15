@@ -107,13 +107,16 @@ function getInitials(name: string | null | undefined): string {
     .slice(0, 2);
 }
 
-const ROLE_LABELS: Record<UserRole, string> = {
-  [UserRole.SYS_ADMIN]: 'Sys Admin',
-  [UserRole.UNIVERSITY_ADMIN]: 'Uni Admin',
-  [UserRole.TEACHER]: 'Teacher',
-  [UserRole.STUDENT]: 'Student',
-  [UserRole.PREMIUM]: 'Premium',
-  [UserRole.FREE]: 'Free',
+const getRoleLabel = (role: UserRole, t: (key: string) => string): string => {
+  const map: Record<UserRole, string> = {
+    [UserRole.SYS_ADMIN]: t('role_sys_admin'),
+    [UserRole.UNIVERSITY_ADMIN]: t('role_uni_admin'),
+    [UserRole.TEACHER]: t('role_teacher'),
+    [UserRole.STUDENT]: t('role_student'),
+    [UserRole.PREMIUM]: t('role_premium'),
+    [UserRole.FREE]: t('role_free'),
+  };
+  return map[role];
 };
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -123,7 +126,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const navItems = getNavGroup(pathname);
   const dashboardTitleKey = getDashboardTitleKey(pathname);
 
-  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'User';
+  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || t('default_user');
   const userRole = user?.app_metadata?.role as UserRole | undefined;
 
   const handleLogout = async () => {
@@ -145,7 +148,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <span className="text-lg font-bold tracking-tight">StudiQ</span>
           </Link>
           {userRole && (
-            <span className="text-xs text-muted-foreground">{ROLE_LABELS[userRole]}</span>
+            <span className="text-xs text-muted-foreground">{getRoleLabel(userRole, t)}</span>
           )}
         </SidebarHeader>
         <SidebarSeparator />

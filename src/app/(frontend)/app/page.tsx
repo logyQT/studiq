@@ -92,14 +92,14 @@ export default function AppOverviewPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Quick Practice</CardTitle>
-            <CardDescription>Jump right into a practice session</CardDescription>
+            <CardTitle>{t('quick_practice_title')}</CardTitle>
+            <CardDescription>{t('quick_practice_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <Link href="/app/quiz">
               <Button className="w-full justify-between">
                 <span className="flex items-center gap-2">
-                  <BookOpen className="h-4 w-4" /> Generate Practice Quiz
+                  <BookOpen className="h-4 w-4" /> {t('generate_practice_quiz')}
                 </span>
                 <ArrowRight className="h-4 w-4" />
               </Button>
@@ -107,7 +107,7 @@ export default function AppOverviewPage() {
             <Link href="/app/flashcards">
               <Button variant="outline" className="w-full justify-between">
                 <span className="flex items-center gap-2">
-                  <Brain className="h-4 w-4" /> Practice Flashcards
+                  <Brain className="h-4 w-4" /> {t('practice_flashcards')}
                 </span>
                 <ArrowRight className="h-4 w-4" />
               </Button>
