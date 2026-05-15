@@ -7,8 +7,10 @@ const uuid = z
 export const LogPracticeSchema = registry.register(
   'LogFlashcardPracticeRequest',
   z.object({
-    flashcardId: uuid,
     wasCorrect: z.boolean(),
+    responseTimeMs: z.number().int().positive().optional(),
+    confidenceLevel: z.number().int().min(1).max(5).optional(),
+    sessionId: uuid.optional(),
   }),
 );
 

@@ -1,6 +1,6 @@
 /**
  * @swagger
- * /api/v1/flashcard-spaces/{id}:
+ * /api/v1/flashcards/spaces/{id}:
  *   get:
  *     summary: Get flashcard space by ID
  *     description: Returns a single flashcard space. Only the owner can view.
