@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { POST, GET } from '@/app/(backend)/api/v1/flashcard-practice/route';
+import { POST as logPractice, GET as getHistoryForCard } from '@/app/(backend)/api/v1/flashcards/[id]/practice/route';
+import { GET as getAllHistory } from '@/app/(backend)/api/v1/flashcards/practice/route';
+import { GET as getStatsForCard } from '@/app/(backend)/api/v1/flashcards/[id]/practice/stats/route';
+import { GET as getStatsAll } from '@/app/(backend)/api/v1/flashcards/practice/stats/route';
 import { TEST_USERS, mockUser, cleanupFlashcardPractice, cleanupFlashcards, createServiceClient } from './helpers';
-import { createNextRequest } from './test-utils';
+import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Flashcard Practice Integration', () => {
   let flashcardId: string;
@@ -22,33 +25,66 @@ describe('Flashcard Practice Integration', () => {
     flashcardId = fc.id;
   });
 
-  describe('POST /api/v1/flashcard-practice', () => {
+  describe('POST /api/v1/flashcards/{id}/practice', () => {
     it('logs practice and returns 201', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcard-practice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flashcardId, wasCorrect: true }),
-      });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
+        { id: flashcardId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wasCorrect: true }),
+        },
+      );
 
-      const response = await POST(req);
+      const response = await logPractice(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
     });
 
-    it('returns 422 when flashcardId is invalid', async () => {
+    it('logs practice with optional fields and returns 201', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcard-practice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flashcardId: 'not-a-uuid', wasCorrect: true }),
-      });
+      const sessionId = '00000000-0000-0000-0000-000000000001';
 
-      const response = await POST(req);
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
+        { id: flashcardId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wasCorrect: true, responseTimeMs: 1500, confidenceLevel: 4, sessionId }),
+        },
+      );
+
+      const response = await logPractice(request, { params });
+      const body = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(body.success).toBe(true);
+      expect(body.data.response_time_ms).toBe(1500);
+      expect(body.data.confidence_level).toBe(4);
+      expect(body.data.session_id).toBe(sessionId);
+    });
+
+    it('returns 422 when wasCorrect is missing', async () => {
+      mockUser(TEST_USERS.STUDENT);
+
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
+        { id: flashcardId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ responseTimeMs: 1000 }),
+        },
+      );
+
+      const response = await logPractice(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(422);
@@ -58,13 +94,17 @@ describe('Flashcard Practice Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcard-practice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flashcardId, wasCorrect: true }),
-      });
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
+        { id: flashcardId },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wasCorrect: true }),
+        },
+      );
 
-      const response = await POST(req);
+      const response = await logPractice(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(401);
@@ -72,21 +112,37 @@ describe('Flashcard Practice Integration', () => {
     });
   });
 
-  describe('GET /api/v1/flashcard-practice', () => {
-    it('returns practice history for user', async () => {
+  describe('GET /api/v1/flashcards/{id}/practice', () => {
+    it('returns practice history for user on specific flashcard', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const response = await GET();
+      const supabase = createServiceClient();
+      await supabase
+        .from('flashcard_practice')
+        .insert({ user_id: TEST_USERS.STUDENT.id, flashcard_id: flashcardId, was_correct: true });
+
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
+        { id: flashcardId },
+      );
+
+      const response = await getHistoryForCard(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
       expect(Array.isArray(body.data)).toBe(true);
+      expect(body.data.length).toBe(1);
     });
 
-    it('returns empty array when no practice exists', async () => {
-      mockUser(TEST_USERS.PREMIUM);
+    it('returns empty array when no practice exists for card', async () => {
+      mockUser(TEST_USERS.STUDENT);
 
-      const response = await GET();
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
+        { id: flashcardId },
+      );
+
+      const response = await getHistoryForCard(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -96,7 +152,83 @@ describe('Flashcard Practice Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const response = await GET();
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
+        { id: flashcardId },
+      );
+
+      const response = await getHistoryForCard(request, { params });
+      const body = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(body.success).toBe(false);
+    });
+  });
+
+  describe('GET /api/v1/flashcards/practice', () => {
+    it('returns all practice history for user', async () => {
+      mockUser(TEST_USERS.STUDENT);
+
+      const response = await getAllHistory();
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(Array.isArray(body.data)).toBe(true);
+    });
+
+    it('returns empty array when no practice exists', async () => {
+      mockUser(TEST_USERS.PREMIUM);
+
+      const response = await getAllHistory();
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data).toEqual([]);
+    });
+
+    it('returns 401 when not authenticated', async () => {
+      mockUser(null);
+
+      const response = await getAllHistory();
+      const body = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(body.success).toBe(false);
+    });
+  });
+
+  describe('GET /api/v1/flashcards/{id}/practice/stats', () => {
+    it('returns 501 not implemented', async () => {
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/flashcards/${flashcardId}/practice/stats`,
+        { id: flashcardId },
+      );
+
+      const response = await getStatsForCard(request, { params });
+      const body = await response.json();
+
+      expect(response.status).toBe(501);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('NOT_IMPLEMENTED');
+    });
+  });
+
+  describe('GET /api/v1/flashcards/practice/stats', () => {
+    it('returns 501 not implemented', async () => {
+      mockUser(TEST_USERS.TEACHER);
+
+      const response = await getStatsAll();
+      const body = await response.json();
+
+      expect(response.status).toBe(501);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('NOT_IMPLEMENTED');
+    });
+
+    it('returns 401 when not authenticated', async () => {
+      mockUser(null);
+
+      const response = await getStatsAll();
       const body = await response.json();
 
       expect(response.status).toBe(401);

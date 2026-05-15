@@ -1,6 +1,6 @@
 /**
  * @swagger
- * /api/v1/flashcard-topics/{id}:
+ * /api/v1/flashcards/topics/{id}:
  *   get:
  *     summary: Get flashcard topic by ID
  *     description: Returns a single flashcard topic. Public endpoint.

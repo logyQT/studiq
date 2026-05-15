@@ -1,25 +1,25 @@
 /**
  * @swagger
- * /api/v1/flashcard-practice:
+ * /api/v1/flashcards/spaces:
  *   get:
- *     summary: Get flashcard practice history
- *     description: Returns practice history for the authenticated user.
+ *     summary: List flashcard spaces
+ *     description: Returns a list of flashcard spaces for the authenticated user.
  *     tags:
- *       - Flashcard Practice
+ *       - Flashcard Spaces
  *     security:
  *       - cookieAuth: []
  *     responses:
  *       200:
- *         description: Practice history retrieved
+ *         description: List of flashcard spaces
  *       401:
  *         description: Unauthorized (no session)
  *       500:
  *         description: Internal server error
  *   post:
- *     summary: Log flashcard practice
- *     description: Logs a flashcard practice session. Requires authentication.
+ *     summary: Create a flashcard space
+ *     description: Creates a new flashcard space. Requires authentication.
  *     tags:
- *       - Flashcard Practice
+ *       - Flashcard Spaces
  *     security:
  *       - cookieAuth: []
  *     requestBody:
@@ -29,17 +29,14 @@
  *           schema:
  *             type: object
  *             required:
- *               - flashcardId
- *               - wasCorrect
+ *               - name
  *             properties:
- *               flashcardId:
+ *               name:
  *                 type: string
- *                 format: uuid
- *               wasCorrect:
- *                 type: boolean
+ *                 minLength: 1
  *     responses:
  *       201:
- *         description: Practice logged successfully
+ *         description: Space created successfully
  *       401:
  *         description: Unauthorized (no session)
  *       422:
@@ -49,7 +46,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { flashcardPracticeController } from '@/server/controllers';
+import { flashcardSpaceController } from '@/server/controllers';
 import { toNextResponse } from '@/lib/http-utils';
 import { createClient } from '@/lib/supabase/server';
 
@@ -64,7 +61,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const response = await flashcardPracticeController.log(body, user.id);
+  const response = await flashcardSpaceController.create(body, user.id);
   return toNextResponse(response);
 }
 
@@ -78,6 +75,6 @@ export async function GET() {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
   }
 
-  const response = await flashcardPracticeController.getHistory(user.id);
+  const response = await flashcardSpaceController.list(user.id);
   return toNextResponse(response);
 }

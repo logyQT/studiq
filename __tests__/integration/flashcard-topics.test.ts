@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { POST, GET } from '@/app/(backend)/api/v1/flashcard-topics/route';
+import { POST, GET } from '@/app/(backend)/api/v1/flashcards/topics/route';
 import {
   GET as getById,
   PUT as update,
   DELETE as deleteFn,
-} from '@/app/(backend)/api/v1/flashcard-topics/[id]/route';
+} from '@/app/(backend)/api/v1/flashcards/topics/[id]/route';
 import { TEST_USERS, mockUser, cleanupFlashcardTopics, createServiceClient } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
@@ -16,11 +16,11 @@ describe('Flashcard Topics Integration', () => {
     }
   });
 
-  describe('POST /api/v1/flashcard-topics', () => {
+  describe('POST /api/v1/flashcards/topics', () => {
     it('creates a topic and returns 201', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcard-topics', {
+      const req = createNextRequest('http://localhost/api/v1/flashcards/topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'topic-Math Topics' }),
@@ -37,7 +37,7 @@ describe('Flashcard Topics Integration', () => {
     it('returns 422 when name is empty', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcard-topics', {
+      const req = createNextRequest('http://localhost/api/v1/flashcards/topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: '' }),
@@ -53,7 +53,7 @@ describe('Flashcard Topics Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcard-topics', {
+      const req = createNextRequest('http://localhost/api/v1/flashcards/topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'topic-Math Topics' }),
@@ -67,7 +67,7 @@ describe('Flashcard Topics Integration', () => {
     });
   });
 
-  describe('GET /api/v1/flashcard-topics', () => {
+  describe('GET /api/v1/flashcards/topics', () => {
     it('lists topics for user', async () => {
       mockUser(TEST_USERS.TEACHER);
 
@@ -89,7 +89,7 @@ describe('Flashcard Topics Integration', () => {
     });
   });
 
-  describe('GET /api/v1/flashcard-topics/:id', () => {
+  describe('GET /api/v1/flashcards/topics/:id', () => {
     it('returns topic when found', async () => {
       mockUser(TEST_USERS.TEACHER);
 
@@ -101,7 +101,7 @@ describe('Flashcard Topics Integration', () => {
         .single();
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcard-topics/${topic.id}`,
+        `http://localhost/api/v1/flashcards/topics/${topic.id}`,
         { id: topic.id },
       );
       const response = await getById(request, { params });
@@ -116,7 +116,7 @@ describe('Flashcard Topics Integration', () => {
 
       const fakeId = '00000000-0000-0000-0000-000000000099';
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcard-topics/${fakeId}`,
+        `http://localhost/api/v1/flashcards/topics/${fakeId}`,
         { id: fakeId },
       );
       const response = await getById(request, { params });
@@ -127,7 +127,7 @@ describe('Flashcard Topics Integration', () => {
     });
   });
 
-  describe('PUT /api/v1/flashcard-topics/:id', () => {
+  describe('PUT /api/v1/flashcards/topics/:id', () => {
     it('updates own topic and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
@@ -139,7 +139,7 @@ describe('Flashcard Topics Integration', () => {
         .single();
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcard-topics/${topic.id}`,
+        `http://localhost/api/v1/flashcards/topics/${topic.id}`,
         { id: topic.id },
         {
           method: 'PUT',
@@ -165,7 +165,7 @@ describe('Flashcard Topics Integration', () => {
         .single();
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcard-topics/${topic.id}`,
+        `http://localhost/api/v1/flashcards/topics/${topic.id}`,
         { id: topic.id },
         {
           method: 'PUT',
@@ -181,7 +181,7 @@ describe('Flashcard Topics Integration', () => {
     });
   });
 
-  describe('DELETE /api/v1/flashcard-topics/:id', () => {
+  describe('DELETE /api/v1/flashcards/topics/:id', () => {
     it('deletes own topic and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
@@ -193,7 +193,7 @@ describe('Flashcard Topics Integration', () => {
         .single();
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcard-topics/${topic.id}`,
+        `http://localhost/api/v1/flashcards/topics/${topic.id}`,
         { id: topic.id },
         { method: 'DELETE' },
       );
@@ -215,7 +215,7 @@ describe('Flashcard Topics Integration', () => {
         .single();
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcard-topics/${topic.id}`,
+        `http://localhost/api/v1/flashcards/topics/${topic.id}`,
         { id: topic.id },
         { method: 'DELETE' },
       );

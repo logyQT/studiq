@@ -1,6 +1,6 @@
 /**
  * @swagger
- * /api/v1/flashcard-topics:
+ * /api/v1/flashcards/topics:
  *   get:
  *     summary: List flashcard topics
  *     description: Returns a list of flashcard topics for the authenticated user.

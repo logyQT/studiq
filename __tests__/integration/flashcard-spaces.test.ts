@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { POST, GET } from '@/app/(backend)/api/v1/flashcard-spaces/route';
+import { POST, GET } from '@/app/(backend)/api/v1/flashcards/spaces/route';
 import {
   GET as getById,
   PUT as update,
   DELETE as deleteFn,
-} from '@/app/(backend)/api/v1/flashcard-spaces/[id]/route';
+} from '@/app/(backend)/api/v1/flashcards/spaces/[id]/route';
 import { TEST_USERS, mockUser, cleanupFlashcardSpaces, createServiceClient } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
@@ -16,11 +16,11 @@ describe('Flashcard Spaces Integration', () => {
     }
   });
 
-  describe('POST /api/v1/flashcard-spaces', () => {
+  describe('POST /api/v1/flashcards/spaces', () => {
     it('creates a space and returns 201', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcard-spaces', {
+      const req = createNextRequest('http://localhost/api/v1/flashcards/spaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'space-Study Space' }),
@@ -37,7 +37,7 @@ describe('Flashcard Spaces Integration', () => {
     it('returns 422 when name is empty', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcard-spaces', {
+      const req = createNextRequest('http://localhost/api/v1/flashcards/spaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: '' }),
@@ -53,7 +53,7 @@ describe('Flashcard Spaces Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcard-spaces', {
+      const req = createNextRequest('http://localhost/api/v1/flashcards/spaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'space-Study Space' }),
@@ -67,7 +67,7 @@ describe('Flashcard Spaces Integration', () => {
     });
   });
 
-  describe('GET /api/v1/flashcard-spaces', () => {
+  describe('GET /api/v1/flashcards/spaces', () => {
     it('lists spaces for user', async () => {
       mockUser(TEST_USERS.TEACHER);
 
@@ -89,7 +89,7 @@ describe('Flashcard Spaces Integration', () => {
     });
   });
 
-  describe('GET /api/v1/flashcard-spaces/:id', () => {
+  describe('GET /api/v1/flashcards/spaces/:id', () => {
     it('returns space when found and owned by user', async () => {
       mockUser(TEST_USERS.TEACHER);
 
@@ -101,7 +101,7 @@ describe('Flashcard Spaces Integration', () => {
         .single();
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcard-spaces/${space.id}`,
+        `http://localhost/api/v1/flashcards/spaces/${space.id}`,
         { id: space.id },
       );
       const response = await getById(request, { params });
@@ -122,7 +122,7 @@ describe('Flashcard Spaces Integration', () => {
         .single();
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcard-spaces/${space.id}`,
+        `http://localhost/api/v1/flashcards/spaces/${space.id}`,
         { id: space.id },
       );
       const response = await getById(request, { params });
@@ -133,7 +133,7 @@ describe('Flashcard Spaces Integration', () => {
     });
   });
 
-  describe('PUT /api/v1/flashcard-spaces/:id', () => {
+  describe('PUT /api/v1/flashcards/spaces/:id', () => {
     it('updates own space and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
@@ -146,7 +146,7 @@ describe('Flashcard Spaces Integration', () => {
       if (insertError || !space) throw new Error(`Failed to create space: ${insertError?.message}`);
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcard-spaces/${space.id}`,
+        `http://localhost/api/v1/flashcards/spaces/${space.id}`,
         { id: space.id },
         {
           method: 'PUT',
@@ -172,7 +172,7 @@ describe('Flashcard Spaces Integration', () => {
         .single();
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcard-spaces/${space.id}`,
+        `http://localhost/api/v1/flashcards/spaces/${space.id}`,
         { id: space.id },
         {
           method: 'PUT',
@@ -188,7 +188,7 @@ describe('Flashcard Spaces Integration', () => {
     });
   });
 
-  describe('DELETE /api/v1/flashcard-spaces/:id', () => {
+  describe('DELETE /api/v1/flashcards/spaces/:id', () => {
     it('deletes own space and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
@@ -201,7 +201,7 @@ describe('Flashcard Spaces Integration', () => {
       if (insertError || !space) throw new Error(`Failed to create space: ${insertError?.message}`);
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcard-spaces/${space.id}`,
+        `http://localhost/api/v1/flashcards/spaces/${space.id}`,
         { id: space.id },
         { method: 'DELETE' },
       );
@@ -223,7 +223,7 @@ describe('Flashcard Spaces Integration', () => {
         .single();
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcard-spaces/${space.id}`,
+        `http://localhost/api/v1/flashcards/spaces/${space.id}`,
         { id: space.id },
         { method: 'DELETE' },
       );
