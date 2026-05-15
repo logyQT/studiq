@@ -6,12 +6,19 @@ export class FlashcardSpaceService {
   async create(data: CreateSpaceInput, userId: string) {
     const supabase = await createClient();
 
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('university_id')
+      .eq('id', userId)
+      .single();
+
     const { data: space, error } = await supabase
       .from('flashcard_spaces')
       .insert({
         name: data.name,
         description: data.description ?? null,
         created_by: userId,
+        university_id: profile?.university_id ?? null,
       })
       .select()
       .single();

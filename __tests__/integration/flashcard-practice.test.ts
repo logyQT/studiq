@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST, GET } from '@/app/(backend)/api/v1/flashcard-practice/route';
-import { TEST_USERS, mockUser, cleanupFlashcardPractice, cleanupFlashcards, createRealClient } from './helpers';
+import { TEST_USERS, mockUser, cleanupFlashcardPractice, cleanupFlashcards, createServiceClient } from './helpers';
 import { createNextRequest } from './test-utils';
 
 describe('Flashcard Practice Integration', () => {
@@ -13,7 +13,7 @@ describe('Flashcard Practice Integration', () => {
       await cleanupFlashcards(user.id, 'practice-');
     }
 
-    const supabase = createRealClient();
+    const supabase = createServiceClient();
     const { data: fc } = await supabase
       .from('flashcards')
       .insert({ front: 'practice-Practice Card', back: 'Answer', created_by: TEST_USERS.TEACHER.id })

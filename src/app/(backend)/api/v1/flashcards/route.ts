@@ -3,9 +3,11 @@
  * /api/v1/flashcards:
  *   get:
  *     summary: List flashcards
- *     description: Returns a list of flashcards with optional filters by topic or space. Public endpoint.
+ *     description: Returns a list of flashcards scoped to the authenticated user's organization. Requires authentication.
  *     tags:
  *       - Flashcards
+ *     security:
+ *       - cookieAuth: []
  *     parameters:
  *       - in: query
  *         name: topicIds
@@ -20,11 +22,13 @@
  *     responses:
  *       200:
  *         description: List of flashcards
+ *       401:
+ *         description: Unauthorized (no session)
  *       500:
  *         description: Internal server error
  *   post:
  *     summary: Create a flashcard
- *     description: Creates a new flashcard. Requires authentication.
+ *     description: Creates a new flashcard. Teachers' flashcards are scoped to their university. Requires authentication.
  *     tags:
  *       - Flashcards
  *     security:
@@ -66,7 +70,7 @@
  *         description: Internal server error
  *   put:
  *     summary: Bulk create flashcards
- *     description: Creates multiple flashcards at once. Requires authentication.
+ *     description: Creates multiple flashcards at once. Teachers' flashcards are scoped to their university. Requires authentication.
  *     tags:
  *       - Flashcards
  *     security:
@@ -120,11 +124,16 @@ import { flashcardController } from '@/server/controllers';
 import { toNextResponse } from '@/lib/http-utils';
 import { createClient } from '@/lib/supabase/server';
 
-export async function POST(req: NextRequest) {
+async function getAuthenticatedUser() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  return user;
+}
+
+export async function POST(req: NextRequest) {
+  const user = await getAuthenticatedUser();
 
   if (!user) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
@@ -136,6 +145,12 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const user = await getAuthenticatedUser();
+
+  if (!user) {
+    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
+  }
+
   const { searchParams } = new URL(req.url);
   const topicIds = searchParams.get('topicIds')?.split(',').filter(Boolean);
   const spaceIds = searchParams.get('spaceIds')?.split(',').filter(Boolean);
@@ -144,16 +159,14 @@ export async function GET(req: NextRequest) {
   if (spaceIds && spaceIds.length > 0) filters.spaceIds = spaceIds;
 
   const response = await flashcardController.list(
+    user.id,
     Object.keys(filters).length > 0 ? filters : undefined,
   );
   return toNextResponse(response);
 }
 
 export async function PUT(req: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getAuthenticatedUser();
 
   if (!user) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });

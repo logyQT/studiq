@@ -3,9 +3,11 @@
  * /api/v1/flashcards/{id}:
  *   get:
  *     summary: Get flashcard by ID
- *     description: Returns a single flashcard. Public endpoint.
+ *     description: Returns a single flashcard. Requires authentication. Users can only view their own flashcards or those from their university organization.
  *     tags:
  *       - Flashcards
+ *     security:
+ *       - cookieAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -17,6 +19,8 @@
  *     responses:
  *       200:
  *         description: Flashcard found
+ *       401:
+ *         description: Unauthorized (no session)
  *       404:
  *         description: Flashcard not found
  *   put:
@@ -99,17 +103,28 @@ import { flashcardController } from '@/server/controllers';
 import { toNextResponse } from '@/lib/http-utils';
 import { createClient } from '@/lib/supabase/server';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const response = await flashcardController.getById(id);
-  return toNextResponse(response);
-}
-
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function getAuthenticatedUser() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  return user;
+}
+
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getAuthenticatedUser();
+
+  if (!user) {
+    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
+  }
+
+  const { id } = await params;
+  const response = await flashcardController.getById(id, user.id);
+  return toNextResponse(response);
+}
+
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getAuthenticatedUser();
 
   if (!user) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
@@ -122,10 +137,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getAuthenticatedUser();
 
   if (!user) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });

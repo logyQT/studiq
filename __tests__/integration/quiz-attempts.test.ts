@@ -5,7 +5,7 @@ import {
   POST as attemptPost,
 } from '@/app/(backend)/api/v1/quiz-attempts/[attemptId]/route';
 import { POST as quizPost } from '@/app/(backend)/api/v1/quizzes/route';
-import { TEST_USERS, mockUser, cleanupQuizAttempts, cleanupQuestions, cleanupSubjects, createRealClient } from './helpers';
+import { TEST_USERS, mockUser, cleanupQuizAttempts, cleanupQuestions, cleanupSubjects, createServiceClient } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Quiz Attempts Integration', () => {
@@ -20,7 +20,7 @@ describe('Quiz Attempts Integration', () => {
       await cleanupSubjects(user.id, 'quiz-attempt-');
     }
 
-    const supabase = createRealClient();
+    const supabase = createServiceClient();
     const { data: subject, error: subjectError } = await supabase
       .from('subjects')
       .insert({ name: 'quiz-attempt-Quiz Attempt Subject', created_by: TEST_USERS.TEACHER.id })
@@ -126,7 +126,7 @@ describe('Quiz Attempts Integration', () => {
     it('submits attempt and returns score', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const supabase = createRealClient();
+      const supabase = createServiceClient();
       const { data: attemptQuestions } = await supabase
         .from('quiz_attempt_questions')
         .select('question_id')
@@ -165,7 +165,7 @@ describe('Quiz Attempts Integration', () => {
     it('returns 400 when submitting already completed attempt', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const supabase = createRealClient();
+      const supabase = createServiceClient();
       const { data: attemptQuestions } = await supabase
         .from('quiz_attempt_questions')
         .select('question_id')

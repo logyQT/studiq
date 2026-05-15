@@ -19,9 +19,44 @@ create type "public"."user_role" as enum ('free', 'premium', 'student', 'teacher
 
 
 
+  create table "public"."flashcard_space_assignments" (
+    "flashcard_id" uuid not null,
+    "space_id" uuid not null
+      );
+
+
+
+  create table "public"."flashcard_spaces" (
+    "id" uuid not null default gen_random_uuid(),
+    "university_id" uuid,
+    "created_by" uuid,
+    "name" text not null,
+    "description" text,
+    "created_at" timestamp with time zone default now()
+      );
+
+
+
+  create table "public"."flashcard_topic_assignments" (
+    "flashcard_id" uuid not null,
+    "topic_id" uuid not null
+      );
+
+
+
+  create table "public"."flashcard_topics" (
+    "id" uuid not null default gen_random_uuid(),
+    "university_id" uuid,
+    "created_by" uuid,
+    "name" text not null,
+    "created_at" timestamp with time zone default now()
+      );
+
+
+
   create table "public"."flashcards" (
     "id" uuid not null default gen_random_uuid(),
-    "subject_id" uuid,
+    "university_id" uuid,
     "created_by" uuid,
     "front" text not null,
     "back" text not null,
@@ -154,15 +189,35 @@ alter table "public"."user_subscriptions" enable row level security;
 
 CREATE UNIQUE INDEX flashcard_practice_pkey ON public.flashcard_practice USING btree (id);
 
+CREATE UNIQUE INDEX flashcard_space_assignments_pkey ON public.flashcard_space_assignments USING btree (flashcard_id, space_id);
+
+CREATE UNIQUE INDEX flashcard_spaces_pkey ON public.flashcard_spaces USING btree (id);
+
+CREATE UNIQUE INDEX flashcard_topic_assignments_pkey ON public.flashcard_topic_assignments USING btree (flashcard_id, topic_id);
+
+CREATE UNIQUE INDEX flashcard_topics_pkey ON public.flashcard_topics USING btree (id);
+
 CREATE UNIQUE INDEX flashcards_pkey ON public.flashcards USING btree (id);
 
 CREATE INDEX idx_flashcard_practice_flashcard ON public.flashcard_practice USING btree (flashcard_id);
 
 CREATE INDEX idx_flashcard_practice_user ON public.flashcard_practice USING btree (user_id);
 
+CREATE INDEX idx_flashcard_space_assignments_space ON public.flashcard_space_assignments USING btree (space_id);
+
+CREATE INDEX idx_flashcard_spaces_created_by ON public.flashcard_spaces USING btree (created_by);
+
+CREATE INDEX idx_flashcard_spaces_university ON public.flashcard_spaces USING btree (university_id);
+
+CREATE INDEX idx_flashcard_topic_assignments_topic ON public.flashcard_topic_assignments USING btree (topic_id);
+
+CREATE INDEX idx_flashcard_topics_created_by ON public.flashcard_topics USING btree (created_by);
+
+CREATE INDEX idx_flashcard_topics_university ON public.flashcard_topics USING btree (university_id);
+
 CREATE INDEX idx_flashcards_created_by ON public.flashcards USING btree (created_by);
 
-CREATE INDEX idx_flashcards_subject ON public.flashcards USING btree (subject_id);
+CREATE INDEX idx_flashcards_university ON public.flashcards USING btree (university_id);
 
 CREATE INDEX idx_question_answers_question ON public.question_answers USING btree (question_id);
 
@@ -212,6 +267,14 @@ CREATE UNIQUE INDEX user_subscriptions_stripe_subscription_id_key ON public.user
 
 alter table "public"."flashcard_practice" add constraint "flashcard_practice_pkey" PRIMARY KEY using index "flashcard_practice_pkey";
 
+alter table "public"."flashcard_space_assignments" add constraint "flashcard_space_assignments_pkey" PRIMARY KEY using index "flashcard_space_assignments_pkey";
+
+alter table "public"."flashcard_spaces" add constraint "flashcard_spaces_pkey" PRIMARY KEY using index "flashcard_spaces_pkey";
+
+alter table "public"."flashcard_topic_assignments" add constraint "flashcard_topic_assignments_pkey" PRIMARY KEY using index "flashcard_topic_assignments_pkey";
+
+alter table "public"."flashcard_topics" add constraint "flashcard_topics_pkey" PRIMARY KEY using index "flashcard_topics_pkey";
+
 alter table "public"."flashcards" add constraint "flashcards_pkey" PRIMARY KEY using index "flashcards_pkey";
 
 alter table "public"."invitations" add constraint "invitations_pkey" PRIMARY KEY using index "invitations_pkey";
@@ -244,13 +307,45 @@ alter table "public"."flashcard_practice" add constraint "flashcard_practice_use
 
 alter table "public"."flashcard_practice" validate constraint "flashcard_practice_user_id_fkey";
 
+alter table "public"."flashcard_space_assignments" add constraint "flashcard_space_assignments_flashcard_id_fkey" FOREIGN KEY (flashcard_id) REFERENCES public.flashcards(id) ON DELETE CASCADE not valid;
+
+alter table "public"."flashcard_space_assignments" validate constraint "flashcard_space_assignments_flashcard_id_fkey";
+
+alter table "public"."flashcard_space_assignments" add constraint "flashcard_space_assignments_space_id_fkey" FOREIGN KEY (space_id) REFERENCES public.flashcard_spaces(id) ON DELETE CASCADE not valid;
+
+alter table "public"."flashcard_space_assignments" validate constraint "flashcard_space_assignments_space_id_fkey";
+
+alter table "public"."flashcard_spaces" add constraint "flashcard_spaces_created_by_fkey" FOREIGN KEY (created_by) REFERENCES public.profiles(id) ON DELETE CASCADE not valid;
+
+alter table "public"."flashcard_spaces" validate constraint "flashcard_spaces_created_by_fkey";
+
+alter table "public"."flashcard_spaces" add constraint "flashcard_spaces_university_id_fkey" FOREIGN KEY (university_id) REFERENCES public.universities(id) ON DELETE SET NULL not valid;
+
+alter table "public"."flashcard_spaces" validate constraint "flashcard_spaces_university_id_fkey";
+
+alter table "public"."flashcard_topic_assignments" add constraint "flashcard_topic_assignments_flashcard_id_fkey" FOREIGN KEY (flashcard_id) REFERENCES public.flashcards(id) ON DELETE CASCADE not valid;
+
+alter table "public"."flashcard_topic_assignments" validate constraint "flashcard_topic_assignments_flashcard_id_fkey";
+
+alter table "public"."flashcard_topic_assignments" add constraint "flashcard_topic_assignments_topic_id_fkey" FOREIGN KEY (topic_id) REFERENCES public.flashcard_topics(id) ON DELETE CASCADE not valid;
+
+alter table "public"."flashcard_topic_assignments" validate constraint "flashcard_topic_assignments_topic_id_fkey";
+
+alter table "public"."flashcard_topics" add constraint "flashcard_topics_created_by_fkey" FOREIGN KEY (created_by) REFERENCES public.profiles(id) ON DELETE SET NULL not valid;
+
+alter table "public"."flashcard_topics" validate constraint "flashcard_topics_created_by_fkey";
+
+alter table "public"."flashcard_topics" add constraint "flashcard_topics_university_id_fkey" FOREIGN KEY (university_id) REFERENCES public.universities(id) ON DELETE CASCADE not valid;
+
+alter table "public"."flashcard_topics" validate constraint "flashcard_topics_university_id_fkey";
+
 alter table "public"."flashcards" add constraint "flashcards_created_by_fkey" FOREIGN KEY (created_by) REFERENCES public.profiles(id) ON DELETE SET NULL not valid;
 
 alter table "public"."flashcards" validate constraint "flashcards_created_by_fkey";
 
-alter table "public"."flashcards" add constraint "flashcards_subject_id_fkey" FOREIGN KEY (subject_id) REFERENCES public.subjects(id) ON DELETE SET NULL not valid;
+alter table "public"."flashcards" add constraint "flashcards_university_id_fkey" FOREIGN KEY (university_id) REFERENCES public.universities(id) ON DELETE SET NULL not valid;
 
-alter table "public"."flashcards" validate constraint "flashcards_subject_id_fkey";
+alter table "public"."flashcards" validate constraint "flashcards_university_id_fkey";
 
 alter table "public"."invitations" add constraint "invitations_inviter_id_fkey" FOREIGN KEY (inviter_id) REFERENCES public.profiles(id) ON DELETE CASCADE not valid;
 
@@ -487,6 +582,174 @@ grant trigger on table "public"."flashcard_practice" to "service_role";
 grant truncate on table "public"."flashcard_practice" to "service_role";
 
 grant update on table "public"."flashcard_practice" to "service_role";
+
+grant delete on table "public"."flashcard_space_assignments" to "anon";
+
+grant insert on table "public"."flashcard_space_assignments" to "anon";
+
+grant references on table "public"."flashcard_space_assignments" to "anon";
+
+grant select on table "public"."flashcard_space_assignments" to "anon";
+
+grant trigger on table "public"."flashcard_space_assignments" to "anon";
+
+grant truncate on table "public"."flashcard_space_assignments" to "anon";
+
+grant update on table "public"."flashcard_space_assignments" to "anon";
+
+grant delete on table "public"."flashcard_space_assignments" to "authenticated";
+
+grant insert on table "public"."flashcard_space_assignments" to "authenticated";
+
+grant references on table "public"."flashcard_space_assignments" to "authenticated";
+
+grant select on table "public"."flashcard_space_assignments" to "authenticated";
+
+grant trigger on table "public"."flashcard_space_assignments" to "authenticated";
+
+grant truncate on table "public"."flashcard_space_assignments" to "authenticated";
+
+grant update on table "public"."flashcard_space_assignments" to "authenticated";
+
+grant delete on table "public"."flashcard_space_assignments" to "service_role";
+
+grant insert on table "public"."flashcard_space_assignments" to "service_role";
+
+grant references on table "public"."flashcard_space_assignments" to "service_role";
+
+grant select on table "public"."flashcard_space_assignments" to "service_role";
+
+grant trigger on table "public"."flashcard_space_assignments" to "service_role";
+
+grant truncate on table "public"."flashcard_space_assignments" to "service_role";
+
+grant update on table "public"."flashcard_space_assignments" to "service_role";
+
+grant delete on table "public"."flashcard_spaces" to "anon";
+
+grant insert on table "public"."flashcard_spaces" to "anon";
+
+grant references on table "public"."flashcard_spaces" to "anon";
+
+grant select on table "public"."flashcard_spaces" to "anon";
+
+grant trigger on table "public"."flashcard_spaces" to "anon";
+
+grant truncate on table "public"."flashcard_spaces" to "anon";
+
+grant update on table "public"."flashcard_spaces" to "anon";
+
+grant delete on table "public"."flashcard_spaces" to "authenticated";
+
+grant insert on table "public"."flashcard_spaces" to "authenticated";
+
+grant references on table "public"."flashcard_spaces" to "authenticated";
+
+grant select on table "public"."flashcard_spaces" to "authenticated";
+
+grant trigger on table "public"."flashcard_spaces" to "authenticated";
+
+grant truncate on table "public"."flashcard_spaces" to "authenticated";
+
+grant update on table "public"."flashcard_spaces" to "authenticated";
+
+grant delete on table "public"."flashcard_spaces" to "service_role";
+
+grant insert on table "public"."flashcard_spaces" to "service_role";
+
+grant references on table "public"."flashcard_spaces" to "service_role";
+
+grant select on table "public"."flashcard_spaces" to "service_role";
+
+grant trigger on table "public"."flashcard_spaces" to "service_role";
+
+grant truncate on table "public"."flashcard_spaces" to "service_role";
+
+grant update on table "public"."flashcard_spaces" to "service_role";
+
+grant delete on table "public"."flashcard_topic_assignments" to "anon";
+
+grant insert on table "public"."flashcard_topic_assignments" to "anon";
+
+grant references on table "public"."flashcard_topic_assignments" to "anon";
+
+grant select on table "public"."flashcard_topic_assignments" to "anon";
+
+grant trigger on table "public"."flashcard_topic_assignments" to "anon";
+
+grant truncate on table "public"."flashcard_topic_assignments" to "anon";
+
+grant update on table "public"."flashcard_topic_assignments" to "anon";
+
+grant delete on table "public"."flashcard_topic_assignments" to "authenticated";
+
+grant insert on table "public"."flashcard_topic_assignments" to "authenticated";
+
+grant references on table "public"."flashcard_topic_assignments" to "authenticated";
+
+grant select on table "public"."flashcard_topic_assignments" to "authenticated";
+
+grant trigger on table "public"."flashcard_topic_assignments" to "authenticated";
+
+grant truncate on table "public"."flashcard_topic_assignments" to "authenticated";
+
+grant update on table "public"."flashcard_topic_assignments" to "authenticated";
+
+grant delete on table "public"."flashcard_topic_assignments" to "service_role";
+
+grant insert on table "public"."flashcard_topic_assignments" to "service_role";
+
+grant references on table "public"."flashcard_topic_assignments" to "service_role";
+
+grant select on table "public"."flashcard_topic_assignments" to "service_role";
+
+grant trigger on table "public"."flashcard_topic_assignments" to "service_role";
+
+grant truncate on table "public"."flashcard_topic_assignments" to "service_role";
+
+grant update on table "public"."flashcard_topic_assignments" to "service_role";
+
+grant delete on table "public"."flashcard_topics" to "anon";
+
+grant insert on table "public"."flashcard_topics" to "anon";
+
+grant references on table "public"."flashcard_topics" to "anon";
+
+grant select on table "public"."flashcard_topics" to "anon";
+
+grant trigger on table "public"."flashcard_topics" to "anon";
+
+grant truncate on table "public"."flashcard_topics" to "anon";
+
+grant update on table "public"."flashcard_topics" to "anon";
+
+grant delete on table "public"."flashcard_topics" to "authenticated";
+
+grant insert on table "public"."flashcard_topics" to "authenticated";
+
+grant references on table "public"."flashcard_topics" to "authenticated";
+
+grant select on table "public"."flashcard_topics" to "authenticated";
+
+grant trigger on table "public"."flashcard_topics" to "authenticated";
+
+grant truncate on table "public"."flashcard_topics" to "authenticated";
+
+grant update on table "public"."flashcard_topics" to "authenticated";
+
+grant delete on table "public"."flashcard_topics" to "service_role";
+
+grant insert on table "public"."flashcard_topics" to "service_role";
+
+grant references on table "public"."flashcard_topics" to "service_role";
+
+grant select on table "public"."flashcard_topics" to "service_role";
+
+grant trigger on table "public"."flashcard_topics" to "service_role";
+
+grant truncate on table "public"."flashcard_topics" to "service_role";
+
+grant update on table "public"."flashcard_topics" to "service_role";
 
 grant delete on table "public"."flashcards" to "anon";
 
