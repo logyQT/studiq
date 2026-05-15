@@ -34,6 +34,7 @@ import {
 import { toast } from 'sonner';
 import { Search, UserMinus, Shield } from 'lucide-react';
 import { UserRole, UNIVERSITY_ROLES } from '@/types';
+import { useTranslations } from 'next-intl';
 
 interface Member {
   id: string;
@@ -44,6 +45,7 @@ interface Member {
 }
 
 export default function MembersPage() {
+  const t = useTranslations('ManageMembersPage');
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -77,9 +79,9 @@ export default function MembersPage() {
       });
       if (!res.ok) throw new Error();
       setMembers(members.map((m) => (m.id === removeId ? { ...m, role: UserRole.FREE } : m)));
-      toast.success('Member removed from organization');
+      toast.success(t('member_removed'));
     } catch {
-      toast.error('Failed to remove member');
+      toast.error(t('member_remove_failed'));
     }
     setRemoveId(null);
   }
@@ -96,9 +98,9 @@ export default function MembersPage() {
       setMembers(
         members.map((m) => (m.id === changingRole.id ? { ...m, role: changingRole.role } : m)),
       );
-      toast.success('Role updated');
+      toast.success(t('role_updated'));
     } catch {
-      toast.error('Failed to update role');
+      toast.error(t('role_update_failed'));
     }
     setChangingRole(null);
   }
@@ -113,20 +115,20 @@ export default function MembersPage() {
       .slice(0, 2);
   }
 
-  if (loading) return <div className="flex justify-center py-12">Loading...</div>;
+  if (loading) return <div className="flex justify-center py-12">{t('common_loading')}</div>;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Members</h2>
-        <span className="text-sm text-muted-foreground">{members.length} total</span>
+        <h2 className="text-2xl font-bold">{t('title')}</h2>
+        <span className="text-sm text-muted-foreground">{t('total_count', { count: members.length })}</span>
       </div>
 
       <div className="flex gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search members..."
+            placeholder={t('search_placeholder')}
             className="pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -134,13 +136,13 @@ export default function MembersPage() {
         </div>
         <Select value={filterRole} onValueChange={setFilterRole}>
           <SelectTrigger className="w-40">
-            <SelectValue placeholder="Role" />
+            <SelectValue placeholder={t('role_filter')} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Roles</SelectItem>
+            <SelectItem value="all">{t('all_roles')}</SelectItem>
             {UNIVERSITY_ROLES.map((r) => (
               <SelectItem key={r} value={r}>
-                {r.replace('_', ' ')}
+                {t(`role_${r}`)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -151,10 +153,10 @@ export default function MembersPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Member</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Joined</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>{t('col_member')}</TableHead>
+              <TableHead>{t('col_role')}</TableHead>
+              <TableHead>{t('col_joined')}</TableHead>
+              <TableHead className="text-right">{t('col_actions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -168,7 +170,7 @@ export default function MembersPage() {
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <p className="font-medium">{m.full_name || 'Unnamed'}</p>
+                      <p className="font-medium">{m.full_name || t('unnamed')}</p>
                       <p className="text-xs text-muted-foreground">{m.email}</p>
                     </div>
                   </div>
@@ -192,7 +194,7 @@ export default function MembersPage() {
                       <SelectContent>
                         {UNIVERSITY_ROLES.map((r) => (
                           <SelectItem key={r} value={r}>
-                            {r.replace('_', ' ')}
+                            {t(`role_${r}`)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -207,7 +209,7 @@ export default function MembersPage() {
             {filtered.length === 0 && (
               <TableRow>
                 <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                  No members found
+                  {t('no_members')}
                 </TableCell>
               </TableRow>
             )}
@@ -218,18 +220,18 @@ export default function MembersPage() {
       <AlertDialog open={!!removeId} onOpenChange={() => setRemoveId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove from Organization?</AlertDialogTitle>
+            <AlertDialogTitle>{t('remove_dialog_title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will change their role to Free. They will lose access to university resources.
+              {t('remove_dialog_desc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('common_cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleRemove}
               className="bg-destructive text-destructive-foreground"
             >
-              Remove
+              {t('common_remove')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -238,15 +240,14 @@ export default function MembersPage() {
       <AlertDialog open={!!changingRole} onOpenChange={() => setChangingRole(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Change Role?</AlertDialogTitle>
+            <AlertDialogTitle>{t('change_role_dialog_title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to change this member's role to{' '}
-              {changingRole?.role.replace('_', ' ')}?
+              {t('change_role_dialog_desc', { role: changingRole?.role.replace('_', ' ') ?? '' })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleChangeRole}>Confirm</AlertDialogAction>
+            <AlertDialogCancel>{t('common_cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleChangeRole}>{t('common_confirm')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

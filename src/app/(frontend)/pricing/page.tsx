@@ -91,7 +91,7 @@ export default function PricingPage() {
               className={plan.popular ? 'border-primary shadow-lg relative' : 'border-border/50'}
             >
               {plan.popular && (
-                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">Most Popular</Badge>
+                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">{t('most_popular')}</Badge>
               )}
               <CardHeader>
                 <CardTitle className="text-xl">{plan.name}</CardTitle>

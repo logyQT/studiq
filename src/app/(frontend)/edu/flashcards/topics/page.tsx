@@ -35,6 +35,7 @@ interface Topic {
 }
 
 export default function FlashcardTopicsPage() {
+  const t = useTranslations('EduFlashcardTopicsPage');
   const dl = useTranslations('DashboardLayout');
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,7 +75,7 @@ export default function FlashcardTopicsPage() {
 
   async function handleSubmit() {
     if (!formData.name.trim()) {
-      toast.error('Name is required');
+      toast.error(t('name_required'));
       return;
     }
     try {
@@ -94,9 +95,9 @@ export default function FlashcardTopicsPage() {
       }
       setDialogOpen(false);
       resetForm();
-      toast.success(editing ? 'Topic updated' : 'Topic created');
+      toast.success(editing ? t('topic_updated') : t('topic_created'));
     } catch {
-      toast.error('Failed to save topic');
+      toast.error(t('save_failed'));
     }
   }
 
@@ -106,9 +107,9 @@ export default function FlashcardTopicsPage() {
       const res = await fetch(`/api/v1/flashcard-topics/${deleteId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
       setTopics(topics.filter((t) => t.id !== deleteId));
-      toast.success('Topic deleted');
+      toast.success(t('topic_deleted'));
     } catch {
-      toast.error('Failed to delete topic');
+      toast.error(t('delete_failed'));
     }
     setDeleteId(null);
   }
@@ -118,9 +119,9 @@ export default function FlashcardTopicsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Flashcard Topics</h2>
+        <h2 className="text-2xl font-bold">{t('title')}</h2>
         <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" /> New Topic
+          <Plus className="mr-2 h-4 w-4" /> {t('new_topic')}
         </Button>
       </div>
 
@@ -131,7 +132,7 @@ export default function FlashcardTopicsPage() {
               <div className="flex items-start justify-between">
                 <div className="min-w-0">
                   <CardTitle className="text-lg truncate">{topic.name}</CardTitle>
-                  <CardDescription>{topic.flashcard_count} flashcards</CardDescription>
+                  <CardDescription>{t('flashcards_count', { count: topic.flashcard_count })}</CardDescription>
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
                   <Button
@@ -157,7 +158,7 @@ export default function FlashcardTopicsPage() {
         ))}
         {topics.length === 0 && (
           <div className="col-span-full text-center py-12 text-muted-foreground">
-            No topics yet. Create your first topic!
+            {t('no_topics')}
           </div>
         )}
       </div>
@@ -165,18 +166,18 @@ export default function FlashcardTopicsPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? 'Edit Topic' : 'New Topic'}</DialogTitle>
+            <DialogTitle>{editing ? t('edit_title') : t('new_topic_title')}</DialogTitle>
             <DialogDescription>
-              {editing ? 'Update the topic name' : 'Create a new topic for flashcards'}
+              {editing ? t('edit_desc') : t('new_topic_desc')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label>Topic Name</Label>
+              <Label>{t('topic_name_label')}</Label>
               <Input
                 value={formData.name}
                 onChange={(e) => setFormData({ name: e.target.value })}
-                placeholder="e.g., JavaScript Basics"
+                placeholder={t('topic_name_placeholder')}
               />
             </div>
           </div>
@@ -188,9 +189,9 @@ export default function FlashcardTopicsPage() {
                 resetForm();
               }}
             >
-              Cancel
+              {t('common_cancel')}
             </Button>
-            <Button onClick={handleSubmit}>{editing ? 'Update' : 'Create'}</Button>
+            <Button onClick={handleSubmit}>{editing ? t('common_update') : t('common_create')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -198,19 +199,18 @@ export default function FlashcardTopicsPage() {
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Topic</AlertDialogTitle>
+            <AlertDialogTitle>{t('delete_dialog_title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove the topic from all flashcards. Flashcards themselves will not be
-              deleted.
+              {t('delete_dialog_desc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('common_cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground"
             >
-              Delete
+              {t('common_delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

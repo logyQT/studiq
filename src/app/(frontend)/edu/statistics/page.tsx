@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -35,6 +36,7 @@ interface Subject {
 }
 
 export default function EduStatsPage() {
+  const t = useTranslations('EduStatisticsPage');
   const [stats, setStats] = useState<TeacherStats | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<string>('');
@@ -58,18 +60,18 @@ export default function EduStatsPage() {
       });
   }, [selectedSubject]);
 
-  if (loading) return <div className="flex justify-center py-12">Loading...</div>;
+  if (loading) return <div className="flex justify-center py-12">{t('common_loading')}</div>;
 
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Statistics</h2>
+        <h2 className="text-2xl font-bold">{t('title')}</h2>
         <Select value={selectedSubject} onValueChange={setSelectedSubject}>
           <SelectTrigger className="w-64">
-            <SelectValue placeholder="All subjects" />
+            <SelectValue placeholder={t('all_subjects')} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All Subjects</SelectItem>
+            <SelectItem value="">{t('all_subjects')}</SelectItem>
             {subjects.map((s) => (
               <SelectItem key={s.id} value={s.id}>
                 {s.name}
@@ -80,8 +82,8 @@ export default function EduStatsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Questions" value={stats?.totalQuestions ?? 0} icon={FileText} />
-        <StatCard title="Flashcards" value={stats?.totalFlashcards ?? 0} icon={FileText} />
+        <StatCard title={t('questions_stat')} value={stats?.totalQuestions ?? 0} icon={FileText} />
+        <StatCard title={t('flashcards_stat')} value={stats?.totalFlashcards ?? 0} icon={FileText} />
       </div>
 
       {stats?.subject && (
@@ -89,7 +91,7 @@ export default function EduStatsPage() {
           <div className="grid gap-6 md:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Questions by Type</CardTitle>
+                <CardTitle>{t('by_type_title')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -105,7 +107,7 @@ export default function EduStatsPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Questions by Difficulty</CardTitle>
+                <CardTitle>{t('by_difficulty_title')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -124,11 +126,10 @@ export default function EduStatsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TrendingDown className="h-5 w-5 text-red-500" />
-                Problematic Questions
+                {t('problematic_title')}
               </CardTitle>
               <CardDescription>
-                Questions with less than 50% correct rate — consider adding more practice on these
-                topics
+                {t('problematic_desc')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -146,14 +147,14 @@ export default function EduStatsPage() {
                         </p>
                       </div>
                       <span className="text-sm font-bold text-red-600">
-                        {Math.round(q.correctRate * 100)}% correct
+                        {Math.round(q.correctRate * 100)}% {t('correct_suffix')}
                       </span>
                     </div>
                   ))}
                 </div>
               ) : (
                 <p className="text-center py-8 text-muted-foreground">
-                  No problematic questions detected. Great job!
+                  {t('no_problematic')}
                 </p>
               )}
             </CardContent>
