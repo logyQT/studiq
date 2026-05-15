@@ -162,6 +162,51 @@ describe('QuestionService', () => {
         'ERROR_FORBIDDEN',
       );
     });
+
+    it('updates question with answers replacement', async () => {
+      const updated = { id: 'q-1', content: 'Updated' };
+      mock.from.mockReturnValueOnce({
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: updated, error: null }),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      mock.from.mockReturnValueOnce({
+        delete: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+        }),
+      });
+
+      mock.from.mockReturnValueOnce({
+        insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+      });
+
+      mock.from.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: updated, error: null }),
+          }),
+        }),
+      });
+
+      const result = await questionService.update(
+        'q-1',
+        {
+          content: 'Updated',
+          answers: [{ content: 'A1', isCorrect: true, orderIndex: 0 }],
+        },
+        userId,
+      );
+
+      expect(result).toBeDefined();
+      expect(mock.from).toHaveBeenCalledWith('question_answers');
+    });
   });
 
   describe('delete', () => {
@@ -179,6 +224,76 @@ describe('QuestionService', () => {
       });
 
       await expect(questionService.delete('q-1', userId)).resolves.toBeUndefined();
+    });
+
+    it('throws FORBIDDEN when question not owned by user', async () => {
+      mock.from.mockReturnValue({
+        delete: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: null, error: null }),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      await expect(questionService.delete('q-1', userId)).rejects.toThrow('ERROR_FORBIDDEN');
+    });
+  });
+
+  describe('getStatsBySubject', () => {
+    it('returns stats with questions and attempts', async () => {
+      const questions = [
+        { id: 'q-1', type: 'mcq', difficulty: 'easy' },
+        { id: 'q-2', type: 'mcq', difficulty: 'hard' },
+      ];
+      const attempts = [
+        { question_id: 'q-1', is_correct: true },
+        { question_id: 'q-1', is_correct: false },
+        { question_id: 'q-2', is_correct: false },
+      ];
+
+      mock.from.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: questions, error: null }),
+        }),
+      });
+
+      mock.from.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          in: vi.fn().mockResolvedValue({ data: attempts, error: null }),
+        }),
+      });
+
+      const result = await questionService.getStatsBySubject('sub-1');
+
+      expect(result.totalQuestions).toBe(2);
+      expect(result.byType).toEqual({ mcq: 2 });
+      expect(result.byDifficulty).toEqual({ easy: 1, hard: 1 });
+      expect(result.problematicQuestions.length).toBeGreaterThan(0);
+    });
+
+    it('returns zero stats when no questions exist', async () => {
+      mock.from.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+      });
+
+      mock.from.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          in: vi.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+      });
+
+      const result = await questionService.getStatsBySubject('sub-1');
+
+      expect(result.totalQuestions).toBe(0);
+      expect(result.byType).toEqual({});
+      expect(result.byDifficulty).toEqual({});
+      expect(result.problematicQuestions).toEqual([]);
     });
   });
 });

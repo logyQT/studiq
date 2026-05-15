@@ -54,6 +54,17 @@ describe('FlashcardPracticeController', () => {
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.log.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await flashcardPracticeController.log(
+        { flashcardId: '550e8400-e29b-41d4-a716-446655440000', wasCorrect: true },
+        userId,
+      );
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    });
   });
 
   describe('getHistory', () => {
@@ -68,6 +79,14 @@ describe('FlashcardPracticeController', () => {
 
     it('returns error when service throws', async () => {
       mockService.getHistory.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
+
+      const response = await flashcardPracticeController.getHistory(userId);
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.getHistory.mockRejectedValueOnce(new Error('unexpected'));
 
       const response = await flashcardPracticeController.getHistory(userId);
 

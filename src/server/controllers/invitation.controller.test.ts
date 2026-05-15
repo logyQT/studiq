@@ -81,6 +81,22 @@ describe('InvitationController', () => {
         error: 'FORBIDDEN',
       });
     });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.createInvitation.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await invitationController.create(userId, {
+        name: 'John Doe',
+        email: 'john@example.com',
+        role: 'student',
+      });
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 500,
+        error: 'INTERNAL_SERVER',
+      });
+    });
   });
 
   describe('getByToken', () => {
@@ -130,6 +146,18 @@ describe('InvitationController', () => {
         error: 'BAD_REQUEST',
       });
     });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.getInvitationByToken.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await invitationController.getByToken('valid-token');
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 500,
+        error: 'INTERNAL_SERVER',
+      });
+    });
   });
 
   describe('createBulk', () => {
@@ -154,6 +182,17 @@ describe('InvitationController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error during bulk', async () => {
+      mockService.createInvitation.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await invitationController.createBulk(userId, {
+        invitations: [{ name: 'John', email: 'john@example.com', role: 'student' }],
+      });
+
+      expect(response.success).toBe(true);
+      expect((response as any).data.results[0].success).toBe(false);
     });
   });
 });

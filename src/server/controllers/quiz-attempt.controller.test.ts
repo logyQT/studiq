@@ -37,6 +37,14 @@ describe('QuizAttemptController', () => {
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.list.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await quizAttemptController.list(userId);
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    });
   });
 
   describe('getDetails', () => {
@@ -55,6 +63,14 @@ describe('QuizAttemptController', () => {
       const response = await quizAttemptController.getDetails('nonexistent', userId);
 
       expect(response).toEqual({ success: false, statusCode: 404, error: 'NOT_FOUND' });
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.getById.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await quizAttemptController.getDetails('a-1', userId);
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
   });
 
@@ -104,6 +120,20 @@ describe('QuizAttemptController', () => {
       );
 
       expect(response).toEqual({ success: false, statusCode: 404, error: 'NOT_FOUND' });
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.submit.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await quizAttemptController.submit(
+        {
+          answers: [{ questionId: '550e8400-e29b-41d4-a716-446655440001' }],
+        },
+        '550e8400-e29b-41d4-a716-446655440000',
+        userId,
+      );
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
   });
 });

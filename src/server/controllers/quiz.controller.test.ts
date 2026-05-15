@@ -62,4 +62,17 @@ describe('QuizController', () => {
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
   });
+
+  describe('generate with FORBIDDEN error', () => {
+    it('returns FORBIDDEN when service throws FORBIDDEN', async () => {
+      mockService.generateQuiz.mockRejectedValueOnce(new AppError('FORBIDDEN'));
+
+      const response = await quizController.generate(
+        { questionTypes: ['mcq'], questionCount: 10 },
+        userId,
+      );
+
+      expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+    });
+  });
 });
