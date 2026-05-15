@@ -433,7 +433,7 @@ export default function QuestionsPage() {
                         answers: [
                           ...formData.answers,
                           {
-                            content: formData.answers.length === 0 ? 'True' : 'False',
+                            content: formData.answers.length === 0 ? t('tf_true') : t('tf_false'),
                             isCorrect: formData.answers.length === 0,
                           },
                         ],

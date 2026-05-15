@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +46,7 @@ interface Space {
 }
 
 export default function FlashcardSpacesPage() {
+  const t = useTranslations('AppFlashcardSpacesPage');
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,7 +107,7 @@ export default function FlashcardSpacesPage() {
 
   async function handleSubmit() {
     if (!formData.name.trim()) {
-      toast.error('Name is required');
+      toast.error(t('name_required'));
       return;
     }
     try {
@@ -130,9 +132,9 @@ export default function FlashcardSpacesPage() {
       }
       setDialogOpen(false);
       resetForm();
-      toast.success(editing ? 'Space updated' : 'Space created');
+      toast.success(editing ? t('space_updated') : t('space_created'));
     } catch {
-      toast.error('Failed to save space');
+      toast.error(t('save_failed'));
     }
   }
 
@@ -142,14 +144,14 @@ export default function FlashcardSpacesPage() {
       const res = await fetch(`/api/v1/flashcard-spaces/${deleteId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
       setSpaces(spaces.filter((s) => s.id !== deleteId));
-      toast.success('Space deleted');
+      toast.success(t('space_deleted'));
     } catch {
-      toast.error('Failed to delete space');
+      toast.error(t('delete_failed'));
     }
     setDeleteId(null);
   }
 
-  if (loading) return <div className="flex justify-center py-12">Loading...</div>;
+  if (loading) return <div className="flex justify-center py-12">{t('common_loading')}</div>;
 
   return (
     <div className="space-y-6">
@@ -157,13 +159,13 @@ export default function FlashcardSpacesPage() {
         <div className="flex items-center gap-4">
           <Link href="/app/flashcards">
             <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back
+              <ArrowLeft className="mr-2 h-4 w-4" /> {t('back')}
             </Button>
           </Link>
-          <h2 className="text-2xl font-bold">My Spaces</h2>
+          <h2 className="text-2xl font-bold">{t('title')}</h2>
         </div>
         <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" /> New Space
+          <Plus className="mr-2 h-4 w-4" /> {t('new_space')}
         </Button>
       </div>
 
@@ -201,13 +203,13 @@ export default function FlashcardSpacesPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <Badge variant="secondary">{space.flashcard_count} flashcards</Badge>
+              <Badge variant="secondary">{t('flashcards_count', { count: space.flashcard_count })}</Badge>
             </CardContent>
           </Card>
         ))}
         {spaces.length === 0 && (
           <div className="col-span-full text-center py-12 text-muted-foreground">
-            No spaces yet. Create your first space!
+            {t('no_spaces')}
           </div>
         )}
       </div>
@@ -215,33 +217,33 @@ export default function FlashcardSpacesPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editing ? 'Edit Space' : 'New Space'}</DialogTitle>
+            <DialogTitle>{editing ? t('edit_title') : t('new_space_title')}</DialogTitle>
             <DialogDescription>
-              {editing ? 'Update your space' : 'Create a new collection of flashcards'}
+              {editing ? t('edit_desc') : t('new_space_desc')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="space-name">Name</Label>
+              <Label htmlFor="space-name">{t('name_label')}</Label>
               <Input
                 id="space-name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Exam Prep"
+                placeholder={t('name_placeholder')}
               />
             </div>
             <div>
-              <Label htmlFor="space-description">Description (optional)</Label>
+              <Label htmlFor="space-description">{t('description_label')}</Label>
               <Textarea
                 id="space-description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="What is this space for?"
+                placeholder={t('description_placeholder')}
                 rows={2}
               />
             </div>
             <div>
-              <Label>Flashcards</Label>
+              <Label>{t('flashcards_label')}</Label>
               <div className="space-y-2 mt-2 max-h-48 overflow-y-auto">
                 {flashcards.map((fc) => (
                   <div key={fc.id} className="flex items-center gap-3 p-2 rounded-lg border">
@@ -255,7 +257,7 @@ export default function FlashcardSpacesPage() {
                   </div>
                 ))}
                 {flashcards.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No flashcards available yet</p>
+                  <p className="text-sm text-muted-foreground">{t('no_flashcards')}</p>
                 )}
               </div>
             </div>
@@ -268,9 +270,9 @@ export default function FlashcardSpacesPage() {
                 resetForm();
               }}
             >
-              Cancel
+              {t('common_cancel')}
             </Button>
-            <Button onClick={handleSubmit}>{editing ? 'Update' : 'Create'}</Button>
+            <Button onClick={handleSubmit}>{editing ? t('common_update') : t('common_create')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -278,18 +280,18 @@ export default function FlashcardSpacesPage() {
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Space</AlertDialogTitle>
+            <AlertDialogTitle>{t('delete_dialog_title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will delete the space. Flashcards will not be deleted.
+              {t('delete_dialog_desc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('common_cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground"
             >
-              Delete
+              {t('common_delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

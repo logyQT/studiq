@@ -132,8 +132,8 @@ function JoinContent() {
   return (
     <Card className="w-full max-w-md mx-auto">
       <CardHeader>
-        <CardTitle>Dołącz do organizacji</CardTitle>
-        <CardDescription>Twoje dane zostały pobrane z zaproszenia.</CardDescription>
+        <CardTitle>{t('join_title')}</CardTitle>
+        <CardDescription>{t('join_desc')}</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
@@ -179,7 +179,7 @@ function JoinContent() {
             />
 
             <Button type="submit" className="w-full">
-              Aktywuj konto
+              {t('activate_account')}
             </Button>
           </form>
         </Form>

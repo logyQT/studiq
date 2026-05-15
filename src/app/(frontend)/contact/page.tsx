@@ -95,11 +95,11 @@ export default function ContactPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-2 text-sm text-muted-foreground">
-            <p>StudiQ sp. z o.o.</p>
-            <p>ul. Przykładowa 12/4</p>
-            <p>00-001 Warszawa, Poland</p>
-            <p className="pt-2">NIP: 123-456-78-90</p>
-            <p>KRS: 0000123456</p>
+            <p>{t('company_name')}</p>
+            <p>{t('company_address')}</p>
+            <p>{t('company_city')}</p>
+            <p className="pt-2">{t('company_nip')}</p>
+            <p>{t('company_krs')}</p>
           </div>
         </CardContent>
       </Card>

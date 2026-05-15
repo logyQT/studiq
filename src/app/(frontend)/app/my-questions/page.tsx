@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -52,6 +53,7 @@ const DIFFICULTY_COLORS: Record<string, string> = {
 };
 
 export default function MyQuestionsPage() {
+  const t = useTranslations('AppMyQuestionsPage');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -125,7 +127,7 @@ export default function MyQuestionsPage() {
 
   async function handleSubmit() {
     if (!formData.content.trim()) {
-      toast.error('Question content is required');
+      toast.error(t('content_required'));
       return;
     }
     const payload = {
@@ -154,9 +156,9 @@ export default function MyQuestionsPage() {
       }
       setDialogOpen(false);
       resetForm();
-      toast.success(editing ? 'Question updated' : 'Question created');
+      toast.success(editing ? t('question_updated') : t('question_created'));
     } catch {
-      toast.error('Failed to save question');
+      toast.error(t('save_failed'));
     }
   }
 
@@ -166,21 +168,21 @@ export default function MyQuestionsPage() {
       const res = await fetch(`/api/v1/questions/${deleteId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
       setQuestions(questions.filter((q) => q.id !== deleteId));
-      toast.success('Question deleted');
+      toast.success(t('question_deleted'));
     } catch {
-      toast.error('Failed to delete question');
+      toast.error(t('delete_failed'));
     }
     setDeleteId(null);
   }
 
-  if (loading) return <div className="flex justify-center py-12">Loading...</div>;
+  if (loading) return <div className="flex justify-center py-12">{t('common_loading')}</div>;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">My Questions</h2>
+        <h2 className="text-2xl font-bold">{t('title')}</h2>
         <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" /> Create Question
+          <Plus className="mr-2 h-4 w-4" /> {t('create_question')}
         </Button>
       </div>
 
@@ -220,7 +222,7 @@ export default function MyQuestionsPage() {
         ))}
         {questions.length === 0 && (
           <div className="col-span-full text-center py-12 text-muted-foreground">
-            No questions yet. Create your first question!
+            {t('no_questions')}
           </div>
         )}
       </div>
@@ -228,14 +230,14 @@ export default function MyQuestionsPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editing ? 'Edit Question' : 'Create Question'}</DialogTitle>
+            <DialogTitle>{editing ? t('edit_title') : t('create_title')}</DialogTitle>
             <DialogDescription>
-              {editing ? 'Update your question' : 'Add a new question to your pool'}
+              {editing ? t('edit_desc') : t('create_desc')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label>Question Type</Label>
+              <Label>{t('question_type_label')}</Label>
               <Select
                 value={formData.type}
                 onValueChange={(v) => setFormData({ ...formData, type: v })}
@@ -244,13 +246,13 @@ export default function MyQuestionsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="mcq">Multiple Choice</SelectItem>
-                  <SelectItem value="true_false">True / False</SelectItem>
+                  <SelectItem value="mcq">{t('type_mcq')}</SelectItem>
+                  <SelectItem value="true_false">{t('type_true_false')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label>Difficulty</Label>
+              <Label>{t('difficulty_label')}</Label>
               <Select
                 value={formData.difficulty}
                 onValueChange={(v) => setFormData({ ...formData, difficulty: v })}
@@ -259,23 +261,23 @@ export default function MyQuestionsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="easy">Easy</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="hard">Hard</SelectItem>
+                  <SelectItem value="easy">{t('diff_easy')}</SelectItem>
+                  <SelectItem value="medium">{t('diff_medium')}</SelectItem>
+                  <SelectItem value="hard">{t('diff_hard')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label>Question</Label>
+              <Label>{t('question_label')}</Label>
               <Textarea
                 value={formData.content}
                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                placeholder="Your question..."
+                placeholder={t('question_placeholder')}
                 rows={3}
               />
             </div>
             <div>
-              <Label>Answers</Label>
+              <Label>{t('answers_label')}</Label>
               <div className="space-y-2">
                 {formData.answers.map((a, i) => (
                   <div key={i} className="flex gap-2 items-start">
@@ -289,7 +291,7 @@ export default function MyQuestionsPage() {
                     <Input
                       value={a.content}
                       onChange={(e) => updateAnswer(i, 'content', e.target.value)}
-                      placeholder={`Answer ${i + 1}`}
+                      placeholder={t('answer_placeholder', { index: i + 1 })}
                       className="flex-1"
                     />
                     {formData.answers.length > 1 && (
@@ -302,16 +304,16 @@ export default function MyQuestionsPage() {
               </div>
               {formData.type === 'mcq' && (
                 <Button variant="outline" size="sm" className="mt-2" onClick={addAnswer}>
-                  <Plus className="mr-1 h-3 w-3" /> Add Answer
+                  <Plus className="mr-1 h-3 w-3" /> {t('add_answer')}
                 </Button>
               )}
             </div>
             <div>
-              <Label>Explanation (optional)</Label>
+              <Label>{t('explanation_label')}</Label>
               <Textarea
                 value={formData.explanation}
                 onChange={(e) => setFormData({ ...formData, explanation: e.target.value })}
-                placeholder="Why is this the correct answer?"
+                placeholder={t('explanation_placeholder')}
                 rows={2}
               />
             </div>
@@ -324,9 +326,9 @@ export default function MyQuestionsPage() {
                 resetForm();
               }}
             >
-              Cancel
+              {t('common_cancel')}
             </Button>
-            <Button onClick={handleSubmit}>{editing ? 'Update' : 'Create'}</Button>
+            <Button onClick={handleSubmit}>{editing ? t('common_update') : t('common_create')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -334,16 +336,16 @@ export default function MyQuestionsPage() {
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Question?</AlertDialogTitle>
-            <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+            <AlertDialogTitle>{t('delete_dialog_title')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('delete_dialog_desc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('common_cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground"
             >
-              Delete
+              {t('common_delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

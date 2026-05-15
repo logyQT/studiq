@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -13,6 +14,7 @@ interface University {
 }
 
 export default function SettingsPage() {
+  const t = useTranslations('ManageSettingsPage');
   const [university, setUniversity] = useState<University | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -41,12 +43,12 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Settings</h2>
+      <h2 className="text-2xl font-bold">{t('title')}</h2>
 
       <Card>
         <CardHeader>
-          <CardTitle>University Profile</CardTitle>
-          <CardDescription>Your organization details</CardDescription>
+          <CardTitle>{t('university_profile_title')}</CardTitle>
+          <CardDescription>{t('university_profile_desc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? (
@@ -57,38 +59,38 @@ export default function SettingsPage() {
           ) : university ? (
             <div className="space-y-3">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Name</p>
+                <p className="text-sm font-medium text-muted-foreground">{t('name_label')}</p>
                 <p className="text-lg font-semibold">{university.name}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Slug</p>
+                <p className="text-sm font-medium text-muted-foreground">{t('slug_label')}</p>
                 <div className="flex items-center gap-2">
                   <code className="bg-muted px-2 py-1 rounded text-sm">{university.slug}</code>
-                  <Badge variant="outline">Read-only</Badge>
+                  <Badge variant="outline">{t('read_only')}</Badge>
                 </div>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Created</p>
+                <p className="text-sm font-medium text-muted-foreground">{t('created_label')}</p>
                 <p className="text-sm">{new Date(university.created_at).toLocaleDateString()}</p>
               </div>
             </div>
           ) : (
-            <p className="text-muted-foreground">No university assigned</p>
+            <p className="text-muted-foreground">{t('no_university')}</p>
           )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Subscription</CardTitle>
-          <CardDescription>Current plan and billing info</CardDescription>
+          <CardTitle>{t('subscription_title')}</CardTitle>
+          <CardDescription>{t('subscription_desc')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3">
             <Badge variant="default" className="text-sm px-3 py-1">
-              Basic Plan
+              {t('basic_plan')}
             </Badge>
-            <span className="text-sm text-muted-foreground">Managed by system administrators</span>
+            <span className="text-sm text-muted-foreground">{t('managed_by_admins')}</span>
           </div>
         </CardContent>
       </Card>

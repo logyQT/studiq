@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -29,6 +30,7 @@ interface FlashcardsClientProps {
 }
 
 export default function FlashcardsClient({ topics, spaces }: FlashcardsClientProps) {
+  const t = useTranslations('AppFlashcardsClient');
   const router = useRouter();
 
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
@@ -67,10 +69,10 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Flashcards</h2>
+        <h2 className="text-2xl font-bold">{t('title')}</h2>
         <Link href="/app/flashcards/spaces">
           <Button variant="outline">
-            <FolderOpen className="mr-2 h-4 w-4" /> Manage Spaces
+            <FolderOpen className="mr-2 h-4 w-4" /> {t('manage_spaces')}
           </Button>
         </Link>
       </div>
@@ -79,9 +81,9 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Tags className="h-5 w-5" /> Topics
+              <Tags className="h-5 w-5" /> {t('topics_title')}
             </CardTitle>
-            <CardDescription>Select one or more topics to practice</CardDescription>
+            <CardDescription>{t('topics_desc')}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -93,13 +95,13 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">{topic.name}</p>
-                    <p className="text-xs text-muted-foreground">{topic.flashcard_count} cards</p>
+                    <p className="text-xs text-muted-foreground">{t('cards_count', { count: topic.flashcard_count })}</p>
                   </div>
                 </div>
               ))}
               {topics.length === 0 && (
                 <p className="text-center py-4 text-muted-foreground text-sm">
-                  No topics available yet
+                  {t('no_topics')}
                 </p>
               )}
             </div>
@@ -109,9 +111,9 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <FolderOpen className="h-5 w-5" /> Your Spaces
+              <FolderOpen className="h-5 w-5" /> {t('spaces_title')}
             </CardTitle>
-            <CardDescription>Select one or more spaces to practice</CardDescription>
+            <CardDescription>{t('spaces_desc')}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -123,13 +125,13 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">{space.name}</p>
-                    <p className="text-xs text-muted-foreground">{space.flashcard_count} cards</p>
+                    <p className="text-xs text-muted-foreground">{t('cards_count', { count: space.flashcard_count })}</p>
                   </div>
                 </div>
               ))}
               {spaces.length === 0 && (
                 <p className="text-center py-4 text-muted-foreground text-sm">
-                  No spaces yet. Create one!
+                  {t('no_spaces')}
                 </p>
               )}
             </div>
@@ -139,8 +141,8 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
 
       <Card>
         <CardHeader>
-          <CardTitle>Practice Mode</CardTitle>
-          <CardDescription>Choose how you want to practice</CardDescription>
+          <CardTitle>{t('practice_mode_title')}</CardTitle>
+          <CardDescription>{t('practice_mode_desc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-4">
@@ -150,8 +152,8 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
               }`}
               onClick={() => setMode('endless')}
             >
-              <p className="font-medium">Endless</p>
-              <p className="text-sm text-muted-foreground">Keep practicing until you stop</p>
+              <p className="font-medium">{t('mode_endless')}</p>
+              <p className="text-sm text-muted-foreground">{t('mode_endless_desc')}</p>
             </button>
             <button
               className={`flex-1 p-4 rounded-lg border-2 text-left transition-colors ${
@@ -159,14 +161,14 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
               }`}
               onClick={() => setMode('limited')}
             >
-              <p className="font-medium">Limited</p>
-              <p className="text-sm text-muted-foreground">Practice a set number of cards</p>
+              <p className="font-medium">{t('mode_limited')}</p>
+              <p className="text-sm text-muted-foreground">{t('mode_limited_desc')}</p>
             </button>
           </div>
 
           {mode === 'limited' && (
             <div>
-              <Label>Number of cards to practice: {targetCount}</Label>
+              <Label>{t('target_count_label', { count: targetCount })}</Label>
               <Input
                 type="number"
                 min={1}
@@ -183,14 +185,14 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
           <div className="flex items-center justify-between pt-2">
             <p className="text-sm text-muted-foreground">
               {selectedTopics.length + selectedSpaces.length === 0
-                ? 'Select topics or spaces to start'
-                : `${totalCards} cards available`}
+                ? t('select_to_start')
+                : t('cards_available', { count: totalCards })}
             </p>
             <Button
               onClick={startSession}
               disabled={selectedTopics.length === 0 && selectedSpaces.length === 0}
             >
-              <Play className="mr-2 h-4 w-4" /> Start Practice
+              <Play className="mr-2 h-4 w-4" /> {t('start_practice')}
             </Button>
           </div>
         </CardContent>

@@ -264,7 +264,7 @@ export default function FlashcardsPage() {
           <Card>
             <CardContent className="pt-6 space-y-4">
               <div>
-                <Label>Topics (optional)</Label>
+                <Label>{t('topics_optional_label')}</Label>
                 <div className="space-y-2 mt-2 max-h-40 overflow-y-auto">
                   {topics.map((topic) => (
                     <div key={topic.id} className="flex items-center gap-3 p-2 rounded-lg border">
@@ -277,7 +277,7 @@ export default function FlashcardsPage() {
                   ))}
                   {topics.length === 0 && (
                     <p className="text-sm text-muted-foreground">
-                      No topics yet. Create topics first.
+                      {t('no_topics_yet')}
                     </p>
                   )}
                 </div>
@@ -309,7 +309,7 @@ export default function FlashcardsPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label>Topics (optional)</Label>
+              <Label>{t('topics_optional_label')}</Label>
               <div className="space-y-2 mt-2 max-h-40 overflow-y-auto">
                 {topics.map((topic) => (
                   <div key={topic.id} className="flex items-center gap-3 p-2 rounded-lg border">
@@ -322,7 +322,7 @@ export default function FlashcardsPage() {
                 ))}
                 {topics.length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    No topics yet. Create topics first.
+                    {t('no_topics_yet')}
                   </p>
                 )}
               </div>

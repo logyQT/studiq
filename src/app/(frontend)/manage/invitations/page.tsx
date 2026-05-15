@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -26,6 +27,7 @@ interface InvitationResult {
 }
 
 export default function InvitationsPage() {
+  const t = useTranslations('ManageInvitationsPage');
   const [results, setResults] = useState<InvitationResult[]>([]);
   const [singleForm, setSingleForm] = useState<{
     name: string;
@@ -38,7 +40,7 @@ export default function InvitationsPage() {
 
   async function handleSingleInvite() {
     if (!singleForm.name || !singleForm.email) {
-      toast.error('Name and email are required');
+      toast.error(t('name_email_required'));
       return;
     }
     setLoading(true);
@@ -52,11 +54,11 @@ export default function InvitationsPage() {
       const data = await res.json();
       if (data.inviteLink) {
         setResults([{ success: true, data: { inviteLink: data.inviteLink } }, ...results]);
-        toast.success('Invitation created');
+        toast.success(t('invitation_created'));
         setSingleForm({ name: '', email: '', role: UNIVERSITY_ROLES[0] });
       }
     } catch {
-      toast.error('Failed to create invitation');
+      toast.error(t('invitation_create_failed'));
     }
     setLoading(false);
   }
@@ -67,7 +69,7 @@ export default function InvitationsPage() {
       .map((l) => l.trim())
       .filter((l) => l);
     if (lines.length === 0) {
-      toast.error('No emails found');
+      toast.error(t('no_emails_found'));
       return;
     }
     setLoading(true);
@@ -87,10 +89,10 @@ export default function InvitationsPage() {
       setResults([...data.results, ...results]);
       setBulkText('');
       toast.success(
-        `${data.results.filter((r: InvitationResult) => r.success).length} invitations created`,
+        t('bulk_invitations_created', { count: data.results.filter((r: InvitationResult) => r.success).length }),
       );
     } catch {
-      toast.error('Failed to create bulk invitations');
+      toast.error(t('bulk_invitations_failed'));
     }
     setLoading(false);
   }
@@ -100,46 +102,46 @@ export default function InvitationsPage() {
     if (!file) return;
     const text = await file.text();
     setBulkText(text);
-    toast.success('CSV loaded — review and submit');
+    toast.success(t('csv_loaded'));
   }
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Invitations</h2>
+      <h2 className="text-2xl font-bold">{t('title')}</h2>
 
       <Tabs defaultValue="single">
         <TabsList>
-          <TabsTrigger value="single">Single Invite</TabsTrigger>
-          <TabsTrigger value="bulk-text">Bulk (Text)</TabsTrigger>
-          <TabsTrigger value="bulk-csv">Bulk (CSV)</TabsTrigger>
+          <TabsTrigger value="single">{t('tab_single')}</TabsTrigger>
+          <TabsTrigger value="bulk-text">{t('tab_bulk_text')}</TabsTrigger>
+          <TabsTrigger value="bulk-csv">{t('tab_bulk_csv')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="single">
           <Card>
             <CardHeader>
-              <CardTitle>Send Single Invitation</CardTitle>
-              <CardDescription>Invite one person to your university</CardDescription>
+              <CardTitle>{t('single_title')}</CardTitle>
+              <CardDescription>{t('single_desc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label>Full Name</Label>
+                <Label>{t('full_name_label')}</Label>
                 <Input
                   value={singleForm.name}
                   onChange={(e) => setSingleForm({ ...singleForm, name: e.target.value })}
-                  placeholder="Jan Kowalski"
+                  placeholder={t('full_name_placeholder')}
                 />
               </div>
               <div>
-                <Label>Email</Label>
+                <Label>{t('email_label')}</Label>
                 <Input
                   type="email"
                   value={singleForm.email}
                   onChange={(e) => setSingleForm({ ...singleForm, email: e.target.value })}
-                  placeholder="jan@university.edu"
+                  placeholder={t('email_placeholder')}
                 />
               </div>
               <div>
-                <Label>Role</Label>
+                <Label>{t('role_label')}</Label>
                 <Select
                   value={singleForm.role}
                   onValueChange={(v) => setSingleForm({ ...singleForm, role: v as UniversityRole })}
@@ -150,14 +152,14 @@ export default function InvitationsPage() {
                   <SelectContent>
                     {UNIVERSITY_ROLES.map((r) => (
                       <SelectItem key={r} value={r}>
-                        {r.replace('_', ' ')}
+                        {t(`role_${r}`)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <Button onClick={handleSingleInvite} disabled={loading}>
-                <Send className="mr-2 h-4 w-4" /> Send Invitation
+                <Send className="mr-2 h-4 w-4" /> {t('send_invitation')}
               </Button>
             </CardContent>
           </Card>
@@ -166,12 +168,12 @@ export default function InvitationsPage() {
         <TabsContent value="bulk-text">
           <Card>
             <CardHeader>
-              <CardTitle>Bulk Invite via Text</CardTitle>
-              <CardDescription>Paste emails (one per line or comma-separated)</CardDescription>
+              <CardTitle>{t('bulk_text_title')}</CardTitle>
+              <CardDescription>{t('bulk_text_desc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label>Role for all invitees</Label>
+                <Label>{t('bulk_role_label')}</Label>
                 <Select value={bulkRole} onValueChange={(v) => setBulkRole(v as UniversityRole)}>
                   <SelectTrigger>
                     <SelectValue />
@@ -179,26 +181,24 @@ export default function InvitationsPage() {
                   <SelectContent>
                     {UNIVERSITY_ROLES.map((r) => (
                       <SelectItem key={r} value={r}>
-                        {r.replace('_', ' ')}
+                        {t(`role_${r}`)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label>Emails</Label>
+                <Label>{t('emails_label')}</Label>
                 <Textarea
                   value={bulkText}
                   onChange={(e) => setBulkText(e.target.value)}
-                  placeholder={
-                    'student1@university.edu\nstudent2@university.edu\nstudent3@university.edu'
-                  }
+                  placeholder={t('emails_placeholder')}
                   rows={8}
                   className="font-mono text-sm"
                 />
               </div>
               <Button onClick={handleBulkInvite} disabled={loading}>
-                <Plus className="mr-2 h-4 w-4" /> Generate Invitations
+                <Plus className="mr-2 h-4 w-4" /> {t('generate_invitations')}
               </Button>
             </CardContent>
           </Card>
@@ -207,18 +207,18 @@ export default function InvitationsPage() {
         <TabsContent value="bulk-csv">
           <Card>
             <CardHeader>
-              <CardTitle>Bulk Invite via CSV</CardTitle>
+              <CardTitle>{t('bulk_csv_title')}</CardTitle>
               <CardDescription>
-                Upload a CSV file with columns: name, email, role (optional)
+                {t('bulk_csv_desc')}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label>CSV File</Label>
+                <Label>{t('csv_file_label')}</Label>
                 <div className="border-2 border-dashed rounded-lg p-8 text-center">
                   <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Drop your CSV here or click to browse
+                    {t('csv_drop_text')}
                   </p>
                   <input type="file" accept=".csv" onChange={handleCsvUpload} className="mt-2" />
                 </div>
@@ -226,7 +226,7 @@ export default function InvitationsPage() {
               {bulkText && (
                 <>
                   <div>
-                    <Label>Parsed Data</Label>
+                    <Label>{t('parsed_data_label')}</Label>
                     <Textarea
                       value={bulkText}
                       onChange={(e) => setBulkText(e.target.value)}
@@ -235,7 +235,7 @@ export default function InvitationsPage() {
                     />
                   </div>
                   <Button onClick={handleBulkInvite} disabled={loading}>
-                    <Send className="mr-2 h-4 w-4" /> Send Invitations
+                    <Send className="mr-2 h-4 w-4" /> {t('send_invitations')}
                   </Button>
                 </>
               )}
@@ -247,8 +247,8 @@ export default function InvitationsPage() {
       {results.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Generated Invite Links</CardTitle>
-            <CardDescription>Copy and share these links with invitees</CardDescription>
+            <CardTitle>{t('generated_links_title')}</CardTitle>
+            <CardDescription>{t('generated_links_desc')}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
@@ -257,7 +257,7 @@ export default function InvitationsPage() {
                 .map((r, i) => (
                   <div key={i} className="flex items-center gap-2 p-2 rounded-lg border">
                     <Badge variant="default" className="shrink-0">
-                      Success
+                      {t('status_success')}
                     </Badge>
                     <Input
                       readOnly
@@ -269,7 +269,7 @@ export default function InvitationsPage() {
                       variant="outline"
                       onClick={() => {
                         navigator.clipboard.writeText(r.data!.inviteLink!);
-                        toast.success('Copied!');
+                        toast.success(t('copied'));
                       }}
                     >
                       <Copy className="h-3 w-3" />
@@ -280,9 +280,9 @@ export default function InvitationsPage() {
                 .filter((r) => !r.success)
                 .map((r, i) => (
                   <div key={i} className="flex items-center gap-2 p-2 rounded-lg border">
-                    <Badge variant="destructive">Failed</Badge>
+                    <Badge variant="destructive">{t('status_failed')}</Badge>
                     <span className="text-sm text-muted-foreground">
-                      {typeof r.error === 'string' ? r.error : 'Unknown error'}
+                      {typeof r.error === 'string' ? r.error : t('unknown_error')}
                     </span>
                   </div>
                 ))}

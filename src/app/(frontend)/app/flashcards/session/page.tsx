@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +18,7 @@ interface Flashcard {
 }
 
 export default function FlashcardSessionPage() {
+  const t = useTranslations('AppFlashcardSessionPage');
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -48,7 +50,7 @@ export default function FlashcardSessionPage() {
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => {
         if (data.length === 0) {
-          toast.error('No flashcards found for selected topics/spaces');
+          toast.error(t('no_flashcards_found'));
           router.push('/app/flashcards');
           return;
         }
@@ -57,10 +59,10 @@ export default function FlashcardSessionPage() {
         setLoading(false);
       })
       .catch(() => {
-        toast.error('Failed to load flashcards');
+        toast.error(t('load_failed'));
         setLoading(false);
       });
-  }, [searchParams, router]);
+  }, [searchParams, router, t]);
 
   const handleAnswer = useCallback(
     (wasCorrect: boolean) => {
@@ -94,9 +96,9 @@ export default function FlashcardSessionPage() {
     [flashcards, currentIndex, correctCount, mode, targetCount],
   );
 
-  if (loading) return <div className="flex justify-center py-12">Loading...</div>;
+  if (loading) return <div className="flex justify-center py-12">{t('common_loading')}</div>;
   if (flashcards.length === 0)
-    return <div className="flex justify-center py-12">No flashcards available</div>;
+    return <div className="flex justify-center py-12">{t('no_flashcards_available')}</div>;
 
   if (sessionComplete) {
     const percentage = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0;
@@ -104,17 +106,17 @@ export default function FlashcardSessionPage() {
       <div className="max-w-2xl mx-auto">
         <Card>
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Session Complete!</CardTitle>
+            <CardTitle className="text-2xl">{t('session_complete_title')}</CardTitle>
           </CardHeader>
           <CardContent className="pt-4 text-center space-y-4">
             <p
               className="text-5xl font-bold"
-              style={{ color: percentage >= 70 ? '#10b981' : '#ef4444' }}
+              style={{ color: percentage >= 70 ? 'hsl(var(--chart-2))' : 'hsl(var(--destructive))' }}
             >
               {percentage}%
             </p>
             <p className="text-lg">
-              {correctCount} out of {totalAnswered} correct
+              {t('session_result', { correct: correctCount, total: totalAnswered })}
             </p>
           </CardContent>
           <CardFooter className="flex justify-center gap-3">
@@ -129,11 +131,11 @@ export default function FlashcardSessionPage() {
                 setFlashcards((prev) => [...prev].sort(() => Math.random() - 0.5));
               }}
             >
-              <RotateCcw className="mr-2 h-4 w-4" /> Practice Again
+              <RotateCcw className="mr-2 h-4 w-4" /> {t('practice_again')}
             </Button>
             <Link href="/app/flashcards">
               <Button>
-                <ArrowLeft className="mr-2 h-4 w-4" /> Back to Setup
+                <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_to_setup')}
               </Button>
             </Link>
           </CardFooter>
@@ -150,16 +152,16 @@ export default function FlashcardSessionPage() {
       <div className="flex items-center justify-between">
         <Link href="/app/flashcards">
           <Button variant="outline" size="sm">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Exit Session
+            <ArrowLeft className="mr-2 h-4 w-4" /> {t('exit_session')}
           </Button>
         </Link>
         <div className="flex items-center gap-4">
           <Badge variant="outline">
-            {correctCount}/{totalAnswered} correct
+            {t('correct_badge', { correct: correctCount, total: totalAnswered })}
           </Badge>
           {mode === 'limited' && (
             <Badge>
-              {correctCount}/{targetCount} remembered
+              {t('remembered_badge', { correct: correctCount, target: targetCount })}
             </Badge>
           )}
         </div>
@@ -173,11 +175,11 @@ export default function FlashcardSessionPage() {
       >
         <CardContent className="pt-8 text-center px-8">
           <p className="text-xs text-muted-foreground uppercase mb-4">
-            {flipped ? 'Answer' : 'Question'}
+            {flipped ? t('answer_label') : t('question_label')}
           </p>
           <p className="text-2xl font-medium">{flipped ? current.back : current.front}</p>
           <p className="text-sm text-muted-foreground mt-4">
-            Click to {flipped ? 'see question' : 'reveal answer'}
+            {t('click_hint', { action: flipped ? t('see_question') : t('reveal_answer') })}
           </p>
         </CardContent>
       </Card>
@@ -185,10 +187,10 @@ export default function FlashcardSessionPage() {
       {flipped && (
         <div className="flex justify-center gap-4">
           <Button variant="outline" className="flex-1 max-w-48" onClick={() => handleAnswer(false)}>
-            <X className="mr-2 h-4 w-4 text-red-500" /> Still Learning
+            <X className="mr-2 h-4 w-4 text-red-500" /> {t('still_learning')}
           </Button>
           <Button className="flex-1 max-w-48" onClick={() => handleAnswer(true)}>
-            <Check className="mr-2 h-4 w-4 text-green-500" /> Got It
+            <Check className="mr-2 h-4 w-4 text-green-500" /> {t('got_it')}
           </Button>
         </div>
       )}
