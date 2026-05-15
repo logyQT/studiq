@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST } from '@/app/(backend)/api/v1/quizzes/route';
-import { TEST_USERS, mockUser, cleanupQuizAttempts, cleanupQuestions, cleanupSubjects, createRealClient } from './helpers';
+import { TEST_USERS, mockUser, cleanupQuizAttempts, cleanupQuestions, cleanupSubjects, createServiceClient } from './helpers';
 import { createNextRequest } from './test-utils';
 
 describe('Quizzes Integration', () => {
@@ -14,7 +14,7 @@ describe('Quizzes Integration', () => {
       await cleanupSubjects(user.id, 'quiz-');
     }
 
-    const supabase = createRealClient();
+    const supabase = createServiceClient();
     const { data: subject, error: subjectError } = await supabase
       .from('subjects')
       .insert({ name: 'quiz-Quiz Test Subject', created_by: TEST_USERS.TEACHER.id })

@@ -52,27 +52,31 @@ describe('FlashcardController', () => {
   });
 
   describe('list', () => {
-    it('returns flashcards without filters', async () => {
+    it('returns flashcards with userId', async () => {
       const flashcards = [{ id: 'fc-1', front: 'Q', back: 'A' }];
       mockService.list.mockResolvedValueOnce(flashcards);
 
-      const response = await flashcardController.list();
+      const response = await flashcardController.list(userId);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: flashcards });
+      expect(mockService.list).toHaveBeenCalledWith(userId, undefined);
     });
 
-    it('passes filters to service', async () => {
+    it('passes filters and userId to service', async () => {
       mockService.list.mockResolvedValueOnce([]);
 
-      await flashcardController.list({ topicIds: ['t-1'], spaceIds: ['s-1'] });
+      await flashcardController.list(userId, { topicIds: ['t-1'], spaceIds: ['s-1'] });
 
-      expect(mockService.list).toHaveBeenCalledWith({ topicIds: ['t-1'], spaceIds: ['s-1'] });
+      expect(mockService.list).toHaveBeenCalledWith(userId, {
+        topicIds: ['t-1'],
+        spaceIds: ['s-1'],
+      });
     });
 
     it('returns INTERNAL_SERVER when service throws generic error', async () => {
       mockService.list.mockRejectedValueOnce(new Error('unexpected'));
 
-      const response = await flashcardController.list();
+      const response = await flashcardController.list(userId);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
@@ -114,15 +118,16 @@ describe('FlashcardController', () => {
       const flashcard = { id: 'fc-1', front: 'Q', back: 'A' };
       mockService.getById.mockResolvedValueOnce(flashcard);
 
-      const response = await flashcardController.getById('fc-1');
+      const response = await flashcardController.getById('fc-1', userId);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: flashcard });
+      expect(mockService.getById).toHaveBeenCalledWith('fc-1', userId);
     });
 
     it('returns NOT_FOUND when service throws', async () => {
       mockService.getById.mockRejectedValueOnce(new AppError('NOT_FOUND'));
 
-      const response = await flashcardController.getById('nonexistent');
+      const response = await flashcardController.getById('nonexistent', userId);
 
       expect(response).toEqual({ success: false, statusCode: 404, error: 'NOT_FOUND' });
     });
@@ -130,7 +135,7 @@ describe('FlashcardController', () => {
     it('returns INTERNAL_SERVER when service throws generic error', async () => {
       mockService.getById.mockRejectedValueOnce(new Error('unexpected'));
 
-      const response = await flashcardController.getById('fc-1');
+      const response = await flashcardController.getById('fc-1', userId);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });

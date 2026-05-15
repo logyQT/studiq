@@ -12,8 +12,20 @@ describe('FlashcardSpaceService', () => {
   });
 
   describe('create', () => {
-    it('inserts space and returns it', async () => {
+    it('inserts space with university_id and returns it', async () => {
       const mockSpace = { id: 's-1', name: 'Study Space', created_by: userId };
+
+      mock.from.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({
+              data: { university_id: 'uni-1' },
+              error: null,
+            }),
+          }),
+        }),
+      });
+
       mock.from.mockReturnValueOnce({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
@@ -39,6 +51,17 @@ describe('FlashcardSpaceService', () => {
     });
 
     it('throws INTERNAL_SERVER when insert fails', async () => {
+      mock.from.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({
+              data: { university_id: null },
+              error: null,
+            }),
+          }),
+        }),
+      });
+
       mock.from.mockReturnValue({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({

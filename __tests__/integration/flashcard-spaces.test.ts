@@ -5,7 +5,7 @@ import {
   PUT as update,
   DELETE as deleteFn,
 } from '@/app/(backend)/api/v1/flashcard-spaces/[id]/route';
-import { TEST_USERS, mockUser, cleanupFlashcardSpaces, createRealClient } from './helpers';
+import { TEST_USERS, mockUser, cleanupFlashcardSpaces, createServiceClient } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Flashcard Spaces Integration', () => {
@@ -93,7 +93,7 @@ describe('Flashcard Spaces Integration', () => {
     it('returns space when found and owned by user', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = createRealClient();
+      const supabase = createServiceClient();
       const { data: space } = await supabase
         .from('flashcard_spaces')
         .insert({ name: 'space-Get Me', created_by: TEST_USERS.TEACHER.id })
@@ -114,7 +114,7 @@ describe('Flashcard Spaces Integration', () => {
     it('returns 404 for another user space', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = createRealClient();
+      const supabase = createServiceClient();
       const { data: space } = await supabase
         .from('flashcard_spaces')
         .insert({ name: 'space-Teacher Space', created_by: TEST_USERS.TEACHER.id })
@@ -137,7 +137,7 @@ describe('Flashcard Spaces Integration', () => {
     it('updates own space and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = createRealClient();
+      const supabase = createServiceClient();
       const { data: space, error: insertError } = await supabase
         .from('flashcard_spaces')
         .insert({ name: 'space-Original', created_by: TEST_USERS.TEACHER.id })
@@ -164,7 +164,7 @@ describe('Flashcard Spaces Integration', () => {
     it('returns 403 when updating another user space', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = createRealClient();
+      const supabase = createServiceClient();
       const { data: space } = await supabase
         .from('flashcard_spaces')
         .insert({ name: 'space-Teacher Space', created_by: TEST_USERS.TEACHER.id })
@@ -192,7 +192,7 @@ describe('Flashcard Spaces Integration', () => {
     it('deletes own space and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = createRealClient();
+      const supabase = createServiceClient();
       const { data: space, error: insertError } = await supabase
         .from('flashcard_spaces')
         .insert({ name: 'space-To Delete', created_by: TEST_USERS.TEACHER.id })
@@ -215,7 +215,7 @@ describe('Flashcard Spaces Integration', () => {
     it('returns 403 when deleting another user space', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = createRealClient();
+      const supabase = createServiceClient();
       const { data: space } = await supabase
         .from('flashcard_spaces')
         .insert({ name: 'space-Teacher Space', created_by: TEST_USERS.TEACHER.id })

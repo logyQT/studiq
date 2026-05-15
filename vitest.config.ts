@@ -11,6 +11,7 @@ export default defineConfig(({ mode }) => {
         env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
       ),
       'process.env.NEXT_PUBLIC_SITE_URL': JSON.stringify(env.NEXT_PUBLIC_SITE_URL || ''),
+      'process.env.SUPABASE_SERVICE_ROLE_KEY': JSON.stringify(env.SUPABASE_SERVICE_ROLE_KEY || ''),
     },
     test: {
       globals: true,

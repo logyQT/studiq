@@ -45,6 +45,24 @@ describe('CreateFlashcardSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('passes with optional spaceIds', () => {
+    const result = CreateFlashcardSchema.safeParse({
+      spaceIds: ['550e8400-e29b-41d4-a716-446655440000'],
+      front: 'Front',
+      back: 'Back',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('fails when spaceIds contains invalid UUID', () => {
+    const result = CreateFlashcardSchema.safeParse({
+      spaceIds: ['not-a-uuid'],
+      front: 'Front',
+      back: 'Back',
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('BulkCreateFlashcardsSchema', () => {
@@ -69,6 +87,15 @@ describe('BulkCreateFlashcardsSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('passes with optional topicIds and spaceIds', () => {
+    const result = BulkCreateFlashcardsSchema.safeParse({
+      topicIds: ['550e8400-e29b-41d4-a716-446655440000'],
+      spaceIds: ['550e8400-e29b-41d4-a716-446655440001'],
+      cards: [{ front: 'Q1', back: 'A1' }],
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('UpdateFlashcardSchema', () => {
@@ -90,5 +117,13 @@ describe('UpdateFlashcardSchema', () => {
   it('fails when back is empty string', () => {
     const result = UpdateFlashcardSchema.safeParse({ back: '' });
     expect(result.success).toBe(false);
+  });
+
+  it('passes with optional topicIds and spaceIds', () => {
+    const result = UpdateFlashcardSchema.safeParse({
+      topicIds: ['550e8400-e29b-41d4-a716-446655440000'],
+      spaceIds: ['550e8400-e29b-41d4-a716-446655440001'],
+    });
+    expect(result.success).toBe(true);
   });
 });

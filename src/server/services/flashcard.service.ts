@@ -7,8 +7,20 @@ import type {
 } from '@/server/models';
 
 export class FlashcardService {
+  private async getUserProfile(userId: string) {
+    const supabase = await createClient();
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, university_id')
+      .eq('id', userId)
+      .single();
+    return profile;
+  }
+
   async create(data: CreateFlashcardInput, userId: string) {
     const supabase = await createClient();
+    const profile = await this.getUserProfile(userId);
+    const universityId = profile?.role === 'teacher' ? (profile?.university_id ?? null) : null;
 
     const { data: flashcard, error } = await supabase
       .from('flashcards')
@@ -16,6 +28,7 @@ export class FlashcardService {
         front: data.front,
         back: data.back,
         created_by: userId,
+        university_id: universityId,
       })
       .select()
       .single();
@@ -30,16 +43,27 @@ export class FlashcardService {
       await supabase.from('flashcard_topic_assignments').insert(assignments);
     }
 
-    return this.getById(flashcard.id);
+    if (data.spaceIds && data.spaceIds.length > 0) {
+      const spaceAssignments = data.spaceIds.map((spaceId) => ({
+        flashcard_id: flashcard.id,
+        space_id: spaceId,
+      }));
+      await supabase.from('flashcard_space_assignments').insert(spaceAssignments);
+    }
+
+    return flashcard;
   }
 
   async bulkCreate(data: BulkCreateFlashcardsInput, userId: string) {
     const supabase = await createClient();
+    const profile = await this.getUserProfile(userId);
+    const universityId = profile?.role === 'teacher' ? (profile?.university_id ?? null) : null;
 
     const cardsToInsert = data.cards.map((c) => ({
       front: c.front,
       back: c.back,
       created_by: userId,
+      university_id: universityId,
     }));
 
     const { data: flashcards, error } = await supabase
@@ -49,21 +73,47 @@ export class FlashcardService {
 
     if (error) throw new AppError('INTERNAL_SERVER');
 
-    if (data.topicIds && data.topicIds.length > 0 && flashcards) {
-      const assignments = flashcards.flatMap((fc) =>
-        data.topicIds!.map((topicId) => ({
-          flashcard_id: fc.id,
-          topic_id: topicId,
-        })),
-      );
-      await supabase.from('flashcard_topic_assignments').insert(assignments);
+    if (flashcards && flashcards.length > 0) {
+      if (data.topicIds && data.topicIds.length > 0) {
+        const assignments = flashcards.flatMap((fc) =>
+          data.topicIds!.map((topicId) => ({
+            flashcard_id: fc.id,
+            topic_id: topicId,
+          })),
+        );
+        await supabase.from('flashcard_topic_assignments').insert(assignments);
+      }
+
+      if (data.spaceIds && data.spaceIds.length > 0) {
+        const spaceAssignments = flashcards.flatMap((fc) =>
+          data.spaceIds!.map((spaceId) => ({
+            flashcard_id: fc.id,
+            space_id: spaceId,
+          })),
+        );
+        await supabase.from('flashcard_space_assignments').insert(spaceAssignments);
+      }
     }
 
     return flashcards;
   }
 
-  async list(filters?: { topicIds?: string[]; spaceIds?: string[] }) {
+  async list(userId: string, filters?: { topicIds?: string[]; spaceIds?: string[] }) {
     const supabase = await createClient();
+    const profile = await this.getUserProfile(userId);
+    const userUniversityId = profile?.university_id;
+
+    let query = supabase
+      .from('flashcards')
+      .select('*, flashcard_topic_assignments(topic_id), flashcard_space_assignments(space_id)');
+
+    if (userUniversityId) {
+      query = query.or(`created_by.eq.${userId},university_id.eq.${userUniversityId}`);
+    } else {
+      query = query.eq('created_by', userId);
+    }
+
+    query = query.order('created_at', { ascending: false });
 
     if (filters?.topicIds && filters.topicIds.length > 0) {
       const { data: assignments } = await supabase
@@ -73,15 +123,7 @@ export class FlashcardService {
 
       const flashcardIds = [...new Set(assignments?.map((a) => a.flashcard_id) ?? [])];
       if (flashcardIds.length === 0) return [];
-
-      const { data, error } = await supabase
-        .from('flashcards')
-        .select('*, flashcard_topic_assignments(topic_id)')
-        .in('id', flashcardIds)
-        .order('created_at', { ascending: false });
-
-      if (error) throw new AppError('INTERNAL_SERVER');
-      return data;
+      query = query.in('id', flashcardIds);
     }
 
     if (filters?.spaceIds && filters.spaceIds.length > 0) {
@@ -92,33 +134,32 @@ export class FlashcardService {
 
       const flashcardIds = [...new Set(assignments?.map((a) => a.flashcard_id) ?? [])];
       if (flashcardIds.length === 0) return [];
-
-      const { data, error } = await supabase
-        .from('flashcards')
-        .select('*, flashcard_topic_assignments(topic_id)')
-        .in('id', flashcardIds)
-        .order('created_at', { ascending: false });
-
-      if (error) throw new AppError('INTERNAL_SERVER');
-      return data;
+      query = query.in('id', flashcardIds);
     }
 
-    const { data, error } = await supabase
-      .from('flashcards')
-      .select('*, flashcard_topic_assignments(topic_id)')
-      .order('created_at', { ascending: false });
-
+    const { data, error } = await query;
     if (error) throw new AppError('INTERNAL_SERVER');
     return data;
   }
 
-  async getById(id: string) {
+  async getById(id: string, userId: string) {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const profile = await this.getUserProfile(userId);
+    const userUniversityId = profile?.university_id;
+
+    let query = supabase
       .from('flashcards')
-      .select('*, flashcard_topic_assignments(topic_id)')
-      .eq('id', id)
-      .single();
+      .select('*, flashcard_topic_assignments(topic_id), flashcard_space_assignments(space_id)')
+      .eq('id', id);
+
+    if (userUniversityId) {
+      query = query.or(`created_by.eq.${userId},university_id.eq.${userUniversityId}`);
+    } else {
+      query = query.eq('created_by', userId);
+    }
+
+    const { data, error } = await query.single();
+
     if (error || !data) throw new AppError('NOT_FOUND');
     return data;
   }
@@ -152,7 +193,25 @@ export class FlashcardService {
       }
     }
 
-    return this.getById(id);
+    if (data.spaceIds !== undefined) {
+      await supabase.from('flashcard_space_assignments').delete().eq('flashcard_id', id);
+      if (data.spaceIds.length > 0) {
+        const assignments = data.spaceIds.map((spaceId) => ({
+          flashcard_id: id,
+          space_id: spaceId,
+        }));
+        await supabase.from('flashcard_space_assignments').insert(assignments);
+      }
+    }
+
+    const { data: updatedFlashcard } = await supabase
+      .from('flashcards')
+      .select('*, flashcard_topic_assignments(topic_id), flashcard_space_assignments(space_id)')
+      .eq('id', id)
+      .single();
+
+    if (!updatedFlashcard) throw new AppError('NOT_FOUND');
+    return updatedFlashcard;
   }
 
   async delete(id: string, userId: string) {

@@ -32,9 +32,12 @@ export class FlashcardController {
     }
   }
 
-  async list(filters?: { topicIds?: string[]; spaceIds?: string[] }): Promise<ControllerResponse> {
+  async list(
+    userId: string,
+    filters?: { topicIds?: string[]; spaceIds?: string[] },
+  ): Promise<ControllerResponse> {
     try {
-      const flashcards = await flashcardService.list(filters);
+      const flashcards = await flashcardService.list(userId, filters);
 
       return { success: true, statusCode: 200, data: flashcards };
     } catch (error) {
@@ -69,9 +72,9 @@ export class FlashcardController {
     }
   }
 
-  async getById(id: string): Promise<ControllerResponse> {
+  async getById(id: string, userId: string): Promise<ControllerResponse> {
     try {
-      const flashcard = await flashcardService.getById(id);
+      const flashcard = await flashcardService.getById(id, userId);
 
       return { success: true, statusCode: 200, data: flashcard };
     } catch (error) {
