@@ -99,7 +99,7 @@ describe('Invitations Integration', () => {
           token: 'valid-token-123',
           expires_at: new Date(Date.now() + 86400000).toISOString(),
           inviter_id: TEST_USERS.UNIVERSITY_ADMIN.id,
-          university_id: '00000000-0000-0000-0000-000000000001',
+          university_id: '00000000-0000-4000-8000-000000000001',
         })
         .select()
         .single();
@@ -137,7 +137,7 @@ describe('Invitations Integration', () => {
         token: 'expired-token-123',
         expires_at: new Date(Date.now() - 86400000).toISOString(),
         inviter_id: TEST_USERS.UNIVERSITY_ADMIN.id,
-        university_id: '00000000-0000-0000-0000-000000000001',
+        university_id: '00000000-0000-4000-8000-000000000001',
       });
 
       const req = createNextRequest(

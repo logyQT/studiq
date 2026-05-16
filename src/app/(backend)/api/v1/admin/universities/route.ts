@@ -1,9 +1,31 @@
 /**
  * @swagger
  * /api/v1/admin/universities:
+ *   get:
+ *     summary: List all universities
+ *     description: Returns a list of all universities in the system. Requires sys_admin role.
+ *     tags:
+ *       - Admin
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: List of universities
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/UniversityResponse'
+ *       401:
+ *         description: Unauthorized (no session)
+ *       403:
+ *         description: Forbidden (sys_admin only)
+ *       500:
+ *         description: Internal server error
  *   post:
- *     summary: Utwórz nową uczelnię
- *     description: Tworzy nową strukturę uniwersytetu w systemie. Wymaga uprawnień sys_admin.
+ *     summary: Create a new university
+ *     description: Creates a new university structure in the system. Requires sys_admin role.
  *     tags:
  *       - Admin
  *     security:
@@ -16,17 +38,17 @@
  *             $ref: '#/components/schemas/CreateUniversityRequest'
  *     responses:
  *       201:
- *         description: Uczelnia utworzona pomyślnie
+ *         description: University created successfully
  *       400:
- *         description: Błąd walidacji danych wejściowych
+ *         description: Validation error
  *       401:
- *         description: Nieautoryzowany dostęp (brak sesji)
+ *         description: Unauthorized (no session)
  *       403:
- *         description: Brak uprawnień (tylko sys_admin)
+ *         description: Forbidden (sys_admin only)
  *       409:
- *         description: Podany slug uniwersytetu jest już zajęty
+ *         description: University slug is already taken
  *       500:
- *         description: Wewnętrzny błąd serwera
+ *         description: Internal server error
  */
 
 import { NextRequest } from 'next/server';
@@ -34,6 +56,25 @@ import { createClient } from '@/lib/supabase/server';
 import { universityController } from '@/server/controllers/university.controller';
 import { toNextResponse } from '@/lib/http-utils';
 import { UserRole } from '@/types';
+
+export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
+  }
+
+  const userRole = user.app_metadata?.role as UserRole;
+  if (userRole !== UserRole.SYS_ADMIN) {
+    return toNextResponse({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+  }
+
+  const response = await universityController.getAll();
+  return toNextResponse(response);
+}
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();

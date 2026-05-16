@@ -206,7 +206,7 @@ describe('Quiz Attempts Integration', () => {
     it('returns 404 for nonexistent attempt', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const fakeId = '00000000-0000-0000-0000-000000000099';
+      const fakeId = '00000000-0000-4000-8000-000000000099';
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/quiz-attempts/${fakeId}`,
         { attemptId: fakeId },

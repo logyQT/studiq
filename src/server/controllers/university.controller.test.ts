@@ -6,6 +6,10 @@ import { AppError } from '@/lib/errors';
 vi.mock('@/server/services', () => ({
   universityService: {
     create: vi.fn(),
+    getAll: vi.fn(),
+    getById: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
   },
 }));
 
@@ -54,6 +58,208 @@ describe('UniversityController', () => {
       mockService.create.mockRejectedValueOnce(new Error('unexpected'));
 
       const response = await universityController.create({ name: 'Test', slug: 'test' });
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 500,
+        error: 'INTERNAL_SERVER',
+      });
+    });
+  });
+
+  describe('getAll', () => {
+    it('returns success with list of universities', async () => {
+      const universities = [
+        { id: 'uni-1', name: 'University 1', slug: 'uni-1' },
+        { id: 'uni-2', name: 'University 2', slug: 'uni-2' },
+      ];
+      mockService.getAll.mockResolvedValueOnce(universities);
+
+      const response = await universityController.getAll();
+
+      expect(response).toEqual({
+        success: true,
+        statusCode: 200,
+        data: universities,
+      });
+    });
+
+    it('returns INTERNAL_SERVER when service throws', async () => {
+      mockService.getAll.mockRejectedValueOnce(new Error('db error'));
+
+      const response = await universityController.getAll();
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 500,
+        error: 'INTERNAL_SERVER',
+      });
+    });
+  });
+
+  describe('getById', () => {
+    const validId = '550e8400-e29b-41d4-a716-446655440000';
+
+    it('returns success when university is found', async () => {
+      const university = { id: validId, name: 'Test University', slug: 'test' };
+      mockService.getById.mockResolvedValueOnce(university);
+
+      const response = await universityController.getById(validId);
+
+      expect(response).toEqual({
+        success: true,
+        statusCode: 200,
+        data: university,
+      });
+    });
+
+    it('returns BAD_REQUEST for invalid UUID', async () => {
+      const response = await universityController.getById('not-a-uuid');
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 400,
+        error: 'BAD_REQUEST',
+      });
+    });
+
+    it('returns NOT_FOUND when university does not exist', async () => {
+      mockService.getById.mockRejectedValueOnce(new AppError('NOT_FOUND'));
+
+      const response = await universityController.getById(validId);
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 404,
+        error: 'NOT_FOUND',
+      });
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.getById.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await universityController.getById(validId);
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 500,
+        error: 'INTERNAL_SERVER',
+      });
+    });
+  });
+
+  describe('update', () => {
+    const validId = '550e8400-e29b-41d4-a716-446655440000';
+
+    it('returns success when university is updated', async () => {
+      const updated = { id: validId, name: 'Updated Name', slug: 'test' };
+      mockService.update.mockResolvedValueOnce(updated);
+
+      const response = await universityController.update(validId, { name: 'Updated Name' });
+
+      expect(response).toEqual({
+        success: true,
+        statusCode: 200,
+        data: updated,
+      });
+    });
+
+    it('returns BAD_REQUEST for invalid UUID', async () => {
+      const response = await universityController.update('not-a-uuid', { name: 'Updated' });
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 400,
+        error: 'BAD_REQUEST',
+      });
+    });
+
+    it('returns UNPROCESSABLE_ENTITY for invalid body', async () => {
+      const response = await universityController.update(validId, {});
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+    });
+
+    it('returns CONFLICT when slug already exists', async () => {
+      mockService.update.mockRejectedValueOnce(new AppError('CONFLICT'));
+
+      const response = await universityController.update(validId, { slug: 'taken' });
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 409,
+        error: 'CONFLICT',
+      });
+    });
+
+    it('returns NOT_FOUND when university does not exist', async () => {
+      mockService.update.mockRejectedValueOnce(new AppError('NOT_FOUND'));
+
+      const response = await universityController.update(validId, { name: 'New' });
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 404,
+        error: 'NOT_FOUND',
+      });
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.update.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await universityController.update(validId, { name: 'New' });
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 500,
+        error: 'INTERNAL_SERVER',
+      });
+    });
+  });
+
+  describe('delete', () => {
+    const validId = '550e8400-e29b-41d4-a716-446655440000';
+
+    it('returns success when university is deleted', async () => {
+      mockService.delete.mockResolvedValueOnce({ success: true });
+
+      const response = await universityController.delete(validId);
+
+      expect(response).toEqual({
+        success: true,
+        statusCode: 200,
+        data: { success: true },
+      });
+    });
+
+    it('returns BAD_REQUEST for invalid UUID', async () => {
+      const response = await universityController.delete('not-a-uuid');
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 400,
+        error: 'BAD_REQUEST',
+      });
+    });
+
+    it('returns NOT_FOUND when university does not exist', async () => {
+      mockService.delete.mockRejectedValueOnce(new AppError('NOT_FOUND'));
+
+      const response = await universityController.delete(validId);
+
+      expect(response).toEqual({
+        success: false,
+        statusCode: 404,
+        error: 'NOT_FOUND',
+      });
+    });
+
+    it('returns INTERNAL_SERVER when service throws generic error', async () => {
+      mockService.delete.mockRejectedValueOnce(new Error('unexpected'));
+
+      const response = await universityController.delete(validId);
 
       expect(response).toEqual({
         success: false,

@@ -8,7 +8,7 @@
 -- Test university
 -- ----------------------------------------------------------
 INSERT INTO "public"."universities" ("id", "name", "slug") VALUES
-  ('00000000-0000-0000-0000-000000000001', 'Dev University', 'dev-university')
+  ('00000000-0000-4000-8000-000000000001', 'Dev University', 'dev-university')
 ON CONFLICT DO NOTHING;
 
 
@@ -27,7 +27,7 @@ INSERT INTO "auth"."users" (
 ) VALUES
   -- sys_admin
   ( '00000000-0000-0000-0000-000000000000',
-    '00000000-0000-0000-0001-000000000001',
+    '00000000-0000-4000-8001-000000000001',
     'authenticated', 'authenticated', 'admin@dev.local',
     crypt('pass', gen_salt('bf')),
     now(), NULL, '', NULL, '', NULL, '', '', NULL, NULL,
@@ -37,7 +37,7 @@ INSERT INTO "auth"."users" (
 
   -- university_admin
   ( '00000000-0000-0000-0000-000000000000',
-    '00000000-0000-0000-0001-000000000002',
+    '00000000-0000-4000-8001-000000000002',
     'authenticated', 'authenticated', 'uadmin@dev.local',
     crypt('pass', gen_salt('bf')),
     now(), NULL, '', NULL, '', NULL, '', '', NULL, NULL,
@@ -47,7 +47,7 @@ INSERT INTO "auth"."users" (
 
   -- teacher
   ( '00000000-0000-0000-0000-000000000000',
-    '00000000-0000-0000-0001-000000000003',
+    '00000000-0000-4000-8001-000000000003',
     'authenticated', 'authenticated', 'teacher@dev.local',
     crypt('pass', gen_salt('bf')),
     now(), NULL, '', NULL, '', NULL, '', '', NULL, NULL,
@@ -57,7 +57,7 @@ INSERT INTO "auth"."users" (
 
   -- student
   ( '00000000-0000-0000-0000-000000000000',
-    '00000000-0000-0000-0001-000000000004',
+    '00000000-0000-4000-8001-000000000004',
     'authenticated', 'authenticated', 'student@dev.local',
     crypt('pass', gen_salt('bf')),
     now(), NULL, '', NULL, '', NULL, '', '', NULL, NULL,
@@ -67,7 +67,7 @@ INSERT INTO "auth"."users" (
 
   -- premium
   ( '00000000-0000-0000-0000-000000000000',
-    '00000000-0000-0000-0001-000000000005',
+    '00000000-0000-4000-8001-000000000005',
     'authenticated', 'authenticated', 'premium@dev.local',
     crypt('pass', gen_salt('bf')),
     now(), NULL, '', NULL, '', NULL, '', '', NULL, NULL,
@@ -77,7 +77,7 @@ INSERT INTO "auth"."users" (
 
   -- free
   ( '00000000-0000-0000-0000-000000000000',
-    '00000000-0000-0000-0001-000000000006',
+    '00000000-0000-4000-8001-000000000006',
     'authenticated', 'authenticated', 'user@dev.local',
     crypt('pass', gen_salt('bf')),
     now(), NULL, '', NULL, '', NULL, '', '', NULL, NULL,
@@ -95,41 +95,41 @@ INSERT INTO "auth"."identities" (
   "provider_id", "user_id", "identity_data", "provider",
   "last_sign_in_at", "created_at", "updated_at", "id"
 ) VALUES
-  ( '00000000-0000-0000-0001-000000000001',
-    '00000000-0000-0000-0001-000000000001',
-    '{"sub": "00000000-0000-0000-0001-000000000001", "email": "admin@dev.local",   "email_verified": true, "phone_verified": false}',
+  ( '00000000-0000-4000-8001-000000000001',
+    '00000000-0000-4000-8001-000000000001',
+    '{"sub": "00000000-0000-4000-8001-000000000001", "email": "admin@dev.local",   "email_verified": true, "phone_verified": false}',
     'email', now(), now(), now(),
-    '00000000-0000-0000-0002-000000000001' ),
+    '00000000-0000-4000-8002-000000000001' ),
 
-  ( '00000000-0000-0000-0001-000000000002',
-    '00000000-0000-0000-0001-000000000002',
-    '{"sub": "00000000-0000-0000-0001-000000000002", "email": "uadmin@dev.local",  "email_verified": true, "phone_verified": false}',
+  ( '00000000-0000-4000-8001-000000000002',
+    '00000000-0000-4000-8001-000000000002',
+    '{"sub": "00000000-0000-4000-8001-000000000002", "email": "uadmin@dev.local",  "email_verified": true, "phone_verified": false}',
     'email', now(), now(), now(),
-    '00000000-0000-0000-0002-000000000002' ),
+    '00000000-0000-4000-8002-000000000002' ),
 
-  ( '00000000-0000-0000-0001-000000000003',
-    '00000000-0000-0000-0001-000000000003',
-    '{"sub": "00000000-0000-0000-0001-000000000003", "email": "teacher@dev.local", "email_verified": true, "phone_verified": false}',
+  ( '00000000-0000-4000-8001-000000000003',
+    '00000000-0000-4000-8001-000000000003',
+    '{"sub": "00000000-0000-4000-8001-000000000003", "email": "teacher@dev.local", "email_verified": true, "phone_verified": false}',
     'email', now(), now(), now(),
-    '00000000-0000-0000-0002-000000000003' ),
+    '00000000-0000-4000-8002-000000000003' ),
 
-  ( '00000000-0000-0000-0001-000000000004',
-    '00000000-0000-0000-0001-000000000004',
-    '{"sub": "00000000-0000-0000-0001-000000000004", "email": "student@dev.local", "email_verified": true, "phone_verified": false}',
+  ( '00000000-0000-4000-8001-000000000004',
+    '00000000-0000-4000-8001-000000000004',
+    '{"sub": "00000000-0000-4000-8001-000000000004", "email": "student@dev.local", "email_verified": true, "phone_verified": false}',
     'email', now(), now(), now(),
-    '00000000-0000-0000-0002-000000000004' ),
+    '00000000-0000-4000-8002-000000000004' ),
 
-  ( '00000000-0000-0000-0001-000000000005',
-    '00000000-0000-0000-0001-000000000005',
-    '{"sub": "00000000-0000-0000-0001-000000000005", "email": "premium@dev.local", "email_verified": true, "phone_verified": false}',
+  ( '00000000-0000-4000-8001-000000000005',
+    '00000000-0000-4000-8001-000000000005',
+    '{"sub": "00000000-0000-4000-8001-000000000005", "email": "premium@dev.local", "email_verified": true, "phone_verified": false}',
     'email', now(), now(), now(),
-    '00000000-0000-0000-0002-000000000005' ),
+    '00000000-0000-4000-8002-000000000005' ),
 
-  ( '00000000-0000-0000-0001-000000000006',
-    '00000000-0000-0000-0001-000000000006',
-    '{"sub": "00000000-0000-0000-0001-000000000006", "email": "user@dev.local",    "email_verified": true, "phone_verified": false}',
+  ( '00000000-0000-4000-8001-000000000006',
+    '00000000-0000-4000-8001-000000000006',
+    '{"sub": "00000000-0000-4000-8001-000000000006", "email": "user@dev.local",    "email_verified": true, "phone_verified": false}',
     'email', now(), now(), now(),
-    '00000000-0000-0000-0002-000000000006' )
+    '00000000-0000-4000-8002-000000000006' )
 
 ON CONFLICT DO NOTHING;
 
@@ -139,18 +139,18 @@ ON CONFLICT DO NOTHING;
 -- Trigger created them all as 'free'; patch here.
 -- ----------------------------------------------------------
 UPDATE public.profiles SET role = 'sys_admin'
-  WHERE id = '00000000-0000-0000-0001-000000000001';
+  WHERE id = '00000000-0000-4000-8001-000000000001';
 
-UPDATE public.profiles SET role = 'university_admin', university_id = '00000000-0000-0000-0000-000000000001'
-  WHERE id = '00000000-0000-0000-0001-000000000002';
+UPDATE public.profiles SET role = 'university_admin', university_id = '00000000-0000-4000-8000-000000000001'
+  WHERE id = '00000000-0000-4000-8001-000000000002';
 
-UPDATE public.profiles SET role = 'teacher', university_id = '00000000-0000-0000-0000-000000000001'
-  WHERE id = '00000000-0000-0000-0001-000000000003';
+UPDATE public.profiles SET role = 'teacher', university_id = '00000000-0000-4000-8000-000000000001'
+  WHERE id = '00000000-0000-4000-8001-000000000003';
 
-UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-0000-0000-000000000001'
-  WHERE id = '00000000-0000-0000-0001-000000000004';
+UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000-8000-000000000001'
+  WHERE id = '00000000-0000-4000-8001-000000000004';
 
 UPDATE public.profiles SET role = 'premium'
-  WHERE id = '00000000-0000-0000-0001-000000000005';
+  WHERE id = '00000000-0000-4000-8001-000000000005';
 
--- '00000000-0000-0000-0001-000000000006' stays 'free'
+-- '00000000-0000-4000-8001-000000000006' stays 'free'

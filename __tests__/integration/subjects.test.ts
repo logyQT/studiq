@@ -13,9 +13,9 @@ describe('Subjects Integration', () => {
 
     const supabase = createRealClient();
     await supabase.from('subjects').delete().in('id', [
-      '00000000-0000-0000-0003-000000000001',
-      '00000000-0000-0000-0003-000000000002',
-      '00000000-0000-0000-0003-000000000003',
+      '00000000-0000-4000-8003-000000000001',
+      '00000000-0000-4000-8003-000000000002',
+      '00000000-0000-4000-8003-000000000003',
     ]);
   });
 
@@ -129,7 +129,7 @@ describe('Subjects Integration', () => {
     it('returns 404 when subject does not exist', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const fakeId = '00000000-0000-0000-0000-000000000099';
+      const fakeId = '00000000-0000-4000-8000-000000000099';
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/subjects/${fakeId}`,
         { id: fakeId },
