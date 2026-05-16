@@ -9,44 +9,44 @@ import * as supabaseModule from '@/lib/supabase/server';
 // ============================================================
 export const TEST_USERS = {
   SYS_ADMIN: {
-    id: '00000000-0000-0000-0001-000000000001',
+    id: '00000000-0000-4000-8001-000000000001',
     email: 'admin@dev.local',
     password: 'pass',
     role: 'sys_admin',
   },
   UNIVERSITY_ADMIN: {
-    id: '00000000-0000-0000-0001-000000000002',
+    id: '00000000-0000-4000-8001-000000000002',
     email: 'uadmin@dev.local',
     password: 'pass',
     role: 'university_admin',
   },
   TEACHER: {
-    id: '00000000-0000-0000-0001-000000000003',
+    id: '00000000-0000-4000-8001-000000000003',
     email: 'teacher@dev.local',
     password: 'pass',
     role: 'teacher',
   },
   STUDENT: {
-    id: '00000000-0000-0000-0001-000000000004',
+    id: '00000000-0000-4000-8001-000000000004',
     email: 'student@dev.local',
     password: 'pass',
     role: 'student',
   },
   PREMIUM: {
-    id: '00000000-0000-0000-0001-000000000005',
+    id: '00000000-0000-4000-8001-000000000005',
     email: 'premium@dev.local',
     password: 'pass',
     role: 'premium',
   },
   FREE: {
-    id: '00000000-0000-0000-0001-000000000006',
+    id: '00000000-0000-4000-8001-000000000006',
     email: 'user@dev.local',
     password: 'pass',
     role: 'free',
   },
 } as const;
 
-export const TEST_UNIVERSITY_ID = '00000000-0000-0000-0000-000000000001';
+export const TEST_UNIVERSITY_ID = '00000000-0000-4000-8000-000000000001';
 
 // ============================================================
 // Real Supabase Client (bypasses the global mock)
@@ -199,6 +199,17 @@ export async function cleanupQuizAttempts(userId: string) {
 export async function cleanupInvitations(userId: string) {
   const supabase = createServiceClient();
   await supabase.from('invitations').delete().eq('inviter_id', userId);
+}
+
+export async function cleanupUniversity(slugPrefix?: string) {
+  const supabase = createServiceClient();
+  let query = supabase.from('universities').delete();
+  if (slugPrefix) {
+    query = query.ilike('slug', `${slugPrefix}%`);
+  } else {
+    query = query.neq('id', '00000000-0000-4000-8000-000000000001');
+  }
+  await query;
 }
 
 // ============================================================

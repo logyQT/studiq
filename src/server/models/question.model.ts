@@ -7,7 +7,7 @@ export const DifficultyEnum = z.enum(['easy', 'medium', 'hard']);
 export const CreateQuestionSchema = registry.register(
   'CreateQuestionRequest',
   z.object({
-    subjectId: z.string().uuid().optional(),
+    subjectId: z.uuid().optional(),
     type: QuestionTypeEnum,
     content: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
     explanation: z.string().optional(),
@@ -27,7 +27,7 @@ export const CreateQuestionSchema = registry.register(
 export const UpdateQuestionSchema = registry.register(
   'UpdateQuestionRequest',
   z.object({
-    subjectId: z.string().uuid().optional(),
+    subjectId: z.uuid().optional(),
     type: QuestionTypeEnum.optional(),
     content: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }).optional(),
     explanation: z.string().optional(),
@@ -35,7 +35,7 @@ export const UpdateQuestionSchema = registry.register(
     answers: z
       .array(
         z.object({
-          id: z.string().uuid().optional(),
+          id: z.uuid().optional(),
           content: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
           isCorrect: z.boolean(),
           orderIndex: z.number().int().default(0),

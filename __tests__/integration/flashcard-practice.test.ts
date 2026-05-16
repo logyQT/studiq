@@ -49,7 +49,7 @@ describe('Flashcard Practice Integration', () => {
     it('logs practice with optional fields and returns 201', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const sessionId = '00000000-0000-0000-0000-000000000001';
+      const sessionId = '00000000-0000-4000-8000-000000000001';
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/${flashcardId}/practice`,

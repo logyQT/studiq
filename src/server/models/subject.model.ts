@@ -4,11 +4,11 @@ import { ValidationErrorCode } from '@/lib/validation-errors';
 export const SubjectSchema = registry.register(
   'Subject',
   z.object({
-    id: z.string().uuid(),
-    university_id: z.string().uuid().nullable(),
+    id: z.uuid(),
+    university_id: z.uuid().nullable(),
     name: z.string(),
     description: z.string().nullable(),
-    created_by: z.string().uuid(),
+    created_by: z.uuid(),
     created_at: z.string(),
   }),
 );
@@ -18,7 +18,7 @@ export const CreateSubjectSchema = registry.register(
   z.object({
     name: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
     description: z.string().optional(),
-    universityId: z.string().uuid().optional(),
+    universityId: z.uuid().optional(),
   }),
 );
 
