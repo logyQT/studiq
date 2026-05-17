@@ -33,7 +33,26 @@
 
     "ERROR_SURNAME_REQUIRED": "Last name is required.",
     "ERROR_SURNAME_TOO_SHORT": "Last name is too short.",
-    "ERROR_SURNAME_INVALID_FORMAT": "Last name contains invalid characters."
+    "ERROR_SURNAME_INVALID_FORMAT": "Last name contains invalid characters.",
+    "UNAUTHORIZED": "Invalid email address or password.",
+    "VALIDATION_REQUIRED": "This field is required.",
+    "VALIDATION_INVALID_INPUT": "The provided data is invalid.",
+    "VALIDATION_EMAIL_REQUIRED": "Email address is required.",
+    "VALIDATION_EMAIL_INVALID": "Please enter a valid email address.",
+    "VALIDATION_PASSWORD_REQUIRED": "Password is required.",
+    "VALIDATION_PASSWORD_TOO_SHORT": "Password must be at least 8 characters long.",
+    "VALIDATION_PASSWORD_TOO_LONG": "Password cannot exceed 128 characters.",
+    "VALIDATION_PASSWORD_MISSING_UPPERCASE": "Password must contain at least one uppercase letter.",
+    "VALIDATION_PASSWORD_MISSING_NUMBER": "Password must contain at least one number.",
+    "VALIDATION_PASSWORD_CONFIRMATION_REQUIRED": "Password confirmation is required.",
+    "VALIDATION_PASSWORDS_DO_NOT_MATCH": "Passwords do not match.",
+    "VALIDATION_NAME_REQUIRED": "Full name is required.",
+    "VALIDATION_NAME_TOO_SHORT": "Full name is too short.",
+    "VALIDATION_NAME_INVALID_FORMAT": "Full name contains invalid characters.",
+    "VALIDATION_UUID_INVALID": "Invalid identifier.",
+    "VALIDATION_TOO_SHORT": "Value is too short.",
+    "VALIDATION_TOO_LONG": "Value is too long.",
+    "VALIDATION_INVALID_ROLE": "Invalid user role."
   },
   "Navbar": {
     "logo": "StudiQ",
