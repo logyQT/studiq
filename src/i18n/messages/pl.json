@@ -28,7 +28,28 @@
 
     "ERROR_NAME_REQUIRED": "Imię i nazwisko jest wymagane.",
     "ERROR_NAME_TOO_SHORT": "Imię i nazwisko jest za krótkie.",
-    "ERROR_NAME_INVALID_FORMAT": "Imię i nazwisko zawiera niedozwolone znaki."
+    "ERROR_NAME_INVALID_FORMAT": "Imię i nazwisko zawiera niedozwolone znaki.",
+    "UNAUTHORIZED": "Nieprawidłowy adres e-mail lub hasło.",
+
+    "VALIDATION_REQUIRED": "To pole jest wymagane.",
+    "VALIDATION_INVALID_INPUT": "Przekazane dane są niepoprawne.",
+    "VALIDATION_EMAIL_REQUIRED": "Adres e-mail jest wymagany.",
+    "VALIDATION_EMAIL_INVALID": "Wprowadź poprawny adres e-mail.",
+    "VALIDATION_PASSWORD_REQUIRED": "Hasło jest wymagane.",
+    "VALIDATION_PASSWORD_TOO_SHORT": "Hasło musi mieć co najmniej 8 znaków.",
+    "VALIDATION_PASSWORD_TOO_LONG": "Hasło nie może przekraczać 128 znaków.",
+    "VALIDATION_PASSWORD_MISSING_UPPERCASE": "Hasło musi zawierać co najmniej jedną wielką literę.",
+    "VALIDATION_PASSWORD_MISSING_NUMBER": "Hasło musi zawierać co najmniej jedną cyfrę.",
+    "VALIDATION_PASSWORD_CONFIRMATION_REQUIRED": "Potwierdzenie hasła jest wymagane.",
+    "VALIDATION_PASSWORDS_DO_NOT_MATCH": "Podane hasła nie są identyczne.",
+    "VALIDATION_NAME_REQUIRED": "Imię i nazwisko jest wymagane.",
+    "VALIDATION_NAME_TOO_SHORT": "Imię i nazwisko jest za krótkie.",
+    "VALIDATION_NAME_INVALID_FORMAT": "Imię i nazwisko zawiera niedozwolone znaki.",
+    "VALIDATION_UUID_INVALID": "Nieprawidłowy identyfikator.",
+    "VALIDATION_TOO_SHORT": "Wartość jest za krótka.",
+    "VALIDATION_TOO_LONG": "Wartość jest za długa.",
+    "VALIDATION_INVALID_ROLE": "Nieprawidłowa rola użytkownika."
+    
   },
   "NotFoundPage": {
     "title": "Nie znaleziono strony",
