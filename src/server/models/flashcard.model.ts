@@ -4,36 +4,62 @@ import { ValidationErrorCode } from '@/lib/validation-errors';
 export const CreateFlashcardSchema = registry.register(
   'CreateFlashcardRequest',
   z.object({
-    topicIds: z.array(z.uuid()).optional(),
-    spaceIds: z.array(z.uuid()).optional(),
-    front: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
-    back: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
+    topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+    spaceIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+    front: z
+      .string({ error: ValidationErrorCode.REQUIRED })
+      .nonempty({ error: ValidationErrorCode.REQUIRED })
+      .min(1, { error: ValidationErrorCode.TOO_SHORT })
+      .max(255, { error: ValidationErrorCode.TOO_LONG }),
+    back: z
+      .string({ error: ValidationErrorCode.REQUIRED })
+      .nonempty({ error: ValidationErrorCode.REQUIRED })
+      .min(1, { error: ValidationErrorCode.TOO_SHORT })
+      .max(255, { error: ValidationErrorCode.TOO_LONG }),
   }),
 );
 
 export const BulkCreateFlashcardsSchema = registry.register(
   'BulkCreateFlashcardsRequest',
   z.object({
-    topicIds: z.array(z.uuid()).optional(),
-    spaceIds: z.array(z.uuid()).optional(),
+    topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+    spaceIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
     cards: z
       .array(
         z.object({
-          front: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
-          back: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
+          front: z
+            .string({ error: ValidationErrorCode.REQUIRED })
+            .nonempty({ error: ValidationErrorCode.REQUIRED })
+            .min(1, { error: ValidationErrorCode.TOO_SHORT })
+            .max(255, { error: ValidationErrorCode.TOO_LONG }),
+          back: z
+            .string({ error: ValidationErrorCode.REQUIRED })
+            .nonempty({ error: ValidationErrorCode.REQUIRED })
+            .min(1, { error: ValidationErrorCode.TOO_SHORT })
+            .max(255, { error: ValidationErrorCode.TOO_LONG }),
         }),
       )
-      .min(1),
+      .min(1, { error: ValidationErrorCode.TOO_FEW }),
   }),
 );
 
 export const UpdateFlashcardSchema = registry.register(
   'UpdateFlashcardRequest',
   z.object({
-    topicIds: z.array(z.uuid()).optional(),
-    spaceIds: z.array(z.uuid()).optional(),
-    front: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }).optional(),
-    back: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }).optional(),
+    topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+    spaceIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+    front: z
+      .string({ error: ValidationErrorCode.REQUIRED })
+      .nonempty({ error: ValidationErrorCode.REQUIRED })
+      .min(1, { error: ValidationErrorCode.TOO_SHORT })
+      .max(255, { error: ValidationErrorCode.TOO_LONG })
+      .optional(),
+    back: z
+      .string({ error: ValidationErrorCode.REQUIRED })
+      .nonempty({ error: ValidationErrorCode.REQUIRED })
+      .min(1, { error: ValidationErrorCode.TOO_SHORT })
+      .max(255, { error: ValidationErrorCode.TOO_LONG })
+      .optional(),
   }),
 );
 

@@ -1,3 +1,15 @@
-import type { HealthStatus } from '@/types';
+export type ServiceStatus = 'up' | 'down';
+export type AppStatus = 'healthy' | 'degraded' | 'unhealthy';
 
-export type HealthStatusResponse = HealthStatus;
+export interface HealthStatusResponse {
+  status: AppStatus;
+  timestamp: string;
+  uptime: number;
+  environment: string;
+
+  services: {
+    supabase: ServiceStatus;
+  };
+
+  responseTime: number; // ms
+}

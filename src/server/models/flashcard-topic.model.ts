@@ -4,14 +4,23 @@ import { ValidationErrorCode } from '@/lib/validation-errors';
 export const CreateTopicSchema = registry.register(
   'CreateFlashcardTopicRequest',
   z.object({
-    name: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
+    name: z
+      .string({ error: ValidationErrorCode.REQUIRED })
+      .nonempty({ error: ValidationErrorCode.REQUIRED })
+      .min(1, { error: ValidationErrorCode.TOO_SHORT })
+      .max(64, { error: ValidationErrorCode.TOO_LONG }),
   }),
 );
 
 export const UpdateTopicSchema = registry.register(
   'UpdateFlashcardTopicRequest',
   z.object({
-    name: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }).optional(),
+    name: z
+      .string({ error: ValidationErrorCode.REQUIRED })
+      .nonempty({ error: ValidationErrorCode.REQUIRED })
+      .min(1, { error: ValidationErrorCode.TOO_SHORT })
+      .max(64, { error: ValidationErrorCode.TOO_LONG })
+      .optional(),
   }),
 );
 
