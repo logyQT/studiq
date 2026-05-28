@@ -22,9 +22,8 @@ export const RegisterSchema = registry.register(
   z.object({
     name: NameSchema,
     email: z
-      .string({ error: ValidationErrorCode.EMAIL_REQUIRED })
-      .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED })
-      .email({ error: ValidationErrorCode.EMAIL_INVALID }),
+      .email({ error: ValidationErrorCode.EMAIL_INVALID })
+      .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED }),
     password: passwordSchema,
     inviteToken: z.string().optional(),
   }),
@@ -34,9 +33,8 @@ export const LoginSchema = registry.register(
   'LoginRequest',
   z.object({
     email: z
-      .string({ error: ValidationErrorCode.EMAIL_REQUIRED })
-      .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED })
-      .email({ error: ValidationErrorCode.EMAIL_INVALID }),
+      .email({ error: ValidationErrorCode.EMAIL_INVALID })
+      .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED }),
     password: z
       .string({ error: ValidationErrorCode.PASSWORD_REQUIRED })
       .nonempty({ error: ValidationErrorCode.PASSWORD_REQUIRED }),
@@ -47,9 +45,8 @@ export const forgotPasswordSchema = registry.register(
   'ForgotPasswordRequest',
   z.object({
     email: z
-      .string({ error: ValidationErrorCode.EMAIL_REQUIRED })
-      .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED })
-      .email({ error: ValidationErrorCode.EMAIL_INVALID }),
+      .email({ error: ValidationErrorCode.EMAIL_INVALID })
+      .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED }),
   }),
 );
 
@@ -58,8 +55,8 @@ export const updatePasswordSchema = registry
     'UpdatePasswordRequest',
     z.object({
       password: passwordSchema,
-      confirmPassword: z
-        .string()
+      confirmPassword: z.coerce
+        .string({ error: ValidationErrorCode.PASSWORD_CONFIRMATION_REQUIRED })
         .nonempty({ error: ValidationErrorCode.PASSWORD_CONFIRMATION_REQUIRED }),
     }),
   )

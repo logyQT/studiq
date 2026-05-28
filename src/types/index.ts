@@ -43,25 +43,6 @@ export interface PaginatedResponse<T> {
   };
 }
 
-/**
- * Status zdrowia serwera
- */
-export type ServiceStatus = 'up' | 'down';
-export type AppStatus = 'healthy' | 'degraded' | 'unhealthy';
-
-export interface HealthStatus {
-  status: AppStatus;
-  timestamp: string;
-  uptime: number;
-  environment: string;
-
-  services: {
-    supabase: ServiceStatus;
-  };
-
-  responseTime: number; // ms
-}
-
 // =============================================================================
 // UTILITY TYPES
 // =============================================================================

@@ -7,7 +7,9 @@ export const CreateInviteSchema = registry.register(
   'CreateInviteRequest',
   z.object({
     name: NameSchema,
-    email: z.email({ error: ValidationErrorCode.EMAIL_INVALID }),
+    email: z
+      .email({ error: ValidationErrorCode.EMAIL_INVALID })
+      .nonempty({ error: ValidationErrorCode.REQUIRED }),
     role: z.enum(UNIVERSITY_ROLES, {
       error: ValidationErrorCode.INVALID_ROLE,
     }),
@@ -18,7 +20,7 @@ export const CreateInviteSchema = registry.register(
 export const BulkInviteSchema = registry.register(
   'BulkInviteRequest',
   z.object({
-    invitations: z.array(CreateInviteSchema).min(1),
+    invitations: z.array(CreateInviteSchema).min(1, { error: ValidationErrorCode.TOO_FEW }),
   }),
 );
 

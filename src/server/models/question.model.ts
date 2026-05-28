@@ -7,17 +7,28 @@ export const DifficultyEnum = z.enum(['easy', 'medium', 'hard']);
 export const CreateQuestionSchema = registry.register(
   'CreateQuestionRequest',
   z.object({
-    subjectId: z.uuid().optional(),
+    subjectId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
     type: QuestionTypeEnum,
-    content: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
-    explanation: z.string().optional(),
+    content: z
+      .string()
+      .nonempty({ error: ValidationErrorCode.INVALID_INPUT })
+      .min(1, { error: ValidationErrorCode.TOO_SHORT })
+      .max(255, { error: ValidationErrorCode.TOO_LONG }),
+    explanation: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
     difficulty: DifficultyEnum.default('medium'),
     answers: z
       .array(
         z.object({
-          content: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
-          isCorrect: z.boolean(),
-          orderIndex: z.number().int().default(0),
+          content: z
+            .string()
+            .nonempty({ error: ValidationErrorCode.INVALID_INPUT })
+            .min(1, { error: ValidationErrorCode.TOO_SHORT })
+            .max(255, { error: ValidationErrorCode.TOO_LONG }),
+          isCorrect: z.boolean({ error: ValidationErrorCode.BOOL }),
+          orderIndex: z
+            .number({ error: ValidationErrorCode.NUMBER })
+            .int({ error: ValidationErrorCode.INTEGER })
+            .default(0),
         }),
       )
       .min(1, { error: ValidationErrorCode.INVALID_INPUT }),
@@ -27,18 +38,26 @@ export const CreateQuestionSchema = registry.register(
 export const UpdateQuestionSchema = registry.register(
   'UpdateQuestionRequest',
   z.object({
-    subjectId: z.uuid().optional(),
+    subjectId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
     type: QuestionTypeEnum.optional(),
-    content: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }).optional(),
-    explanation: z.string().optional(),
+    content: z
+      .string()
+      .nonempty({ error: ValidationErrorCode.INVALID_INPUT })
+      .min(1, { error: ValidationErrorCode.TOO_SHORT })
+      .max(255, { error: ValidationErrorCode.TOO_LONG })
+      .optional(),
+    explanation: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
     difficulty: DifficultyEnum.optional(),
     answers: z
       .array(
         z.object({
-          id: z.uuid().optional(),
+          id: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
           content: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
-          isCorrect: z.boolean(),
-          orderIndex: z.number().int().default(0),
+          isCorrect: z.boolean({ error: ValidationErrorCode.BOOL }),
+          orderIndex: z
+            .number({ error: ValidationErrorCode.NUMBER })
+            .int({ error: ValidationErrorCode.INTEGER })
+            .default(0),
         }),
       )
       .optional(),
