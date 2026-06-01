@@ -1,40 +1,58 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
 import { CreateSubjectInput, UpdateSubjectInput } from '@/server/models';
+import { Nullable } from '@/types';
 
 export class SubjectService {
   async create(data: CreateSubjectInput, userId: string) {
     const supabase = await createClient();
+
+    const { data: user } = await supabase
+      .from('profiles')
+      .select('university_id')
+      .eq('id', userId)
+      .single();
 
     const { data: subject, error } = await supabase
       .from('subjects')
       .insert({
         name: data.name,
         description: data.description ?? null,
-        university_id: data.universityId ?? null,
+        university_id: user?.university_id ?? null,
         created_by: userId,
       })
       .select()
       .single();
-
     if (error) throw new AppError('INTERNAL_SERVER');
+
     return subject;
   }
 
-  async list(universityId?: string) {
+  async list(userId: string, universityId: Nullable<string>) {
     const supabase = await createClient();
-    let query = supabase.from('subjects').select('*').order('created_at', { ascending: false });
-    if (universityId) {
-      query = query.eq('university_id', universityId);
-    }
-    const { data, error } = await query;
+    const orConditions = [];
+
+    if (universityId) orConditions.push(`university_id.eq.${universityId}`);
+    if (userId) orConditions.push(`created_by.eq.${userId}`);
+
+    const { data, error } = await supabase
+      .from('subjects')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .or(orConditions.join(','));
+
     if (error) throw new AppError('INTERNAL_SERVER');
     return data;
   }
 
-  async getById(id: string) {
+  async getById(id: string, userId: string) {
     const supabase = await createClient();
-    const { data, error } = await supabase.from('subjects').select('*').eq('id', id).single();
+    const { data, error } = await supabase
+      .from('subjects')
+      .select('*')
+      .eq('id', id)
+      .eq('created_by', userId)
+      .single();
     if (error || !data) throw new AppError('NOT_FOUND');
     return data;
   }

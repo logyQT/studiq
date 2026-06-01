@@ -20,7 +20,7 @@ CREATE TABLE public.profiles (
 -- forced token refresh on the client.
 -- ==========================================
 
-CREATE OR REPLACE FUNCTION public.sync_profile_role_to_auth()
+CREATE FUNCTION public.sync_profile_role_to_auth()
 RETURNS TRIGGER AS $$
 BEGIN
   UPDATE auth.users
@@ -33,10 +33,25 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-DROP TRIGGER IF EXISTS on_profile_role_update ON public.profiles;
-
 CREATE TRIGGER on_profile_role_update
   AFTER INSERT OR UPDATE OF role ON public.profiles
   FOR EACH ROW
   EXECUTE FUNCTION public.sync_profile_role_to_auth();
 
+CREATE FUNCTION public.sync_profile_univ_id_to_auth()
+RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE auth.users
+  SET raw_app_meta_data = 
+        coalesce(raw_app_meta_data, '{}'::jsonb) || 
+        jsonb_build_object('university_id', NEW.university_id)
+  WHERE id = NEW.id ;
+        
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_univ_id_update
+  AFTER INSERT OR UPDATE OF university_id ON public.profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION public.sync_profile_univ_id_to_auth();

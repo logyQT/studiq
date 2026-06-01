@@ -2,6 +2,7 @@ import { subjectService } from '@/server/services';
 import { CreateSubjectSchema, UpdateSubjectSchema } from '@/server/models';
 import { AppError } from '@/lib/errors';
 import { ControllerResponse } from '@/lib/controller-response';
+import { Nullable } from '@/types';
 
 export class SubjectController {
   async create(body: unknown, userId: string): Promise<ControllerResponse> {
@@ -28,9 +29,9 @@ export class SubjectController {
     }
   }
 
-  async list(universityId?: string): Promise<ControllerResponse> {
+  async list(userId: string, universityId: Nullable<string>): Promise<ControllerResponse> {
     try {
-      const subjects = await subjectService.list(universityId);
+      const subjects = await subjectService.list(userId, universityId);
 
       return { success: true, statusCode: 200, data: subjects };
     } catch (error) {
@@ -41,9 +42,9 @@ export class SubjectController {
     }
   }
 
-  async getById(id: string): Promise<ControllerResponse> {
+  async getById(id: string, userId: string): Promise<ControllerResponse> {
     try {
-      const subject = await subjectService.getById(id);
+      const subject = await subjectService.getById(id, userId);
 
       return { success: true, statusCode: 200, data: subject };
     } catch (error) {

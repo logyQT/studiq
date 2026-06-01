@@ -28,13 +28,6 @@
  *     description: Returns a list of subjects. Optionally filter by universityId. Public endpoint.
  *     tags:
  *       - Subjects
- *     parameters:
- *       - in: query
- *         name: universityId
- *         schema:
- *           type: string
- *           format: uuid
- *         description: Filter subjects by university ID
  *     responses:
  *       200:
  *         description: List of subjects
@@ -70,10 +63,16 @@ export async function POST(req: NextRequest) {
   return toNextResponse(response);
 }
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const universityId = searchParams.get('universityId') || undefined;
+export async function GET() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const response = await subjectController.list(universityId);
+  if (!user) {
+    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
+  }
+
+  const response = await subjectController.list(user.id, user.app_metadata.university_id);
   return toNextResponse(response);
 }

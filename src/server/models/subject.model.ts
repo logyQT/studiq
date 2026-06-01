@@ -22,7 +22,6 @@ export const CreateSubjectSchema = registry.register(
   z.object({
     name: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
     description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
-    universityId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
   }),
 );
 
