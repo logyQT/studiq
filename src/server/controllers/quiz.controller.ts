@@ -1,11 +1,12 @@
 import { quizService } from '@/server/services';
 import { GenerateQuizSchema } from '@/server/models';
-import { AppError } from '@/lib/errors';
 import { ControllerResponse } from '@/lib/controller-response';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import type { RequestContext } from '@/lib/request-context';
 
 export class QuizController {
-  async generate(body: unknown, userId: string): Promise<ControllerResponse> {
-    try {
+  async generate(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsed = GenerateQuizSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -17,15 +18,10 @@ export class QuizController {
         };
       }
 
-      const result = await quizService.generateQuiz(parsed.data, userId);
+      const result = await quizService.generateQuiz(parsed.data, ctx);
 
       return { success: true, statusCode: 201, data: result };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 }
 

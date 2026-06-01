@@ -1,29 +1,26 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
 import type { CreateSpaceInput, UpdateSpaceInput } from '@/server/models';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { RequestContext } from '@/lib/request-context';
 
 export class FlashcardSpaceService {
-  async create(data: CreateSpaceInput, userId: string) {
+  async create(data: CreateSpaceInput, ctx: RequestContext) {
     const supabase = await createClient();
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('university_id')
-      .eq('id', userId)
-      .single();
 
     const { data: space, error } = await supabase
       .from('flashcard_spaces')
       .insert({
         name: data.name,
         description: data.description ?? null,
-        created_by: userId,
-        university_id: profile?.university_id ?? null,
+        created_by: ctx.userId,
+        university_id: ctx.universityId,
       })
       .select()
       .single();
 
-    if (error || !space) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
+    if (!space) throw new AppError('NOT_FOUND');
 
     if (data.flashcardIds && data.flashcardIds.length > 0) {
       const assignments = data.flashcardIds.map((flashcardId) => ({
@@ -33,19 +30,19 @@ export class FlashcardSpaceService {
       await supabase.from('flashcard_space_assignments').insert(assignments);
     }
 
-    return this.getById(space.id, userId);
+    return this.getById(space.id, ctx);
   }
 
-  async list(userId: string) {
+  async list(ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data, error } = await supabase
       .from('flashcard_spaces')
       .select('*, flashcard_space_assignments(flashcard_id)')
-      .eq('created_by', userId)
+      .eq('created_by', ctx.userId)
       .order('created_at', { ascending: false });
 
-    if (error) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
 
     return (data ?? []).map((space) => ({
       ...space,
@@ -53,14 +50,14 @@ export class FlashcardSpaceService {
     }));
   }
 
-  async getById(id: string, userId: string) {
+  async getById(id: string, ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data: space, error } = await supabase
       .from('flashcard_spaces')
       .select('*, flashcard_space_assignments(flashcard_id)')
       .eq('id', id)
-      .eq('created_by', userId)
+      .eq('created_by', ctx.userId)
       .single();
 
     if (error || !space) throw new AppError('NOT_FOUND');
@@ -71,7 +68,7 @@ export class FlashcardSpaceService {
     };
   }
 
-  async update(id: string, data: UpdateSpaceInput, userId: string) {
+  async update(id: string, data: UpdateSpaceInput, ctx: RequestContext) {
     const supabase = await createClient();
 
     const updateFields: Record<string, unknown> = {};
@@ -82,11 +79,11 @@ export class FlashcardSpaceService {
       .from('flashcard_spaces')
       .update(updateFields)
       .eq('id', id)
-      .eq('created_by', userId)
+      .eq('created_by', ctx.userId)
       .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
     if (!space) throw new AppError('FORBIDDEN');
 
     if (data.flashcardIds !== undefined) {
@@ -100,21 +97,21 @@ export class FlashcardSpaceService {
       }
     }
 
-    return this.getById(id, userId);
+    return this.getById(id, ctx);
   }
 
-  async delete(id: string, userId: string) {
+  async delete(id: string, ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data, error } = await supabase
       .from('flashcard_spaces')
       .delete()
       .eq('id', id)
-      .eq('created_by', userId)
+      .eq('created_by', ctx.userId)
       .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
     if (!data) throw new AppError('FORBIDDEN');
   }
 }

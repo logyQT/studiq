@@ -53,7 +53,6 @@ export class AuthService {
         return;
       }
 
-      console.error('Supabase register error:', error);
       throw new AppError('INTERNAL_SERVER');
     }
   }
@@ -67,7 +66,6 @@ export class AuthService {
     });
 
     if (error) {
-      console.error('Supabase login error:', error);
       throw new AppError('UNAUTHORIZED');
     }
 
@@ -84,7 +82,6 @@ export class AuthService {
     const { error } = await supabase.auth.signOut({ scope: 'local' });
 
     if (error) {
-      console.error('Supabase logout error:', error);
       throw new AppError('INTERNAL_SERVER');
     }
   }
@@ -95,7 +92,6 @@ export class AuthService {
     const { error } = await supabase.auth.resetPasswordForEmail(email);
 
     if (error) {
-      console.error('Supabase password reset error:', error);
       throw new AppError('BAD_REQUEST');
     }
   }
@@ -106,8 +102,6 @@ export class AuthService {
     const { error } = await supabase.auth.updateUser({ password });
 
     if (error) {
-      console.error('Supabase update password error:', error);
-
       if (error.code === 'same_password') {
         throw new AppError('UNPROCESSABLE_ENTITY');
       }

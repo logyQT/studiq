@@ -28,29 +28,20 @@
  */
 
 import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 import { invitationController } from '@/server/controllers/invitation.controller';
 import { toNextResponse } from '@/lib/http-utils';
+import { withAuth } from '@/lib/with-auth';
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const body = await req.json();
-  const response = await invitationController.create(user.id, body);
-  return toNextResponse(response);
+  return withAuth(req, async (ctx) => {
+    const body = await req.json();
+    return toNextResponse(await invitationController.create(ctx, body));
+  });
 }
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const token = searchParams.get('token') || '';
-
   const response = await invitationController.getByToken(token);
   return toNextResponse(response);
 }

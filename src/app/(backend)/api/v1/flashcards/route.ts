@@ -122,57 +122,33 @@
 import { NextRequest } from 'next/server';
 import { flashcardController } from '@/server/controllers';
 import { toNextResponse } from '@/lib/http-utils';
-import { createClient } from '@/lib/supabase/server';
-
-async function getAuthenticatedUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
-}
+import { withAuth } from '@/lib/with-auth';
 
 export async function POST(req: NextRequest) {
-  const user = await getAuthenticatedUser();
-
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const body = await req.json();
-  const response = await flashcardController.create(body, user.id);
-  return toNextResponse(response);
+  return withAuth(req, async (ctx) => {
+    const body = await req.json();
+    return toNextResponse(await flashcardController.create(body, ctx));
+  });
 }
 
 export async function GET(req: NextRequest) {
-  const user = await getAuthenticatedUser();
+  return withAuth(req, async (ctx) => {
+    const { searchParams } = new URL(req.url);
+    const topicIds = searchParams.get('topicIds')?.split(',').filter(Boolean);
+    const spaceIds = searchParams.get('spaceIds')?.split(',').filter(Boolean);
+    const filters: { topicIds?: string[]; spaceIds?: string[] } = {};
+    if (topicIds && topicIds.length > 0) filters.topicIds = topicIds;
+    if (spaceIds && spaceIds.length > 0) filters.spaceIds = spaceIds;
 
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const { searchParams } = new URL(req.url);
-  const topicIds = searchParams.get('topicIds')?.split(',').filter(Boolean);
-  const spaceIds = searchParams.get('spaceIds')?.split(',').filter(Boolean);
-  const filters: { topicIds?: string[]; spaceIds?: string[] } = {};
-  if (topicIds && topicIds.length > 0) filters.topicIds = topicIds;
-  if (spaceIds && spaceIds.length > 0) filters.spaceIds = spaceIds;
-
-  const response = await flashcardController.list(
-    user.id,
-    Object.keys(filters).length > 0 ? filters : undefined,
-  );
-  return toNextResponse(response);
+    return toNextResponse(
+      await flashcardController.list(ctx, Object.keys(filters).length > 0 ? filters : undefined),
+    );
+  });
 }
 
 export async function PUT(req: NextRequest) {
-  const user = await getAuthenticatedUser();
-
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const body = await req.json();
-  const response = await flashcardController.bulkCreate(body, user.id);
-  return toNextResponse(response);
+  return withAuth(req, async (ctx) => {
+    const body = await req.json();
+    return toNextResponse(await flashcardController.bulkCreate(body, ctx));
+  });
 }

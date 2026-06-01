@@ -86,41 +86,26 @@
 import { NextRequest } from 'next/server';
 import { flashcardTopicController } from '@/server/controllers';
 import { toNextResponse } from '@/lib/http-utils';
-import { createClient } from '@/lib/supabase/server';
+import { withAuth } from '@/lib/with-auth';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const response = await flashcardTopicController.getById(id);
-  return toNextResponse(response);
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return withAuth(req, async () => {
+    const { id } = await params;
+    return toNextResponse(await flashcardTopicController.getById(id));
+  });
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const { id } = await params;
-  const body = await req.json();
-  const response = await flashcardTopicController.update(id, body, user.id);
-  return toNextResponse(response);
+  return withAuth(req, async (ctx) => {
+    const { id } = await params;
+    const body = await req.json();
+    return toNextResponse(await flashcardTopicController.update(id, body, ctx));
+  });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const { id } = await params;
-  const response = await flashcardTopicController.delete(id, user.id);
-  return toNextResponse(response);
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return withAuth(req, async (ctx) => {
+    const { id } = await params;
+    return toNextResponse(await flashcardTopicController.delete(id, ctx));
+  });
 }

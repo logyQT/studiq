@@ -1,29 +1,31 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
 import type { SubmitQuizAttemptInput } from '@/server/models';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { RequestContext } from '@/lib/request-context';
 
 export class QuizAttemptService {
-  async list(userId: string) {
+  async list(ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data, error } = await supabase
       .from('quiz_attempts')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', ctx.userId)
       .order('started_at', { ascending: false });
 
-    if (error) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
     return data;
   }
 
-  async getById(attemptId: string, userId: string) {
+  async getById(attemptId: string, ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data: attempt, error: attemptError } = await supabase
       .from('quiz_attempts')
       .select('*')
       .eq('id', attemptId)
-      .eq('user_id', userId)
+      .eq('user_id', ctx.userId)
       .single();
 
     if (attemptError || !attempt) throw new AppError('NOT_FOUND');
@@ -34,14 +36,14 @@ export class QuizAttemptService {
       .eq('attempt_id', attemptId)
       .order('order_index', { ascending: true });
 
-    if (questionsError) throw new AppError('INTERNAL_SERVER');
+    if (questionsError) throw mapSupabaseError(questionsError);
 
     const { data: answers, error: answersError } = await supabase
       .from('quiz_answers')
       .select('*')
       .eq('attempt_id', attemptId);
 
-    if (answersError) throw new AppError('INTERNAL_SERVER');
+    if (answersError) throw mapSupabaseError(answersError);
 
     const questions = (attemptQuestions ?? [])
       .sort((a, b) => a.order_index - b.order_index)
@@ -63,14 +65,14 @@ export class QuizAttemptService {
     };
   }
 
-  async submit(data: SubmitQuizAttemptInput, userId: string) {
+  async submit(data: SubmitQuizAttemptInput, ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data: attempt, error: attemptCheckError } = await supabase
       .from('quiz_attempts')
       .select('*')
       .eq('id', data.attemptId)
-      .eq('user_id', userId)
+      .eq('user_id', ctx.userId)
       .single();
 
     if (attemptCheckError || !attempt) throw new AppError('NOT_FOUND');
@@ -106,11 +108,11 @@ export class QuizAttemptService {
       })
       .eq('id', data.attemptId);
 
-    if (updateError) throw new AppError('INTERNAL_SERVER');
+    if (updateError) throw mapSupabaseError(updateError);
 
     const { error: answersError } = await supabase.from('quiz_answers').insert(answerRecords);
 
-    if (answersError) throw new AppError('INTERNAL_SERVER');
+    if (answersError) throw mapSupabaseError(answersError);
 
     return { score, totalQuestions: data.answers.length };
   }

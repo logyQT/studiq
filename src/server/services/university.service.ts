@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
 import { CreateUniversityInput, UpdateUniversityInput } from '@/server/models';
+import { mapSupabaseError } from '@/lib/supabase-errors';
 
 export class UniversityService {
   async create(data: CreateUniversityInput) {
@@ -15,13 +16,7 @@ export class UniversityService {
       .select()
       .single();
 
-    if (error) {
-      if (error.code === '23505') {
-        throw new AppError('CONFLICT');
-      }
-      console.error('Supabase create university error:', error);
-      throw new AppError('INTERNAL_SERVER');
-    }
+    if (error) throw mapSupabaseError(error);
 
     return university;
   }
@@ -34,10 +29,7 @@ export class UniversityService {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Supabase get universities error:', error);
-      throw new AppError('INTERNAL_SERVER');
-    }
+    if (error) throw mapSupabaseError(error);
 
     return universities;
   }
@@ -52,11 +44,9 @@ export class UniversityService {
       .single();
 
     if (error || !university) {
-      if (error?.code === 'PGRST116') {
-        throw new AppError('NOT_FOUND');
-      }
-      console.error('Supabase get university by id error:', error);
-      throw new AppError('INTERNAL_SERVER');
+      if (error?.code === 'PGRST116') throw new AppError('NOT_FOUND');
+      if (error) throw mapSupabaseError(error);
+      throw new AppError('NOT_FOUND');
     }
 
     return university;
@@ -76,16 +66,7 @@ export class UniversityService {
       .select()
       .single();
 
-    if (error) {
-      if (error.code === '23505') {
-        throw new AppError('CONFLICT');
-      }
-      if (error.code === 'PGRST116') {
-        throw new AppError('NOT_FOUND');
-      }
-      console.error('Supabase update university error:', error);
-      throw new AppError('INTERNAL_SERVER');
-    }
+    if (error) throw mapSupabaseError(error);
 
     return university;
   }
@@ -101,10 +82,7 @@ export class UniversityService {
 
     const { error } = await supabase.from('universities').delete().eq('id', id);
 
-    if (error) {
-      console.error('Supabase delete university error:', error);
-      throw new AppError('INTERNAL_SERVER');
-    }
+    if (error) throw mapSupabaseError(error);
 
     return { success: true };
   }

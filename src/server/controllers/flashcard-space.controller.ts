@@ -1,11 +1,12 @@
 import { flashcardSpaceService } from '@/server/services';
 import { CreateSpaceSchema, UpdateSpaceSchema } from '@/server/models';
-import { AppError } from '@/lib/errors';
 import { ControllerResponse } from '@/lib/controller-response';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import type { RequestContext } from '@/lib/request-context';
 
 export class FlashcardSpaceController {
-  async create(body: unknown, userId: string): Promise<ControllerResponse> {
-    try {
+  async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsed = CreateSpaceSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -17,45 +18,30 @@ export class FlashcardSpaceController {
         };
       }
 
-      const space = await flashcardSpaceService.create(parsed.data, userId);
+      const space = await flashcardSpaceService.create(parsed.data, ctx);
 
       return { success: true, statusCode: 201, data: space };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async list(userId: string): Promise<ControllerResponse> {
-    try {
-      const spaces = await flashcardSpaceService.list(userId);
+  async list(ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const spaces = await flashcardSpaceService.list(ctx);
 
       return { success: true, statusCode: 200, data: spaces };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async getById(id: string, userId: string): Promise<ControllerResponse> {
-    try {
-      const space = await flashcardSpaceService.getById(id, userId);
+  async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const space = await flashcardSpaceService.getById(id, ctx);
 
       return { success: true, statusCode: 200, data: space };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async update(id: string, body: unknown, userId: string): Promise<ControllerResponse> {
-    try {
+  async update(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsed = UpdateSpaceSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -67,28 +53,18 @@ export class FlashcardSpaceController {
         };
       }
 
-      const space = await flashcardSpaceService.update(id, parsed.data, userId);
+      const space = await flashcardSpaceService.update(id, parsed.data, ctx);
 
       return { success: true, statusCode: 200, data: space };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async delete(id: string, userId: string): Promise<ControllerResponse> {
-    try {
-      await flashcardSpaceService.delete(id, userId);
+  async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      await flashcardSpaceService.delete(id, ctx);
 
       return { success: true, statusCode: 200, data: { success: true } };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 }
 

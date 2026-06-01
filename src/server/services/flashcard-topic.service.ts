@@ -1,51 +1,42 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
 import type { CreateTopicInput, UpdateTopicInput } from '@/server/models';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { RequestContext } from '@/lib/request-context';
 
 export class FlashcardTopicService {
-  async create(data: CreateTopicInput, userId: string) {
+  async create(data: CreateTopicInput, ctx: RequestContext) {
     const supabase = await createClient();
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('university_id')
-      .eq('id', userId)
-      .single();
 
     const { data: topic, error } = await supabase
       .from('flashcard_topics')
       .insert({
         name: data.name,
-        university_id: profile?.university_id ?? null,
-        created_by: userId,
+        university_id: ctx.universityId,
+        created_by: ctx.userId,
       })
       .select()
       .single();
 
-    if (error || !topic) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
+    if (!topic) throw new AppError('NOT_FOUND');
     return topic;
   }
 
-  async list(userId: string) {
+  async list(ctx: RequestContext) {
     const supabase = await createClient();
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('university_id')
-      .eq('id', userId)
-      .single();
 
     let query = supabase
       .from('flashcard_topics')
       .select('*, flashcard_topic_assignments(flashcard_id)')
       .order('created_at', { ascending: false });
 
-    if (profile?.university_id) {
-      query = query.eq('university_id', profile.university_id);
+    if (ctx.universityId) {
+      query = query.eq('university_id', ctx.universityId);
     }
 
     const { data, error } = await query;
-    if (error) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
 
     return (data ?? []).map((topic) => ({
       ...topic,
@@ -64,34 +55,34 @@ export class FlashcardTopicService {
     return data;
   }
 
-  async update(id: string, data: UpdateTopicInput, userId: string) {
+  async update(id: string, data: UpdateTopicInput, ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data: topic, error } = await supabase
       .from('flashcard_topics')
       .update({ name: data.name })
       .eq('id', id)
-      .eq('created_by', userId)
+      .eq('created_by', ctx.userId)
       .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
     if (!topic) throw new AppError('FORBIDDEN');
     return topic;
   }
 
-  async delete(id: string, userId: string) {
+  async delete(id: string, ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data, error } = await supabase
       .from('flashcard_topics')
       .delete()
       .eq('id', id)
-      .eq('created_by', userId)
+      .eq('created_by', ctx.userId)
       .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
     if (!data) throw new AppError('FORBIDDEN');
   }
 }

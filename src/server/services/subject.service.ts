@@ -1,39 +1,34 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
 import { CreateSubjectInput, UpdateSubjectInput } from '@/server/models';
-import { Nullable } from '@/types';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { RequestContext } from '@/lib/request-context';
 
 export class SubjectService {
-  async create(data: CreateSubjectInput, userId: string) {
+  async create(data: CreateSubjectInput, ctx: RequestContext) {
     const supabase = await createClient();
-
-    const { data: user } = await supabase
-      .from('profiles')
-      .select('university_id')
-      .eq('id', userId)
-      .single();
 
     const { data: subject, error } = await supabase
       .from('subjects')
       .insert({
         name: data.name,
         description: data.description ?? null,
-        university_id: user?.university_id ?? null,
-        created_by: userId,
+        university_id: ctx.universityId,
+        created_by: ctx.userId,
       })
       .select()
       .single();
-    if (error) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
 
     return subject;
   }
 
-  async list(userId: string, universityId: Nullable<string>) {
+  async list(ctx: RequestContext) {
     const supabase = await createClient();
     const orConditions = [];
 
-    if (universityId) orConditions.push(`university_id.eq.${universityId}`);
-    if (userId) orConditions.push(`created_by.eq.${userId}`);
+    if (ctx.universityId) orConditions.push(`university_id.eq.${ctx.universityId}`);
+    if (ctx.userId) orConditions.push(`created_by.eq.${ctx.userId}`);
 
     const { data, error } = await supabase
       .from('subjects')
@@ -41,50 +36,50 @@ export class SubjectService {
       .order('created_at', { ascending: false })
       .or(orConditions.join(','));
 
-    if (error) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
     return data;
   }
 
-  async getById(id: string, userId: string) {
+  async getById(id: string, ctx: RequestContext) {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from('subjects')
       .select('*')
       .eq('id', id)
-      .eq('created_by', userId)
+      .eq('created_by', ctx.userId)
       .single();
     if (error || !data) throw new AppError('NOT_FOUND');
     return data;
   }
 
-  async update(id: string, data: UpdateSubjectInput, userId: string) {
+  async update(id: string, data: UpdateSubjectInput, ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data: subject, error } = await supabase
       .from('subjects')
       .update({ name: data.name, description: data.description })
       .eq('id', id)
-      .eq('created_by', userId)
+      .eq('created_by', ctx.userId)
       .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
     if (!subject) throw new AppError('FORBIDDEN');
     return subject;
   }
 
-  async delete(id: string, userId: string) {
+  async delete(id: string, ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data, error } = await supabase
       .from('subjects')
       .delete()
       .eq('id', id)
-      .eq('created_by', userId)
+      .eq('created_by', ctx.userId)
       .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
     if (!data) throw new AppError('FORBIDDEN');
   }
 }

@@ -12,3 +12,4 @@ export * from '@/server/services/flashcard-practice.service';
 export * from '@/server/services/quiz.service';
 export * from '@/server/services/quiz-attempt.service';
 export * from '@/server/services/stats.service';
+export * from '@/server/services/error-log.service';

@@ -39,6 +39,7 @@ import {
   LogOut,
   Monitor,
   Tags,
+  AlertTriangle,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -71,6 +72,7 @@ const NAV_ITEMS: Record<string, NavItem[]> = {
   '/admin': [
     { titleKey: 'admin_overview', href: '/admin', icon: LayoutDashboard },
     { titleKey: 'admin_universities', href: '/admin', icon: GraduationCap },
+    { titleKey: 'admin_error_logs', href: '/admin/logs', icon: AlertTriangle },
     { titleKey: 'admin_system', href: '/admin', icon: Monitor },
   ],
 };

@@ -5,35 +5,28 @@ import type {
   BulkCreateFlashcardsInput,
   UpdateFlashcardInput,
 } from '@/server/models';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { RequestContext } from '@/lib/request-context';
+import { UserRole } from '@/types';
 
 export class FlashcardService {
-  private async getUserProfile(userId: string) {
+  async create(data: CreateFlashcardInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role, university_id')
-      .eq('id', userId)
-      .single();
-    return profile;
-  }
-
-  async create(data: CreateFlashcardInput, userId: string) {
-    const supabase = await createClient();
-    const profile = await this.getUserProfile(userId);
-    const universityId = profile?.role === 'teacher' ? (profile?.university_id ?? null) : null;
+    const universityId = ctx.role === UserRole.TEACHER ? ctx.universityId : null;
 
     const { data: flashcard, error } = await supabase
       .from('flashcards')
       .insert({
         front: data.front,
         back: data.back,
-        created_by: userId,
+        created_by: ctx.userId,
         university_id: universityId,
       })
       .select()
       .single();
 
-    if (error || !flashcard) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
+    if (!flashcard) throw new AppError('NOT_FOUND');
 
     if (data.topicIds && data.topicIds.length > 0) {
       const assignments = data.topicIds.map((topicId) => ({
@@ -54,15 +47,14 @@ export class FlashcardService {
     return flashcard;
   }
 
-  async bulkCreate(data: BulkCreateFlashcardsInput, userId: string) {
+  async bulkCreate(data: BulkCreateFlashcardsInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const profile = await this.getUserProfile(userId);
-    const universityId = profile?.role === 'teacher' ? (profile?.university_id ?? null) : null;
+    const universityId = ctx.role === UserRole.TEACHER ? ctx.universityId : null;
 
     const cardsToInsert = data.cards.map((c) => ({
       front: c.front,
       back: c.back,
-      created_by: userId,
+      created_by: ctx.userId,
       university_id: universityId,
     }));
 
@@ -71,7 +63,7 @@ export class FlashcardService {
       .insert(cardsToInsert)
       .select();
 
-    if (error) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
 
     if (flashcards && flashcards.length > 0) {
       if (data.topicIds && data.topicIds.length > 0) {
@@ -98,19 +90,17 @@ export class FlashcardService {
     return flashcards;
   }
 
-  async list(userId: string, filters?: { topicIds?: string[]; spaceIds?: string[] }) {
+  async list(ctx: RequestContext, filters?: { topicIds?: string[]; spaceIds?: string[] }) {
     const supabase = await createClient();
-    const profile = await this.getUserProfile(userId);
-    const userUniversityId = profile?.university_id;
 
     let query = supabase
       .from('flashcards')
       .select('*, flashcard_topic_assignments(topic_id), flashcard_space_assignments(space_id)');
 
-    if (userUniversityId) {
-      query = query.or(`created_by.eq.${userId},university_id.eq.${userUniversityId}`);
+    if (ctx.universityId) {
+      query = query.or(`created_by.eq.${ctx.userId},university_id.eq.${ctx.universityId}`);
     } else {
-      query = query.eq('created_by', userId);
+      query = query.eq('created_by', ctx.userId);
     }
 
     query = query.order('created_at', { ascending: false });
@@ -138,24 +128,22 @@ export class FlashcardService {
     }
 
     const { data, error } = await query;
-    if (error) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
     return data;
   }
 
-  async getById(id: string, userId: string) {
+  async getById(id: string, ctx: RequestContext) {
     const supabase = await createClient();
-    const profile = await this.getUserProfile(userId);
-    const userUniversityId = profile?.university_id;
 
     let query = supabase
       .from('flashcards')
       .select('*, flashcard_topic_assignments(topic_id), flashcard_space_assignments(space_id)')
       .eq('id', id);
 
-    if (userUniversityId) {
-      query = query.or(`created_by.eq.${userId},university_id.eq.${userUniversityId}`);
+    if (ctx.universityId) {
+      query = query.or(`created_by.eq.${ctx.userId},university_id.eq.${ctx.universityId}`);
     } else {
-      query = query.eq('created_by', userId);
+      query = query.eq('created_by', ctx.userId);
     }
 
     const { data, error } = await query.single();
@@ -164,7 +152,7 @@ export class FlashcardService {
     return data;
   }
 
-  async update(id: string, data: UpdateFlashcardInput, userId: string) {
+  async update(id: string, data: UpdateFlashcardInput, ctx: RequestContext) {
     const supabase = await createClient();
 
     const updateFields: Record<string, unknown> = {};
@@ -175,11 +163,11 @@ export class FlashcardService {
       .from('flashcards')
       .update(updateFields)
       .eq('id', id)
-      .eq('created_by', userId)
+      .eq('created_by', ctx.userId)
       .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
     if (!flashcard) throw new AppError('FORBIDDEN');
 
     if (data.topicIds !== undefined) {
@@ -214,18 +202,18 @@ export class FlashcardService {
     return updatedFlashcard;
   }
 
-  async delete(id: string, userId: string) {
+  async delete(id: string, ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data, error } = await supabase
       .from('flashcards')
       .delete()
       .eq('id', id)
-      .eq('created_by', userId)
+      .eq('created_by', ctx.userId)
       .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
     if (!data) throw new AppError('FORBIDDEN');
   }
 }

@@ -4,12 +4,13 @@ import {
   BulkCreateFlashcardsSchema,
   UpdateFlashcardSchema,
 } from '@/server/models';
-import { AppError } from '@/lib/errors';
 import { ControllerResponse } from '@/lib/controller-response';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import type { RequestContext } from '@/lib/request-context';
 
 export class FlashcardController {
-  async create(body: unknown, userId: string): Promise<ControllerResponse> {
-    try {
+  async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsed = CreateFlashcardSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -21,35 +22,25 @@ export class FlashcardController {
         };
       }
 
-      const flashcard = await flashcardService.create(parsed.data, userId);
+      const flashcard = await flashcardService.create(parsed.data, ctx);
 
       return { success: true, statusCode: 201, data: flashcard };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
   async list(
-    userId: string,
+    ctx: RequestContext,
     filters?: { topicIds?: string[]; spaceIds?: string[] },
   ): Promise<ControllerResponse> {
-    try {
-      const flashcards = await flashcardService.list(userId, filters);
+    return withErrorHandling(async () => {
+      const flashcards = await flashcardService.list(ctx, filters);
 
       return { success: true, statusCode: 200, data: flashcards };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async bulkCreate(body: unknown, userId: string): Promise<ControllerResponse> {
-    try {
+  async bulkCreate(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsed = BulkCreateFlashcardsSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -61,32 +52,22 @@ export class FlashcardController {
         };
       }
 
-      const flashcards = await flashcardService.bulkCreate(parsed.data, userId);
+      const flashcards = await flashcardService.bulkCreate(parsed.data, ctx);
 
       return { success: true, statusCode: 201, data: flashcards };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async getById(id: string, userId: string): Promise<ControllerResponse> {
-    try {
-      const flashcard = await flashcardService.getById(id, userId);
+  async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const flashcard = await flashcardService.getById(id, ctx);
 
       return { success: true, statusCode: 200, data: flashcard };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async update(id: string, body: unknown, userId: string): Promise<ControllerResponse> {
-    try {
+  async update(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsed = UpdateFlashcardSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -98,28 +79,18 @@ export class FlashcardController {
         };
       }
 
-      const flashcard = await flashcardService.update(id, parsed.data, userId);
+      const flashcard = await flashcardService.update(id, parsed.data, ctx);
 
       return { success: true, statusCode: 200, data: flashcard };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async delete(id: string, userId: string): Promise<ControllerResponse> {
-    try {
-      await flashcardService.delete(id, userId);
+  async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      await flashcardService.delete(id, ctx);
 
       return { success: true, statusCode: 200, data: { success: true } };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 }
 

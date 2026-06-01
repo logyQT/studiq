@@ -1,11 +1,16 @@
 import { flashcardPracticeService } from '@/server/services';
 import { LogPracticeSchema } from '@/server/models';
-import { AppError } from '@/lib/errors';
 import { ControllerResponse } from '@/lib/controller-response';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import type { RequestContext } from '@/lib/request-context';
 
 export class FlashcardPracticeController {
-  async log(flashcardId: string, body: unknown, userId: string): Promise<ControllerResponse> {
-    try {
+  async log(
+    flashcardId: string,
+    body: unknown,
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsed = LogPracticeSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -20,45 +25,33 @@ export class FlashcardPracticeController {
       const result = await flashcardPracticeService.log(
         flashcardId,
         parsed.data.wasCorrect,
-        userId,
+        ctx,
         parsed.data.responseTimeMs,
         parsed.data.confidenceLevel,
         parsed.data.sessionId,
       );
 
       return { success: true, statusCode: 201, data: result };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async getHistory(userId: string): Promise<ControllerResponse> {
-    try {
-      const history = await flashcardPracticeService.getHistory(userId);
+  async getHistory(ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const history = await flashcardPracticeService.getHistory(ctx);
 
       return { success: true, statusCode: 200, data: history };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async getHistoryForFlashcard(flashcardId: string, userId: string): Promise<ControllerResponse> {
-    try {
-      const history = await flashcardPracticeService.getHistoryForFlashcard(flashcardId, userId);
+  async getHistoryForFlashcard(
+    flashcardId: string,
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const history = await flashcardPracticeService.getHistoryForFlashcard(flashcardId, ctx);
 
       return { success: true, statusCode: 200, data: history };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
   async getStatsForFlashcard(_flashcardId: string): Promise<ControllerResponse> {

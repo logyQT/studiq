@@ -1,12 +1,12 @@
 import { subjectService } from '@/server/services';
 import { CreateSubjectSchema, UpdateSubjectSchema } from '@/server/models';
-import { AppError } from '@/lib/errors';
 import { ControllerResponse } from '@/lib/controller-response';
-import { Nullable } from '@/types';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import type { RequestContext } from '@/lib/request-context';
 
 export class SubjectController {
-  async create(body: unknown, userId: string): Promise<ControllerResponse> {
-    try {
+  async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsed = CreateSubjectSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -18,45 +18,30 @@ export class SubjectController {
         };
       }
 
-      const subject = await subjectService.create(parsed.data, userId);
+      const subject = await subjectService.create(parsed.data, ctx);
 
       return { success: true, statusCode: 201, data: subject };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async list(userId: string, universityId: Nullable<string>): Promise<ControllerResponse> {
-    try {
-      const subjects = await subjectService.list(userId, universityId);
+  async list(ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const subjects = await subjectService.list(ctx);
 
       return { success: true, statusCode: 200, data: subjects };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async getById(id: string, userId: string): Promise<ControllerResponse> {
-    try {
-      const subject = await subjectService.getById(id, userId);
+  async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const subject = await subjectService.getById(id, ctx);
 
       return { success: true, statusCode: 200, data: subject };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async update(id: string, body: unknown, userId: string): Promise<ControllerResponse> {
-    try {
+  async update(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsed = UpdateSubjectSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -68,28 +53,18 @@ export class SubjectController {
         };
       }
 
-      const subject = await subjectService.update(id, parsed.data, userId);
+      const subject = await subjectService.update(id, parsed.data, ctx);
 
       return { success: true, statusCode: 200, data: subject };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async delete(id: string, userId: string): Promise<ControllerResponse> {
-    try {
-      await subjectService.delete(id, userId);
+  async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      await subjectService.delete(id, ctx);
 
       return { success: true, statusCode: 200, data: { success: true } };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 }
 

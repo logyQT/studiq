@@ -1,11 +1,12 @@
 import { createClient } from '@/lib/supabase/server';
-import { AppError } from '@/lib/errors';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { RequestContext } from '@/lib/request-context';
 
 export class FlashcardPracticeService {
   async log(
     flashcardId: string,
     wasCorrect: boolean,
-    userId: string,
+    ctx: RequestContext,
     responseTimeMs?: number,
     confidenceLevel?: number,
     sessionId?: string,
@@ -15,7 +16,7 @@ export class FlashcardPracticeService {
     const { data, error } = await supabase
       .from('flashcard_practice')
       .insert({
-        user_id: userId,
+        user_id: ctx.userId,
         flashcard_id: flashcardId,
         was_correct: wasCorrect,
         response_time_ms: responseTimeMs ?? null,
@@ -25,37 +26,36 @@ export class FlashcardPracticeService {
       .select()
       .single();
 
-    if (error) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
     return data;
   }
 
-  async getHistory(userId: string) {
+  async getHistory(ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data, error } = await supabase
       .from('flashcard_practice')
       .select('*, flashcards(front, back)')
-      .eq('user_id', userId)
+      .eq('user_id', ctx.userId)
       .order('practiced_at', { ascending: false });
 
-    if (error) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
     return data;
   }
 
-  async getHistoryForFlashcard(flashcardId: string, userId: string) {
+  async getHistoryForFlashcard(flashcardId: string, ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data, error } = await supabase
       .from('flashcard_practice')
       .select('*, flashcards(front, back)')
       .eq('flashcard_id', flashcardId)
-      .eq('user_id', userId)
+      .eq('user_id', ctx.userId)
       .order('practiced_at', { ascending: false });
 
-    if (error) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
     return data;
   }
-
 }
 
 export const flashcardPracticeService = new FlashcardPracticeService();

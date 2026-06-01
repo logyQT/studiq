@@ -2,31 +2,23 @@ import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
 import { CreateInviteInput } from '@/server/models';
 import { UserRole } from '@/types';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { RequestContext } from '@/lib/request-context';
 
 export class InvitationService {
-  async createInvitation(userId: string, data: CreateInviteInput) {
+  async createInvitation(ctx: RequestContext, data: CreateInviteInput) {
     const supabase = await createClient();
-
-    const { data: inviter } = await supabase
-      .from('profiles')
-      .select('id, university_id, role')
-      .eq('id', userId)
-      .single();
-
-    if (!inviter) {
-      throw new AppError('NOT_FOUND');
-    }
 
     let targetUniversityId: string | undefined;
 
-    if (inviter.role === UserRole.SYS_ADMIN) {
+    if (ctx.role === UserRole.SYS_ADMIN) {
       if (!data.universityId) throw new AppError('NOT_FOUND');
       targetUniversityId = data.universityId;
-    } else if (inviter.role === UserRole.UNIVERSITY_ADMIN) {
-      targetUniversityId = inviter.university_id ?? undefined;
+    } else if (ctx.role === UserRole.UNIVERSITY_ADMIN) {
+      targetUniversityId = ctx.universityId ?? undefined;
     }
 
-    if (!targetUniversityId && inviter.role !== UserRole.SYS_ADMIN) {
+    if (!targetUniversityId && ctx.role !== UserRole.SYS_ADMIN) {
       throw new AppError('FORBIDDEN');
     }
 
@@ -40,20 +32,16 @@ export class InvitationService {
         name: data.name,
         target_role: data.role,
         university_id: targetUniversityId,
-        inviter_id: inviter.id,
+        inviter_id: ctx.userId,
         expires_at: expiresAt.toISOString(),
       })
       .select('token')
       .single();
 
-    if (insertError) {
-      console.error('Database Error:', insertError);
-      throw new AppError('INTERNAL_SERVER');
-    }
+    if (insertError) throw mapSupabaseError(insertError);
 
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
     if (!baseUrl) {
-      console.warn('NEXT_PUBLIC_SITE_URL is not set. Invitation link will not be generated.');
       throw new AppError('INTERNAL_SERVER');
     }
     const inviteLink = `${baseUrl}/join?token=${invitation.token}`;

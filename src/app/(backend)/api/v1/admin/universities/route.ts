@@ -52,46 +52,28 @@
  */
 
 import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 import { universityController } from '@/server/controllers/university.controller';
 import { toNextResponse } from '@/lib/http-utils';
+import { withAuth } from '@/lib/with-auth';
 import { UserRole } from '@/types';
 
 export async function GET(req: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const userRole = user.app_metadata?.role as UserRole;
-  if (userRole !== UserRole.SYS_ADMIN) {
-    return toNextResponse({ success: false, statusCode: 403, error: 'FORBIDDEN' });
-  }
-
-  const response = await universityController.getAll();
-  return toNextResponse(response);
+  return withAuth(
+    req,
+    async () => {
+      return toNextResponse(await universityController.getAll());
+    },
+    { allowedRoles: [UserRole.SYS_ADMIN] },
+  );
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const userRole = user.app_metadata?.role as UserRole;
-  if (userRole !== UserRole.SYS_ADMIN) {
-    return toNextResponse({ success: false, statusCode: 403, error: 'FORBIDDEN' });
-  }
-
-  const body = await req.json();
-  const response = await universityController.create(body);
-  return toNextResponse(response);
+  return withAuth(
+    req,
+    async () => {
+      const body = await req.json();
+      return toNextResponse(await universityController.create(body));
+    },
+    { allowedRoles: [UserRole.SYS_ADMIN] },
+  );
 }
