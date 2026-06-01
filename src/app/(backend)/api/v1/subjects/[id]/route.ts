@@ -92,8 +92,17 @@ import { toNextResponse } from '@/lib/http-utils';
 import { createClient } from '@/lib/supabase/server';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
+  }
+
   const { id } = await params;
-  const response = await subjectController.getById(id);
+  const response = await subjectController.getById(id, user.id);
   return toNextResponse(response);
 }
 

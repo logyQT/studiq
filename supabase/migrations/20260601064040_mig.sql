@@ -14,7 +14,10 @@ create type "public"."user_role" as enum ('free', 'premium', 'student', 'teacher
     "user_id" uuid,
     "flashcard_id" uuid,
     "was_correct" boolean not null,
-    "practiced_at" timestamp with time zone default now()
+    "practiced_at" timestamp with time zone default now(),
+    "response_time_ms" integer,
+    "confidence_level" integer,
+    "session_id" uuid
       );
 
 
@@ -201,6 +204,8 @@ CREATE UNIQUE INDEX flashcards_pkey ON public.flashcards USING btree (id);
 
 CREATE INDEX idx_flashcard_practice_flashcard ON public.flashcard_practice USING btree (flashcard_id);
 
+CREATE INDEX idx_flashcard_practice_session ON public.flashcard_practice USING btree (session_id);
+
 CREATE INDEX idx_flashcard_practice_user ON public.flashcard_practice USING btree (user_id);
 
 CREATE INDEX idx_flashcard_space_assignments_space ON public.flashcard_space_assignments USING btree (space_id);
@@ -298,6 +303,10 @@ alter table "public"."universities" add constraint "universities_pkey" PRIMARY K
 alter table "public"."university_subscriptions" add constraint "university_subscriptions_pkey" PRIMARY KEY using index "university_subscriptions_pkey";
 
 alter table "public"."user_subscriptions" add constraint "user_subscriptions_pkey" PRIMARY KEY using index "user_subscriptions_pkey";
+
+alter table "public"."flashcard_practice" add constraint "flashcard_practice_confidence_level_check" CHECK (((confidence_level IS NULL) OR ((confidence_level >= 1) AND (confidence_level <= 5)))) not valid;
+
+alter table "public"."flashcard_practice" validate constraint "flashcard_practice_confidence_level_check";
 
 alter table "public"."flashcard_practice" add constraint "flashcard_practice_flashcard_id_fkey" FOREIGN KEY (flashcard_id) REFERENCES public.flashcards(id) ON DELETE CASCADE not valid;
 
@@ -502,6 +511,23 @@ BEGIN
         jsonb_build_object('role', NEW.role)
   WHERE id = NEW.id;
 
+  RETURN NEW;
+END;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.sync_profile_univ_id_to_auth()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+  UPDATE auth.users
+  SET raw_app_meta_data = 
+        coalesce(raw_app_meta_data, '{}'::jsonb) || 
+        jsonb_build_object('university_id', NEW.university_id)
+  WHERE id = NEW.id ;
+        
   RETURN NEW;
 END;
 $function$
@@ -1256,6 +1282,8 @@ grant truncate on table "public"."user_subscriptions" to "service_role";
 grant update on table "public"."user_subscriptions" to "service_role";
 
 CREATE TRIGGER on_profile_role_update AFTER INSERT OR UPDATE OF role ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.sync_profile_role_to_auth();
+
+CREATE TRIGGER on_univ_id_update AFTER INSERT OR UPDATE OF university_id ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.sync_profile_univ_id_to_auth();
 
 CREATE TRIGGER set_questions_updated_at BEFORE UPDATE ON public.questions FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
