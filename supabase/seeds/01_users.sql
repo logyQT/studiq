@@ -11,7 +11,6 @@ INSERT INTO "public"."universities" ("id", "name", "slug") VALUES
   ('00000000-0000-4000-8000-000000000001', 'Dev University', 'dev-university')
 ON CONFLICT DO NOTHING;
 
-
 -- ----------------------------------------------------------
 -- Auth users
 -- ----------------------------------------------------------

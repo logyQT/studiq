@@ -1,11 +1,11 @@
 /**
  * @swagger
- * /api/v1/quiz-attempts/{attemptId}:
+ * /api/v1/quiz/{attemptId}:
  *   get:
  *     summary: Get quiz attempt details
  *     description: Returns details of a specific quiz attempt including questions and answers. Only the owner can view.
  *     tags:
- *       - Quiz Attempts
+ *       - Quiz
  *     security:
  *       - cookieAuth: []
  *     parameters:
@@ -29,7 +29,7 @@
  *     summary: Submit quiz attempt
  *     description: Submits answers for a quiz attempt and calculates the score.
  *     tags:
- *       - Quiz Attempts
+ *       - Quiz
  *     security:
  *       - cookieAuth: []
  *     parameters:
@@ -83,14 +83,20 @@ import { quizAttemptController } from '@/server/controllers';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ attemptId: string }> }) {
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ attemptId: string }> },
+) {
   return withAuth(req, async (ctx) => {
     const { attemptId } = await params;
     return toNextResponse(await quizAttemptController.getDetails(attemptId, ctx));
   });
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ attemptId: string }> }) {
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ attemptId: string }> },
+) {
   return withAuth(req, async (ctx) => {
     const { attemptId } = await params;
     const body = await req.json();

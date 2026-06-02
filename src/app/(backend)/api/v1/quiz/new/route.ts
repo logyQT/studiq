@@ -1,11 +1,11 @@
 /**
  * @swagger
- * /api/v1/quizzes:
+ * /api/v1/quiz/new:
  *   post:
  *     summary: Generate a quiz
  *     description: Generates a quiz based on specified criteria (subject, question types, difficulty, count). Requires authentication.
  *     tags:
- *       - Quizzes
+ *       - Quiz
  *     security:
  *       - cookieAuth: []
  *     requestBody:

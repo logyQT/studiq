@@ -1,11 +1,11 @@
 /**
  * @swagger
- * /api/v1/quiz-attempts:
+ * /api/v1/quiz/attempts:
  *   get:
  *     summary: List quiz attempts
  *     description: Returns a list of quiz attempts for the authenticated user.
  *     tags:
- *       - Quiz Attempts
+ *       - Quiz
  *     security:
  *       - cookieAuth: []
  *     responses:
