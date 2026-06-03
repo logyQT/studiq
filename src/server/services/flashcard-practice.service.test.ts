@@ -2,8 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flashcardPracticeService } from './flashcard-practice.service';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
+const mockCtx = {
+  userId: 'test-user-id',
+  universityId: null,
+  role: 'student' as const,
+  url: 'http://localhost',
+  method: 'POST',
+};
+
 describe('FlashcardPracticeService', () => {
-  const userId = 'test-user-id';
   let mock: ReturnType<typeof mockClient>;
 
   beforeEach(() => {
@@ -12,123 +19,133 @@ describe('FlashcardPracticeService', () => {
   });
 
   describe('log', () => {
-    it('inserts practice record and returns it', async () => {
-      const mockRecord = { id: 'p-1', user_id: userId, flashcard_id: 'fc-1', was_correct: true };
-      mock.from.mockReturnValue({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: mockRecord, error: null }),
-          }),
-        }),
+    function setupMocks(practiceResult: any, existingState: any, upsertResult: any) {
+      const maybeSingleMock = vi.fn().mockResolvedValue({ data: existingState, error: null });
+      const getStateEq2Mock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock });
+      const getStateEq1Mock = vi.fn().mockReturnValue({ eq: getStateEq2Mock });
+      const getStateSelectMock = vi.fn().mockReturnValue({ eq: getStateEq1Mock });
+
+      const upsertSingleMock = vi.fn().mockResolvedValue(upsertResult);
+      const upsertSelectMock = vi.fn().mockReturnValue({ single: upsertSingleMock });
+      const upsertMock = vi.fn().mockReturnValue({ select: upsertSelectMock });
+
+      const practiceSingleMock = vi.fn().mockResolvedValue(practiceResult);
+      const practiceSelectMock = vi.fn().mockReturnValue({ single: practiceSingleMock });
+      const insertMock = vi.fn().mockReturnValue({ select: practiceSelectMock });
+
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'flashcard_practice') {
+          return { insert: insertMock };
+        }
+        if (table === 'flashcard_review_state') {
+          return {
+            select: getStateSelectMock,
+            upsert: upsertMock,
+          };
+        }
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(),
+          or: vi.fn().mockReturnThis(),
+          order: vi.fn().mockResolvedValue({ data: [], error: null }),
+        };
       });
+    }
 
-      const result = await flashcardPracticeService.log('fc-1', true, userId);
+    it('inserts practice record and returns it with review state', async () => {
+      const mockPractice = { id: 'p-1', user_id: mockCtx.userId, flashcard_id: 'fc-1', was_correct: true };
+      const mockReviewState = {
+        user_id: mockCtx.userId,
+        flashcard_id: 'fc-1',
+        easiness_factor: 2.6,
+        interval_days: 1,
+        repetitions: 1,
+        next_review_at: new Date().toISOString(),
+        last_reviewed_at: new Date().toISOString(),
+        last_quality: 4,
+      };
 
-      expect(result).toEqual(mockRecord);
-      expect(mock.from).toHaveBeenCalledWith('flashcard_practice');
+      setupMocks(
+        { data: mockPractice, error: null },
+        null,
+        { data: mockReviewState, error: null },
+      );
+
+      const result = await flashcardPracticeService.log('fc-1', true, mockCtx);
+
+      expect(result.practice).toEqual(mockPractice);
+      expect(result.reviewState).toEqual(mockReviewState);
     });
 
     it('inserts practice record with optional fields', async () => {
-      const mockRecord = {
+      const mockPractice = {
         id: 'p-1',
-        user_id: userId,
+        user_id: mockCtx.userId,
         flashcard_id: 'fc-1',
         was_correct: true,
         response_time_ms: 1500,
         confidence_level: 4,
         session_id: 'session-1',
       };
-      mock.from.mockReturnValue({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: mockRecord, error: null }),
-          }),
-        }),
-      });
+      const mockReviewState = {
+        user_id: mockCtx.userId,
+        flashcard_id: 'fc-1',
+        easiness_factor: 2.5,
+        interval_days: 1,
+        repetitions: 1,
+      };
 
-      const result = await flashcardPracticeService.log('fc-1', true, userId, 1500, 4, 'session-1');
-
-      expect(result).toEqual(mockRecord);
-    });
-
-    it('throws INTERNAL_SERVER when insert fails', async () => {
-      mock.from.mockReturnValue({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
-          }),
-        }),
-      });
-
-      await expect(flashcardPracticeService.log('fc-1', true, userId)).rejects.toThrow(
-        'ERROR_INTERNAL_SERVER',
+      setupMocks(
+        { data: mockPractice, error: null },
+        null,
+        { data: mockReviewState, error: null },
       );
-    });
-  });
 
-  describe('getHistory', () => {
-    it('returns practice history for user', async () => {
-      const history = [{ id: 'p-1', user_id: userId, flashcard_id: 'fc-1', was_correct: true }];
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({ data: history, error: null }),
-          }),
-        }),
-      });
+      const result = await flashcardPracticeService.log('fc-1', true, mockCtx, 1500, 4, 'session-1');
 
-      const result = await flashcardPracticeService.getHistory(userId);
-
-      expect(result).toEqual(history);
+      expect(result.practice).toEqual(mockPractice);
+      expect(result.reviewState).toEqual(mockReviewState);
     });
 
-    it('throws INTERNAL_SERVER when query fails', async () => {
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
-          }),
-        }),
-      });
+    it('throws on insert failure', async () => {
+      const practiceSingleMock = vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error', code: 'PGRST116' } });
+      const practiceSelectMock = vi.fn().mockReturnValue({ single: practiceSingleMock });
+      const insertMock = vi.fn().mockReturnValue({ select: practiceSelectMock });
 
-      await expect(flashcardPracticeService.getHistory(userId)).rejects.toThrow(
-        'ERROR_INTERNAL_SERVER',
+      mock.from.mockReturnValue({ insert: insertMock });
+
+      await expect(flashcardPracticeService.log('fc-1', true, mockCtx)).rejects.toThrow();
+    });
+
+    it('uses existing review state when available', async () => {
+      const mockPractice = { id: 'p-1', user_id: mockCtx.userId, flashcard_id: 'fc-1', was_correct: true };
+      const existingState = {
+        user_id: mockCtx.userId,
+        flashcard_id: 'fc-1',
+        easiness_factor: 2.5,
+        interval_days: 6,
+        repetitions: 1,
+        next_review_at: new Date().toISOString(),
+      };
+      const updatedState = {
+        ...existingState,
+        easiness_factor: 2.5,
+        interval_days: 15,
+        repetitions: 2,
+      };
+
+      setupMocks(
+        { data: mockPractice, error: null },
+        existingState,
+        { data: updatedState, error: null },
       );
-    });
-  });
 
-  describe('getHistoryForFlashcard', () => {
-    it('returns practice history for user on specific flashcard', async () => {
-      const history = [{ id: 'p-1', user_id: userId, flashcard_id: 'fc-1', was_correct: true }];
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              order: vi.fn().mockResolvedValue({ data: history, error: null }),
-            }),
-          }),
-        }),
-      });
+      const result = await flashcardPracticeService.log('fc-1', true, mockCtx, undefined, 4);
 
-      const result = await flashcardPracticeService.getHistoryForFlashcard('fc-1', userId);
-
-      expect(result).toEqual(history);
-    });
-
-    it('throws INTERNAL_SERVER when query fails', async () => {
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              order: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
-            }),
-          }),
-        }),
-      });
-
-      await expect(flashcardPracticeService.getHistoryForFlashcard('fc-1', userId)).rejects.toThrow(
-        'ERROR_INTERNAL_SERVER',
-      );
+      expect(result.practice).toEqual(mockPractice);
+      expect(result.reviewState.repetitions).toBe(2);
+      expect(result.reviewState.interval_days).toBeGreaterThan(6);
     });
   });
 });

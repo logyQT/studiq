@@ -6,16 +6,24 @@ import { AppError } from '@/lib/errors';
 vi.mock('@/server/services', () => ({
   flashcardPracticeService: {
     log: vi.fn(),
-    getHistory: vi.fn(),
-    getHistoryForFlashcard: vi.fn(),
+    getDueCards: vi.fn(),
+    getDueCount: vi.fn(),
+    getStatsForFlashcard: vi.fn(),
+    getStatsAll: vi.fn(),
   },
 }));
 
 const mockService = vi.mocked(flashcardPracticeService);
 
-describe('FlashcardPracticeController', () => {
-  const userId = 'test-user-id';
+const mockCtx = {
+  userId: 'test-user-id',
+  universityId: null,
+  role: 'student' as const,
+  url: 'http://localhost',
+  method: 'POST',
+};
 
+describe('FlashcardPracticeController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -23,26 +31,38 @@ describe('FlashcardPracticeController', () => {
   describe('log', () => {
     it('returns success when service logs successfully', async () => {
       const body = { wasCorrect: true };
-      const result = { id: 'p-1', flashcard_id: 'fc-1', was_correct: true };
-      mockService.log.mockResolvedValueOnce(result);
+      const result = {
+        practice: { id: 'p-1', flashcard_id: 'fc-1', was_correct: true },
+        reviewState: { id: 'rs-1', easiness_factor: 2.6, interval_days: 1, repetitions: 1 },
+      };
+      mockService.log.mockResolvedValueOnce(result as any);
 
-      const response = await flashcardPracticeController.log('fc-1', body, userId);
+      const response = await flashcardPracticeController.log('fc-1', body, mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 201, data: result });
     });
 
     it('returns success with optional fields', async () => {
       const body = { wasCorrect: true, responseTimeMs: 1500, confidenceLevel: 4 };
-      const result = { id: 'p-1', flashcard_id: 'fc-1', was_correct: true, response_time_ms: 1500, confidence_level: 4 };
-      mockService.log.mockResolvedValueOnce(result);
+      const result = {
+        practice: {
+          id: 'p-1',
+          flashcard_id: 'fc-1',
+          was_correct: true,
+          response_time_ms: 1500,
+          confidence_level: 4,
+        },
+        reviewState: { easiness_factor: 2.6, interval_days: 6, repetitions: 2 },
+      };
+      mockService.log.mockResolvedValueOnce(result as any);
 
-      const response = await flashcardPracticeController.log('fc-1', body, userId);
+      const response = await flashcardPracticeController.log('fc-1', body, mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 201, data: result });
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
-      const response = await flashcardPracticeController.log('fc-1', { responseTimeMs: 1000 }, userId);
+      const response = await flashcardPracticeController.log('fc-1', { responseTimeMs: 1000 }, mockCtx);
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
@@ -52,7 +72,7 @@ describe('FlashcardPracticeController', () => {
     it('returns error when service throws AppError', async () => {
       mockService.log.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
 
-      const response = await flashcardPracticeController.log('fc-1', { wasCorrect: true }, userId);
+      const response = await flashcardPracticeController.log('fc-1', { wasCorrect: true }, mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
@@ -60,71 +80,86 @@ describe('FlashcardPracticeController', () => {
     it('returns INTERNAL_SERVER when service throws generic error', async () => {
       mockService.log.mockRejectedValueOnce(new Error('unexpected'));
 
-      const response = await flashcardPracticeController.log('fc-1', { wasCorrect: true }, userId);
+      const response = await flashcardPracticeController.log('fc-1', { wasCorrect: true }, mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
   });
 
-  describe('getHistory', () => {
-    it('returns practice history for user', async () => {
-      const history = [{ id: 'p-1', flashcard_id: 'fc-1', was_correct: true }];
-      mockService.getHistory.mockResolvedValueOnce(history);
+  describe('getDueCards', () => {
+    it('returns due cards for user', async () => {
+      const dueCards = [{ id: 'fc-1', front: 'Q', back: 'A', reviewState: null }];
+      mockService.getDueCards.mockResolvedValueOnce(dueCards as any);
 
-      const response = await flashcardPracticeController.getHistory(userId);
+      const response = await flashcardPracticeController.getDueCards(mockCtx, {}, 20);
 
-      expect(response).toEqual({ success: true, statusCode: 200, data: history });
+      expect(response).toEqual({ success: true, statusCode: 200, data: dueCards });
     });
 
     it('returns error when service throws', async () => {
-      mockService.getHistory.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
+      mockService.getDueCards.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
 
-      const response = await flashcardPracticeController.getHistory(userId);
-
-      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
-    });
-
-    it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.getHistory.mockRejectedValueOnce(new Error('unexpected'));
-
-      const response = await flashcardPracticeController.getHistory(userId);
+      const response = await flashcardPracticeController.getDueCards(mockCtx, {}, 20);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
   });
 
-  describe('getHistoryForFlashcard', () => {
-    it('returns practice history for user on specific flashcard', async () => {
-      const history = [{ id: 'p-1', flashcard_id: 'fc-1', was_correct: true }];
-      mockService.getHistoryForFlashcard.mockResolvedValueOnce(history);
+  describe('getDueCount', () => {
+    it('returns due count', async () => {
+      mockService.getDueCount.mockResolvedValueOnce({ count: 5 });
 
-      const response = await flashcardPracticeController.getHistoryForFlashcard('fc-1', userId);
+      const response = await flashcardPracticeController.getDueCount(mockCtx, {});
 
-      expect(response).toEqual({ success: true, statusCode: 200, data: history });
-    });
-
-    it('returns error when service throws', async () => {
-      mockService.getHistoryForFlashcard.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
-
-      const response = await flashcardPracticeController.getHistoryForFlashcard('fc-1', userId);
-
-      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+      expect(response).toEqual({ success: true, statusCode: 200, data: { count: 5 } });
     });
   });
 
   describe('getStatsForFlashcard', () => {
-    it('returns 501 not implemented', async () => {
-      const response = await flashcardPracticeController.getStatsForFlashcard('fc-1');
+    it('returns stats for flashcard', async () => {
+      const stats = {
+        totalAttempts: 10,
+        correctRate: 80,
+        averageResponseTimeMs: 2000,
+        reviewState: null,
+      };
+      mockService.getStatsForFlashcard.mockResolvedValueOnce(stats);
 
-      expect(response).toEqual({ success: false, statusCode: 501, error: 'NOT_IMPLEMENTED' });
+      const response = await flashcardPracticeController.getStatsForFlashcard('fc-1', mockCtx);
+
+      expect(response).toEqual({ success: true, statusCode: 200, data: stats });
+    });
+
+    it('returns error when service throws', async () => {
+      mockService.getStatsForFlashcard.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
+
+      const response = await flashcardPracticeController.getStatsForFlashcard('fc-1', mockCtx);
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
   });
 
   describe('getStatsAll', () => {
-    it('returns 501 not implemented', async () => {
-      const response = await flashcardPracticeController.getStatsAll();
+    it('returns aggregate stats', async () => {
+      const stats = {
+        totalPracticed: 50,
+        totalDue: 10,
+        totalCardsReviewed: 20,
+        averageEasinessFactor: 2.3,
+      };
+      mockService.getStatsAll.mockResolvedValueOnce(stats);
 
-      expect(response).toEqual({ success: false, statusCode: 501, error: 'NOT_IMPLEMENTED' });
+      const response = await flashcardPracticeController.getStatsAll(mockCtx);
+
+      expect(response).toEqual({ success: true, statusCode: 200, data: stats });
+    });
+
+    it('returns error when service throws', async () => {
+      mockService.getStatsAll.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
+
+      const response = await flashcardPracticeController.getStatsAll(mockCtx);
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
   });
 });

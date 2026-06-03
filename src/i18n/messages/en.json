@@ -382,13 +382,18 @@
     "avg_score": "Avg Score",
     "flashcards_practiced": "Flashcards Practiced",
     "questions_created": "Questions Created",
-    "quick_actions": "Quick Actions",
-    "quick_actions_desc": "Start learning or create content",
+    "quiz_actions": "Quiz Actions",
+    "quiz_actions_desc": "Test your knowledge and create content",
     "take_quiz": "Take a Quiz",
-    "practice_flashcards": "Practice Flashcards",
     "create_question": "Create Question",
-    "recommended": "Recommended for You",
-    "recommended_desc": "Quizzes you might want to try",
+    "view_subjects": "View Subjects",
+    "flashcard_actions": "Flashcard Actions",
+    "flashcard_actions_desc": "Review and manage your flashcards",
+    "quick_practice": "Quick Practice",
+    "manage_topics": "Manage Topics",
+    "manage_decks": "Manage Decks",
+    "manage_flashcards": "Manage Flashcards",
+    "new_flashcard": "New Flashcard",
     "loading": "Loading...",
     "no_quizzes": "No quizzes available yet"
   },
@@ -799,6 +804,7 @@
     "target_count_label": "Target: {count} correct",
     "select_to_start": "Select topics or spaces to start",
     "cards_available": "{count} cards available",
+    "due_for_review": "due for review",
     "start_practice": "Start Practice"
   },
   "AppFlashcardSessionPage": {
@@ -818,8 +824,12 @@
     "click_hint": "Click to {action}",
     "see_question": "see question",
     "reveal_answer": "reveal answer",
-    "still_learning": "Still Learning",
-    "got_it": "Got It"
+    "rating_again": "Again",
+    "rating_hard": "Hard",
+    "rating_good": "Good",
+    "rating_easy": "Easy",
+    "all_caught_up": "All Caught Up!",
+    "no_due_cards_message": "No cards are due for review right now. Check back later!"
   },
   "AppFlashcardSpacesPage": {
     "title": "Flashcard Spaces",

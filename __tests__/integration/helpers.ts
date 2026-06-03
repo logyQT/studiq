@@ -181,6 +181,11 @@ export async function cleanupFlashcardPractice(userId: string) {
   await supabase.from('flashcard_practice').delete().eq('user_id', userId);
 }
 
+export async function cleanupFlashcardReviewState(userId: string) {
+  const supabase = createServiceClient();
+  await supabase.from('flashcard_review_state').delete().eq('user_id', userId);
+}
+
 export async function cleanupQuizAttempts(userId: string) {
   const supabase = createServiceClient();
   const { data: attempts } = await supabase

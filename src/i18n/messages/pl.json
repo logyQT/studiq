@@ -365,13 +365,18 @@
     "avg_score": "Średni wynik",
     "flashcards_practiced": "Przećwiczone fiszki",
     "questions_created": "Utworzone pytania",
-    "quick_actions": "Szybkie akcje",
-    "quick_actions_desc": "Rozpocznij naukę lub twórz materiały",
+    "quiz_actions": "Akcje Quizów",
+    "quiz_actions_desc": "Sprawdź swoją wiedzę i twórz materiały",
     "take_quiz": "Rozwiąż test",
-    "practice_flashcards": "Ćwicz fiszki",
     "create_question": "Utwórz pytanie",
-    "recommended": "Polecane dla Ciebie",
-    "recommended_desc": "Testy, które możesz chcieć wypróbować",
+    "view_subjects": "Zobacz przedmioty",
+    "flashcard_actions": "Akcje Fiszek",
+    "flashcard_actions_desc": "Przeglądaj i zarządzaj fiszkami",
+    "quick_practice": "Szybka powtórka",
+    "manage_topics": "Zarządzaj tematami",
+    "manage_decks": "Zarządzaj taliami",
+    "manage_flashcards": "Zarządzaj fiszkami",
+    "new_flashcard": "Nowa fiszka",
     "loading": "Ładowanie...",
     "no_quizzes": "Brak dostępnych testów"
   },
@@ -782,6 +787,7 @@
     "target_count_label": "Cel: {count} poprawnych",
     "select_to_start": "Wybierz tematy lub przestrzenie, aby zacząć",
     "cards_available": "{count} fiszek dostępnych",
+    "due_for_review": "do powtórki",
     "start_practice": "Rozpocznij ćwiczenie"
   },
   "AppFlashcardSessionPage": {
@@ -801,8 +807,12 @@
     "click_hint": "Kliknij, aby {action}",
     "see_question": "zobaczyć pytanie",
     "reveal_answer": "odkryć odpowiedź",
-    "still_learning": "Nadal się uczę",
-    "got_it": "Rozumiem"
+    "rating_again": "Nie pamiętam",
+    "rating_hard": "Trudne",
+    "rating_good": "Dobrze",
+    "rating_easy": "Łatwe",
+    "all_caught_up": "Wszystko powtórzone!",
+    "no_due_cards_message": "Żadne fiszki nie wymagają teraz powtórki. Wróć później!"
   },
   "AppFlashcardSpacesPage": {
     "title": "Przestrzenie fiszek",

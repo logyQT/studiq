@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -37,6 +37,30 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
   const [selectedSpaces, setSelectedSpaces] = useState<string[]>([]);
   const [mode, setMode] = useState<'endless' | 'limited'>('endless');
   const [targetCount, setTargetCount] = useState(10);
+  const [dueCount, setDueCount] = useState<number | null>(null);
+
+  const fetchDueCount = useCallback(async (topicIds: string[], spaceIds: string[]) => {
+    if (topicIds.length === 0 && spaceIds.length === 0) {
+      setDueCount(null);
+      return;
+    }
+    const params = new URLSearchParams();
+    if (topicIds.length > 0) params.set('topicIds', topicIds.join(','));
+    if (spaceIds.length > 0) params.set('spaceIds', spaceIds.join(','));
+    try {
+      const res = await fetch(`/api/v1/flashcards/practice/due/count?${params.toString()}`);
+      if (res.ok) {
+        const body = await res.json();
+        setDueCount(body.data?.count ?? null);
+      }
+    } catch {
+      setDueCount(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDueCount(selectedTopics, selectedSpaces);
+  }, [selectedTopics, selectedSpaces, fetchDueCount]);
 
   function toggleTopic(id: string) {
     setSelectedTopics((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
@@ -183,11 +207,20 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
           )}
 
           <div className="flex items-center justify-between pt-2">
-            <p className="text-sm text-muted-foreground">
-              {selectedTopics.length + selectedSpaces.length === 0
-                ? t('select_to_start')
-                : t('cards_available', { count: totalCards })}
-            </p>
+            <div className="text-sm text-muted-foreground">
+              {selectedTopics.length + selectedSpaces.length === 0 ? (
+                t('select_to_start')
+              ) : (
+                <>
+                  <span>{t('cards_available', { count: totalCards })}</span>
+                  {dueCount !== null && (
+                    <span className="ml-2 font-medium text-foreground">
+                      ({dueCount} {t('due_for_review')})
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
             <Button
               onClick={startSession}
               disabled={selectedTopics.length === 0 && selectedSpaces.length === 0}

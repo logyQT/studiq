@@ -6,7 +6,17 @@ import { useTranslations } from 'next-intl';
 import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { BookOpen, Brain, ListPlus, ArrowRight } from 'lucide-react';
+import {
+  BookOpen,
+  Brain,
+  ListPlus,
+  ArrowRight,
+  BookText,
+  Tags,
+  FolderOpen,
+  Layers,
+  Plus,
+} from 'lucide-react';
 
 interface StudentStats {
   totalQuizzes: number;
@@ -59,22 +69,14 @@ export default function AppOverviewPage() {
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>{t('quick_actions')}</CardTitle>
-            <CardDescription>{t('quick_actions_desc')}</CardDescription>
+            <CardTitle>{t('quiz_actions')}</CardTitle>
+            <CardDescription>{t('quiz_actions_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <Link href="/app/quiz">
               <Button variant="outline" className="w-full justify-between">
                 <span className="flex items-center gap-2">
                   <BookOpen className="h-4 w-4" /> {t('take_quiz')}
-                </span>
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-            <Link href="/app/flashcards">
-              <Button variant="outline" className="w-full justify-between">
-                <span className="flex items-center gap-2">
-                  <Brain className="h-4 w-4" /> {t('practice_flashcards')}
                 </span>
                 <ArrowRight className="h-4 w-4" />
               </Button>
@@ -87,19 +89,27 @@ export default function AppOverviewPage() {
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
+            <Link href="/app/quiz">
+              <Button variant="outline" className="w-full justify-between">
+                <span className="flex items-center gap-2">
+                  <BookText className="h-4 w-4" /> {t('view_subjects')}
+                </span>
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>{t('quick_practice_title')}</CardTitle>
-            <CardDescription>{t('quick_practice_desc')}</CardDescription>
+            <CardTitle>{t('flashcard_actions')}</CardTitle>
+            <CardDescription>{t('flashcard_actions_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Link href="/app/quiz">
-              <Button className="w-full justify-between">
+            <Link href="/app/flashcards/session?mode=quick&limit=5">
+              <Button variant="outline" className="w-full justify-between">
                 <span className="flex items-center gap-2">
-                  <BookOpen className="h-4 w-4" /> {t('generate_practice_quiz')}
+                  <Brain className="h-4 w-4" /> {t('quick_practice')}
                 </span>
                 <ArrowRight className="h-4 w-4" />
               </Button>
@@ -107,7 +117,31 @@ export default function AppOverviewPage() {
             <Link href="/app/flashcards">
               <Button variant="outline" className="w-full justify-between">
                 <span className="flex items-center gap-2">
-                  <Brain className="h-4 w-4" /> {t('practice_flashcards')}
+                  <Tags className="h-4 w-4" /> {t('manage_topics')}
+                </span>
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href="/app/flashcards/spaces">
+              <Button variant="outline" className="w-full justify-between">
+                <span className="flex items-center gap-2">
+                  <FolderOpen className="h-4 w-4" /> {t('manage_decks')}
+                </span>
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href="/app/flashcards">
+              <Button variant="outline" className="w-full justify-between">
+                <span className="flex items-center gap-2">
+                  <Layers className="h-4 w-4" /> {t('manage_flashcards')}
+                </span>
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href="/edu/flashcards">
+              <Button variant="outline" className="w-full justify-between">
+                <span className="flex items-center gap-2">
+                  <Plus className="h-4 w-4" /> {t('new_flashcard')}
                 </span>
                 <ArrowRight className="h-4 w-4" />
               </Button>

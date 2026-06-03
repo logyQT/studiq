@@ -45,10 +45,10 @@ export default function FlashcardTopicsPage() {
   const [formData, setFormData] = useState({ name: '' });
 
   useEffect(() => {
-    fetch('/api/v1/flashcard-topics')
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => {
-        setTopics(data);
+    fetch('/api/v1/flashcards/topics')
+      .then((r) => (r.ok ? r.json() : { data: [] }))
+      .then((body) => {
+        setTopics(body.data ?? body ?? []);
         setLoading(false);
       })
       .catch(() => {
@@ -79,7 +79,7 @@ export default function FlashcardTopicsPage() {
       return;
     }
     try {
-      const url = editing ? `/api/v1/flashcard-topics/${editing.id}` : '/api/v1/flashcard-topics';
+      const url = editing ? `/api/v1/flashcards/topics/${editing.id}` : '/api/v1/flashcards/topics';
       const method = editing ? 'PUT' : 'POST';
       const res = await fetch(url, {
         method,
@@ -87,11 +87,12 @@ export default function FlashcardTopicsPage() {
         body: JSON.stringify({ name: formData.name }),
       });
       if (!res.ok) throw new Error();
-      const data = await res.json();
+      const body = await res.json();
+      const result = body.data ?? body;
       if (editing) {
-        setTopics(topics.map((t) => (t.id === data.id ? data : t)));
+        setTopics(topics.map((t) => (t.id === result.id ? result : t)));
       } else {
-        setTopics([{ ...data, flashcard_count: 0 }, ...topics]);
+        setTopics([{ ...result, flashcard_count: 0 }, ...topics]);
       }
       setDialogOpen(false);
       resetForm();
@@ -104,7 +105,7 @@ export default function FlashcardTopicsPage() {
   async function handleDelete() {
     if (!deleteId) return;
     try {
-      const res = await fetch(`/api/v1/flashcard-topics/${deleteId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/v1/flashcards/topics/${deleteId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
       setTopics(topics.filter((t) => t.id !== deleteId));
       toast.success(t('topic_deleted'));

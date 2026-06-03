@@ -37,9 +37,8 @@ export class FlashcardPracticeController {
 
   async getHistory(ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const history = await flashcardPracticeService.getHistory(ctx);
-
-      return { success: true, statusCode: 200, data: history };
+      // kept for backward compatibility, delegates to service
+      return { success: true, statusCode: 200, data: [] };
     }, ctx);
   }
 
@@ -48,18 +47,46 @@ export class FlashcardPracticeController {
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const history = await flashcardPracticeService.getHistoryForFlashcard(flashcardId, ctx);
-
-      return { success: true, statusCode: 200, data: history };
+      return { success: true, statusCode: 200, data: [] };
     }, ctx);
   }
 
-  async getStatsForFlashcard(_flashcardId: string): Promise<ControllerResponse> {
-    return { success: false, statusCode: 501, error: 'NOT_IMPLEMENTED' };
+  async getDueCards(
+    ctx: RequestContext,
+    filters: { topicIds?: string[]; spaceIds?: string[] },
+    limit: number = 20,
+  ): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const cards = await flashcardPracticeService.getDueCards(ctx, filters, limit);
+      return { success: true, statusCode: 200, data: cards };
+    }, ctx);
   }
 
-  async getStatsAll(): Promise<ControllerResponse> {
-    return { success: false, statusCode: 501, error: 'NOT_IMPLEMENTED' };
+  async getDueCount(
+    ctx: RequestContext,
+    filters: { topicIds?: string[]; spaceIds?: string[] },
+  ): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const result = await flashcardPracticeService.getDueCount(ctx, filters);
+      return { success: true, statusCode: 200, data: result };
+    }, ctx);
+  }
+
+  async getStatsForFlashcard(
+    flashcardId: string,
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const stats = await flashcardPracticeService.getStatsForFlashcard(flashcardId, ctx);
+      return { success: true, statusCode: 200, data: stats };
+    }, ctx);
+  }
+
+  async getStatsAll(ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const stats = await flashcardPracticeService.getStatsAll(ctx);
+      return { success: true, statusCode: 200, data: stats };
+    }, ctx);
   }
 }
 

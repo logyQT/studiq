@@ -61,8 +61,16 @@ export default function FlashcardSpacesPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/v1/flashcard-spaces').then((r) => (r.ok ? r.json() : [])),
-      fetch('/api/v1/flashcards').then((r) => (r.ok ? r.json() : [])),
+      fetch('/api/v1/flashcards/spaces').then(async (r) => {
+        if (!r.ok) return [];
+        const body = await r.json();
+        return body.data ?? [];
+      }),
+      fetch('/api/v1/flashcards').then(async (r) => {
+        if (!r.ok) return [];
+        const body = await r.json();
+        return body.data ?? [];
+      }),
     ])
       .then(([s, f]) => {
         setSpaces(s);
@@ -111,7 +119,7 @@ export default function FlashcardSpacesPage() {
       return;
     }
     try {
-      const url = editing ? `/api/v1/flashcard-spaces/${editing.id}` : '/api/v1/flashcard-spaces';
+      const url = editing ? `/api/v1/flashcards/spaces/${editing.id}` : '/api/v1/flashcards/spaces';
       const method = editing ? 'PUT' : 'POST';
       const payload = {
         name: formData.name,
@@ -124,11 +132,12 @@ export default function FlashcardSpacesPage() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error();
-      const data = await res.json();
+      const body = await res.json();
+      const result = body.data ?? body;
       if (editing) {
-        setSpaces(spaces.map((s) => (s.id === data.id ? data : s)));
+        setSpaces(spaces.map((s) => (s.id === result.id ? result : s)));
       } else {
-        setSpaces([{ ...data, flashcard_count: formData.flashcardIds.length }, ...spaces]);
+        setSpaces([{ ...result, flashcard_count: formData.flashcardIds.length }, ...spaces]);
       }
       setDialogOpen(false);
       resetForm();
@@ -141,7 +150,7 @@ export default function FlashcardSpacesPage() {
   async function handleDelete() {
     if (!deleteId) return;
     try {
-      const res = await fetch(`/api/v1/flashcard-spaces/${deleteId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/v1/flashcards/spaces/${deleteId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
       setSpaces(spaces.filter((s) => s.id !== deleteId));
       toast.success(t('space_deleted'));

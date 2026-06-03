@@ -11,11 +11,11 @@ export default async function FlashcardsPage() {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
   const [topicsRes, spacesRes] = await Promise.all([
-    fetch(`${baseUrl}/api/v1/flashcard-topics`, {
+    fetch(`${baseUrl}/api/v1/flashcards/topics`, {
       headers: { Cookie: cookieHeader },
       cache: 'no-store',
     }),
-    fetch(`${baseUrl}/api/v1/flashcard-spaces`, {
+    fetch(`${baseUrl}/api/v1/flashcards/spaces`, {
       headers: { Cookie: cookieHeader },
       cache: 'no-store',
     }),

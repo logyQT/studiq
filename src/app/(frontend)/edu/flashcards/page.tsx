@@ -58,8 +58,16 @@ export default function FlashcardsPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/v1/flashcards').then((r) => (r.ok ? r.json() : [])),
-      fetch('/api/v1/flashcard-topics').then((r) => (r.ok ? r.json() : [])),
+      fetch('/api/v1/flashcards').then(async (r) => {
+        if (!r.ok) return [];
+        const body = await r.json();
+        return body.data ?? [];
+      }),
+      fetch('/api/v1/flashcards/topics').then(async (r) => {
+        if (!r.ok) return [];
+        const body = await r.json();
+        return body.data ?? [];
+      }),
     ])
       .then(([f, s]) => {
         setFlashcards(f);
@@ -121,11 +129,12 @@ export default function FlashcardsPage() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error();
-      const data = await res.json();
+      const body = await res.json();
+      const result = body.data ?? body;
       if (editing) {
-        setFlashcards(flashcards.map((f) => (f.id === data.id ? data : f)));
+        setFlashcards(flashcards.map((f) => (f.id === result.id ? result : f)));
       } else {
-        setFlashcards([data, ...flashcards]);
+        setFlashcards([result, ...flashcards]);
       }
       setDialogOpen(false);
       resetForm();
@@ -159,10 +168,11 @@ export default function FlashcardsPage() {
         }),
       });
       if (!res.ok) throw new Error();
-      const data = await res.json();
-      setFlashcards([...data, ...flashcards]);
+      const body = await res.json();
+      const result = body.data ?? body;
+      setFlashcards([...result, ...flashcards]);
       setBulkText('');
-      toast.success(`${data.length} ${t('bulk_created')}`);
+      toast.success(`${result.length} ${t('bulk_created')}`);
     } catch {
       toast.error(t('bulk_failed'));
     }
