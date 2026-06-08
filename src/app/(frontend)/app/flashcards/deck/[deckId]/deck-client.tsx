@@ -50,6 +50,7 @@ import {
   Tags,
   X,
   ExternalLink,
+  Play,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -387,6 +388,14 @@ export default function DeckClient({ deck, flashcards: initialFlashcards, topics
               <Badge variant="secondary" className="bg-white/20 text-white">
                 {t('flashcards_count', { count: flashcards.length })}
               </Badge>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="bg-white/20 text-white hover:bg-white/30 gap-1"
+                onClick={() => router.push(`/app/flashcards/session?mode=practice&deckId=${currentDeck.id}`)}
+              >
+                <Play className="h-3 w-3" /> {t('practice_deck')}
+              </Button>
             </div>
           </div>
         </div>

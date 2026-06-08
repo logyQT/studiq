@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { FolderOpen, Tags, Play } from 'lucide-react';
+import { FolderOpen, Tags, Play, Dumbbell } from 'lucide-react';
 
 const GRADIENTS = [
   'from-violet-500 to-purple-600',
@@ -22,9 +22,10 @@ const GRADIENTS = [
 interface FlashcardsClientProps {
   topicCount: number;
   deckCount: number;
+  dueCount: number;
 }
 
-export default function FlashcardsClient({ topicCount, deckCount }: FlashcardsClientProps) {
+export default function FlashcardsClient({ topicCount, deckCount, dueCount }: FlashcardsClientProps) {
   const t = useTranslations('AppFlashcardsPage');
 
   const panels = [
@@ -49,14 +50,24 @@ export default function FlashcardsClient({ topicCount, deckCount }: FlashcardsCl
       gradient: GRADIENTS[4],
     },
     {
-      id: 'practice',
+      id: 'study',
       icon: Play,
+      title: t('study_title'),
+      description: t('study_desc'),
+      href: '/app/flashcards/study',
+      count: dueCount,
+      countLabel: t('study_count', { count: dueCount }),
+      gradient: GRADIENTS[8],
+    },
+    {
+      id: 'practice',
+      icon: Dumbbell,
       title: t('practice_title'),
       description: t('practice_desc'),
       href: '/app/flashcards/practice',
-      count: null,
-      countLabel: '',
-      gradient: GRADIENTS[8],
+      count: deckCount,
+      countLabel: t('practice_count', { count: deckCount }),
+      gradient: GRADIENTS[10],
     },
   ];
 
@@ -67,23 +78,25 @@ export default function FlashcardsClient({ topicCount, deckCount }: FlashcardsCl
         <p className="text-muted-foreground mt-1">{t('subtitle')}</p>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {panels.map((panel) => {
           const Icon = panel.icon;
           return (
             <Link
               key={panel.id}
               href={panel.href}
-              className="group relative overflow-hidden rounded-xl border bg-card transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:border-primary/50"
+              className="group relative overflow-hidden rounded-xl border bg-card flex flex-col transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:border-primary/50"
             >
               <div className={`h-24 bg-gradient-to-br ${panel.gradient} flex items-center justify-center`}>
                 <Icon className="h-10 w-10 text-white/90 transition-transform duration-200 group-hover:scale-110" />
               </div>
-              <div className="p-5">
-                <h3 className="text-lg font-semibold">{panel.title}</h3>
-                <p className="text-sm text-muted-foreground mt-1">{panel.description}</p>
+              <div className="p-5 flex flex-col flex-1">
+                <div>
+                  <h3 className="text-lg font-semibold">{panel.title}</h3>
+                  <p className="text-sm text-muted-foreground mt-1">{panel.description}</p>
+                </div>
                 {panel.count !== null && (
-                  <p className="text-xs text-muted-foreground mt-3">{panel.countLabel}</p>
+                  <p className="text-xs text-muted-foreground mt-auto pt-3">{panel.countLabel}</p>
                 )}
               </div>
             </Link>

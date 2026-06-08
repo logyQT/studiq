@@ -10,19 +10,12 @@ export default async function PracticePage() {
 
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
-  const [topicsRes, decksRes] = await Promise.all([
-    fetch(`${baseUrl}/api/v1/flashcards/topics`, {
-      headers: { Cookie: cookieHeader },
-      cache: 'no-store',
-    }),
-    fetch(`${baseUrl}/api/v1/flashcards/decks`, {
-      headers: { Cookie: cookieHeader },
-      cache: 'no-store',
-    }),
-  ]);
+  const res = await fetch(`${baseUrl}/api/v1/flashcards/decks`, {
+    headers: { Cookie: cookieHeader },
+    cache: 'no-store',
+  });
 
-  const topics = topicsRes.ok ? (await topicsRes.json()).data ?? [] : [];
-  const decks = decksRes.ok ? (await decksRes.json()).data ?? [] : [];
+  const decks = res.ok ? (await res.json()).data ?? [] : [];
 
-  return <PracticeClient topics={topics} decks={decks} />;
+  return <PracticeClient decks={decks} />;
 }

@@ -4,6 +4,7 @@ import { AppError } from '@/lib/errors';
 import type { RequestContext } from '@/lib/request-context';
 import { flashcardSpacedRepetitionService } from './flashcard-spaced-repetition.service';
 import { UserRole } from '@/types';
+import type { BatchPracticeInput } from '@/server/models';
 
 export class FlashcardPracticeService {
   async log(
@@ -37,6 +38,36 @@ export class FlashcardPracticeService {
       practice,
       reviewState,
     };
+  }
+
+  async batch(data: BatchPracticeInput, ctx: RequestContext) {
+    const supabase = await createClient();
+    let updated = 0;
+
+    for (const item of data.items) {
+      const { error: practiceError } = await supabase
+        .from('flashcard_practice')
+        .insert({
+          user_id: ctx.userId,
+          flashcard_id: item.flashcardId,
+          was_correct: item.wasCorrect,
+          confidence_level: item.confidenceLevel ?? null,
+          session_id: item.sessionId ?? null,
+        });
+
+      if (practiceError) {
+        continue;
+      }
+
+      try {
+        await this.upsertReviewState(item.flashcardId, item.wasCorrect, item.confidenceLevel, ctx);
+        updated++;
+      } catch {
+        // skip individual failures
+      }
+    }
+
+    return { success: true, updated };
   }
 
   private async getReviewState(flashcardId: string, ctx: RequestContext) {

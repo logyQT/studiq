@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
-import FlashcardsClient from './flashcards-client';
+import StudyClient from './study-client';
 
-export default async function FlashcardsPage() {
+export default async function StudyPage() {
   const cookieStore = await cookies();
   const cookieHeader = cookieStore
     .getAll()
@@ -10,7 +10,7 @@ export default async function FlashcardsPage() {
 
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
-  const [topicsRes, decksRes, dueRes] = await Promise.all([
+  const [topicsRes, decksRes] = await Promise.all([
     fetch(`${baseUrl}/api/v1/flashcards/topics`, {
       headers: { Cookie: cookieHeader },
       cache: 'no-store',
@@ -19,15 +19,10 @@ export default async function FlashcardsPage() {
       headers: { Cookie: cookieHeader },
       cache: 'no-store',
     }),
-    fetch(`${baseUrl}/api/v1/flashcards/practice/due/count`, {
-      headers: { Cookie: cookieHeader },
-      cache: 'no-store',
-    }),
   ]);
 
   const topics = topicsRes.ok ? (await topicsRes.json()).data ?? [] : [];
   const decks = decksRes.ok ? (await decksRes.json()).data ?? [] : [];
-  const dueCount = dueRes.ok ? (await dueRes.json()).data?.count ?? 0 : 0;
 
-  return <FlashcardsClient topicCount={topics.length} deckCount={decks.length} dueCount={dueCount} />;
+  return <StudyClient topics={topics} decks={decks} />;
 }

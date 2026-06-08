@@ -23,8 +23,8 @@ export default function FlashcardsLoading() {
         <Skeleton className="h-4 w-64" />
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, i) => (
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
           <PanelSkeleton key={i} />
         ))}
       </div>

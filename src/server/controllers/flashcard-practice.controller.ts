@@ -1,5 +1,5 @@
 import { flashcardPracticeService } from '@/server/services';
-import { LogPracticeSchema } from '@/server/models';
+import { LogPracticeSchema, BatchPracticeSchema } from '@/server/models';
 import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
 import type { RequestContext } from '@/lib/request-context';
@@ -32,6 +32,24 @@ export class FlashcardPracticeController {
       );
 
       return { success: true, statusCode: 201, data: result };
+    }, ctx);
+  }
+
+  async batch(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = BatchPracticeSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const result = await flashcardPracticeService.batch(parsed.data, ctx);
+      return { success: true, statusCode: 200, data: result };
     }, ctx);
   }
 
