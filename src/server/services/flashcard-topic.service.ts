@@ -32,7 +32,9 @@ export class FlashcardTopicService {
       .order('created_at', { ascending: false });
 
     if (ctx.universityId) {
-      query = query.eq('university_id', ctx.universityId);
+      query = query.or(`created_by.eq.${ctx.userId},university_id.eq.${ctx.universityId}`);
+    } else {
+      query = query.eq('created_by', ctx.userId);
     }
 
     const { data, error } = await query;

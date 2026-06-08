@@ -523,7 +523,20 @@
     "deck_deleted": "Deck deleted",
     "deck_delete_title": "Delete Deck?",
     "deck_delete_desc": "This will permanently delete the deck and all its flashcard assignments. This action cannot be undone.",
-    "name_required": "Deck name is required"
+    "name_required": "Deck name is required",
+    "menu_add_topic": "Add Topics",
+    "menu_remove_topic": "Remove Topics",
+    "menu_view_by_topic": "View by Topic",
+    "topic_added": "Topic added",
+    "topic_removed": "Topic removed",
+    "no_other_topics_to_add": "No other topics available",
+    "no_topics_to_remove": "No topics assigned to remove",
+    "view_flashcards_for_topic": "{count, plural, one {# flashcard} other {# flashcards}} with this topic",
+    "no_flashcards_for_topic": "No flashcards with this topic yet",
+    "add_topic_desc": "Select topics to add to this flashcard",
+    "remove_topic_desc": "Select topics to remove from this flashcard",
+    "common_add": "Add",
+    "common_remove": "Remove"
   },
   "AppFlashcardTopicsPage": {
     "title": "Topics Manager",

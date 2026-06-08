@@ -48,7 +48,6 @@ import {
   Link2,
   Copy,
   Tags,
-  Check,
   X,
   ExternalLink,
 } from 'lucide-react';
@@ -137,7 +136,6 @@ export default function DeckClient({ deck, flashcards: initialFlashcards, topics
   const [linkOpen, setLinkOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
   const [copyResult, setCopyResult] = useState<{ id: string; deckId: string } | null>(null);
-  const [topicMenuOpen, setTopicMenuOpen] = useState(false);
   const [activeFlashcardId, setActiveFlashcardId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({ front: '', back: '', topicIds: [] as string[] });
@@ -148,8 +146,13 @@ export default function DeckClient({ deck, flashcards: initialFlashcards, topics
   const [deckDeleteOpen, setDeckDeleteOpen] = useState(false);
   const [deckFormData, setDeckFormData] = useState({ name: currentDeck.name, description: currentDeck.description || '' });
 
+  const [viewTopicId, setViewTopicId] = useState<string | null>(null);
+  const [addTopicOpen, setAddTopicOpen] = useState(false);
+  const [removeTopicOpen, setRemoveTopicOpen] = useState(false);
+  const [topicActionIds, setTopicActionIds] = useState<string[]>([]);
+
   const getTopicIds = useCallback(
-    (fc: Flashcard) => fc.flashcard_topic_assignments?.map((a) => a.topic_id) ?? [],
+    (fc: Flashcard | undefined) => fc?.flashcard_topic_assignments?.map((a) => a.topic_id) ?? [],
     [],
   );
 
@@ -160,6 +163,14 @@ export default function DeckClient({ deck, flashcards: initialFlashcards, topics
     },
     [topics, getTopicIds],
   );
+
+  const viewTopicFlashcards = viewTopicId
+    ? initialFlashcards.filter((fc) =>
+        fc.flashcard_topic_assignments?.some((a) => a.topic_id === viewTopicId),
+      )
+    : [];
+
+  const viewTopic = topics.find((tp) => tp.id === viewTopicId);
 
   function resetForm() {
     setFormData({ front: '', back: '', topicIds: [] });
@@ -427,16 +438,34 @@ export default function DeckClient({ deck, flashcards: initialFlashcards, topics
                           <Tags className="mr-2 h-4 w-4" /> {t('menu_topics')}
                         </DropdownMenuSubTrigger>
                         <DropdownMenuSubContent>
-                          {topics.map((topic) => (
-                            <DropdownMenuItem
-                              key={topic.id}
-                              onClick={(e) => e.stopPropagation()}
-                              className="gap-2"
-                            >
-                              <div className={`h-2 w-2 rounded-full ${getTopicColor(topic.name)}`} />
-                              {topic.name}
-                            </DropdownMenuItem>
-                          ))}
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTopicActionIds([]);
+                              setAddTopicOpen(true);
+                            }}
+                          >
+                            <Plus className="mr-2 h-4 w-4" /> {t('menu_add_topic')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTopicActionIds([]);
+                              setRemoveTopicOpen(true);
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" /> {t('menu_remove_topic')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const assignedIds = getTopicIds(fc);
+                              const firstAssigned = topics.find((tp) => assignedIds.includes(tp.id));
+                              if (firstAssigned) setViewTopicId(firstAssigned.id);
+                            }}
+                          >
+                            <ExternalLink className="mr-2 h-4 w-4" /> {t('menu_view_by_topic')}
+                          </DropdownMenuItem>
                         </DropdownMenuSubContent>
                       </DropdownMenuSub>
                       <DropdownMenuSeparator />
@@ -806,6 +835,185 @@ export default function DeckClient({ deck, flashcards: initialFlashcards, topics
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!viewTopicId} onOpenChange={(open) => { if (!open) setViewTopicId(null); }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {viewTopic && (
+                <span className="flex items-center gap-2">
+                  <div className={`h-5 w-5 rounded ${getTopicColor(viewTopic.name)}`} />
+                  {viewTopic.name}
+                </span>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {t('view_flashcards_for_topic', { count: viewTopicFlashcards.length })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-4">
+            {viewTopicFlashcards.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">{t('no_flashcards_for_topic')}</p>
+            ) : (
+              viewTopicFlashcards.map((fc) => (
+                <div key={fc.id} className="p-4 rounded-lg border space-y-2">
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">{t('question_label')}</p>
+                    <p className="text-sm font-medium">{fc.front}</p>
+                  </div>
+                  <div className="border-t pt-2">
+                    <p className="text-xs text-muted-foreground uppercase">{t('answer_label')}</p>
+                    <p className="text-sm">{fc.back}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setViewTopicId(null)}>{t('common_close')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={addTopicOpen} onOpenChange={setAddTopicOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('menu_add_topic')}</DialogTitle>
+            <DialogDescription>{t('add_topic_desc')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-60 overflow-y-auto py-2">
+            {(() => {
+              const assignedIds = getTopicIds(flashcards.find((f) => f.id === activeFlashcardId));
+              const available = topics.filter((topic) => !assignedIds.includes(topic.id));
+              return (
+                <>
+                  {available.map((topic) => (
+                    <div key={topic.id} className="flex items-center gap-3 p-2 rounded-lg border">
+                      <Checkbox
+                        checked={topicActionIds.includes(topic.id)}
+                        onCheckedChange={() =>
+                          setTopicActionIds((prev) =>
+                            prev.includes(topic.id) ? prev.filter((id) => id !== topic.id) : [...prev, topic.id],
+                          )
+                        }
+                      />
+                      <div className={`h-2 w-2 rounded-full ${getTopicColor(topic.name)}`} />
+                      <span className="text-sm">{topic.name}</span>
+                    </div>
+                  ))}
+                  {available.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">{t('no_other_topics_to_add')}</p>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddTopicOpen(false)}>{t('common_cancel')}</Button>
+            <Button
+              onClick={async () => {
+                if (!activeFlashcardId || topicActionIds.length === 0) return;
+                const fc = flashcards.find((f) => f.id === activeFlashcardId);
+                if (!fc) return;
+                const currentIds = getTopicIds(fc);
+                const newIds = [...new Set([...currentIds, ...topicActionIds])];
+                setFlashcards(flashcards.map((f) =>
+                  f.id === activeFlashcardId
+                    ? { ...f, flashcard_topic_assignments: newIds.map((id) => ({ topic_id: id })) }
+                    : f
+                ));
+                try {
+                  const res = await fetch(`/api/v1/flashcards/${activeFlashcardId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topicIds: newIds }),
+                  });
+                  if (!res.ok) throw new Error();
+                  toast.success(t('topic_added'));
+                } catch {
+                  setFlashcards(initialFlashcards);
+                  toast.error(t('save_failed'));
+                }
+                setAddTopicOpen(false);
+                setTopicActionIds([]);
+              }}
+              disabled={topicActionIds.length === 0}
+            >
+              {t('common_add')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={removeTopicOpen} onOpenChange={setRemoveTopicOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('menu_remove_topic')}</DialogTitle>
+            <DialogDescription>{t('remove_topic_desc')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-60 overflow-y-auto py-2">
+            {(() => {
+              const assignedIds = getTopicIds(flashcards.find((f) => f.id === activeFlashcardId));
+              const assigned = topics.filter((topic) => assignedIds.includes(topic.id));
+              return (
+                <>
+                  {assigned.map((topic) => (
+                    <div key={topic.id} className="flex items-center gap-3 p-2 rounded-lg border">
+                      <Checkbox
+                        checked={topicActionIds.includes(topic.id)}
+                        onCheckedChange={() =>
+                          setTopicActionIds((prev) =>
+                            prev.includes(topic.id) ? prev.filter((id) => id !== topic.id) : [...prev, topic.id],
+                          )
+                        }
+                      />
+                      <div className={`h-2 w-2 rounded-full ${getTopicColor(topic.name)}`} />
+                      <span className="text-sm">{topic.name}</span>
+                    </div>
+                  ))}
+                  {assigned.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">{t('no_topics_to_remove')}</p>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveTopicOpen(false)}>{t('common_cancel')}</Button>
+            <Button
+              onClick={async () => {
+                if (!activeFlashcardId || topicActionIds.length === 0) return;
+                const fc = flashcards.find((f) => f.id === activeFlashcardId);
+                if (!fc) return;
+                const currentIds = getTopicIds(fc);
+                const newIds = currentIds.filter((id) => !topicActionIds.includes(id));
+                setFlashcards(flashcards.map((f) =>
+                  f.id === activeFlashcardId
+                    ? { ...f, flashcard_topic_assignments: newIds.map((id) => ({ topic_id: id })) }
+                    : f
+                ));
+                try {
+                  const res = await fetch(`/api/v1/flashcards/${activeFlashcardId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topicIds: newIds }),
+                  });
+                  if (!res.ok) throw new Error();
+                  toast.success(t('topic_removed'));
+                } catch {
+                  setFlashcards(initialFlashcards);
+                  toast.error(t('save_failed'));
+                }
+                setRemoveTopicOpen(false);
+                setTopicActionIds([]);
+              }}
+              disabled={topicActionIds.length === 0}
+            >
+              {t('common_remove')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

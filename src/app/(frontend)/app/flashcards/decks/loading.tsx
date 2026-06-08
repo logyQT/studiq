@@ -1,19 +1,10 @@
 import { Skeleton } from '@/components/ui/skeleton';
 
-const GRADIENTS = [
-  'from-violet-400 to-purple-500',
-  'from-blue-400 to-cyan-500',
-  'from-emerald-400 to-teal-500',
-  'from-orange-400 to-amber-500',
-  'from-pink-400 to-rose-500',
-  'from-indigo-400 to-blue-500',
-];
-
-function DeckCardSkeleton({ gradient }: { gradient: string }) {
+function DeckCardSkeleton() {
   return (
     <div className="overflow-hidden rounded-xl border bg-card">
-      <div className={`h-20 bg-gradient-to-br ${gradient} flex items-center justify-center`}>
-        <Skeleton className="h-8 w-8 rounded bg-white/20" />
+      <div className="h-20 bg-gradient-to-br from-gray-300 to-gray-400 dark:from-gray-600 dark:to-gray-700 flex items-center justify-center">
+        <Skeleton className="h-8 w-8 rounded bg-gray-400/30 dark:bg-gray-500/30" />
       </div>
       <div className="p-4 space-y-3">
         <div className="flex items-start justify-between">
@@ -47,8 +38,8 @@ export default function DecksLoading() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {GRADIENTS.map((g, i) => (
-          <DeckCardSkeleton key={i} gradient={g} />
+        {Array.from({ length: 6 }).map((_, i) => (
+          <DeckCardSkeleton key={i} />
         ))}
       </div>
     </div>

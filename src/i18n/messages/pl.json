@@ -506,7 +506,20 @@
     "deck_deleted": "Talia usunięta",
     "deck_delete_title": "Usunąć Talię?",
     "deck_delete_desc": "To trwale usunie talię i wszystkie przypisania fiszek. Tej akcji nie można cofnąć.",
-    "name_required": "Nazwa talii jest wymagana"
+    "name_required": "Nazwa talii jest wymagana",
+    "menu_add_topic": "Dodaj Tematy",
+    "menu_remove_topic": "Usuń Tematy",
+    "menu_view_by_topic": "Zobacz według Tematu",
+    "topic_added": "Temat dodany",
+    "topic_removed": "Temat usunięty",
+    "no_other_topics_to_add": "Brak innych dostępnych tematów",
+    "no_topics_to_remove": "Brak przypisanych tematów do usunięcia",
+    "view_flashcards_for_topic": "{count, plural, one {# fiszka} few {# fiszki} many {# fiszek} other {# fiszek}} z tym tematem",
+    "no_flashcards_for_topic": "Brak fiszek z tym tematem",
+    "add_topic_desc": "Wybierz tematy do dodania do tej fiszki",
+    "remove_topic_desc": "Wybierz tematy do usunięcia z tej fiszki",
+    "common_add": "Dodaj",
+    "common_remove": "Usuń"
   },
   "AppFlashcardTopicsPage": {
     "title": "Menedżer Tematów",
