@@ -36,12 +36,12 @@ export class FlashcardService {
       await supabase.from('flashcard_topic_assignments').insert(assignments);
     }
 
-    if (data.spaceIds && data.spaceIds.length > 0) {
-      const spaceAssignments = data.spaceIds.map((spaceId) => ({
+    if (data.deckIds && data.deckIds.length > 0) {
+      const deckAssignments = data.deckIds.map((deckId) => ({
         flashcard_id: flashcard.id,
-        space_id: spaceId,
+        deck_id: deckId,
       }));
-      await supabase.from('flashcard_space_assignments').insert(spaceAssignments);
+      await supabase.from('flashcard_deck_assignments').insert(deckAssignments);
     }
 
     return flashcard;
@@ -76,26 +76,26 @@ export class FlashcardService {
         await supabase.from('flashcard_topic_assignments').insert(assignments);
       }
 
-      if (data.spaceIds && data.spaceIds.length > 0) {
-        const spaceAssignments = flashcards.flatMap((fc) =>
-          data.spaceIds!.map((spaceId) => ({
+      if (data.deckIds && data.deckIds.length > 0) {
+        const deckAssignments = flashcards.flatMap((fc) =>
+          data.deckIds!.map((deckId) => ({
             flashcard_id: fc.id,
-            space_id: spaceId,
+            deck_id: deckId,
           })),
         );
-        await supabase.from('flashcard_space_assignments').insert(spaceAssignments);
+        await supabase.from('flashcard_deck_assignments').insert(deckAssignments);
       }
     }
 
     return flashcards;
   }
 
-  async list(ctx: RequestContext, filters?: { topicIds?: string[]; spaceIds?: string[] }) {
+  async list(ctx: RequestContext, filters?: { topicIds?: string[]; deckIds?: string[] }) {
     const supabase = await createClient();
 
     let query = supabase
       .from('flashcards')
-      .select('*, flashcard_topic_assignments(topic_id), flashcard_space_assignments(space_id)');
+      .select('*, flashcard_topic_assignments(topic_id), flashcard_deck_assignments(deck_id)');
 
     if (ctx.universityId) {
       query = query.or(`created_by.eq.${ctx.userId},university_id.eq.${ctx.universityId}`);
@@ -116,11 +116,11 @@ export class FlashcardService {
       query = query.in('id', flashcardIds);
     }
 
-    if (filters?.spaceIds && filters.spaceIds.length > 0) {
+    if (filters?.deckIds && filters.deckIds.length > 0) {
       const { data: assignments } = await supabase
-        .from('flashcard_space_assignments')
+        .from('flashcard_deck_assignments')
         .select('flashcard_id')
-        .in('space_id', filters.spaceIds);
+        .in('deck_id', filters.deckIds);
 
       const flashcardIds = [...new Set(assignments?.map((a) => a.flashcard_id) ?? [])];
       if (flashcardIds.length === 0) return [];
@@ -137,7 +137,7 @@ export class FlashcardService {
 
     let query = supabase
       .from('flashcards')
-      .select('*, flashcard_topic_assignments(topic_id), flashcard_space_assignments(space_id)')
+      .select('*, flashcard_topic_assignments(topic_id), flashcard_deck_assignments(deck_id)')
       .eq('id', id);
 
     if (ctx.universityId) {
@@ -181,20 +181,20 @@ export class FlashcardService {
       }
     }
 
-    if (data.spaceIds !== undefined) {
-      await supabase.from('flashcard_space_assignments').delete().eq('flashcard_id', id);
-      if (data.spaceIds.length > 0) {
-        const assignments = data.spaceIds.map((spaceId) => ({
+    if (data.deckIds !== undefined) {
+      await supabase.from('flashcard_deck_assignments').delete().eq('flashcard_id', id);
+      if (data.deckIds.length > 0) {
+        const assignments = data.deckIds.map((deckId) => ({
           flashcard_id: id,
-          space_id: spaceId,
+          deck_id: deckId,
         }));
-        await supabase.from('flashcard_space_assignments').insert(assignments);
+        await supabase.from('flashcard_deck_assignments').insert(assignments);
       }
     }
 
     const { data: updatedFlashcard } = await supabase
       .from('flashcards')
-      .select('*, flashcard_topic_assignments(topic_id), flashcard_space_assignments(space_id)')
+      .select('*, flashcard_topic_assignments(topic_id), flashcard_deck_assignments(deck_id)')
       .eq('id', id)
       .single();
 

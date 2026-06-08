@@ -15,10 +15,10 @@
  *           type: string
  *         description: Comma-separated list of topic IDs to filter by
  *       - in: query
- *         name: spaceIds
+ *         name: deckIds
  *         schema:
  *           type: string
- *         description: Comma-separated list of space IDs to filter by
+ *         description: Comma-separated list of deck IDs to filter by
  *     responses:
  *       200:
  *         description: List of flashcards
@@ -54,7 +54,7 @@
  *                 items:
  *                   type: string
  *                   format: uuid
- *               spaceIds:
+ *               deckIds:
  *                 type: array
  *                 items:
  *                   type: string
@@ -103,7 +103,7 @@
  *                       items:
  *                         type: string
  *                         format: uuid
- *                     spaceIds:
+ *                     deckIds:
  *                       type: array
  *                       items:
  *                         type: string
@@ -135,10 +135,10 @@ export async function GET(req: NextRequest) {
   return withAuth(req, async (ctx) => {
     const { searchParams } = new URL(req.url);
     const topicIds = searchParams.get('topicIds')?.split(',').filter(Boolean);
-    const spaceIds = searchParams.get('spaceIds')?.split(',').filter(Boolean);
-    const filters: { topicIds?: string[]; spaceIds?: string[] } = {};
+    const deckIds = searchParams.get('deckIds')?.split(',').filter(Boolean);
+    const filters: { topicIds?: string[]; deckIds?: string[] } = {};
     if (topicIds && topicIds.length > 0) filters.topicIds = topicIds;
-    if (spaceIds && spaceIds.length > 0) filters.spaceIds = spaceIds;
+    if (deckIds && deckIds.length > 0) filters.deckIds = deckIds;
 
     return toNextResponse(
       await flashcardController.list(ctx, Object.keys(filters).length > 0 ? filters : undefined),

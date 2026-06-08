@@ -56,7 +56,7 @@
  *                 items:
  *                   type: string
  *                   format: uuid
- *               spaceIds:
+ *               deckIds:
  *                 type: array
  *                 items:
  *                   type: string

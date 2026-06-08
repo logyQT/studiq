@@ -7,7 +7,7 @@ export const DueCardsQuerySchema = registry.register(
     topicIds: z
       .string({ error: ValidationErrorCode.INVALID_INPUT })
       .optional(),
-    spaceIds: z
+    deckIds: z
       .string({ error: ValidationErrorCode.INVALID_INPUT })
       .optional(),
     limit: z

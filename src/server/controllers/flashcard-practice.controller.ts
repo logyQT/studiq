@@ -53,7 +53,7 @@ export class FlashcardPracticeController {
 
   async getDueCards(
     ctx: RequestContext,
-    filters: { topicIds?: string[]; spaceIds?: string[] },
+    filters: { topicIds?: string[]; deckIds?: string[] },
     limit: number = 20,
   ): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
@@ -64,7 +64,7 @@ export class FlashcardPracticeController {
 
   async getDueCount(
     ctx: RequestContext,
-    filters: { topicIds?: string[]; spaceIds?: string[] },
+    filters: { topicIds?: string[]; deckIds?: string[] },
   ): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
       const result = await flashcardPracticeService.getDueCount(ctx, filters);

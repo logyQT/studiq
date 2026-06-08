@@ -15,10 +15,10 @@
  *           type: string
  *         description: Comma-separated topic IDs to filter by
  *       - in: query
- *         name: spaceIds
+ *         name: deckIds
  *         schema:
  *           type: string
- *         description: Comma-separated space IDs to filter by
+ *         description: Comma-separated deck IDs to filter by
  *     responses:
  *       200:
  *         description: Due count retrieved
@@ -37,10 +37,10 @@ export async function GET(req: NextRequest) {
   return withAuth(req, async (ctx) => {
     const { searchParams } = new URL(req.url);
     const topicIds = searchParams.get('topicIds')?.split(',').filter(Boolean);
-    const spaceIds = searchParams.get('spaceIds')?.split(',').filter(Boolean);
+    const deckIds = searchParams.get('deckIds')?.split(',').filter(Boolean);
 
     return toNextResponse(
-      await flashcardPracticeController.getDueCount(ctx, { topicIds, spaceIds }),
+      await flashcardPracticeController.getDueCount(ctx, { topicIds, deckIds }),
     );
   });
 }

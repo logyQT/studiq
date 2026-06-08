@@ -1,25 +1,25 @@
 /**
  * @swagger
- * /api/v1/flashcards/spaces:
+ * /api/v1/flashcards/decks:
  *   get:
- *     summary: List flashcard spaces
- *     description: Returns a list of flashcard spaces for the authenticated user.
+ *     summary: List flashcard decks
+ *     description: Returns a list of flashcard decks for the authenticated user.
  *     tags:
- *       - Flashcard Spaces
+ *       - Flashcard Decks
  *     security:
  *       - cookieAuth: []
  *     responses:
  *       200:
- *         description: List of flashcard spaces
+ *         description: List of flashcard decks
  *       401:
  *         description: Unauthorized (no session)
  *       500:
  *         description: Internal server error
  *   post:
- *     summary: Create a flashcard space
- *     description: Creates a new flashcard space. Requires authentication.
+ *     summary: Create a flashcard deck
+ *     description: Creates a new flashcard deck. Requires authentication.
  *     tags:
- *       - Flashcard Spaces
+ *       - Flashcard Decks
  *     security:
  *       - cookieAuth: []
  *     requestBody:
@@ -36,7 +36,7 @@
  *                 minLength: 1
  *     responses:
  *       201:
- *         description: Space created successfully
+ *         description: Deck created successfully
  *       401:
  *         description: Unauthorized (no session)
  *       422:
@@ -46,19 +46,19 @@
  */
 
 import { NextRequest } from 'next/server';
-import { flashcardSpaceController } from '@/server/controllers';
+import { flashcardDeckController } from '@/server/controllers';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
 
 export async function POST(req: NextRequest) {
   return withAuth(req, async (ctx) => {
     const body = await req.json();
-    return toNextResponse(await flashcardSpaceController.create(body, ctx));
+    return toNextResponse(await flashcardDeckController.create(body, ctx));
   });
 }
 
 export async function GET(req: NextRequest) {
   return withAuth(req, async (ctx) => {
-    return toNextResponse(await flashcardSpaceController.list(ctx));
+    return toNextResponse(await flashcardDeckController.list(ctx));
   });
 }

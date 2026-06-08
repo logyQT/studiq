@@ -7,7 +7,7 @@ export * from '@/server/services/subject.service';
 export * from '@/server/services/question.service';
 export * from '@/server/services/flashcard.service';
 export * from '@/server/services/flashcard-topic.service';
-export * from '@/server/services/flashcard-space.service';
+export * from '@/server/services/flashcard-deck.service';
 export * from '@/server/services/flashcard-practice.service';
 export * from '@/server/services/quiz.service';
 export * from '@/server/services/quiz-attempt.service';

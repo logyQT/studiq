@@ -1,24 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { CreateSpaceSchema, UpdateSpaceSchema } from './flashcard-space.model';
+import { CreateDeckSchema, UpdateDeckSchema } from './flashcard-deck.model';
 import { ValidationErrorCode } from '@/lib/validation-errors';
 
-describe('CreateSpaceSchema', () => {
+describe('CreateDeckSchema', () => {
   it('passes with valid input', () => {
-    const result = CreateSpaceSchema.safeParse({ name: 'Study Space' });
+    const result = CreateDeckSchema.safeParse({ name: 'Study Deck' });
     expect(result.success).toBe(true);
   });
 
   it('passes with optional fields', () => {
-    const result = CreateSpaceSchema.safeParse({
-      name: 'Study Space',
-      description: 'A space for studying',
+    const result = CreateDeckSchema.safeParse({
+      name: 'Study Deck',
+      description: 'A deck for studying',
       flashcardIds: ['550e8400-e29b-41d4-a716-446655440000'],
     });
     expect(result.success).toBe(true);
   });
 
   it('fails when name is empty', () => {
-    const result = CreateSpaceSchema.safeParse({ name: '' });
+    const result = CreateDeckSchema.safeParse({ name: '' });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0].message).toBe(ValidationErrorCode.INVALID_INPUT);
@@ -26,27 +26,27 @@ describe('CreateSpaceSchema', () => {
   });
 
   it('fails when flashcardIds contains invalid UUID', () => {
-    const result = CreateSpaceSchema.safeParse({
-      name: 'Study Space',
+    const result = CreateDeckSchema.safeParse({
+      name: 'Study Deck',
       flashcardIds: ['not-a-uuid'],
     });
     expect(result.success).toBe(false);
   });
 });
 
-describe('UpdateSpaceSchema', () => {
+describe('UpdateDeckSchema', () => {
   it('passes with partial input', () => {
-    const result = UpdateSpaceSchema.safeParse({ name: 'Updated Name' });
+    const result = UpdateDeckSchema.safeParse({ name: 'Updated Name' });
     expect(result.success).toBe(true);
   });
 
   it('passes with empty object (all optional)', () => {
-    const result = UpdateSpaceSchema.safeParse({});
+    const result = UpdateDeckSchema.safeParse({});
     expect(result.success).toBe(true);
   });
 
   it('fails when name is empty string', () => {
-    const result = UpdateSpaceSchema.safeParse({ name: '' });
+    const result = UpdateDeckSchema.safeParse({ name: '' });
     expect(result.success).toBe(false);
   });
 });

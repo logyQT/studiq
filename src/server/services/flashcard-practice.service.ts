@@ -101,7 +101,7 @@ export class FlashcardPracticeService {
 
   async getDueCards(
     ctx: RequestContext,
-    filters: { topicIds?: string[]; spaceIds?: string[] },
+    filters: { topicIds?: string[]; deckIds?: string[] },
     limit: number = 20,
   ) {
     const supabase = await createClient();
@@ -172,7 +172,7 @@ export class FlashcardPracticeService {
 
   async getDueCount(
     ctx: RequestContext,
-    filters: { topicIds?: string[]; spaceIds?: string[] },
+    filters: { topicIds?: string[]; deckIds?: string[] },
   ) {
     const supabase = await createClient();
 
@@ -266,7 +266,7 @@ export class FlashcardPracticeService {
 
   private async getMatchingFlashcardIds(
     ctx: RequestContext,
-    filters: { topicIds?: string[]; spaceIds?: string[] },
+    filters: { topicIds?: string[]; deckIds?: string[] },
   ): Promise<string[]> {
     const supabase = await createClient();
 
@@ -291,15 +291,15 @@ export class FlashcardPracticeService {
       query = query.in('id', topicCardIds);
     }
 
-    if (filters.spaceIds && filters.spaceIds.length > 0) {
+    if (filters.deckIds && filters.deckIds.length > 0) {
       const { data: assignments } = await supabase
-        .from('flashcard_space_assignments')
+        .from('flashcard_deck_assignments')
         .select('flashcard_id')
-        .in('space_id', filters.spaceIds);
+        .in('deck_id', filters.deckIds);
 
-      const spaceCardIds = [...new Set(assignments?.map((a) => a.flashcard_id) ?? [])];
-      if (spaceCardIds.length === 0) return [];
-      query = query.in('id', spaceCardIds);
+      const deckCardIds = [...new Set(assignments?.map((a) => a.flashcard_id) ?? [])];
+      if (deckCardIds.length === 0) return [];
+      query = query.in('id', deckCardIds);
     }
 
     const { data, error } = await query;

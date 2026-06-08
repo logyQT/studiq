@@ -122,7 +122,7 @@ export default function AppOverviewPage() {
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
-            <Link href="/app/flashcards/spaces">
+            <Link href="/app/flashcards/decks">
               <Button variant="outline" className="w-full justify-between">
                 <span className="flex items-center gap-2">
                   <FolderOpen className="h-4 w-4" /> {t('manage_decks')}

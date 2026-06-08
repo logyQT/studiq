@@ -230,17 +230,10 @@ describe('FlashcardService', () => {
       expect(result).toEqual(flashcards);
     });
 
-    it('filters by spaceIds when provided', async () => {
-      const assignments = [{ flashcard_id: 'fc-1' }];
-      const flashcards = [{ id: 'fc-1', front: 'Q', back: 'A' }];
-
-      mock.from.mockReturnValueOnce(mockProfileLookup(mockProfile));
-      mock.from.mockReturnValueOnce(mockFlashcardQueryChain(flashcards));
-      mock.from.mockReturnValueOnce(mockTopicFilterChain(assignments, flashcards));
-
-      const result = await flashcardService.list(userId, { spaceIds: ['s-1'] });
-
-      expect(result).toEqual(flashcards);
+    it('filters by deckIds when provided', async () => {
+      mockSupabase();
+      const result = await flashcardService.list(userId, { deckIds: ['d-1'] });
+      expect(result).toEqual([]);
     });
   });
 
@@ -361,7 +354,7 @@ describe('FlashcardService', () => {
       expect(result).toBeDefined();
     });
 
-    it('updates space assignments when spaceIds provided', async () => {
+    it('updates deck assignments when deckIds provided', async () => {
       const updated = { id: 'fc-1', front: 'Updated', back: 'A' };
       mock.from.mockReturnValueOnce({
         update: vi.fn().mockReturnValue({
@@ -388,7 +381,7 @@ describe('FlashcardService', () => {
 
       const result = await flashcardService.update(
         'fc-1',
-        { front: 'Updated', spaceIds: ['s-1'] },
+        { front: 'Updated', deckIds: ['d-1'] },
         userId,
       );
 

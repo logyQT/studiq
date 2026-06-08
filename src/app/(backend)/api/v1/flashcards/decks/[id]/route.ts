@@ -1,11 +1,11 @@
 /**
  * @swagger
- * /api/v1/flashcards/spaces/{id}:
+ * /api/v1/flashcards/decks/{id}:
  *   get:
- *     summary: Get flashcard space by ID
- *     description: Returns a single flashcard space. Only the owner can view.
+ *     summary: Get flashcard deck by ID
+ *     description: Returns a single flashcard deck. Only the owner can view.
  *     tags:
- *       - Flashcard Spaces
+ *       - Flashcard Decks
  *     security:
  *       - cookieAuth: []
  *     parameters:
@@ -15,19 +15,19 @@
  *         schema:
  *           type: string
  *           format: uuid
- *         description: Space ID
+ *         description: Deck ID
  *     responses:
  *       200:
- *         description: Space found
+ *         description: Deck found
  *       401:
  *         description: Unauthorized (no session)
  *       404:
- *         description: Space not found or not owned by user
+ *         description: Deck not found or not owned by user
  *   put:
- *     summary: Update a flashcard space
- *     description: Updates a flashcard space. Only the creator can update.
+ *     summary: Update a flashcard deck
+ *     description: Updates a flashcard deck. Only the creator can update.
  *     tags:
- *       - Flashcard Spaces
+ *       - Flashcard Decks
  *     security:
  *       - cookieAuth: []
  *     parameters:
@@ -37,7 +37,7 @@
  *         schema:
  *           type: string
  *           format: uuid
- *         description: Space ID
+ *         description: Deck ID
  *     requestBody:
  *       required: true
  *       content:
@@ -52,7 +52,7 @@
  *                 minLength: 1
  *     responses:
  *       200:
- *         description: Space updated successfully
+ *         description: Deck updated successfully
  *       401:
  *         description: Unauthorized (no session)
  *       403:
@@ -62,10 +62,10 @@
  *       500:
  *         description: Internal server error
  *   delete:
- *     summary: Delete a flashcard space
- *     description: Deletes a flashcard space. Only the creator can delete.
+ *     summary: Delete a flashcard deck
+ *     description: Deletes a flashcard deck. Only the creator can delete.
  *     tags:
- *       - Flashcard Spaces
+ *       - Flashcard Decks
  *     security:
  *       - cookieAuth: []
  *     parameters:
@@ -75,10 +75,10 @@
  *         schema:
  *           type: string
  *           format: uuid
- *         description: Space ID
+ *         description: Deck ID
  *     responses:
  *       200:
- *         description: Space deleted successfully
+ *         description: Deck deleted successfully
  *       401:
  *         description: Unauthorized (no session)
  *       403:
@@ -88,14 +88,14 @@
  */
 
 import { NextRequest } from 'next/server';
-import { flashcardSpaceController } from '@/server/controllers';
+import { flashcardDeckController } from '@/server/controllers';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(req, async (ctx) => {
     const { id } = await params;
-    return toNextResponse(await flashcardSpaceController.getById(id, ctx));
+    return toNextResponse(await flashcardDeckController.getById(id, ctx));
   });
 }
 
@@ -103,13 +103,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   return withAuth(req, async (ctx) => {
     const { id } = await params;
     const body = await req.json();
-    return toNextResponse(await flashcardSpaceController.update(id, body, ctx));
+    return toNextResponse(await flashcardDeckController.update(id, body, ctx));
   });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(req, async (ctx) => {
     const { id } = await params;
-    return toNextResponse(await flashcardSpaceController.delete(id, ctx));
+    return toNextResponse(await flashcardDeckController.delete(id, ctx));
   });
 }

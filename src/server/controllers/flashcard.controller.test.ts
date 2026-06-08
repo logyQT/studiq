@@ -65,11 +65,11 @@ describe('FlashcardController', () => {
     it('passes filters and userId to service', async () => {
       mockService.list.mockResolvedValueOnce([]);
 
-      await flashcardController.list(userId, { topicIds: ['t-1'], spaceIds: ['s-1'] });
+      await flashcardController.list(userId, { topicIds: ['t-1'], deckIds: ['d-1'] });
 
       expect(mockService.list).toHaveBeenCalledWith(userId, {
         topicIds: ['t-1'],
-        spaceIds: ['s-1'],
+        deckIds: ['d-1'],
       });
     });
 

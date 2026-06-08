@@ -1,29 +1,29 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { POST, GET } from '@/app/(backend)/api/v1/flashcards/spaces/route';
+import { POST, GET } from '@/app/(backend)/api/v1/flashcards/decks/route';
 import {
   GET as getById,
   PUT as update,
   DELETE as deleteFn,
-} from '@/app/(backend)/api/v1/flashcards/spaces/[id]/route';
-import { TEST_USERS, mockUser, cleanupFlashcardSpaces, createServiceClient } from './helpers';
+} from '@/app/(backend)/api/v1/flashcards/decks/[id]/route';
+import { TEST_USERS, mockUser, cleanupFlashcardDecks, createServiceClient } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
-describe('Flashcard Spaces Integration', () => {
+describe('Flashcard Decks Integration', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     for (const user of Object.values(TEST_USERS)) {
-      await cleanupFlashcardSpaces(user.id, 'space-');
+      await cleanupFlashcardDecks(user.id, 'deck-');
     }
   });
 
-  describe('POST /api/v1/flashcards/spaces', () => {
-    it('creates a space and returns 201', async () => {
+  describe('POST /api/v1/flashcards/decks', () => {
+    it('creates a deck and returns 201', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcards/spaces', {
+      const req = createNextRequest('http://localhost/api/v1/flashcards/decks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'space-Study Space' }),
+        body: JSON.stringify({ name: 'deck-Study Deck' }),
       });
 
       const response = await POST(req);
@@ -31,13 +31,13 @@ describe('Flashcard Spaces Integration', () => {
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
-      expect(body.data.name).toBe('space-Study Space');
+      expect(body.data.name).toBe('deck-Study Deck');
     });
 
     it('returns 422 when name is empty', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcards/spaces', {
+      const req = createNextRequest('http://localhost/api/v1/flashcards/decks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: '' }),
@@ -53,10 +53,10 @@ describe('Flashcard Spaces Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = createNextRequest('http://localhost/api/v1/flashcards/spaces', {
+      const req = createNextRequest('http://localhost/api/v1/flashcards/decks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'space-Study Space' }),
+        body: JSON.stringify({ name: 'deck-Study Deck' }),
       });
 
       const response = await POST(req);
@@ -67,8 +67,8 @@ describe('Flashcard Spaces Integration', () => {
     });
   });
 
-  describe('GET /api/v1/flashcards/spaces', () => {
-    it('lists spaces for user', async () => {
+  describe('GET /api/v1/flashcards/decks', () => {
+    it('lists decks for user', async () => {
       mockUser(TEST_USERS.TEACHER);
 
       const response = await GET();
@@ -89,41 +89,41 @@ describe('Flashcard Spaces Integration', () => {
     });
   });
 
-  describe('GET /api/v1/flashcards/spaces/:id', () => {
-    it('returns space when found and owned by user', async () => {
+  describe('GET /api/v1/flashcards/decks/:id', () => {
+    it('returns deck when found and owned by user', async () => {
       mockUser(TEST_USERS.TEACHER);
 
       const supabase = createServiceClient();
-      const { data: space } = await supabase
-        .from('flashcard_spaces')
-        .insert({ name: 'space-Get Me', created_by: TEST_USERS.TEACHER.id })
+      const { data: deck } = await supabase
+        .from('flashcard_decks')
+        .insert({ name: 'deck-Get Me', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/spaces/${space.id}`,
-        { id: space.id },
+        `http://localhost/api/v1/flashcards/decks/${deck.id}`,
+        { id: deck.id },
       );
       const response = await getById(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.data.name).toBe('space-Get Me');
+      expect(body.data.name).toBe('deck-Get Me');
     });
 
-    it('returns 404 for another user space', async () => {
+    it('returns 404 for another user deck', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
       const supabase = createServiceClient();
-      const { data: space } = await supabase
-        .from('flashcard_spaces')
-        .insert({ name: 'space-Teacher Space', created_by: TEST_USERS.TEACHER.id })
+      const { data: deck } = await supabase
+        .from('flashcard_decks')
+        .insert({ name: 'deck-Teacher Deck', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/spaces/${space.id}`,
-        { id: space.id },
+        `http://localhost/api/v1/flashcards/decks/${deck.id}`,
+        { id: deck.id },
       );
       const response = await getById(request, { params });
       const body = await response.json();
@@ -133,21 +133,21 @@ describe('Flashcard Spaces Integration', () => {
     });
   });
 
-  describe('PUT /api/v1/flashcards/spaces/:id', () => {
-    it('updates own space and returns 200', async () => {
+  describe('PUT /api/v1/flashcards/decks/:id', () => {
+    it('updates own deck and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
       const supabase = createServiceClient();
-      const { data: space, error: insertError } = await supabase
-        .from('flashcard_spaces')
-        .insert({ name: 'space-Original', created_by: TEST_USERS.TEACHER.id })
+      const { data: deck, error: insertError } = await supabase
+        .from('flashcard_decks')
+        .insert({ name: 'deck-Original', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
-      if (insertError || !space) throw new Error(`Failed to create space: ${insertError?.message}`);
+      if (insertError || !deck) throw new Error(`Failed to create deck: ${insertError?.message}`);
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/spaces/${space.id}`,
-        { id: space.id },
+        `http://localhost/api/v1/flashcards/decks/${deck.id}`,
+        { id: deck.id },
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -161,19 +161,19 @@ describe('Flashcard Spaces Integration', () => {
       expect(body.data.name).toBe('Updated');
     });
 
-    it('returns 403 when updating another user space', async () => {
+    it('returns 403 when updating another user deck', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
       const supabase = createServiceClient();
-      const { data: space } = await supabase
-        .from('flashcard_spaces')
-        .insert({ name: 'space-Teacher Space', created_by: TEST_USERS.TEACHER.id })
+      const { data: deck } = await supabase
+        .from('flashcard_decks')
+        .insert({ name: 'deck-Teacher Deck', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/spaces/${space.id}`,
-        { id: space.id },
+        `http://localhost/api/v1/flashcards/decks/${deck.id}`,
+        { id: deck.id },
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -188,21 +188,21 @@ describe('Flashcard Spaces Integration', () => {
     });
   });
 
-  describe('DELETE /api/v1/flashcards/spaces/:id', () => {
-    it('deletes own space and returns 200', async () => {
+  describe('DELETE /api/v1/flashcards/decks/:id', () => {
+    it('deletes own deck and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
       const supabase = createServiceClient();
-      const { data: space, error: insertError } = await supabase
-        .from('flashcard_spaces')
-        .insert({ name: 'space-To Delete', created_by: TEST_USERS.TEACHER.id })
+      const { data: deck, error: insertError } = await supabase
+        .from('flashcard_decks')
+        .insert({ name: 'deck-To Delete', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
-      if (insertError || !space) throw new Error(`Failed to create space: ${insertError?.message}`);
+      if (insertError || !deck) throw new Error(`Failed to create deck: ${insertError?.message}`);
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/spaces/${space.id}`,
-        { id: space.id },
+        `http://localhost/api/v1/flashcards/decks/${deck.id}`,
+        { id: deck.id },
         { method: 'DELETE' },
       );
       const response = await deleteFn(request, { params });
@@ -212,19 +212,19 @@ describe('Flashcard Spaces Integration', () => {
       expect(body.success).toBe(true);
     });
 
-    it('returns 403 when deleting another user space', async () => {
+    it('returns 403 when deleting another user deck', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
       const supabase = createServiceClient();
-      const { data: space } = await supabase
-        .from('flashcard_spaces')
-        .insert({ name: 'space-Teacher Space', created_by: TEST_USERS.TEACHER.id })
+      const { data: deck } = await supabase
+        .from('flashcard_decks')
+        .insert({ name: 'deck-Teacher Deck', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/spaces/${space.id}`,
-        { id: space.id },
+        `http://localhost/api/v1/flashcards/decks/${deck.id}`,
+        { id: deck.id },
         { method: 'DELETE' },
       );
       const response = await deleteFn(request, { params });

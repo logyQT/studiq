@@ -49,9 +49,9 @@ export default function FlashcardSessionPage() {
   const targetCount = parseInt(searchParams.get('target') || '10');
   const effectiveBatchSize = isQuick ? parseInt(searchParams.get('limit') || '5', 10) : BATCH_SIZE;
   const topicsStr = searchParams.get('topics');
-  const spacesStr = searchParams.get('spaces');
+  const decksStr = searchParams.get('decks');
   const topicIds = useMemo(() => topicsStr?.split(',').filter(Boolean) ?? [], [topicsStr]);
-  const spaceIds = useMemo(() => spacesStr?.split(',').filter(Boolean) ?? [], [spacesStr]);
+  const deckIds = useMemo(() => decksStr?.split(',').filter(Boolean) ?? [], [decksStr]);
 
   const sessionIdRef = useRef<string>('');
   const processingRef = useRef(false);
@@ -73,10 +73,10 @@ export default function FlashcardSessionPage() {
   const buildDueParams = useCallback(() => {
     const params = new URLSearchParams();
     if (topicIds.length > 0) params.set('topicIds', topicIds.join(','));
-    if (spaceIds.length > 0) params.set('spaceIds', spaceIds.join(','));
+    if (deckIds.length > 0) params.set('deckIds', deckIds.join(','));
     params.set('limit', String(effectiveBatchSize));
     return params.toString();
-  }, [topicIds, spaceIds, effectiveBatchSize]);
+  }, [topicIds, deckIds, effectiveBatchSize]);
 
   const fetchDueCards = useCallback(async (): Promise<Flashcard[]> => {
     try {
@@ -95,7 +95,7 @@ export default function FlashcardSessionPage() {
   }, [buildDueParams]);
 
   useEffect(() => {
-    if (!isQuick && topicIds.length === 0 && spaceIds.length === 0) {
+    if (!isQuick && topicIds.length === 0 && deckIds.length === 0) {
       router.push('/app/flashcards');
       return;
     }
@@ -110,7 +110,7 @@ export default function FlashcardSessionPage() {
       setHasMore(cards.length >= effectiveBatchSize && !isQuick);
       setLoading(false);
     });
-  }, [topicIds, spaceIds, router, t, fetchDueCards, isQuick, effectiveBatchSize]);
+  }, [topicIds, deckIds, router, t, fetchDueCards, isQuick, effectiveBatchSize]);
 
   const refillQueue = useCallback(async () => {
     if (!hasMore) return;

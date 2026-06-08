@@ -15,10 +15,10 @@
  *           type: string
  *         description: Comma-separated topic IDs to filter by
  *       - in: query
- *         name: spaceIds
+ *         name: deckIds
  *         schema:
  *           type: string
- *         description: Comma-separated space IDs to filter by
+ *         description: Comma-separated deck IDs to filter by
  *       - in: query
  *         name: limit
  *         schema:
@@ -43,11 +43,11 @@ export async function GET(req: NextRequest) {
   return withAuth(req, async (ctx) => {
     const { searchParams } = new URL(req.url);
     const topicIds = searchParams.get('topicIds')?.split(',').filter(Boolean);
-    const spaceIds = searchParams.get('spaceIds')?.split(',').filter(Boolean);
+    const deckIds = searchParams.get('deckIds')?.split(',').filter(Boolean);
     const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '20', 10) || 20, 1), 100);
 
     return toNextResponse(
-      await flashcardPracticeController.getDueCards(ctx, { topicIds, spaceIds }, limit),
+      await flashcardPracticeController.getDueCards(ctx, { topicIds, deckIds }, limit),
     );
   });
 }

@@ -17,7 +17,7 @@ interface Topic {
   flashcard_count: number;
 }
 
-interface Space {
+interface Deck {
   id: string;
   name: string;
   description: string | null;
@@ -26,27 +26,27 @@ interface Space {
 
 interface FlashcardsClientProps {
   topics: Topic[];
-  spaces: Space[];
+  decks: Deck[];
 }
 
-export default function FlashcardsClient({ topics, spaces }: FlashcardsClientProps) {
+export default function FlashcardsClient({ topics, decks }: FlashcardsClientProps) {
   const t = useTranslations('AppFlashcardsClient');
   const router = useRouter();
 
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
-  const [selectedSpaces, setSelectedSpaces] = useState<string[]>([]);
+  const [selectedDecks, setSelectedDecks] = useState<string[]>([]);
   const [mode, setMode] = useState<'endless' | 'limited'>('endless');
   const [targetCount, setTargetCount] = useState(10);
   const [dueCount, setDueCount] = useState<number | null>(null);
 
-  const fetchDueCount = useCallback(async (topicIds: string[], spaceIds: string[]) => {
-    if (topicIds.length === 0 && spaceIds.length === 0) {
+  const fetchDueCount = useCallback(async (topicIds: string[], deckIds: string[]) => {
+    if (topicIds.length === 0 && deckIds.length === 0) {
       setDueCount(null);
       return;
     }
     const params = new URLSearchParams();
     if (topicIds.length > 0) params.set('topicIds', topicIds.join(','));
-    if (spaceIds.length > 0) params.set('spaceIds', spaceIds.join(','));
+    if (deckIds.length > 0) params.set('deckIds', deckIds.join(','));
     try {
       const res = await fetch(`/api/v1/flashcards/practice/due/count?${params.toString()}`);
       if (res.ok) {
@@ -59,23 +59,23 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
   }, []);
 
   useEffect(() => {
-    fetchDueCount(selectedTopics, selectedSpaces);
-  }, [selectedTopics, selectedSpaces, fetchDueCount]);
+    fetchDueCount(selectedTopics, selectedDecks);
+  }, [selectedTopics, selectedDecks, fetchDueCount]);
 
   function toggleTopic(id: string) {
     setSelectedTopics((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
   }
 
-  function toggleSpace(id: string) {
-    setSelectedSpaces((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+  function toggleDeck(id: string) {
+    setSelectedDecks((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]));
   }
 
   function startSession() {
-    if (selectedTopics.length === 0 && selectedSpaces.length === 0) return;
+    if (selectedTopics.length === 0 && selectedDecks.length === 0) return;
 
     const params = new URLSearchParams();
     if (selectedTopics.length > 0) params.set('topics', selectedTopics.join(','));
-    if (selectedSpaces.length > 0) params.set('spaces', selectedSpaces.join(','));
+    if (selectedDecks.length > 0) params.set('decks', selectedDecks.join(','));
     params.set('mode', mode);
     if (mode === 'limited') params.set('target', String(targetCount));
 
@@ -86,17 +86,17 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
     topics
       .filter((t) => selectedTopics.includes(t.id))
       .reduce((sum, t) => sum + t.flashcard_count, 0) +
-    spaces
-      .filter((s) => selectedSpaces.includes(s.id))
-      .reduce((sum, s) => sum + s.flashcard_count, 0);
+    decks
+      .filter((d) => selectedDecks.includes(d.id))
+      .reduce((sum, d) => sum + d.flashcard_count, 0);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">{t('title')}</h2>
-        <Link href="/app/flashcards/spaces">
+        <Link href="/app/flashcards/decks">
           <Button variant="outline">
-            <FolderOpen className="mr-2 h-4 w-4" /> {t('manage_spaces')}
+            <FolderOpen className="mr-2 h-4 w-4" /> {t('manage_decks')}
           </Button>
         </Link>
       </div>
@@ -135,27 +135,27 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <FolderOpen className="h-5 w-5" /> {t('spaces_title')}
+              <FolderOpen className="h-5 w-5" /> {t('decks_title')}
             </CardTitle>
-            <CardDescription>{t('spaces_desc')}</CardDescription>
+            <CardDescription>{t('decks_desc')}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2 max-h-64 overflow-y-auto">
-              {spaces.map((space) => (
-                <div key={space.id} className="flex items-center gap-3 p-3 rounded-lg border">
+              {decks.map((deck) => (
+                <div key={deck.id} className="flex items-center gap-3 p-3 rounded-lg border">
                   <Checkbox
-                    checked={selectedSpaces.includes(space.id)}
-                    onCheckedChange={() => toggleSpace(space.id)}
+                    checked={selectedDecks.includes(deck.id)}
+                    onCheckedChange={() => toggleDeck(deck.id)}
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">{space.name}</p>
-                    <p className="text-xs text-muted-foreground">{t('cards_count', { count: space.flashcard_count })}</p>
+                    <p className="text-sm font-medium">{deck.name}</p>
+                    <p className="text-xs text-muted-foreground">{t('cards_count', { count: deck.flashcard_count })}</p>
                   </div>
                 </div>
               ))}
-              {spaces.length === 0 && (
+              {decks.length === 0 && (
                 <p className="text-center py-4 text-muted-foreground text-sm">
-                  {t('no_spaces')}
+                  {t('no_decks')}
                 </p>
               )}
             </div>
@@ -208,7 +208,7 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
 
           <div className="flex items-center justify-between pt-2">
             <div className="text-sm text-muted-foreground">
-              {selectedTopics.length + selectedSpaces.length === 0 ? (
+              {selectedTopics.length + selectedDecks.length === 0 ? (
                 t('select_to_start')
               ) : (
                 <>
@@ -223,7 +223,7 @@ export default function FlashcardsClient({ topics, spaces }: FlashcardsClientPro
             </div>
             <Button
               onClick={startSession}
-              disabled={selectedTopics.length === 0 && selectedSpaces.length === 0}
+              disabled={selectedTopics.length === 0 && selectedDecks.length === 0}
             >
               <Play className="mr-2 h-4 w-4" /> {t('start_practice')}
             </Button>

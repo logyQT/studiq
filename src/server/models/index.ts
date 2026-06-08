@@ -6,7 +6,7 @@ export * from '@/server/models/subject.model';
 export * from '@/server/models/question.model';
 export * from '@/server/models/flashcard.model';
 export * from '@/server/models/flashcard-topic.model';
-export * from '@/server/models/flashcard-space.model';
+export * from '@/server/models/flashcard-deck.model';
 export * from '@/server/models/flashcard-practice.model';
 export * from '@/server/models/quiz.model';
 export * from '@/server/models/quiz-attempt.model';

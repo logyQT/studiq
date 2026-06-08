@@ -1,13 +1,13 @@
-import { flashcardSpaceService } from '@/server/services';
-import { CreateSpaceSchema, UpdateSpaceSchema } from '@/server/models';
+import { flashcardDeckService } from '@/server/services';
+import { CreateDeckSchema, UpdateDeckSchema } from '@/server/models';
 import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
 import type { RequestContext } from '@/lib/request-context';
 
-export class FlashcardSpaceController {
+export class FlashcardDeckController {
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const parsed = CreateSpaceSchema.safeParse(body);
+      const parsed = CreateDeckSchema.safeParse(body);
 
       if (!parsed.success) {
         return {
@@ -18,31 +18,31 @@ export class FlashcardSpaceController {
         };
       }
 
-      const space = await flashcardSpaceService.create(parsed.data, ctx);
+      const deck = await flashcardDeckService.create(parsed.data, ctx);
 
-      return { success: true, statusCode: 201, data: space };
+      return { success: true, statusCode: 201, data: deck };
     }, ctx);
   }
 
   async list(ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const spaces = await flashcardSpaceService.list(ctx);
+      const decks = await flashcardDeckService.list(ctx);
 
-      return { success: true, statusCode: 200, data: spaces };
+      return { success: true, statusCode: 200, data: decks };
     }, ctx);
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const space = await flashcardSpaceService.getById(id, ctx);
+      const deck = await flashcardDeckService.getById(id, ctx);
 
-      return { success: true, statusCode: 200, data: space };
+      return { success: true, statusCode: 200, data: deck };
     }, ctx);
   }
 
   async update(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const parsed = UpdateSpaceSchema.safeParse(body);
+      const parsed = UpdateDeckSchema.safeParse(body);
 
       if (!parsed.success) {
         return {
@@ -53,19 +53,19 @@ export class FlashcardSpaceController {
         };
       }
 
-      const space = await flashcardSpaceService.update(id, parsed.data, ctx);
+      const deck = await flashcardDeckService.update(id, parsed.data, ctx);
 
-      return { success: true, statusCode: 200, data: space };
+      return { success: true, statusCode: 200, data: deck };
     }, ctx);
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      await flashcardSpaceService.delete(id, ctx);
+      await flashcardDeckService.delete(id, ctx);
 
       return { success: true, statusCode: 200, data: { success: true } };
     }, ctx);
   }
 }
 
-export const flashcardSpaceController = new FlashcardSpaceController();
+export const flashcardDeckController = new FlashcardDeckController();

@@ -37,21 +37,21 @@ interface Flashcard {
   back: string;
 }
 
-interface Space {
+interface Deck {
   id: string;
   name: string;
   description: string | null;
   flashcard_count: number;
-  flashcard_space_assignments: Array<{ flashcard_id: string }>;
+  flashcard_deck_assignments: Array<{ flashcard_id: string }>;
 }
 
-export default function FlashcardSpacesPage() {
-  const t = useTranslations('AppFlashcardSpacesPage');
-  const [spaces, setSpaces] = useState<Space[]>([]);
+export default function FlashcardDecksPage() {
+  const t = useTranslations('AppFlashcardDecksPage');
+  const [decks, setDecks] = useState<Deck[]>([]);
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<Space | null>(null);
+  const [editing, setEditing] = useState<Deck | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -61,7 +61,7 @@ export default function FlashcardSpacesPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/v1/flashcards/spaces').then(async (r) => {
+      fetch('/api/v1/flashcards/decks').then(async (r) => {
         if (!r.ok) return [];
         const body = await r.json();
         return body.data ?? [];
@@ -72,13 +72,13 @@ export default function FlashcardSpacesPage() {
         return body.data ?? [];
       }),
     ])
-      .then(([s, f]) => {
-        setSpaces(s);
+      .then(([d, f]) => {
+        setDecks(d);
         setFlashcards(f);
         setLoading(false);
       })
       .catch(() => {
-        setSpaces([]);
+        setDecks([]);
         setFlashcards([]);
         setLoading(false);
       });
@@ -94,12 +94,12 @@ export default function FlashcardSpacesPage() {
     setDialogOpen(true);
   }
 
-  function openEdit(space: Space) {
-    setEditing(space);
+  function openEdit(deck: Deck) {
+    setEditing(deck);
     setFormData({
-      name: space.name,
-      description: space.description || '',
-      flashcardIds: space.flashcard_space_assignments?.map((a) => a.flashcard_id) ?? [],
+      name: deck.name,
+      description: deck.description || '',
+      flashcardIds: deck.flashcard_deck_assignments?.map((a) => a.flashcard_id) ?? [],
     });
     setDialogOpen(true);
   }
@@ -119,7 +119,7 @@ export default function FlashcardSpacesPage() {
       return;
     }
     try {
-      const url = editing ? `/api/v1/flashcards/spaces/${editing.id}` : '/api/v1/flashcards/spaces';
+      const url = editing ? `/api/v1/flashcards/decks/${editing.id}` : '/api/v1/flashcards/decks';
       const method = editing ? 'PUT' : 'POST';
       const payload = {
         name: formData.name,
@@ -135,13 +135,13 @@ export default function FlashcardSpacesPage() {
       const body = await res.json();
       const result = body.data ?? body;
       if (editing) {
-        setSpaces(spaces.map((s) => (s.id === result.id ? result : s)));
+        setDecks(decks.map((d) => (d.id === result.id ? result : d)));
       } else {
-        setSpaces([{ ...result, flashcard_count: formData.flashcardIds.length }, ...spaces]);
+        setDecks([{ ...result, flashcard_count: formData.flashcardIds.length }, ...decks]);
       }
       setDialogOpen(false);
       resetForm();
-      toast.success(editing ? t('space_updated') : t('space_created'));
+      toast.success(editing ? t('deck_updated') : t('deck_created'));
     } catch {
       toast.error(t('save_failed'));
     }
@@ -150,10 +150,10 @@ export default function FlashcardSpacesPage() {
   async function handleDelete() {
     if (!deleteId) return;
     try {
-      const res = await fetch(`/api/v1/flashcards/spaces/${deleteId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/v1/flashcards/decks/${deleteId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
-      setSpaces(spaces.filter((s) => s.id !== deleteId));
-      toast.success(t('space_deleted'));
+      setDecks(decks.filter((d) => d.id !== deleteId));
+      toast.success(t('deck_deleted'));
     } catch {
       toast.error(t('delete_failed'));
     }
@@ -174,19 +174,19 @@ export default function FlashcardSpacesPage() {
           <h2 className="text-2xl font-bold">{t('title')}</h2>
         </div>
         <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" /> {t('new_space')}
+          <Plus className="mr-2 h-4 w-4" /> {t('new_deck')}
         </Button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {spaces.map((space) => (
-          <Card key={space.id} className="group">
+        {decks.map((deck) => (
+          <Card key={deck.id} className="group">
             <CardHeader>
               <div className="flex items-start justify-between">
                 <div className="min-w-0">
-                  <CardTitle className="text-lg truncate">{space.name}</CardTitle>
-                  {space.description && (
-                    <CardDescription className="line-clamp-2">{space.description}</CardDescription>
+                  <CardTitle className="text-lg truncate">{deck.name}</CardTitle>
+                  {deck.description && (
+                    <CardDescription className="line-clamp-2">{deck.description}</CardDescription>
                   )}
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
@@ -195,7 +195,7 @@ export default function FlashcardSpacesPage() {
                     size="icon"
                     className="h-7 w-7"
                     aria-label="Edit"
-                    onClick={() => openEdit(space)}
+                    onClick={() => openEdit(deck)}
                   >
                     <Pencil className="h-3 w-3" />
                   </Button>
@@ -204,7 +204,7 @@ export default function FlashcardSpacesPage() {
                     size="icon"
                     className="h-7 w-7"
                     aria-label="Delete"
-                    onClick={() => setDeleteId(space.id)}
+                    onClick={() => setDeleteId(deck.id)}
                   >
                     <Trash2 className="h-3 w-3 text-destructive" />
                   </Button>
@@ -212,13 +212,13 @@ export default function FlashcardSpacesPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <Badge variant="secondary">{t('flashcards_count', { count: space.flashcard_count })}</Badge>
+              <Badge variant="secondary">{t('flashcards_count', { count: deck.flashcard_count })}</Badge>
             </CardContent>
           </Card>
         ))}
-        {spaces.length === 0 && (
+        {decks.length === 0 && (
           <div className="col-span-full text-center py-12 text-muted-foreground">
-            {t('no_spaces')}
+            {t('no_decks')}
           </div>
         )}
       </div>
@@ -226,25 +226,25 @@ export default function FlashcardSpacesPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editing ? t('edit_title') : t('new_space_title')}</DialogTitle>
+            <DialogTitle>{editing ? t('edit_title') : t('new_deck_title')}</DialogTitle>
             <DialogDescription>
-              {editing ? t('edit_desc') : t('new_space_desc')}
+              {editing ? t('edit_desc') : t('new_deck_desc')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="space-name">{t('name_label')}</Label>
+              <Label htmlFor="deck-name">{t('name_label')}</Label>
               <Input
-                id="space-name"
+                id="deck-name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder={t('name_placeholder')}
               />
             </div>
             <div>
-              <Label htmlFor="space-description">{t('description_label')}</Label>
+              <Label htmlFor="deck-description">{t('description_label')}</Label>
               <Textarea
-                id="space-description"
+                id="deck-description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder={t('description_placeholder')}

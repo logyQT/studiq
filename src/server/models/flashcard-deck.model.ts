@@ -1,8 +1,8 @@
 import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
 
-export const CreateSpaceSchema = registry.register(
-  'CreateFlashcardSpaceRequest',
+export const CreateDeckSchema = registry.register(
+  'CreateFlashcardDeckRequest',
   z.object({
     name: z
       .string({ error: ValidationErrorCode.REQUIRED })
@@ -14,8 +14,8 @@ export const CreateSpaceSchema = registry.register(
   }),
 );
 
-export const UpdateSpaceSchema = registry.register(
-  'UpdateFlashcardSpaceRequest',
+export const UpdateDeckSchema = registry.register(
+  'UpdateFlashcardDeckRequest',
   z.object({
     name: z
       .string({ error: ValidationErrorCode.REQUIRED })
@@ -28,5 +28,5 @@ export const UpdateSpaceSchema = registry.register(
   }),
 );
 
-export type CreateSpaceInput = z.infer<typeof CreateSpaceSchema>;
-export type UpdateSpaceInput = z.infer<typeof UpdateSpaceSchema>;
+export type CreateDeckInput = z.infer<typeof CreateDeckSchema>;
+export type UpdateDeckInput = z.infer<typeof UpdateDeckSchema>;
