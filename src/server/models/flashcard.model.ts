@@ -66,3 +66,20 @@ export const UpdateFlashcardSchema = registry.register(
 export type CreateFlashcardInput = z.infer<typeof CreateFlashcardSchema>;
 export type BulkCreateFlashcardsInput = z.infer<typeof BulkCreateFlashcardsSchema>;
 export type UpdateFlashcardInput = z.infer<typeof UpdateFlashcardSchema>;
+
+export const LinkFlashcardSchema = registry.register(
+  'LinkFlashcardRequest',
+  z.object({
+    deckIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+  }),
+);
+
+export const CopyFlashcardSchema = registry.register(
+  'CopyFlashcardRequest',
+  z.object({
+    targetDeckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
+  }),
+);
+
+export type LinkFlashcardInput = z.infer<typeof LinkFlashcardSchema>;
+export type CopyFlashcardInput = z.infer<typeof CopyFlashcardSchema>;

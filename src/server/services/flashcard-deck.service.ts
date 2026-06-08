@@ -14,7 +14,7 @@ export class FlashcardDeckService {
         name: data.name,
         description: data.description ?? null,
         created_by: ctx.userId,
-        university_id: ctx.universityId,
+        // university_id: ctx.universityId,
       })
       .select()
       .single();

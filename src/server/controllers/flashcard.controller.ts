@@ -3,6 +3,8 @@ import {
   CreateFlashcardSchema,
   BulkCreateFlashcardsSchema,
   UpdateFlashcardSchema,
+  LinkFlashcardSchema,
+  CopyFlashcardSchema,
 } from '@/server/models';
 import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
@@ -90,6 +92,44 @@ export class FlashcardController {
       await flashcardService.delete(id, ctx);
 
       return { success: true, statusCode: 200, data: { success: true } };
+    }, ctx);
+  }
+
+  async link(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = LinkFlashcardSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const flashcard = await flashcardService.link(id, parsed.data, ctx);
+
+      return { success: true, statusCode: 200, data: flashcard };
+    }, ctx);
+  }
+
+  async copy(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = CopyFlashcardSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const flashcard = await flashcardService.copy(id, parsed.data, ctx);
+
+      return { success: true, statusCode: 201, data: flashcard };
     }, ctx);
   }
 }

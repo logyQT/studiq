@@ -4,6 +4,8 @@ import type {
   CreateFlashcardInput,
   BulkCreateFlashcardsInput,
   UpdateFlashcardInput,
+  LinkFlashcardInput,
+  CopyFlashcardInput,
 } from '@/server/models';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
@@ -36,12 +38,11 @@ export class FlashcardService {
       await supabase.from('flashcard_topic_assignments').insert(assignments);
     }
 
-    if (data.deckIds && data.deckIds.length > 0) {
-      const deckAssignments = data.deckIds.map((deckId) => ({
+    if (data.deckId) {
+      await supabase.from('flashcard_deck_assignments').insert({
         flashcard_id: flashcard.id,
-        deck_id: deckId,
-      }));
-      await supabase.from('flashcard_deck_assignments').insert(deckAssignments);
+        deck_id: data.deckId,
+      });
     }
 
     return flashcard;
@@ -215,6 +216,114 @@ export class FlashcardService {
 
     if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
     if (!data) throw new AppError('FORBIDDEN');
+  }
+
+  async link(id: string, data: LinkFlashcardInput, ctx: RequestContext) {
+    const supabase = await createClient();
+
+    const { data: flashcard, error: fetchError } = await supabase
+      .from('flashcards')
+      .select()
+      .eq('id', id)
+      .eq('created_by', ctx.userId)
+      .single();
+
+    if (fetchError && fetchError.code !== 'PGRST116') throw mapSupabaseError(fetchError);
+    if (!flashcard) throw new AppError('FORBIDDEN');
+
+    const assignments = data.deckIds.map((deckId) => ({
+      flashcard_id: id,
+      deck_id: deckId,
+    }));
+
+    const { error: insertError } = await supabase
+      .from('flashcard_deck_assignments')
+      .upsert(assignments, { onConflict: 'flashcard_id,deck_id', ignoreDuplicates: true });
+
+    if (insertError) throw mapSupabaseError(insertError);
+
+    const { data: updatedFlashcard } = await supabase
+      .from('flashcards')
+      .select('*, flashcard_topic_assignments(topic_id), flashcard_deck_assignments(deck_id)')
+      .eq('id', id)
+      .single();
+
+    if (!updatedFlashcard) throw new AppError('NOT_FOUND');
+    return updatedFlashcard;
+  }
+
+  async copy(id: string, data: CopyFlashcardInput, ctx: RequestContext) {
+    const supabase = await createClient();
+
+    const { data: original, error: fetchError } = await supabase
+      .from('flashcards')
+      .select()
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !original) throw new AppError('NOT_FOUND');
+
+    if (ctx.universityId) {
+      const isAccessible =
+        original.created_by === ctx.userId || original.university_id === ctx.universityId;
+      if (!isAccessible) throw new AppError('FORBIDDEN');
+    } else {
+      if (original.created_by !== ctx.userId) throw new AppError('FORBIDDEN');
+    }
+
+    const { data: deck, error: deckError } = await supabase
+      .from('flashcard_decks')
+      .select('id')
+      .eq('id', data.targetDeckId)
+      .eq('created_by', ctx.userId)
+      .single();
+
+    if (deckError || !deck) throw new AppError('FORBIDDEN');
+
+    const universityId = ctx.role === UserRole.TEACHER ? ctx.universityId : null;
+
+    const { data: newFlashcard, error: insertError } = await supabase
+      .from('flashcards')
+      .insert({
+        front: original.front,
+        back: original.back,
+        created_by: ctx.userId,
+        university_id: universityId,
+      })
+      .select()
+      .single();
+
+    if (insertError) throw mapSupabaseError(insertError);
+    if (!newFlashcard) throw new AppError('NOT_FOUND');
+
+    const { data: topicAssignments, error: topicFetchError } = await supabase
+      .from('flashcard_topic_assignments')
+      .select('topic_id')
+      .eq('flashcard_id', id);
+
+    if (topicFetchError) throw mapSupabaseError(topicFetchError);
+
+    if (topicAssignments && topicAssignments.length > 0) {
+      const newTopicAssignments = topicAssignments.map((a) => ({
+        flashcard_id: newFlashcard.id,
+        topic_id: a.topic_id,
+      }));
+      await supabase.from('flashcard_topic_assignments').insert(newTopicAssignments);
+    }
+
+    await supabase.from('flashcard_deck_assignments').insert({
+      flashcard_id: newFlashcard.id,
+      deck_id: data.targetDeckId,
+    });
+
+    const { data: resultFlashcard } = await supabase
+      .from('flashcards')
+      .select('*, flashcard_topic_assignments(topic_id), flashcard_deck_assignments(deck_id)')
+      .eq('id', newFlashcard.id)
+      .single();
+
+    if (!resultFlashcard) throw new AppError('NOT_FOUND');
+    return resultFlashcard;
   }
 }
 

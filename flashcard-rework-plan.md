@@ -375,16 +375,8 @@ Menu structure:
    - Date formatting based on locale
    - Number formatting
 
-3. **RTL Support:**
-   - Layout should flip for RTL languages (Arabic, Hebrew)
-   - Icon positions adjust
-   - Text alignment changes
-
-4. **Translation Key Structure (example):**
-
-```
-read existing i18n files in /src/i18n/messages
-```
+3. **Translation Key Structure (example):**
+   - read existing i18n files in /src/i18n/messages
 
 ---
 
@@ -409,7 +401,7 @@ read existing i18n files in /src/i18n/messages
    - Colored pills/badges must have sufficient contrast
    - Gradient backgrounds maintain readability
 
-3. **Theme Toggle:**
+3. **Theme Toggle:** (this is already implemented)
    - Provide theme switcher (user preference)
    - Persist theme choice
    - Respect system preference by default
@@ -432,7 +424,7 @@ read existing i18n files in /src/i18n/messages
 1. **Decks:**
    - GET /api/v1/flashcards/decks - list all decks
    - POST /api/v1/flashcards/decks - create deck (body: {name, description})
-   - GET /api/v1/flashcards/decks/:id - get single deck
+   - GET /api/v1/flashcards/decks/:id - get single deck (flashcard_deck_assignments:[] can be used for quickly calculating how many flashcards are in a deck, might implement count endpoints in the future)
    - DELETE /api/v1/flashcards/decks/:id - delete deck
 
 2. **Flashcards:**
@@ -452,7 +444,7 @@ read existing i18n files in /src/i18n/messages
 **Frontend Responsibilities:**
 
 - Send correct HTTP methods and request bodies
-- Handle loading states during requests !!! DO NOT USE UseEffect !!! Make us of skeleton loading
+- Handle loading states during requests !!! DO NOT USE UseEffect !!! Make use of skeleton loading (loading.tsx, page.tsx pattern with ...-client.tsx files)
 - Parse and display response data
 - Handle error responses with user-friendly messages
 - Implement optimistic UI updates where appropriate
@@ -465,10 +457,9 @@ read existing i18n files in /src/i18n/messages
 **Routing:** React Router (data router pattern)
 **Styling:** Tailwind CSS v4 (utility-first, theme support)
 **UI Components:** Shadcn/ui or similar (accessible, themeable)
-**State Management:** React hooks (useState, useContext) or lightweight state library
 **i18n Library:** react-i18next or similar
 **Theme Library:** next-themes or custom CSS variables approach
-**Icons:** Lucide React or similar
+**Icons:** Lucide React
 
 ---
 
