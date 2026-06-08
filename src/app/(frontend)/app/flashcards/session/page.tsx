@@ -213,7 +213,7 @@ export default function FlashcardSessionPage() {
             </p>
           </CardContent>
           <CardFooter className="flex justify-center gap-3">
-            <Link href={isQuick ? '/app' : '/app/flashcards'}>
+            <Link href={isQuick ? '/app' : '/app/flashcards/practice'}>
               <Button>
                 <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_to_setup')}
               </Button>
@@ -263,7 +263,7 @@ export default function FlashcardSessionPage() {
             >
               <RotateCcw className="mr-2 h-4 w-4" /> {t('practice_again')}
             </Button>
-            <Link href={isQuick ? '/app' : '/app/flashcards'}>
+            <Link href={isQuick ? '/app' : '/app/flashcards/practice'}>
               <Button>
                 <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_to_setup')}
               </Button>

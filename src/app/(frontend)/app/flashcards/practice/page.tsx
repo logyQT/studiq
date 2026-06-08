@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
-import FlashcardsClient from './flashcards-client';
+import PracticeClient from './practice-client';
 
-export default async function FlashcardsPage() {
+export default async function PracticePage() {
   const cookieStore = await cookies();
   const cookieHeader = cookieStore
     .getAll()
@@ -24,5 +24,5 @@ export default async function FlashcardsPage() {
   const topics = topicsRes.ok ? (await topicsRes.json()).data ?? [] : [];
   const decks = decksRes.ok ? (await decksRes.json()).data ?? [] : [];
 
-  return <FlashcardsClient topicCount={topics.length} deckCount={decks.length} />;
+  return <PracticeClient topics={topics} decks={decks} />;
 }
