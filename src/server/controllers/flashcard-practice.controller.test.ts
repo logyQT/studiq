@@ -7,6 +7,7 @@ vi.mock('@/server/services', () => ({
   flashcardPracticeService: {
     log: vi.fn(),
     getDueCards: vi.fn(),
+    getDueBreakdown: vi.fn(),
     getDueCount: vi.fn(),
     getStatsForFlashcard: vi.fn(),
     getStatsAll: vi.fn(),
@@ -100,6 +101,29 @@ describe('FlashcardPracticeController', () => {
       mockService.getDueCards.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
 
       const response = await flashcardPracticeController.getDueCards(mockCtx, {}, 20);
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    });
+  });
+
+  describe('getDueBreakdown', () => {
+    it('returns due breakdown', async () => {
+      const breakdown = {
+        total: 10,
+        byTopic: { 't-1': 5, 't-2': 5 },
+        byDeck: { 'd-1': 7, 'd-2': 3 },
+      };
+      mockService.getDueBreakdown.mockResolvedValueOnce(breakdown);
+
+      const response = await flashcardPracticeController.getDueBreakdown(mockCtx);
+
+      expect(response).toEqual({ success: true, statusCode: 200, data: breakdown });
+    });
+
+    it('returns error when service throws', async () => {
+      mockService.getDueBreakdown.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
+
+      const response = await flashcardPracticeController.getDueBreakdown(mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });

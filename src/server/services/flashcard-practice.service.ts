@@ -3,8 +3,8 @@ import { mapSupabaseError } from '@/lib/supabase-errors';
 import { AppError } from '@/lib/errors';
 import type { RequestContext } from '@/lib/request-context';
 import { flashcardSpacedRepetitionService } from './flashcard-spaced-repetition.service';
-import { UserRole } from '@/types';
 import type { BatchPracticeInput } from '@/server/models';
+import { buildQueryFilter, Permission } from '@/lib/rbac';
 
 export class FlashcardPracticeService {
   async log(
@@ -201,6 +201,70 @@ export class FlashcardPracticeService {
     return notDue.slice(0, limit).map(mapCard);
   }
 
+  async getDueBreakdown(ctx: RequestContext) {
+    const supabase = await createClient();
+
+    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    let query = supabase
+      .from('flashcards')
+      .select('id');
+
+    if (filter._impossible) return { total: 0, byTopic: {}, byDeck: {} };
+    if (filter.or) {
+      query = query.or(filter.or);
+    } else if (filter.created_by) {
+      query = query.eq('created_by', filter.created_by);
+    }
+
+    const { data: flashcards, error } = await query;
+    if (error) throw mapSupabaseError(error);
+
+    if (!flashcards || flashcards.length === 0) {
+      return { total: 0, byTopic: {}, byDeck: {} };
+    }
+
+    const flashcardIds = flashcards.map((fc) => fc.id);
+    const now = new Date();
+
+    const { data: states } = await supabase
+      .from('flashcard_review_state')
+      .select('flashcard_id, next_review_at')
+      .eq('user_id', ctx.userId)
+      .in('flashcard_id', flashcardIds);
+
+    const stateByCard = new Map((states ?? []).map((s) => [s.flashcard_id, s]));
+    const dueFlashcardIds = flashcardIds.filter((fcId) => {
+      const state = stateByCard.get(fcId);
+      return !state || new Date(state.next_review_at) <= now;
+    });
+
+    if (dueFlashcardIds.length === 0) {
+      return { total: 0, byTopic: {}, byDeck: {} };
+    }
+
+    const { data: topicAssignments } = await supabase
+      .from('flashcard_topic_assignments')
+      .select('flashcard_id, topic_id')
+      .in('flashcard_id', dueFlashcardIds);
+
+    const { data: deckAssignments } = await supabase
+      .from('flashcard_deck_assignments')
+      .select('flashcard_id, deck_id')
+      .in('flashcard_id', dueFlashcardIds);
+
+    const byTopic: Record<string, number> = {};
+    for (const a of topicAssignments ?? []) {
+      byTopic[a.topic_id] = (byTopic[a.topic_id] ?? 0) + 1;
+    }
+
+    const byDeck: Record<string, number> = {};
+    for (const a of deckAssignments ?? []) {
+      byDeck[a.deck_id] = (byDeck[a.deck_id] ?? 0) + 1;
+    }
+
+    return { total: dueFlashcardIds.length, byTopic, byDeck };
+  }
+
   async getDueCount(
     ctx: RequestContext,
     filters: { topicIds?: string[]; deckIds?: string[] },
@@ -301,14 +365,16 @@ export class FlashcardPracticeService {
   ): Promise<string[]> {
     const supabase = await createClient();
 
+    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     let query = supabase
       .from('flashcards')
       .select('id');
 
-    if (ctx.universityId) {
-      query = query.or(`created_by.eq.${ctx.userId},university_id.eq.${ctx.universityId}`);
-    } else {
-      query = query.eq('created_by', ctx.userId);
+    if (filter._impossible) return [];
+    if (filter.or) {
+      query = query.or(filter.or);
+    } else if (filter.created_by) {
+      query = query.eq('created_by', filter.created_by);
     }
 
     if (filters.topicIds && filters.topicIds.length > 0) {

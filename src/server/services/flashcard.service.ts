@@ -9,12 +9,12 @@ import type {
 } from '@/server/models';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
-import { UserRole } from '@/types';
+import { checkPermission, shouldSetUniversityId, buildQueryFilter, Permission } from '@/lib/rbac';
 
 export class FlashcardService {
   async create(data: CreateFlashcardInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const universityId = ctx.role === UserRole.TEACHER ? ctx.universityId : null;
+    const universityId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.universityId : null;
 
     const { data: flashcard, error } = await supabase
       .from('flashcards')
@@ -50,7 +50,7 @@ export class FlashcardService {
 
   async bulkCreate(data: BulkCreateFlashcardsInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const universityId = ctx.role === UserRole.TEACHER ? ctx.universityId : null;
+    const universityId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.universityId : null;
 
     const cardsToInsert = data.cards.map((c) => ({
       front: c.front,
@@ -94,14 +94,16 @@ export class FlashcardService {
   async list(ctx: RequestContext, filters?: { topicIds?: string[]; deckIds?: string[] }) {
     const supabase = await createClient();
 
+    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     let query = supabase
       .from('flashcards')
       .select('*, flashcard_topic_assignments(topic_id), flashcard_deck_assignments(deck_id)');
 
-    if (ctx.universityId) {
-      query = query.or(`created_by.eq.${ctx.userId},university_id.eq.${ctx.universityId}`);
-    } else {
-      query = query.eq('created_by', ctx.userId);
+    if (filter._impossible) return [];
+    if (filter.or) {
+      query = query.or(filter.or);
+    } else if (filter.created_by) {
+      query = query.eq('created_by', filter.created_by);
     }
 
     query = query.order('created_at', { ascending: false });
@@ -136,15 +138,17 @@ export class FlashcardService {
   async getById(id: string, ctx: RequestContext) {
     const supabase = await createClient();
 
+    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     let query = supabase
       .from('flashcards')
       .select('*, flashcard_topic_assignments(topic_id), flashcard_deck_assignments(deck_id)')
       .eq('id', id);
 
-    if (ctx.universityId) {
-      query = query.or(`created_by.eq.${ctx.userId},university_id.eq.${ctx.universityId}`);
-    } else {
-      query = query.eq('created_by', ctx.userId);
+    if (filter._impossible) throw new AppError('NOT_FOUND');
+    if (filter.or) {
+      query = query.or(filter.or);
+    } else if (filter.created_by) {
+      query = query.eq('created_by', filter.created_by);
     }
 
     const { data, error } = await query.single();
@@ -156,6 +160,15 @@ export class FlashcardService {
   async update(id: string, data: UpdateFlashcardInput, ctx: RequestContext) {
     const supabase = await createClient();
 
+    const { data: existing, error: fetchError } = await supabase
+      .from('flashcards')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existing) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.FLASHCARD_UPDATE, existing);
+
     const updateFields: Record<string, unknown> = {};
     if (data.front) updateFields.front = data.front;
     if (data.back) updateFields.back = data.back;
@@ -164,12 +177,11 @@ export class FlashcardService {
       .from('flashcards')
       .update(updateFields)
       .eq('id', id)
-      .eq('created_by', ctx.userId)
       .select()
       .single();
 
     if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
-    if (!flashcard) throw new AppError('FORBIDDEN');
+    if (!flashcard) throw new AppError('NOT_FOUND');
 
     if (data.topicIds !== undefined) {
       await supabase.from('flashcard_topic_assignments').delete().eq('flashcard_id', id);
@@ -206,16 +218,21 @@ export class FlashcardService {
   async delete(id: string, ctx: RequestContext) {
     const supabase = await createClient();
 
-    const { data, error } = await supabase
+    const { data: existing, error: fetchError } = await supabase
       .from('flashcards')
-      .delete()
+      .select('*')
       .eq('id', id)
-      .eq('created_by', ctx.userId)
-      .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
-    if (!data) throw new AppError('FORBIDDEN');
+    if (fetchError || !existing) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.FLASHCARD_DELETE, existing);
+
+    const { error } = await supabase
+      .from('flashcards')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw mapSupabaseError(error);
   }
 
   async link(id: string, data: LinkFlashcardInput, ctx: RequestContext) {
@@ -225,11 +242,10 @@ export class FlashcardService {
       .from('flashcards')
       .select()
       .eq('id', id)
-      .eq('created_by', ctx.userId)
       .single();
 
-    if (fetchError && fetchError.code !== 'PGRST116') throw mapSupabaseError(fetchError);
-    if (!flashcard) throw new AppError('FORBIDDEN');
+    if (fetchError || !flashcard) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.FLASHCARD_UPDATE, flashcard);
 
     const assignments = data.deckIds.map((deckId) => ({
       flashcard_id: id,
@@ -262,25 +278,18 @@ export class FlashcardService {
       .single();
 
     if (fetchError || !original) throw new AppError('NOT_FOUND');
-
-    if (ctx.universityId) {
-      const isAccessible =
-        original.created_by === ctx.userId || original.university_id === ctx.universityId;
-      if (!isAccessible) throw new AppError('FORBIDDEN');
-    } else {
-      if (original.created_by !== ctx.userId) throw new AppError('FORBIDDEN');
-    }
+    await checkPermission(ctx, Permission.FLASHCARD_READ, original);
 
     const { data: deck, error: deckError } = await supabase
       .from('flashcard_decks')
-      .select('id')
+      .select()
       .eq('id', data.targetDeckId)
-      .eq('created_by', ctx.userId)
       .single();
 
-    if (deckError || !deck) throw new AppError('FORBIDDEN');
+    if (deckError || !deck) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.DECK_UPDATE, deck);
 
-    const universityId = ctx.role === UserRole.TEACHER ? ctx.universityId : null;
+    const universityId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.universityId : null;
 
     const { data: newFlashcard, error: insertError } = await supabase
       .from('flashcards')

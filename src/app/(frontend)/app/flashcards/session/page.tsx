@@ -5,6 +5,7 @@ import SessionClient from './session-client';
 interface SessionPageProps {
   searchParams: Promise<{
     mode?: string;
+    studyMode?: string;
     deckId?: string;
     topics?: string;
     decks?: string;
@@ -16,6 +17,7 @@ interface SessionPageProps {
 export default async function SessionPage({ searchParams }: SessionPageProps) {
   const params = await searchParams;
   const mode = params.mode || 'study';
+  const studyMode = params.studyMode || 'endless';
   const isPractice = mode === 'practice';
   const isQuick = mode === 'quick';
   const deckId = params.deckId;
@@ -78,6 +80,7 @@ export default async function SessionPage({ searchParams }: SessionPageProps) {
     <SessionClient
       initialCards={initialCards}
       mode={mode}
+      studyMode={studyMode}
       targetCount={targetCount}
       hasMore={!isPractice && initialCards.length >= batchSize}
     />

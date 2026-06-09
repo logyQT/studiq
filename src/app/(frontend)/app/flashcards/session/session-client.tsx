@@ -2,14 +2,12 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Check, X, ArrowLeft, RotateCcw, Minus, Zap } from 'lucide-react';
-import { toast } from 'sonner';
 
 interface Flashcard {
   id: string;
@@ -54,17 +52,18 @@ function calculateSM2(
 interface SessionClientProps {
   initialCards: Flashcard[];
   mode: string;
+  studyMode: string;
   targetCount: number;
   hasMore: boolean;
 }
 
-export default function SessionClient({ initialCards, mode, targetCount, hasMore: initialHasMore }: SessionClientProps) {
+export default function SessionClient({ initialCards, mode, studyMode, targetCount, hasMore: initialHasMore }: SessionClientProps) {
   const t = useTranslations('AppFlashcardSessionPage');
   const router = useRouter();
 
   const isPractice = mode === 'practice';
   const isStudy = mode === 'study';
-  const isLimited = mode === 'limited';
+  const isLimited = studyMode === 'limited';
 
   const sessionIdRef = useRef<string>(generateUUID());
   const processingRef = useRef(false);
@@ -122,6 +121,14 @@ export default function SessionClient({ initialCards, mode, targetCount, hasMore
       pendingUpdatesRef.current.unshift(...batch);
     }
   }, []);
+
+  useEffect(() => {
+    if (!isStudy) return;
+    const interval = setInterval(() => {
+      sendBatchUpdate();
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [isStudy, sendBatchUpdate]);
 
   const refillQueue = useCallback(async () => {
     if (!hasMore || isPractice) return;
@@ -245,16 +252,8 @@ export default function SessionClient({ initialCards, mode, targetCount, hasMore
         processingRef.current = false;
       }
     },
-    [queue, currentIndex, correctCount, isLimited, targetCount, hasMore, fetchDueCards, refillQueue, isPractice, isStudy, sendBatchUpdate, findNextVisibleIndex],
+    [queue, currentIndex, correctCount, isLimited, targetCount, hasMore, fetchDueCards, refillQueue, isPractice, isStudy, findNextVisibleIndex],
   );
-
-  useEffect(() => {
-    return () => {
-      if (pendingUpdatesRef.current.length > 0) {
-        sendBatchUpdate();
-      }
-    };
-  }, [sendBatchUpdate]);
 
   const currentCard = queue[currentIndex];
 
@@ -274,11 +273,9 @@ export default function SessionClient({ initialCards, mode, targetCount, hasMore
             </p>
           </CardContent>
           <CardFooter className="flex justify-center gap-3">
-            <Link href={backUrl}>
-              <Button>
-                <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_to_setup')}
-              </Button>
-            </Link>
+            <Button onClick={async () => { await sendBatchUpdate(); router.push(backUrl); }}>
+              <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_to_setup')}
+            </Button>
           </CardFooter>
         </Card>
       </div>
@@ -322,11 +319,9 @@ export default function SessionClient({ initialCards, mode, targetCount, hasMore
             >
               <RotateCcw className="mr-2 h-4 w-4" /> {t('practice_again')}
             </Button>
-            <Link href={backUrl}>
-              <Button>
-                <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_to_setup')}
-              </Button>
-            </Link>
+            <Button onClick={async () => { await sendBatchUpdate(); router.push(backUrl); }}>
+              <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_to_setup')}
+            </Button>
           </CardFooter>
         </Card>
       </div>
@@ -342,11 +337,9 @@ export default function SessionClient({ initialCards, mode, targetCount, hasMore
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <Link href={backUrl}>
-          <Button variant="outline" size="sm">
-            <ArrowLeft className="mr-2 h-4 w-4" /> {t('exit_session')}
-          </Button>
-        </Link>
+        <Button variant="outline" size="sm" onClick={async () => { await sendBatchUpdate(); router.push(backUrl); }}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> {t('exit_session')}
+        </Button>
         <div className="flex items-center gap-4">
           <Badge variant="outline">
             {t('correct_badge', { correct: correctCount, total: totalAnswered })}

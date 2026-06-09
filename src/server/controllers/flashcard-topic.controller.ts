@@ -32,12 +32,12 @@ export class FlashcardTopicController {
     }, ctx);
   }
 
-  async getById(id: string): Promise<ControllerResponse> {
+  async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const topic = await flashcardTopicService.getById(id);
+      const topic = await flashcardTopicService.getById(id, ctx);
 
       return { success: true, statusCode: 200, data: topic };
-    });
+    }, ctx);
   }
 
   async update(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {

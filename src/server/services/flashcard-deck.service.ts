@@ -3,10 +3,12 @@ import { AppError } from '@/lib/errors';
 import type { CreateDeckInput, UpdateDeckInput } from '@/server/models';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
+import { checkPermission, shouldSetUniversityId, buildQueryFilter, Permission } from '@/lib/rbac';
 
 export class FlashcardDeckService {
   async create(data: CreateDeckInput, ctx: RequestContext) {
     const supabase = await createClient();
+    const universityId = await shouldSetUniversityId(ctx, Permission.DECK_CREATE) ? ctx.universityId : null;
 
     const { data: deck, error } = await supabase
       .from('flashcard_decks')
@@ -14,7 +16,7 @@ export class FlashcardDeckService {
         name: data.name,
         description: data.description ?? null,
         created_by: ctx.userId,
-        // university_id: ctx.universityId,
+        university_id: universityId,
       })
       .select()
       .single();
@@ -36,12 +38,20 @@ export class FlashcardDeckService {
   async list(ctx: RequestContext) {
     const supabase = await createClient();
 
-    const { data, error } = await supabase
+    const filter = await buildQueryFilter(ctx, Permission.DECK_READ, 'deck');
+    let query = supabase
       .from('flashcard_decks')
       .select('*, flashcard_deck_assignments(flashcard_id)')
-      .eq('created_by', ctx.userId)
       .order('created_at', { ascending: false });
 
+    if (filter._impossible) return [];
+    if (filter.or) {
+      query = query.or(filter.or);
+    } else if (filter.created_by) {
+      query = query.eq('created_by', filter.created_by);
+    }
+
+    const { data, error } = await query;
     if (error) throw mapSupabaseError(error);
 
     return (data ?? []).map((deck) => ({
@@ -53,13 +63,20 @@ export class FlashcardDeckService {
   async getById(id: string, ctx: RequestContext) {
     const supabase = await createClient();
 
-    const { data: deck, error } = await supabase
+    const filter = await buildQueryFilter(ctx, Permission.DECK_READ, 'deck');
+    let query = supabase
       .from('flashcard_decks')
       .select('*, flashcard_deck_assignments(flashcard_id)')
-      .eq('id', id)
-      .eq('created_by', ctx.userId)
-      .single();
+      .eq('id', id);
 
+    if (filter._impossible) throw new AppError('NOT_FOUND');
+    if (filter.or) {
+      query = query.or(filter.or);
+    } else if (filter.created_by) {
+      query = query.eq('created_by', filter.created_by);
+    }
+
+    const { data: deck, error } = await query.single();
     if (error || !deck) throw new AppError('NOT_FOUND');
 
     return {
@@ -71,6 +88,15 @@ export class FlashcardDeckService {
   async update(id: string, data: UpdateDeckInput, ctx: RequestContext) {
     const supabase = await createClient();
 
+    const { data: existing, error: fetchError } = await supabase
+      .from('flashcard_decks')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existing) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.DECK_UPDATE, existing);
+
     const updateFields: Record<string, unknown> = {};
     if (data.name !== undefined) updateFields.name = data.name;
     if (data.description !== undefined) updateFields.description = data.description;
@@ -79,12 +105,11 @@ export class FlashcardDeckService {
       .from('flashcard_decks')
       .update(updateFields)
       .eq('id', id)
-      .eq('created_by', ctx.userId)
       .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
-    if (!deck) throw new AppError('FORBIDDEN');
+    if (error) throw mapSupabaseError(error);
+    if (!deck) throw new AppError('NOT_FOUND');
 
     if (data.flashcardIds !== undefined) {
       await supabase.from('flashcard_deck_assignments').delete().eq('deck_id', id);
@@ -103,16 +128,21 @@ export class FlashcardDeckService {
   async delete(id: string, ctx: RequestContext) {
     const supabase = await createClient();
 
-    const { data, error } = await supabase
+    const { data: existing, error: fetchError } = await supabase
       .from('flashcard_decks')
-      .delete()
+      .select('*')
       .eq('id', id)
-      .eq('created_by', ctx.userId)
-      .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
-    if (!data) throw new AppError('FORBIDDEN');
+    if (fetchError || !existing) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.DECK_DELETE, existing);
+
+    const { error } = await supabase
+      .from('flashcard_decks')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw mapSupabaseError(error);
   }
 }
 

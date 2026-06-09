@@ -5,6 +5,7 @@ import { GET as getStatsForCard } from '@/app/(backend)/api/v1/flashcards/[id]/p
 import { GET as getStatsAll } from '@/app/(backend)/api/v1/flashcards/practice/stats/route';
 import { GET as getDueCards } from '@/app/(backend)/api/v1/flashcards/practice/due/route';
 import { GET as getDueCount } from '@/app/(backend)/api/v1/flashcards/practice/due/count/route';
+import { GET as getDueBreakdown } from '@/app/(backend)/api/v1/flashcards/practice/due/breakdown/route';
 import { TEST_USERS, mockUser, cleanupFlashcardPractice, cleanupFlashcardReviewState, cleanupFlashcards, createServiceClient } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
@@ -206,6 +207,38 @@ describe('Flashcard Practice Integration', () => {
       );
 
       const response = await getDueCards(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(body.success).toBe(false);
+    });
+  });
+
+  describe('GET /api/v1/flashcards/practice/due/breakdown', () => {
+    it('returns due breakdown', async () => {
+      mockUser(TEST_USERS.STUDENT);
+
+      const request = createNextRequest(
+        `http://localhost/api/v1/flashcards/practice/due/breakdown`,
+      );
+
+      const response = await getDueBreakdown(request);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(typeof body.data.total).toBe('number');
+      expect(typeof body.data.byTopic).toBe('object');
+      expect(typeof body.data.byDeck).toBe('object');
+    });
+
+    it('returns 401 when not authenticated', async () => {
+      mockUser(null);
+
+      const request = createNextRequest(
+        `http://localhost/api/v1/flashcards/practice/due/breakdown`,
+      );
+
+      const response = await getDueBreakdown(request);
       const body = await response.json();
 
       expect(response.status).toBe(401);

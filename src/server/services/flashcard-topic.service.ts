@@ -3,16 +3,18 @@ import { AppError } from '@/lib/errors';
 import type { CreateTopicInput, UpdateTopicInput } from '@/server/models';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
+import { checkPermission, shouldSetUniversityId, buildQueryFilter, Permission } from '@/lib/rbac';
 
 export class FlashcardTopicService {
   async create(data: CreateTopicInput, ctx: RequestContext) {
     const supabase = await createClient();
+    const universityId = await shouldSetUniversityId(ctx, Permission.TOPIC_CREATE) ? ctx.universityId : null;
 
     const { data: topic, error } = await supabase
       .from('flashcard_topics')
       .insert({
         name: data.name,
-        university_id: ctx.universityId,
+        university_id: universityId,
         created_by: ctx.userId,
       })
       .select()
@@ -26,15 +28,17 @@ export class FlashcardTopicService {
   async list(ctx: RequestContext) {
     const supabase = await createClient();
 
+    const filter = await buildQueryFilter(ctx, Permission.TOPIC_READ, 'topic');
     let query = supabase
       .from('flashcard_topics')
       .select('*, flashcard_topic_assignments(flashcard_id)')
       .order('created_at', { ascending: false });
 
-    if (ctx.universityId) {
-      query = query.or(`created_by.eq.${ctx.userId},university_id.eq.${ctx.universityId}`);
-    } else {
-      query = query.eq('created_by', ctx.userId);
+    if (filter._impossible) return [];
+    if (filter.or) {
+      query = query.or(filter.or);
+    } else if (filter.created_by) {
+      query = query.eq('created_by', filter.created_by);
     }
 
     const { data, error } = await query;
@@ -46,13 +50,23 @@ export class FlashcardTopicService {
     }));
   }
 
-  async getById(id: string) {
+  async getById(id: string, ctx: RequestContext) {
     const supabase = await createClient();
-    const { data, error } = await supabase
+
+    const filter = await buildQueryFilter(ctx, Permission.TOPIC_READ, 'topic');
+    let query = supabase
       .from('flashcard_topics')
       .select('*')
-      .eq('id', id)
-      .single();
+      .eq('id', id);
+
+    if (filter._impossible) throw new AppError('NOT_FOUND');
+    if (filter.or) {
+      query = query.or(filter.or);
+    } else if (filter.created_by) {
+      query = query.eq('created_by', filter.created_by);
+    }
+
+    const { data, error } = await query.single();
     if (error || !data) throw new AppError('NOT_FOUND');
     return data;
   }
@@ -60,32 +74,45 @@ export class FlashcardTopicService {
   async update(id: string, data: UpdateTopicInput, ctx: RequestContext) {
     const supabase = await createClient();
 
+    const { data: existing, error: fetchError } = await supabase
+      .from('flashcard_topics')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existing) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.TOPIC_UPDATE, existing);
+
     const { data: topic, error } = await supabase
       .from('flashcard_topics')
       .update({ name: data.name })
       .eq('id', id)
-      .eq('created_by', ctx.userId)
       .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
-    if (!topic) throw new AppError('FORBIDDEN');
+    if (error) throw mapSupabaseError(error);
+    if (!topic) throw new AppError('NOT_FOUND');
     return topic;
   }
 
   async delete(id: string, ctx: RequestContext) {
     const supabase = await createClient();
 
-    const { data, error } = await supabase
+    const { data: existing, error: fetchError } = await supabase
       .from('flashcard_topics')
-      .delete()
+      .select('*')
       .eq('id', id)
-      .eq('created_by', ctx.userId)
-      .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
-    if (!data) throw new AppError('FORBIDDEN');
+    if (fetchError || !existing) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.TOPIC_DELETE, existing);
+
+    const { error } = await supabase
+      .from('flashcard_topics')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw mapSupabaseError(error);
   }
 }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -24,12 +24,19 @@ interface Deck {
   flashcard_count: number;
 }
 
+interface DueBreakdown {
+  total: number;
+  byTopic: Record<string, number>;
+  byDeck: Record<string, number>;
+}
+
 interface StudyClientProps {
   topics: Topic[];
   decks: Deck[];
+  dueBreakdown: DueBreakdown;
 }
 
-export default function StudyClient({ topics, decks }: StudyClientProps) {
+export default function StudyClient({ topics, decks, dueBreakdown }: StudyClientProps) {
   const t = useTranslations('AppFlashcardStudyPage');
   const router = useRouter();
 
@@ -37,51 +44,35 @@ export default function StudyClient({ topics, decks }: StudyClientProps) {
   const [selectedDecks, setSelectedDecks] = useState<string[]>([]);
   const [mode, setMode] = useState<'endless' | 'limited'>('endless');
   const [targetCount, setTargetCount] = useState(10);
-  const [dueCount, setDueCount] = useState<number | null>(null);
 
-  const fetchDueCount = useCallback(async (topicIds: string[], deckIds: string[]) => {
-    if (topicIds.length === 0 && deckIds.length === 0) {
-      const res = await fetch('/api/v1/flashcards/practice/due/count');
-      if (res.ok) {
-        const body = await res.json();
-        setDueCount(body.data?.count ?? null);
-      }
-      return;
-    }
-    const params = new URLSearchParams();
-    if (topicIds.length > 0) params.set('topicIds', topicIds.join(','));
-    if (deckIds.length > 0) params.set('deckIds', deckIds.join(','));
-    try {
-      const res = await fetch(`/api/v1/flashcards/practice/due/count?${params.toString()}`);
-      if (res.ok) {
-        const body = await res.json();
-        setDueCount(body.data?.count ?? null);
-      }
-    } catch {
-      setDueCount(null);
-    }
-  }, []);
+  const isFiltered = selectedTopics.length > 0 || selectedDecks.length > 0;
 
-  useEffect(() => {
-    fetchDueCount(selectedTopics, selectedDecks);
-  }, [selectedTopics, selectedDecks, fetchDueCount]);
+  const displayedCount = isFiltered
+    ? selectedTopics.reduce((sum, id) => sum + (dueBreakdown.byTopic[id] ?? 0), 0) +
+      selectedDecks.reduce((sum, id) => sum + (dueBreakdown.byDeck[id] ?? 0), 0)
+    : dueBreakdown.total;
 
   function toggleTopic(id: string) {
-    setSelectedTopics((prev) => (prev.includes(id) ? prev.filter((tid) => tid !== id) : [...prev, id]));
+    setSelectedTopics((prev) =>
+      prev.includes(id) ? prev.filter((tid) => tid !== id) : [...prev, id],
+    );
   }
 
   function toggleDeck(id: string) {
-    setSelectedDecks((prev) => (prev.includes(id) ? prev.filter((did) => did !== id) : [...prev, id]));
+    setSelectedDecks((prev) =>
+      prev.includes(id) ? prev.filter((did) => did !== id) : [...prev, id],
+    );
   }
 
   function startSession() {
     const params = new URLSearchParams();
+    params.set('mode', 'study');
     if (selectedTopics.length > 0) params.set('topics', selectedTopics.join(','));
     if (selectedDecks.length > 0) params.set('decks', selectedDecks.join(','));
-    params.set('mode', mode);
+    params.set('studyMode', mode);
     if (mode === 'limited') params.set('target', String(targetCount));
 
-    router.push(`/app/flashcards/session?mode=study&${params.toString()}`);
+    router.push(`/app/flashcards/session?${params.toString()}`);
   }
 
   return (
@@ -113,7 +104,9 @@ export default function StudyClient({ topics, decks }: StudyClientProps) {
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">{topic.name}</p>
-                    <p className="text-xs text-muted-foreground">{t('cards_count', { count: topic.flashcard_count })}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('cards_count', { count: topic.flashcard_count })}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -141,7 +134,9 @@ export default function StudyClient({ topics, decks }: StudyClientProps) {
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">{deck.name}</p>
-                    <p className="text-xs text-muted-foreground">{t('cards_count', { count: deck.flashcard_count })}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('cards_count', { count: deck.flashcard_count })}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -200,16 +195,10 @@ export default function StudyClient({ topics, decks }: StudyClientProps) {
 
           <div className="flex items-center justify-between pt-2">
             <div className="text-sm text-muted-foreground">
-              {dueCount !== null ? (
-                <>
-                  <span className="font-medium text-foreground">{dueCount} {t('due_for_review')}</span>
-                  {(selectedTopics.length > 0 || selectedDecks.length > 0) && (
-                    <span className="ml-2">({t('filtered')})</span>
-                  )}
-                </>
-              ) : (
-                t('calculating')
-              )}
+              <span className="font-medium text-foreground">
+                {displayedCount} {t('due_for_review')}
+              </span>
+              {isFiltered && <span className="ml-2">({t('filtered')})</span>}
             </div>
             <Button onClick={startSession}>
               <Play className="mr-2 h-4 w-4" /> {t('start_study')}

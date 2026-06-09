@@ -89,6 +89,14 @@ Seed files are located in `supabase/seeds/` and are organized by domain:
 |-------|-------------|
 | `flashcard_practice` | Flashcard practice history with correctness tracking |
 
+### RBAC (Role-Based Access Control)
+
+| Table | Description |
+|-------|-------------|
+| `permissions` | Static list of permission names (e.g. `flashcard.read`) |
+| `role_permissions` | Maps roles to permissions with scopes (`own`, `university`, `any`) |
+| `resource_permissions` | FUTURE: explicit per-resource grants for deck/topic sharing |
+
 ### University Management
 
 | Table | Description |

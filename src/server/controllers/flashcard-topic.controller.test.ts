@@ -15,9 +15,15 @@ vi.mock('@/server/services', () => ({
 
 const mockService = vi.mocked(flashcardTopicService);
 
-describe('FlashcardTopicController', () => {
-  const userId = 'test-user-id';
+const mockCtx = {
+  userId: 'test-user-id',
+  universityId: null,
+  role: 'student' as const,
+  url: 'http://localhost',
+  method: 'GET',
+};
 
+describe('FlashcardTopicController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -28,13 +34,13 @@ describe('FlashcardTopicController', () => {
       const created = { id: 't-1', name: 'Math Topics' };
       mockService.create.mockResolvedValueOnce(created);
 
-      const response = await flashcardTopicController.create(body, userId);
+      const response = await flashcardTopicController.create(body, mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 201, data: created });
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
-      const response = await flashcardTopicController.create({ name: '' }, userId);
+      const response = await flashcardTopicController.create({ name: '' }, mockCtx);
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
@@ -44,7 +50,7 @@ describe('FlashcardTopicController', () => {
     it('returns error when service throws AppError', async () => {
       mockService.create.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
 
-      const response = await flashcardTopicController.create({ name: 'Math Topics' }, userId);
+      const response = await flashcardTopicController.create({ name: 'Math Topics' }, mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
@@ -52,7 +58,7 @@ describe('FlashcardTopicController', () => {
     it('returns INTERNAL_SERVER when service throws generic error', async () => {
       mockService.create.mockRejectedValueOnce(new Error('unexpected'));
 
-      const response = await flashcardTopicController.create({ name: 'Math Topics' }, userId);
+      const response = await flashcardTopicController.create({ name: 'Math Topics' }, mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
@@ -63,7 +69,7 @@ describe('FlashcardTopicController', () => {
       const topics = [{ id: 't-1', name: 'Math Topics' }];
       mockService.list.mockResolvedValueOnce(topics);
 
-      const response = await flashcardTopicController.list(userId);
+      const response = await flashcardTopicController.list(mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: topics });
     });
@@ -71,7 +77,7 @@ describe('FlashcardTopicController', () => {
     it('returns error when service throws', async () => {
       mockService.list.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
 
-      const response = await flashcardTopicController.list(userId);
+      const response = await flashcardTopicController.list(mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
@@ -79,7 +85,7 @@ describe('FlashcardTopicController', () => {
     it('returns INTERNAL_SERVER when service throws generic error', async () => {
       mockService.list.mockRejectedValueOnce(new Error('unexpected'));
 
-      const response = await flashcardTopicController.list(userId);
+      const response = await flashcardTopicController.list(mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
@@ -90,7 +96,7 @@ describe('FlashcardTopicController', () => {
       const topic = { id: 't-1', name: 'Math Topics' };
       mockService.getById.mockResolvedValueOnce(topic);
 
-      const response = await flashcardTopicController.getById('t-1');
+      const response = await flashcardTopicController.getById('t-1', mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: topic });
     });
@@ -98,7 +104,7 @@ describe('FlashcardTopicController', () => {
     it('returns NOT_FOUND when service throws', async () => {
       mockService.getById.mockRejectedValueOnce(new AppError('NOT_FOUND'));
 
-      const response = await flashcardTopicController.getById('nonexistent');
+      const response = await flashcardTopicController.getById('nonexistent', mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 404, error: 'NOT_FOUND' });
     });
@@ -106,7 +112,7 @@ describe('FlashcardTopicController', () => {
     it('returns INTERNAL_SERVER when service throws generic error', async () => {
       mockService.getById.mockRejectedValueOnce(new Error('unexpected'));
 
-      const response = await flashcardTopicController.getById('t-1');
+      const response = await flashcardTopicController.getById('t-1', mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
@@ -117,13 +123,13 @@ describe('FlashcardTopicController', () => {
       const updated = { id: 't-1', name: 'Updated' };
       mockService.update.mockResolvedValueOnce(updated);
 
-      const response = await flashcardTopicController.update('t-1', { name: 'Updated' }, userId);
+      const response = await flashcardTopicController.update('t-1', { name: 'Updated' }, mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: updated });
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
-      const response = await flashcardTopicController.update('t-1', { name: '' }, userId);
+      const response = await flashcardTopicController.update('t-1', { name: '' }, mockCtx);
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
@@ -133,7 +139,7 @@ describe('FlashcardTopicController', () => {
     it('returns FORBIDDEN when service throws FORBIDDEN', async () => {
       mockService.update.mockRejectedValueOnce(new AppError('FORBIDDEN'));
 
-      const response = await flashcardTopicController.update('t-1', { name: 'Updated' }, userId);
+      const response = await flashcardTopicController.update('t-1', { name: 'Updated' }, mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
     });
@@ -141,7 +147,7 @@ describe('FlashcardTopicController', () => {
     it('returns INTERNAL_SERVER when service throws generic error', async () => {
       mockService.update.mockRejectedValueOnce(new Error('unexpected'));
 
-      const response = await flashcardTopicController.update('t-1', { name: 'Updated' }, userId);
+      const response = await flashcardTopicController.update('t-1', { name: 'Updated' }, mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
@@ -151,7 +157,7 @@ describe('FlashcardTopicController', () => {
     it('returns success when service deletes successfully', async () => {
       mockService.delete.mockResolvedValueOnce(undefined);
 
-      const response = await flashcardTopicController.delete('t-1', userId);
+      const response = await flashcardTopicController.delete('t-1', mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: { success: true } });
     });
@@ -159,7 +165,7 @@ describe('FlashcardTopicController', () => {
     it('returns error when service throws', async () => {
       mockService.delete.mockRejectedValueOnce(new AppError('FORBIDDEN'));
 
-      const response = await flashcardTopicController.delete('t-1', userId);
+      const response = await flashcardTopicController.delete('t-1', mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
     });
@@ -167,7 +173,7 @@ describe('FlashcardTopicController', () => {
     it('returns INTERNAL_SERVER when service throws generic error', async () => {
       mockService.delete.mockRejectedValueOnce(new Error('unexpected'));
 
-      const response = await flashcardTopicController.delete('t-1', userId);
+      const response = await flashcardTopicController.delete('t-1', mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });

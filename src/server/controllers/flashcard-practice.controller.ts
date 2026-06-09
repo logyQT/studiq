@@ -80,6 +80,13 @@ export class FlashcardPracticeController {
     }, ctx);
   }
 
+  async getDueBreakdown(ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const result = await flashcardPracticeService.getDueBreakdown(ctx);
+      return { success: true, statusCode: 200, data: result };
+    }, ctx);
+  }
+
   async getDueCount(
     ctx: RequestContext,
     filters: { topicIds?: string[]; deckIds?: string[] },
