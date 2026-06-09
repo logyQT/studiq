@@ -17,19 +17,19 @@ interface Flashcard {
   created_at?: string;
 }
 
-interface TopicsClientProps {
+interface EduTopicsClientProps {
   topics: Topic[];
   flashcards: Flashcard[];
 }
 
-export default function TopicsClient({ topics, flashcards }: TopicsClientProps) {
-  const t = useTranslations('AppFlashcardTopicsPage');
+export default function EduTopicsClient({ topics, flashcards }: EduTopicsClientProps) {
+  const t = useTranslations('EduFlashcardTopicsPage');
 
   return (
     <TopicManagementScreen
       topics={topics}
       flashcards={flashcards}
-      backHref="/app/flashcards"
+      backHref="/edu/flashcards"
       apiBase="/api/v1/flashcards"
       t={t}
     />

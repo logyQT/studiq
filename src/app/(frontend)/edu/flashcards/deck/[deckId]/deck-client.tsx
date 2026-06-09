@@ -3,12 +3,6 @@
 import { useTranslations } from 'next-intl';
 import { DeckDetailScreen } from '@/components/flashcards/deck-detail-screen';
 
-interface Topic {
-  id: string;
-  name: string;
-  flashcard_count: number;
-}
-
 interface Deck {
   id: string;
   name: string;
@@ -21,18 +15,24 @@ interface Flashcard {
   front: string;
   back: string;
   flashcard_topic_assignments?: Array<{ topic_id: string }>;
-  flashcard_deck_assignments?: Array<{ deck_id: string }>;
+  created_at?: string;
 }
 
-interface DeckClientProps {
+interface Topic {
+  id: string;
+  name: string;
+  flashcard_count: number;
+}
+
+interface EduDeckClientProps {
   deck: Deck;
   flashcards: Flashcard[];
   topics: Topic[];
   allDecks: Deck[];
 }
 
-export default function DeckClient({ deck, flashcards, topics, allDecks }: DeckClientProps) {
-  const t = useTranslations('AppFlashcardDeckViewPage');
+export default function EduDeckClient({ deck, flashcards, topics, allDecks }: EduDeckClientProps) {
+  const t = useTranslations('EduDeckViewPage');
 
   return (
     <DeckDetailScreen
@@ -40,10 +40,9 @@ export default function DeckClient({ deck, flashcards, topics, allDecks }: DeckC
       flashcards={flashcards}
       topics={topics}
       allDecks={allDecks}
-      backHref="/app/flashcards/decks"
-      basePath="/app/flashcards"
+      backHref="/edu/flashcards/decks"
+      basePath="/edu/flashcards"
       apiBase="/api/v1/flashcards"
-      practiceHref="/app/flashcards/session?mode=practice&deckId="
       t={t}
     />
   );

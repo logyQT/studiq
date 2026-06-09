@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { FolderOpen, Tags, Play, Dumbbell } from 'lucide-react';
+import { FolderOpen, Tags, BarChart3 } from 'lucide-react';
 import { DashboardPanel } from '@/components/flashcards/dashboard-panel';
 
 const GRADIENTS = [
@@ -19,14 +19,13 @@ const GRADIENTS = [
   'from-teal-500 to-emerald-600',
 ];
 
-interface FlashcardsClientProps {
+interface EduFlashcardsClientProps {
   topicCount: number;
   deckCount: number;
-  dueCount: number;
 }
 
-export default function FlashcardsClient({ topicCount, deckCount, dueCount }: FlashcardsClientProps) {
-  const t = useTranslations('AppFlashcardsPage');
+export default function EduFlashcardsClient({ topicCount, deckCount }: EduFlashcardsClientProps) {
+  const t = useTranslations('EduFlashcardsPage');
 
   const panels = [
     {
@@ -34,7 +33,7 @@ export default function FlashcardsClient({ topicCount, deckCount, dueCount }: Fl
       icon: FolderOpen,
       title: t('decks_title'),
       description: t('decks_desc'),
-      href: '/app/flashcards/decks',
+      href: '/edu/flashcards/decks',
       count: deckCount,
       countLabel: t('decks_count', { count: deckCount }),
       gradient: GRADIENTS[0],
@@ -44,30 +43,18 @@ export default function FlashcardsClient({ topicCount, deckCount, dueCount }: Fl
       icon: Tags,
       title: t('topics_title'),
       description: t('topics_desc'),
-      href: '/app/flashcards/topics',
+      href: '/edu/flashcards/topics',
       count: topicCount,
       countLabel: t('topics_count', { count: topicCount }),
       gradient: GRADIENTS[4],
     },
     {
-      id: 'study',
-      icon: Play,
-      title: t('study_title'),
-      description: t('study_desc'),
-      href: '/app/flashcards/study',
-      count: dueCount,
-      countLabel: t('study_count', { count: dueCount }),
+      id: 'stats',
+      icon: BarChart3,
+      title: t('stats_title'),
+      description: t('stats_desc'),
+      href: '/edu/flashcards/stats',
       gradient: GRADIENTS[8],
-    },
-    {
-      id: 'practice',
-      icon: Dumbbell,
-      title: t('practice_title'),
-      description: t('practice_desc'),
-      href: '/app/flashcards/practice',
-      count: deckCount,
-      countLabel: t('practice_count', { count: deckCount }),
-      gradient: GRADIENTS[10],
     },
   ];
 
@@ -78,7 +65,7 @@ export default function FlashcardsClient({ topicCount, deckCount, dueCount }: Fl
         <p className="text-muted-foreground mt-1">{t('subtitle')}</p>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {panels.map((panel) => (
           <DashboardPanel key={panel.id} {...panel} />
         ))}

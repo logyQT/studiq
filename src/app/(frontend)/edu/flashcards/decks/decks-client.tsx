@@ -10,19 +10,19 @@ interface Deck {
   flashcard_count: number;
 }
 
-interface DecksClientProps {
+interface EduDecksClientProps {
   decks: Deck[];
 }
 
-export default function DecksClient({ decks }: DecksClientProps) {
-  const t = useTranslations('AppFlashcardDecksPage');
+export default function EduDecksClient({ decks }: EduDecksClientProps) {
+  const t = useTranslations('EduFlashcardDecksPage');
 
   return (
     <DeckManagementScreen
       decks={decks}
-      backHref="/app/flashcards"
+      backHref="/edu/flashcards"
       apiBase="/api/v1/flashcards"
-      basePath="/app/flashcards"
+      basePath="/edu/flashcards"
       t={t}
     />
   );

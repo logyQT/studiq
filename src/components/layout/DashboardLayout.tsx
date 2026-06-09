@@ -40,6 +40,7 @@ import {
   Monitor,
   Tags,
   AlertTriangle,
+  ShieldCheck,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -73,6 +74,7 @@ const NAV_ITEMS: Record<string, NavItem[]> = {
     { titleKey: 'admin_overview', href: '/admin', icon: LayoutDashboard },
     { titleKey: 'admin_universities', href: '/admin', icon: GraduationCap },
     { titleKey: 'admin_error_logs', href: '/admin/logs', icon: AlertTriangle },
+    { titleKey: 'admin_permissions', href: '/admin/permissions', icon: ShieldCheck },
     { titleKey: 'admin_system', href: '/admin', icon: Monitor },
   ],
 };
