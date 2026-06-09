@@ -41,6 +41,7 @@ import {
   Tags,
   AlertTriangle,
   ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -67,6 +68,7 @@ const NAV_ITEMS: Record<string, NavItem[]> = {
     { titleKey: 'app_overview', href: '/app', icon: LayoutDashboard },
     { titleKey: 'app_quiz', href: '/app/quiz', icon: BookOpen },
     { titleKey: 'app_flashcards', href: '/app/flashcards', icon: Brain },
+    { titleKey: 'app_ai_generate', href: '/app/flashcards/ai', icon: Sparkles },
     { titleKey: 'app_my_questions', href: '/app/my-questions', icon: ListPlus },
     { titleKey: 'app_statistics', href: '/app/statistics', icon: TrendingUp },
   ],
