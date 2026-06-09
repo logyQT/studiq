@@ -3,32 +3,11 @@
 import { useTranslations } from 'next-intl';
 import { TopicManagementScreen } from '@/components/flashcards/topic-management-screen';
 
-interface Topic {
-  id: string;
-  name: string;
-  flashcard_count: number;
-}
-
-interface Flashcard {
-  id: string;
-  front: string;
-  back: string;
-  flashcard_topic_assignments?: Array<{ topic_id: string }>;
-  created_at?: string;
-}
-
-interface TopicsClientProps {
-  topics: Topic[];
-  flashcards: Flashcard[];
-}
-
-export default function TopicsClient({ topics, flashcards }: TopicsClientProps) {
+export default function TopicsClient() {
   const t = useTranslations('AppFlashcardTopicsPage');
 
   return (
     <TopicManagementScreen
-      topics={topics}
-      flashcards={flashcards}
       backHref="/app/flashcards"
       apiBase="/api/v1/flashcards"
       t={t}

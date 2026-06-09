@@ -1,33 +1,5 @@
-import { cookies } from 'next/headers';
 import FlashcardsClient from './flashcards-client';
 
-export default async function FlashcardsPage() {
-  const cookieStore = await cookies();
-  const cookieHeader = cookieStore
-    .getAll()
-    .map((c) => `${c.name}=${c.value}`)
-    .join('; ');
-
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-
-  const [topicsRes, decksRes, dueRes] = await Promise.all([
-    fetch(`${baseUrl}/api/v1/flashcards/topics`, {
-      headers: { Cookie: cookieHeader },
-      cache: 'no-store',
-    }),
-    fetch(`${baseUrl}/api/v1/flashcards/decks`, {
-      headers: { Cookie: cookieHeader },
-      cache: 'no-store',
-    }),
-    fetch(`${baseUrl}/api/v1/flashcards/practice/due/count`, {
-      headers: { Cookie: cookieHeader },
-      cache: 'no-store',
-    }),
-  ]);
-
-  const topics = topicsRes.ok ? (await topicsRes.json()).data ?? [] : [];
-  const decks = decksRes.ok ? (await decksRes.json()).data ?? [] : [];
-  const dueCount = dueRes.ok ? (await dueRes.json()).data?.count ?? 0 : 0;
-
-  return <FlashcardsClient topicCount={topics.length} deckCount={decks.length} dueCount={dueCount} />;
+export default function FlashcardsPage() {
+  return <FlashcardsClient />;
 }

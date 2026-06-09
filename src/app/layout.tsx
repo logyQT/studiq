@@ -3,7 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import { getLocale, getMessages } from 'next-intl/server';
 import { NextIntlClientProvider } from 'next-intl';
 import { Toaster } from 'sonner';
-import { AuthProvider, ThemeProvider } from '@/components/providers';
+import { AuthProvider, ThemeProvider, QueryProvider } from '@/components/providers';
 import '@/app/globals.css';
 import { ToastProvider } from '@/components/ui/toast';
 
@@ -79,10 +79,12 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <NextIntlClientProvider messages={messages}>
-            <AuthProvider>
-              <ToastProvider>{children}</ToastProvider>
-              <Toaster />
-            </AuthProvider>
+            <QueryProvider>
+              <AuthProvider>
+                <ToastProvider>{children}</ToastProvider>
+                <Toaster />
+              </AuthProvider>
+            </QueryProvider>
           </NextIntlClientProvider>
         </ThemeProvider>
       </body>

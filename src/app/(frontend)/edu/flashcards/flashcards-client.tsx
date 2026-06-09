@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { FolderOpen, Tags, BarChart3 } from 'lucide-react';
 import { DashboardPanel } from '@/components/flashcards/dashboard-panel';
+import { useDecks, useTopics } from '@/hooks/use-flashcard-queries';
 
 const GRADIENTS = [
   'from-violet-500 to-purple-600',
@@ -19,13 +20,13 @@ const GRADIENTS = [
   'from-teal-500 to-emerald-600',
 ];
 
-interface EduFlashcardsClientProps {
-  topicCount: number;
-  deckCount: number;
-}
-
-export default function EduFlashcardsClient({ topicCount, deckCount }: EduFlashcardsClientProps) {
+export default function EduFlashcardsClient() {
   const t = useTranslations('EduFlashcardsPage');
+  const { data: decks } = useDecks();
+  const { data: topics } = useTopics();
+
+  const deckCount = decks?.length ?? 0;
+  const topicCount = topics?.length ?? 0;
 
   const panels = [
     {

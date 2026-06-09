@@ -4,7 +4,7 @@ import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
 
 export class HealthController {
-  async getStatus(): Promise<ControllerResponse<HealthStatus>> {
+  async getStatus(): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
       const health = await HealthService.checkHealth();
 
@@ -14,7 +14,7 @@ export class HealthController {
         success: true,
         statusCode,
         data: health,
-      };
+      } as ControllerResponse;
     });
   }
 }

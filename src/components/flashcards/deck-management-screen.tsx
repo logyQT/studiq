@@ -20,7 +20,9 @@ import {
 } from '@/components/ui/dialog';
 import { ArrowLeft, Plus, Trash2, Pencil, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteConfirmDialog } from '@/components/flashcards/delete-confirm-dialog';
+import { useDecks, useCreateDeck, useUpdateDeck, useDeleteDeck } from '@/hooks/use-flashcard-queries';
 
 const GRADIENTS = [
   'from-violet-500 to-purple-600',
@@ -53,7 +55,6 @@ interface Deck {
 }
 
 interface DeckManagementScreenProps {
-  decks: Deck[];
   backHref: string;
   apiBase: string;
   basePath: string;
@@ -61,14 +62,17 @@ interface DeckManagementScreenProps {
 }
 
 export function DeckManagementScreen({
-  decks: initialDecks,
   backHref,
   apiBase,
   basePath,
   t,
 }: DeckManagementScreenProps) {
   const router = useRouter();
-  const [decks, setDecks] = useState<Deck[]>(initialDecks);
+  const { data: decks, isLoading } = useDecks();
+  const createDeck = useCreateDeck();
+  const updateDeck = useUpdateDeck();
+  const deleteDeck = useDeleteDeck();
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Deck | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -99,24 +103,17 @@ export function DeckManagementScreen({
       return;
     }
     try {
-      const url = editing ? `${apiBase}/decks/${editing.id}` : `${apiBase}/decks`;
-      const method = editing ? 'PUT' : 'POST';
-      const payload = {
-        name: formData.name,
-        description: formData.description || undefined,
-      };
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error();
-      const body = await res.json();
-      const result = body.data ?? body;
       if (editing) {
-        setDecks(decks.map((d) => (d.id === result.id ? result : d)));
+        await updateDeck.mutateAsync({
+          id: editing.id,
+          name: formData.name,
+          description: formData.description || undefined,
+        });
       } else {
-        setDecks([{ ...result, flashcard_count: 0 }, ...decks]);
+        await createDeck.mutateAsync({
+          name: formData.name,
+          description: formData.description || undefined,
+        });
       }
       setDialogOpen(false);
       resetForm();
@@ -129,9 +126,7 @@ export function DeckManagementScreen({
   async function handleDelete() {
     if (!deleteId) return;
     try {
-      const res = await fetch(`${apiBase}/decks/${deleteId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error();
-      setDecks(decks.filter((d) => d.id !== deleteId));
+      await deleteDeck.mutateAsync(deleteId);
       toast.success(t('deck_deleted'));
     } catch {
       toast.error(t('delete_failed'));
@@ -155,8 +150,25 @@ export function DeckManagementScreen({
         </Button>
       </div>
 
+      {isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="overflow-hidden p-0">
+              <Skeleton className="h-20 w-full rounded-none" />
+              <div className="p-5 space-y-3">
+                <Skeleton className="h-5 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+                <div className="flex items-center justify-between pt-2">
+                  <Skeleton className="h-5 w-20" />
+                  <Skeleton className="h-9 w-24" />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {decks.map((deck) => {
+        {decks?.map((deck) => {
           const gradient = getGradient(deck.id);
           return (
             <Card
@@ -222,12 +234,12 @@ export function DeckManagementScreen({
             </Card>
           );
         })}
-        {decks.length === 0 && (
+        {(!decks || decks.length === 0) && (
           <div className="col-span-full text-center py-12 text-muted-foreground">
             {t('no_decks')}
           </div>
         )}
-      </div>
+      </div>)}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">

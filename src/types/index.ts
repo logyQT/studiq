@@ -83,3 +83,19 @@ export const UNIVERSITY_ROLES = [
 ] as const;
 
 export type UniversityRole = (typeof UNIVERSITY_ROLES)[number];
+
+// =============================================================================
+// HEALTH TYPES
+// =============================================================================
+
+export type ServiceStatus = 'up' | 'down';
+export type AppStatus = 'healthy' | 'unhealthy' | 'degraded';
+
+export interface HealthStatus {
+  status: AppStatus;
+  timestamp: string;
+  uptime: number;
+  environment: string;
+  services: Record<string, ServiceStatus>;
+  responseTime: number;
+}

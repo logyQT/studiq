@@ -89,9 +89,9 @@ import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(req, async () => {
+  return withAuth(req, async (ctx) => {
     const { id } = await params;
-    return toNextResponse(await flashcardTopicController.getById(id));
+    return toNextResponse(await flashcardTopicController.getById(id, ctx));
   });
 }
 

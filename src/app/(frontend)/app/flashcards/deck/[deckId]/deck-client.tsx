@@ -3,43 +3,16 @@
 import { useTranslations } from 'next-intl';
 import { DeckDetailScreen } from '@/components/flashcards/deck-detail-screen';
 
-interface Topic {
-  id: string;
-  name: string;
-  flashcard_count: number;
-}
-
-interface Deck {
-  id: string;
-  name: string;
-  description: string | null;
-  flashcard_count: number;
-}
-
-interface Flashcard {
-  id: string;
-  front: string;
-  back: string;
-  flashcard_topic_assignments?: Array<{ topic_id: string }>;
-  flashcard_deck_assignments?: Array<{ deck_id: string }>;
-}
-
 interface DeckClientProps {
-  deck: Deck;
-  flashcards: Flashcard[];
-  topics: Topic[];
-  allDecks: Deck[];
+  deckId: string;
 }
 
-export default function DeckClient({ deck, flashcards, topics, allDecks }: DeckClientProps) {
+export default function DeckClient({ deckId }: DeckClientProps) {
   const t = useTranslations('AppFlashcardDeckViewPage');
 
   return (
     <DeckDetailScreen
-      deck={deck}
-      flashcards={flashcards}
-      topics={topics}
-      allDecks={allDecks}
+      deckId={deckId}
       backHref="/app/flashcards/decks"
       basePath="/app/flashcards"
       apiBase="/api/v1/flashcards"

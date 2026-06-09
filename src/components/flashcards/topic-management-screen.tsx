@@ -18,7 +18,10 @@ import {
 } from '@/components/ui/dialog';
 import { ArrowLeft, Plus, Trash2, Eye, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteConfirmDialog } from '@/components/flashcards/delete-confirm-dialog';
+import type { Topic, Flashcard } from '@/hooks/use-flashcard-queries';
+import { useTopics, useAllFlashcards, useCreateTopic, useUpdateTopic, useDeleteTopic } from '@/hooks/use-flashcard-queries';
 
 const TOPIC_COLORS = [
   'bg-red-500',
@@ -37,31 +40,20 @@ function getTopicColor(name: string) {
   return TOPIC_COLORS[name.length % TOPIC_COLORS.length];
 }
 
-interface Topic {
-  id: string;
-  name: string;
-  flashcard_count: number;
-}
-
-interface Flashcard {
-  id: string;
-  front: string;
-  back: string;
-  flashcard_topic_assignments?: Array<{ topic_id: string }>;
-  created_at?: string;
-}
-
 interface TopicManagementScreenProps {
-  topics: Topic[];
-  flashcards: Flashcard[];
   backHref: string;
   apiBase: string;
   t: ReturnType<typeof useTranslations>;
 }
 
-export function TopicManagementScreen({ topics: initialTopics, flashcards: initialFlashcards, backHref, apiBase, t }: TopicManagementScreenProps) {
-  const [topics, setTopics] = useState<Topic[]>(initialTopics);
-  const [flashcards, setFlashcards] = useState<Flashcard[]>(initialFlashcards);
+export function TopicManagementScreen({ backHref, apiBase, t }: TopicManagementScreenProps) {
+  const { data: topics, isLoading } = useTopics();
+  const { data: allFlashcards } = useAllFlashcards();
+  const flashcards = allFlashcards ?? [];
+  const createTopic = useCreateTopic();
+  const updateTopic = useUpdateTopic();
+  const deleteTopic = useDeleteTopic();
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Topic | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -90,20 +82,10 @@ export function TopicManagementScreen({ topics: initialTopics, flashcards: initi
       return;
     }
     try {
-      const url = editing ? `${apiBase}/topics/${editing.id}` : `${apiBase}/topics`;
-      const method = editing ? 'PUT' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: formData.name }),
-      });
-      if (!res.ok) throw new Error();
-      const body = await res.json();
-      const result = body.data ?? body;
       if (editing) {
-        setTopics(topics.map((tp) => (tp.id === result.id ? result : tp)));
+        await updateTopic.mutateAsync({ id: editing.id, name: formData.name });
       } else {
-        setTopics([{ ...result, flashcard_count: 0 }, ...topics]);
+        await createTopic.mutateAsync({ name: formData.name });
       }
       setDialogOpen(false);
       resetForm();
@@ -116,9 +98,7 @@ export function TopicManagementScreen({ topics: initialTopics, flashcards: initi
   async function handleDelete() {
     if (!deleteId) return;
     try {
-      const res = await fetch(`${apiBase}/topics/${deleteId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error();
-      setTopics(topics.filter((tp) => tp.id !== deleteId));
+      await deleteTopic.mutateAsync(deleteId);
       toast.success(t('topic_deleted'));
     } catch {
       toast.error(t('delete_failed'));
@@ -132,7 +112,7 @@ export function TopicManagementScreen({ topics: initialTopics, flashcards: initi
       )
     : [];
 
-  const viewTopic = topics.find((tp) => tp.id === viewTopicId);
+  const viewTopic = topics?.find((tp) => tp.id === viewTopicId);
 
   return (
     <div className="space-y-6">
@@ -150,8 +130,31 @@ export function TopicManagementScreen({ topics: initialTopics, flashcards: initi
         </Button>
       </div>
 
+      {isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <Skeleton className="h-10 w-10 rounded-lg" />
+                  <div className="flex gap-1">
+                    <Skeleton className="h-7 w-7" />
+                    <Skeleton className="h-7 w-7" />
+                    <Skeleton className="h-7 w-7" />
+                  </div>
+                </div>
+                <div className="mt-3 space-y-2">
+                  <Skeleton className="h-5 w-3/4" />
+                  <Skeleton className="h-5 w-20" />
+                  <Skeleton className="h-9 w-full" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {topics.map((topic) => {
+        {topics?.map((topic) => {
           const color = getTopicColor(topic.name);
           return (
             <Card key={topic.id} className="group">
@@ -206,12 +209,12 @@ export function TopicManagementScreen({ topics: initialTopics, flashcards: initi
             </Card>
           );
         })}
-        {topics.length === 0 && (
+        {(!topics || topics.length === 0) && (
           <div className="col-span-full text-center py-12 text-muted-foreground">
             {t('no_topics')}
           </div>
         )}
-      </div>
+      </div>)}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>

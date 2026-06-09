@@ -53,6 +53,18 @@ import {
   Play,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  useDeck,
+  useDeckFlashcards,
+  useTopics,
+  useDecks,
+  useCreateFlashcard,
+  useUpdateFlashcard,
+  useDeleteFlashcard,
+  useUpdateDeck,
+  useDeleteDeck,
+} from '@/hooks/use-flashcard-queries';
 
 const GRADIENTS = [
   'from-violet-500 to-purple-600',
@@ -116,10 +128,7 @@ interface Flashcard {
 }
 
 interface DeckDetailScreenProps {
-  deck: Deck;
-  flashcards: Flashcard[];
-  topics: Topic[];
-  allDecks: Deck[];
+  deckId: string;
   backHref: string;
   basePath: string;
   apiBase: string;
@@ -127,12 +136,26 @@ interface DeckDetailScreenProps {
   practiceHref?: string;
 }
 
-export function DeckDetailScreen({ deck, flashcards: initialFlashcards, topics, allDecks, backHref, basePath, apiBase, t, practiceHref }: DeckDetailScreenProps) {
+export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, practiceHref }: DeckDetailScreenProps) {
   const router = useRouter();
-  const gradient = getGradient(deck.id);
+  const gradient = getGradient(deckId);
 
-  const [flashcards, setFlashcards] = useState<Flashcard[]>(initialFlashcards);
-  const [currentDeck, setCurrentDeck] = useState<Deck>(deck);
+  const { data: currentDeckData, isLoading: deckLoading, isError: deckError } = useDeck(deckId);
+  const { data: flashcardsData, isLoading: flashcardsLoading } = useDeckFlashcards(deckId);
+  const { data: topicsData } = useTopics();
+  const { data: allDecksData } = useDecks();
+
+  const flashcards = flashcardsData ?? [];
+  const currentDeck = currentDeckData ?? null;
+  const topics = topicsData ?? [];
+  const allDecks = (allDecksData ?? []).filter((d) => d.id !== deckId);
+
+  const createFlashcard = useCreateFlashcard(deckId);
+  const updateFlashcard = useUpdateFlashcard(deckId);
+  const deleteFlashcard = useDeleteFlashcard(deckId);
+  const updateDeck = useUpdateDeck();
+  const deleteDeck = useDeleteDeck();
+
   const [flippedId, setFlippedId] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -149,7 +172,7 @@ export function DeckDetailScreen({ deck, flashcards: initialFlashcards, topics, 
 
   const [deckEditOpen, setDeckEditOpen] = useState(false);
   const [deckDeleteOpen, setDeckDeleteOpen] = useState(false);
-  const [deckFormData, setDeckFormData] = useState({ name: currentDeck.name, description: currentDeck.description || '' });
+  const [deckFormData, setDeckFormData] = useState({ name: '', description: '' });
 
   const [viewTopicId, setViewTopicId] = useState<string | null>(null);
   const [addTopicOpen, setAddTopicOpen] = useState(false);
@@ -164,18 +187,18 @@ export function DeckDetailScreen({ deck, flashcards: initialFlashcards, topics, 
   const getTopicNames = useCallback(
     (fc: Flashcard) => {
       const ids = getTopicIds(fc);
-      return topics.filter((topic) => ids.includes(topic.id));
+      return (topics ?? []).filter((topic) => ids.includes(topic.id));
     },
     [topics, getTopicIds],
   );
 
   const viewTopicFlashcards = viewTopicId
-    ? initialFlashcards.filter((fc) =>
+    ? (flashcards ?? []).filter((fc) =>
         fc.flashcard_topic_assignments?.some((a) => a.topic_id === viewTopicId),
       )
     : [];
 
-  const viewTopic = topics.find((tp) => tp.id === viewTopicId);
+  const viewTopic = topics?.find((tp) => tp.id === viewTopicId);
 
   function resetForm() {
     setFormData({ front: '', back: '', topicIds: [] });
@@ -211,19 +234,11 @@ export function DeckDetailScreen({ deck, flashcards: initialFlashcards, topics, 
       return;
     }
     try {
-      const res = await fetch(`${apiBase}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          deckId: deck.id,
-          front: formData.front,
-          back: formData.back,
-          topicIds: formData.topicIds.length > 0 ? formData.topicIds : undefined,
-        }),
+      await createFlashcard.mutateAsync({
+        front: formData.front,
+        back: formData.back,
+        topicIds: formData.topicIds.length > 0 ? formData.topicIds : undefined,
       });
-      if (!res.ok) throw new Error();
-      const body = await res.json();
-      setFlashcards([body.data, ...flashcards]);
       setCreateOpen(false);
       resetForm();
       toast.success(t('flashcard_created'));
@@ -239,18 +254,12 @@ export function DeckDetailScreen({ deck, flashcards: initialFlashcards, topics, 
       return;
     }
     try {
-      const res = await fetch(`${apiBase}/${activeFlashcardId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          front: formData.front,
-          back: formData.back,
-          topicIds: formData.topicIds,
-        }),
+      await updateFlashcard.mutateAsync({
+        id: activeFlashcardId,
+        front: formData.front,
+        back: formData.back,
+        topicIds: formData.topicIds,
       });
-      if (!res.ok) throw new Error();
-      const body = await res.json();
-      setFlashcards(flashcards.map((fc) => (fc.id === activeFlashcardId ? body.data : fc)));
       setEditOpen(false);
       resetForm();
       toast.success(t('flashcard_updated'));
@@ -261,14 +270,10 @@ export function DeckDetailScreen({ deck, flashcards: initialFlashcards, topics, 
 
   async function handleDelete() {
     if (!deleteId) return;
-    const prevFlashcards = [...flashcards];
-    setFlashcards(flashcards.filter((fc) => fc.id !== deleteId));
     try {
-      const res = await fetch(`${apiBase}/${deleteId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error();
+      await deleteFlashcard.mutateAsync(deleteId);
       toast.success(t('flashcard_deleted'));
     } catch {
-      setFlashcards(prevFlashcards);
       toast.error(t('delete_failed'));
     }
     setDeleteId(null);
@@ -310,7 +315,7 @@ export function DeckDetailScreen({ deck, flashcards: initialFlashcards, topics, 
   }
 
   function openDeckEdit() {
-    setDeckFormData({ name: currentDeck.name, description: currentDeck.description || '' });
+    setDeckFormData({ name: currentDeck?.name ?? '', description: currentDeck?.description ?? '' });
     setDeckEditOpen(true);
   }
 
@@ -319,37 +324,90 @@ export function DeckDetailScreen({ deck, flashcards: initialFlashcards, topics, 
       toast.error(t('name_required'));
       return;
     }
-    const prevDeck = { ...currentDeck };
-    const updatedDeck = { ...currentDeck, name: deckFormData.name, description: deckFormData.description || null };
-    setCurrentDeck(updatedDeck);
     setDeckEditOpen(false);
     try {
-      const res = await fetch(`${apiBase}/decks/${currentDeck.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: deckFormData.name, description: deckFormData.description || undefined }),
+      await updateDeck.mutateAsync({
+        id: deckId,
+        name: deckFormData.name,
+        description: deckFormData.description || undefined,
       });
-      if (!res.ok) throw new Error();
       toast.success(t('deck_updated'));
     } catch {
-      setCurrentDeck(prevDeck);
       toast.error(t('save_failed'));
     }
   }
 
   async function handleDeckDelete() {
-    const prevDeck = { ...currentDeck };
-    setCurrentDeck({ ...currentDeck, name: '[DELETED]' });
     try {
-      const res = await fetch(`${apiBase}/decks/${currentDeck.id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error();
+      await deleteDeck.mutateAsync(deckId);
       toast.success(t('deck_deleted'));
       router.push(backHref);
     } catch {
-      setCurrentDeck(prevDeck);
       toast.error(t('delete_failed'));
     }
     setDeckDeleteOpen(false);
+  }
+
+  if (deckError || (!deckLoading && !currentDeck)) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Link href={backHref}>
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="mr-2 h-4 w-4" /> {t('back')}
+            </Button>
+          </Link>
+        </div>
+        <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
+          <p className="text-lg">Deck not found</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (deckLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Link href={backHref}>
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="mr-2 h-4 w-4" /> {t('back')}
+            </Button>
+          </Link>
+        </div>
+        <div className="rounded-xl p-8 space-y-4">
+          <div className="flex items-start gap-4">
+            <Skeleton className="h-14 w-14 rounded-lg" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-7 w-48" />
+              <Skeleton className="h-5 w-32" />
+              <div className="flex gap-4 pt-1">
+                <Skeleton className="h-5 w-24" />
+                <Skeleton className="h-8 w-28" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="h-4 w-56" />
+          </div>
+          <Skeleton className="h-9 w-36" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="min-h-48">
+              <CardContent className="flex flex-col items-center justify-center p-6 space-y-3">
+                <Skeleton className="h-4 w-16" />
+                <Skeleton className="h-8 w-3/4" />
+                <Skeleton className="h-4 w-20" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -383,11 +441,11 @@ export function DeckDetailScreen({ deck, flashcards: initialFlashcards, topics, 
         </div>
         <div className="flex items-start gap-4">
           <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-white/20 text-2xl font-bold">
-            {currentDeck.name.charAt(0).toUpperCase()}
+            {currentDeck!.name.charAt(0).toUpperCase()}
           </div>
           <div className="flex-1">
-            <h2 className="text-2xl font-bold">{currentDeck.name}</h2>
-            {currentDeck.description && <p className="mt-1 text-white/80">{currentDeck.description}</p>}
+            <h2 className="text-2xl font-bold">{currentDeck!.name}</h2>
+            {currentDeck!.description && <p className="mt-1 text-white/80">{currentDeck!.description}</p>}
             <div className="mt-3 flex items-center gap-4">
               <Badge variant="secondary" className="bg-white/20 text-white">
                 {t('flashcards_count', { count: flashcards.length })}
@@ -397,7 +455,7 @@ export function DeckDetailScreen({ deck, flashcards: initialFlashcards, topics, 
                   variant="secondary"
                   size="sm"
                   className="bg-white/20 text-white hover:bg-white/30 gap-1"
-                  onClick={() => router.push(`${practiceHref}${currentDeck.id}`)}
+                  onClick={() => router.push(`${practiceHref}${currentDeck!.id}`)}
                 >
                   <Play className="h-3 w-3" /> {t('practice_deck')}
                 </Button>
@@ -925,37 +983,31 @@ export function DeckDetailScreen({ deck, flashcards: initialFlashcards, topics, 
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddTopicOpen(false)}>{t('common_cancel')}</Button>
-            <Button
-              onClick={async () => {
-                if (!activeFlashcardId || topicActionIds.length === 0) return;
-                const fc = flashcards.find((f) => f.id === activeFlashcardId);
-                if (!fc) return;
-                const currentIds = getTopicIds(fc);
-                const newIds = [...new Set([...currentIds, ...topicActionIds])];
-                setFlashcards(flashcards.map((f) =>
-                  f.id === activeFlashcardId
-                    ? { ...f, flashcard_topic_assignments: newIds.map((id) => ({ topic_id: id })) }
-                    : f
-                ));
-                try {
-                  const res = await fetch(`${apiBase}/${activeFlashcardId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ topicIds: newIds }),
-                  });
-                  if (!res.ok) throw new Error();
-                  toast.success(t('topic_added'));
-                } catch {
-                  setFlashcards(initialFlashcards);
-                  toast.error(t('save_failed'));
-                }
-                setAddTopicOpen(false);
-                setTopicActionIds([]);
-              }}
-              disabled={topicActionIds.length === 0}
-            >
-              {t('common_add')}
-            </Button>
+              <Button
+                onClick={async () => {
+                  if (!activeFlashcardId || topicActionIds.length === 0) return;
+                  const fc = flashcards?.find((f) => f.id === activeFlashcardId);
+                  if (!fc) return;
+                  const currentIds = getTopicIds(fc);
+                  const newIds = [...new Set([...currentIds, ...topicActionIds])];
+                  try {
+                    await updateFlashcard.mutateAsync({
+                      id: activeFlashcardId,
+                      front: fc.front,
+                      back: fc.back,
+                      topicIds: newIds,
+                    });
+                    toast.success(t('topic_added'));
+                  } catch {
+                    toast.error(t('save_failed'));
+                  }
+                  setAddTopicOpen(false);
+                  setTopicActionIds([]);
+                }}
+                disabled={topicActionIds.length === 0}
+              >
+                {t('common_add')}
+              </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -995,37 +1047,31 @@ export function DeckDetailScreen({ deck, flashcards: initialFlashcards, topics, 
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRemoveTopicOpen(false)}>{t('common_cancel')}</Button>
-            <Button
-              onClick={async () => {
-                if (!activeFlashcardId || topicActionIds.length === 0) return;
-                const fc = flashcards.find((f) => f.id === activeFlashcardId);
-                if (!fc) return;
-                const currentIds = getTopicIds(fc);
-                const newIds = currentIds.filter((id) => !topicActionIds.includes(id));
-                setFlashcards(flashcards.map((f) =>
-                  f.id === activeFlashcardId
-                    ? { ...f, flashcard_topic_assignments: newIds.map((id) => ({ topic_id: id })) }
-                    : f
-                ));
-                try {
-                  const res = await fetch(`${apiBase}/${activeFlashcardId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ topicIds: newIds }),
-                  });
-                  if (!res.ok) throw new Error();
-                  toast.success(t('topic_removed'));
-                } catch {
-                  setFlashcards(initialFlashcards);
-                  toast.error(t('save_failed'));
-                }
-                setRemoveTopicOpen(false);
-                setTopicActionIds([]);
-              }}
-              disabled={topicActionIds.length === 0}
-            >
-              {t('common_remove')}
-            </Button>
+              <Button
+                onClick={async () => {
+                  if (!activeFlashcardId || topicActionIds.length === 0) return;
+                  const fc = flashcards?.find((f) => f.id === activeFlashcardId);
+                  if (!fc) return;
+                  const currentIds = getTopicIds(fc);
+                  const newIds = currentIds.filter((id) => !topicActionIds.includes(id));
+                  try {
+                    await updateFlashcard.mutateAsync({
+                      id: activeFlashcardId,
+                      front: fc.front,
+                      back: fc.back,
+                      topicIds: newIds,
+                    });
+                    toast.success(t('topic_removed'));
+                  } catch {
+                    toast.error(t('save_failed'));
+                  }
+                  setRemoveTopicOpen(false);
+                  setTopicActionIds([]);
+                }}
+                disabled={topicActionIds.length === 0}
+              >
+                {t('common_remove')}
+              </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

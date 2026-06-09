@@ -3,23 +3,11 @@
 import { useTranslations } from 'next-intl';
 import { DeckManagementScreen } from '@/components/flashcards/deck-management-screen';
 
-interface Deck {
-  id: string;
-  name: string;
-  description: string | null;
-  flashcard_count: number;
-}
-
-interface DecksClientProps {
-  decks: Deck[];
-}
-
-export default function DecksClient({ decks }: DecksClientProps) {
+export default function DecksClient() {
   const t = useTranslations('AppFlashcardDecksPage');
 
   return (
     <DeckManagementScreen
-      decks={decks}
       backHref="/app/flashcards"
       apiBase="/api/v1/flashcards"
       basePath="/app/flashcards"

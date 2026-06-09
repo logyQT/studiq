@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { FolderOpen, Tags, Play, Dumbbell } from 'lucide-react';
 import { DashboardPanel } from '@/components/flashcards/dashboard-panel';
+import { useDecks, useTopics, usePracticeDueCount } from '@/hooks/use-flashcard-queries';
 
 const GRADIENTS = [
   'from-violet-500 to-purple-600',
@@ -19,14 +20,15 @@ const GRADIENTS = [
   'from-teal-500 to-emerald-600',
 ];
 
-interface FlashcardsClientProps {
-  topicCount: number;
-  deckCount: number;
-  dueCount: number;
-}
-
-export default function FlashcardsClient({ topicCount, deckCount, dueCount }: FlashcardsClientProps) {
+export default function FlashcardsClient() {
   const t = useTranslations('AppFlashcardsPage');
+  const { data: decks } = useDecks();
+  const { data: topics } = useTopics();
+  const { data: dueData } = usePracticeDueCount();
+
+  const deckCount = decks?.length ?? 0;
+  const topicCount = topics?.length ?? 0;
+  const dueCount = dueData?.count ?? 0;
 
   const panels = [
     {

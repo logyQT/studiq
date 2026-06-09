@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
         .order('name');
 
       if (permError || !permissions) {
-        return toNextResponse({ success: false, statusCode: 500, error: 'Failed to fetch permissions' });
+        return toNextResponse({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
       }
 
       const { data: rolePerms, error: rpError } = await supabase
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
         .select('role, scope, permission_id');
 
       if (rpError || !rolePerms) {
-        return toNextResponse({ success: false, statusCode: 500, error: 'Failed to fetch role permissions' });
+        return toNextResponse({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
       }
 
       const permNameMap = new Map(permissions.map((p) => [p.id, p.name]));
