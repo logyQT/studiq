@@ -13,3 +13,4 @@ export * from '@/server/models/quiz-attempt.model';
 export * from '@/server/models/health.model';
 export * from '@/server/models/stats.model';
 export * from '@/server/models/flashcard-spaced-repetition.model';
+export * from '@/server/models/flashcard-stats.model';
