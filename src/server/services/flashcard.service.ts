@@ -14,6 +14,17 @@ import { checkPermission, shouldSetUniversityId, buildQueryFilter, Permission } 
 export class FlashcardService {
   async create(data: CreateFlashcardInput, ctx: RequestContext) {
     const supabase = await createClient();
+
+    if (data.deckId) {
+      const { data: deck } = await supabase
+        .from('flashcard_decks')
+        .select('*')
+        .eq('id', data.deckId)
+        .single();
+      if (!deck) throw new AppError('NOT_FOUND');
+      await checkPermission(ctx, Permission.DECK_UPDATE, deck);
+    }
+
     const universityId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.universityId : null;
 
     const { data: flashcard, error } = await supabase
@@ -50,6 +61,20 @@ export class FlashcardService {
 
   async bulkCreate(data: BulkCreateFlashcardsInput, ctx: RequestContext) {
     const supabase = await createClient();
+
+    if (data.deckIds && data.deckIds.length > 0) {
+      const { data: decks } = await supabase
+        .from('flashcard_decks')
+        .select('*')
+        .in('id', data.deckIds);
+      const deckMap = new Map(decks?.map((d) => [d.id, d]) ?? []);
+      for (const deckId of data.deckIds) {
+        const deck = deckMap.get(deckId);
+        if (!deck) throw new AppError('NOT_FOUND');
+        await checkPermission(ctx, Permission.DECK_UPDATE, deck);
+      }
+    }
+
     const universityId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.universityId : null;
 
     const cardsToInsert = data.cards.map((c) => ({
