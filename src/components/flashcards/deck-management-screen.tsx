@@ -64,7 +64,6 @@ interface DeckManagementScreenProps {
 
 export function DeckManagementScreen({
   backHref,
-  apiBase,
   basePath,
   t,
 }: DeckManagementScreenProps) {

@@ -69,11 +69,15 @@ export default function PracticeClient({ decks }: PracticeClientProps) {
           return (
             <Card
               key={deck.id}
-              className="group overflow-hidden cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:border-primary/50"
+              className="group overflow-hidden cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:border-primary/50 p-0"
               onClick={() => startPractice(deck.id)}
             >
-              <div className={`h-20 bg-gradient-to-br ${gradient} flex items-center justify-center`}>
-                <span className="text-2xl font-bold text-white/90">{deck.name.charAt(0).toUpperCase()}</span>
+              <div
+                className={`h-20 bg-gradient-to-br ${gradient} flex items-center justify-center`}
+              >
+                <span className="text-2xl font-bold text-white/90">
+                  {deck.name.charAt(0).toUpperCase()}
+                </span>
               </div>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg truncate">{deck.name}</CardTitle>
@@ -82,7 +86,9 @@ export default function PracticeClient({ decks }: PracticeClientProps) {
                 )}
               </CardHeader>
               <CardContent className="flex items-center justify-between pt-0">
-                <Badge variant="secondary">{t('flashcards_count', { count: deck.flashcard_count })}</Badge>
+                <Badge variant="secondary">
+                  {t('flashcards_count', { count: deck.flashcard_count })}
+                </Badge>
                 <Button variant="ghost" size="sm" className="gap-1">
                   <Play className="h-3 w-3" /> {t('start_practice')}
                 </Button>

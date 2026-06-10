@@ -49,6 +49,7 @@ export default function AiFlashcardPage() {
 
   useEffect(() => {
     if (status === 'complete' && suggestedDeckName) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDeckName(suggestedDeckName);
     }
   }, [status, suggestedDeckName]);

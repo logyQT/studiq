@@ -1,4 +1,4 @@
-import { FolderOpen, Tags, BarChart3 } from 'lucide-react';
+
 
 const GRADIENTS = [
   'from-violet-500 to-purple-600',

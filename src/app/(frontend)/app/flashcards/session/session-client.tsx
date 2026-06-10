@@ -70,7 +70,7 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
   const answeredCountRef = useRef(0);
   const pendingUpdatesRef = useRef<Array<{ flashcardId: string; wasCorrect: boolean; confidenceLevel: number }>>([]);
 
-  const [queue, setQueue] = useState<Flashcard[]>(initialCards);
+  const [queue, setQueue] = useState<Flashcard[]>(() => [...initialCards].sort(() => Math.random() - 0.5));
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [correctCount, setCorrectCount] = useState(0);
@@ -79,7 +79,7 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
   const [allCaughtUp, setAllCaughtUp] = useState(false);
   const [hasMore, setHasMore] = useState(initialHasMore);
 
-  const [localSM2, setLocalSM2] = useState<Map<string, LocalSM2State>>(() => {
+  const [_localSM2, setLocalSM2] = useState<Map<string, LocalSM2State>>(() => {
     if (isPractice) {
       const m = new Map<string, LocalSM2State>();
       initialCards.forEach((c) => m.set(c.id, { interval: 1, easeFactor: 2.5, repetitions: 0, correctStreak: 0 }));
@@ -88,7 +88,7 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
     return new Map();
   });
 
-  const [skipMap, setSkipMap] = useState<Map<string, number>>(new Map());
+  const [_skipMap, setSkipMap] = useState<Map<string, number>>(new Map());
 
   const fetchDueCards = useCallback(async (): Promise<Flashcard[]> => {
     try {

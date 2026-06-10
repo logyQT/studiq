@@ -17,7 +17,8 @@ export function useDeckFlashcardRealtime(deckId: string) {
         'flashcards',
         (p) => {
           const cached = qc.getQueryData<Flashcard[]>(queryKey);
-          if (cached?.some((fc) => fc.id === p.new.id)) qc.invalidateQueries({ queryKey });
+          const newCard = p.new as Flashcard;
+          if (cached?.some((fc) => fc.id === newCard.id)) qc.invalidateQueries({ queryKey });
         },
         { event: 'UPDATE' },
       ),

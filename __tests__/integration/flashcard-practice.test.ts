@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { POST as logPractice, GET as getHistoryForCard } from '@/app/(backend)/api/v1/flashcards/[id]/practice/route';
-import { GET as getAllHistory } from '@/app/(backend)/api/v1/flashcards/practice/route';
+import { POST as logPractice } from '@/app/(backend)/api/v1/flashcards/[id]/practice/route';
 import { GET as getStatsForCard } from '@/app/(backend)/api/v1/flashcards/[id]/practice/stats/route';
 import { GET as getStatsAll } from '@/app/(backend)/api/v1/flashcards/practice/stats/route';
 import { GET as getDueCards } from '@/app/(backend)/api/v1/flashcards/practice/due/route';

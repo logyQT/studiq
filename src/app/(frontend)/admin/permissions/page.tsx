@@ -101,7 +101,7 @@ export default function AdminPermissionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.roles.map((role, ri) =>
+              {data.roles.map((role, _ri) =>
                 data.resources.map((resource, resi) => (
                   <TableRow
                     key={`${role}-${resource}`}

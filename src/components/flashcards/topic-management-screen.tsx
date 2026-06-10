@@ -22,7 +22,7 @@ import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteConfirmDialog } from '@/components/flashcards/delete-confirm-dialog';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { apiPost, apiPut, apiDelete } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { Topic, Flashcard } from '@/types/flashcards';
 
@@ -49,7 +49,7 @@ interface TopicManagementScreenProps {
   t: ReturnType<typeof useTranslations>;
 }
 
-export function TopicManagementScreen({ backHref, apiBase, t }: TopicManagementScreenProps) {
+export function TopicManagementScreen({ backHref, t }: TopicManagementScreenProps) {
   const queryClient = useQueryClient();
   const { data: topics, isLoading } = useApiQuery<Topic[]>({ queryKey: flashcardKeys.topics.all, url: '/api/v1/flashcards/topics' });
   const { data: allFlashcards } = useApiQuery<Flashcard[]>({ queryKey: flashcardKeys.list({}), url: '/api/v1/flashcards' });

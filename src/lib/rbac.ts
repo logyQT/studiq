@@ -52,7 +52,7 @@ async function ensureRolePermissionsLoaded(): Promise<RolePermissionMap> {
 
     for (const row of data) {
       const role = row.role as UserRole;
-      const permissionName = (row as any).permissions?.name as string;
+      const permissionName = (row as unknown as { role: string; scope: string; permissions: { name: string } }).permissions.name;
       const scope = row.scope as PermissionScope;
 
       if (!permissionName) continue;

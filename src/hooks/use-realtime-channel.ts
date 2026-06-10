@@ -40,10 +40,11 @@ function channel(name: string): RealtimeBuilder {
 }
 
 function useRealtimeChannel(builder: RealtimeBuilder): void {
-  const handlersRef = useRef(builder.subscriptions.map((s) => s.handler));
-  handlersRef.current = builder.subscriptions.map((s) => s.handler);
+  const handlersRef = useRef<Handler[]>([]);
 
   useEffect(() => {
+    handlersRef.current = builder.subscriptions.map((s) => s.handler);
+
     const supabase = createClient();
     const ch = supabase.channel(builder.name);
 
@@ -66,8 +67,7 @@ function useRealtimeChannel(builder: RealtimeBuilder): void {
 
     ch.subscribe();
     return () => { supabase.removeChannel(ch); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [builder.name, JSON.stringify(builder.subscriptions.map((s) => ({ table: s.table, event: s.event, filter: s.filter })))]);
+  }, [builder.name, builder.subscriptions.map((s) => `${s.table}:${s.event}:${s.filter}`).join(',')]);
 }
 
 export { channel, useRealtimeChannel };

@@ -18,16 +18,16 @@ export function useApiQuery<T>(opts: {
   });
 }
 
-export function useApiMutation<TData, TVars>(opts: {
+export function useApiMutation<TData, TVars, TContext = unknown>(opts: {
   mutationFn: (vars: TVars) => Promise<TData>;
   invalidateKeys?: QueryKey[];
-  onMutate?: (vars: TVars) => unknown;
-  onError?: (error: Error, vars: TVars, context: unknown) => void;
+  onMutate?: (vars: TVars) => TContext | Promise<TContext>;
+  onError?: (error: Error, vars: TVars, context: TContext | undefined) => void;
   onSettled?: () => void;
-}): UseMutationResult<TData, Error, TVars> {
+}): UseMutationResult<TData, Error, TVars, TContext> {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  return useMutation<TData, Error, TVars, TContext>({
     mutationFn: opts.mutationFn,
     onMutate: opts.onMutate,
     onError: opts.onError,

@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
-import { AppError } from '@/lib/errors';
 import type { RequestContext } from '@/lib/request-context';
 import { flashcardSpacedRepetitionService } from './flashcard-spaced-repetition.service';
 import type { BatchPracticeInput } from '@/server/models';
@@ -320,10 +319,6 @@ export class FlashcardPracticeService {
       stateRows && stateRows.length > 0
         ? stateRows.reduce((sum, s) => sum + s.easiness_factor, 0) / stateRows.length
         : 0;
-
-    const { data: allFlashcards } = await supabase
-      .from('flashcards')
-      .select('id', { count: 'exact', head: true });
 
     return {
       totalPracticed: totalPracticed ?? 0,

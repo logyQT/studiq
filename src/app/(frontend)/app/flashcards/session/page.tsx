@@ -48,7 +48,6 @@ export default async function SessionPage({ searchParams }: SessionPageProps) {
         front: fc.front,
         back: fc.back,
       }));
-      initialCards = [...initialCards].sort(() => Math.random() - 0.5);
     }
   } else if (!isPractice) {
     const fetchUrl = new URL(`${baseUrl}/api/v1/flashcards/practice/due`);

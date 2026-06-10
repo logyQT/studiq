@@ -19,16 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { DeleteConfirmDialog } from '@/components/flashcards/delete-confirm-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,7 +47,7 @@ import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { apiPost, apiPut, apiDelete } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { Deck, Flashcard, Topic } from '@/types/flashcards';
 import { useDeckFlashcardRealtime, useTopicRealtime } from '@/hooks/use-flashcard-realtime';
@@ -124,7 +115,7 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
   useTopicRealtime();
 
   const { data: currentDeckData, isLoading: deckLoading, isError: deckError } = useApiQuery<Deck>({ queryKey: flashcardKeys.decks.detail(deckId), url: `/api/v1/flashcards/decks/${deckId}`, enabled: !!deckId });
-  const { data: flashcardsData, isLoading: flashcardsLoading } = useApiQuery<Flashcard[]>({ queryKey: flashcardKeys.list({ deckIds: [deckId] }), url: `/api/v1/flashcards?deckIds=${deckId}`, enabled: !!deckId });
+  const { data: flashcardsData } = useApiQuery<Flashcard[]>({ queryKey: flashcardKeys.list({ deckIds: [deckId] }), url: `/api/v1/flashcards?deckIds=${deckId}`, enabled: !!deckId });
   const { data: topicsData } = useApiQuery<Topic[]>({ queryKey: flashcardKeys.topics.all, url: '/api/v1/flashcards/topics' });
   const { data: allDecksData } = useApiQuery<Deck[]>({ queryKey: flashcardKeys.decks.all, url: '/api/v1/flashcards/decks' });
 
@@ -842,20 +833,13 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('delete_dialog_title')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('delete_dialog_desc')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common_cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-white">
-              {t('common_delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={!!deleteId}
+        onOpenChange={() => setDeleteId(null)}
+        onConfirm={handleDelete}
+        title={t('delete_dialog_title')}
+        description={t('delete_dialog_desc')}
+      />
 
       <Dialog open={deckEditOpen} onOpenChange={setDeckEditOpen}>
         <DialogContent>
@@ -891,20 +875,13 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={deckDeleteOpen} onOpenChange={setDeckDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('deck_delete_title')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('deck_delete_desc')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common_cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeckDelete} className="bg-destructive text-white">
-              {t('common_delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={deckDeleteOpen}
+        onOpenChange={setDeckDeleteOpen}
+        onConfirm={handleDeckDelete}
+        title={t('deck_delete_title')}
+        description={t('deck_delete_desc')}
+      />
 
       <Dialog open={!!viewTopicId} onOpenChange={(open) => { if (!open) setViewTopicId(null); }}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">

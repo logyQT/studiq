@@ -1,14 +1,5 @@
 import { Skeleton } from '@/components/ui/skeleton';
 
-const GRADIENTS = [
-  'from-violet-500 to-purple-600',
-  'from-blue-500 to-cyan-500',
-  'from-emerald-500 to-teal-600',
-  'from-orange-500 to-amber-600',
-  'from-pink-500 to-rose-600',
-  'from-indigo-500 to-blue-600',
-];
-
 function FlashcardSkeleton() {
   return (
     <div className="min-h-32 rounded-xl border bg-card p-6 flex flex-col space-y-3">
