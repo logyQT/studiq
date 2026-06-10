@@ -22,7 +22,11 @@ import { ArrowLeft, Plus, Trash2, Pencil, ArrowRight, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteConfirmDialog } from '@/components/flashcards/delete-confirm-dialog';
-import { useDecks, useCreateDeck, useUpdateDeck, useDeleteDeck } from '@/hooks/use-flashcard-queries';
+import { useQueryClient } from '@tanstack/react-query';
+import { useApiQuery, useApiMutation } from '@/hooks/use-api';
+import { apiPost, apiPut, apiDelete } from '@/lib/api';
+import { flashcardKeys } from '@/lib/query-keys';
+import type { Deck } from '@/types/flashcards';
 import { useDeckListRealtime } from '@/hooks/use-flashcard-realtime';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
@@ -51,13 +55,6 @@ function getGradient(id: string) {
   return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
 }
 
-interface Deck {
-  id: string;
-  name: string;
-  description: string | null;
-  flashcard_count: number;
-}
-
 interface DeckManagementScreenProps {
   backHref: string;
   apiBase: string;
@@ -72,15 +69,16 @@ export function DeckManagementScreen({
   t,
 }: DeckManagementScreenProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const role = user?.app_metadata?.role as UserRole | undefined;
 
   useDeckListRealtime();
 
-  const { data: decks, isLoading } = useDecks();
-  const createDeck = useCreateDeck();
-  const updateDeck = useUpdateDeck();
-  const deleteDeck = useDeleteDeck();
+  const { data: decks, isLoading } = useApiQuery<Deck[]>({ queryKey: flashcardKeys.decks.all, url: '/api/v1/flashcards/decks' });
+  const createDeck = useApiMutation({ mutationFn: (data: { name: string; description?: string }) => apiPost<Deck>('/api/v1/flashcards/decks', data), invalidateKeys: [flashcardKeys.decks.all] });
+  const updateDeck = useApiMutation({ mutationFn: ({ id, ...data }: { id: string; name: string; description?: string }) => apiPut<Deck>(`/api/v1/flashcards/decks/${id}`, data), invalidateKeys: [flashcardKeys.decks.all], onMutate: async ({ id, ...data }) => { await queryClient.cancelQueries({ queryKey: flashcardKeys.decks.all }); const prev = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all); queryClient.setQueryData<Deck[]>(flashcardKeys.decks.all, (old) => old?.map((d) => d.id === id ? { ...d, ...data } : d)); return { previous: prev }; }, onError: (_err, _vars, ctx) => { queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous); } });
+  const deleteDeck = useApiMutation({ mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/decks/${id}`), invalidateKeys: [flashcardKeys.decks.all], onMutate: async (id) => { await queryClient.cancelQueries({ queryKey: flashcardKeys.decks.all }); const prev = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all); queryClient.setQueryData<Deck[]>(flashcardKeys.decks.all, (old) => old?.filter((d) => d.id !== id)); return { previous: prev }; }, onError: (_err, _id, ctx) => { queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous); } });
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Deck | null>(null);

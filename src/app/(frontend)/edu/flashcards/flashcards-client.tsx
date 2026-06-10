@@ -3,7 +3,9 @@
 import { useTranslations } from 'next-intl';
 import { FolderOpen, Tags, BarChart3 } from 'lucide-react';
 import { DashboardPanel } from '@/components/flashcards/dashboard-panel';
-import { useDecks, useTopics } from '@/hooks/use-flashcard-queries';
+import { useApiQuery } from '@/hooks/use-api';
+import { flashcardKeys } from '@/lib/query-keys';
+import type { Deck, Topic } from '@/types/flashcards';
 
 const GRADIENTS = [
   'from-violet-500 to-purple-600',
@@ -22,8 +24,8 @@ const GRADIENTS = [
 
 export default function EduFlashcardsClient() {
   const t = useTranslations('EduFlashcardsPage');
-  const { data: decks } = useDecks();
-  const { data: topics } = useTopics();
+  const { data: decks } = useApiQuery<Deck[]>({ queryKey: flashcardKeys.decks.all, url: '/api/v1/flashcards/decks' });
+  const { data: topics } = useApiQuery<Topic[]>({ queryKey: flashcardKeys.topics.all, url: '/api/v1/flashcards/topics' });
 
   const deckCount = decks?.length ?? 0;
   const topicCount = topics?.length ?? 0;

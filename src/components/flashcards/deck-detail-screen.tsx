@@ -54,17 +54,11 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  useDeck,
-  useDeckFlashcards,
-  useTopics,
-  useDecks,
-  useCreateFlashcard,
-  useUpdateFlashcard,
-  useDeleteFlashcard,
-  useUpdateDeck,
-  useDeleteDeck,
-} from '@/hooks/use-flashcard-queries';
+import { useQueryClient } from '@tanstack/react-query';
+import { useApiQuery, useApiMutation } from '@/hooks/use-api';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { flashcardKeys } from '@/lib/query-keys';
+import type { Deck, Flashcard, Topic } from '@/types/flashcards';
 import { useDeckFlashcardRealtime, useTopicRealtime } from '@/hooks/use-flashcard-realtime';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
@@ -110,27 +104,6 @@ function getTopicColor(name: string) {
   return TOPIC_COLORS[name.length % TOPIC_COLORS.length];
 }
 
-interface Topic {
-  id: string;
-  name: string;
-  flashcard_count: number;
-}
-
-interface Deck {
-  id: string;
-  name: string;
-  description: string | null;
-  flashcard_count: number;
-}
-
-interface Flashcard {
-  id: string;
-  front: string;
-  back: string;
-  flashcard_topic_assignments?: Array<{ topic_id: string }>;
-  flashcard_deck_assignments?: Array<{ deck_id: string }>;
-}
-
 interface DeckDetailScreenProps {
   deckId: string;
   backHref: string;
@@ -142,6 +115,7 @@ interface DeckDetailScreenProps {
 
 export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, practiceHref }: DeckDetailScreenProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const role = user?.app_metadata?.role as UserRole | undefined;
   const gradient = getGradient(deckId);
@@ -149,21 +123,23 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
   useDeckFlashcardRealtime(deckId);
   useTopicRealtime();
 
-  const { data: currentDeckData, isLoading: deckLoading, isError: deckError } = useDeck(deckId);
-  const { data: flashcardsData, isLoading: flashcardsLoading } = useDeckFlashcards(deckId);
-  const { data: topicsData } = useTopics();
-  const { data: allDecksData } = useDecks();
+  const { data: currentDeckData, isLoading: deckLoading, isError: deckError } = useApiQuery<Deck>({ queryKey: flashcardKeys.decks.detail(deckId), url: `/api/v1/flashcards/decks/${deckId}`, enabled: !!deckId });
+  const { data: flashcardsData, isLoading: flashcardsLoading } = useApiQuery<Flashcard[]>({ queryKey: flashcardKeys.list({ deckIds: [deckId] }), url: `/api/v1/flashcards?deckIds=${deckId}`, enabled: !!deckId });
+  const { data: topicsData } = useApiQuery<Topic[]>({ queryKey: flashcardKeys.topics.all, url: '/api/v1/flashcards/topics' });
+  const { data: allDecksData } = useApiQuery<Deck[]>({ queryKey: flashcardKeys.decks.all, url: '/api/v1/flashcards/decks' });
 
   const flashcards = flashcardsData ?? [];
   const currentDeck = currentDeckData ?? null;
   const topics = topicsData ?? [];
   const allDecks = (allDecksData ?? []).filter((d) => d.id !== deckId);
 
-  const createFlashcard = useCreateFlashcard(deckId);
-  const updateFlashcard = useUpdateFlashcard(deckId);
-  const deleteFlashcard = useDeleteFlashcard(deckId);
-  const updateDeck = useUpdateDeck();
-  const deleteDeck = useDeleteDeck();
+  const flashcardQueryKey = flashcardKeys.list({ deckIds: [deckId] });
+
+  const createFlashcard = useApiMutation({ mutationFn: (data: { front: string; back: string; topicIds?: string[] }) => apiPost<Flashcard>('/api/v1/flashcards', { ...data, deckId }), invalidateKeys: [flashcardQueryKey] });
+  const updateFlashcard = useApiMutation({ mutationFn: ({ id, ...data }: { id: string; front: string; back: string; topicIds: string[] }) => apiPut<Flashcard>(`/api/v1/flashcards/${id}`, data), invalidateKeys: [flashcardQueryKey], onMutate: async ({ id, ...data }) => { await queryClient.cancelQueries({ queryKey: flashcardQueryKey }); const prev = queryClient.getQueryData<Flashcard[]>(flashcardQueryKey); queryClient.setQueryData<Flashcard[]>(flashcardQueryKey, (old) => old?.map((fc) => fc.id === id ? { ...fc, ...data } : fc)); return { previous: prev }; }, onError: (_err, _vars, ctx) => { queryClient.setQueryData(flashcardQueryKey, ctx?.previous); } });
+  const deleteFlashcard = useApiMutation({ mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/${id}`), invalidateKeys: [flashcardQueryKey], onMutate: async (id) => { await queryClient.cancelQueries({ queryKey: flashcardQueryKey }); const prev = queryClient.getQueryData<Flashcard[]>(flashcardQueryKey); queryClient.setQueryData<Flashcard[]>(flashcardQueryKey, (old) => old?.filter((fc) => fc.id !== id)); return { previous: prev }; }, onError: (_err, _id, ctx) => { queryClient.setQueryData(flashcardQueryKey, ctx?.previous); } });
+  const updateDeck = useApiMutation({ mutationFn: ({ id, ...data }: { id: string; name: string; description?: string }) => apiPut<Deck>(`/api/v1/flashcards/decks/${id}`, data), invalidateKeys: [flashcardKeys.decks.all], onMutate: async ({ id, ...data }) => { await queryClient.cancelQueries({ queryKey: flashcardKeys.decks.all }); const prev = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all); queryClient.setQueryData<Deck[]>(flashcardKeys.decks.all, (old) => old?.map((d) => d.id === id ? { ...d, ...data } : d)); return { previous: prev }; }, onError: (_err, _vars, ctx) => { queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous); } });
+  const deleteDeck = useApiMutation({ mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/decks/${id}`), invalidateKeys: [flashcardKeys.decks.all], onMutate: async (id) => { await queryClient.cancelQueries({ queryKey: flashcardKeys.decks.all }); const prev = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all); queryClient.setQueryData<Deck[]>(flashcardKeys.decks.all, (old) => old?.filter((d) => d.id !== id)); return { previous: prev }; }, onError: (_err, _id, ctx) => { queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous); } });
 
   const [flippedId, setFlippedId] = useState<string | null>(null);
 

@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
 import { flashcardKeys } from '@/lib/query-keys';
-import type { Flashcard } from '@/hooks/use-flashcard-queries';
+import type { Flashcard } from '@/types/flashcards';
 
 export function useDeckFlashcardRealtime(deckId: string) {
   const qc = useQueryClient();

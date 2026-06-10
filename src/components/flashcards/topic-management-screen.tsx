@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -20,8 +21,10 @@ import { ArrowLeft, Plus, Trash2, Eye, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteConfirmDialog } from '@/components/flashcards/delete-confirm-dialog';
-import type { Topic, Flashcard } from '@/hooks/use-flashcard-queries';
-import { useTopics, useAllFlashcards, useCreateTopic, useUpdateTopic, useDeleteTopic } from '@/hooks/use-flashcard-queries';
+import { useApiQuery, useApiMutation } from '@/hooks/use-api';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { flashcardKeys } from '@/lib/query-keys';
+import type { Topic, Flashcard } from '@/types/flashcards';
 
 const TOPIC_COLORS = [
   'bg-red-500',
@@ -47,12 +50,13 @@ interface TopicManagementScreenProps {
 }
 
 export function TopicManagementScreen({ backHref, apiBase, t }: TopicManagementScreenProps) {
-  const { data: topics, isLoading } = useTopics();
-  const { data: allFlashcards } = useAllFlashcards();
+  const queryClient = useQueryClient();
+  const { data: topics, isLoading } = useApiQuery<Topic[]>({ queryKey: flashcardKeys.topics.all, url: '/api/v1/flashcards/topics' });
+  const { data: allFlashcards } = useApiQuery<Flashcard[]>({ queryKey: flashcardKeys.list({}), url: '/api/v1/flashcards' });
   const flashcards = allFlashcards ?? [];
-  const createTopic = useCreateTopic();
-  const updateTopic = useUpdateTopic();
-  const deleteTopic = useDeleteTopic();
+  const createTopic = useApiMutation({ mutationFn: (data: { name: string }) => apiPost<Topic>('/api/v1/flashcards/topics', data), invalidateKeys: [flashcardKeys.topics.all] });
+  const updateTopic = useApiMutation({ mutationFn: ({ id, ...data }: { id: string; name: string }) => apiPut<Topic>(`/api/v1/flashcards/topics/${id}`, data), invalidateKeys: [flashcardKeys.topics.all], onMutate: async ({ id, ...data }) => { await queryClient.cancelQueries({ queryKey: flashcardKeys.topics.all }); const prev = queryClient.getQueryData<Topic[]>(flashcardKeys.topics.all); queryClient.setQueryData<Topic[]>(flashcardKeys.topics.all, (old) => old?.map((t) => t.id === id ? { ...t, ...data } : t)); return { previous: prev }; }, onError: (_err, _vars, ctx) => { queryClient.setQueryData(flashcardKeys.topics.all, ctx?.previous); } });
+  const deleteTopic = useApiMutation({ mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/topics/${id}`), invalidateKeys: [flashcardKeys.topics.all], onMutate: async (id) => { await queryClient.cancelQueries({ queryKey: flashcardKeys.topics.all }); const prev = queryClient.getQueryData<Topic[]>(flashcardKeys.topics.all); queryClient.setQueryData<Topic[]>(flashcardKeys.topics.all, (old) => old?.filter((t) => t.id !== id)); return { previous: prev }; }, onError: (_err, _id, ctx) => { queryClient.setQueryData(flashcardKeys.topics.all, ctx?.previous); } });
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Topic | null>(null);
