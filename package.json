@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "clean": "npx rimraf .next node_modules/.cache coverage",
     "lint": "tsc && eslint .",
     "format": "prettier . --write",
     "format:check": "prettier . --check",

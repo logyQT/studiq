@@ -24,6 +24,7 @@ import { DeleteConfirmDialog } from '@/components/flashcards/delete-confirm-dial
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { apiPost, apiPut, apiDelete } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
+import { useTopicRealtime } from '@/hooks/use-flashcard-realtime';
 import type { Topic, Flashcard } from '@/types/flashcards';
 
 const TOPIC_COLORS = [
@@ -51,6 +52,7 @@ interface TopicManagementScreenProps {
 
 export function TopicManagementScreen({ backHref, t }: TopicManagementScreenProps) {
   const queryClient = useQueryClient();
+  useTopicRealtime();
   const { data: topics, isLoading } = useApiQuery<Topic[]>({ queryKey: flashcardKeys.topics.all, url: '/api/v1/flashcards/topics' });
   const { data: allFlashcards } = useApiQuery<Flashcard[]>({ queryKey: flashcardKeys.list({}), url: '/api/v1/flashcards' });
   const flashcards = allFlashcards ?? [];
