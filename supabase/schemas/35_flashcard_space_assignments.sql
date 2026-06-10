@@ -11,3 +11,5 @@ CREATE TABLE public.flashcard_deck_assignments (
 );
 
 CREATE INDEX idx_flashcard_deck_assignments_deck ON public.flashcard_deck_assignments(deck_id);
+
+-- ALTER TABLE public.flashcard_deck_assignments ENABLE ROW LEVEL SECURITY;

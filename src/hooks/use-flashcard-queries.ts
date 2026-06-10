@@ -6,6 +6,7 @@ export interface Deck {
   name: string;
   description: string | null;
   flashcard_count: number;
+  created_by: string;
 }
 
 export interface Topic {
@@ -18,6 +19,7 @@ export interface Flashcard {
   id: string;
   front: string;
   back: string;
+  created_by: string;
   flashcard_topic_assignments?: Array<{ topic_id: string }>;
   flashcard_deck_assignments?: Array<{ deck_id: string }>;
 }

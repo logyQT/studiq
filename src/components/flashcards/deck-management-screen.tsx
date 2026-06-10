@@ -18,11 +18,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Plus, Trash2, Pencil, ArrowRight } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Pencil, ArrowRight, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteConfirmDialog } from '@/components/flashcards/delete-confirm-dialog';
 import { useDecks, useCreateDeck, useUpdateDeck, useDeleteDeck } from '@/hooks/use-flashcard-queries';
+import { useDeckListRealtime } from '@/hooks/use-flashcard-realtime';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { can } from '@/lib/frontend-rbac';
+import { UserRole } from '@/types';
 
 const GRADIENTS = [
   'from-violet-500 to-purple-600',
@@ -68,6 +72,11 @@ export function DeckManagementScreen({
   t,
 }: DeckManagementScreenProps) {
   const router = useRouter();
+  const { user } = useAuth();
+  const role = user?.app_metadata?.role as UserRole | undefined;
+
+  useDeckListRealtime();
+
   const { data: decks, isLoading } = useDecks();
   const createDeck = useCreateDeck();
   const updateDeck = useUpdateDeck();
@@ -177,11 +186,14 @@ export function DeckManagementScreen({
               onClick={() => router.push(`${basePath}/deck/${deck.id}`)}
             >
               <div
-                className={`h-20 bg-gradient-to-br ${gradient} flex items-center justify-center`}
+                className={`h-20 bg-gradient-to-br ${gradient} flex items-center justify-center relative`}
               >
                 <span className="text-2xl font-bold text-white/90">
                   {deck.name.charAt(0).toUpperCase()}
                 </span>
+                {!can(role, 'deck.update', deck.created_by, user?.id) && (
+                  <Eye className="absolute bottom-2 right-2 h-4 w-4 text-white/50" />
+                )}
               </div>
               <div className="p-5 pb-3">
                 <div className="flex items-start justify-between">
@@ -193,6 +205,7 @@ export function DeckManagementScreen({
                       </p>
                     )}
                   </div>
+                  {can(role, 'deck.update', deck.created_by, user?.id) && (
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
                     <Button
                       variant="ghost"
@@ -213,6 +226,7 @@ export function DeckManagementScreen({
                       <Trash2 className="h-3 w-3 text-destructive" />
                     </Button>
                   </div>
+                  )}
                 </div>
               </div>
               <div className="px-5 pb-5 flex items-center justify-between">

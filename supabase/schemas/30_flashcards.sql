@@ -14,3 +14,5 @@ CREATE TABLE public.flashcards (
 
 CREATE INDEX idx_flashcards_created_by ON public.flashcards(created_by);
 CREATE INDEX idx_flashcards_university ON public.flashcards(university_id);
+
+-- ALTER TABLE public.flashcards ENABLE ROW LEVEL SECURITY;

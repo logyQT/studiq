@@ -65,6 +65,10 @@ import {
   useUpdateDeck,
   useDeleteDeck,
 } from '@/hooks/use-flashcard-queries';
+import { useDeckFlashcardRealtime, useTopicRealtime } from '@/hooks/use-flashcard-realtime';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { can } from '@/lib/frontend-rbac';
+import { UserRole } from '@/types';
 
 const GRADIENTS = [
   'from-violet-500 to-purple-600',
@@ -138,7 +142,12 @@ interface DeckDetailScreenProps {
 
 export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, practiceHref }: DeckDetailScreenProps) {
   const router = useRouter();
+  const { user } = useAuth();
+  const role = user?.app_metadata?.role as UserRole | undefined;
   const gradient = getGradient(deckId);
+
+  useDeckFlashcardRealtime(deckId);
+  useTopicRealtime();
 
   const { data: currentDeckData, isLoading: deckLoading, isError: deckError } = useDeck(deckId);
   const { data: flashcardsData, isLoading: flashcardsLoading } = useDeckFlashcards(deckId);
@@ -422,22 +431,26 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
 
       <div className={`relative group rounded-xl bg-gradient-to-br ${gradient} p-8 text-white`}>
         <div className="absolute right-4 top-4 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20"
-            onClick={openDeckEdit}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-white/80 hover:text-red-200 hover:bg-white/20"
-            onClick={() => setDeckDeleteOpen(true)}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20"
+              onClick={openDeckEdit}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+          )}
+          {can(role, 'deck.delete', currentDeck?.created_by, user?.id) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-white/80 hover:text-red-200 hover:bg-white/20"
+              onClick={() => setDeckDeleteOpen(true)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
         </div>
         <div className="flex items-start gap-4">
           <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-white/20 text-2xl font-bold">
@@ -470,17 +483,21 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
           <h3 className="text-lg font-semibold">{t('flashcards_section')}</h3>
           <p className="text-sm text-muted-foreground">{t('flip_hint')}</p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" /> {t('new_flashcard')}
-        </Button>
+        {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
+          <Button onClick={openCreate}>
+            <Plus className="mr-2 h-4 w-4" /> {t('new_flashcard')}
+          </Button>
+        )}
       </div>
 
       {flashcards.length === 0 ? (
         <Card className="p-12 text-center">
           <p className="text-muted-foreground">{t('no_flashcards')}</p>
-          <Button variant="outline" className="mt-4" onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" /> {t('create_first')}
-          </Button>
+          {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
+            <Button variant="outline" className="mt-4" onClick={openCreate}>
+              <Plus className="mr-2 h-4 w-4" /> {t('create_first')}
+            </Button>
+          )}
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -503,9 +520,11 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEdit(fc); }}>
-                        <Pencil className="mr-2 h-4 w-4" /> {t('menu_edit')}
-                      </DropdownMenuItem>
+                      {can(role, 'flashcard.update', fc.created_by, user?.id) && (
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEdit(fc); }}>
+                          <Pencil className="mr-2 h-4 w-4" /> {t('menu_edit')}
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuSub>
                         <DropdownMenuSubTrigger>
                           <Tags className="mr-2 h-4 w-4" /> {t('menu_topics')}
@@ -563,15 +582,17 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
                         <Copy className="mr-2 h-4 w-4" /> {t('menu_copy')}
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        className="text-destructive"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteId(fc.id);
-                        }}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" /> {t('menu_delete')}
-                      </DropdownMenuItem>
+                      {can(role, 'flashcard.delete', fc.created_by, user?.id) && (
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteId(fc.id);
+                          }}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" /> {t('menu_delete')}
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>

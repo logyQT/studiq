@@ -49,7 +49,6 @@
     "VALIDATION_TOO_SHORT": "Wartość jest za krótka.",
     "VALIDATION_TOO_LONG": "Wartość jest za długa.",
     "VALIDATION_INVALID_ROLE": "Nieprawidłowa rola użytkownika."
-    
   },
   "NotFoundPage": {
     "title": "Nie znaleziono strony",
@@ -260,7 +259,7 @@
     "open_deck": "Otwórz"
   },
   "EduDeckViewPage": {
-    "back": "Powrót do talii",
+    "back": "Powrót",
     "flashcards_count": "{count, plural, one {# fiszka} few {# fiszki} other {# fiszek}}",
     "flashcards_section": "Fiszki",
     "flip_hint": "Kliknij kartę, aby odkryć odpowiedź",
