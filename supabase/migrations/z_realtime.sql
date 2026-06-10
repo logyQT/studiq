@@ -6,3 +6,5 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.flashcards;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.flashcard_decks;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.flashcard_topics;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.flashcard_topic_assignments;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.flashcard_practice;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.flashcard_review_state;
