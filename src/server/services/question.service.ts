@@ -1,10 +1,15 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
 import type { CreateQuestionInput, UpdateQuestionInput } from '@/server/models';
+import { UserRole } from '@/types';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { RequestContext } from '@/lib/request-context';
 
 export class QuestionService {
-  async create(data: CreateQuestionInput, userId: string) {
+  async create(data: CreateQuestionInput, ctx: RequestContext) {
     const supabase = await createClient();
+
+    const universityId = ctx.role !== UserRole.TEACHER ? null : ctx.universityId;
 
     const { data: question, error: qError } = await supabase
       .from('questions')
@@ -14,12 +19,14 @@ export class QuestionService {
         content: data.content,
         explanation: data.explanation ?? null,
         difficulty: data.difficulty,
-        created_by: userId,
+        created_by: ctx.userId,
+        university_id: universityId,
       })
       .select()
       .single();
 
-    if (qError || !question) throw new AppError('INTERNAL_SERVER');
+    if (qError) throw mapSupabaseError(qError);
+    if (!question) throw new AppError('NOT_FOUND');
 
     const answersToInsert = data.answers.map((a, i) => ({
       question_id: question.id,
@@ -29,7 +36,7 @@ export class QuestionService {
     }));
 
     const { error: aError } = await supabase.from('question_answers').insert(answersToInsert);
-    if (aError) throw new AppError('INTERNAL_SERVER');
+    if (aError) throw mapSupabaseError(aError);
 
     return {
       ...question,
@@ -44,23 +51,33 @@ export class QuestionService {
     };
   }
 
-  async list(filters?: { subjectId?: string; type?: string; difficulty?: string }) {
+  async list(
+    ctx: RequestContext,
+    filters?: { subjectId?: string; type?: string; difficulty?: string },
+  ) {
     const supabase = await createClient();
+    const orConditions = [];
+
+    if (ctx.universityId) orConditions.push(`university_id.eq.${ctx.universityId}`);
+    if (ctx.userId) orConditions.push(`created_by.eq.${ctx.userId}`);
+
     let query = supabase
       .from('questions')
       .select('*, question_answers(*)')
       .order('created_at', { ascending: false });
 
+    if (orConditions.length > 0) query.or(orConditions.join(','));
     if (filters?.subjectId) query = query.eq('subject_id', filters.subjectId);
     if (filters?.type) query = query.eq('type', filters.type);
     if (filters?.difficulty) query = query.eq('difficulty', filters.difficulty);
 
     const { data, error } = await query;
-    if (error) throw new AppError('INTERNAL_SERVER');
+
+    if (error) throw mapSupabaseError(error);
     return data;
   }
 
-  async getById(id: string) {
+  async getById(id: string, ctx: RequestContext) {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from('questions')
@@ -68,12 +85,16 @@ export class QuestionService {
       .eq('id', id)
       .single();
 
-    if (error || !data || (Array.isArray(data) && data.length === 0))
-      throw new AppError('NOT_FOUND');
-    return data;
+    if (error || !data) throw new AppError('NOT_FOUND');
+
+    if (data.created_by === ctx.userId) return data;
+
+    if (data.university_id && data.university_id === ctx.universityId) return data;
+
+    throw new AppError('FORBIDDEN');
   }
 
-  async update(id: string, data: UpdateQuestionInput, userId: string) {
+  async update(id: string, data: UpdateQuestionInput, ctx: RequestContext) {
     const supabase = await createClient();
 
     const updateFields: Record<string, unknown> = {};
@@ -87,11 +108,11 @@ export class QuestionService {
       .from('questions')
       .update(updateFields)
       .eq('id', id)
-      .eq('created_by', userId)
+      .eq('created_by', ctx.userId)
       .select()
       .single();
 
-    if (qError && qError.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (qError && qError.code !== 'PGRST116') throw mapSupabaseError(qError);
     if (!question || (Array.isArray(question) && question.length === 0))
       throw new AppError('FORBIDDEN');
 
@@ -106,21 +127,21 @@ export class QuestionService {
       await supabase.from('question_answers').insert(answersToInsert);
     }
 
-    return this.getById(id);
+    return this.getById(id, ctx);
   }
 
-  async delete(id: string, userId: string) {
+  async delete(id: string, ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data, error } = await supabase
       .from('questions')
       .delete()
       .eq('id', id)
-      .eq('created_by', userId)
+      .eq('created_by', ctx.userId)
       .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
+    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
     if (!data || (Array.isArray(data) && data.length === 0)) throw new AppError('FORBIDDEN');
   }
 

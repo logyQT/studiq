@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { AppError, AppErrorCode, APP_ERRORS, getErrorMessage } from '@/lib/errors';
 import { ControllerResponse } from '@/lib/controller-response';
 import { z } from '@/lib/zod';
+import { errorLogService } from '@/server/services/error-log.service';
+import type { RequestContext } from '@/lib/request-context';
 
 export function toNextResponse<T>(response: ControllerResponse<T>): NextResponse {
   if (response.success) {
@@ -21,24 +23,41 @@ export function toNextResponse<T>(response: ControllerResponse<T>): NextResponse
     body.issues = z.treeifyError(zodError);
   }
 
+  if (response.errorId) {
+    body.errorId = response.errorId;
+  }
+
   return NextResponse.json(body, { status: response.statusCode });
 }
 
-export function handleApiError(
+export async function handleApiError(
   error: unknown,
   fallback: AppErrorCode = 'INTERNAL_SERVER',
-): NextResponse {
+  ctx?: RequestContext,
+): Promise<NextResponse> {
   const status = error instanceof AppError ? error.statusCode : APP_ERRORS[fallback].status;
 
-  if (!(error instanceof AppError)) {
-    console.error('[Unhandled API Error]:', error);
+  if (error instanceof AppError) {
+    if (error.code === 'INTERNAL_SERVER') {
+      const errorId = await errorLogService.logError(error, error.code, ctx);
+      console.error(`[AppError INTERNAL_SERVER] errorId=${errorId}:`, error);
+      return NextResponse.json(
+        { success: false, error: error.code, errorId },
+        { status },
+      );
+    }
+
+    return NextResponse.json(
+      { success: false, error: getErrorMessage(error, APP_ERRORS[fallback].code) },
+      { status },
+    );
   }
 
+  const errorId = await errorLogService.logError(error, fallback, ctx);
+  console.error(`[Unhandled API Error] errorId=${errorId}:`, error);
+
   return NextResponse.json(
-    {
-      success: false,
-      error: getErrorMessage(error, APP_ERRORS[fallback].code),
-    },
+    { success: false, error: APP_ERRORS[fallback].code, errorId },
     { status },
   );
 }

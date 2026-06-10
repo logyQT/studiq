@@ -4,36 +4,42 @@ import type {
   CreateFlashcardInput,
   BulkCreateFlashcardsInput,
   UpdateFlashcardInput,
+  LinkFlashcardInput,
+  CopyFlashcardInput,
 } from '@/server/models';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { RequestContext } from '@/lib/request-context';
+import { checkPermission, shouldSetUniversityId, buildQueryFilter, Permission } from '@/lib/rbac';
 
 export class FlashcardService {
-  private async getUserProfile(userId: string) {
+  async create(data: CreateFlashcardInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role, university_id')
-      .eq('id', userId)
-      .single();
-    return profile;
-  }
 
-  async create(data: CreateFlashcardInput, userId: string) {
-    const supabase = await createClient();
-    const profile = await this.getUserProfile(userId);
-    const universityId = profile?.role === 'teacher' ? (profile?.university_id ?? null) : null;
+    if (data.deckId) {
+      const { data: deck } = await supabase
+        .from('flashcard_decks')
+        .select('*')
+        .eq('id', data.deckId)
+        .single();
+      if (!deck) throw new AppError('NOT_FOUND');
+      await checkPermission(ctx, Permission.DECK_UPDATE, deck);
+    }
+
+    const universityId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.universityId : null;
 
     const { data: flashcard, error } = await supabase
       .from('flashcards')
       .insert({
         front: data.front,
         back: data.back,
-        created_by: userId,
+        created_by: ctx.userId,
         university_id: universityId,
       })
       .select()
       .single();
 
-    if (error || !flashcard) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
+    if (!flashcard) throw new AppError('NOT_FOUND');
 
     if (data.topicIds && data.topicIds.length > 0) {
       const assignments = data.topicIds.map((topicId) => ({
@@ -43,26 +49,38 @@ export class FlashcardService {
       await supabase.from('flashcard_topic_assignments').insert(assignments);
     }
 
-    if (data.spaceIds && data.spaceIds.length > 0) {
-      const spaceAssignments = data.spaceIds.map((spaceId) => ({
+    if (data.deckId) {
+      await supabase.from('flashcard_deck_assignments').insert({
         flashcard_id: flashcard.id,
-        space_id: spaceId,
-      }));
-      await supabase.from('flashcard_space_assignments').insert(spaceAssignments);
+        deck_id: data.deckId,
+      });
     }
 
     return flashcard;
   }
 
-  async bulkCreate(data: BulkCreateFlashcardsInput, userId: string) {
+  async bulkCreate(data: BulkCreateFlashcardsInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const profile = await this.getUserProfile(userId);
-    const universityId = profile?.role === 'teacher' ? (profile?.university_id ?? null) : null;
+
+    if (data.deckIds && data.deckIds.length > 0) {
+      const { data: decks } = await supabase
+        .from('flashcard_decks')
+        .select('*')
+        .in('id', data.deckIds);
+      const deckMap = new Map(decks?.map((d) => [d.id, d]) ?? []);
+      for (const deckId of data.deckIds) {
+        const deck = deckMap.get(deckId);
+        if (!deck) throw new AppError('NOT_FOUND');
+        await checkPermission(ctx, Permission.DECK_UPDATE, deck);
+      }
+    }
+
+    const universityId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.universityId : null;
 
     const cardsToInsert = data.cards.map((c) => ({
       front: c.front,
       back: c.back,
-      created_by: userId,
+      created_by: ctx.userId,
       university_id: universityId,
     }));
 
@@ -71,7 +89,7 @@ export class FlashcardService {
       .insert(cardsToInsert)
       .select();
 
-    if (error) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
 
     if (flashcards && flashcards.length > 0) {
       if (data.topicIds && data.topicIds.length > 0) {
@@ -84,33 +102,33 @@ export class FlashcardService {
         await supabase.from('flashcard_topic_assignments').insert(assignments);
       }
 
-      if (data.spaceIds && data.spaceIds.length > 0) {
-        const spaceAssignments = flashcards.flatMap((fc) =>
-          data.spaceIds!.map((spaceId) => ({
+      if (data.deckIds && data.deckIds.length > 0) {
+        const deckAssignments = flashcards.flatMap((fc) =>
+          data.deckIds!.map((deckId) => ({
             flashcard_id: fc.id,
-            space_id: spaceId,
+            deck_id: deckId,
           })),
         );
-        await supabase.from('flashcard_space_assignments').insert(spaceAssignments);
+        await supabase.from('flashcard_deck_assignments').insert(deckAssignments);
       }
     }
 
     return flashcards;
   }
 
-  async list(userId: string, filters?: { topicIds?: string[]; spaceIds?: string[] }) {
+  async list(ctx: RequestContext, filters?: { topicIds?: string[]; deckIds?: string[] }) {
     const supabase = await createClient();
-    const profile = await this.getUserProfile(userId);
-    const userUniversityId = profile?.university_id;
 
+    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     let query = supabase
       .from('flashcards')
-      .select('*, flashcard_topic_assignments(topic_id), flashcard_space_assignments(space_id)');
+      .select('*, flashcard_topic_assignments(topic_id), flashcard_deck_assignments(deck_id)');
 
-    if (userUniversityId) {
-      query = query.or(`created_by.eq.${userId},university_id.eq.${userUniversityId}`);
-    } else {
-      query = query.eq('created_by', userId);
+    if (filter._impossible) return [];
+    if (filter.or) {
+      query = query.or(filter.or);
+    } else if (filter.created_by) {
+      query = query.eq('created_by', filter.created_by);
     }
 
     query = query.order('created_at', { ascending: false });
@@ -126,11 +144,11 @@ export class FlashcardService {
       query = query.in('id', flashcardIds);
     }
 
-    if (filters?.spaceIds && filters.spaceIds.length > 0) {
+    if (filters?.deckIds && filters.deckIds.length > 0) {
       const { data: assignments } = await supabase
-        .from('flashcard_space_assignments')
+        .from('flashcard_deck_assignments')
         .select('flashcard_id')
-        .in('space_id', filters.spaceIds);
+        .in('deck_id', filters.deckIds);
 
       const flashcardIds = [...new Set(assignments?.map((a) => a.flashcard_id) ?? [])];
       if (flashcardIds.length === 0) return [];
@@ -138,24 +156,24 @@ export class FlashcardService {
     }
 
     const { data, error } = await query;
-    if (error) throw new AppError('INTERNAL_SERVER');
+    if (error) throw mapSupabaseError(error);
     return data;
   }
 
-  async getById(id: string, userId: string) {
+  async getById(id: string, ctx: RequestContext) {
     const supabase = await createClient();
-    const profile = await this.getUserProfile(userId);
-    const userUniversityId = profile?.university_id;
 
+    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     let query = supabase
       .from('flashcards')
-      .select('*, flashcard_topic_assignments(topic_id), flashcard_space_assignments(space_id)')
+      .select('*, flashcard_topic_assignments(topic_id), flashcard_deck_assignments(deck_id)')
       .eq('id', id);
 
-    if (userUniversityId) {
-      query = query.or(`created_by.eq.${userId},university_id.eq.${userUniversityId}`);
-    } else {
-      query = query.eq('created_by', userId);
+    if (filter._impossible) throw new AppError('NOT_FOUND');
+    if (filter.or) {
+      query = query.or(filter.or);
+    } else if (filter.created_by) {
+      query = query.eq('created_by', filter.created_by);
     }
 
     const { data, error } = await query.single();
@@ -164,8 +182,17 @@ export class FlashcardService {
     return data;
   }
 
-  async update(id: string, data: UpdateFlashcardInput, userId: string) {
+  async update(id: string, data: UpdateFlashcardInput, ctx: RequestContext) {
     const supabase = await createClient();
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('flashcards')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existing) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.FLASHCARD_UPDATE, existing);
 
     const updateFields: Record<string, unknown> = {};
     if (data.front) updateFields.front = data.front;
@@ -175,12 +202,11 @@ export class FlashcardService {
       .from('flashcards')
       .update(updateFields)
       .eq('id', id)
-      .eq('created_by', userId)
       .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
-    if (!flashcard) throw new AppError('FORBIDDEN');
+    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
+    if (!flashcard) throw new AppError('NOT_FOUND');
 
     if (data.topicIds !== undefined) {
       await supabase.from('flashcard_topic_assignments').delete().eq('flashcard_id', id);
@@ -193,20 +219,20 @@ export class FlashcardService {
       }
     }
 
-    if (data.spaceIds !== undefined) {
-      await supabase.from('flashcard_space_assignments').delete().eq('flashcard_id', id);
-      if (data.spaceIds.length > 0) {
-        const assignments = data.spaceIds.map((spaceId) => ({
+    if (data.deckIds !== undefined) {
+      await supabase.from('flashcard_deck_assignments').delete().eq('flashcard_id', id);
+      if (data.deckIds.length > 0) {
+        const assignments = data.deckIds.map((deckId) => ({
           flashcard_id: id,
-          space_id: spaceId,
+          deck_id: deckId,
         }));
-        await supabase.from('flashcard_space_assignments').insert(assignments);
+        await supabase.from('flashcard_deck_assignments').insert(assignments);
       }
     }
 
     const { data: updatedFlashcard } = await supabase
       .from('flashcards')
-      .select('*, flashcard_topic_assignments(topic_id), flashcard_space_assignments(space_id)')
+      .select('*, flashcard_topic_assignments(topic_id), flashcard_deck_assignments(deck_id)')
       .eq('id', id)
       .single();
 
@@ -214,19 +240,124 @@ export class FlashcardService {
     return updatedFlashcard;
   }
 
-  async delete(id: string, userId: string) {
+  async delete(id: string, ctx: RequestContext) {
     const supabase = await createClient();
 
-    const { data, error } = await supabase
+    const { data: existing, error: fetchError } = await supabase
+      .from('flashcards')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existing) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.FLASHCARD_DELETE, existing);
+
+    const { error } = await supabase
       .from('flashcards')
       .delete()
+      .eq('id', id);
+
+    if (error) throw mapSupabaseError(error);
+  }
+
+  async link(id: string, data: LinkFlashcardInput, ctx: RequestContext) {
+    const supabase = await createClient();
+
+    const { data: flashcard, error: fetchError } = await supabase
+      .from('flashcards')
+      .select()
       .eq('id', id)
-      .eq('created_by', userId)
+      .single();
+
+    if (fetchError || !flashcard) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.FLASHCARD_UPDATE, flashcard);
+
+    const assignments = data.deckIds.map((deckId) => ({
+      flashcard_id: id,
+      deck_id: deckId,
+    }));
+
+    const { error: insertError } = await supabase
+      .from('flashcard_deck_assignments')
+      .upsert(assignments, { onConflict: 'flashcard_id,deck_id', ignoreDuplicates: true });
+
+    if (insertError) throw mapSupabaseError(insertError);
+
+    const { data: updatedFlashcard } = await supabase
+      .from('flashcards')
+      .select('*, flashcard_topic_assignments(topic_id), flashcard_deck_assignments(deck_id)')
+      .eq('id', id)
+      .single();
+
+    if (!updatedFlashcard) throw new AppError('NOT_FOUND');
+    return updatedFlashcard;
+  }
+
+  async copy(id: string, data: CopyFlashcardInput, ctx: RequestContext) {
+    const supabase = await createClient();
+
+    const { data: original, error: fetchError } = await supabase
+      .from('flashcards')
+      .select()
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !original) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.FLASHCARD_READ, original);
+
+    const { data: deck, error: deckError } = await supabase
+      .from('flashcard_decks')
+      .select()
+      .eq('id', data.targetDeckId)
+      .single();
+
+    if (deckError || !deck) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.DECK_UPDATE, deck);
+
+    const universityId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.universityId : null;
+
+    const { data: newFlashcard, error: insertError } = await supabase
+      .from('flashcards')
+      .insert({
+        front: original.front,
+        back: original.back,
+        created_by: ctx.userId,
+        university_id: universityId,
+      })
       .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw new AppError('INTERNAL_SERVER');
-    if (!data) throw new AppError('FORBIDDEN');
+    if (insertError) throw mapSupabaseError(insertError);
+    if (!newFlashcard) throw new AppError('NOT_FOUND');
+
+    const { data: topicAssignments, error: topicFetchError } = await supabase
+      .from('flashcard_topic_assignments')
+      .select('topic_id')
+      .eq('flashcard_id', id);
+
+    if (topicFetchError) throw mapSupabaseError(topicFetchError);
+
+    if (topicAssignments && topicAssignments.length > 0) {
+      const newTopicAssignments = topicAssignments.map((a) => ({
+        flashcard_id: newFlashcard.id,
+        topic_id: a.topic_id,
+      }));
+      await supabase.from('flashcard_topic_assignments').insert(newTopicAssignments);
+    }
+
+    await supabase.from('flashcard_deck_assignments').insert({
+      flashcard_id: newFlashcard.id,
+      deck_id: data.targetDeckId,
+    });
+
+    const { data: resultFlashcard } = await supabase
+      .from('flashcards')
+      .select('*, flashcard_topic_assignments(topic_id), flashcard_deck_assignments(deck_id)')
+      .eq('id', newFlashcard.id)
+      .single();
+
+    if (!resultFlashcard) throw new AppError('NOT_FOUND');
+    return resultFlashcard;
   }
 }
 

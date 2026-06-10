@@ -1,19 +1,25 @@
 import { createClient } from '@/lib/supabase/server';
 import { questionService } from '@/server/services';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { RequestContext } from '@/lib/request-context';
 
 export class StatsService {
-  async getTeacherStats(userId: string, subjectId?: string) {
+  async getTeacherStats(ctx: RequestContext, subjectId?: string) {
     const supabase = await createClient();
 
-    const { data: questions } = await supabase
+    const { data: questions, error: questionsError } = await supabase
       .from('questions')
       .select('id')
-      .eq('created_by', userId);
+      .eq('created_by', ctx.userId);
 
-    const { data: flashcards } = await supabase
+    if (questionsError) throw mapSupabaseError(questionsError);
+
+    const { data: flashcards, error: flashcardsError } = await supabase
       .from('flashcards')
       .select('id')
-      .eq('created_by', userId);
+      .eq('created_by', ctx.userId);
+
+    if (flashcardsError) throw mapSupabaseError(flashcardsError);
 
     const stats = {
       totalQuestions: questions?.length ?? 0,
@@ -28,25 +34,31 @@ export class StatsService {
     return stats;
   }
 
-  async getStudentStats(userId: string) {
+  async getStudentStats(ctx: RequestContext) {
     const supabase = await createClient();
 
-    const { data: attempts } = await supabase
+    const { data: attempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
       .select('score, total_questions, started_at, config')
-      .eq('user_id', userId)
+      .eq('user_id', ctx.userId)
       .order('started_at', { ascending: false });
 
-    const { data: practice } = await supabase
+    if (attemptsError) throw mapSupabaseError(attemptsError);
+
+    const { data: practice, error: practiceError } = await supabase
       .from('flashcard_practice')
       .select('was_correct, practiced_at')
-      .eq('user_id', userId)
+      .eq('user_id', ctx.userId)
       .order('practiced_at', { ascending: false });
 
-    const { data: questions } = await supabase
+    if (practiceError) throw mapSupabaseError(practiceError);
+
+    const { data: questions, error: questionsError } = await supabase
       .from('questions')
       .select('id')
-      .eq('created_by', userId);
+      .eq('created_by', ctx.userId);
+
+    if (questionsError) throw mapSupabaseError(questionsError);
 
     const totalQuizzes = attempts?.length ?? 0;
     const avgScore =

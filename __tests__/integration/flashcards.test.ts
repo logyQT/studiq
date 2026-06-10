@@ -11,7 +11,7 @@ import {
   mockUser,
   cleanupFlashcards,
   cleanupFlashcardTopics,
-  cleanupFlashcardSpaces,
+  cleanupFlashcardDecks,
   createServiceClient,
 } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
@@ -24,7 +24,7 @@ describe('Flashcards Integration', () => {
     for (const user of Object.values(TEST_USERS)) {
       await cleanupFlashcards(user.id, 'fc-');
       await cleanupFlashcardTopics(user.id, 'fc-topic-');
-      await cleanupFlashcardSpaces(user.id, 'fc-space-');
+      await cleanupFlashcardDecks(user.id, 'fc-deck-');
     }
 
     const supabase = createServiceClient();
@@ -74,13 +74,13 @@ describe('Flashcards Integration', () => {
       expect(body.success).toBe(true);
     });
 
-    it('creates a flashcard with spaceIds', async () => {
+    it('creates a flashcard with deckIds', async () => {
       mockUser(TEST_USERS.TEACHER);
 
       const supabase = createServiceClient();
-      const { data: space } = await supabase
-        .from('flashcard_spaces')
-        .insert({ name: 'fc-Test Space', created_by: TEST_USERS.TEACHER.id })
+      const { data: deck } = await supabase
+        .from('flashcard_decks')
+        .insert({ name: 'deck-Test', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
 
@@ -88,9 +88,9 @@ describe('Flashcards Integration', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          front: 'fc-Space Card',
+          front: 'fc-Deck Card',
           back: 'Answer',
-          spaceIds: [space.id],
+          deckIds: [deck.id],
         }),
       });
 

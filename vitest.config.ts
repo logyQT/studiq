@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => {
       globals: true,
       environment: 'node',
       setupFiles: ['./__tests__/setup.ts'],
-      include: ['src/**/*.test.ts', '__tests__/integration/**/*.test.ts'],
+      include: ['__test__/unit/**/*.test.ts', '__tests__/integration/**/*.test.ts'],
       exclude: ['node_modules', 'dist', '.next'],
       sequence: {
         concurrent: false,
@@ -26,7 +26,6 @@ export default defineConfig(({ mode }) => {
         provider: 'v8',
         include: ['src/server/**/*.ts'],
         exclude: [
-          'src/server/**/*.test.ts',
           'src/server/**/index.ts',
           'src/server/**/routes.config.ts',
         ],

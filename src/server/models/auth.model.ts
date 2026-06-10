@@ -55,7 +55,7 @@ export const updatePasswordSchema = registry
     'UpdatePasswordRequest',
     z.object({
       password: passwordSchema,
-      confirmPassword: z.coerce
+      confirmPassword: z
         .string({ error: ValidationErrorCode.PASSWORD_CONFIRMATION_REQUIRED })
         .nonempty({ error: ValidationErrorCode.PASSWORD_CONFIRMATION_REQUIRED }),
     }),

@@ -15,10 +15,10 @@
  *           type: string
  *         description: Comma-separated list of topic IDs to filter by
  *       - in: query
- *         name: spaceIds
+ *         name: deckIds
  *         schema:
  *           type: string
- *         description: Comma-separated list of space IDs to filter by
+ *         description: Comma-separated list of deck IDs to filter by
  *     responses:
  *       200:
  *         description: List of flashcards
@@ -54,7 +54,7 @@
  *                 items:
  *                   type: string
  *                   format: uuid
- *               spaceIds:
+ *               deckIds:
  *                 type: array
  *                 items:
  *                   type: string
@@ -103,7 +103,7 @@
  *                       items:
  *                         type: string
  *                         format: uuid
- *                     spaceIds:
+ *                     deckIds:
  *                       type: array
  *                       items:
  *                         type: string
@@ -122,57 +122,33 @@
 import { NextRequest } from 'next/server';
 import { flashcardController } from '@/server/controllers';
 import { toNextResponse } from '@/lib/http-utils';
-import { createClient } from '@/lib/supabase/server';
-
-async function getAuthenticatedUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
-}
+import { withAuth } from '@/lib/with-auth';
 
 export async function POST(req: NextRequest) {
-  const user = await getAuthenticatedUser();
-
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const body = await req.json();
-  const response = await flashcardController.create(body, user.id);
-  return toNextResponse(response);
+  return withAuth(req, async (ctx) => {
+    const body = await req.json();
+    return toNextResponse(await flashcardController.create(body, ctx));
+  });
 }
 
 export async function GET(req: NextRequest) {
-  const user = await getAuthenticatedUser();
+  return withAuth(req, async (ctx) => {
+    const { searchParams } = new URL(req.url);
+    const topicIds = searchParams.get('topicIds')?.split(',').filter(Boolean);
+    const deckIds = searchParams.get('deckIds')?.split(',').filter(Boolean);
+    const filters: { topicIds?: string[]; deckIds?: string[] } = {};
+    if (topicIds && topicIds.length > 0) filters.topicIds = topicIds;
+    if (deckIds && deckIds.length > 0) filters.deckIds = deckIds;
 
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const { searchParams } = new URL(req.url);
-  const topicIds = searchParams.get('topicIds')?.split(',').filter(Boolean);
-  const spaceIds = searchParams.get('spaceIds')?.split(',').filter(Boolean);
-  const filters: { topicIds?: string[]; spaceIds?: string[] } = {};
-  if (topicIds && topicIds.length > 0) filters.topicIds = topicIds;
-  if (spaceIds && spaceIds.length > 0) filters.spaceIds = spaceIds;
-
-  const response = await flashcardController.list(
-    user.id,
-    Object.keys(filters).length > 0 ? filters : undefined,
-  );
-  return toNextResponse(response);
+    return toNextResponse(
+      await flashcardController.list(ctx, Object.keys(filters).length > 0 ? filters : undefined),
+    );
+  });
 }
 
 export async function PUT(req: NextRequest) {
-  const user = await getAuthenticatedUser();
-
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const body = await req.json();
-  const response = await flashcardController.bulkCreate(body, user.id);
-  return toNextResponse(response);
+  return withAuth(req, async (ctx) => {
+    const body = await req.json();
+    return toNextResponse(await flashcardController.bulkCreate(body, ctx));
+  });
 }

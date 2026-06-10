@@ -75,35 +75,19 @@
 import { NextRequest } from 'next/server';
 import { flashcardPracticeController } from '@/server/controllers';
 import { toNextResponse } from '@/lib/http-utils';
-import { createClient } from '@/lib/supabase/server';
+import { withAuth } from '@/lib/with-auth';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const { id } = await params;
-  const body = await req.json();
-  const response = await flashcardPracticeController.log(id, body, user.id);
-  return toNextResponse(response);
+  return withAuth(req, async (ctx) => {
+    const { id } = await params;
+    const body = await req.json();
+    return toNextResponse(await flashcardPracticeController.log(id, body, ctx));
+  });
 }
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const { id } = await params;
-  const response = await flashcardPracticeController.getHistoryForFlashcard(id, user.id);
-  return toNextResponse(response);
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return withAuth(req, async (ctx) => {
+    const { id } = await params;
+    return toNextResponse(await flashcardPracticeController.getHistoryForFlashcard(id, ctx));
+  });
 }

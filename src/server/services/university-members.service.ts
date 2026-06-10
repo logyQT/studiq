@@ -1,15 +1,17 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
 import { UserRole } from '@/types';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { RequestContext } from '@/lib/request-context';
 
 export class UniversityMembersService {
-  async getProfile(userId: string) {
+  async getProfile(ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('id, email, full_name, role, university_id, created_at')
-      .eq('id', userId)
+      .eq('id', ctx.userId)
       .single();
 
     if (error || !profile) {
@@ -19,13 +21,17 @@ export class UniversityMembersService {
     return profile;
   }
 
-  async listMembers(universityId: string, roleFilter?: string) {
+  async listMembers(ctx: RequestContext, roleFilter?: string) {
     const supabase = await createClient();
+
+    if (!ctx.universityId) {
+      throw new AppError('FORBIDDEN');
+    }
 
     let query = supabase
       .from('profiles')
       .select('id, email, full_name, role, university_id, created_at')
-      .eq('university_id', universityId);
+      .eq('university_id', ctx.universityId);
 
     if (roleFilter) {
       query = query.eq('role', roleFilter);
@@ -33,14 +39,12 @@ export class UniversityMembersService {
 
     const { data, error } = await query.order('created_at', { ascending: false });
 
-    if (error) {
-      throw new AppError('INTERNAL_SERVER');
-    }
+    if (error) throw mapSupabaseError(error);
 
     return data;
   }
 
-  async changeRole(requestingUserId: string, targetUserId: string, newRole: string) {
+  async changeRole(ctx: RequestContext, targetUserId: string, newRole: string) {
     const supabase = await createClient();
 
     const { error } = await supabase.rpc('admin_change_role', {
@@ -52,13 +56,13 @@ export class UniversityMembersService {
       if (error.message.includes('Unauthorized')) {
         throw new AppError('FORBIDDEN');
       }
-      throw new AppError('INTERNAL_SERVER');
+      throw mapSupabaseError(error);
     }
 
     return { success: true };
   }
 
-  async removeMember(requestingUserId: string, targetUserId: string) {
+  async removeMember(ctx: RequestContext, targetUserId: string) {
     const supabase = await createClient();
 
     const { error } = await supabase.rpc('admin_change_role', {
@@ -70,7 +74,7 @@ export class UniversityMembersService {
       if (error.message.includes('Unauthorized')) {
         throw new AppError('FORBIDDEN');
       }
-      throw new AppError('INTERNAL_SERVER');
+      throw mapSupabaseError(error);
     }
 
     return { success: true };

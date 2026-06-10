@@ -1,37 +1,32 @@
 import { quizAttemptService } from '@/server/services';
 import { SubmitQuizAttemptSchema } from '@/server/models';
-import { AppError } from '@/lib/errors';
 import { ControllerResponse } from '@/lib/controller-response';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import type { RequestContext } from '@/lib/request-context';
 
 export class QuizAttemptController {
-  async list(userId: string): Promise<ControllerResponse> {
-    try {
-      const attempts = await quizAttemptService.list(userId);
+  async list(ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const attempts = await quizAttemptService.list(ctx);
 
       return { success: true, statusCode: 200, data: attempts };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async getDetails(attemptId: string, userId: string): Promise<ControllerResponse> {
-    try {
-      const attempt = await quizAttemptService.getById(attemptId, userId);
+  async getDetails(attemptId: string, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const attempt = await quizAttemptService.getById(attemptId, ctx);
 
       return { success: true, statusCode: 200, data: attempt };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async submit(body: unknown, attemptId: string, userId: string): Promise<ControllerResponse> {
-    try {
+  async submit(
+    body: unknown,
+    attemptId: string,
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsed = SubmitQuizAttemptSchema.safeParse({
         ...(body as Record<string, unknown>),
         attemptId,
@@ -46,15 +41,10 @@ export class QuizAttemptController {
         };
       }
 
-      const result = await quizAttemptService.submit(parsed.data, userId);
+      const result = await quizAttemptService.submit(parsed.data, ctx);
 
       return { success: true, statusCode: 200, data: result };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 }
 

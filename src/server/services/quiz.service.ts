@@ -1,14 +1,22 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
 import type { GenerateQuizInput } from '@/server/models';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { RequestContext } from '@/lib/request-context';
 
 export class QuizService {
-  async generateQuiz(config: GenerateQuizInput, userId: string) {
+  async generateQuiz(config: GenerateQuizInput, ctx: RequestContext) {
     const supabase = await createClient();
+
+    const orConditions = [];
+
+    if (ctx.universityId) orConditions.push(`university_id.eq.${ctx.universityId}`);
+    if (ctx.userId) orConditions.push(`created_by.eq.${ctx.userId}`);
 
     let query = supabase
       .from('questions')
       .select('*, question_answers(*)')
+      .or(orConditions.join(','))
       .in('type', config.questionTypes);
 
     if (config.subjectId) {
@@ -20,10 +28,12 @@ export class QuizService {
     }
 
     const { data: allQuestions, error: fetchError } = await query;
-    if (fetchError) throw new AppError('INTERNAL_SERVER');
+    if (fetchError) throw mapSupabaseError(fetchError);
     if (!allQuestions || allQuestions.length === 0) {
       throw new AppError('NOT_FOUND');
     }
+
+    if (allQuestions.length < config.questionCount) throw new AppError('BAD_REQUEST');
 
     const shuffled = [...allQuestions].sort(() => Math.random() - 0.5);
     const selectedQuestions = shuffled.slice(0, Math.min(config.questionCount, shuffled.length));
@@ -31,7 +41,7 @@ export class QuizService {
     const { data: attempt, error: attemptError } = await supabase
       .from('quiz_attempts')
       .insert({
-        user_id: userId,
+        user_id: ctx.userId,
         score: 0,
         total_questions: selectedQuestions.length,
         config: config as unknown as Record<string, unknown>,
@@ -40,7 +50,8 @@ export class QuizService {
       .select()
       .single();
 
-    if (attemptError || !attempt) throw new AppError('INTERNAL_SERVER');
+    if (attemptError) throw mapSupabaseError(attemptError);
+    if (!attempt) throw new AppError('NOT_FOUND');
 
     const attemptQuestions = selectedQuestions.map((q, i) => ({
       attempt_id: attempt.id,
@@ -52,7 +63,7 @@ export class QuizService {
       .from('quiz_attempt_questions')
       .insert(attemptQuestions);
 
-    if (questionsError) throw new AppError('INTERNAL_SERVER');
+    if (questionsError) throw mapSupabaseError(questionsError);
 
     return {
       ...attempt,

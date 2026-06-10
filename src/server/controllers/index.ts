@@ -9,6 +9,7 @@ export * from '@/server/controllers/quiz.controller';
 export * from '@/server/controllers/quiz-attempt.controller';
 export * from '@/server/controllers/flashcard.controller';
 export * from '@/server/controllers/flashcard-topic.controller';
-export * from '@/server/controllers/flashcard-space.controller';
+export * from '@/server/controllers/flashcard-deck.controller';
 export * from '@/server/controllers/flashcard-practice.controller';
 export * from '@/server/controllers/stats.controller';
+export * from '@/server/controllers/flashcard-stats.controller';

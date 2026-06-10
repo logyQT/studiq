@@ -152,7 +152,7 @@ export async function cleanupFlashcards(userId: string, frontPrefix?: string) {
   if (flashcards && flashcards.length > 0) {
     const flashcardIds = flashcards.map((f) => f.id);
     await supabase.from('flashcard_topic_assignments').delete().in('flashcard_id', flashcardIds);
-    await supabase.from('flashcard_space_assignments').delete().in('flashcard_id', flashcardIds);
+    await supabase.from('flashcard_deck_assignments').delete().in('flashcard_id', flashcardIds);
     await supabase.from('flashcard_practice').delete().in('flashcard_id', flashcardIds);
     await supabase.from('flashcards').delete().in('id', flashcardIds);
   }
@@ -167,9 +167,9 @@ export async function cleanupFlashcardTopics(userId: string, namePrefix?: string
   await query;
 }
 
-export async function cleanupFlashcardSpaces(userId: string, namePrefix?: string) {
+export async function cleanupFlashcardDecks(userId: string, namePrefix?: string) {
   const supabase = createServiceClient();
-  let query = supabase.from('flashcard_spaces').delete().eq('created_by', userId);
+  let query = supabase.from('flashcard_decks').delete().eq('created_by', userId);
   if (namePrefix) {
     query = query.ilike('name', `${namePrefix}%`);
   }
@@ -179,6 +179,11 @@ export async function cleanupFlashcardSpaces(userId: string, namePrefix?: string
 export async function cleanupFlashcardPractice(userId: string) {
   const supabase = createServiceClient();
   await supabase.from('flashcard_practice').delete().eq('user_id', userId);
+}
+
+export async function cleanupFlashcardReviewState(userId: string) {
+  const supabase = createServiceClient();
+  await supabase.from('flashcard_review_state').delete().eq('user_id', userId);
 }
 
 export async function cleanupQuizAttempts(userId: string) {
@@ -279,15 +284,15 @@ export async function seedTopic(data: { name: string; created_by: string }) {
   return topic;
 }
 
-export async function seedSpace(data: { name: string; created_by: string }) {
+export async function seedDeck(data: { name: string; created_by: string }) {
   const supabase = createServiceClient();
-  const { data: space, error } = await supabase
-    .from('flashcard_spaces')
+  const { data: deck, error } = await supabase
+    .from('flashcard_decks')
     .insert({ name: data.name, created_by: data.created_by })
     .select()
     .single();
   if (error) throw error;
-  return space;
+  return deck;
 }
 
 // ============================================================
@@ -300,7 +305,7 @@ export async function cleanupAll() {
     await cleanupQuestions(userId);
     await cleanupFlashcards(userId);
     await cleanupFlashcardTopics(userId);
-    await cleanupFlashcardSpaces(userId);
+    await cleanupFlashcardDecks(userId);
     await cleanupFlashcardPractice(userId);
     await cleanupQuizAttempts(userId);
     await cleanupInvitations(userId);

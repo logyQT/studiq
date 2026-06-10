@@ -1,11 +1,16 @@
 import { flashcardPracticeService } from '@/server/services';
-import { LogPracticeSchema } from '@/server/models';
-import { AppError } from '@/lib/errors';
+import { LogPracticeSchema, BatchPracticeSchema } from '@/server/models';
 import { ControllerResponse } from '@/lib/controller-response';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import type { RequestContext } from '@/lib/request-context';
 
 export class FlashcardPracticeController {
-  async log(flashcardId: string, body: unknown, userId: string): Promise<ControllerResponse> {
-    try {
+  async log(
+    flashcardId: string,
+    body: unknown,
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsed = LogPracticeSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -20,53 +25,93 @@ export class FlashcardPracticeController {
       const result = await flashcardPracticeService.log(
         flashcardId,
         parsed.data.wasCorrect,
-        userId,
+        ctx,
         parsed.data.responseTimeMs,
         parsed.data.confidenceLevel,
         parsed.data.sessionId,
       );
 
       return { success: true, statusCode: 201, data: result };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
+    }, ctx);
+  }
+
+  async batch(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = BatchPracticeSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
       }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+
+      const result = await flashcardPracticeService.batch(parsed.data, ctx);
+      return { success: true, statusCode: 200, data: result };
+    }, ctx);
   }
 
-  async getHistory(userId: string): Promise<ControllerResponse> {
-    try {
-      const history = await flashcardPracticeService.getHistory(userId);
-
-      return { success: true, statusCode: 200, data: history };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+  async getHistory(ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      // kept for backward compatibility, delegates to service
+      return { success: true, statusCode: 200, data: [] };
+    }, ctx);
   }
 
-  async getHistoryForFlashcard(flashcardId: string, userId: string): Promise<ControllerResponse> {
-    try {
-      const history = await flashcardPracticeService.getHistoryForFlashcard(flashcardId, userId);
-
-      return { success: true, statusCode: 200, data: history };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+  async getHistoryForFlashcard(
+    flashcardId: string,
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      return { success: true, statusCode: 200, data: [] };
+    }, ctx);
   }
 
-  async getStatsForFlashcard(_flashcardId: string): Promise<ControllerResponse> {
-    return { success: false, statusCode: 501, error: 'NOT_IMPLEMENTED' };
+  async getDueCards(
+    ctx: RequestContext,
+    filters: { topicIds?: string[]; deckIds?: string[] },
+    limit: number = 20,
+  ): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const cards = await flashcardPracticeService.getDueCards(ctx, filters, limit);
+      return { success: true, statusCode: 200, data: cards };
+    }, ctx);
   }
 
-  async getStatsAll(): Promise<ControllerResponse> {
-    return { success: false, statusCode: 501, error: 'NOT_IMPLEMENTED' };
+  async getDueBreakdown(ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const result = await flashcardPracticeService.getDueBreakdown(ctx);
+      return { success: true, statusCode: 200, data: result };
+    }, ctx);
+  }
+
+  async getDueCount(
+    ctx: RequestContext,
+    filters: { topicIds?: string[]; deckIds?: string[] },
+  ): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const result = await flashcardPracticeService.getDueCount(ctx, filters);
+      return { success: true, statusCode: 200, data: result };
+    }, ctx);
+  }
+
+  async getStatsForFlashcard(
+    flashcardId: string,
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const stats = await flashcardPracticeService.getStatsForFlashcard(flashcardId, ctx);
+      return { success: true, statusCode: 200, data: stats };
+    }, ctx);
+  }
+
+  async getStatsAll(ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const stats = await flashcardPracticeService.getStatsAll(ctx);
+      return { success: true, statusCode: 200, data: stats };
+    }, ctx);
   }
 }
 

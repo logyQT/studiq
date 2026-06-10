@@ -1,30 +1,20 @@
 import { universityMembersService } from '@/server/services';
 import { ChangeRoleSchema } from '@/server/models/university-members.model';
-import { AppError } from '@/lib/errors';
 import { ControllerResponse } from '@/lib/controller-response';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import type { RequestContext } from '@/lib/request-context';
 
 export class UniversityMembersController {
-  async listMembers(userId: string, roleFilter?: string): Promise<ControllerResponse> {
-    try {
-      const profile = await universityMembersService.getProfile(userId);
-
-      if (!profile.university_id) {
-        return { success: false, statusCode: 403, error: 'FORBIDDEN' };
-      }
-
-      const members = await universityMembersService.listMembers(profile.university_id, roleFilter);
+  async listMembers(ctx: RequestContext, roleFilter?: string): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const members = await universityMembersService.listMembers(ctx, roleFilter);
 
       return { success: true, statusCode: 200, data: members };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async changeRole(userId: string, body: unknown): Promise<ControllerResponse> {
-    try {
+  async changeRole(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsed = ChangeRoleSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -36,36 +26,22 @@ export class UniversityMembersController {
         };
       }
 
-      await universityMembersService.changeRole(
-        userId,
-        parsed.data.targetUserId,
-        parsed.data.newRole,
-      );
+      await universityMembersService.changeRole(ctx, parsed.data.targetUserId, parsed.data.newRole);
 
       return { success: true, statusCode: 200, data: { success: true } };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async removeMember(userId: string, targetUserId: string): Promise<ControllerResponse> {
-    try {
+  async removeMember(ctx: RequestContext, targetUserId: string): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       if (!targetUserId) {
         return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
       }
 
-      await universityMembersService.removeMember(userId, targetUserId);
+      await universityMembersService.removeMember(ctx, targetUserId);
 
       return { success: true, statusCode: 200, data: { success: true } };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 }
 

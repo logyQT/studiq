@@ -106,77 +106,41 @@
  */
 
 import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 import { universityController } from '@/server/controllers/university.controller';
 import { toNextResponse } from '@/lib/http-utils';
+import { withAuth } from '@/lib/with-auth';
 import { UserRole } from '@/types';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const userRole = user.app_metadata?.role as UserRole;
-  if (userRole !== UserRole.SYS_ADMIN) {
-    return toNextResponse({ success: false, statusCode: 403, error: 'FORBIDDEN' });
-  }
-
-  const { id } = await params;
-  const response = await universityController.getById(id);
-  return toNextResponse(response);
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return withAuth(
+    req,
+    async () => {
+      const { id } = await params;
+      return toNextResponse(await universityController.getById(id));
+    },
+    { allowedRoles: [UserRole.SYS_ADMIN] },
+  );
 }
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const userRole = user.app_metadata?.role as UserRole;
-  if (userRole !== UserRole.SYS_ADMIN) {
-    return toNextResponse({ success: false, statusCode: 403, error: 'FORBIDDEN' });
-  }
-
-  const { id } = await params;
-  const body = await req.json();
-  const response = await universityController.update(id, body);
-  return toNextResponse(response);
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return withAuth(
+    req,
+    async () => {
+      const { id } = await params;
+      const body = await req.json();
+      return toNextResponse(await universityController.update(id, body));
+    },
+    { allowedRoles: [UserRole.SYS_ADMIN] },
+  );
 }
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
-
-  const userRole = user.app_metadata?.role as UserRole;
-  if (userRole !== UserRole.SYS_ADMIN) {
-    return toNextResponse({ success: false, statusCode: 403, error: 'FORBIDDEN' });
-  }
-
-  const { id } = await params;
-  const response = await universityController.delete(id);
-  return toNextResponse(response);
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return withAuth(
+    req,
+    async () => {
+      const { id } = await params;
+      return toNextResponse(await universityController.delete(id));
+    },
+    { allowedRoles: [UserRole.SYS_ADMIN] },
+  );
 }

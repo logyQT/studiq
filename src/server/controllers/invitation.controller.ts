@@ -1,11 +1,12 @@
 import { CreateInviteSchema, BulkInviteSchema } from '@/server/models/invitation.model';
 import { invitationService } from '@/server/services';
-import { AppError } from '@/lib/errors';
 import { ControllerResponse } from '@/lib/controller-response';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import type { RequestContext } from '@/lib/request-context';
 
 export class InvitationController {
-  async create(userId: string, body: unknown): Promise<ControllerResponse> {
-    try {
+  async create(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsedData = CreateInviteSchema.safeParse(body);
 
       if (!parsedData.success) {
@@ -17,35 +18,25 @@ export class InvitationController {
         };
       }
 
-      const result = await invitationService.createInvitation(userId, parsedData.data);
+      const result = await invitationService.createInvitation(ctx, parsedData.data);
 
       return { success: true, statusCode: 201, data: result };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
   async getByToken(token: string): Promise<ControllerResponse> {
-    try {
+    return withErrorHandling(async () => {
       if (!token) {
         return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
       }
 
       const invitation = await invitationService.getInvitationByToken(token);
       return { success: true, statusCode: 200, data: invitation };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    });
   }
 
-  async createBulk(userId: string, body: unknown): Promise<ControllerResponse> {
-    try {
+  async createBulk(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsed = BulkInviteSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -60,7 +51,7 @@ export class InvitationController {
       const results = [];
       for (const invite of parsed.data.invitations) {
         try {
-          const result = await invitationService.createInvitation(userId, invite);
+          const result = await invitationService.createInvitation(ctx, invite);
           results.push({ success: true, data: result });
         } catch {
           results.push({ success: false, error: 'Failed to create invitation' });
@@ -68,12 +59,7 @@ export class InvitationController {
       }
 
       return { success: true, statusCode: 200, data: { results } };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 }
 

@@ -1,11 +1,12 @@
 import { flashcardTopicService } from '@/server/services';
 import { CreateTopicSchema, UpdateTopicSchema } from '@/server/models';
-import { AppError } from '@/lib/errors';
 import { ControllerResponse } from '@/lib/controller-response';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import type { RequestContext } from '@/lib/request-context';
 
 export class FlashcardTopicController {
-  async create(body: unknown, userId: string): Promise<ControllerResponse> {
-    try {
+  async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsed = CreateTopicSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -17,45 +18,30 @@ export class FlashcardTopicController {
         };
       }
 
-      const topic = await flashcardTopicService.create(parsed.data, userId);
+      const topic = await flashcardTopicService.create(parsed.data, ctx);
 
       return { success: true, statusCode: 201, data: topic };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async list(userId: string): Promise<ControllerResponse> {
-    try {
-      const topics = await flashcardTopicService.list(userId);
+  async list(ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const topics = await flashcardTopicService.list(ctx);
 
       return { success: true, statusCode: 200, data: topics };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async getById(id: string): Promise<ControllerResponse> {
-    try {
-      const topic = await flashcardTopicService.getById(id);
+  async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const topic = await flashcardTopicService.getById(id, ctx);
 
       return { success: true, statusCode: 200, data: topic };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async update(id: string, body: unknown, userId: string): Promise<ControllerResponse> {
-    try {
+  async update(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
       const parsed = UpdateTopicSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -67,28 +53,18 @@ export class FlashcardTopicController {
         };
       }
 
-      const topic = await flashcardTopicService.update(id, parsed.data, userId);
+      const topic = await flashcardTopicService.update(id, parsed.data, ctx);
 
       return { success: true, statusCode: 200, data: topic };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 
-  async delete(id: string, userId: string): Promise<ControllerResponse> {
-    try {
-      await flashcardTopicService.delete(id, userId);
+  async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      await flashcardTopicService.delete(id, ctx);
 
       return { success: true, statusCode: 200, data: { success: true } };
-    } catch (error) {
-      if (error instanceof AppError) {
-        return { success: false, statusCode: error.statusCode, error: error.code };
-      }
-      return { success: false, statusCode: 500, error: 'INTERNAL_SERVER' };
-    }
+    }, ctx);
   }
 }
 
