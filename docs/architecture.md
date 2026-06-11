@@ -2,7 +2,7 @@
 
 ## Overview
 
-Studiq is a full-stack educational platform built with Next.js App Router and Supabase. The application follows a layered architecture with clear separation between frontend UI, backend business logic, and data access.
+StudiQ is a full-stack educational platform built with Next.js App Router and Supabase. The application follows a layered architecture with clear separation between frontend UI, backend business logic, and data access.
 
 ## High-Level Architecture
 
@@ -15,6 +15,7 @@ graph TB
     Controllers[Controllers]
     Services[Services]
     Guards[Guards]
+    Providers[LLM Providers]
     Supabase[Supabase PostgreSQL]
 
     Client --> Proxy
@@ -24,6 +25,7 @@ graph TB
     Controllers --> Services
     Controllers --> Guards
     Services --> Supabase
+    Services --> Providers
 ```
 
 ## Application Layers
@@ -42,8 +44,11 @@ graph TB
 **Key components:**
 - `src/components/providers/AuthProvider.tsx` — client-side auth state
 - `src/components/providers/ThemeProvider.tsx` — dark/light mode
-- `src/components/ui/` — shadcn/ui components
+- `src/components/providers/QueryProvider.tsx` — TanStack React Query
+- `src/components/ui/` — 60+ shadcn/ui components
 - `src/components/layout/` — layout components (navbar, footer, sidebar)
+- `src/components/flashcards/` — flashcard-specific UI components
+- `src/hooks/` — custom React hooks (API calls, real-time subscriptions, flashcard generation)
 
 ### Backend Layer
 
@@ -64,6 +69,7 @@ graph LR
     Controller --> Service[Service]
     Service --> DB[(Supabase)]
     Controller --> Guard[Guard]
+    Service --> Provider[LLM Provider]
 ```
 
 | Layer | Location | Purpose |
@@ -73,6 +79,7 @@ graph LR
 | Services | `src/server/services/` | Business logic, database queries via Supabase client |
 | Guards | `src/server/guards/` | Authentication and role checks |
 | Models | `src/server/models/` | Zod schemas for request validation |
+| Providers | `src/server/providers/` | LLM abstraction layer (OpenAI, Ollama) |
 
 ### Middleware Layer
 
@@ -94,7 +101,7 @@ sequenceDiagram
     else Role restricted + wrong role
         M->>C: 403 JSON or 302 to role dashboard
     else Redirect if authenticated
-        M->>C: 302 to role-specific dashboard
+        M->>C: 302 to role-specific dashboard (by role)
     else All checks pass
         M->>R: Forward request
         R->>C: Response
@@ -106,6 +113,7 @@ Route rules are defined in `src/server/config/routes.config.ts`:
 ```typescript
 export const routeRules: RouteRule[] = [
   { matcher: /^\/api\/v1\/admin(\/.*)?$/, requireAuth: true, allowedRoles: [UserRole.SYS_ADMIN], isApi: true },
+  { matcher: /^\/api\/v1\/teacher(\/.*)?$/, requireAuth: true, allowedRoles: [UserRole.TEACHER, UserRole.SYS_ADMIN], isApi: true },
   { matcher: /^\/admin(\/.*)?$/, requireAuth: true, allowedRoles: [UserRole.SYS_ADMIN] },
   { matcher: /^\/edu(\/.*)?$/, requireAuth: true, allowedRoles: [UserRole.TEACHER] },
   { matcher: /^\/app(\/.*)?$/, requireAuth: true, allowedRoles: [UserRole.STUDENT, UserRole.FREE, UserRole.PREMIUM] },
@@ -120,9 +128,9 @@ export const routeRules: RouteRule[] = [
 Supabase provides:
 - PostgreSQL database
 - Authentication (email/password, sessions)
-- Real-time subscriptions (available but not currently used)
+- Real-time subscriptions (used for live flashcard updates)
 
-Schema is managed through SQL migration files in `supabase/migrations/` and seed data in `supabase/seeds/`.
+Schema is managed through SQL migration files in `supabase/migrations/`, logical schema files in `supabase/schemas/`, and seed data in `supabase/seeds/`.
 
 ## Request Flow
 

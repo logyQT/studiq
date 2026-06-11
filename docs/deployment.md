@@ -18,13 +18,19 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 NEXT_PUBLIC_SITE_URL=https://your-domain.com
+
+# LLM / AI Provider (optional — only if using AI features)
+LLM_PROVIDER=openai
+LLM_API_KEY=your-openai-api-key
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL_NAME=gpt-4o-mini
 ```
 
 ### Vercel Configuration
 
 1. Connect your GitHub repository to Vercel
 2. Add environment variables in Vercel project settings
-3. Set the build command to `pnpm build`
+3. Set the build command to `bun run build`
 4. Set the output directory to `.next`
 
 ### Supabase Configuration
@@ -50,10 +56,10 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.com
 
 ```bash
 # Build locally
-pnpm build
+bun run build
 
 # Start production server locally
-pnpm start
+bun start
 
 # Deploy to Vercel (if CLI is installed)
 vercel --prod

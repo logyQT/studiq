@@ -7,64 +7,110 @@ studiq/
 ├── src/
 │   ├── app/
 │   │   ├── (frontend)/          # UI routes — pages, layouts, dashboards
-│   │   │   ├── (auth)/          # Login, register pages
+│   │   │   ├── (auth)/          # Login, register, password reset pages
 │   │   │   ├── admin/           # System admin dashboard
 │   │   │   ├── app/             # Student dashboard
 │   │   │   ├── edu/             # Teacher dashboard
 │   │   │   ├── manage/          # University admin dashboard
+│   │   │   ├── contact/         # Public contact page
+│   │   │   ├── features/        # Public features page
 │   │   │   ├── pricing/         # Public pricing page
-│   │   │   └── ...
+│   │   │   ├── privacy/         # Privacy policy
+│   │   │   └── terms/           # Terms of service
 │   │   ├── (backend)/           # API routes and docs
 │   │   │   ├── api/v1/          # REST API endpoints
-│   │   │   └── docs/            # Swagger UI
+│   │   │   └── docs/api/        # Swagger UI
 │   │   ├── layout.tsx           # Root layout
 │   │   ├── page.tsx             # Landing page
 │   │   ├── error.tsx            # Global error boundary
 │   │   └── not-found.tsx        # 404 page
 │   │
 │   ├── components/
+│   │   ├── flashcards/          # Flashcard-specific components
 │   │   ├── layout/              # Navbar, sidebar, footer
-│   │   ├── providers/           # AuthProvider, ThemeProvider
-│   │   └── ui/                  # shadcn/ui components
+│   │   ├── providers/           # AuthProvider, ThemeProvider, QueryProvider
+│   │   └── ui/                  # 60+ shadcn/ui components
 │   │
 │   ├── hooks/                   # Custom React hooks
+│   │   ├── use-api.ts
+│   │   ├── use-flashcard-generation.ts
+│   │   ├── use-flashcard-realtime.ts
+│   │   ├── use-realtime-channel.ts
+│   │   └── ...
+│   │
 │   ├── i18n/                    # next-intl configuration
-│   │   └── messages/            # Translation files
+│   │   └── messages/            # Translation files (en.json, pl.json)
 │   │
 │   ├── lib/                     # Shared utilities
-│   │   ├── supabase/            # Supabase client setup (server, client, session)
+│   │   ├── supabase/            # Supabase client (client, server, service, session)
+│   │   ├── api.ts
 │   │   ├── controller-response.ts
 │   │   ├── errors.ts
+│   │   ├── frontend-rbac.ts
 │   │   ├── http-utils.ts
+│   │   ├── query-keys.ts
+│   │   ├── rbac.ts
+│   │   ├── request-context.ts
+│   │   ├── swagger.ts
+│   │   ├── utils.ts
 │   │   ├── validation-errors.ts
+│   │   ├── with-auth.ts
+│   │   ├── with-error-handling.ts
 │   │   └── zod.ts
 │   │
 │   ├── server/                  # Backend business logic
-│   │   ├── config/              # Route rules configuration
-│   │   ├── controllers/         # Request handlers
-│   │   ├── guards/              # Auth and role guards
-│   │   ├── models/              # Zod validation schemas
-│   │   └── services/            # Business logic + DB access
+│   │   ├── config/              # Route rules + models configuration
+│   │   │   ├── models.config.ts
+│   │   │   └── routes.config.ts
+│   │   ├── controllers/         # Request handlers (17 controllers)
+│   │   ├── guards/              # Auth guard + role guard
+│   │   ├── models/              # Zod validation schemas (17 model files)
+│   │   ├── providers/           # LLM providers
+│   │   │   ├── LLMProvider.ts
+│   │   │   ├── ollamaProvider.ts
+│   │   │   ├── openaiProvider.ts
+│   │   │   └── providerRegistry.ts
+│   │   └── services/            # Business logic + DB access (20 services)
 │   │
 │   ├── types/                   # TypeScript type definitions
 │   └── proxy.ts                 # Next.js middleware (auth, RBAC)
 │
 ├── supabase/
-│   ├── migrations/              # Database migration files
-│   └── seeds/                   # Seed data files
+│   ├── config.toml              # Local Supabase configuration
+│   ├── migrations/              # Database migration files (timestamped)
+│   ├── schemas/                 # Logical schema files by domain
+│   ├── seeds/                   # Seed data files (domain-ordered)
+│   └── templates/               # Email templates (confirmation, recovery)
 │
 ├── __tests__/
+│   ├── unit/                    # Unit tests
+│   │   ├── controllers/         # Controller unit tests
+│   │   ├── guards/              # Guard unit tests
+│   │   ├── models/              # Model validation tests
+│   │   └── services/            # Service unit tests
 │   ├── integration/             # Integration tests (real Supabase)
-│   ├── setup.ts                 # Test setup (mock configuration)
-│   └── helpers/                 # Test utilities
+│   ├── helpers/                 # Test utilities (supabase-mock)
+│   ├── mocks/                   # Test mocks (supabase)
+│   └── setup.ts                 # Test bootstrap
 │
 ├── e2e/                         # Playwright end-to-end tests
+│   ├── login.spec.ts
+│   ├── register.spec.ts
+│   ├── student-flashcard.spec.ts
+│   ├── teacher-question.spec.ts
+│   └── utils.ts
+│
 ├── docs/                        # Project documentation
-├── public/                      # Static assets
+├── public/                      # Static assets (logos, icons, placeholders)
 ├── .env.local                   # Local environment (gitignored)
-├── .env.test                    # Test environment
 ├── package.json
 ├── vitest.config.ts
+├── playwright.config.ts
+├── eslint.config.mjs
+├── tailwind.config.ts
+├── postcss.config.mjs
+├── next.config.mjs
+├── tsconfig.json
 └── README.md
 ```
 

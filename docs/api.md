@@ -10,19 +10,44 @@ All API endpoints are under `/api/v1/`:
 
 ```
 src/app/(backend)/api/v1/
-  admin/          # System admin endpoints
-  auth/           # Authentication (login, register, password)
-  flashcard-practice/
-  flashcard-spaces/
-  flashcard-topics/
-  flashcards/
-  health/         # Health check
-  questions/
-  quiz-attempts/
-  quizzes/
-  stats/          # Teacher and student statistics
-  subjects/
-  university/     # Invitations, members
+  admin/              # System admin endpoints
+    error-logs/       # View application error logs
+    permissions/      # Manage RBAC permissions
+    universities/     # Manage universities
+  auth/               # Authentication (login, register, password reset)
+  flashcards/         # Flashcard CRUD
+    [id]/
+      copy/           # Copy a flashcard
+      link/           # Link a flashcard to a deck
+      practice/       # Practice a single flashcard
+        stats/        # Practice stats for a flashcard
+    decks/            # Deck CRUD
+    generate/
+      frompdf/        # AI-generated flashcards from PDF (SSE)
+    practice/         # Flashcard practice session
+      batch/          # Submit batch practice results
+      due/            # Due flashcards for review
+        breakdown/    # Due breakdown by deck
+        count/        # Count of due flashcards
+      stats/          # Practice statistics
+    stats/
+      teacher/        # Teacher flashcard statistics
+        difficulty/
+          [bucket]/   # Per-difficulty stats
+    topics/           # Flashcard topic CRUD
+  health/             # Health check endpoint
+  questions/          # Question CRUD
+  quiz/               # Quiz system
+    new/              # Start a new quiz
+    [attemptId]/      # Get a specific quiz attempt
+    attempts/         # List user's quiz attempts
+  stats/              # Statistics
+    student/          # Student dashboard stats
+    teacher/          # Teacher dashboard stats
+  subjects/           # Subject CRUD
+  university/         # University management
+    invitations/      # Invitation CRUD + bulk
+    members/          # University members
 ```
 
 ## Request Flow
@@ -121,7 +146,7 @@ try {
 
 ## API Documentation
 
-Swagger/OpenAPI documentation is available at `/api/docs` when running the development server. API routes include JSDoc `@swagger` annotations that are used to generate the documentation.
+Swagger/OpenAPI documentation is available at `/api/docs` when running the development server. Route definitions use `@asteasolutions/zod-to-openapi` to generate the OpenAPI spec from Zod schemas.
 
 ## Standard Response Format
 
