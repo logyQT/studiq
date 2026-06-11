@@ -10,8 +10,8 @@ StudiQ is a full-stack educational platform built with Next.js App Router and Su
 graph TB
     Client[Browser Client]
     Proxy[Next.js Middleware proxy.ts]
-    Frontend[(frontend) Routes]
-    Backend[(backend) API Routes]
+    Frontend["(frontend) Routes"]
+    Backend["(backend) API Routes"]
     Controllers[Controllers]
     Services[Services]
     Guards[Guards]
