@@ -385,7 +385,10 @@
     "accuracy": "Skuteczność",
     "attempts": "Próby",
     "students": "Studenci",
-    "empty": "Brak fiszek w tej kategorii."
+    "empty": "Brak fiszek w tej kategorii.",
+    "filterDecks": "Filtruj talie...",
+    "filterTopics": "Filtruj tematy...",
+    "clearFilters": "Wyczyść filtry"
   },
   "EduFlashcardTopicsPage": {
     "title": "Tematy fiszek",

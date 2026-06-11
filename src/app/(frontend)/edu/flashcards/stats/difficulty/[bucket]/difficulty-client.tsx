@@ -1,20 +1,23 @@
 'use client';
 
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, BarChart3, Layers, Sparkles } from 'lucide-react';
+import { ArrowLeft, BarChart3, Layers, Sparkles, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Empty, EmptyHeader, EmptyTitle, EmptyMedia } from '@/components/ui/empty';
 import { DeckDetailSkeleton } from '@/components/flashcards/deck-detail-skeleton';
+import { MultiSelect } from '@/components/ui/multi-select';
 import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { DifficultyFlashcardDetail } from '@/server/models';
+
+type NamedItem = { id: string; name: string };
 
 export default function DifficultyBucketClient() {
   const params = useParams();
@@ -22,11 +25,32 @@ export default function DifficultyBucketClient() {
   const t = useTranslations('DifficultyPage');
   const queryClient = useQueryClient();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [deckIds, setDeckIds] = useState<string[]>([]);
+  const [topicIds, setTopicIds] = useState<string[]>([]);
+
+  const deckOpts = useApiQuery<NamedItem[]>({
+    queryKey: ['flashcards', 'decks'],
+    url: '/api/v1/flashcards/decks',
+  });
+
+  const topicOpts = useApiQuery<NamedItem[]>({
+    queryKey: ['flashcards', 'topics'],
+    url: '/api/v1/flashcards/topics',
+  });
 
   const { data, isLoading } = useApiQuery<DifficultyFlashcardDetail[]>({
     queryKey: flashcardKeys.stats.difficultyBucket(bucket),
     url: `/api/v1/flashcards/stats/teacher/difficulty/${bucket}`,
   });
+
+  const filteredData = useMemo(() => {
+    if (!data) return undefined;
+    return data.filter((card) => {
+      if (deckIds.length > 0 && !deckIds.some((id) => card.deckIds.includes(id))) return false;
+      if (topicIds.length > 0 && !topicIds.some((id) => card.topicIds.includes(id))) return false;
+      return true;
+    });
+  }, [data, deckIds, topicIds]);
 
   const invalidateWithDebounce = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -54,12 +78,35 @@ export default function DifficultyBucketClient() {
           </Button>
         </Link>
         <h2 className="text-2xl font-bold">{t(titleKey)}</h2>
-        {data && (
-          <span className="text-muted-foreground text-sm">({data.length})</span>
+        {filteredData && (
+          <span className="text-muted-foreground text-sm">({filteredData.length})</span>
         )}
       </div>
 
-      {!data || data.length === 0 ? (
+      <div className="flex flex-wrap items-center gap-3">
+        <Filter className="h-4 w-4 text-muted-foreground" />
+        <MultiSelect
+          options={(deckOpts.data ?? []).map((d) => ({ label: d.name, value: d.id }))}
+          selected={deckIds}
+          onChange={setDeckIds}
+          placeholder={t('filterDecks')}
+          className="max-w-xs"
+        />
+        <MultiSelect
+          options={(topicOpts.data ?? []).map((t) => ({ label: t.name, value: t.id }))}
+          selected={topicIds}
+          onChange={setTopicIds}
+          placeholder={t('filterTopics')}
+          className="max-w-xs"
+        />
+        {(deckIds.length > 0 || topicIds.length > 0) && (
+          <Button variant="ghost" size="sm" onClick={() => { setDeckIds([]); setTopicIds([]); }}>
+            {t('clearFilters')}
+          </Button>
+        )}
+      </div>
+
+      {!filteredData || filteredData.length === 0 ? (
         <Empty>
           <EmptyHeader>
             <EmptyMedia>
@@ -70,7 +117,7 @@ export default function DifficultyBucketClient() {
         </Empty>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {data.map((fc) => (
+          {filteredData.map((fc) => (
             <Card key={fc.id} className="flex flex-col">
               <CardContent className="p-5 flex flex-col gap-3 flex-1">
                 <div className="space-y-1.5 min-h-0">

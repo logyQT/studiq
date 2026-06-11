@@ -90,8 +90,12 @@ export class FlashcardStatsService {
       .in('id', deckIds);
 
     const deckNameMap = new Map((decks ?? []).map((d) => [d.id, d.name]));
+    const cardToDeckIds = new Map<string, string[]>();
     const cardToDeckNames = new Map<string, string[]>();
     for (const a of deckAssignments ?? []) {
+      const ids = cardToDeckIds.get(a.flashcard_id) ?? [];
+      ids.push(a.deck_id);
+      cardToDeckIds.set(a.flashcard_id, ids);
       const existing = cardToDeckNames.get(a.flashcard_id) ?? [];
       const name = deckNameMap.get(a.deck_id);
       if (name) existing.push(name);
@@ -110,8 +114,12 @@ export class FlashcardStatsService {
       .in('id', topicIds);
 
     const topicNameMap = new Map((topics ?? []).map((t) => [t.id, t.name]));
+    const cardToTopicIds = new Map<string, string[]>();
     const cardToTopicNames = new Map<string, string[]>();
     for (const a of topicAssignments ?? []) {
+      const ids = cardToTopicIds.get(a.flashcard_id) ?? [];
+      ids.push(a.topic_id);
+      cardToTopicIds.set(a.flashcard_id, ids);
       const existing = cardToTopicNames.get(a.flashcard_id) ?? [];
       const name = topicNameMap.get(a.topic_id);
       if (name) existing.push(name);
@@ -162,7 +170,9 @@ export class FlashcardStatsService {
           accuracy: 0,
           totalAttempts: 0,
           studentCount: 0,
+          deckIds: cardToDeckIds.get(fcId) ?? [],
           deckNames: cardToDeckNames.get(fcId) ?? [],
+          topicIds: cardToTopicIds.get(fcId) ?? [],
           topicNames: cardToTopicNames.get(fcId) ?? [],
         });
         continue;
@@ -199,7 +209,9 @@ export class FlashcardStatsService {
         accuracy: cardAccuracy,
         totalAttempts: totals.total,
         studentCount: cardStudentCount,
+        deckIds: cardToDeckIds.get(fcId) ?? [],
         deckNames: cardToDeckNames.get(fcId) ?? [],
+        topicIds: cardToTopicIds.get(fcId) ?? [],
         topicNames: cardToTopicNames.get(fcId) ?? [],
       });
     }

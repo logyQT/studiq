@@ -35,6 +35,15 @@ export type DifficultyBreakdown = {
   new: number;
 };
 
+export const DifficultyCardsQuerySchema = registry.register(
+  'DifficultyCardsQuery',
+  z.object({
+    deckIds: z.array(z.string().uuid()).optional(),
+    topicIds: z.array(z.string().uuid()).optional(),
+  }),
+);
+export type DifficultyCardsQuery = z.infer<typeof DifficultyCardsQuerySchema>;
+
 export const DifficultyBucketSchema = registry.register(
   'DifficultyBucket',
   z.enum(['easy', 'medium', 'hard', 'new']),
@@ -48,7 +57,9 @@ export type DifficultyFlashcardDetail = {
   accuracy: number;
   totalAttempts: number;
   studentCount: number;
+  deckIds: string[];
   deckNames: string[];
+  topicIds: string[];
   topicNames: string[];
 };
 

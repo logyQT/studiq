@@ -403,7 +403,10 @@
     "accuracy": "Accuracy",
     "attempts": "Attempts",
     "students": "Students",
-    "empty": "No flashcards in this category."
+    "empty": "No flashcards in this category.",
+    "filterDecks": "Filter decks...",
+    "filterTopics": "Filter topics...",
+    "clearFilters": "Clear filters"
   },
   "EduFlashcardTopicsPage": {
     "title": "Flashcard Topics",

@@ -13,6 +13,9 @@ const DEV_USERS = [
   { label: 'Teacher', email: 'teacher@dev.local' },
   { label: 'Student', email: 'student@dev.local' },
   { label: 'Premium', email: 'premium@dev.local' },
+  { label: 'eTeacher1', email: 'e2e-teacher1@test.local' },
+  { label: 'eTeacher2', email: 'e2e-teacher2@test.local' },
+  { label: 'eStudent1', email: 'e2e-student1@test.local' },
 ] as const;
 
 export function DevQuickLogin() {
