@@ -134,68 +134,36 @@ export class FlashcardPracticeService {
   ) {
     const supabase = await createClient();
 
-    const matchingIds = await this.getMatchingFlashcardIds(ctx, filters);
-    if (matchingIds.length === 0) return [];
+    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    if (filter._impossible) return [];
 
-    const { data: states } = await supabase
-      .from('flashcard_review_state')
-      .select('*')
-      .eq('user_id', ctx.userId)
-      .in('flashcard_id', matchingIds);
-
-    const stateByCard = new Map((states ?? []).map((s) => [s.flashcard_id, s]));
-
-    const { data: flashcards, error } = await supabase
-      .from('flashcards')
-      .select('id, front, back, created_at')
-      .in('id', matchingIds);
-
-    if (error) throw mapSupabaseError(error);
-
-    const now = new Date();
-    const due: NonNullable<typeof flashcards> = [];
-    const notDue: NonNullable<typeof flashcards> = [];
-
-    for (const fc of flashcards ?? []) {
-      const state = stateByCard.get(fc.id);
-      if (!state || new Date(state.next_review_at) <= now) {
-        due.push(fc);
-      } else {
-        notDue.push(fc);
-      }
+    let filterType: string;
+    let universityId: string | null;
+    if (filter.or) {
+      filterType = 'university';
+      universityId = ctx.universityId ?? null;
+    } else if (filter.created_by) {
+      filterType = 'own';
+      universityId = null;
+    } else {
+      filterType = 'any';
+      universityId = null;
     }
 
-    type FlashcardRow = NonNullable<typeof flashcards>[number];
-    const mapCard = (fc: FlashcardRow) => ({
-      id: fc.id,
-      front: fc.front,
-      back: fc.back,
-      createdAt: fc.created_at,
-      reviewState: stateByCard.get(fc.id) ?? null,
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('get_due_flashcards', {
+      p_user_id: ctx.userId,
+      p_filter_type: filterType,
+      p_university_id: universityId,
+      p_limit: limit,
+      p_deck_ids: filters.deckIds?.length ? filters.deckIds : null,
+      p_topic_ids: filters.topicIds?.length ? filters.topicIds : null,
     });
 
-    if (due.length > 0) {
-      due.sort((a, b) => {
-        const sa = stateByCard.get(a.id);
-        const sb = stateByCard.get(b.id);
-        if (!sa && !sb) return 0;
-        if (!sa) return -1;
-        if (!sb) return 1;
-        return new Date(sa.next_review_at).getTime() - new Date(sb.next_review_at).getTime();
-      });
-
-      return due.slice(0, limit).map(mapCard);
-    }
-
-    notDue.sort((a, b) => {
-      const sa = stateByCard.get(a.id);
-      const sb = stateByCard.get(b.id);
-      const qa = sa?.last_quality ?? 999;
-      const qb = sb?.last_quality ?? 999;
-      return qa - qb;
-    });
-
-    return notDue.slice(0, limit).map(mapCard);
+    if (rpcError) throw mapSupabaseError(rpcError);
+    return (rpcResult as unknown as Array<{
+      id: string; front: string; back: string;
+      createdAt: string; reviewState: Record<string, unknown> | null;
+    }>) ?? [];
   }
 
   async getDueBreakdown(ctx: RequestContext) {
