@@ -2,6 +2,7 @@
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +33,9 @@ interface FlashcardCardProps {
   canDelete: boolean;
   topics: Topic[];
   t: ReturnType<typeof useTranslations>;
+  selected?: boolean;
+  selectable?: boolean;
+  onToggleSelect?: (id: string) => void;
   onFlip: (id: string) => void;
   onEdit: (fc: Flashcard) => void;
   onDelete: (id: string) => void;
@@ -50,6 +54,9 @@ export function FlashcardCard({
   canDelete,
   topics,
   t,
+  selected,
+  selectable,
+  onToggleSelect,
   onFlip,
   onEdit,
   onDelete,
@@ -70,6 +77,15 @@ export function FlashcardCard({
       }`}
       onClick={() => onFlip(isFlipped ? '' : fc.id)}
     >
+      {selectable && (
+        <div className="absolute left-2 top-2 z-10" onClick={(e) => e.stopPropagation()}>
+          <Checkbox
+            checked={selected}
+            onCheckedChange={() => onToggleSelect?.(fc.id)}
+            className="h-5 w-5 bg-background/80"
+          />
+        </div>
+      )}
       <div className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

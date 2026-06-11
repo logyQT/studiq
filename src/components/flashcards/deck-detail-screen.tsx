@@ -13,6 +13,8 @@ import {
   Pencil,
   Trash2,
   Play,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -21,6 +23,7 @@ import { apiPost, apiPut, apiDelete } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { DeckDetailSkeleton } from '@/components/flashcards/deck-detail-skeleton';
 import { FlashcardCard } from '@/components/flashcards/flashcard-card';
+import { FlashcardBulkActions } from '@/components/flashcards/flashcard-bulk-actions';
 import { DeckDetailDialogs, type DialogsState, type DialogsHandlers } from '@/components/flashcards/deck-detail-dialogs';
 import type { Deck, Flashcard, Topic } from '@/types/flashcards';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -152,7 +155,74 @@ export function DeckDetailScreen({
     onError: (_err, _id, ctx) => { queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous); },
   });
 
+  const batchDeleteCards = useApiMutation({
+    mutationFn: (ids: string[]) => apiPost('/api/v1/flashcards/batch/delete', { ids }),
+    invalidateKeys: [flashcardQueryKey, flashcardKeys.decks.all],
+    onMutate: async (ids) => {
+      await queryClient.cancelQueries({ queryKey: flashcardQueryKey });
+      const prev = queryClient.getQueryData<Flashcard[]>(flashcardQueryKey);
+      queryClient.setQueryData<Flashcard[]>(flashcardQueryKey, (old) =>
+        old?.filter((fc) => !ids.includes(fc.id)),
+      );
+      return { previous: prev };
+    },
+    onError: (_err, _ids, ctx) => { queryClient.setQueryData(flashcardQueryKey, ctx?.previous); },
+  });
+
+  const batchLinkCards = useApiMutation({
+    mutationFn: (data: { ids: string[]; deckIds: string[] }) =>
+      apiPost('/api/v1/flashcards/batch/link', data),
+    invalidateKeys: [flashcardKeys.decks.all],
+  });
+
+  const batchTopicCards = useApiMutation({
+    mutationFn: (data: { ids: string[]; topicIds: string[]; operation: string }) =>
+      apiPost('/api/v1/flashcards/batch/topics', data),
+    invalidateKeys: [flashcardQueryKey],
+    onMutate: async ({ ids, topicIds, operation }) => {
+      await queryClient.cancelQueries({ queryKey: flashcardQueryKey });
+      const prev = queryClient.getQueryData<Flashcard[]>(flashcardQueryKey);
+      queryClient.setQueryData<Flashcard[]>(flashcardQueryKey, (old) =>
+        old?.map((fc) => {
+          if (!ids.includes(fc.id)) return fc;
+          const currentIds = fc.flashcard_topic_assignments?.map((a) => a.topic_id) ?? [];
+          let newIds: string[];
+          if (operation === 'add') {
+            newIds = [...new Set([...currentIds, ...topicIds])];
+          } else if (operation === 'remove') {
+            newIds = currentIds.filter((id) => !topicIds.includes(id));
+          } else {
+            newIds = topicIds;
+          }
+          return {
+            ...fc,
+            flashcard_topic_assignments: newIds.map((topic_id) => ({ topic_id })),
+          };
+        }),
+      );
+      return { previous: prev };
+    },
+    onError: (_err, _data, ctx) => { queryClient.setQueryData(flashcardQueryKey, ctx?.previous); },
+  });
+
+  const batchMoveCards = useApiMutation({
+    mutationFn: (data: { ids: string[]; targetDeckId: string }) =>
+      apiPost('/api/v1/flashcards/batch/move', data),
+    invalidateKeys: [flashcardQueryKey, flashcardKeys.decks.all],
+    onMutate: async (data) => {
+      await queryClient.cancelQueries({ queryKey: flashcardQueryKey });
+      const prev = queryClient.getQueryData<Flashcard[]>(flashcardQueryKey);
+      queryClient.setQueryData<Flashcard[]>(flashcardQueryKey, (old) =>
+        old?.filter((fc) => !data.ids.includes(fc.id)),
+      );
+      return { previous: prev };
+    },
+    onError: (_err, _data, ctx) => { queryClient.setQueryData(flashcardQueryKey, ctx?.previous); },
+  });
+
   const [flippedId, setFlippedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isSelecting, setIsSelecting] = useState(false);
 
   const [d, setD] = useState<DialogsState>({
     createOpen: false,
@@ -172,6 +242,15 @@ export function DeckDetailScreen({
     addTopicOpen: false,
     removeTopicOpen: false,
     topicActionIds: [],
+    selectedIds: [],
+    bulkDeleteOpen: false,
+    bulkLinkOpen: false,
+    bulkLinkDeckIds: [],
+    bulkMoveOpen: false,
+    bulkMoveTargetDeckId: null,
+    bulkTopicsOpen: false,
+    bulkTopicsOperation: 'set',
+    bulkTopicIds: [],
   });
 
   function resetForm() {
@@ -346,6 +425,76 @@ export function DeckDetailScreen({
     setD((prev) => ({ ...prev, removeTopicOpen: false, topicActionIds: [] }));
   }
 
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+    setIsSelecting(false);
+  }
+
+  async function handleBulkDelete() {
+    const ids = d.selectedIds;
+    if (ids.length === 0) return;
+    try {
+      await batchDeleteCards.mutateAsync(ids);
+      clearSelection();
+      setD((prev) => ({ ...prev, bulkDeleteOpen: false }));
+      toast.success(t('flashcard_deleted'));
+    } catch {
+      toast.error(t('delete_failed'));
+    }
+  }
+
+  async function handleBulkLink() {
+    const ids = d.selectedIds;
+    const deckIds = d.bulkLinkDeckIds;
+    if (ids.length === 0 || deckIds.length === 0) return;
+    try {
+      await batchLinkCards.mutateAsync({ ids, deckIds });
+      clearSelection();
+      setD((prev) => ({ ...prev, bulkLinkOpen: false, bulkLinkDeckIds: [] }));
+      toast.success(t('bulk_linked'));
+    } catch {
+      toast.error(t('link_failed'));
+    }
+  }
+
+  async function handleBulkTopics() {
+    const ids = d.selectedIds;
+    const topicIds = d.bulkTopicIds;
+    const operation = d.bulkTopicsOperation;
+    if (ids.length === 0) return;
+    try {
+      await batchTopicCards.mutateAsync({ ids, topicIds, operation });
+      clearSelection();
+      setD((prev) => ({ ...prev, bulkTopicsOpen: false, bulkTopicIds: [] }));
+      toast.success(t('bulk_topics_updated', { count: ids.length }));
+    } catch {
+      toast.error(t('save_failed'));
+    }
+  }
+
+  async function handleBulkMove() {
+    const ids = d.selectedIds;
+    const targetDeckId = d.bulkMoveTargetDeckId;
+    if (ids.length === 0 || !targetDeckId) return;
+    try {
+      await batchMoveCards.mutateAsync({ ids, targetDeckId });
+      clearSelection();
+      setD((prev) => ({ ...prev, bulkMoveOpen: false, bulkMoveTargetDeckId: null }));
+      toast.success(t('bulk_moved'));
+    } catch {
+      toast.error(t('save_failed'));
+    }
+  }
+
   const h: DialogsHandlers = {
     onCreateOpenChange: (open) => { setD((prev) => ({ ...prev, createOpen: open })); if (!open) resetForm(); },
     onEditOpenChange: (open) => { setD((prev) => ({ ...prev, editOpen: open })); if (!open) resetForm(); },
@@ -372,6 +521,18 @@ export function DeckDetailScreen({
     onDeckDelete: handleDeckDelete,
     onAddTopicConfirm: handleAddTopicConfirm,
     onRemoveTopicConfirm: handleRemoveTopicConfirm,
+    onBulkDelete: handleBulkDelete,
+    onBulkLink: handleBulkLink,
+    onBulkTopics: handleBulkTopics,
+    onBulkMove: handleBulkMove,
+    onBulkTopicsOperationChange: (op) => setD((prev) => ({ ...prev, bulkTopicsOperation: op })),
+    onBulkLinkDeckIdsChange: (bulkLinkDeckIds) => setD((prev) => ({ ...prev, bulkLinkDeckIds })),
+    onBulkMoveTargetDeckIdChange: (bulkMoveTargetDeckId) => setD((prev) => ({ ...prev, bulkMoveTargetDeckId })),
+    onBulkTopicIdsChange: (bulkTopicIds) => setD((prev) => ({ ...prev, bulkTopicIds })),
+    onBulkDeleteOpenChange: (open) => setD((prev) => ({ ...prev, bulkDeleteOpen: open })),
+    onBulkLinkOpenChange: (open) => setD((prev) => ({ ...prev, bulkLinkOpen: open })),
+    onBulkMoveOpenChange: (open) => setD((prev) => ({ ...prev, bulkMoveOpen: open })),
+    onBulkTopicsOpenChange: (open) => setD((prev) => ({ ...prev, bulkTopicsOpen: open })),
   };
 
   if (deckError || (!deckLoading && !currentDeck)) {
@@ -455,14 +616,27 @@ export function DeckDetailScreen({
           <h3 className="text-lg font-semibold">{t('flashcards_section')}</h3>
           <p className="text-sm text-muted-foreground">{t('flip_hint')}</p>
         </div>
-        {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
-          <Button onClick={() => {
-            resetForm();
-            setD((prev) => ({ ...prev, createOpen: true }));
-          }}>
-            <Plus className="mr-2 h-4 w-4" /> {t('new_flashcard')}
+        <div className="flex items-center gap-2">
+          <Button
+            variant={isSelecting ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => {
+              if (isSelecting) clearSelection();
+              else setIsSelecting(true);
+            }}
+          >
+            {isSelecting ? <Square className="mr-2 h-4 w-4" /> : <CheckSquare className="mr-2 h-4 w-4" />}
+            {isSelecting ? t('cancel_selection') : t('select_cards')}
           </Button>
-        )}
+          {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
+            <Button onClick={() => {
+              resetForm();
+              setD((prev) => ({ ...prev, createOpen: true }));
+            }}>
+              <Plus className="mr-2 h-4 w-4" /> {t('new_flashcard')}
+            </Button>
+          )}
+        </div>
       </div>
 
       {flashcards.length === 0 ? (
@@ -489,7 +663,10 @@ export function DeckDetailScreen({
               canDelete={can(role, 'flashcard.delete', fc.created_by, user?.id) ?? false}
               topics={topics}
               t={t}
-              onFlip={(id) => setFlippedId(id || null)}
+              selected={selectedIds.has(fc.id)}
+              selectable={isSelecting}
+              onToggleSelect={toggleSelect}
+              onFlip={isSelecting ? () => {} : (id) => setFlippedId(id || null)}
               onEdit={openEdit}
               onDelete={(id) => setD((prev) => ({ ...prev, deleteId: id }))}
               onLink={(fc) => setD((prev) => ({ ...prev, activeFlashcardId: fc.id, linkDeckIds: [], linkOpen: true }))}
@@ -501,6 +678,17 @@ export function DeckDetailScreen({
           ))}
         </div>
       )}
+
+      <FlashcardBulkActions
+        selectedCount={selectedIds.size}
+        canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false}
+        onDelete={() => setD((prev) => ({ ...prev, bulkDeleteOpen: true, selectedIds: Array.from(selectedIds) }))}
+        onLink={() => setD((prev) => ({ ...prev, bulkLinkOpen: true, bulkLinkDeckIds: [], selectedIds: Array.from(selectedIds) }))}
+        onTopics={() => setD((prev) => ({ ...prev, bulkTopicsOpen: true, bulkTopicIds: [], bulkTopicsOperation: 'set', selectedIds: Array.from(selectedIds) }))}
+        onMove={() => setD((prev) => ({ ...prev, bulkMoveOpen: true, bulkMoveTargetDeckId: null, selectedIds: Array.from(selectedIds) }))}
+        onClearSelection={clearSelection}
+        t={t}
+      />
 
       <DeckDetailDialogs
         state={d}

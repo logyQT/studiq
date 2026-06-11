@@ -356,7 +356,20 @@
     "no_flashcards_for_topic": "No flashcards with this topic yet",
     "practice_deck": "Practice",
     "add_topic_desc": "Select topics to add to this flashcard",
-    "remove_topic_desc": "Select topics to remove from this flashcard"
+    "remove_topic_desc": "Select topics to remove from this flashcard",
+    "select_cards": "Select Cards",
+    "cancel_selection": "Cancel",
+    "n_selected": "{count} selected",
+    "bulk_delete": "Delete",
+    "bulk_link": "Link",
+    "bulk_topics": "Topics",
+    "bulk_move": "Move",
+    "bulk_delete_title": "Delete {count} flashcards?",
+    "bulk_delete_desc": "This will permanently delete {count} flashcards. This action cannot be undone.",
+    "bulk_linked": "Flashcards linked to decks",
+    "bulk_topics_updated": "Topics updated for {count} flashcards",
+    "bulk_moved": "Flashcards moved to new deck",
+    "bulk_topics_set": "Set"
   },
   "EduFlashcardStatsPage": {
     "title": "Flashcard Statistics",
@@ -687,7 +700,20 @@
     "no_flashcards_for_topic": "No flashcards with this topic yet",
     "practice_deck": "Practice",
     "add_topic_desc": "Select topics to add to this flashcard",
-    "remove_topic_desc": "Select topics to remove from this flashcard"
+    "remove_topic_desc": "Select topics to remove from this flashcard",
+    "select_cards": "Select Cards",
+    "cancel_selection": "Cancel",
+    "n_selected": "{count} selected",
+    "bulk_delete": "Delete",
+    "bulk_link": "Link",
+    "bulk_topics": "Topics",
+    "bulk_move": "Move",
+    "bulk_delete_title": "Delete {count} flashcards?",
+    "bulk_delete_desc": "This will permanently delete {count} flashcards. This action cannot be undone.",
+    "bulk_linked": "Flashcards linked to decks",
+    "bulk_topics_updated": "Topics updated for {count} flashcards",
+    "bulk_moved": "Flashcards moved to new deck",
+    "bulk_topics_set": "Set"
   },
   "AppFlashcardTopicsPage": {
     "title": "Topics Manager",

@@ -51,6 +51,15 @@ export interface DialogsState {
   addTopicOpen: boolean;
   removeTopicOpen: boolean;
   topicActionIds: string[];
+  selectedIds: string[];
+  bulkDeleteOpen: boolean;
+  bulkLinkOpen: boolean;
+  bulkLinkDeckIds: string[];
+  bulkMoveOpen: boolean;
+  bulkMoveTargetDeckId: string | null;
+  bulkTopicsOpen: boolean;
+  bulkTopicsOperation: 'add' | 'remove' | 'set';
+  bulkTopicIds: string[];
 }
 
 export interface DialogsHandlers {
@@ -79,6 +88,18 @@ export interface DialogsHandlers {
   onDeckDelete: () => void;
   onAddTopicConfirm: () => void;
   onRemoveTopicConfirm: () => void;
+  onBulkDelete: () => void;
+  onBulkLink: () => void;
+  onBulkTopics: () => void;
+  onBulkMove: () => void;
+  onBulkTopicsOperationChange: (op: 'add' | 'remove' | 'set') => void;
+  onBulkLinkDeckIdsChange: (ids: string[]) => void;
+  onBulkMoveTargetDeckIdChange: (id: string | null) => void;
+  onBulkTopicIdsChange: (ids: string[]) => void;
+  onBulkDeleteOpenChange: (open: boolean) => void;
+  onBulkLinkOpenChange: (open: boolean) => void;
+  onBulkMoveOpenChange: (open: boolean) => void;
+  onBulkTopicsOpenChange: (open: boolean) => void;
 }
 
 interface DeckDetailDialogsProps {
@@ -592,6 +613,207 @@ export function DeckDetailDialogs({
               disabled={state.topicActionIds.length === 0}
             >
               {t('common_remove')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <DeleteConfirmDialog
+        open={state.bulkDeleteOpen}
+        onOpenChange={handlers.onBulkDeleteOpenChange}
+        onConfirm={handlers.onBulkDelete}
+        title={t('bulk_delete_title', { count: state.selectedIds.length })}
+        description={t('bulk_delete_desc', { count: state.selectedIds.length })}
+        cancelText={t('common_cancel')}
+        confirmText={t('common_delete')}
+      />
+
+      <Dialog open={state.bulkLinkOpen} onOpenChange={(open) => {
+        if (!open) {
+          handlers.onBulkLinkOpenChange(false);
+          handlers.onBulkLinkDeckIdsChange([]);
+        }
+      }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t('link_title')}</DialogTitle>
+            <DialogDescription>{t('link_desc')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
+            {allDecks.map((d) => (
+              <div key={d.id} className="flex items-center gap-3 p-3 rounded-lg border">
+                <Checkbox
+                  checked={state.bulkLinkDeckIds.includes(d.id)}
+                  onCheckedChange={() =>
+                    handlers.onBulkLinkDeckIdsChange(
+                      state.bulkLinkDeckIds.includes(d.id)
+                        ? state.bulkLinkDeckIds.filter((x) => x !== d.id)
+                        : [...state.bulkLinkDeckIds, d.id],
+                    )
+                  }
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{d.name}</p>
+                  {d.description && (
+                    <p className="text-xs text-muted-foreground truncate">{d.description}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+            {allDecks.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {t('no_other_decks')}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              handlers.onBulkLinkOpenChange(false);
+              handlers.onBulkLinkDeckIdsChange([]);
+            }}>
+              {t('common_cancel')}
+            </Button>
+            <Button onClick={handlers.onBulkLink} disabled={state.bulkLinkDeckIds.length === 0}>
+              {t('link_button', { count: state.bulkLinkDeckIds.length })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={state.bulkMoveOpen} onOpenChange={(open) => {
+        if (!open) {
+          handlers.onBulkMoveOpenChange(false);
+          handlers.onBulkMoveTargetDeckIdChange(null);
+        }
+      }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t('bulk_move')}</DialogTitle>
+            <DialogDescription>{t('bulk_move')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
+            {allDecks.map((d) => (
+              <button
+                key={d.id}
+                className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
+                  state.bulkMoveTargetDeckId === d.id ? 'border-primary bg-primary/5' : 'hover:bg-muted'
+                }`}
+                onClick={() => handlers.onBulkMoveTargetDeckIdChange(d.id)}
+              >
+                <div
+                  className={`h-4 w-4 rounded-full border-2 flex items-center justify-center ${
+                    state.bulkMoveTargetDeckId === d.id ? 'border-primary' : 'border-muted-foreground'
+                  }`}
+                >
+                  {state.bulkMoveTargetDeckId === d.id && <div className="h-2 w-2 rounded-full bg-primary" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{d.name}</p>
+                  {d.description && (
+                    <p className="text-xs text-muted-foreground truncate">{d.description}</p>
+                  )}
+                </div>
+                <Badge variant="secondary">
+                  {t('flashcards_count', { count: d.flashcard_count })}
+                </Badge>
+              </button>
+            ))}
+            {allDecks.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {t('no_other_decks')}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              handlers.onBulkMoveOpenChange(false);
+              handlers.onBulkMoveTargetDeckIdChange(null);
+            }}>
+              {t('common_cancel')}
+            </Button>
+            <Button onClick={handlers.onBulkMove} disabled={!state.bulkMoveTargetDeckId}>
+              {t('bulk_move')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={state.bulkTopicsOpen} onOpenChange={(open) => {
+        if (!open) {
+          handlers.onBulkTopicsOpenChange(false);
+          handlers.onBulkTopicIdsChange([]);
+        }
+      }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t('bulk_topics')}</DialogTitle>
+            <DialogDescription>{t('bulk_topics')}</DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2 py-2">
+            <Button
+              variant={state.bulkTopicsOperation === 'add' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                handlers.onBulkTopicsOperationChange('add');
+                handlers.onBulkTopicIdsChange([]);
+              }}
+            >
+              {t('menu_add_topic')}
+            </Button>
+            <Button
+              variant={state.bulkTopicsOperation === 'remove' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                handlers.onBulkTopicsOperationChange('remove');
+                handlers.onBulkTopicIdsChange([]);
+              }}
+            >
+              {t('menu_remove_topic')}
+            </Button>
+            <Button
+              variant={state.bulkTopicsOperation === 'set' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                handlers.onBulkTopicsOperationChange('set');
+                handlers.onBulkTopicIdsChange([]);
+              }}
+            >
+              {t('bulk_topics_set')}
+            </Button>
+          </div>
+          <div className="space-y-2 max-h-60 overflow-y-auto py-2">
+            {topics.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {t('no_topics_available')}
+              </p>
+            ) : (
+              topics.map((topic) => (
+                <div key={topic.id} className="flex items-center gap-3 p-2 rounded-lg border">
+                  <Checkbox
+                    checked={state.bulkTopicIds.includes(topic.id)}
+                    onCheckedChange={() =>
+                      handlers.onBulkTopicIdsChange(
+                        state.bulkTopicIds.includes(topic.id)
+                          ? state.bulkTopicIds.filter((id) => id !== topic.id)
+                          : [...state.bulkTopicIds, topic.id],
+                      )
+                    }
+                  />
+                  <div className={`h-2 w-2 rounded-full ${getTopicColor(topic.name)}`} />
+                  <span className="text-sm">{topic.name}</span>
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              handlers.onBulkTopicsOpenChange(false);
+              handlers.onBulkTopicIdsChange([]);
+            }}>
+              {t('common_cancel')}
+            </Button>
+            <Button onClick={handlers.onBulkTopics} disabled={state.bulkTopicIds.length === 0}>
+              {t('common_update')}
             </Button>
           </DialogFooter>
         </DialogContent>

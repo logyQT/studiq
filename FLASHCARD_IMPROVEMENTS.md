@@ -57,14 +57,15 @@ src/components/flashcards/
 
 | Component | Props | Renders |
 |-----------|-------|---------|
-| `FlashcardCard` | `{ fc, isFlipped, gradient, canUpdate, canDelete, topics, t, onFlip, onEdit, onDelete, onLink, onCopy, onAddTopic, onRemoveTopic, onViewByTopic }` | Card with flip animation, topic badges, `DropdownMenu` (uses `OwnedFlashcardContextMenu` / `ViewOnlyFlashcardContextMenu`) |
-| `DeckDetailDialogs` | `{ state: DialogsState, handlers: DialogsHandlers, flashcards, currentDeck, allDecks, topics, t, basePath }` | Create, Edit, Link, Copy, CopyResult, DeleteConfirm, DeckEdit, DeckDelete, ViewTopic, AddTopic, RemoveTopic |
+| `FlashcardCard` | `{ fc, isFlipped, gradient, canUpdate, canDelete, topics, t, selected?, selectable?, onToggleSelect?, onFlip, onEdit, onDelete, onLink, onCopy, onAddTopic, onRemoveTopic, onViewByTopic }` | Card with flip animation, topic badges, `DropdownMenu`, opt-in selection checkbox |
+| `DeckDetailDialogs` | `{ state: DialogsState, handlers: DialogsHandlers, flashcards, currentDeck, allDecks, topics, t, basePath }` | Create, Edit, Link, Copy, CopyResult, DeleteConfirm, DeckEdit, DeckDelete, ViewTopic, AddTopic, RemoveTopic, BulkDelete, BulkLink, BulkMove, BulkTopics |
 | `DeckDetailScreen` | `{ deckId, backHref, basePath, apiBase, t, practiceHref? }` | Queries (4× `useApiQuery`), mutations (5× `useApiMutation`), single `DialogsState` useState, handler wiring, deck header, grid layout |
 
 **Implementation notes:**
-- Dialog state consolidated into single `DialogsState` object (was 18 separate `useState` calls).
-- Handlers passed as `DialogsHandlers` interface (18 callbacks) — no inline lambdas in JSX.
+- Dialog state consolidated into single `DialogsState` object (was 18 separate `useState` calls, now 28 fields with batch additions).
+- Handlers passed as `DialogsHandlers` interface (25 callbacks) — no inline lambdas in JSX.
 - `getTopicColor` duplicated in both extracted components (single-line hash, not worth extracting).
+- 15 dialogs total: 11 single-card + 4 batch (DeleteConfirm, Link, Move, Topics).
 
 ---
 
@@ -91,27 +92,50 @@ Uses simple RBAC filter parameters (not JSONB) — the service resolves `buildQu
 
 ---
 
-## Phase 2 — Student UX
+## Phase 2 — Student UX ✅
 
-*Directly improves daily study experience.*
+*Phase 2.1 completed. Remaining items not yet started.*
 
-### 2.1 Batch Selection UI
+### 2.1 Batch Selection UI ✅
 
-**Depends on:** Phase 1.1 (Backend batch API)
+**Depends on:** Phase 1.1 (Backend batch API) — ✅ done
 
 | Layer | Files | Changes |
 |-------|-------|---------|
-| `F` | `src/components/flashcards/flashcard-card.tsx` | Add `Checkbox` (top-left, `e.stopPropagation()`) when selection mode is active |
-| `F` | `src/components/flashcards/deck-detail-screen.tsx` | Add `selectedIds: Set<string>` state, toggle helper, floating action bar |
-| `F` | New: `src/components/flashcards/flashcard-bulk-actions.tsx` | Floating bar with buttons: Delete, Assign Topics, Move to Deck, Link to Decks |
-| `F` | `src/app/(frontend)/app/flashcards/deck/[deckId]/deck-client.tsx` | May need to pass additional API helpers |
+| `F` | `src/components/flashcards/flashcard-card.tsx` | Added `selected`/`selectable`/`onToggleSelect` props + `Checkbox` (top-left, `e.stopPropagation()`) |
+| `F` | New: `src/components/flashcards/flashcard-bulk-actions.tsx` | Fixed-bottom floating bar with Link/Topics/Move/Delete buttons, count display, cancel |
+| `F` | `src/components/flashcards/deck-detail-dialogs.tsx` | 4 bulk dialogs added: DeleteConfirm (reused), Link (checkbox deck picker), Move (radio deck picker w/ flashcard count), Topics (add/remove/set mode toggle + topic checkboxes). All via `DialogsState`/`DialogsHandlers` bulk fields + dedicated handlers |
+| `F` | `src/components/flashcards/deck-detail-screen.tsx` | `selectedIds: Set<string>` state + `isSelecting` toggle. 4 `useApiMutation` hooks with optimistic cache updates. "Select" header button. `onFlip` disabled during selection. |
+| `I` | `src/i18n/messages/en.json`, `src/i18n/messages/pl.json` | 13 batch keys in both `AppFlashcardDeckViewPage` and `EduDeckViewPage` namespaces (`select_cards`, `cancel_selection`, `n_selected`, `bulk_delete/link/topics/move`, `bulk_delete_title/desc`, `bulk_linked/topics_updated/moved`, `bulk_topics_set`) |
 
-**UX flow:**
-1. Long-press or tap a "Select" button → cards show checkboxes.
-2. Check/uncheck individual cards.
-3. Floating bar appears with action count and operation buttons.
-4. Each button opens a dialog (reuse topic picker, deck picker from dialogs).
-5. On confirm: call batch API → show success toast → clear selection.
+**Files modified:**
+- `src/components/flashcards/deck-detail-screen.tsx` — orchestration layer
+- `src/components/flashcards/deck-detail-dialogs.tsx` — bulk dialogs
+- `src/components/flashcards/flashcard-card.tsx` — selection checkbox
+- `src/i18n/messages/en.json` — 13 keys
+- `src/i18n/messages/pl.json` — 13 keys
+
+**Files created:**
+- `src/components/flashcards/flashcard-bulk-actions.tsx` — floating action bar
+
+**Optimistic updates (4 `useApiMutation` hooks):**
+
+| Mutation | Strategy | Invalidates |
+|----------|----------|-------------|
+| `batchDeleteCards` | Filter out selected IDs from cache | `flashcardQueryKey`, `flashcardKeys.decks.all` |
+| `batchLinkCards` | No cache change (current deck unaffected) | `flashcardKeys.decks.all` |
+| `batchTopicCards` | Update `flashcard_topic_assignments` on cached cards inline (add/remove/set) | `flashcardQueryKey` |
+| `batchMoveCards` | Filter out selected IDs from cache | `flashcardQueryKey`, `flashcardKeys.decks.all` |
+
+All 4 roll back on error via `onError` restoring the pre-mutation snapshot.
+
+**Design decisions:**
+- Selection is a `Set<string>` local to the orchestrator, mirrored as `selectedIds: string[]` in `DialogsState` (snapshot taken when dialog opens, ensures consistent operation even if selection changes while dialog is open).
+- `d.selectedIds` is used by handlers, not the live `selectedIds` Set — prevents stale-closeure bugs from async dialog flow.
+- Each bulk dialog writes to dedicated bulk state fields (`bulkLinkDeckIds`, `bulkMoveTargetDeckId`, `bulkTopicIds`) via dedicated handlers (`onBulkLinkDeckIdsChange`, `onBulkMoveTargetDeckIdChange`, `onBulkTopicIdsChange`) — not the single-card handlers.
+- `onOpenChange` callbacks properly close dialogs + clear data on cancel/backdrop-dismiss.
+- `onFlip` returns empty function during selection mode — prevents card flip vs checkbox conflict.
+- `clearSelection()` runs on success before toast; selection is preserved on error for retry.
 
 ---
 
@@ -308,24 +332,24 @@ front,back,topic,deck
 
 ```
 Phase 1 ✅
-├── 1.1 Batch API ✅ ───► 2.1 Batch Selection UI
+├── 1.1 Batch API ✅ ───► 2.1 Batch Selection UI ✅
 ├── 1.2 DeckDetailScreen Split ✅ (independent)
 └── 1.3 getDueCards RPC ✅ ───► 4.1 Per-Student Stats (also uses get_teacher_stats)
 
-Phase 2
-├── 2.1 Batch UI (needs 1.1)
+Phase 2 — 1/5 complete ✅
+├── 2.1 Batch Selection UI ✅ (needs 1.1)
 ├── 2.2 Keyboard Shortcuts (independent)
 ├── 2.3 Session Summary (needs new table)
 ├── 2.4 Search (independent)
 └── 2.5 Streaks (needs new tables, independent)
 
-Phase 3
+Phase 3 — not started
 ├── 3.1 Media (needs migration + storage)
 ├── 3.2 Cloze (needs migration)
 ├── 3.3 CSV Import/Export (independent)
 └── 3.4 APKG Import/Export (independent, but similar UI to 3.3)
 
-Phase 4
+Phase 4 — not started
 ├── 4.1 Per-Student Insights (needs 1.3 foundation)
 ├── 4.2 Period Comparison (needs stats service)
 ├── 4.3 Card Versioning (needs migration + trigger)

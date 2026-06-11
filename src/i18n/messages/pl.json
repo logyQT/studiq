@@ -338,7 +338,20 @@
     "no_flashcards_for_topic": "Brak fiszek z tym tematem",
     "practice_deck": "Ćwicz",
     "add_topic_desc": "Wybierz tematy do dodania do tej fiszki",
-    "remove_topic_desc": "Wybierz tematy do usunięcia z tej fiszki"
+    "remove_topic_desc": "Wybierz tematy do usunięcia z tej fiszki",
+    "select_cards": "Wybierz Fiszki",
+    "cancel_selection": "Anuluj",
+    "n_selected": "Wybrano {count}",
+    "bulk_delete": "Usuń",
+    "bulk_link": "Linkuj",
+    "bulk_topics": "Tematy",
+    "bulk_move": "Przenieś",
+    "bulk_delete_title": "Usunąć {count} fiszek?",
+    "bulk_delete_desc": "Te fiszki zostaną trwale usunięte. Tej operacji nie można cofnąć.",
+    "bulk_linked": "Fiszki powiązano z taliami",
+    "bulk_topics_updated": "Zaktualizowano tematy dla {count} fiszek",
+    "bulk_moved": "Fiszki przeniesiono do nowej talii",
+    "bulk_topics_set": "Ustaw"
   },
   "EduFlashcardStatsPage": {
     "title": "Statystyki fiszek",
@@ -669,7 +682,20 @@
     "no_flashcards_for_topic": "Brak fiszek z tym tematem",
     "practice_deck": "Ćwicz",
     "add_topic_desc": "Wybierz tematy do dodania do tej fiszki",
-    "remove_topic_desc": "Wybierz tematy do usunięcia z tej fiszki"
+    "remove_topic_desc": "Wybierz tematy do usunięcia z tej fiszki",
+    "select_cards": "Wybierz Fiszki",
+    "cancel_selection": "Anuluj",
+    "n_selected": "Wybrano {count}",
+    "bulk_delete": "Usuń",
+    "bulk_link": "Linkuj",
+    "bulk_topics": "Tematy",
+    "bulk_move": "Przenieś",
+    "bulk_delete_title": "Usunąć {count} fiszek?",
+    "bulk_delete_desc": "Te fiszki zostaną trwale usunięte. Tej operacji nie można cofnąć.",
+    "bulk_linked": "Fiszki powiązano z taliami",
+    "bulk_topics_updated": "Zaktualizowano tematy dla {count} fiszek",
+    "bulk_moved": "Fiszki przeniesiono do nowej talii",
+    "bulk_topics_set": "Ustaw"
   },
   "AppFlashcardTopicsPage": {
     "title": "Menedżer Tematów",
