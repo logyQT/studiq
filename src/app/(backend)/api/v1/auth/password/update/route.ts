@@ -40,12 +40,15 @@
  *                   type: string
  *                   example: ERROR_PASSWORD_UPDATE_FAILED
  */
-import { authController } from '@/server/controllers/auth.controller';
+import { authController } from '@/server/controllers';
 import { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
+import { withAuth } from '@/lib/with-auth';
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const response = await authController.updatePassword(body);
-  return toNextResponse(response);
+  return withAuth(req, async () => {
+    const body = await req.json();
+    const response = await authController.updatePassword(body);
+    return toNextResponse(response);
+  });
 }

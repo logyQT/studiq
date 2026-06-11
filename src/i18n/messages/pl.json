@@ -1,36 +1,46 @@
 {
+  "Common": {
+    "common_loading": "Ładowanie...",
+    "common_cancel": "Anuluj",
+    "common_create": "Utwórz",
+    "common_update": "Aktualizuj",
+    "common_delete": "Usuń",
+    "common_edit": "Edytuj",
+    "common_close": "Zamknij",
+    "common_add": "Dodaj",
+    "common_remove": "Usuń"
+  },
   "Errors": {
     "ERROR_INTERNAL_SERVER": "Wystąpił nieoczekiwany błąd serwera. Spróbuj ponownie później.",
     "ERROR_INVALID_INPUT": "Przekazane dane są niepoprawne.",
     "ERROR_VALIDATION_FAILED": "Błąd walidacji danych. Sprawdź formularz.",
-
+    "ERROR_BAD_REQUEST": "Żądanie nie mogło zostać przetworzone. Sprawdź wprowadzone dane.",
     "ERROR_UNAUTHORIZED": "Nie masz dostępu do tego zasobu.",
     "ERROR_FORBIDDEN": "Nie masz uprawnień do wykonania tej akcji.",
+    "ERROR_NOT_FOUND": "Żądany zasób nie został znaleziony.",
+    "ERROR_GONE": "Ten zasób nie jest już dostępny.",
+    "ERROR_CONFLICT": "Wystąpił konflikt. Zasób może już istnieć.",
+    "ERROR_UNPROCESSABLE_ENTITY": "Żądanie nie mogło zostać przetworzone z powodu błędów walidacji.",
     "ERROR_INVALID_CREDENTIALS": "Nieprawidłowy adres e-mail lub hasło.",
     "ERROR_LOGIN_FAILED": "Logowanie nie powiodło się. Spróbuj ponownie.",
     "ERROR_LOGOUT_FAILED": "Wylogowanie nie powiodło się.",
     "ERROR_AUTH_CALLBACK_FAILED": "Link weryfikacyjny jest nieprawidłowy lub wygasł.",
     "ERROR_SESSION_EXPIRED": "Twoja sesja wygasła. Zaloguj się ponownie.",
-
     "ERROR_SAME_PASSWORD": "Nowe hasło nie może być takie samo jak obecne.",
     "ERROR_PASSWORD_UPDATE_FAILED": "Nie udało się zmienić hasła. Link mógł wygasnąć.",
     "ERROR_PASSWORD_RESET_FAILED": "Nie udało się wysłać linku resetującego.",
-
     "ERROR_EMAIL_INVALID": "Wprowadź poprawny adres e-mail.",
     "ERROR_EMAIL_REQUIRED": "Adres e-mail jest wymagany.",
-
     "ERROR_PASSWORD_REQUIRED": "Hasło jest wymagane.",
     "ERROR_PASSWORD_TOO_SHORT": "Hasło musi mieć co najmniej 8 znaków.",
     "ERROR_PASSWORD_TOO_LONG": "Hasło nie może przekraczać 128 znaków.",
     "ERROR_PASSWORD_MISSING_UPPERCASE": "Hasło musi zawierać co najmniej jedną wielką literę.",
     "ERROR_PASSWORD_MISSING_NUMBER": "Hasło musi zawierać co najmniej jedną cyfrę.",
     "ERROR_PASSWORDS_DO_NOT_MATCH": "Podane hasła nie są identyczne.",
-
     "ERROR_NAME_REQUIRED": "Imię i nazwisko jest wymagane.",
     "ERROR_NAME_TOO_SHORT": "Imię i nazwisko jest za krótkie.",
     "ERROR_NAME_INVALID_FORMAT": "Imię i nazwisko zawiera niedozwolone znaki.",
     "UNAUTHORIZED": "Nieprawidłowy adres e-mail lub hasło.",
-
     "VALIDATION_REQUIRED": "To pole jest wymagane.",
     "VALIDATION_INVALID_INPUT": "Przekazane dane są niepoprawne.",
     "VALIDATION_EMAIL_REQUIRED": "Adres e-mail jest wymagany.",
@@ -141,7 +151,6 @@
     "sys_admin_dashboard": "Administracja Systemem",
     "logout": "Wyloguj się",
     "none": "Brak",
-    "common_loading": "Ładowanie...",
     "default_user": "Użytkownik",
     "role_sys_admin": "Administrator Systemu",
     "role_uni_admin": "Administrator Uczelni",
@@ -163,7 +172,13 @@
     "create_quiz": "Utwórz test",
     "performance_overview": "Przegląd wyników",
     "performance_desc": "Średni wynik studentów w testach",
-    "avg_score": "Średni wynik"
+    "avg_score": "Średni wynik",
+    "content_overview_title": "Przegląd treści",
+    "content_overview_desc": "Podsumowanie Twoich materiałów dydaktycznych",
+    "questions_card_title": "Pytania",
+    "questions_card_desc": "Łączna liczba pytań w puli",
+    "flashcards_card_title": "Fiszki",
+    "flashcards_card_desc": "Łączna liczba fiszek we wszystkich taliach"
   },
   "EduQuestionsPage": {
     "title": "Pytania",
@@ -243,11 +258,6 @@
     "name_placeholder": "np. Biologia Rozdział 1",
     "description_label": "Opis",
     "description_placeholder": "Opcjonalny opis...",
-    "common_cancel": "Anuluj",
-    "common_update": "Zaktualizuj",
-    "common_create": "Utwórz",
-    "common_edit": "Edytuj",
-    "common_delete": "Usuń",
     "delete_dialog_title": "Usunąć talię?",
     "delete_dialog_desc": "To trwale usunie talię. Tej akcji nie można cofnąć.",
     "deck_created": "Talia utworzona",
@@ -306,11 +316,6 @@
     "copy_stay_here": "Zostań Tutaj",
     "delete_dialog_title": "Usunąć Fiszkę?",
     "delete_dialog_desc": "To trwale usunie fiszkę. Tej akcji nie można cofnąć.",
-    "common_cancel": "Anuluj",
-    "common_create": "Utwórz",
-    "common_update": "Aktualizuj",
-    "common_delete": "Usuń",
-    "common_close": "Zamknij",
     "deck_edit_title": "Edytuj Talię",
     "deck_edit_desc": "Zaktualizuj nazwę i opis talii",
     "deck_name_label": "Nazwa Talii",
@@ -333,9 +338,7 @@
     "no_flashcards_for_topic": "Brak fiszek z tym tematem",
     "practice_deck": "Ćwicz",
     "add_topic_desc": "Wybierz tematy do dodania do tej fiszki",
-    "remove_topic_desc": "Wybierz tematy do usunięcia z tej fiszki",
-    "common_add": "Dodaj",
-    "common_remove": "Usuń"
+    "remove_topic_desc": "Wybierz tematy do usunięcia z tej fiszki"
   },
   "EduFlashcardStatsPage": {
     "title": "Statystyki fiszek",
@@ -374,7 +377,10 @@
     "accuracy": "Skuteczność",
     "attempts": "Próby",
     "students": "Studenci",
-    "empty": "Brak fiszek w tej kategorii."
+    "empty": "Brak fiszek w tej kategorii.",
+    "filterDecks": "Filtruj talie...",
+    "filterTopics": "Filtruj tematy...",
+    "clearFilters": "Wyczyść filtry"
   },
   "EduFlashcardTopicsPage": {
     "title": "Tematy fiszek",
@@ -388,12 +394,6 @@
     "new_topic_desc": "Dodaj nowy temat fiszek",
     "topic_name_label": "Nazwa tematu",
     "topic_name_placeholder": "np. Biologia, Historia...",
-    "common_cancel": "Anuluj",
-    "common_update": "Zaktualizuj",
-    "common_create": "Utwórz",
-    "common_edit": "Edytuj",
-    "common_delete": "Usuń",
-    "common_close": "Zamknij",
     "delete_dialog_title": "Usunąć temat?",
     "delete_dialog_desc": "To trwale usunie temat. Tej akcji nie można cofnąć.",
     "topic_created": "Temat utworzony",
@@ -548,7 +548,6 @@
     "back_to_quizzes": "Powrót do testów",
     "submit_failed": "Nie udało się przesłać testu",
     "select_question_type": "Wybierz co najmniej jeden typ pytania",
-    "common_loading": "Ładowanie...",
     "new_quiz": "Nowy test",
     "no_attempts": "Brak prób testów. Wygeneruj swój pierwszy test!",
     "generate_quiz": "Generuj test",
@@ -570,8 +569,7 @@
     "diff_easy": "Łatwa",
     "diff_medium": "Średnia",
     "diff_hard": "Trudna",
-    "question_count_label": "Liczba pytań: {count}",
-    "common_cancel": "Anuluj"
+    "question_count_label": "Liczba pytań: {count}"
   },
   "AppFlashcardsPage": {
     "title": "Fiszki",
@@ -649,11 +647,6 @@
     "copy_stay_here": "Zostań Tutaj",
     "delete_dialog_title": "Usunąć Fiszkę?",
     "delete_dialog_desc": "To trwale usunie fiszkę. Tej akcji nie można cofnąć.",
-    "common_cancel": "Anuluj",
-    "common_create": "Utwórz",
-    "common_update": "Aktualizuj",
-    "common_delete": "Usuń",
-    "common_close": "Zamknij",
     "deck_edit_title": "Edytuj Talię",
     "deck_edit_desc": "Zaktualizuj nazwę i opis talii",
     "deck_name_label": "Nazwa Talii",
@@ -676,9 +669,7 @@
     "no_flashcards_for_topic": "Brak fiszek z tym tematem",
     "practice_deck": "Ćwicz",
     "add_topic_desc": "Wybierz tematy do dodania do tej fiszki",
-    "remove_topic_desc": "Wybierz tematy do usunięcia z tej fiszki",
-    "common_add": "Dodaj",
-    "common_remove": "Usuń"
+    "remove_topic_desc": "Wybierz tematy do usunięcia z tej fiszki"
   },
   "AppFlashcardTopicsPage": {
     "title": "Menedżer Tematów",
@@ -698,12 +689,6 @@
     "no_flashcards_for_topic": "Brak fiszek z tym tematem",
     "question_label": "Pytanie",
     "answer_label": "Odpowiedź",
-    "common_cancel": "Anuluj",
-    "common_update": "Aktualizuj",
-    "common_create": "Utwórz",
-    "common_delete": "Usuń",
-    "common_edit": "Edytuj",
-    "common_close": "Zamknij",
     "delete_dialog_title": "Usunąć Temat?",
     "delete_dialog_desc": "To trwale usunie temat. Tej akcji nie można cofnąć.",
     "topic_created": "Temat utworzony",
@@ -711,8 +696,7 @@
     "topic_deleted": "Temat usunięty",
     "save_failed": "Nie udało się zapisać tematu",
     "delete_failed": "Nie udało się usunąć tematu",
-    "name_required": "Nazwa tematu jest wymagana",
-    "common_loading": "Ładowanie..."
+    "name_required": "Nazwa tematu jest wymagana"
   },
   "AppFlashcardStudyPage": {
     "title": "Tryb Nauki",
@@ -745,26 +729,26 @@
     "start_practice": "Ćwicz"
   },
   "AppFlashcardsClient": {
-    "title": "Nauka z Fiszkami",
-    "manage_decks": "Zarządzaj Taliami",
+    "title": "Ćwiczenie z fiszkami",
+    "manage_decks": "Zarządzaj taliami",
     "topics_title": "Tematy",
-    "topics_desc": "Wybierz tematy do nauki",
-    "cards_count": "{count, plural, one {# karta} few {# karty} many {# kart} other {# kart}}",
+    "topics_desc": "Wybierz tematy do ćwiczenia",
+    "cards_count": "{count} fiszek",
     "no_topics": "Brak dostępnych tematów",
-    "decks_title": "Twoje Talie",
-    "decks_desc": "Wybierz talie do nauki",
+    "decks_title": "Talie",
+    "decks_desc": "Wybierz talie do ćwiczenia",
     "no_decks": "Brak dostępnych talii",
-    "practice_mode_title": "Tryb Nauki",
-    "practice_mode_desc": "Wybierz jak chcesz ćwiczyć",
-    "mode_endless": "Bez limitu",
-    "mode_endless_desc": "Kontynuuj aż zdecydujesz się zatrzymać",
-    "mode_limited": "Limitowany",
-    "mode_limited_desc": "Ćwicz aż osiągniesz docelową liczbę poprawnych",
+    "practice_mode_title": "Tryb ćwiczenia",
+    "practice_mode_desc": "Wybierz sposób ćwiczenia",
+    "mode_endless": "Bez końca",
+    "mode_endless_desc": "Kontynuuj do momentu zatrzymania",
+    "mode_limited": "Ograniczony",
+    "mode_limited_desc": "Ćwicz do osiągnięcia docelowej liczby poprawnych odpowiedzi",
     "target_count_label": "Cel: {count} poprawnych",
-    "select_to_start": "Wybierz tematy lub talie, aby rozpocząć",
-    "cards_available": "{count, plural, one {# karta} few {# karty} many {# kart} other {# kart}} dostępnych",
-    "due_for_review": "oczekuje na powtórkę",
-    "start_practice": "Rozpocznij Naukę"
+    "select_to_start": "Wybierz tematy lub talie, aby zacząć",
+    "cards_available": "{count} fiszek dostępnych",
+    "due_for_review": "do powtórki",
+    "start_practice": "Rozpocznij ćwiczenie"
   },
   "AppMyQuestionsPage": {
     "title": "Moje pytania",
@@ -1063,7 +1047,6 @@
     "contact_text": "W sprawach związanych z niniejszym Regulaminem skontaktuj się z nami pod adresem support@studiq.pl lub telefonicznie: +48 123 567 893."
   },
   "AppStatisticsPage": {
-    "common_loading": "Ładowanie...",
     "title": "Moje statystyki",
     "quizzes_taken": "Ukończone testy",
     "avg_score": "Średni wynik",
@@ -1074,7 +1057,6 @@
     "quiz_attempt": "Podejście do testu"
   },
   "EduStatisticsPage": {
-    "common_loading": "Ładowanie...",
     "title": "Statystyki",
     "all_subjects": "Wszystkie przedmioty",
     "questions_stat": "Pytania",
@@ -1086,30 +1068,7 @@
     "correct_suffix": "poprawnych",
     "no_problematic": "Nie wykryto problemowych pytań. Świetna robota!"
   },
-  "AppFlashcardsClient": {
-    "title": "Ćwiczenie z fiszkami",
-    "manage_decks": "Zarządzaj taliami",
-    "topics_title": "Tematy",
-    "topics_desc": "Wybierz tematy do ćwiczenia",
-    "cards_count": "{count} fiszek",
-    "no_topics": "Brak dostępnych tematów",
-    "decks_title": "Talie",
-    "decks_desc": "Wybierz talie do ćwiczenia",
-    "no_decks": "Brak dostępnych talii",
-    "practice_mode_title": "Tryb ćwiczenia",
-    "practice_mode_desc": "Wybierz sposób ćwiczenia",
-    "mode_endless": "Bez końca",
-    "mode_endless_desc": "Kontynuuj do momentu zatrzymania",
-    "mode_limited": "Ograniczony",
-    "mode_limited_desc": "Ćwicz do osiągnięcia docelowej liczby poprawnych odpowiedzi",
-    "target_count_label": "Cel: {count} poprawnych",
-    "select_to_start": "Wybierz tematy lub talie, aby zacząć",
-    "cards_available": "{count} fiszek dostępnych",
-    "due_for_review": "do powtórki",
-    "start_practice": "Rozpocznij ćwiczenie"
-  },
   "AppFlashcardSessionPage": {
-    "common_loading": "Ładowanie...",
     "no_flashcards_found": "Nie znaleziono fiszek dla wybranych tematów",
     "load_failed": "Nie udało się załadować fiszek",
     "no_flashcards_available": "Brak dostępnych fiszek",
@@ -1148,11 +1107,6 @@
     "description_placeholder": "Krótki opis...",
     "flashcards_label": "Fiszki",
     "no_flashcards": "Brak dostępnych fiszek",
-    "common_cancel": "Anuluj",
-    "common_update": "Zaktualizuj",
-    "common_create": "Utwórz",
-    "common_delete": "Usuń",
-    "common_edit": "Edytuj",
     "delete_dialog_title": "Usunąć talię?",
     "delete_dialog_desc": "To trwale usunie talię. Tej akcji nie można cofnąć.",
     "deck_created": "Talia utworzona",
@@ -1161,7 +1115,6 @@
     "save_failed": "Nie udało się zapisać talii",
     "delete_failed": "Nie udało się usunąć talii",
     "name_required": "Nazwa talii jest wymagana",
-    "common_loading": "Ładowanie...",
     "open_deck": "Otwórz"
   },
   "FlashcardAiPage": {

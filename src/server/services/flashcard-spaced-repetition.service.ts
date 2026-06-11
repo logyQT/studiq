@@ -14,7 +14,9 @@ export interface ReviewResult {
 }
 
 export class FlashcardSpacedRepetitionService {
-  private mapToQuality(wasCorrect: boolean, confidenceLevel?: number): number {
+  private readonly MAX_INTERVAL_DAYS = 365;
+
+  mapToQuality(wasCorrect: boolean, confidenceLevel?: number): number {
     if (!wasCorrect) {
       if (confidenceLevel == null) return 0;
       if (confidenceLevel <= 1) return 0;
@@ -48,6 +50,10 @@ export class FlashcardSpacedRepetitionService {
     } else {
       currentRepetitions = 0;
       currentInterval = 1;
+    }
+
+    if (currentInterval > this.MAX_INTERVAL_DAYS) {
+      currentInterval = this.MAX_INTERVAL_DAYS;
     }
 
     const nextReviewAt = new Date();

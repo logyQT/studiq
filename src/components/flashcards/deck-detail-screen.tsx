@@ -19,16 +19,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { DeleteConfirmDialog } from '@/components/flashcards/delete-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
   ArrowLeft,
@@ -36,13 +31,12 @@ import {
   MoreVertical,
   Pencil,
   Trash2,
-  Link2,
-  Copy,
-  Tags,
   X,
   ExternalLink,
   Play,
 } from 'lucide-react';
+import { OwnedFlashcardContextMenu } from '@/components/flashcards/owned-flashcard-context-menu';
+import { ViewOnlyFlashcardContextMenu } from '@/components/flashcards/view-only-flashcard-context-menu';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
@@ -50,7 +44,6 @@ import { apiPost, apiPut, apiDelete } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { DeckDetailSkeleton } from '@/components/flashcards/deck-detail-skeleton';
 import type { Deck, Flashcard, Topic } from '@/types/flashcards';
-import { useDeckFlashcardRealtime, useTopicRealtime } from '@/hooks/use-flashcard-realtime';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
 import { UserRole } from '@/types';
@@ -104,20 +97,42 @@ interface DeckDetailScreenProps {
   practiceHref?: string;
 }
 
-export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, practiceHref }: DeckDetailScreenProps) {
+export function DeckDetailScreen({
+  deckId,
+  backHref,
+  basePath,
+  apiBase,
+  t,
+  practiceHref,
+}: DeckDetailScreenProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const role = user?.app_metadata?.role as UserRole | undefined;
   const gradient = getGradient(deckId);
 
-  useDeckFlashcardRealtime(deckId);
-  useTopicRealtime();
-
-  const { data: currentDeckData, isLoading: deckLoading, isError: deckError } = useApiQuery<Deck>({ queryKey: flashcardKeys.decks.detail(deckId), url: `/api/v1/flashcards/decks/${deckId}`, enabled: !!deckId });
-  const { data: flashcardsData } = useApiQuery<Flashcard[]>({ queryKey: flashcardKeys.list({ deckIds: [deckId] }), url: `/api/v1/flashcards?deckIds=${deckId}`, enabled: !!deckId });
-  const { data: topicsData } = useApiQuery<Topic[]>({ queryKey: flashcardKeys.topics.all, url: '/api/v1/flashcards/topics' });
-  const { data: allDecksData } = useApiQuery<Deck[]>({ queryKey: flashcardKeys.decks.all, url: '/api/v1/flashcards/decks' });
+  const {
+    data: currentDeckData,
+    isLoading: deckLoading,
+    isError: deckError,
+  } = useApiQuery<Deck>({
+    queryKey: flashcardKeys.decks.detail(deckId),
+    url: `/api/v1/flashcards/decks/${deckId}`,
+    enabled: !!deckId,
+  });
+  const { data: flashcardsData } = useApiQuery<Flashcard[]>({
+    queryKey: flashcardKeys.list({ deckIds: [deckId] }),
+    url: `/api/v1/flashcards?deckIds=${deckId}`,
+    enabled: !!deckId,
+  });
+  const { data: topicsData } = useApiQuery<Topic[]>({
+    queryKey: flashcardKeys.topics.all,
+    url: '/api/v1/flashcards/topics',
+  });
+  const { data: allDecksData } = useApiQuery<Deck[]>({
+    queryKey: flashcardKeys.decks.all,
+    url: '/api/v1/flashcards/decks',
+  });
 
   const flashcards = flashcardsData ?? [];
   const currentDeck = currentDeckData ?? null;
@@ -126,11 +141,80 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
 
   const flashcardQueryKey = flashcardKeys.list({ deckIds: [deckId] });
 
-  const createFlashcard = useApiMutation({ mutationFn: (data: { front: string; back: string; topicIds?: string[] }) => apiPost<Flashcard>('/api/v1/flashcards', { ...data, deckId }), invalidateKeys: [flashcardQueryKey] });
-  const updateFlashcard = useApiMutation({ mutationFn: ({ id, ...data }: { id: string; front: string; back: string; topicIds: string[] }) => apiPut<Flashcard>(`/api/v1/flashcards/${id}`, data), invalidateKeys: [flashcardQueryKey], onMutate: async ({ id, ...data }) => { await queryClient.cancelQueries({ queryKey: flashcardQueryKey }); const prev = queryClient.getQueryData<Flashcard[]>(flashcardQueryKey); queryClient.setQueryData<Flashcard[]>(flashcardQueryKey, (old) => old?.map((fc) => fc.id === id ? { ...fc, ...data } : fc)); return { previous: prev }; }, onError: (_err, _vars, ctx) => { queryClient.setQueryData(flashcardQueryKey, ctx?.previous); } });
-  const deleteFlashcard = useApiMutation({ mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/${id}`), invalidateKeys: [flashcardQueryKey], onMutate: async (id) => { await queryClient.cancelQueries({ queryKey: flashcardQueryKey }); const prev = queryClient.getQueryData<Flashcard[]>(flashcardQueryKey); queryClient.setQueryData<Flashcard[]>(flashcardQueryKey, (old) => old?.filter((fc) => fc.id !== id)); return { previous: prev }; }, onError: (_err, _id, ctx) => { queryClient.setQueryData(flashcardQueryKey, ctx?.previous); } });
-  const updateDeck = useApiMutation({ mutationFn: ({ id, ...data }: { id: string; name: string; description?: string }) => apiPut<Deck>(`/api/v1/flashcards/decks/${id}`, data), invalidateKeys: [flashcardKeys.decks.all], onMutate: async ({ id, ...data }) => { await queryClient.cancelQueries({ queryKey: flashcardKeys.decks.all }); const prev = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all); queryClient.setQueryData<Deck[]>(flashcardKeys.decks.all, (old) => old?.map((d) => d.id === id ? { ...d, ...data } : d)); return { previous: prev }; }, onError: (_err, _vars, ctx) => { queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous); } });
-  const deleteDeck = useApiMutation({ mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/decks/${id}`), invalidateKeys: [flashcardKeys.decks.all], onMutate: async (id) => { await queryClient.cancelQueries({ queryKey: flashcardKeys.decks.all }); const prev = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all); queryClient.setQueryData<Deck[]>(flashcardKeys.decks.all, (old) => old?.filter((d) => d.id !== id)); return { previous: prev }; }, onError: (_err, _id, ctx) => { queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous); } });
+  const createFlashcard = useApiMutation({
+    mutationFn: (data: { front: string; back: string; topicIds?: string[] }) =>
+      apiPost<Flashcard>('/api/v1/flashcards', { ...data, deckId }),
+    invalidateKeys: [flashcardQueryKey],
+  });
+  const updateFlashcard = useApiMutation({
+    mutationFn: ({
+      id,
+      ...data
+    }: {
+      id: string;
+      front: string;
+      back: string;
+      topicIds: string[];
+    }) => apiPut<Flashcard>(`/api/v1/flashcards/${id}`, data),
+    invalidateKeys: [flashcardQueryKey],
+    onMutate: async ({ id, ...data }) => {
+      await queryClient.cancelQueries({ queryKey: flashcardQueryKey });
+      const prev = queryClient.getQueryData<Flashcard[]>(flashcardQueryKey);
+      queryClient.setQueryData<Flashcard[]>(flashcardQueryKey, (old) =>
+        old?.map((fc) => (fc.id === id ? { ...fc, ...data } : fc)),
+      );
+      return { previous: prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      queryClient.setQueryData(flashcardQueryKey, ctx?.previous);
+    },
+  });
+  const deleteFlashcard = useApiMutation({
+    mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/${id}`),
+    invalidateKeys: [flashcardQueryKey],
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: flashcardQueryKey });
+      const prev = queryClient.getQueryData<Flashcard[]>(flashcardQueryKey);
+      queryClient.setQueryData<Flashcard[]>(flashcardQueryKey, (old) =>
+        old?.filter((fc) => fc.id !== id),
+      );
+      return { previous: prev };
+    },
+    onError: (_err, _id, ctx) => {
+      queryClient.setQueryData(flashcardQueryKey, ctx?.previous);
+    },
+  });
+  const updateDeck = useApiMutation({
+    mutationFn: ({ id, ...data }: { id: string; name: string; description?: string }) =>
+      apiPut<Deck>(`/api/v1/flashcards/decks/${id}`, data),
+    invalidateKeys: [flashcardKeys.decks.all],
+    onMutate: async ({ id, ...data }) => {
+      await queryClient.cancelQueries({ queryKey: flashcardKeys.decks.all });
+      const prev = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all);
+      queryClient.setQueryData<Deck[]>(flashcardKeys.decks.all, (old) =>
+        old?.map((d) => (d.id === id ? { ...d, ...data } : d)),
+      );
+      return { previous: prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous);
+    },
+  });
+  const deleteDeck = useApiMutation({
+    mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/decks/${id}`),
+    invalidateKeys: [flashcardKeys.decks.all],
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: flashcardKeys.decks.all });
+      const prev = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all);
+      queryClient.setQueryData<Deck[]>(flashcardKeys.decks.all, (old) =>
+        old?.filter((d) => d.id !== id),
+      );
+      return { previous: prev };
+    },
+    onError: (_err, _id, ctx) => {
+      queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous);
+    },
+  });
 
   const [flippedId, setFlippedId] = useState<string | null>(null);
 
@@ -384,7 +468,9 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
           </div>
           <div className="flex-1">
             <h2 className="text-2xl font-bold">{currentDeck!.name}</h2>
-            {currentDeck!.description && <p className="mt-1 text-white/80">{currentDeck!.description}</p>}
+            {currentDeck!.description && (
+              <p className="mt-1 text-white/80">{currentDeck!.description}</p>
+            )}
             <div className="mt-3 flex items-center gap-4">
               <Badge variant="secondary" className="bg-white/20 text-white">
                 {t('flashcards_count', { count: flashcards.length })}
@@ -430,6 +516,7 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
           {flashcards.map((fc) => {
             const isFlipped = flippedId === fc.id;
             const fcTopics = getTopicNames(fc);
+            const canUpdate = can(role, 'flashcard.update', fc.created_by, user?.id);
             return (
               <Card
                 key={fc.id}
@@ -441,83 +528,37 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
                 <div className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="secondary" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="secondary"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <MoreVertical className="h-3 w-3" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      {can(role, 'flashcard.update', fc.created_by, user?.id) && (
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEdit(fc); }}>
-                          <Pencil className="mr-2 h-4 w-4" /> {t('menu_edit')}
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuSub>
-                        <DropdownMenuSubTrigger>
-                          <Tags className="mr-2 h-4 w-4" /> {t('menu_topics')}
-                        </DropdownMenuSubTrigger>
-                        <DropdownMenuSubContent>
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setTopicActionIds([]);
-                              setAddTopicOpen(true);
-                            }}
-                          >
-                            <Plus className="mr-2 h-4 w-4" /> {t('menu_add_topic')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setTopicActionIds([]);
-                              setRemoveTopicOpen(true);
-                            }}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" /> {t('menu_remove_topic')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const assignedIds = getTopicIds(fc);
-                              const firstAssigned = topics.find((tp) => assignedIds.includes(tp.id));
-                              if (firstAssigned) setViewTopicId(firstAssigned.id);
-                            }}
-                          >
-                            <ExternalLink className="mr-2 h-4 w-4" /> {t('menu_view_by_topic')}
-                          </DropdownMenuItem>
-                        </DropdownMenuSubContent>
-                      </DropdownMenuSub>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveFlashcardId(fc.id);
-                          setLinkDeckIds([]);
-                          setLinkOpen(true);
-                        }}
-                      >
-                        <Link2 className="mr-2 h-4 w-4" /> {t('menu_link')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveFlashcardId(fc.id);
-                          setCopyTargetDeckId(null);
-                          setCopyOpen(true);
-                        }}
-                      >
-                        <Copy className="mr-2 h-4 w-4" /> {t('menu_copy')}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      {can(role, 'flashcard.delete', fc.created_by, user?.id) && (
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteId(fc.id);
+                      {canUpdate ? (
+                        <OwnedFlashcardContextMenu
+                          t={t}
+                          onEdit={() => openEdit(fc)}
+                          onAddTopic={() => { setTopicActionIds([]); setAddTopicOpen(true); }}
+                          onRemoveTopic={() => { setTopicActionIds([]); setRemoveTopicOpen(true); }}
+                          onViewByTopic={() => {
+                            const assignedIds = getTopicIds(fc);
+                            const firstAssigned = topics.find((tp) => assignedIds.includes(tp.id));
+                            if (firstAssigned) setViewTopicId(firstAssigned.id);
                           }}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" /> {t('menu_delete')}
-                        </DropdownMenuItem>
+                          onLink={() => { setActiveFlashcardId(fc.id); setLinkDeckIds([]); setLinkOpen(true); }}
+                          onCopy={() => { setActiveFlashcardId(fc.id); setCopyTargetDeckId(null); setCopyOpen(true); }}
+                          onDelete={can(role, 'flashcard.delete', fc.created_by, user?.id) ? () => setDeleteId(fc.id) : null}
+                        />
+                      ) : (
+                        <ViewOnlyFlashcardContextMenu
+                          t={t}
+                          onLink={() => { setActiveFlashcardId(fc.id); setLinkDeckIds([]); setLinkOpen(true); }}
+                          onCopy={() => { setActiveFlashcardId(fc.id); setCopyTargetDeckId(null); setCopyOpen(true); }}
+                        />
                       )}
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -535,7 +576,9 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
                       <div className="flex flex-wrap gap-1">
                         {fcTopics.map((topic) => (
                           <Badge key={topic.id} variant="secondary" className="gap-1 text-xs">
-                            <div className={`h-1.5 w-1.5 rounded-full ${getTopicColor(topic.name)}`} />
+                            <div
+                              className={`h-1.5 w-1.5 rounded-full ${getTopicColor(topic.name)}`}
+                            />
                             {topic.name}
                           </Badge>
                         ))}
@@ -616,7 +659,13 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setCreateOpen(false); resetForm(); }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCreateOpen(false);
+                resetForm();
+              }}
+            >
               {t('common_cancel')}
             </Button>
             <Button onClick={handleCreate}>{t('common_create')}</Button>
@@ -684,7 +733,13 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setEditOpen(false); resetForm(); }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditOpen(false);
+                resetForm();
+              }}
+            >
               {t('common_cancel')}
             </Button>
             <Button onClick={handleUpdate}>{t('common_update')}</Button>
@@ -711,16 +766,26 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">{d.name}</p>
-                  {d.description && <p className="text-xs text-muted-foreground truncate">{d.description}</p>}
+                  {d.description && (
+                    <p className="text-xs text-muted-foreground truncate">{d.description}</p>
+                  )}
                 </div>
               </div>
             ))}
             {allDecks.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">{t('no_other_decks')}</p>
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {t('no_other_decks')}
+              </p>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setLinkOpen(false); setLinkDeckIds([]); }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setLinkOpen(false);
+                setLinkDeckIds([]);
+              }}
+            >
               {t('common_cancel')}
             </Button>
             <Button onClick={handleLink} disabled={linkDeckIds.length === 0}>
@@ -741,9 +806,7 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
               <button
                 key={d.id}
                 className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
-                  copyTargetDeckId === d.id
-                    ? 'border-primary bg-primary/5'
-                    : 'hover:bg-muted'
+                  copyTargetDeckId === d.id ? 'border-primary bg-primary/5' : 'hover:bg-muted'
                 }`}
                 onClick={() => setCopyTargetDeckId(d.id)}
               >
@@ -756,17 +819,29 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">{d.name}</p>
-                  {d.description && <p className="text-xs text-muted-foreground truncate">{d.description}</p>}
+                  {d.description && (
+                    <p className="text-xs text-muted-foreground truncate">{d.description}</p>
+                  )}
                 </div>
-                <Badge variant="secondary">{t('flashcards_count', { count: d.flashcard_count })}</Badge>
+                <Badge variant="secondary">
+                  {t('flashcards_count', { count: d.flashcard_count })}
+                </Badge>
               </button>
             ))}
             {allDecks.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">{t('no_other_decks')}</p>
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {t('no_other_decks')}
+              </p>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setCopyOpen(false); setCopyTargetDeckId(null); }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCopyOpen(false);
+                setCopyTargetDeckId(null);
+              }}
+            >
               {t('common_cancel')}
             </Button>
             <Button onClick={handleCopy} disabled={!copyTargetDeckId}>
@@ -776,13 +851,23 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!copyResult} onOpenChange={(open) => { if (!open) setCopyResult(null); }}>
+      <Dialog
+        open={!!copyResult}
+        onOpenChange={(open) => {
+          if (!open) setCopyResult(null);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>{t('copy_success_title')}</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-4">
-            <Button onClick={() => { router.push(`${basePath}/deck/${copyResult?.deckId}`); setCopyResult(null); }}>
+            <Button
+              onClick={() => {
+                router.push(`${basePath}/deck/${copyResult?.deckId}`);
+                setCopyResult(null);
+              }}
+            >
               <ExternalLink className="mr-2 h-4 w-4" /> {t('copy_go_to_card')}
             </Button>
             <Button variant="outline" onClick={() => setCopyResult(null)}>
@@ -798,6 +883,8 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
         onConfirm={handleDelete}
         title={t('delete_dialog_title')}
         description={t('delete_dialog_desc')}
+        cancelText={t('common_cancel')}
+        confirmText={t('common_delete')}
       />
 
       <Dialog open={deckEditOpen} onOpenChange={setDeckEditOpen}>
@@ -840,9 +927,16 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
         onConfirm={handleDeckDelete}
         title={t('deck_delete_title')}
         description={t('deck_delete_desc')}
+        cancelText={t('common_cancel')}
+        confirmText={t('common_delete')}
       />
 
-      <Dialog open={!!viewTopicId} onOpenChange={(open) => { if (!open) setViewTopicId(null); }}>
+      <Dialog
+        open={!!viewTopicId}
+        onOpenChange={(open) => {
+          if (!open) setViewTopicId(null);
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
@@ -859,7 +953,9 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
           </DialogHeader>
           <div className="space-y-3 py-4">
             {viewTopicFlashcards.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">{t('no_flashcards_for_topic')}</p>
+              <p className="text-center text-muted-foreground py-8">
+                {t('no_flashcards_for_topic')}
+              </p>
             ) : (
               viewTopicFlashcards.map((fc) => (
                 <div key={fc.id} className="p-4 rounded-lg border space-y-2">
@@ -899,7 +995,9 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
                         checked={topicActionIds.includes(topic.id)}
                         onCheckedChange={() =>
                           setTopicActionIds((prev) =>
-                            prev.includes(topic.id) ? prev.filter((id) => id !== topic.id) : [...prev, topic.id],
+                            prev.includes(topic.id)
+                              ? prev.filter((id) => id !== topic.id)
+                              : [...prev, topic.id],
                           )
                         }
                       />
@@ -908,39 +1006,43 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
                     </div>
                   ))}
                   {available.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">{t('no_other_topics_to_add')}</p>
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      {t('no_other_topics_to_add')}
+                    </p>
                   )}
                 </>
               );
             })()}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddTopicOpen(false)}>{t('common_cancel')}</Button>
-              <Button
-                onClick={async () => {
-                  if (!activeFlashcardId || topicActionIds.length === 0) return;
-                  const fc = flashcards?.find((f) => f.id === activeFlashcardId);
-                  if (!fc) return;
-                  const currentIds = getTopicIds(fc);
-                  const newIds = [...new Set([...currentIds, ...topicActionIds])];
-                  try {
-                    await updateFlashcard.mutateAsync({
-                      id: activeFlashcardId,
-                      front: fc.front,
-                      back: fc.back,
-                      topicIds: newIds,
-                    });
-                    toast.success(t('topic_added'));
-                  } catch {
-                    toast.error(t('save_failed'));
-                  }
-                  setAddTopicOpen(false);
-                  setTopicActionIds([]);
-                }}
-                disabled={topicActionIds.length === 0}
-              >
-                {t('common_add')}
-              </Button>
+            <Button variant="outline" onClick={() => setAddTopicOpen(false)}>
+              {t('common_cancel')}
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!activeFlashcardId || topicActionIds.length === 0) return;
+                const fc = flashcards?.find((f) => f.id === activeFlashcardId);
+                if (!fc) return;
+                const currentIds = getTopicIds(fc);
+                const newIds = [...new Set([...currentIds, ...topicActionIds])];
+                try {
+                  await updateFlashcard.mutateAsync({
+                    id: activeFlashcardId,
+                    front: fc.front,
+                    back: fc.back,
+                    topicIds: newIds,
+                  });
+                  toast.success(t('topic_added'));
+                } catch {
+                  toast.error(t('save_failed'));
+                }
+                setAddTopicOpen(false);
+                setTopicActionIds([]);
+              }}
+              disabled={topicActionIds.length === 0}
+            >
+              {t('common_add')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -963,7 +1065,9 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
                         checked={topicActionIds.includes(topic.id)}
                         onCheckedChange={() =>
                           setTopicActionIds((prev) =>
-                            prev.includes(topic.id) ? prev.filter((id) => id !== topic.id) : [...prev, topic.id],
+                            prev.includes(topic.id)
+                              ? prev.filter((id) => id !== topic.id)
+                              : [...prev, topic.id],
                           )
                         }
                       />
@@ -972,39 +1076,43 @@ export function DeckDetailScreen({ deckId, backHref, basePath, apiBase, t, pract
                     </div>
                   ))}
                   {assigned.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">{t('no_topics_to_remove')}</p>
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      {t('no_topics_to_remove')}
+                    </p>
                   )}
                 </>
               );
             })()}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRemoveTopicOpen(false)}>{t('common_cancel')}</Button>
-              <Button
-                onClick={async () => {
-                  if (!activeFlashcardId || topicActionIds.length === 0) return;
-                  const fc = flashcards?.find((f) => f.id === activeFlashcardId);
-                  if (!fc) return;
-                  const currentIds = getTopicIds(fc);
-                  const newIds = currentIds.filter((id) => !topicActionIds.includes(id));
-                  try {
-                    await updateFlashcard.mutateAsync({
-                      id: activeFlashcardId,
-                      front: fc.front,
-                      back: fc.back,
-                      topicIds: newIds,
-                    });
-                    toast.success(t('topic_removed'));
-                  } catch {
-                    toast.error(t('save_failed'));
-                  }
-                  setRemoveTopicOpen(false);
-                  setTopicActionIds([]);
-                }}
-                disabled={topicActionIds.length === 0}
-              >
-                {t('common_remove')}
-              </Button>
+            <Button variant="outline" onClick={() => setRemoveTopicOpen(false)}>
+              {t('common_cancel')}
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!activeFlashcardId || topicActionIds.length === 0) return;
+                const fc = flashcards?.find((f) => f.id === activeFlashcardId);
+                if (!fc) return;
+                const currentIds = getTopicIds(fc);
+                const newIds = currentIds.filter((id) => !topicActionIds.includes(id));
+                try {
+                  await updateFlashcard.mutateAsync({
+                    id: activeFlashcardId,
+                    front: fc.front,
+                    back: fc.back,
+                    topicIds: newIds,
+                  });
+                  toast.success(t('topic_removed'));
+                } catch {
+                  toast.error(t('save_failed'));
+                }
+                setRemoveTopicOpen(false);
+                setTopicActionIds([]);
+              }}
+              disabled={topicActionIds.length === 0}
+            >
+              {t('common_remove')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

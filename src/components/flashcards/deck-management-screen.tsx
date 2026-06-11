@@ -21,13 +21,12 @@ import {
 import { ArrowLeft, Plus, Trash2, Pencil, ArrowRight, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DeleteConfirmDialog } from '@/components/flashcards/delete-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { apiPost, apiPut, apiDelete } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { Deck } from '@/types/flashcards';
-import { useDeckListRealtime } from '@/hooks/use-flashcard-realtime';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
 import { UserRole } from '@/types';
@@ -62,22 +61,52 @@ interface DeckManagementScreenProps {
   t: ReturnType<typeof useTranslations>;
 }
 
-export function DeckManagementScreen({
-  backHref,
-  basePath,
-  t,
-}: DeckManagementScreenProps) {
+export function DeckManagementScreen({ backHref, basePath, t }: DeckManagementScreenProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const role = user?.app_metadata?.role as UserRole | undefined;
 
-  useDeckListRealtime();
-
-  const { data: decks, isLoading } = useApiQuery<Deck[]>({ queryKey: flashcardKeys.decks.all, url: '/api/v1/flashcards/decks' });
-  const createDeck = useApiMutation({ mutationFn: (data: { name: string; description?: string }) => apiPost<Deck>('/api/v1/flashcards/decks', data), invalidateKeys: [flashcardKeys.decks.all] });
-  const updateDeck = useApiMutation({ mutationFn: ({ id, ...data }: { id: string; name: string; description?: string }) => apiPut<Deck>(`/api/v1/flashcards/decks/${id}`, data), invalidateKeys: [flashcardKeys.decks.all], onMutate: async ({ id, ...data }) => { await queryClient.cancelQueries({ queryKey: flashcardKeys.decks.all }); const prev = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all); queryClient.setQueryData<Deck[]>(flashcardKeys.decks.all, (old) => old?.map((d) => d.id === id ? { ...d, ...data } : d)); return { previous: prev }; }, onError: (_err, _vars, ctx) => { queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous); } });
-  const deleteDeck = useApiMutation({ mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/decks/${id}`), invalidateKeys: [flashcardKeys.decks.all], onMutate: async (id) => { await queryClient.cancelQueries({ queryKey: flashcardKeys.decks.all }); const prev = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all); queryClient.setQueryData<Deck[]>(flashcardKeys.decks.all, (old) => old?.filter((d) => d.id !== id)); return { previous: prev }; }, onError: (_err, _id, ctx) => { queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous); } });
+  const { data: decks, isLoading } = useApiQuery<Deck[]>({
+    queryKey: flashcardKeys.decks.all,
+    url: '/api/v1/flashcards/decks',
+  });
+  const createDeck = useApiMutation({
+    mutationFn: (data: { name: string; description?: string }) =>
+      apiPost<Deck>('/api/v1/flashcards/decks', data),
+    invalidateKeys: [flashcardKeys.decks.all],
+  });
+  const updateDeck = useApiMutation({
+    mutationFn: ({ id, ...data }: { id: string; name: string; description?: string }) =>
+      apiPut<Deck>(`/api/v1/flashcards/decks/${id}`, data),
+    invalidateKeys: [flashcardKeys.decks.all],
+    onMutate: async ({ id, ...data }) => {
+      await queryClient.cancelQueries({ queryKey: flashcardKeys.decks.all });
+      const prev = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all);
+      queryClient.setQueryData<Deck[]>(flashcardKeys.decks.all, (old) =>
+        old?.map((d) => (d.id === id ? { ...d, ...data } : d)),
+      );
+      return { previous: prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous);
+    },
+  });
+  const deleteDeck = useApiMutation({
+    mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/decks/${id}`),
+    invalidateKeys: [flashcardKeys.decks.all],
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: flashcardKeys.decks.all });
+      const prev = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all);
+      queryClient.setQueryData<Deck[]>(flashcardKeys.decks.all, (old) =>
+        old?.filter((d) => d.id !== id),
+      );
+      return { previous: prev };
+    },
+    onError: (_err, _id, ctx) => {
+      queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous);
+    },
+  });
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Deck | null>(null);
@@ -173,84 +202,91 @@ export function DeckManagementScreen({
           ))}
         </div>
       ) : (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {decks?.map((deck) => {
-          const gradient = getGradient(deck.id);
-          return (
-            <Card
-              key={deck.id}
-              className="group overflow-hidden cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:border-primary/50 p-0"
-              onClick={() => router.push(`${basePath}/deck/${deck.id}`)}
-            >
-              <div
-                className={`h-20 bg-gradient-to-br ${gradient} flex items-center justify-center relative`}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {decks?.map((deck) => {
+            const gradient = getGradient(deck.id);
+            return (
+              <Card
+                key={deck.id}
+                className="group overflow-hidden cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:border-primary/50 p-0"
+                onClick={() => router.push(`${basePath}/deck/${deck.id}`)}
               >
-                <span className="text-2xl font-bold text-white/90">
-                  {deck.name.charAt(0).toUpperCase()}
-                </span>
-                {!can(role, 'deck.update', deck.created_by, user?.id) && (
-                  <Eye className="absolute bottom-2 right-2 h-4 w-4 text-white/50" />
-                )}
-              </div>
-              <div className="p-5 pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="min-w-0">
-                    <h3 className="text-lg font-semibold truncate">{deck.name}</h3>
-                    {deck.description && (
-                      <p className="text-sm text-muted-foreground line-clamp-2 mt-0.5">
-                        {deck.description}
-                      </p>
-                    )}
-                  </div>
-                  {can(role, 'deck.update', deck.created_by, user?.id) && (
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      aria-label={t('common_edit')}
-                      onClick={(e) => { e.stopPropagation(); openEdit(deck); }}
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      aria-label={t('common_delete')}
-                      onClick={(e) => { e.stopPropagation(); setDeleteId(deck.id); }}
-                    >
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </div>
+                <div
+                  className={`h-20 bg-gradient-to-br ${gradient} flex items-center justify-center relative`}
+                >
+                  <span className="text-2xl font-bold text-white/90">
+                    {deck.name.charAt(0).toUpperCase()}
+                  </span>
+                  {!can(role, 'deck.update', deck.created_by, user?.id) && (
+                    <Eye className="absolute bottom-2 right-2 h-4 w-4 text-white/50" />
                   )}
                 </div>
-              </div>
-              <div className="px-5 pb-5 flex items-center justify-between">
-                <Badge variant="secondary">
-                  {t('flashcards_count', { count: deck.flashcard_count })}
-                </Badge>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="gap-1"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    router.push(`${basePath}/deck/${deck.id}`);
-                  }}
-                >
-                  {t('open_deck')} <ArrowRight className="h-3 w-3" />
-                </Button>
-              </div>
-            </Card>
-          );
-        })}
-        {(!decks || decks.length === 0) && (
-          <div className="col-span-full text-center py-12 text-muted-foreground">
-            {t('no_decks')}
-          </div>
-        )}
-      </div>)}
+                <div className="p-5 pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="min-w-0">
+                      <h3 className="text-lg font-semibold truncate">{deck.name}</h3>
+                      {deck.description && (
+                        <p className="text-sm text-muted-foreground line-clamp-2 mt-0.5">
+                          {deck.description}
+                        </p>
+                      )}
+                    </div>
+                    {can(role, 'deck.update', deck.created_by, user?.id) && (
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          aria-label={t('common_edit')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEdit(deck);
+                          }}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          aria-label={t('common_delete')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteId(deck.id);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3 text-destructive" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="px-5 pb-5 flex items-center justify-between">
+                  <Badge variant="secondary">
+                    {t('flashcards_count', { count: deck.flashcard_count })}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push(`${basePath}/deck/${deck.id}`);
+                    }}
+                  >
+                    {t('open_deck')} <ArrowRight className="h-3 w-3" />
+                  </Button>
+                </div>
+              </Card>
+            );
+          })}
+          {(!decks || decks.length === 0) && (
+            <div className="col-span-full text-center py-12 text-muted-foreground">
+              {t('no_decks')}
+            </div>
+          )}
+        </div>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">
@@ -302,6 +338,8 @@ export function DeckManagementScreen({
         onConfirm={handleDelete}
         title={t('delete_dialog_title')}
         description={t('delete_dialog_desc')}
+        cancelText={t('common_cancel')}
+        confirmText={t('common_delete')}
       />
     </div>
   );

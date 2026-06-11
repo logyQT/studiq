@@ -52,7 +52,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { universityController } from '@/server/controllers/university.controller';
+import { universityController } from '@/server/controllers';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
 import { UserRole } from '@/types';

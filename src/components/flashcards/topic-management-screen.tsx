@@ -20,11 +20,10 @@ import {
 import { ArrowLeft, Plus, Trash2, Eye, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DeleteConfirmDialog } from '@/components/flashcards/delete-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { apiPost, apiPut, apiDelete } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
-import { useTopicRealtime } from '@/hooks/use-flashcard-realtime';
 import type { Topic, Flashcard } from '@/types/flashcards';
 
 const TOPIC_COLORS = [
@@ -52,13 +51,50 @@ interface TopicManagementScreenProps {
 
 export function TopicManagementScreen({ backHref, t }: TopicManagementScreenProps) {
   const queryClient = useQueryClient();
-  useTopicRealtime();
-  const { data: topics, isLoading } = useApiQuery<Topic[]>({ queryKey: flashcardKeys.topics.all, url: '/api/v1/flashcards/topics' });
-  const { data: allFlashcards } = useApiQuery<Flashcard[]>({ queryKey: flashcardKeys.list({}), url: '/api/v1/flashcards' });
+  const { data: topics, isLoading } = useApiQuery<Topic[]>({
+    queryKey: flashcardKeys.topics.all,
+    url: '/api/v1/flashcards/topics',
+  });
+  const { data: allFlashcards } = useApiQuery<Flashcard[]>({
+    queryKey: flashcardKeys.list({}),
+    url: '/api/v1/flashcards',
+  });
   const flashcards = allFlashcards ?? [];
-  const createTopic = useApiMutation({ mutationFn: (data: { name: string }) => apiPost<Topic>('/api/v1/flashcards/topics', data), invalidateKeys: [flashcardKeys.topics.all] });
-  const updateTopic = useApiMutation({ mutationFn: ({ id, ...data }: { id: string; name: string }) => apiPut<Topic>(`/api/v1/flashcards/topics/${id}`, data), invalidateKeys: [flashcardKeys.topics.all], onMutate: async ({ id, ...data }) => { await queryClient.cancelQueries({ queryKey: flashcardKeys.topics.all }); const prev = queryClient.getQueryData<Topic[]>(flashcardKeys.topics.all); queryClient.setQueryData<Topic[]>(flashcardKeys.topics.all, (old) => old?.map((t) => t.id === id ? { ...t, ...data } : t)); return { previous: prev }; }, onError: (_err, _vars, ctx) => { queryClient.setQueryData(flashcardKeys.topics.all, ctx?.previous); } });
-  const deleteTopic = useApiMutation({ mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/topics/${id}`), invalidateKeys: [flashcardKeys.topics.all], onMutate: async (id) => { await queryClient.cancelQueries({ queryKey: flashcardKeys.topics.all }); const prev = queryClient.getQueryData<Topic[]>(flashcardKeys.topics.all); queryClient.setQueryData<Topic[]>(flashcardKeys.topics.all, (old) => old?.filter((t) => t.id !== id)); return { previous: prev }; }, onError: (_err, _id, ctx) => { queryClient.setQueryData(flashcardKeys.topics.all, ctx?.previous); } });
+  const createTopic = useApiMutation({
+    mutationFn: (data: { name: string }) => apiPost<Topic>('/api/v1/flashcards/topics', data),
+    invalidateKeys: [flashcardKeys.topics.all],
+  });
+  const updateTopic = useApiMutation({
+    mutationFn: ({ id, ...data }: { id: string; name: string }) =>
+      apiPut<Topic>(`/api/v1/flashcards/topics/${id}`, data),
+    invalidateKeys: [flashcardKeys.topics.all],
+    onMutate: async ({ id, ...data }) => {
+      await queryClient.cancelQueries({ queryKey: flashcardKeys.topics.all });
+      const prev = queryClient.getQueryData<Topic[]>(flashcardKeys.topics.all);
+      queryClient.setQueryData<Topic[]>(flashcardKeys.topics.all, (old) =>
+        old?.map((t) => (t.id === id ? { ...t, ...data } : t)),
+      );
+      return { previous: prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      queryClient.setQueryData(flashcardKeys.topics.all, ctx?.previous);
+    },
+  });
+  const deleteTopic = useApiMutation({
+    mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/topics/${id}`),
+    invalidateKeys: [flashcardKeys.topics.all],
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: flashcardKeys.topics.all });
+      const prev = queryClient.getQueryData<Topic[]>(flashcardKeys.topics.all);
+      queryClient.setQueryData<Topic[]>(flashcardKeys.topics.all, (old) =>
+        old?.filter((t) => t.id !== id),
+      );
+      return { previous: prev };
+    },
+    onError: (_err, _id, ctx) => {
+      queryClient.setQueryData(flashcardKeys.topics.all, ctx?.previous);
+    },
+  });
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Topic | null>(null);
@@ -159,68 +195,73 @@ export function TopicManagementScreen({ backHref, t }: TopicManagementScreenProp
           ))}
         </div>
       ) : (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {topics?.map((topic) => {
-          const color = getTopicColor(topic.name);
-          return (
-            <Card key={topic.id} className="group">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div className={`h-10 w-10 rounded-lg ${color} flex items-center justify-center`}>
-                    <span className="text-sm font-bold text-white">{topic.name.charAt(0).toUpperCase()}</span>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {topics?.map((topic) => {
+            const color = getTopicColor(topic.name);
+            return (
+              <Card key={topic.id} className="group">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div
+                      className={`h-10 w-10 rounded-lg ${color} flex items-center justify-center`}
+                    >
+                      <span className="text-sm font-bold text-white">
+                        {topic.name.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        aria-label={t('view_flashcards')}
+                        onClick={() => setViewTopicId(topic.id)}
+                      >
+                        <Eye className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        aria-label={t('common_edit')}
+                        onClick={() => openEdit(topic)}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        aria-label={t('common_delete')}
+                        onClick={() => setDeleteId(topic.id)}
+                      >
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      aria-label={t('view_flashcards')}
-                      onClick={() => setViewTopicId(topic.id)}
-                    >
-                      <Eye className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      aria-label={t('common_edit')}
-                      onClick={() => openEdit(topic)}
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      aria-label={t('common_delete')}
-                      onClick={() => setDeleteId(topic.id)}
-                    >
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-                <h3 className="mt-3 font-semibold truncate">{topic.name}</h3>
-                <Badge variant="secondary" className="mt-2">
-                  {t('flashcards_count', { count: topic.flashcard_count })}
-                </Badge>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full mt-3"
-                  onClick={() => setViewTopicId(topic.id)}
-                >
-                  {t('browse_flashcards')}
-                </Button>
-              </CardContent>
-            </Card>
-          );
-        })}
-        {(!topics || topics.length === 0) && (
-          <div className="col-span-full text-center py-12 text-muted-foreground">
-            {t('no_topics')}
-          </div>
-        )}
-      </div>)}
+                  <h3 className="mt-3 font-semibold truncate">{topic.name}</h3>
+                  <Badge variant="secondary" className="mt-2">
+                    {t('flashcards_count', { count: topic.flashcard_count })}
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-3"
+                    onClick={() => setViewTopicId(topic.id)}
+                  >
+                    {t('browse_flashcards')}
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+          {(!topics || topics.length === 0) && (
+            <div className="col-span-full text-center py-12 text-muted-foreground">
+              {t('no_topics')}
+            </div>
+          )}
+        </div>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
@@ -239,15 +280,28 @@ export function TopicManagementScreen({ backHref, t }: TopicManagementScreenProp
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDialogOpen(false);
+                resetForm();
+              }}
+            >
               {t('common_cancel')}
             </Button>
-            <Button onClick={handleSubmit}>{editing ? t('common_update') : t('common_create')}</Button>
+            <Button onClick={handleSubmit}>
+              {editing ? t('common_update') : t('common_create')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!viewTopicId} onOpenChange={(open) => { if (!open) setViewTopicId(null); }}>
+      <Dialog
+        open={!!viewTopicId}
+        onOpenChange={(open) => {
+          if (!open) setViewTopicId(null);
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
@@ -264,7 +318,9 @@ export function TopicManagementScreen({ backHref, t }: TopicManagementScreenProp
           </DialogHeader>
           <div className="space-y-3 py-4">
             {viewFlashcards.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">{t('no_flashcards_for_topic')}</p>
+              <p className="text-center text-muted-foreground py-8">
+                {t('no_flashcards_for_topic')}
+              </p>
             ) : (
               viewFlashcards.map((fc) => (
                 <div key={fc.id} className="p-4 rounded-lg border space-y-2">
@@ -292,6 +348,8 @@ export function TopicManagementScreen({ backHref, t }: TopicManagementScreenProp
         onConfirm={handleDelete}
         title={t('delete_dialog_title')}
         description={t('delete_dialog_desc')}
+        cancelText={t('common_cancel')}
+        confirmText={t('common_delete')}
       />
     </div>
   );

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { AppError } from '@/lib/errors';
-import { errorLogService } from '@/server/services/error-log.service';
+import { errorLogService } from '@/server/services';
 import type { RequestContext } from '@/lib/request-context';
 import { UserRole } from '@/types';
 

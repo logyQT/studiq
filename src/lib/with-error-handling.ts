@@ -1,6 +1,6 @@
 import { AppError } from '@/lib/errors';
 import { ControllerResponse } from '@/lib/controller-response';
-import { errorLogService } from '@/server/services/error-log.service';
+import { errorLogService } from '@/server/services';
 import type { RequestContext } from '@/lib/request-context';
 
 export async function withErrorHandling(

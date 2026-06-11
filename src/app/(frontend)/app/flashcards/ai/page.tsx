@@ -335,14 +335,14 @@ export default function AiFlashcardPage() {
                   />
                 </div>
                 <Button
-                  variant={card.kept ? 'default' : 'outline'}
+                  variant={card.kept ? 'outline' : 'default'}
                   size="sm"
                   onClick={() => toggleKeep(i)}
                 >
                   {card.kept ? (
-                    <><Check className="mr-1 h-3 w-3" /> {t('keep')}</>
-                  ) : (
                     <><Trash2 className="mr-1 h-3 w-3" /> {t('trash')}</>
+                  ) : (
+                    <><Check className="mr-1 h-3 w-3" /> {t('keep')}</>
                   )}
                 </Button>
               </div>

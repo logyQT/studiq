@@ -9,4 +9,8 @@ export const flashcardKeys = {
   topics: {
     all: ['flashcards', 'topics'] as const,
   },
+  stats: {
+    teacher: ['flashcards', 'stats', 'teacher'] as const,
+    difficultyBucket: (bucket: string) => ['flashcards', 'stats', 'difficulty', bucket] as const,
+  },
 };

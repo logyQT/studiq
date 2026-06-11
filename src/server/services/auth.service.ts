@@ -1,6 +1,7 @@
 import { RegisterInput, LoginInput, User } from '@/server/models';
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
+import { Session } from '@supabase/supabase-js';
 
 export class AuthService {
   async register(data: RegisterInput): Promise<void> {
@@ -57,7 +58,7 @@ export class AuthService {
     }
   }
 
-  async login(data: LoginInput): Promise<{ user: User }> {
+  async login(data: LoginInput): Promise<{ user: User; session: Session }> {
     const supabase = await createClient();
 
     const { data: authData, error } = await supabase.auth.signInWithPassword({
@@ -69,11 +70,11 @@ export class AuthService {
       throw new AppError('UNAUTHORIZED');
     }
 
-    if (!authData.user) {
+    if (!authData.user || !authData.session) {
       throw new AppError('INTERNAL_SERVER');
     }
 
-    return { user: authData.user };
+    return { user: authData.user, session: authData.session };
   }
 
   async logout(): Promise<void> {

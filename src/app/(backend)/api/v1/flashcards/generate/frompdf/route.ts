@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { AppError } from '@/lib/errors';
-import { flashcardGenerationController } from '@/server/controllers/flashcard-generation.controller';
+import { flashcardGenerationController } from '@/server/controllers';
 import type { RequestContext } from '@/lib/request-context';
 import type { UserRole } from '@/types';
 import type { GeneratedFlashcard } from '@/server/providers/LLMProvider';

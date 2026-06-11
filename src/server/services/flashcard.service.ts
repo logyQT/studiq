@@ -270,12 +270,22 @@ export class FlashcardService {
       .single();
 
     if (fetchError || !flashcard) throw new AppError('NOT_FOUND');
-    await checkPermission(ctx, Permission.FLASHCARD_UPDATE, flashcard);
+    await checkPermission(ctx, Permission.FLASHCARD_READ, flashcard);
 
     const assignments = data.deckIds.map((deckId) => ({
       flashcard_id: id,
       deck_id: deckId,
     }));
+
+    for (const deckId of data.deckIds) {
+      const { data: deck } = await supabase
+        .from('flashcard_decks')
+        .select('*')
+        .eq('id', deckId)
+        .single();
+      if (!deck) throw new AppError('NOT_FOUND');
+      await checkPermission(ctx, Permission.DECK_UPDATE, deck);
+    }
 
     const { error: insertError } = await supabase
       .from('flashcard_deck_assignments')

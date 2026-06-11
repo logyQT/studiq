@@ -43,7 +43,7 @@ export class AuthController {
 
       const result = await authService.login(parsed.data);
 
-      return { success: true, statusCode: 200, data: { user: result.user } };
+      return { success: true, statusCode: 200, data: { user: result.user, session: result.session } };
     });
   }
 

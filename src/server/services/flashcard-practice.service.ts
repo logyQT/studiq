@@ -104,9 +104,7 @@ export class FlashcardPracticeService {
       currentRepetitions,
     });
 
-    const quality = !wasCorrect
-      ? confidenceLevel != null ? Math.min(confidenceLevel - 1, 2) : 0
-      : confidenceLevel ?? 4;
+    const quality = flashcardSpacedRepetitionService.mapToQuality(wasCorrect, confidenceLevel);
 
     const { data: reviewState, error } = await supabase
       .from('flashcard_review_state')

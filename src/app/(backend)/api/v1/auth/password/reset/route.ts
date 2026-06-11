@@ -31,7 +31,7 @@
  *       500:
  *         description: Internal server error or server misconfiguration.
  */
-import { authController } from '@/server/controllers/auth.controller';
+import { authController } from '@/server/controllers';
 import { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 
