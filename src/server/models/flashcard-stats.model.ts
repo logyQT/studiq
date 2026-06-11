@@ -35,7 +35,10 @@ export type DifficultyBreakdown = {
   new: number;
 };
 
-export const DifficultyBucketSchema = z.enum(['easy', 'medium', 'hard', 'new']);
+export const DifficultyBucketSchema = registry.register(
+  'DifficultyBucket',
+  z.enum(['easy', 'medium', 'hard', 'new']),
+);
 export type DifficultyBucket = z.infer<typeof DifficultyBucketSchema>;
 
 export type DifficultyFlashcardDetail = {

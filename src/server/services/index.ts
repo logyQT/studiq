@@ -14,3 +14,6 @@ export * from '@/server/services/quiz-attempt.service';
 export * from '@/server/services/stats.service';
 export * from '@/server/services/flashcard-stats.service';
 export * from '@/server/services/error-log.service';
+export * from '@/server/services/flashcard-generation.service';
+export * from '@/server/services/flashcard-spaced-repetition.service';
+export * from '@/server/services/pdf.service';

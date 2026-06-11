@@ -1,12 +1,12 @@
-import { HealthService } from '@/server/services';
-import type { HealthStatus } from '@/types';
+import { healthService } from '@/server/services';
+import type { HealthStatusResponse } from '@/server/models';
 import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
 
 export class HealthController {
   async getStatus(): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const health = await HealthService.checkHealth();
+      const health = await healthService.checkHealth();
 
       const statusCode = mapStatusToHttp(health.status);
 
@@ -19,7 +19,7 @@ export class HealthController {
   }
 }
 
-function mapStatusToHttp(status: HealthStatus['status']): number {
+function mapStatusToHttp(status: HealthStatusResponse['status']): number {
   switch (status) {
     case 'healthy':
       return 200;

@@ -4,37 +4,34 @@ import { useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, BarChart3, Layers, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyMedia } from '@/components/ui/empty';
+import { Empty, EmptyHeader, EmptyTitle, EmptyMedia } from '@/components/ui/empty';
 import { DeckDetailSkeleton } from '@/components/flashcards/deck-detail-skeleton';
 import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
+import { useApiQuery } from '@/hooks/use-api';
+import { flashcardKeys } from '@/lib/query-keys';
 import type { DifficultyFlashcardDetail } from '@/server/models';
 
 export default function DifficultyBucketClient() {
   const params = useParams();
   const bucket = params.bucket as string;
   const t = useTranslations('DifficultyPage');
-  const statsT = useTranslations('EduFlashcardStatsPage');
   const queryClient = useQueryClient();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { data, isLoading } = useQuery<DifficultyFlashcardDetail[]>({
-    queryKey: ['difficultyCards', bucket],
-    queryFn: async () => {
-      const res = await fetch(`/api/v1/flashcards/stats/teacher/difficulty/${bucket}`);
-      const json = await res.json();
-      return json.data as DifficultyFlashcardDetail[];
-    },
+  const { data, isLoading } = useApiQuery<DifficultyFlashcardDetail[]>({
+    queryKey: flashcardKeys.stats.difficultyBucket(bucket),
+    url: `/api/v1/flashcards/stats/teacher/difficulty/${bucket}`,
   });
 
   const invalidateWithDebounce = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      queryClient.invalidateQueries({ queryKey: ['difficultyCards', bucket] });
+      queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.difficultyBucket(bucket) });
     }, 10000);
   }, [queryClient, bucket]);
 

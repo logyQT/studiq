@@ -4,8 +4,13 @@
     "ERROR_INVALID_INPUT": "Przekazane dane są niepoprawne.",
     "ERROR_VALIDATION_FAILED": "Błąd walidacji danych. Sprawdź formularz.",
 
+    "ERROR_BAD_REQUEST": "Żądanie nie mogło zostać przetworzone. Sprawdź wprowadzone dane.",
     "ERROR_UNAUTHORIZED": "Nie masz dostępu do tego zasobu.",
     "ERROR_FORBIDDEN": "Nie masz uprawnień do wykonania tej akcji.",
+    "ERROR_NOT_FOUND": "Żądany zasób nie został znaleziony.",
+    "ERROR_GONE": "Ten zasób nie jest już dostępny.",
+    "ERROR_CONFLICT": "Wystąpił konflikt. Zasób może już istnieć.",
+    "ERROR_UNPROCESSABLE_ENTITY": "Żądanie nie mogło zostać przetworzone z powodu błędów walidacji.",
     "ERROR_INVALID_CREDENTIALS": "Nieprawidłowy adres e-mail lub hasło.",
     "ERROR_LOGIN_FAILED": "Logowanie nie powiodło się. Spróbuj ponownie.",
     "ERROR_LOGOUT_FAILED": "Wylogowanie nie powiodło się.",
@@ -163,7 +168,13 @@
     "create_quiz": "Utwórz test",
     "performance_overview": "Przegląd wyników",
     "performance_desc": "Średni wynik studentów w testach",
-    "avg_score": "Średni wynik"
+    "avg_score": "Średni wynik",
+    "content_overview_title": "Przegląd treści",
+    "content_overview_desc": "Podsumowanie Twoich materiałów dydaktycznych",
+    "questions_card_title": "Pytania",
+    "questions_card_desc": "Łączna liczba pytań w puli",
+    "flashcards_card_title": "Fiszki",
+    "flashcards_card_desc": "Łączna liczba fiszek we wszystkich taliach"
   },
   "EduQuestionsPage": {
     "title": "Pytania",

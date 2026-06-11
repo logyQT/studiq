@@ -44,7 +44,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { invitationController } from '@/server/controllers/invitation.controller';
+import { invitationController } from '@/server/controllers';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
 

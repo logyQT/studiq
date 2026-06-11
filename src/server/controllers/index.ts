@@ -13,3 +13,6 @@ export * from '@/server/controllers/flashcard-deck.controller';
 export * from '@/server/controllers/flashcard-practice.controller';
 export * from '@/server/controllers/stats.controller';
 export * from '@/server/controllers/flashcard-stats.controller';
+export * from '@/server/controllers/flashcard-generation.controller';
+export * from '@/server/controllers/error-log.controller';
+export * from '@/server/controllers/permission.controller';

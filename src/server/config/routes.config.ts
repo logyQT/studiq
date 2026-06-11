@@ -28,6 +28,12 @@ export const routeRules: RouteRule[] = [
     allowedRoles: [UserRole.TEACHER, UserRole.SYS_ADMIN],
     isApi: true,
   },
+  // Catch-all for authenticated API routes (auth and health are unprotected by design)
+  {
+    matcher: /^\/api\/v\d+\/(?!auth|health)(.*)$/,
+    requireAuth: true,
+    isApi: true,
+  },
 
   // --- AUTH ROUTES ---
   {

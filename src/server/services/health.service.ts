@@ -1,10 +1,12 @@
-import type { HealthStatus, ServiceStatus, AppStatus } from '@/types';
+import type { HealthStatusResponse, ServiceStatus, AppStatus } from '@/server/models/health.model';
 import { createClient } from '@/lib/supabase/server';
 
-export class HealthService {
-  private static TIMEOUT_MS = 3000;
+type HealthStatus = HealthStatusResponse;
 
-  static async checkHealth(): Promise<HealthStatus> {
+export class HealthService {
+  private TIMEOUT_MS = 3000;
+
+  async checkHealth(): Promise<HealthStatus> {
     const start = Date.now();
 
     const [supabase] = await Promise.all([this.withTimeout(this.checkSupabase(), this.TIMEOUT_MS)]);
@@ -25,7 +27,7 @@ export class HealthService {
     };
   }
 
-  private static async checkSupabase(): Promise<boolean> {
+  private async checkSupabase(): Promise<boolean> {
     try {
       const supabase = await createClient();
 
@@ -41,13 +43,13 @@ export class HealthService {
     }
   }
 
-  private static async withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  private async withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
     const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), ms));
 
     return Promise.race([promise, timeout]);
   }
 
-  private static calculateStatus(services: Record<string, ServiceStatus>): AppStatus {
+  private calculateStatus(services: Record<string, ServiceStatus>): AppStatus {
     const values = Object.values(services);
 
     if (values.every((s) => s === 'up')) return 'healthy';
@@ -55,3 +57,5 @@ export class HealthService {
     return 'degraded';
   }
 }
+
+export const healthService = new HealthService();

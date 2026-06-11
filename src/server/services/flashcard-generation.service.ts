@@ -1,7 +1,7 @@
 import { getModelsConfig } from '@/server/config/models.config';
 import { getProvider } from '@/server/providers/providerRegistry';
 import type { GeneratedFlashcard } from '@/server/providers/LLMProvider';
-import { pdfService } from './pdfService';
+import { pdfService } from './pdf.service';
 
 const LOG_PREFIX = '[FlashcardGenerationService]';
 

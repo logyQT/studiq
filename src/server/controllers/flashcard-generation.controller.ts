@@ -1,4 +1,4 @@
-import { flashcardGenerationService } from '@/server/services/flashcard-generation.service';
+import { flashcardGenerationService } from '@/server/services';
 import type { RequestContext } from '@/lib/request-context';
 import type { GeneratedFlashcard } from '@/server/providers/LLMProvider';
 

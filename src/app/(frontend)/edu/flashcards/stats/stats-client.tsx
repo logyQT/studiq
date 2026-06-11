@@ -3,7 +3,7 @@
 import { useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Layers, FileText, BookOpen, Users, TrendingUp, Brain, ArrowLeft, BarChart3, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { StatCard } from '@/components/ui/stat-card';
@@ -12,6 +12,8 @@ import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyMedia } from '@/components/ui/empty';
 import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
 import { DeckDetailSkeleton } from '@/components/flashcards/deck-detail-skeleton';
+import { useApiQuery } from '@/hooks/use-api';
+import { flashcardKeys } from '@/lib/query-keys';
 import type { TeacherFlashcardStatsResponse } from '@/server/models';
 
 export default function EduFlashcardStatsClient() {
@@ -19,19 +21,15 @@ export default function EduFlashcardStatsClient() {
   const queryClient = useQueryClient();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { data, isLoading } = useQuery<TeacherFlashcardStatsResponse>({
-    queryKey: ['teacherFlashcardStats'],
-    queryFn: async () => {
-      const res = await fetch('/api/v1/flashcards/stats/teacher');
-      const json = await res.json();
-      return json.data as TeacherFlashcardStatsResponse;
-    },
+  const { data, isLoading } = useApiQuery<TeacherFlashcardStatsResponse>({
+    queryKey: flashcardKeys.stats.teacher,
+    url: '/api/v1/flashcards/stats/teacher',
   });
 
   const invalidateWithDebounce = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      queryClient.invalidateQueries({ queryKey: ['teacherFlashcardStats'] });
+      queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.teacher });
     }, 10000);
   }, [queryClient]);
 

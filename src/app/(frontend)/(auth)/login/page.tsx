@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { LoginSchema, type LoginInput } from '@/server/models/auth.model';
+import { createClient } from '@/lib/supabase/client';
 import { APP_ERRORS } from '@/lib/errors';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +24,7 @@ import { toast } from 'sonner';
 import { Loader2, Mail, Lock, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { DevQuickLogin } from '@/components/dev/dev-quick-login';
 
 export default function LoginPage() {
   const t = useTranslations('LoginPage');
@@ -67,6 +69,9 @@ export default function LoginPage() {
         return;
       }
 
+      const supabase = createClient();
+      await supabase.auth.setSession(result.data.session);
+
       if (nextParam) {
         router.push(nextParam);
       } else {
@@ -78,7 +83,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/50 p-6">
+    <div className="flex min-h-screen items-center justify-center gap-6 bg-muted/50 p-6">
       <Card className="w-full max-w-md shadow-lg border">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl text-center">{t('header')}</CardTitle>
@@ -179,6 +184,7 @@ export default function LoginPage() {
           </div>
         </CardContent>
       </Card>
+      <DevQuickLogin />
     </div>
   );
 }

@@ -85,17 +85,5 @@ export const UNIVERSITY_ROLES = [
 export type UniversityRole = (typeof UNIVERSITY_ROLES)[number];
 
 // =============================================================================
-// HEALTH TYPES
+// HEALTH TYPES – defined in src/server/models/health.model.ts
 // =============================================================================
-
-export type ServiceStatus = 'up' | 'down';
-export type AppStatus = 'healthy' | 'unhealthy' | 'degraded';
-
-export interface HealthStatus {
-  status: AppStatus;
-  timestamp: string;
-  uptime: number;
-  environment: string;
-  services: Record<string, ServiceStatus>;
-  responseTime: number;
-}

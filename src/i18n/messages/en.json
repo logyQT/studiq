@@ -4,8 +4,13 @@
     "ERROR_INVALID_INPUT": "The provided data is invalid.",
     "ERROR_VALIDATION_FAILED": "Data validation failed. Please check the form.",
 
+    "ERROR_BAD_REQUEST": "The request could not be processed. Please check your input.",
     "ERROR_UNAUTHORIZED": "You do not have permission to access this resource.",
     "ERROR_FORBIDDEN": "You do not have permission to perform this action.",
+    "ERROR_NOT_FOUND": "The requested resource could not be found.",
+    "ERROR_GONE": "This resource is no longer available.",
+    "ERROR_CONFLICT": "A conflict occurred. The resource may already exist.",
+    "ERROR_UNPROCESSABLE_ENTITY": "The request could not be processed due to validation errors.",
     "ERROR_INVALID_CREDENTIALS": "Invalid email address or password.",
     "ERROR_USER_ALREADY_EXISTS": "An account with this email address already exists.",
     "ERROR_LOGIN_FAILED": "Login failed. Please try again.",
@@ -181,7 +186,13 @@
     "create_quiz": "Create Quiz",
     "performance_overview": "Performance Overview",
     "performance_desc": "Average student quiz score",
-    "avg_score": "Average Score"
+    "avg_score": "Average Score",
+    "content_overview_title": "Content Overview",
+    "content_overview_desc": "Summary of your teaching materials",
+    "questions_card_title": "Questions",
+    "questions_card_desc": "Total questions in your pool",
+    "flashcards_card_title": "Flashcards",
+    "flashcards_card_desc": "Total flashcards across decks"
   },
   "EduQuestionsPage": {
     "title": "Questions",
