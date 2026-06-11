@@ -1,9 +1,19 @@
 {
+  "Common": {
+    "common_loading": "Loading...",
+    "common_cancel": "Cancel",
+    "common_create": "Create",
+    "common_update": "Update",
+    "common_delete": "Delete",
+    "common_edit": "Edit",
+    "common_close": "Close",
+    "common_add": "Add",
+    "common_remove": "Remove"
+  },
   "Errors": {
     "ERROR_INTERNAL_SERVER": "An unexpected server error occurred. Please try again later.",
     "ERROR_INVALID_INPUT": "The provided data is invalid.",
     "ERROR_VALIDATION_FAILED": "Data validation failed. Please check the form.",
-
     "ERROR_BAD_REQUEST": "The request could not be processed. Please check your input.",
     "ERROR_UNAUTHORIZED": "You do not have permission to access this resource.",
     "ERROR_FORBIDDEN": "You do not have permission to perform this action.",
@@ -17,25 +27,20 @@
     "ERROR_LOGOUT_FAILED": "Logout failed.",
     "ERROR_AUTH_CALLBACK_FAILED": "The verification link is invalid or has expired.",
     "ERROR_SESSION_EXPIRED": "Your session has expired. Please log in again.",
-
     "ERROR_SAME_PASSWORD": "The new password cannot be the same as the current one.",
     "ERROR_PASSWORD_UPDATE_FAILED": "Failed to update password. The link might have expired.",
     "ERROR_PASSWORD_RESET_FAILED": "Failed to send the reset link.",
-
     "ERROR_EMAIL_INVALID": "Please enter a valid email address.",
     "ERROR_EMAIL_REQUIRED": "Email address is required.",
-
     "ERROR_PASSWORD_REQUIRED": "Password is required.",
     "ERROR_PASSWORD_TOO_SHORT": "Password must be at least 8 characters long.",
     "ERROR_PASSWORD_TOO_LONG": "Password cannot exceed 128 characters.",
     "ERROR_PASSWORD_MISSING_UPPERCASE": "Password must contain at least one uppercase letter.",
     "ERROR_PASSWORD_MISSING_NUMBER": "Password must contain at least one number.",
     "ERROR_PASSWORDS_DO_NOT_MATCH": "Passwords do not match.",
-
     "ERROR_NAME_REQUIRED": "Full name is required.",
     "ERROR_NAME_TOO_SHORT": "Full name is too short.",
     "ERROR_NAME_INVALID_FORMAT": "Full name contains invalid characters.",
-
     "ERROR_SURNAME_REQUIRED": "Last name is required.",
     "ERROR_SURNAME_TOO_SHORT": "Last name is too short.",
     "ERROR_SURNAME_INVALID_FORMAT": "Last name contains invalid characters.",
@@ -164,7 +169,6 @@
     "sys_admin_dashboard": "System Administration",
     "logout": "Logout",
     "none": "None",
-    "common_loading": "Loading...",
     "default_user": "User",
     "role_sys_admin": "System Admin",
     "role_uni_admin": "University Admin",
@@ -272,11 +276,6 @@
     "name_placeholder": "e.g. Biology Chapter 1",
     "description_label": "Description",
     "description_placeholder": "Optional description...",
-    "common_cancel": "Cancel",
-    "common_update": "Update",
-    "common_create": "Create",
-    "common_edit": "Edit",
-    "common_delete": "Delete",
     "delete_dialog_title": "Delete Deck?",
     "delete_dialog_desc": "This will permanently delete the deck. This action cannot be undone.",
     "deck_created": "Deck created",
@@ -335,11 +334,6 @@
     "copy_stay_here": "Stay Here",
     "delete_dialog_title": "Delete Flashcard?",
     "delete_dialog_desc": "This will permanently delete the flashcard. This action cannot be undone.",
-    "common_cancel": "Cancel",
-    "common_create": "Create",
-    "common_update": "Update",
-    "common_delete": "Delete",
-    "common_close": "Close",
     "deck_edit_title": "Edit Deck",
     "deck_edit_desc": "Update the deck name and description",
     "deck_name_label": "Deck Name",
@@ -362,9 +356,7 @@
     "no_flashcards_for_topic": "No flashcards with this topic yet",
     "practice_deck": "Practice",
     "add_topic_desc": "Select topics to add to this flashcard",
-    "remove_topic_desc": "Select topics to remove from this flashcard",
-    "common_add": "Add",
-    "common_remove": "Remove"
+    "remove_topic_desc": "Select topics to remove from this flashcard"
   },
   "EduFlashcardStatsPage": {
     "title": "Flashcard Statistics",
@@ -420,12 +412,6 @@
     "new_topic_desc": "Add a new flashcard topic",
     "topic_name_label": "Topic Name",
     "topic_name_placeholder": "e.g. Biology, History...",
-    "common_cancel": "Cancel",
-    "common_update": "Update",
-    "common_create": "Create",
-    "common_edit": "Edit",
-    "common_delete": "Delete",
-    "common_close": "Close",
     "delete_dialog_title": "Delete Topic?",
     "delete_dialog_desc": "This will permanently delete the topic. This action cannot be undone.",
     "topic_created": "Topic created",
@@ -580,7 +566,6 @@
     "back_to_quizzes": "Back to Quizzes",
     "submit_failed": "Failed to submit quiz",
     "select_question_type": "Please select at least one question type",
-    "common_loading": "Loading...",
     "new_quiz": "New Quiz",
     "no_attempts": "No quiz attempts yet. Generate your first quiz!",
     "generate_quiz": "Generate Quiz",
@@ -602,8 +587,7 @@
     "diff_easy": "Easy",
     "diff_medium": "Medium",
     "diff_hard": "Hard",
-    "question_count_label": "Number of Questions: {count}",
-    "common_cancel": "Cancel"
+    "question_count_label": "Number of Questions: {count}"
   },
   "AppFlashcardsPage": {
     "title": "Flashcards",
@@ -681,11 +665,6 @@
     "copy_stay_here": "Stay Here",
     "delete_dialog_title": "Delete Flashcard?",
     "delete_dialog_desc": "This will permanently delete the flashcard. This action cannot be undone.",
-    "common_cancel": "Cancel",
-    "common_create": "Create",
-    "common_update": "Update",
-    "common_delete": "Delete",
-    "common_close": "Close",
     "deck_edit_title": "Edit Deck",
     "deck_edit_desc": "Update the deck name and description",
     "deck_name_label": "Deck Name",
@@ -708,9 +687,7 @@
     "no_flashcards_for_topic": "No flashcards with this topic yet",
     "practice_deck": "Practice",
     "add_topic_desc": "Select topics to add to this flashcard",
-    "remove_topic_desc": "Select topics to remove from this flashcard",
-    "common_add": "Add",
-    "common_remove": "Remove"
+    "remove_topic_desc": "Select topics to remove from this flashcard"
   },
   "AppFlashcardTopicsPage": {
     "title": "Topics Manager",
@@ -730,12 +707,6 @@
     "no_flashcards_for_topic": "No flashcards with this topic yet",
     "question_label": "Question",
     "answer_label": "Answer",
-    "common_cancel": "Cancel",
-    "common_update": "Update",
-    "common_create": "Create",
-    "common_delete": "Delete",
-    "common_edit": "Edit",
-    "common_close": "Close",
     "delete_dialog_title": "Delete Topic?",
     "delete_dialog_desc": "This will permanently delete the topic. This action cannot be undone.",
     "topic_created": "Topic created",
@@ -743,8 +714,7 @@
     "topic_deleted": "Topic deleted",
     "save_failed": "Failed to save topic",
     "delete_failed": "Failed to delete topic",
-    "name_required": "Topic name is required",
-    "common_loading": "Loading..."
+    "name_required": "Topic name is required"
   },
   "AppFlashcardStudyPage": {
     "title": "Study Mode",
@@ -781,9 +751,9 @@
     "manage_decks": "Manage Decks",
     "topics_title": "Topics",
     "topics_desc": "Select topics to practice",
-    "cards_count": "{count, plural, one {# card} other {# cards}}",
+    "cards_count": "{count} cards",
     "no_topics": "No topics available",
-    "decks_title": "Your Decks",
+    "decks_title": "Decks",
     "decks_desc": "Select decks to practice",
     "no_decks": "No decks available",
     "practice_mode_title": "Practice Mode",
@@ -793,8 +763,8 @@
     "mode_limited": "Limited",
     "mode_limited_desc": "Practice until you get a target number correct",
     "target_count_label": "Target: {count} correct",
-    "select_to_start": "Select topics or decks to start",
-    "cards_available": "{count, plural, one {# card} other {# cards}} available",
+    "select_to_start": "Select topics or spaces to start",
+    "cards_available": "{count} cards available",
     "due_for_review": "due for review",
     "start_practice": "Start Practice"
   },
@@ -1095,7 +1065,6 @@
     "contact_text": "For questions about these Terms, contact us at support@studiq.pl or +48 123 567 893."
   },
   "AppStatisticsPage": {
-    "common_loading": "Loading...",
     "title": "My Statistics",
     "quizzes_taken": "Quizzes Taken",
     "avg_score": "Avg Score",
@@ -1106,7 +1075,6 @@
     "quiz_attempt": "Quiz Attempt"
   },
   "EduStatisticsPage": {
-    "common_loading": "Loading...",
     "title": "Statistics",
     "all_subjects": "All Subjects",
     "questions_stat": "Questions",
@@ -1118,30 +1086,7 @@
     "correct_suffix": "correct",
     "no_problematic": "No problematic questions detected. Great job!"
   },
-  "AppFlashcardsClient": {
-    "title": "Flashcard Practice",
-    "manage_decks": "Manage Decks",
-    "topics_title": "Topics",
-    "topics_desc": "Select topics to practice",
-    "cards_count": "{count} cards",
-    "no_topics": "No topics available",
-    "decks_title": "Decks",
-    "decks_desc": "Select decks to practice",
-    "no_decks": "No decks available",
-    "practice_mode_title": "Practice Mode",
-    "practice_mode_desc": "Choose how you want to practice",
-    "mode_endless": "Endless",
-    "mode_endless_desc": "Keep going until you stop",
-    "mode_limited": "Limited",
-    "mode_limited_desc": "Practice until you get a target number correct",
-    "target_count_label": "Target: {count} correct",
-    "select_to_start": "Select topics or spaces to start",
-    "cards_available": "{count} cards available",
-    "due_for_review": "due for review",
-    "start_practice": "Start Practice"
-  },
   "AppFlashcardSessionPage": {
-    "common_loading": "Loading...",
     "no_flashcards_found": "No flashcards found for the selected topics",
     "load_failed": "Failed to load flashcards",
     "no_flashcards_available": "No flashcards available",
@@ -1180,11 +1125,6 @@
     "description_placeholder": "A brief description...",
     "flashcards_label": "Flashcards",
     "no_flashcards": "No flashcards available",
-    "common_cancel": "Cancel",
-    "common_update": "Update",
-    "common_create": "Create",
-    "common_delete": "Delete",
-    "common_edit": "Edit",
     "delete_dialog_title": "Delete Deck?",
     "delete_dialog_desc": "This will permanently delete the deck. This action cannot be undone.",
     "deck_created": "Deck created",
@@ -1193,7 +1133,6 @@
     "save_failed": "Failed to save deck",
     "delete_failed": "Failed to delete deck",
     "name_required": "Deck name is required",
-    "common_loading": "Loading...",
     "open_deck": "Open"
   },
   "FlashcardAiPage": {

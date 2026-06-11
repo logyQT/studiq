@@ -19,20 +19,20 @@ Private edtech platform with quizzes, flashcards, AI-powered learning flows, and
 
 ## Tech Stack
 
-| Layer           | Technology                              |
-| --------------- | --------------------------------------- |
-| Framework       | Next.js 16 (App Router)                 |
-| Language        | TypeScript 6                            |
-| Database / Auth | Supabase (PostgreSQL 17 + Auth)         |
-| Styling         | TailwindCSS v4 + shadcn/ui (New York)   |
-| State/Data      | TanStack React Query v5                 |
-| Forms           | React Hook Form + Zod v4                |
-| i18n            | next-intl                               |
-| Validation      | Zod (server + client)                   |
+| Layer           | Technology                               |
+| --------------- | ---------------------------------------- |
+| Framework       | Next.js 16 (App Router)                  |
+| Language        | TypeScript 6                             |
+| Database / Auth | Supabase (PostgreSQL 17 + Auth)          |
+| Styling         | TailwindCSS v4 + shadcn/ui (New York)    |
+| State/Data      | TanStack React Query v5                  |
+| Forms           | React Hook Form + Zod v4                 |
+| i18n            | next-intl                                |
+| Validation      | Zod (server + client)                    |
 | Testing         | Vitest (unit + integration) + Playwright |
-| UI Components   | Radix UI (via shadcn/ui), Sonner toast  |
-| API Docs        | Swagger / OpenAPI (zod-to-openapi)      |
-| Runtime         | Bun (package manager, scripts)          |
+| UI Components   | Radix UI (via shadcn/ui), Sonner toast   |
+| API Docs        | Swagger / OpenAPI (zod-to-openapi)       |
+| Runtime         | Bun (package manager, scripts)           |
 
 ## Quick Start
 
@@ -60,21 +60,21 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 
 ## Available Scripts
 
-| Command                | Description                      |
-| ---------------------- | -------------------------------- |
-| `bun dev`              | Start development server         |
-| `bun build`            | Build for production             |
-| `bun start`            | Start production server          |
-| `bun lint`             | Type check + lint                |
-| `bun format`           | Format with Prettier             |
-| `bun format:check`     | Check formatting                 |
-| `bun test`             | Reset DB + run all tests         |
-| `bun test:unit`        | Run unit tests                   |
-| `bun test:integration` | Run integration tests            |
-| `bun test:watch`       | Watch mode                       |
-| `bun test:coverage`    | Run with coverage                |
-| `bun test:e2e`         | Run Playwright E2E tests         |
-| `bun clean`            | Clean build artifacts            |
+| Command                | Description              |
+| ---------------------- | ------------------------ |
+| `bun dev`              | Start development server |
+| `bun build`            | Build for production     |
+| `bun start`            | Start production server  |
+| `bun lint`             | Type check + lint        |
+| `bun format`           | Format with Prettier     |
+| `bun format:check`     | Check formatting         |
+| `bun test`             | Reset DB + run all tests |
+| `bun test:unit`        | Run unit tests           |
+| `bun test:integration` | Run integration tests    |
+| `bun test:watch`       | Watch mode               |
+| `bun test:coverage`    | Run with coverage        |
+| `bun test:e2e`         | Run Playwright E2E tests |
+| `bun clean`            | Clean build artifacts    |
 
 ## Environment Variables
 
@@ -127,7 +127,3 @@ e2e/                    # Playwright E2E tests
 docs/                   # Documentation (onboarding, architecture, API, ADRs...)
   decisions/            # Architecture Decision Records (0001-0006)
 ```
-
-## License
-
-Private — all rights reserved.
