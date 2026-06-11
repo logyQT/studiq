@@ -1184,6 +1184,7 @@
     "common_update": "Update",
     "common_create": "Create",
     "common_delete": "Delete",
+    "common_edit": "Edit",
     "delete_dialog_title": "Delete Deck?",
     "delete_dialog_desc": "This will permanently delete the deck. This action cannot be undone.",
     "deck_created": "Deck created",

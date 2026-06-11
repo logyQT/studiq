@@ -23,12 +23,7 @@ import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
   ArrowLeft,
@@ -36,13 +31,12 @@ import {
   MoreVertical,
   Pencil,
   Trash2,
-  Link2,
-  Copy,
-  Tags,
   X,
   ExternalLink,
   Play,
 } from 'lucide-react';
+import { OwnedFlashcardContextMenu } from '@/components/flashcards/owned-flashcard-context-menu';
+import { ViewOnlyFlashcardContextMenu } from '@/components/flashcards/view-only-flashcard-context-menu';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
@@ -522,6 +516,7 @@ export function DeckDetailScreen({
           {flashcards.map((fc) => {
             const isFlipped = flippedId === fc.id;
             const fcTopics = getTopicNames(fc);
+            const canUpdate = can(role, 'flashcard.update', fc.created_by, user?.id);
             return (
               <Card
                 key={fc.id}
@@ -543,85 +538,27 @@ export function DeckDetailScreen({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      {can(role, 'flashcard.update', fc.created_by, user?.id) && (
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEdit(fc);
+                      {canUpdate ? (
+                        <OwnedFlashcardContextMenu
+                          t={t}
+                          onEdit={() => openEdit(fc)}
+                          onAddTopic={() => { setTopicActionIds([]); setAddTopicOpen(true); }}
+                          onRemoveTopic={() => { setTopicActionIds([]); setRemoveTopicOpen(true); }}
+                          onViewByTopic={() => {
+                            const assignedIds = getTopicIds(fc);
+                            const firstAssigned = topics.find((tp) => assignedIds.includes(tp.id));
+                            if (firstAssigned) setViewTopicId(firstAssigned.id);
                           }}
-                        >
-                          <Pencil className="mr-2 h-4 w-4" /> {t('menu_edit')}
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuSub>
-                        <DropdownMenuSubTrigger>
-                          <Tags className="mr-2 h-4 w-4" /> {t('menu_topics')}
-                        </DropdownMenuSubTrigger>
-                        <DropdownMenuSubContent>
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setTopicActionIds([]);
-                              setAddTopicOpen(true);
-                            }}
-                          >
-                            <Plus className="mr-2 h-4 w-4" /> {t('menu_add_topic')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setTopicActionIds([]);
-                              setRemoveTopicOpen(true);
-                            }}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" /> {t('menu_remove_topic')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const assignedIds = getTopicIds(fc);
-                              const firstAssigned = topics.find((tp) =>
-                                assignedIds.includes(tp.id),
-                              );
-                              if (firstAssigned) setViewTopicId(firstAssigned.id);
-                            }}
-                          >
-                            <ExternalLink className="mr-2 h-4 w-4" /> {t('menu_view_by_topic')}
-                          </DropdownMenuItem>
-                        </DropdownMenuSubContent>
-                      </DropdownMenuSub>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveFlashcardId(fc.id);
-                          setLinkDeckIds([]);
-                          setLinkOpen(true);
-                        }}
-                      >
-                        <Link2 className="mr-2 h-4 w-4" /> {t('menu_link')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveFlashcardId(fc.id);
-                          setCopyTargetDeckId(null);
-                          setCopyOpen(true);
-                        }}
-                      >
-                        <Copy className="mr-2 h-4 w-4" /> {t('menu_copy')}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      {can(role, 'flashcard.delete', fc.created_by, user?.id) && (
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteId(fc.id);
-                          }}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" /> {t('menu_delete')}
-                        </DropdownMenuItem>
+                          onLink={() => { setActiveFlashcardId(fc.id); setLinkDeckIds([]); setLinkOpen(true); }}
+                          onCopy={() => { setActiveFlashcardId(fc.id); setCopyTargetDeckId(null); setCopyOpen(true); }}
+                          onDelete={can(role, 'flashcard.delete', fc.created_by, user?.id) ? () => setDeleteId(fc.id) : null}
+                        />
+                      ) : (
+                        <ViewOnlyFlashcardContextMenu
+                          t={t}
+                          onLink={() => { setActiveFlashcardId(fc.id); setLinkDeckIds([]); setLinkOpen(true); }}
+                          onCopy={() => { setActiveFlashcardId(fc.id); setCopyTargetDeckId(null); setCopyOpen(true); }}
+                        />
                       )}
                     </DropdownMenuContent>
                   </DropdownMenu>
