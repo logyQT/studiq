@@ -312,12 +312,12 @@ The `GET /ai/usage` endpoint wraps both guards and returns the usage status for 
 | Method | Path | Status | Description |
 |--------|------|--------|-------------|
 | POST | `/api/v1/flashcards/generate/frompdf` | ✅ Existing | PDF -> flashcards, SSE |
-| POST | `/api/v1/flashcards/generate/fromtext` | ⚠️ Needs adding | Text -> flashcards, SSE |
+| POST | `/api/v1/flashcards/generate/fromtext` | 🆕 Needs adding | Text -> flashcards, SSE |
 | POST | `/ai/command` | 🆕 | Universal command endpoint — accepts `{ text, file?, language? }`, detects intent, streams result |
 | POST | `/ai/chat` | 🆕 | Free-form chat with document context |
 | GET | `/ai/usage` | 🆕 | Returns current usage stats and limits for user |
 
-Route rules in `src/server/config/routes.config.ts` need entries for `/ai/*`:
+Route rules in `src/server/config/routes.config.ts` will need entries for `/ai/*` (not yet added):
 
 ```typescript
 {

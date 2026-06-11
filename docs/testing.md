@@ -6,19 +6,21 @@ The project uses two testing frameworks:
 
 | Framework | Purpose | Location |
 |-----------|---------|----------|
-| Vitest | Unit and integration tests | `src/**/*.test.ts`, `__tests__/integration/` |
+| Vitest | Unit and integration tests | `__tests__/unit/`, `__tests__/integration/` |
 | Playwright | End-to-end tests | `e2e/` |
 
 ## Unit Tests
 
-Unit tests cover individual services and controllers. They mock the Supabase client to isolate business logic from the database.
+Unit tests cover individual services, controllers, models, and guards. They mock the Supabase client to isolate business logic from the database.
 
-**Pattern:** Each service/controller has a co-located `.test.ts` file.
+**Location:** `__tests__/unit/`
 
 ```
-src/server/services/
-  auth.service.ts
-  auth.service.test.ts        # Unit tests with mocked Supabase
+__tests__/unit/
+  controllers/        # Controller unit tests (auth, flashcards, quizzes, etc.)
+  guards/             # Guard unit tests (auth.guard, role.guard)
+  models/             # Model validation tests
+  services/           # Service unit tests (mocked Supabase)
 ```
 
 ## Integration Tests
@@ -30,7 +32,7 @@ Integration tests hit a real local Supabase instance. They verify that API route
 **Covered domains:**
 - Authentication (register, login, logout)
 - Subjects, questions, quizzes, quiz attempts
-- Flashcards, topics, spaces, practice
+- Flashcards, decks, topics, practice
 - Invitations, university members
 - Statistics, health checks
 
@@ -48,15 +50,16 @@ Playwright tests run against the full application in a real browser.
 ## Running Tests
 
 ```bash
-pnpm test              # Reset DB + run all tests
-pnpm test:unit         # Run unit tests only
-pnpm test:integration  # Run integration tests only
-pnpm test:watch        # Watch mode (re-runs on file changes)
-pnpm test:coverage     # Run with coverage report
+bun test              # Reset DB + run all tests
+bun test:unit         # Run unit tests only
+bun test:integration  # Run integration tests only
+bun test:watch        # Watch mode (re-runs on file changes)
+bun test:coverage     # Run with coverage report
 ```
 
 ## Test Configuration
 
 - **Setup file:** `__tests__/setup.ts` — configures Supabase mock passthrough
+- **Mocks:** `__tests__/mocks/supabase.ts` — reusable Supabase mock
+- **Helpers:** `__tests__/helpers/supabase-mock.ts` — mock utilities
 - **Config:** `vitest.config.ts` — defines test environment, aliases, and sequential execution
-- **Test environment:** `.env.test` — Supabase connection for tests

@@ -8,8 +8,13 @@ This guide walks new team members through setting up the local development envir
 
 - **Docker Desktop** — must be installed and running before any steps
   [Download Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- **Node.js 18+** — runtime for the Next.js application
-- **pnpm** — package manager (or npm/bun)
+- **Node.js 20+** — runtime for the Next.js application
+- **Bun** — package manager and runtime
+  ```bash
+  # Install bun (if not already installed)
+  powershell -c "irm bun.sh/install.ps1 | iex"
+  ```
+- **Git** — version control
 
 ---
 
@@ -18,7 +23,7 @@ This guide walks new team members through setting up the local development envir
 ### 1. Install dependencies
 
 ```bash
-pnpm install
+bun install
 ```
 
 ### 2. Start local Supabase
@@ -51,9 +56,33 @@ Example `.env.local`:
 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
-### 5. Seed the database (optional)
+### 5. (Optional) Set up LLM / AI Provider
+
+For AI-powered flashcard generation, add to `.env.local`:
+
+```env
+# Option A: OpenAI
+LLM_PROVIDER=openai
+LLM_API_KEY=sk-your-openai-key
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL_NAME=gpt-4o-mini
+
+# Option B: Local Ollama (free, open-source)
+# LLM_PROVIDER=ollama
+# LLM_BASE_URL=http://localhost:11434
+# LLM_MODEL_NAME=llama3.2
+```
+
+To use Ollama, install it from [ollama.com](https://ollama.com) and pull a model:
+
+```bash
+ollama pull llama3.2
+```
+
+### 6. Seed the database (optional)
 
 ```bash
 bunx supabase db reset
@@ -61,10 +90,16 @@ bunx supabase db reset
 
 > `db reset` **deletes all local data** and reloads seed data. Use intentionally.
 
-### 6. Start the development server
+### 7. Install Playwright browsers (for E2E tests)
 
 ```bash
-pnpm dev
+bunx playwright install chromium
+```
+
+### 8. Start the development server
+
+```bash
+bun dev
 ```
 
 ---
@@ -130,6 +165,11 @@ bunx supabase db reset     # (optional) reloads fresh seed data
 | `bunx supabase db diff -f <name>` | Generate migration from current changes |
 | `bunx supabase migration new <name>` | Create an empty migration manually |
 | `bunx supabase db push` | Push migrations to database |
+| `bun dev` | Start Next.js development server |
+| `bun test` | Reset DB + run all tests |
+| `bun test:unit` | Run unit tests only |
+| `bun test:integration` | Run integration tests only |
+| `bun lint` | Type check + lint |
 
 ---
 
@@ -148,11 +188,11 @@ bunx supabase db reset     # (optional) reloads fresh seed data
 ## Testing
 
 ```bash
-pnpm test              # Reset DB + run all tests
-pnpm test:unit         # Run unit tests only
-pnpm test:integration  # Run integration tests only
-pnpm test:watch        # Watch mode
-pnpm test:coverage     # Run with coverage report
+bun test              # Reset DB + run all tests
+bun test:unit         # Run unit tests only
+bun test:integration  # Run integration tests only
+bun test:watch        # Watch mode
+bun test:coverage     # Run with coverage report
 ```
 
 ---

@@ -85,33 +85,34 @@ Routes are protected through a combination of:
 When a rule matches:
 - If `requireAuth` is true and no session → 401 (API) or redirect to `/login` (UI)
 - If `allowedRoles` is set and user role not in list → 403 (API) or redirect to role dashboard (UI)
-- If `redirectIfAuthenticatedByRole` is set and user is logged in → redirect to role-specific URL
+- If `redirectIfAuthenticated` is set and user is logged in → redirect to specified URL
+- If `redirectIfAuthenticatedByRole` is set → redirect to role-specific URL (e.g., student → `/app`, sys_admin → `/admin`)
+
+### Current Route Rules
+
+| Matcher | Auth Required | Allowed Roles | Behavior |
+|---------|:------------:|:-------------:|----------|
+| `/api/v1/admin/**` | ✅ | `sys_admin` | API, 401/403 JSON |
+| `/api/v1/teacher/**` | ✅ | `teacher, sys_admin` | API, 401/403 JSON |
+| `/login`, `/register` | ❌ | — | Redirects authenticated users by role |
+| `/admin/**` | ✅ | `sys_admin` | UI, redirects to login |
+| `/manage/**` | ✅ | `university_admin` | UI, redirects to login |
+| `/edu/**` | ✅ | `teacher` | UI, redirects to login |
+| `/app/**` | ✅ | `student, free, premium` | UI, redirects to login |
 
 ### Route Handler Guards
 
-Individual API routes perform additional auth checks:
+Reusable guard utilities in `src/server/guards/`:
 
 ```typescript
-const supabase = await createClient();
-const { data: { user } } = await supabase.auth.getUser();
-
+// src/server/guards/auth.guard.ts
+const user = await authGuard();
 if (!user) {
   return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
 }
-```
 
-Some routes also check roles directly:
-
-```typescript
-const { data: profile } = await supabase
-  .from('profiles')
-  .select('role')
-  .eq('id', user.id)
-  .single();
-
-if (profile.role !== 'sys_admin') {
-  return toNextResponse({ success: false, statusCode: 403, error: 'FORBIDDEN' });
-}
+// src/server/guards/role.guard.ts
+await requireRole(user.id, [UserRole.SYS_ADMIN]);
 ```
 
 ## Client Auth State
