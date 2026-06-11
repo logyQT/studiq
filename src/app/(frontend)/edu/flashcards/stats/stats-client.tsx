@@ -4,12 +4,35 @@ import { useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
-import { Layers, FileText, BookOpen, Users, TrendingUp, Brain, ArrowLeft, BarChart3, Sparkles } from 'lucide-react';
+import {
+  Layers,
+  FileText,
+  BookOpen,
+  Users,
+  TrendingUp,
+  Brain,
+  ArrowLeft,
+  BarChart3,
+  Sparkles,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
-import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyMedia } from '@/components/ui/empty';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from '@/components/ui/table';
+import {
+  Empty,
+  EmptyHeader,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyMedia,
+} from '@/components/ui/empty';
 import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
 import { DeckDetailSkeleton } from '@/components/flashcards/deck-detail-skeleton';
 import { useApiQuery } from '@/hooks/use-api';
@@ -30,7 +53,7 @@ export default function EduFlashcardStatsClient() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.teacher });
-    }, 10000);
+    }, 1000); // FIXME: restore 10000ms debounce after dev testing
   }, [queryClient]);
 
   useRealtimeChannel(
@@ -67,7 +90,11 @@ export default function EduFlashcardStatsClient() {
 
   const { summary, byDeck, byTopic } = data;
   const maxPracticeCount = Math.max(...byDeck.map((d) => d.practiceCount), 1);
-  const difficultyTotal = summary.difficultyBreakdown.easy + summary.difficultyBreakdown.medium + summary.difficultyBreakdown.hard + summary.difficultyBreakdown.new;
+  const difficultyTotal =
+    summary.difficultyBreakdown.easy +
+    summary.difficultyBreakdown.medium +
+    summary.difficultyBreakdown.hard +
+    summary.difficultyBreakdown.new;
 
   return (
     <div className="space-y-6">
@@ -85,8 +112,16 @@ export default function EduFlashcardStatsClient() {
         <StatCard title={t('summary_flashcards')} value={summary.totalFlashcards} icon={FileText} />
         <StatCard title={t('summary_practices')} value={summary.totalPractices} icon={BookOpen} />
         <StatCard title={t('summary_students')} value={summary.totalStudents} icon={Users} />
-        <StatCard title={t('summary_accuracy')} value={`${summary.overallAccuracy}%`} icon={TrendingUp} />
-        <StatCard title={t('summary_ef')} value={summary.averageEasinessFactor.toFixed(2)} icon={Brain} />
+        <StatCard
+          title={t('summary_accuracy')}
+          value={`${summary.overallAccuracy}%`}
+          icon={TrendingUp}
+        />
+        <StatCard
+          title={t('summary_ef')}
+          value={summary.averageEasinessFactor.toFixed(2)}
+          icon={Brain}
+        />
       </div>
 
       <Card>
@@ -99,10 +134,30 @@ export default function EduFlashcardStatsClient() {
         <CardContent>
           <div className="space-y-3">
             {[
-              { key: 'easy', label: t('difficulty_easy'), count: summary.difficultyBreakdown.easy, color: 'bg-emerald-500' },
-              { key: 'medium', label: t('difficulty_medium'), count: summary.difficultyBreakdown.medium, color: 'bg-amber-500' },
-              { key: 'hard', label: t('difficulty_hard'), count: summary.difficultyBreakdown.hard, color: 'bg-red-500' },
-              { key: 'new', label: t('difficulty_new'), count: summary.difficultyBreakdown.new, color: 'bg-slate-400' },
+              {
+                key: 'easy',
+                label: t('difficulty_easy'),
+                count: summary.difficultyBreakdown.easy,
+                color: 'bg-emerald-500',
+              },
+              {
+                key: 'medium',
+                label: t('difficulty_medium'),
+                count: summary.difficultyBreakdown.medium,
+                color: 'bg-amber-500',
+              },
+              {
+                key: 'hard',
+                label: t('difficulty_hard'),
+                count: summary.difficultyBreakdown.hard,
+                color: 'bg-red-500',
+              },
+              {
+                key: 'new',
+                label: t('difficulty_new'),
+                count: summary.difficultyBreakdown.new,
+                color: 'bg-slate-400',
+              },
             ].map((item) => (
               <Link
                 key={item.key}
@@ -113,7 +168,9 @@ export default function EduFlashcardStatsClient() {
                 <div className="flex-1 h-5 bg-muted rounded-full overflow-hidden">
                   <div
                     className={`h-full ${item.color} transition-all duration-500 rounded-full`}
-                    style={{ width: `${difficultyTotal > 0 ? (item.count / difficultyTotal) * 100 : 0}%` }}
+                    style={{
+                      width: `${difficultyTotal > 0 ? (item.count / difficultyTotal) * 100 : 0}%`,
+                    }}
                   />
                 </div>
                 <span className="w-12 text-sm text-muted-foreground tabular-nums text-right">
@@ -147,10 +204,7 @@ export default function EduFlashcardStatsClient() {
               {byDeck.map((deck) => (
                 <TableRow key={deck.deckId}>
                   <TableCell className="font-medium">
-                    <Link
-                      href={`/edu/flashcards/decks/${deck.deckId}`}
-                      className="hover:underline"
-                    >
+                    <Link href={`/edu/flashcards/decks/${deck.deckId}`} className="hover:underline">
                       {deck.deckName}
                     </Link>
                   </TableCell>
@@ -160,7 +214,9 @@ export default function EduFlashcardStatsClient() {
                       <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
                         <div
                           className="h-full bg-primary rounded-full"
-                          style={{ width: `${maxPracticeCount > 0 ? (deck.practiceCount / maxPracticeCount) * 100 : 0}%` }}
+                          style={{
+                            width: `${maxPracticeCount > 0 ? (deck.practiceCount / maxPracticeCount) * 100 : 0}%`,
+                          }}
                         />
                       </div>
                       <span>{deck.practiceCount}</span>
@@ -199,7 +255,9 @@ export default function EduFlashcardStatsClient() {
                 {byTopic.map((topic) => (
                   <TableRow key={topic.topicId}>
                     <TableCell className="font-medium">{topic.topicName}</TableCell>
-                    <TableCell className="text-right tabular-nums">{topic.flashcardCount}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {topic.flashcardCount}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">{topic.practiceCount}</TableCell>
                     <TableCell className="text-right tabular-nums">{topic.accuracy}%</TableCell>
                   </TableRow>

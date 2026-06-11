@@ -51,9 +51,10 @@ WHERE p.name IN (
   'deck.read', 'deck.create', 'deck.update', 'deck.delete'
 );
 
--- teacher: all university
+-- teacher: create=university, read/update/delete=own
 INSERT INTO public.role_permissions (role, permission_id, scope)
-SELECT 'teacher', p.id, 'university'
+SELECT 'teacher', p.id,
+  CASE WHEN p.name IN ('flashcard.create', 'topic.create', 'deck.create') THEN 'university' ELSE 'own' END
 FROM public.permissions p
 WHERE p.name IN (
   'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',

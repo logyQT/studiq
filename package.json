@@ -14,7 +14,8 @@
     "test:unit": "vitest run src/server",
     "test:integration": "vitest run __tests__/integration",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.5.0",
