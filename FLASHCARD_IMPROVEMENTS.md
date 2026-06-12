@@ -154,6 +154,11 @@ All 6 batch mutations roll back on error via `onError` restoring the pre-mutatio
 - `clearSelection()` runs on success before toast; selection is preserved on error for retry.
 - Select All / Deselect All is a single dual-toggle button (`CheckCheck` icon, outline variant). Text flips based on whether every visible card is selected.
 
+**🔴 SECURITY TODO — HIGH PRIORITY:**
+- Hide decks the user does not own in bulk operation deck pickers (Link, Move, Copy dialogs)
+- Hide/disable mutation options (topic assignments, move, delete) for flashcards inside decks the user does not own
+- Currently the UI shows all decks/flashcards regardless of ownership — user could attempt operations that backend will reject, but better to prevent at UI level
+
 ---
 
 ### 2.2 Keyboard Shortcuts
@@ -235,21 +240,9 @@ No backend changes. Pure frontend.
 
 ---
 
-### 2.5 Study Streaks & Daily Goals
+### 2.5 Study Streaks & Daily Goals — Deferred
 
-| Layer | Files | Changes |
-|-------|-------|---------|
-| `M` | New: `flashcard_streaks` table | `id, user_id, current_streak INT DEFAULT 0, longest_streak INT DEFAULT 0, last_study_date DATE, daily_goal INT DEFAULT 20, updated_at` |
-| `M` | New: `flashcard_daily_progress` table | `id, user_id, study_date DATE, cards_studied INT, goal_met BOOLEAN, UNIQUE(user_id, study_date)` |
-| `B` | New service: `src/server/services/flashcard-streak.service.ts` | `recordStudy(userId)` — called after each batch practice sync; `getStreak(userId)` — returns current/longest streak, today's progress, goal |
-| `B` | New controller + route: `GET /api/v1/flashcards/streaks` | Returns streak data |
-| `F` | `src/components/flashcards/streak-widget.tsx` | Shows 🔥 N-day streak, today's progress bar (e.g., 12/20 cards), daily goal setting |
-| `F` | `src/app/(frontend)/app/flashcards/page.tsx` | Add streak widget to dashboard |
-
-**Streak logic:**
-- Study any flashcard → `recordStudy(userId)` upserts today's progress, checks if yesterday also has progress → increments/decrements streak.
-- A day counts if `cards_studied >= 1` (configurable to `daily_goal`).
-- Streak breaks if a day is missed (no progress for 48+ hours).
+Streaks are a habit-retention mechanic (Duolingo, Snapchat). StudiQ is a study tool, not a habit app. The infrastructure cost (2 new tables, service, controller, route, widget) doesn't justify the marginal motivation gain. Revisit if user engagement data suggests otherwise.
 
 ---
 
@@ -270,6 +263,13 @@ No backend changes. Pure frontend.
 
 **Priority:** Images first (most requested), then LaTeX (STEM), then audio (language learning).
 
+**Infrastructure needed:**
+- `supabase/config.toml`: define `flashcard-media` bucket with 50MiB limit, allowed MIME types (`image/*`, `audio/*`)
+- Migration: `INSERT INTO storage.buckets` + RLS policies for `storage.objects`
+- New: `src/server/services/storage.service.ts` — singleton, wraps `supabase.storage.from('flashcard-media')`
+- Install `katex` for LaTeX rendering on frontend
+- **Decision needed:** Client-side upload (browser → Supabase via anon key + RLS) vs server-side (browser → API → Supabase via service role)
+
 ---
 
 ### 3.2 Cloze Deletion
@@ -283,6 +283,12 @@ No backend changes. Pure frontend.
 | `F` | New: `src/components/flashcards/cloze-editor.tsx` | WYSIWYG-like: select text → "Cloze" button wraps in `{{c1::...}}`, auto-increments index |
 | `F` | `src/components/flashcards/deck-detail-dialogs.tsx` | Type toggle in create/edit dialog (basic / cloze) |
 | `F` | `src/components/flashcards/flashcard-card.tsx` | Conditionally render `ClozeCard` vs basic card |
+
+**Infrastructure needed:**
+- Session rendering integration: `SessionClient` renders front/back inline (not via `FlashcardCard`)
+  - Option A (simpler): conditionally render `<ClozeCard>` vs inline `<p>` in `SessionClient`
+  - Option B (cleaner): extract card rendering into shared component, use everywhere — larger refactor
+- **Recommendation:** Option A for now
 
 ---
 
@@ -304,6 +310,11 @@ front,back,topic,deck
 
 **CSV format (import):** Accepts same format. Optional header row. Topics/decks are auto-created if they don't exist.
 
+**Infrastructure needed:**
+- Install `papaparse` (server + browser compatible CSV parser)
+- Reuses existing `flashcardService.bulkCreate()` for import
+- Export builds CSV manually (no library needed for simple serialization)
+
 ---
 
 ### 3.4 APKG Import/Export
@@ -321,6 +332,35 @@ front,back,topic,deck
 - `Back` → `flashcards.back`
 - `Tags` → topics
 - `Deck` → deck
+
+**Infrastructure needed:**
+- Install `jszip` for APKG archive read/write
+- Uses `bun:sqlite` (built-in) to read Anki's `collection.anki2` — no `better-sqlite3` required
+- **Depends on 3.1 media storage** for extracted APKG media files
+- Shares `import-dialog.tsx` UI with 3.3 CSV (add as second tab)
+
+---
+
+## Recommended Build Order
+
+| Order | Feature | Why |
+|-------|---------|-----|
+| 1st | **3.3 CSV Import/Export** | No migration, no external deps (just `papaparse`), immediate user value, quickest win |
+| 2nd | **3.2 Cloze Deletion** | Self-contained — needs one migration (`type` column) + UI only, no storage or packages |
+| 3rd | **3.1 Media in Cards** | Foundational — sets up Supabase Storage bucket/service that 3.4 also needs. Installs `katex`. |
+| 4th | **3.4 APKG Import/Export** | Hardest — needs `jszip` + SQLite parsing + media handling from 3.1 storage |
+
+### Infrastructure Inventory
+
+| Item | 3.1 Media | 3.2 Cloze | 3.3 CSV | 3.4 APKG |
+|------|-----------|-----------|---------|----------|
+| **Migration** | `ADD COLUMN media jsonb` | `ADD COLUMN type text` | None | None |
+| **New package** | `katex` | None | `papaparse` | `jszip` (Bun built-in `bun:sqlite` for APKG SQLite) |
+| **Storage bucket** | `flashcard-media` (new) | None | None | Uses 3.1's bucket for extracted media |
+| **Storage RLS** | SELECT/INSERT/DELETE policies | None | None | None |
+| **New service** | `storage.service.ts` | None | `flashcard-import.service.ts` | `flashcard-apkg-{import,export}.service.ts` |
+| **New component** | `media-upload.tsx` | `cloze-card.tsx`, `cloze-editor.tsx` | `import-dialog.tsx`, `export-button.tsx` | Tab in import-dialog |
+| **Key decision** | Client-side vs server-side upload | Session rendering: Option A (inline conditional) vs B (shared component) | — | — |
 
 ---
 
@@ -387,18 +427,18 @@ Phase 1 ✅
 ├── 1.2 DeckDetailScreen Split ✅ (independent)
 └── 1.3 getDueCards RPC ✅ ───► 4.1 Per-Student Stats (also uses get_teacher_stats)
 
-Phase 2 — 1/5 complete ✅
+Phase 2 — 4/5 complete ✅
 ├── 2.1 Batch Selection UI ✅ (needs 1.1)
 ├── 2.2 Keyboard Shortcuts (independent)
 ├── 2.3 Session Summary (needs new table)
 ├── 2.4 Search (independent)
-└── 2.5 Streaks (needs new tables, independent)
+└── 2.5 Streaks (deferred — not worth the infra)
 
-Phase 3 — not started
-├── 3.1 Media (needs migration + storage)
-├── 3.2 Cloze (needs migration)
-├── 3.3 CSV Import/Export (independent)
-└── 3.4 APKG Import/Export (independent, but similar UI to 3.3)
+Phase 3 — build order: 3.3 → 3.2 → 3.1 → 3.4
+├── 3.3 CSV Import/Export (independent, no deps, quickest win) — done
+├── 3.2 Cloze Deletion (needs migration, independent) — done
+├── 3.1 Media in Cards (needs migration + storage bucket + katex) ───► 3.4 needs storage
+└── 3.4 APKG Import/Export (needs jszip + bun:sqlite + 3.1 storage for media) — done
 
 Phase 4 — not started
 ├── 4.1 Per-Student Insights (needs 1.3 foundation)
