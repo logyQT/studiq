@@ -113,6 +113,12 @@ export function AppSearch() {
   };
 
   useEffect(() => {
+    if (selectedIndex < 0) return;
+    const el = dropdownRef.current?.querySelector(`[data-search-index="${selectedIndex}"]`);
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [selectedIndex]);
+
+  useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
         containerRef.current &&
@@ -188,6 +194,7 @@ export function AppSearch() {
                           key={result.id}
                           result={result}
                           activeSubIndex={activeSub}
+                          offset={offset}
                           onNavigate={handleNavigate}
                           onHover={(subIdx) => setSelectedIndex(offset + subIdx)}
                         />

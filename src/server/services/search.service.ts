@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
+import { buildQueryFilter, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
 import type { SearchResult } from '@/server/models';
 import { UserRole } from '@/types';
@@ -17,9 +18,24 @@ export class SearchService {
   async search(q: string, ctx: RequestContext, limit = 10): Promise<SearchResult[]> {
     const supabase = await createClient();
 
+    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ);
+    if (filter._impossible) return [];
+
+    let p_user_id: string | null = null;
+    let p_university_id: string | null = null;
+
+    if ('created_by' in filter) {
+      p_user_id = ctx.userId;
+    } else if ('or' in filter) {
+      p_user_id = ctx.userId;
+      p_university_id = ctx.universityId;
+    }
+
     const { data, error } = await supabase.rpc('search_flashcards', {
       search_query: q,
       result_limit: limit,
+      p_user_id,
+      p_university_id,
     });
 
     if (error) throw mapSupabaseError(error);

@@ -6,6 +6,7 @@ import type { SearchResult } from '@/server/models';
 interface FlashcardSearchResultProps {
   result: SearchResult;
   activeSubIndex: number;
+  offset: number;
   onNavigate: (href: string) => void;
   onHover: (subIndex: number) => void;
 }
@@ -13,6 +14,7 @@ interface FlashcardSearchResultProps {
 export function FlashcardSearchResult({
   result,
   activeSubIndex,
+  offset,
   onNavigate,
   onHover,
 }: FlashcardSearchResultProps) {
@@ -27,6 +29,7 @@ export function FlashcardSearchResult({
       {result.decks.map((deck, di) => (
         <button
           key={deck.id}
+          data-search-index={offset + di}
           onClick={() => onNavigate(deck.href)}
           onMouseEnter={() => onHover(di)}
           className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors ${
