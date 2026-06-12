@@ -1128,7 +1128,8 @@
     "mode_study": "Nauka",
     "summary_cards_studied": "Poprawne",
     "summary_duration": "Czas",
-    "summary_cards_per_minute": "Fiszek / min"
+    "summary_cards_per_minute": "Fiszek / min",
+    "breadcrumb_session": "Sesja"
   },
   "AppFlashcardDecksPage": {
     "title": "Talie fiszek",

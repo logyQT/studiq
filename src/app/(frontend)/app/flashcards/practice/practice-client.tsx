@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Play, BarChart3 } from 'lucide-react';
+import { Play, BarChart3 } from 'lucide-react';
+import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { Deck } from '@/types/flashcards';
@@ -37,6 +38,7 @@ function getGradient(id: string) {
 
 export default function PracticeClient() {
   const t = useTranslations('AppFlashcardPracticePage');
+  const navT = useTranslations('AppFlashcardsPage');
   const router = useRouter();
 
   const { data: decks, isLoading } = useApiQuery<Deck[]>({
@@ -51,14 +53,10 @@ export default function PracticeClient() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href="/app/flashcards">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-2 h-4 w-4" /> {t('back')}
-            </Button>
-          </Link>
-          <h2 className="text-2xl font-bold">{t('deck_picker_title')}</h2>
-        </div>
+        <Breadcrumbs items={[
+          { label: navT('title'), href: '/app/flashcards' },
+          { label: navT('practice_title'), href: '/app/flashcards/practice' },
+        ]} />
         <Link href="/app/flashcards/statistics">
           <Button variant="outline" size="sm">
             <BarChart3 className="mr-2 h-4 w-4" /> {t('statistics')}

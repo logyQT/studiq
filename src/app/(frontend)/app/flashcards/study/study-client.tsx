@@ -9,7 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Play, ArrowLeft, FolderOpen, Tags, BarChart3 } from 'lucide-react';
+import { Play, FolderOpen, Tags, BarChart3 } from 'lucide-react';
+import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -35,6 +36,7 @@ interface DueBreakdown {
 
 export default function StudyClient() {
   const t = useTranslations('AppFlashcardStudyPage');
+  const navT = useTranslations('AppFlashcardsPage');
   const router = useRouter();
 
   const { data: topics, isLoading: topicsLoading } = useApiQuery<Topic[]>({
@@ -89,20 +91,16 @@ export default function StudyClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href="/app/flashcards">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-2 h-4 w-4" /> {t('back')}
+      <div className="flex items-center justify-between">
+        <Breadcrumbs items={[
+          { label: navT('title'), href: '/app/flashcards' },
+          { label: t('title'), href: '/app/flashcards/study' },
+        ]} />
+        <Link href="/app/flashcards/statistics">
+          <Button variant="outline" size="sm">
+            <BarChart3 className="mr-2 h-4 w-4" /> {t('statistics')}
           </Button>
         </Link>
-        <h2 className="text-2xl font-bold">{t('title')}</h2>
-        <div className="ml-auto">
-          <Link href="/app/flashcards/statistics">
-            <Button variant="outline" size="sm">
-              <BarChart3 className="mr-2 h-4 w-4" /> {t('statistics')}
-            </Button>
-          </Link>
-        </div>
       </div>
 
       {isLoading ? (

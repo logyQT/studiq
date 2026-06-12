@@ -5,12 +5,16 @@ import { TopicManagementScreen } from '@/components/flashcards/topic-management-
 
 export default function EduTopicsClient() {
   const t = useTranslations('EduFlashcardTopicsPage');
+  const navT = useTranslations('EduFlashcardsPage');
 
   return (
     <TopicManagementScreen
-      backHref="/edu/flashcards"
       apiBase="/api/v1/flashcards"
       t={t}
+      breadcrumbs={[
+        { label: navT('title'), href: '/edu/flashcards' },
+        { label: navT('topics_title'), href: '/edu/flashcards/topics' },
+      ]}
     />
   );
 }

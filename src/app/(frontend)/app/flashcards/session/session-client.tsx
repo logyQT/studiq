@@ -8,6 +8,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Check, X, ArrowLeft, Minus, Zap } from 'lucide-react';
+import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { SessionSummaryDialog } from '@/components/flashcards/session-summary-dialog';
 
 interface Flashcard {
@@ -61,6 +62,7 @@ interface SessionClientProps {
 
 export default function SessionClient({ initialCards, mode, studyMode, targetCount, hasMore: initialHasMore, deckIds }: SessionClientProps) {
   const t = useTranslations('AppFlashcardSessionPage');
+  const navT = useTranslations('AppFlashcardsPage');
   const router = useRouter();
 
   const isPractice = mode === 'practice';
@@ -372,10 +374,12 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <Button variant="outline" size="sm" onClick={async () => { await sendBatchUpdate(); router.push(backUrl); }}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> {t('exit_session')}
-        </Button>
-        <div className="flex items-center gap-4">
+        <Breadcrumbs items={[
+          { label: navT('title'), href: '/app/flashcards' },
+          { label: isPractice ? t('mode_practice') : t('mode_study'), href: backUrl },
+          { label: t('breadcrumb_session'), href: '#' },
+        ]} />
+        <div className="flex items-center gap-2">
           <Badge variant="outline">
             {t('correct_badge', { correct: correctCount, total: totalAnswered })}
           </Badge>
@@ -384,6 +388,9 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
               {t('remembered_badge', { correct: correctCount, target: targetCount })}
             </Badge>
           )}
+          <Button variant="outline" size="sm" onClick={async () => { await sendBatchUpdate(); router.push(backUrl); }}>
+            <ArrowLeft className="mr-2 h-4 w-4" /> {t('exit_session')}
+          </Button>
         </div>
       </div>
 

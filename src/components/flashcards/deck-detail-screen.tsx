@@ -1,14 +1,12 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
-  ArrowLeft,
   Plus,
   Pencil,
   Trash2,
@@ -17,6 +15,7 @@ import {
   Square,
   CheckCheck,
 } from 'lucide-react';
+import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
@@ -50,20 +49,20 @@ function getGradient(id: string) {
 
 interface DeckDetailScreenProps {
   deckId: string;
-  backHref: string;
   basePath: string;
   apiBase: string;
   t: ReturnType<typeof useTranslations>;
   practiceHref?: string;
+  parentBreadcrumbs: { label: string; href: string }[];
 }
 
 export function DeckDetailScreen({
   deckId,
-  backHref,
   basePath,
   apiBase,
   t,
   practiceHref,
+  parentBreadcrumbs,
 }: DeckDetailScreenProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -408,7 +407,7 @@ export function DeckDetailScreen({
     try {
       await deleteDeck.mutateAsync(deckId);
       toast.success(t('deck_deleted'));
-      router.push(backHref);
+      router.push('/app/flashcards/decks');
     } catch {
       toast.error(t('delete_failed'));
     }
@@ -597,13 +596,7 @@ export function DeckDetailScreen({
   if (deckError || (!deckLoading && !currentDeck)) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Link href={backHref}>
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-2 h-4 w-4" /> {t('back')}
-            </Button>
-          </Link>
-        </div>
+        <Breadcrumbs items={parentBreadcrumbs} />
         <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
           <p className="text-lg">Deck not found</p>
         </div>
@@ -617,13 +610,10 @@ export function DeckDetailScreen({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href={backHref}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-2 h-4 w-4" /> {t('back')}
-          </Button>
-        </Link>
-      </div>
+      <Breadcrumbs items={[
+        ...parentBreadcrumbs,
+        { label: currentDeck?.name ?? '', href: '#' },
+      ]} />
 
       <div className={`relative group rounded-xl bg-gradient-to-br ${gradient} p-8 text-white`}>
         <div className="absolute right-4 top-4 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">

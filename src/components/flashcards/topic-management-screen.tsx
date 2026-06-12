@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -17,7 +16,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Plus, Trash2, Eye, Pencil } from 'lucide-react';
+import { Plus, Trash2, Eye, Pencil } from 'lucide-react';
+import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
@@ -43,13 +43,18 @@ function getTopicColor(name: string) {
   return TOPIC_COLORS[name.length % TOPIC_COLORS.length];
 }
 
-interface TopicManagementScreenProps {
-  backHref: string;
-  apiBase: string;
-  t: ReturnType<typeof useTranslations>;
+interface Crumb {
+  label: string;
+  href: string;
 }
 
-export function TopicManagementScreen({ backHref, t }: TopicManagementScreenProps) {
+interface TopicManagementScreenProps {
+  apiBase: string;
+  t: ReturnType<typeof useTranslations>;
+  breadcrumbs: Crumb[];
+}
+
+export function TopicManagementScreen({ t, breadcrumbs }: TopicManagementScreenProps) {
   const queryClient = useQueryClient();
   const { data: topics, isLoading } = useApiQuery<Topic[]>({
     queryKey: flashcardKeys.topics.all,
@@ -159,14 +164,7 @@ export function TopicManagementScreen({ backHref, t }: TopicManagementScreenProp
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href={backHref}>
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-2 h-4 w-4" /> {t('back')}
-            </Button>
-          </Link>
-          <h2 className="text-2xl font-bold">{t('title')}</h2>
-        </div>
+        <Breadcrumbs items={breadcrumbs} />
         <Button onClick={openCreate}>
           <Plus className="mr-2 h-4 w-4" /> {t('new_topic')}
         </Button>

@@ -1146,7 +1146,8 @@
     "mode_study": "Study",
     "summary_cards_studied": "Correct",
     "summary_duration": "Duration",
-    "summary_cards_per_minute": "Cards / min"
+    "summary_cards_per_minute": "Cards / min",
+    "breadcrumb_session": "Session"
   },
   "AppFlashcardDecksPage": {
     "title": "Flashcard Decks",

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
@@ -18,7 +17,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Plus, Trash2, Pencil, ArrowRight, Eye } from 'lucide-react';
+import { Plus, Trash2, Pencil, ArrowRight, Eye } from 'lucide-react';
+import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
@@ -54,14 +54,19 @@ function getGradient(id: string) {
   return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
 }
 
+interface Crumb {
+  label: string;
+  href: string;
+}
+
 interface DeckManagementScreenProps {
-  backHref: string;
   apiBase: string;
   basePath: string;
   t: ReturnType<typeof useTranslations>;
+  breadcrumbs: Crumb[];
 }
 
-export function DeckManagementScreen({ backHref, basePath, t }: DeckManagementScreenProps) {
+export function DeckManagementScreen({ basePath, t, breadcrumbs }: DeckManagementScreenProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -172,14 +177,7 @@ export function DeckManagementScreen({ backHref, basePath, t }: DeckManagementSc
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href={backHref}>
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-2 h-4 w-4" /> {t('back')}
-            </Button>
-          </Link>
-          <h2 className="text-2xl font-bold">{t('title')}</h2>
-        </div>
+        <Breadcrumbs items={breadcrumbs} />
         <Button onClick={openCreate}>
           <Plus className="mr-2 h-4 w-4" /> {t('new_deck')}
         </Button>
