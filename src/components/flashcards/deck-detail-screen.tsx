@@ -70,7 +70,14 @@ export function DeckDetailScreen({
   const role = user?.app_metadata?.role as UserRole | undefined;
   const gradient = getGradient(deckId);
   const searchParams = useSearchParams();
-  const highlightId = searchParams.get('highlight');
+  const highlightParam = searchParams.get('highlight');
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (highlightParam) {
+      setHighlightId(highlightParam);
+    }
+  }, [highlightParam]);
 
   const { data: currentDeckData, isLoading: deckLoading, isError: deckError } = useApiQuery<Deck>({
     queryKey: flashcardKeys.decks.detail(deckId),
@@ -108,10 +115,11 @@ export function DeckDetailScreen({
   useEffect(() => {
     if (!highlightId) return;
     const timer = setTimeout(() => {
-      router.replace(window.location.pathname);
+      window.history.replaceState(null, '', window.location.pathname);
+      setHighlightId(null);
     }, 3000);
     return () => clearTimeout(timer);
-  }, [highlightId, router]);
+  }, [highlightId]);
 
   const createFlashcard = useApiMutation({
     mutationFn: (data: { front: string; back: string; topicIds?: string[] }) =>

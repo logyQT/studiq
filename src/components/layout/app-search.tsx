@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Search, Loader2 } from 'lucide-react';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useApiQuery } from '@/hooks/use-api';
+import { FlashcardSearchResult } from '@/components/search/flashcard-search-result';
 import type { SearchResult } from '@/server/models';
 
 export function AppSearch() {
@@ -29,6 +30,24 @@ export function AppSearch() {
   });
 
   const showDropdown = isFocused && debouncedQuery.length >= 2;
+
+  const flatItems = useMemo(() => {
+    if (!results) return [];
+    return results.flatMap((r) => {
+      if (r.type === 'flashcard') return r.decks.map((d) => ({ href: d.href }));
+      return [];
+    });
+  }, [results]);
+
+  const itemOffsets = useMemo(() => {
+    if (!results) return [];
+    let offset = 0;
+    return results.map((r) => {
+      const o = offset;
+      offset += r.type === 'flashcard' ? r.decks.length : 0;
+      return o;
+    });
+  }, [results]);
 
   useEffect(() => {
     if (!showDropdown) return;
@@ -70,26 +89,26 @@ export function AppSearch() {
   }, []);
 
   const handleNavigate = useCallback(
-    (result: SearchResult) => {
+    (href: string) => {
       setIsFocused(false);
       setQuery('');
-      router.push(result.href);
+      router.push(href);
     },
     [router],
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!results?.length) return;
+    if (!flatItems.length) return;
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex((prev) => (prev < results.length - 1 ? prev + 1 : 0));
+      setSelectedIndex((prev) => (prev < flatItems.length - 1 ? prev + 1 : 0));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : results.length - 1));
+      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : flatItems.length - 1));
     } else if (e.key === 'Enter' && selectedIndex >= 0) {
       e.preventDefault();
-      handleNavigate(results[selectedIndex]);
+      handleNavigate(flatItems[selectedIndex].href);
     }
   };
 
@@ -158,28 +177,25 @@ export function AppSearch() {
 
             {!isLoading && results && results.length > 0 && (
               <div className="space-y-0.5">
-                {results.map((result, index) => (
-                  <button
-                    key={result.id}
-                    onClick={() => handleNavigate(result)}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                    className={`w-full text-left px-2 py-2 rounded-sm text-sm flex flex-col gap-0.5 ${
-                      index === selectedIndex
-                        ? 'bg-accent text-accent-foreground'
-                        : 'text-foreground'
-                    }`}
-                  >
-                    <span className="font-medium truncate">{result.title}</span>
-                    <span className="text-xs text-muted-foreground truncate">
-                      {result.subtitle}
-                    </span>
-                    {result.context && (
-                      <span className="text-xs text-muted-foreground/70 truncate">
-                        {result.context}
-                      </span>
-                    )}
-                  </button>
-                ))}
+                {results.map((result, ri) => {
+                  const offset = itemOffsets[ri];
+                  const activeSub = selectedIndex >= offset ? selectedIndex - offset : -1;
+
+                  switch (result.type) {
+                    case 'flashcard':
+                      return (
+                        <FlashcardSearchResult
+                          key={result.id}
+                          result={result}
+                          activeSubIndex={activeSub}
+                          onNavigate={handleNavigate}
+                          onHover={(subIdx) => setSelectedIndex(offset + subIdx)}
+                        />
+                      );
+                    default:
+                      return null;
+                  }
+                })}
               </div>
             )}
           </div>

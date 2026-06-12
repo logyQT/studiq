@@ -15,8 +15,7 @@ export type SearchResult = {
   id: string;
   title: string;
   subtitle: string;
-  href: string;
-  context?: string;
+  decks: { id: string; name: string; href: string }[];
   rank: number;
 };
 

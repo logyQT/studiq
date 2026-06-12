@@ -29,17 +29,38 @@ export class SearchService {
 
     const basePath = ctx.role === UserRole.TEACHER ? '/edu' : '/app';
 
-    return rows.map((row) => ({
-      type: 'flashcard' as const,
-      id: row.id,
-      title: row.front,
-      subtitle: row.back,
-      href: row.deck_id
-        ? `${basePath}/flashcards/deck/${row.deck_id}?highlight=${row.id}`
-        : '#',
-      context: row.deck_name ?? undefined,
-      rank: row.rank,
-    }));
+    const grouped = new Map<string, SearchResult>();
+
+    for (const row of rows) {
+      const existing = grouped.get(row.id);
+      if (existing) {
+        existing.rank = Math.max(existing.rank, row.rank);
+        if (row.deck_id && !existing.decks.some((d) => d.id === row.deck_id)) {
+          existing.decks.push({
+            id: row.deck_id,
+            name: row.deck_name ?? '',
+            href: `${basePath}/flashcards/deck/${row.deck_id}?highlight=${row.id}`,
+          });
+        }
+      } else {
+        grouped.set(row.id, {
+          type: 'flashcard',
+          id: row.id,
+          title: row.front,
+          subtitle: row.back,
+          rank: row.rank,
+          decks: row.deck_id
+            ? [{
+                id: row.deck_id,
+                name: row.deck_name ?? '',
+                href: `${basePath}/flashcards/deck/${row.deck_id}?highlight=${row.id}`,
+              }]
+            : [],
+        });
+      }
+    }
+
+    return Array.from(grouped.values());
   }
 }
 
