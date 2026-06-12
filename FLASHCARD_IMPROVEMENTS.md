@@ -154,14 +154,13 @@ All 6 batch mutations roll back on error via `onError` restoring the pre-mutatio
 - `clearSelection()` runs on success before toast; selection is preserved on error for retry.
 - Select All / Deselect All is a single dual-toggle button (`CheckCheck` icon, outline variant). Text flips based on whether every visible card is selected.
 
-**🔴 SECURITY TODO — HIGH PRIORITY:**
-- Hide decks the user does not own in bulk operation deck pickers (Link, Move, Copy dialogs)
-- Hide/disable mutation options (topic assignments, move, delete) for flashcards inside decks the user does not own
-- Currently the UI shows all decks/flashcards regardless of ownership — user could attempt operations that backend will reject, but better to prevent at UI level
+**✅ SECURITY TODO:**
+- ✅ Hide decks the user does not own in bulk operation deck pickers (Link, Move, Copy dialogs) — `ownedDecks` filter via `can(role, 'deck.update', d.created_by, userId)` in `deck-detail-dialogs.tsx` (5 pickers: Link, Copy, BulkLink, BulkMove, BulkCopy)
+- ✅ Mutation options (topic assignments, move, delete) for flashcards are already gated by `canUpdate`/`canDelete` props computed via `can()` in `deck-detail-screen.tsx`
 
 ---
 
-### 2.2 Keyboard Shortcuts
+### 2.2 Keyboard Shortcuts 
 
 No backend changes. Pure frontend.
 
@@ -173,7 +172,7 @@ No backend changes. Pure frontend.
 | | `3` | Rate "Good" |
 | | `4` | Rate "Easy" |
 | Deck detail (`deck-detail-screen.tsx`) | `n` | New flashcard |
-| | `/` | Focus search ⏳ deferred — needs 2.4 Search input |
+| | `/` | Focus search | ⏳
 
 **Implementation:** `useEffect` with `keydown` listener. `aria-keyshortcuts` attributes on card/buttons for a11y. Uses refs to avoid stale closures without re-attaching the listener. Input/textarea target guard to avoid triggering shortcuts while typing.
 

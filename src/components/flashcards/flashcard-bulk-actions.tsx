@@ -7,6 +7,8 @@ import { useTranslations } from 'next-intl';
 interface FlashcardBulkActionsProps {
   selectedCount: number;
   canDelete: boolean;
+  canTopics: boolean;
+  canMove: boolean;
   onDelete: () => void;
   onLink: () => void;
   onCopy: () => void;
@@ -19,6 +21,8 @@ interface FlashcardBulkActionsProps {
 export function FlashcardBulkActions({
   selectedCount,
   canDelete,
+  canTopics,
+  canMove,
   onDelete,
   onLink,
   onCopy,
@@ -44,12 +48,16 @@ export function FlashcardBulkActions({
           <Button variant="outline" size="sm" onClick={onLink}>
             <Link2 className="mr-1.5 h-4 w-4" /> {t('bulk_link')}
           </Button>
-          <Button variant="outline" size="sm" onClick={onTopics}>
-            <Tags className="mr-1.5 h-4 w-4" /> {t('bulk_topics')}
-          </Button>
-          <Button variant="outline" size="sm" onClick={onMove}>
-            <ArrowRight className="mr-1.5 h-4 w-4" /> {t('bulk_move')}
-          </Button>
+          {canTopics && (
+            <Button variant="outline" size="sm" onClick={onTopics}>
+              <Tags className="mr-1.5 h-4 w-4" /> {t('bulk_topics')}
+            </Button>
+          )}
+          {canMove && (
+            <Button variant="outline" size="sm" onClick={onMove}>
+              <ArrowRight className="mr-1.5 h-4 w-4" /> {t('bulk_move')}
+            </Button>
+          )}
           {canDelete && (
             <Button variant="destructive" size="sm" onClick={onDelete}>
               <Trash2 className="mr-1.5 h-4 w-4" /> {t('bulk_delete')}

@@ -772,17 +772,28 @@ export function DeckDetailScreen({
         </div>
       )}
 
-      <FlashcardBulkActions
-        selectedCount={selectedIds.size}
-        canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false}
-        onDelete={() => setD((prev) => ({ ...prev, bulkDeleteOpen: true, selectedIds: Array.from(selectedIds) }))}
-        onLink={() => setD((prev) => ({ ...prev, bulkLinkOpen: true, bulkLinkDeckIds: [], selectedIds: Array.from(selectedIds) }))}
-        onTopics={() => setD((prev) => ({ ...prev, bulkTopicsOpen: true, bulkTopicIds: [], bulkTopicsOperation: 'set', selectedIds: Array.from(selectedIds) }))}
-        onCopy={() => setD((prev) => ({ ...prev, bulkCopyOpen: true, bulkCopyTargetDeckId: null, selectedIds: Array.from(selectedIds) }))}
-        onMove={() => setD((prev) => ({ ...prev, bulkMoveOpen: true, bulkMoveTargetDeckId: null, selectedIds: Array.from(selectedIds) }))}
-        onClearSelection={clearSelection}
-        t={t}
-      />
+      {(() => {
+        const selectedFlashcards = flashcards.filter((fc) => selectedIds.has(fc.id));
+        const canBulkTopics = selectedFlashcards.length > 0 &&
+          selectedFlashcards.every((fc) => can(role, 'flashcard.update', fc.created_by, user?.id));
+        const canBulkMove = (can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false) &&
+          selectedFlashcards.every((fc) => can(role, 'flashcard.update', fc.created_by, user?.id));
+        return (
+          <FlashcardBulkActions
+            selectedCount={selectedIds.size}
+            canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false}
+            canTopics={canBulkTopics}
+            canMove={canBulkMove}
+            onDelete={() => setD((prev) => ({ ...prev, bulkDeleteOpen: true, selectedIds: Array.from(selectedIds) }))}
+            onLink={() => setD((prev) => ({ ...prev, bulkLinkOpen: true, bulkLinkDeckIds: [], selectedIds: Array.from(selectedIds) }))}
+            onTopics={() => setD((prev) => ({ ...prev, bulkTopicsOpen: true, bulkTopicIds: [], bulkTopicsOperation: 'set', selectedIds: Array.from(selectedIds) }))}
+            onCopy={() => setD((prev) => ({ ...prev, bulkCopyOpen: true, bulkCopyTargetDeckId: null, selectedIds: Array.from(selectedIds) }))}
+            onMove={() => setD((prev) => ({ ...prev, bulkMoveOpen: true, bulkMoveTargetDeckId: null, selectedIds: Array.from(selectedIds) }))}
+            onClearSelection={clearSelection}
+            t={t}
+          />
+        );
+      })()}
 
       <DeckDetailDialogs
         state={d}

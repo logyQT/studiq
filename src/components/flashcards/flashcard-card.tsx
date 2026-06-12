@@ -137,7 +137,7 @@ export function FlashcardCard({
       </div>
 
       <CardContent className="flex flex-col items-center justify-center p-6 pt-8">
-        <p className="mb-2 text-xs uppercase text-muted-foreground">
+        <p className={`mb-2 text-xs uppercase ${isFlipped ? 'text-white/70' : 'text-muted-foreground'}`}>
           {isFlipped ? t('answer_label') : t('question_label')}
         </p>
         <p className={`text-center text-lg font-medium ${isFlipped ? 'text-white' : ''}`}>
@@ -147,14 +147,18 @@ export function FlashcardCard({
           {fcTopics.length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {fcTopics.map((topic) => (
-                <Badge key={topic.id} variant="secondary" className="gap-1 text-xs">
-                  <div className={`h-1.5 w-1.5 rounded-full ${getTopicColor(topic.name)}`} />
+                <Badge
+                  key={topic.id}
+                  variant="secondary"
+                  className={`gap-1 text-xs ${isFlipped ? 'bg-white/20 text-white border-white/20 hover:bg-white/30' : ''}`}
+                >
+                  <div className={`h-1.5 w-1.5 rounded-full ${isFlipped ? 'bg-white/80' : getTopicColor(topic.name)}`} />
                   {topic.name}
                 </Badge>
               ))}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">{t('no_topics')}</p>
+            <p className={`text-xs ${isFlipped ? 'text-white/60' : 'text-muted-foreground'}`}>{t('no_topics')}</p>
           )}
         </div>
       </CardContent>

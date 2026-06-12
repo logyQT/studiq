@@ -107,6 +107,19 @@ function getNavGroup(pathname: string): NavItem[] {
   return [];
 }
 
+function getActiveHref(pathname: string, navItems: NavItem[]): string | null {
+  let best: NavItem | null = null;
+  for (const item of navItems) {
+    const matches =
+      pathname === item.href ||
+      (item.href !== '/' && pathname.startsWith(item.href + '/'));
+    if (matches && (!best || item.href.length > best.href.length)) {
+      best = item;
+    }
+  }
+  return best?.href ?? null;
+}
+
 function getDashboardTitleKey(pathname: string): string {
   for (const [prefix, key] of Object.entries(DASHBOARD_TITLE_KEYS)) {
     if (pathname.startsWith(prefix)) return key;
@@ -141,6 +154,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const t = useTranslations('DashboardLayout');
   const navItems = getNavGroup(pathname);
+  const activeHref = getActiveHref(pathname, navItems);
   const dashboardTitleKey = getDashboardTitleKey(pathname);
 
   const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || t('default_user');
@@ -188,9 +202,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         <SidebarContent className="py-3 px-2">
           <SidebarMenu className="gap-0.5">
             {navItems.map((item) => {
-              const isActive =
-                pathname === item.href ||
-                (item.href !== '/' && pathname.startsWith(item.href + '/'));
+              const isActive = item.href === activeHref;
               return (
                 <SidebarMenuItem key={item.titleKey} className="relative">
                   {isActive && (

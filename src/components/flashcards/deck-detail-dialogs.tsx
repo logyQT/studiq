@@ -132,6 +132,10 @@ export function DeckDetailDialogs({
   const { user } = useAuth();
   const role = user?.app_metadata?.role as UserRole | undefined;
 
+  // Only expose decks the user has permission to update — prevents UI-level
+  // access to Link / Copy / Move operations on decks the user doesn't own.
+  const ownedDecks = allDecks.filter((d) => can(role, 'deck.update', d.created_by, user?.id));
+
   function toggleTopic(id: string) {
     handlers.onFormDataChange({
       ...state.formData,
@@ -295,7 +299,7 @@ export function DeckDetailDialogs({
             <DialogDescription>{t('link_desc')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
-            {allDecks.map((d) => (
+            {ownedDecks.map((d) => (
               <div key={d.id} className="flex items-center gap-3 p-3 rounded-lg border">
                 <Checkbox
                   checked={state.linkDeckIds.includes(d.id)}
@@ -315,7 +319,7 @@ export function DeckDetailDialogs({
                 </div>
               </div>
             ))}
-            {allDecks.length === 0 && (
+            {ownedDecks.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-4">
                 {t('no_other_decks')}
               </p>
@@ -339,7 +343,7 @@ export function DeckDetailDialogs({
             <DialogDescription>{t('copy_desc')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
-            {allDecks.map((d) => (
+            {ownedDecks.map((d) => (
               <button
                 key={d.id}
                 className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
@@ -365,7 +369,7 @@ export function DeckDetailDialogs({
                 </Badge>
               </button>
             ))}
-            {allDecks.length === 0 && (
+            {ownedDecks.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-4">
                 {t('no_other_decks')}
               </p>
@@ -645,7 +649,7 @@ export function DeckDetailDialogs({
             <DialogDescription>{t('link_desc')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
-            {allDecks.map((d) => (
+            {ownedDecks.map((d) => (
               <div key={d.id} className="flex items-center gap-3 p-3 rounded-lg border">
                 <Checkbox
                   checked={state.bulkLinkDeckIds.includes(d.id)}
@@ -665,7 +669,7 @@ export function DeckDetailDialogs({
                 </div>
               </div>
             ))}
-            {allDecks.length === 0 && (
+            {ownedDecks.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-4">
                 {t('no_other_decks')}
               </p>
@@ -697,7 +701,7 @@ export function DeckDetailDialogs({
             <DialogDescription>{t('bulk_move')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
-            {allDecks.map((d) => (
+            {ownedDecks.map((d) => (
               <button
                 key={d.id}
                 className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
@@ -720,7 +724,7 @@ export function DeckDetailDialogs({
                 </div>
               </button>
             ))}
-            {allDecks.length === 0 && (
+            {ownedDecks.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-4">
                 {t('no_other_decks')}
               </p>
@@ -752,7 +756,7 @@ export function DeckDetailDialogs({
             <DialogDescription>{t('bulk_copy')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
-            {allDecks.map((d) => (
+            {ownedDecks.map((d) => (
               <button
                 key={d.id}
                 className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
@@ -775,7 +779,7 @@ export function DeckDetailDialogs({
                 </div>
               </button>
             ))}
-            {allDecks.length === 0 && (
+            {ownedDecks.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-4">
                 {t('no_other_decks')}
               </p>
