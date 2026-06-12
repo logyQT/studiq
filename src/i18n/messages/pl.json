@@ -750,7 +750,8 @@
     "due_for_review": "oczekuje na powtórkę",
     "filtered": "przefiltrowane",
     "calculating": "Obliczanie...",
-    "start_study": "Rozpocznij Naukę"
+    "start_study": "Rozpocznij Naukę",
+    "statistics": "Statystyki"
   },
   "AppFlashcardPracticePage": {
     "back": "Powrót",
@@ -758,7 +759,8 @@
     "deck_picker_desc": "Wybierz talię do ćwiczenia. Fiszki są powtarzane lokalnie z powtórkami rozłożonymi w czasie — bez wywołań serwera.",
     "flashcards_count": "{count, plural, one {# fiszka} few {# fiszki} many {# fiszek} other {# fiszek}}",
     "no_decks_picker": "Brak talii. Utwórz najpierw!",
-    "start_practice": "Ćwicz"
+    "start_practice": "Ćwicz",
+    "statistics": "Statystyki"
   },
   "AppFlashcardsClient": {
     "title": "Ćwiczenie z fiszkami",
@@ -1121,7 +1123,12 @@
     "rating_good": "Dobrze",
     "rating_easy": "Łatwe",
     "all_caught_up": "Wszystko powtórzone!",
-    "no_due_cards_message": "Żadne fiszki nie wymagają teraz powtórki. Wróć później!"
+    "no_due_cards_message": "Żadne fiszki nie wymagają teraz powtórki. Wróć później!",
+    "mode_practice": "Powtórka",
+    "mode_study": "Nauka",
+    "summary_cards_studied": "Poprawne",
+    "summary_duration": "Czas",
+    "summary_cards_per_minute": "Fiszek / min"
   },
   "AppFlashcardDecksPage": {
     "title": "Talie fiszek",

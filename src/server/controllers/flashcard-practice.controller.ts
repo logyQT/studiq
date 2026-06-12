@@ -1,5 +1,5 @@
 import { flashcardPracticeService } from '@/server/services';
-import { LogPracticeSchema, BatchPracticeSchema } from '@/server/models';
+import { LogPracticeSchema, BatchPracticeSchema, CompleteSessionSchema } from '@/server/models';
 import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
 import type { RequestContext } from '@/lib/request-context';
@@ -111,6 +111,24 @@ export class FlashcardPracticeController {
     return withErrorHandling(async () => {
       const stats = await flashcardPracticeService.getStatsAll(ctx);
       return { success: true, statusCode: 200, data: stats };
+    }, ctx);
+  }
+
+  async completeSession(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = CompleteSessionSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const result = await flashcardPracticeService.completeSession(parsed.data, ctx);
+      return { success: true, statusCode: 200, data: result };
     }, ctx);
   }
 }

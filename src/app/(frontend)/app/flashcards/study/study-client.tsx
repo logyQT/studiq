@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Play, ArrowLeft, FolderOpen, Tags } from 'lucide-react';
+import { Play, ArrowLeft, FolderOpen, Tags, BarChart3 } from 'lucide-react';
 
 interface Topic {
   id: string;
@@ -84,6 +84,13 @@ export default function StudyClient({ topics, decks, dueBreakdown }: StudyClient
           </Button>
         </Link>
         <h2 className="text-2xl font-bold">{t('title')}</h2>
+        <div className="ml-auto">
+          <Link href="/app/flashcards/statistics">
+            <Button variant="outline" size="sm">
+              <BarChart3 className="mr-2 h-4 w-4" /> {t('statistics')}
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

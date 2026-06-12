@@ -42,6 +42,21 @@ export const BatchPracticeSchema = registry.register(
   }),
 );
 
+export const CompleteSessionSchema = registry.register(
+  'CompleteSessionRequest',
+  z.object({
+    sessionId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
+    startedAt: z.string({ error: ValidationErrorCode.REQUIRED }).datetime({ error: ValidationErrorCode.INVALID_INPUT }),
+    completedAt: z.string({ error: ValidationErrorCode.REQUIRED }).datetime({ error: ValidationErrorCode.INVALID_INPUT }),
+    durationMs: z.number({ error: ValidationErrorCode.NUMBER }).int({ error: ValidationErrorCode.INTEGER }).positive({ error: ValidationErrorCode.POSITIVE_NUMBER }),
+    cardsStudied: z.number({ error: ValidationErrorCode.NUMBER }).int({ error: ValidationErrorCode.INTEGER }).min(0, { error: ValidationErrorCode.TOO_SMALL }),
+    cardsCorrect: z.number({ error: ValidationErrorCode.NUMBER }).int({ error: ValidationErrorCode.INTEGER }).min(0, { error: ValidationErrorCode.TOO_SMALL }),
+    deckIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+    mode: z.enum(['study', 'practice', 'quick'], { error: ValidationErrorCode.INVALID_INPUT }),
+  }),
+);
+
 export type LogPracticeInput = z.infer<typeof LogPracticeSchema>;
 export type BatchPracticeItemInput = z.infer<typeof BatchPracticeItemSchema>;
 export type BatchPracticeInput = z.infer<typeof BatchPracticeSchema>;
+export type CompleteSessionInput = z.infer<typeof CompleteSessionSchema>;

@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
 import { flashcardSpacedRepetitionService } from './flashcard-spaced-repetition.service';
-import type { BatchPracticeInput } from '@/server/models';
+import type { BatchPracticeInput, CompleteSessionInput } from '@/server/models';
 import { buildQueryFilter, Permission } from '@/lib/rbac';
 
 export class FlashcardPracticeService {
@@ -363,6 +363,26 @@ export class FlashcardPracticeService {
     const { data, error } = await query;
     if (error) throw mapSupabaseError(error);
     return (data ?? []).map((r) => r.id);
+  }
+
+  async completeSession(data: CompleteSessionInput, ctx: RequestContext) {
+    const supabase = await createClient();
+
+    const { error } = await supabase.from('flashcard_study_sessions').insert({
+      id: data.sessionId,
+      user_id: ctx.userId,
+      started_at: data.startedAt,
+      completed_at: data.completedAt,
+      duration_ms: data.durationMs,
+      cards_studied: data.cardsStudied,
+      cards_correct: data.cardsCorrect,
+      deck_ids: data.deckIds ?? [],
+      mode: data.mode,
+    });
+
+    if (error) throw mapSupabaseError(error);
+
+    return { success: true };
   }
 }
 

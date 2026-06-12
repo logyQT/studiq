@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Play } from 'lucide-react';
+import { ArrowLeft, Play, BarChart3 } from 'lucide-react';
 
 const GRADIENTS = [
   'from-violet-500 to-purple-600',
@@ -59,6 +59,13 @@ export default function PracticeClient({ decks }: PracticeClientProps) {
           </Button>
         </Link>
         <h2 className="text-2xl font-bold">{t('deck_picker_title')}</h2>
+        <div className="ml-auto">
+          <Link href="/app/flashcards/statistics">
+            <Button variant="outline" size="sm">
+              <BarChart3 className="mr-2 h-4 w-4" /> {t('statistics')}
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <p className="text-muted-foreground">{t('deck_picker_desc')}</p>

@@ -75,6 +75,12 @@ export default async function SessionPage({ searchParams }: SessionPageProps) {
     redirect('/app/flashcards/study');
   }
 
+  const deckIds = deckId
+    ? [deckId]
+    : decksStr
+      ? decksStr.split(',').filter(Boolean)
+      : [];
+
   return (
     <SessionClient
       initialCards={initialCards}
@@ -82,6 +88,7 @@ export default async function SessionPage({ searchParams }: SessionPageProps) {
       studyMode={studyMode}
       targetCount={targetCount}
       hasMore={!isPractice && initialCards.length >= batchSize}
+      deckIds={deckIds}
     />
   );
 }

@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Check, X, ArrowLeft, RotateCcw, Minus, Zap } from 'lucide-react';
+import { Check, X, ArrowLeft, Minus, Zap } from 'lucide-react';
+import { SessionSummaryDialog } from '@/components/flashcards/session-summary-dialog';
 
 interface Flashcard {
   id: string;
@@ -55,9 +56,10 @@ interface SessionClientProps {
   studyMode: string;
   targetCount: number;
   hasMore: boolean;
+  deckIds?: string[];
 }
 
-export default function SessionClient({ initialCards, mode, studyMode, targetCount, hasMore: initialHasMore }: SessionClientProps) {
+export default function SessionClient({ initialCards, mode, studyMode, targetCount, hasMore: initialHasMore, deckIds }: SessionClientProps) {
   const t = useTranslations('AppFlashcardSessionPage');
   const router = useRouter();
 
@@ -66,6 +68,7 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
   const isLimited = studyMode === 'limited';
 
   const sessionIdRef = useRef<string>(generateUUID());
+  const startedAtRef = useRef<number>(Date.now());
   const processingRef = useRef(false);
   const answeredCountRef = useRef(0);
   const pendingUpdatesRef = useRef<Array<{ flashcardId: string; wasCorrect: boolean; confidenceLevel: number }>>([]);
@@ -78,6 +81,12 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
   const [sessionComplete, setSessionComplete] = useState(false);
   const [allCaughtUp, setAllCaughtUp] = useState(false);
   const [hasMore, setHasMore] = useState(initialHasMore);
+  const [summaryData, setSummaryData] = useState<{
+    cardsStudied: number;
+    cardsCorrect: number;
+    durationMs: number;
+    mode: string;
+  } | null>(null);
 
   const [_localSM2, setLocalSM2] = useState<Map<string, LocalSM2State>>(() => {
     if (isPractice) {
@@ -129,6 +138,35 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
     }, 30_000);
     return () => clearInterval(interval);
   }, [isStudy, sendBatchUpdate]);
+
+  useEffect(() => {
+    if (!sessionComplete && !allCaughtUp) return;
+
+    const durationMs = Date.now() - startedAtRef.current;
+    const sessionData = {
+      sessionId: sessionIdRef.current,
+      startedAt: new Date(startedAtRef.current).toISOString(),
+      completedAt: new Date().toISOString(),
+      durationMs,
+      cardsStudied: totalAnswered,
+      cardsCorrect: correctCount,
+      deckIds: deckIds ?? [],
+      mode: isPractice ? 'practice' : isStudy ? 'study' : 'quick',
+    };
+
+    setSummaryData({
+      cardsStudied: totalAnswered,
+      cardsCorrect: correctCount,
+      durationMs,
+      mode: isPractice ? 'practice' : isStudy ? 'study' : 'quick',
+    });
+
+    fetch('/api/v1/flashcards/practice/sessions/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sessionData),
+    }).catch(() => {});
+  }, [sessionComplete, allCaughtUp, totalAnswered, correctCount, isPractice, isStudy, deckIds]);
 
   const refillQueue = useCallback(async () => {
     if (!hasMore || isPractice) return;
@@ -259,6 +297,26 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
 
   const backUrl = mode === 'quick' ? '/app' : isPractice ? '/app/flashcards/practice' : '/app/flashcards/study';
 
+  const handlePracticeAgain = useCallback(() => {
+    setCorrectCount(0);
+    setTotalAnswered(0);
+    setSessionComplete(false);
+    setAllCaughtUp(false);
+    setSummaryData(null);
+    setCurrentIndex(0);
+    setFlipped(false);
+    setHasMore(initialHasMore);
+    setSkipMap(new Map());
+    sessionIdRef.current = generateUUID();
+    startedAtRef.current = Date.now();
+    setQueue([...initialCards].sort(() => Math.random() - 0.5));
+  }, [initialCards, initialHasMore]);
+
+  const handleBackToSetup = useCallback(async () => {
+    await sendBatchUpdate();
+    router.push(backUrl);
+  }, [sendBatchUpdate, router, backUrl]);
+
   const flippedRef = useRef(flipped);
   const terminalRef = useRef(sessionComplete || allCaughtUp);
   const noCardRef = useRef(!currentCard);
@@ -293,71 +351,14 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  if (allCaughtUp) {
+  if (summaryData) {
     return (
-      <div className="max-w-2xl mx-auto">
-        <Card>
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl">{t('all_caught_up')}</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-4 text-center space-y-4">
-            <p className="text-lg">{t('no_due_cards_message')}</p>
-            <p className="text-sm text-muted-foreground">
-              {t('session_result', { correct: correctCount, total: totalAnswered })}
-            </p>
-          </CardContent>
-          <CardFooter className="flex justify-center gap-3">
-            <Button onClick={async () => { await sendBatchUpdate(); router.push(backUrl); }}>
-              <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_to_setup')}
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
-    );
-  }
-
-  if (sessionComplete) {
-    const percentage = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0;
-    return (
-      <div className="max-w-2xl mx-auto">
-        <Card>
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl">{t('session_complete_title')}</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-4 text-center space-y-4">
-            <p
-              className="text-5xl font-bold"
-              style={{ color: percentage >= 70 ? 'hsl(var(--chart-2))' : 'hsl(var(--destructive))' }}
-            >
-              {percentage}%
-            </p>
-            <p className="text-lg">
-              {t('session_result', { correct: correctCount, total: totalAnswered })}
-            </p>
-          </CardContent>
-          <CardFooter className="flex justify-center gap-3">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setCorrectCount(0);
-                setTotalAnswered(0);
-                setSessionComplete(false);
-                setCurrentIndex(0);
-                setFlipped(false);
-                setHasMore(initialHasMore);
-                setAllCaughtUp(false);
-                setSkipMap(new Map());
-                sessionIdRef.current = generateUUID();
-                setQueue([...initialCards].sort(() => Math.random() - 0.5));
-              }}
-            >
-              <RotateCcw className="mr-2 h-4 w-4" /> {t('practice_again')}
-            </Button>
-            <Button onClick={async () => { await sendBatchUpdate(); router.push(backUrl); }}>
-              <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_to_setup')}
-            </Button>
-          </CardFooter>
-        </Card>
+      <div className="max-w-2xl mx-auto py-8">
+        <SessionSummaryDialog
+          data={summaryData}
+          onPracticeAgain={sessionComplete && !allCaughtUp ? handlePracticeAgain : undefined}
+          onBackToSetup={handleBackToSetup}
+        />
       </div>
     );
   }

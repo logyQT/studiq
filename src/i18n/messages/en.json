@@ -768,7 +768,8 @@
     "due_for_review": "due for review",
     "filtered": "filtered",
     "calculating": "Calculating...",
-    "start_study": "Start Study"
+    "start_study": "Start Study",
+    "statistics": "Statistics"
   },
   "AppFlashcardPracticePage": {
     "back": "Back",
@@ -776,7 +777,8 @@
     "deck_picker_desc": "Select a deck to practice. Cards are reviewed locally with spaced repetition — no server calls needed.",
     "flashcards_count": "{count, plural, one {# flashcard} other {# flashcards}}",
     "no_decks_picker": "No decks yet. Create one first!",
-    "start_practice": "Practice"
+    "start_practice": "Practice",
+    "statistics": "Statistics"
   },
   "AppFlashcardsClient": {
     "title": "Flashcard Practice",
@@ -1139,7 +1141,12 @@
     "rating_good": "Good",
     "rating_easy": "Easy",
     "all_caught_up": "All Caught Up!",
-    "no_due_cards_message": "No cards are due for review right now. Check back later!"
+    "no_due_cards_message": "No cards are due for review right now. Check back later!",
+    "mode_practice": "Practice",
+    "mode_study": "Study",
+    "summary_cards_studied": "Correct",
+    "summary_duration": "Duration",
+    "summary_cards_per_minute": "Cards / min"
   },
   "AppFlashcardDecksPage": {
     "title": "Flashcard Decks",

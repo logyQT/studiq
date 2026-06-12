@@ -174,16 +174,24 @@ No backend changes. Pure frontend.
 
 ---
 
-### 2.3 Session Summary
+### 2.3 Session Summary ✅
 
 | Layer | Files | Changes |
 |-------|-------|---------|
-| `B` | New: `POST /api/v1/flashcards/practice/sessions/complete` | Receive session summary payload `{ sessionId, durationMs }`, store session stats |
-| `M` | New: `flashcard_study_sessions` table | `id, user_id, started_at, completed_at, duration_ms, cards_studied, cards_correct, deck_ids` |
-| `F` | `src/app/(frontend)/app/flashcards/session/session-client.tsx` | On session end: calculate stats client-side (cards studied, correct count, total time, avg response time, EF change), display in summary dialog |
-| `F` | New: `src/components/flashcards/session-summary-dialog.tsx` | Modal with stats: accuracy %, time spent, cards studied, hardest/easiest cards, EF change |
+| `M` | New: `supabase/migrations/20260614000000_flashcard_study_sessions.sql` | `flashcard_study_sessions` table — `id, user_id, started_at, completed_at, duration_ms, cards_studied, cards_correct, deck_ids, mode` |
+| `B` | New: `POST /api/v1/flashcards/practice/sessions/complete` | Receive session summary payload, store in `flashcard_study_sessions` |
+| `B` | `src/server/models/flashcard-practice.model.ts` | Add `CompleteSessionSchema` |
+| `B` | `src/server/services/flashcard-practice.service.ts` | Add `completeSession` method |
+| `B` | `src/server/controllers/flashcard-practice.controller.ts` | Add `completeSession` method |
+| `F` | `src/app/(frontend)/app/flashcards/session/session-client.tsx` | On session end: calculate aggregate stats client-side, fire-and-forget POST to `sessions/complete`, display summary dialog |
+| `F` | New: `src/components/flashcards/session-summary-dialog.tsx` | Dialog with accuracy %, cards studied, duration, cards/min, mode badge |
+| `F` | `src/app/(frontend)/app/flashcards/session/page.tsx` | Parse `deckIds` from search params, pass to SessionClient |
+| `F` | `src/app/(frontend)/app/flashcards/study/study-client.tsx` | Add "Statistics" button linking to `/app/flashcards/sessions` (stub) |
+| `F` | `src/app/(frontend)/app/flashcards/practice/practice-client.tsx` | Add "Statistics" button linking to `/app/flashcards/sessions` (stub) |
 
-**Also:** Add a "Statistics" button on the study setup page linking to per-session history.
+**Deferred / out of scope for this pass:**
+- Per-card breakdown (hardest/easiest cards, EF change) — requires response-time tracking per card during session, which needs additional state collection in `session-client.tsx`. Worth revisiting when per-card analytics are prioritized.
+- Per-session history page (`/app/flashcards/sessions`) — the "Statistics" button links to a stub route. Building the full history page is a separate feature that reads from `flashcard_study_sessions` and shows a list of past sessions with drill-down.
 
 ---
 
