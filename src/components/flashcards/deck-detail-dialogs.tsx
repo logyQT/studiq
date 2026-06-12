@@ -57,6 +57,8 @@ export interface DialogsState {
   bulkLinkDeckIds: string[];
   bulkMoveOpen: boolean;
   bulkMoveTargetDeckId: string | null;
+  bulkCopyOpen: boolean;
+  bulkCopyTargetDeckId: string | null;
   bulkTopicsOpen: boolean;
   bulkTopicsOperation: 'add' | 'remove' | 'set';
   bulkTopicIds: string[];
@@ -92,6 +94,7 @@ export interface DialogsHandlers {
   onBulkLink: () => void;
   onBulkTopics: () => void;
   onBulkMove: () => void;
+  onBulkCopy: () => void;
   onBulkTopicsOperationChange: (op: 'add' | 'remove' | 'set') => void;
   onBulkLinkDeckIdsChange: (ids: string[]) => void;
   onBulkMoveTargetDeckIdChange: (id: string | null) => void;
@@ -99,6 +102,8 @@ export interface DialogsHandlers {
   onBulkDeleteOpenChange: (open: boolean) => void;
   onBulkLinkOpenChange: (open: boolean) => void;
   onBulkMoveOpenChange: (open: boolean) => void;
+  onBulkCopyOpenChange: (open: boolean) => void;
+  onBulkCopyTargetDeckIdChange: (id: string | null) => void;
   onBulkTopicsOpenChange: (open: boolean) => void;
 }
 
@@ -713,9 +718,6 @@ export function DeckDetailDialogs({
                     <p className="text-xs text-muted-foreground truncate">{d.description}</p>
                   )}
                 </div>
-                <Badge variant="secondary">
-                  {t('flashcards_count', { count: d.flashcard_count })}
-                </Badge>
               </button>
             ))}
             {allDecks.length === 0 && (
@@ -733,6 +735,61 @@ export function DeckDetailDialogs({
             </Button>
             <Button onClick={handlers.onBulkMove} disabled={!state.bulkMoveTargetDeckId}>
               {t('bulk_move')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={state.bulkCopyOpen} onOpenChange={(open) => {
+        if (!open) {
+          handlers.onBulkCopyOpenChange(false);
+          handlers.onBulkCopyTargetDeckIdChange(null);
+        }
+      }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t('bulk_copy')}</DialogTitle>
+            <DialogDescription>{t('bulk_copy')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
+            {allDecks.map((d) => (
+              <button
+                key={d.id}
+                className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
+                  state.bulkCopyTargetDeckId === d.id ? 'border-primary bg-primary/5' : 'hover:bg-muted'
+                }`}
+                onClick={() => handlers.onBulkCopyTargetDeckIdChange(d.id)}
+              >
+                <div
+                  className={`h-4 w-4 rounded-full border-2 flex items-center justify-center ${
+                    state.bulkCopyTargetDeckId === d.id ? 'border-primary' : 'border-muted-foreground'
+                  }`}
+                >
+                  {state.bulkCopyTargetDeckId === d.id && <div className="h-2 w-2 rounded-full bg-primary" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{d.name}</p>
+                  {d.description && (
+                    <p className="text-xs text-muted-foreground truncate">{d.description}</p>
+                  )}
+                </div>
+              </button>
+            ))}
+            {allDecks.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {t('no_other_decks')}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              handlers.onBulkCopyOpenChange(false);
+              handlers.onBulkCopyTargetDeckIdChange(null);
+            }}>
+              {t('common_cancel')}
+            </Button>
+            <Button onClick={handlers.onBulkCopy} disabled={!state.bulkCopyTargetDeckId}>
+              {t('bulk_copy')}
             </Button>
           </DialogFooter>
         </DialogContent>

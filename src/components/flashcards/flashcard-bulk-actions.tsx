@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { Trash2, Link2, Tags, ArrowRight, X } from 'lucide-react';
+import { Trash2, Link2, Tags, ArrowRight, Copy, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 interface FlashcardBulkActionsProps {
@@ -9,6 +9,7 @@ interface FlashcardBulkActionsProps {
   canDelete: boolean;
   onDelete: () => void;
   onLink: () => void;
+  onCopy: () => void;
   onTopics: () => void;
   onMove: () => void;
   onClearSelection: () => void;
@@ -20,6 +21,7 @@ export function FlashcardBulkActions({
   canDelete,
   onDelete,
   onLink,
+  onCopy,
   onTopics,
   onMove,
   onClearSelection,
@@ -36,6 +38,9 @@ export function FlashcardBulkActions({
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onCopy}>
+            <Copy className="mr-1.5 h-4 w-4" /> {t('bulk_copy')}
+          </Button>
           <Button variant="outline" size="sm" onClick={onLink}>
             <Link2 className="mr-1.5 h-4 w-4" /> {t('bulk_link')}
           </Button>

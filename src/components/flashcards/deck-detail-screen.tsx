@@ -15,6 +15,7 @@ import {
   Play,
   CheckSquare,
   Square,
+  CheckCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -99,6 +100,23 @@ export function DeckDetailScreen({
     mutationFn: (data: { front: string; back: string; topicIds?: string[] }) =>
       apiPost<Flashcard>('/api/v1/flashcards', { ...data, deckId }),
     invalidateKeys: [flashcardQueryKey],
+    onMutate: async (data) => {
+      await queryClient.cancelQueries({ queryKey: flashcardQueryKey });
+      const prev = queryClient.getQueryData<Flashcard[]>(flashcardQueryKey);
+      const tempCard: Flashcard = {
+        id: `temp-${Date.now()}`,
+        front: data.front,
+        back: data.back,
+        created_by: user?.id ?? '',
+        flashcard_topic_assignments: data.topicIds?.map((topic_id) => ({ topic_id })) ?? [],
+        flashcard_deck_assignments: [{ deck_id: deckId }],
+      };
+      queryClient.setQueryData<Flashcard[]>(flashcardQueryKey, (old) =>
+        [tempCard, ...(old ?? [])],
+      );
+      return { previous: prev };
+    },
+    onError: (_err, _vars, ctx) => { queryClient.setQueryData(flashcardQueryKey, ctx?.previous); },
   });
   const updateFlashcard = useApiMutation({
     mutationFn: ({ id, ...data }: { id: string; front: string; back: string; topicIds: string[] }) =>
@@ -114,10 +132,11 @@ export function DeckDetailScreen({
     },
     onError: (_err, _vars, ctx) => { queryClient.setQueryData(flashcardQueryKey, ctx?.previous); },
   });
-  const deleteFlashcard = useApiMutation({
-    mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/${id}`),
+  const unlinkFlashcard = useApiMutation({
+    mutationFn: (data: { id: string; deckId: string }) =>
+      apiPost(`/api/v1/flashcards/${data.id}/unlink`, { deckId: data.deckId }),
     invalidateKeys: [flashcardQueryKey],
-    onMutate: async (id) => {
+    onMutate: async ({ id }) => {
       await queryClient.cancelQueries({ queryKey: flashcardQueryKey });
       const prev = queryClient.getQueryData<Flashcard[]>(flashcardQueryKey);
       queryClient.setQueryData<Flashcard[]>(flashcardQueryKey, (old) =>
@@ -125,7 +144,7 @@ export function DeckDetailScreen({
       );
       return { previous: prev };
     },
-    onError: (_err, _id, ctx) => { queryClient.setQueryData(flashcardQueryKey, ctx?.previous); },
+    onError: (_err, _vars, ctx) => { queryClient.setQueryData(flashcardQueryKey, ctx?.previous); },
   });
   const updateDeck = useApiMutation({
     mutationFn: ({ id, ...data }: { id: string; name: string; description?: string }) =>
@@ -155,10 +174,11 @@ export function DeckDetailScreen({
     onError: (_err, _id, ctx) => { queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous); },
   });
 
-  const batchDeleteCards = useApiMutation({
-    mutationFn: (ids: string[]) => apiPost('/api/v1/flashcards/batch/delete', { ids }),
+  const batchUnlinkCards = useApiMutation({
+    mutationFn: (data: { ids: string[]; deckId: string }) =>
+      apiPost('/api/v1/flashcards/batch/unlink', { ids: data.ids, deckId: data.deckId }),
     invalidateKeys: [flashcardQueryKey, flashcardKeys.decks.all],
-    onMutate: async (ids) => {
+    onMutate: async ({ ids }) => {
       await queryClient.cancelQueries({ queryKey: flashcardQueryKey });
       const prev = queryClient.getQueryData<Flashcard[]>(flashcardQueryKey);
       queryClient.setQueryData<Flashcard[]>(flashcardQueryKey, (old) =>
@@ -166,7 +186,7 @@ export function DeckDetailScreen({
       );
       return { previous: prev };
     },
-    onError: (_err, _ids, ctx) => { queryClient.setQueryData(flashcardQueryKey, ctx?.previous); },
+    onError: (_err, _vars, ctx) => { queryClient.setQueryData(flashcardQueryKey, ctx?.previous); },
   });
 
   const batchLinkCards = useApiMutation({
@@ -205,8 +225,14 @@ export function DeckDetailScreen({
     onError: (_err, _data, ctx) => { queryClient.setQueryData(flashcardQueryKey, ctx?.previous); },
   });
 
-  const batchMoveCards = useApiMutation({
+  const batchCopyCards = useApiMutation({
     mutationFn: (data: { ids: string[]; targetDeckId: string }) =>
+      apiPost('/api/v1/flashcards/batch/copy', data),
+    invalidateKeys: [flashcardQueryKey, flashcardKeys.decks.all],
+  });
+
+  const batchMoveCards = useApiMutation({
+    mutationFn: (data: { ids: string[]; sourceDeckId: string; targetDeckId: string }) =>
       apiPost('/api/v1/flashcards/batch/move', data),
     invalidateKeys: [flashcardQueryKey, flashcardKeys.decks.all],
     onMutate: async (data) => {
@@ -248,6 +274,8 @@ export function DeckDetailScreen({
     bulkLinkDeckIds: [],
     bulkMoveOpen: false,
     bulkMoveTargetDeckId: null,
+    bulkCopyOpen: false,
+    bulkCopyTargetDeckId: null,
     bulkTopicsOpen: false,
     bulkTopicsOperation: 'set',
     bulkTopicIds: [],
@@ -313,7 +341,7 @@ export function DeckDetailScreen({
   async function handleDelete() {
     if (!d.deleteId) return;
     try {
-      await deleteFlashcard.mutateAsync(d.deleteId);
+      await unlinkFlashcard.mutateAsync({ id: d.deleteId, deckId });
       toast.success(t('flashcard_deleted'));
     } catch {
       toast.error(t('delete_failed'));
@@ -443,7 +471,7 @@ export function DeckDetailScreen({
     const ids = d.selectedIds;
     if (ids.length === 0) return;
     try {
-      await batchDeleteCards.mutateAsync(ids);
+      await batchUnlinkCards.mutateAsync({ ids, deckId });
       clearSelection();
       setD((prev) => ({ ...prev, bulkDeleteOpen: false }));
       toast.success(t('flashcard_deleted'));
@@ -486,12 +514,26 @@ export function DeckDetailScreen({
     const targetDeckId = d.bulkMoveTargetDeckId;
     if (ids.length === 0 || !targetDeckId) return;
     try {
-      await batchMoveCards.mutateAsync({ ids, targetDeckId });
+      await batchMoveCards.mutateAsync({ ids, sourceDeckId: deckId, targetDeckId });
       clearSelection();
       setD((prev) => ({ ...prev, bulkMoveOpen: false, bulkMoveTargetDeckId: null }));
       toast.success(t('bulk_moved'));
     } catch {
       toast.error(t('save_failed'));
+    }
+  }
+
+  async function handleBulkCopy() {
+    const ids = d.selectedIds;
+    const targetDeckId = d.bulkCopyTargetDeckId;
+    if (ids.length === 0 || !targetDeckId) return;
+    try {
+      await batchCopyCards.mutateAsync({ ids, targetDeckId });
+      clearSelection();
+      setD((prev) => ({ ...prev, bulkCopyOpen: false, bulkCopyTargetDeckId: null }));
+      toast.success(t('flashcard_copied'));
+    } catch {
+      toast.error(t('copy_failed'));
     }
   }
 
@@ -525,13 +567,16 @@ export function DeckDetailScreen({
     onBulkLink: handleBulkLink,
     onBulkTopics: handleBulkTopics,
     onBulkMove: handleBulkMove,
+    onBulkCopy: handleBulkCopy,
     onBulkTopicsOperationChange: (op) => setD((prev) => ({ ...prev, bulkTopicsOperation: op })),
     onBulkLinkDeckIdsChange: (bulkLinkDeckIds) => setD((prev) => ({ ...prev, bulkLinkDeckIds })),
     onBulkMoveTargetDeckIdChange: (bulkMoveTargetDeckId) => setD((prev) => ({ ...prev, bulkMoveTargetDeckId })),
+    onBulkCopyTargetDeckIdChange: (bulkCopyTargetDeckId) => setD((prev) => ({ ...prev, bulkCopyTargetDeckId })),
     onBulkTopicIdsChange: (bulkTopicIds) => setD((prev) => ({ ...prev, bulkTopicIds })),
     onBulkDeleteOpenChange: (open) => setD((prev) => ({ ...prev, bulkDeleteOpen: open })),
     onBulkLinkOpenChange: (open) => setD((prev) => ({ ...prev, bulkLinkOpen: open })),
     onBulkMoveOpenChange: (open) => setD((prev) => ({ ...prev, bulkMoveOpen: open })),
+    onBulkCopyOpenChange: (open) => setD((prev) => ({ ...prev, bulkCopyOpen: open })),
     onBulkTopicsOpenChange: (open) => setD((prev) => ({ ...prev, bulkTopicsOpen: open })),
   };
 
@@ -617,6 +662,23 @@ export function DeckDetailScreen({
           <p className="text-sm text-muted-foreground">{t('flip_hint')}</p>
         </div>
         <div className="flex items-center gap-2">
+          {isSelecting && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const allSelected = flashcards.every(fc => selectedIds.has(fc.id));
+                if (allSelected) {
+                  setSelectedIds(new Set());
+                } else {
+                  setSelectedIds(new Set(flashcards.map(fc => fc.id)));
+                }
+              }}
+            >
+              <CheckCheck className="mr-2 h-4 w-4" />
+              {flashcards.every(fc => selectedIds.has(fc.id)) ? t('deselect_all') : t('select_all')}
+            </Button>
+          )}
           <Button
             variant={isSelecting ? 'secondary' : 'outline'}
             size="sm"
@@ -660,7 +722,7 @@ export function DeckDetailScreen({
               isFlipped={flippedId === fc.id}
               gradient={gradient}
               canUpdate={can(role, 'flashcard.update', fc.created_by, user?.id)}
-              canDelete={can(role, 'flashcard.delete', fc.created_by, user?.id) ?? false}
+              canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false}
               topics={topics}
               t={t}
               selected={selectedIds.has(fc.id)}
@@ -685,6 +747,7 @@ export function DeckDetailScreen({
         onDelete={() => setD((prev) => ({ ...prev, bulkDeleteOpen: true, selectedIds: Array.from(selectedIds) }))}
         onLink={() => setD((prev) => ({ ...prev, bulkLinkOpen: true, bulkLinkDeckIds: [], selectedIds: Array.from(selectedIds) }))}
         onTopics={() => setD((prev) => ({ ...prev, bulkTopicsOpen: true, bulkTopicIds: [], bulkTopicsOperation: 'set', selectedIds: Array.from(selectedIds) }))}
+        onCopy={() => setD((prev) => ({ ...prev, bulkCopyOpen: true, bulkCopyTargetDeckId: null, selectedIds: Array.from(selectedIds) }))}
         onMove={() => setD((prev) => ({ ...prev, bulkMoveOpen: true, bulkMoveTargetDeckId: null, selectedIds: Array.from(selectedIds) }))}
         onClearSelection={clearSelection}
         t={t}

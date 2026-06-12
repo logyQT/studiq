@@ -10,6 +10,9 @@ import type {
   BatchLinkInput,
   BatchTopicsInput,
   BatchMoveInput,
+  BatchCopyInput,
+  UnlinkFlashcardInput,
+  BatchUnlinkInput,
 } from '@/server/models';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
@@ -404,7 +407,7 @@ export class FlashcardService {
 
     const { data: flashcards, error: fetchError } = await supabase
       .from('flashcards')
-      .select('*')
+      .select('id, created_by, university_id')
       .in('id', data.ids);
 
     if (fetchError) throw mapSupabaseError(fetchError);
@@ -416,7 +419,7 @@ export class FlashcardService {
 
     const { data: decks } = await supabase
       .from('flashcard_decks')
-      .select('*')
+      .select('id, created_by, university_id')
       .in('id', data.deckIds);
 
     const deckMap = new Map(decks?.map((d) => [d.id, d]) ?? []);
@@ -437,6 +440,61 @@ export class FlashcardService {
     if (insertError) throw mapSupabaseError(insertError);
 
     return { linked: data.ids.length * data.deckIds.length };
+  }
+
+  async unlinkFromDeck(id: string, data: UnlinkFlashcardInput, ctx: RequestContext) {
+    const supabase = await createClient();
+
+    const { data: assignment, error: fetchError } = await supabase
+      .from('flashcard_deck_assignments')
+      .select('flashcard_id, deck_id')
+      .eq('flashcard_id', id)
+      .eq('deck_id', data.deckId)
+      .single();
+
+    if (fetchError || !assignment) throw new AppError('NOT_FOUND');
+
+    const { data: deck } = await supabase
+      .from('flashcard_decks')
+      .select('*')
+      .eq('id', data.deckId)
+      .single();
+
+    if (!deck) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.DECK_UPDATE, deck);
+
+    const { error } = await supabase
+      .from('flashcard_deck_assignments')
+      .delete()
+      .eq('flashcard_id', id)
+      .eq('deck_id', data.deckId);
+
+    if (error) throw mapSupabaseError(error);
+
+    return { success: true };
+  }
+
+  async batchUnlinkFromDeck(data: BatchUnlinkInput, ctx: RequestContext) {
+    const supabase = await createClient();
+
+    const { data: deck } = await supabase
+      .from('flashcard_decks')
+      .select('*')
+      .eq('id', data.deckId)
+      .single();
+
+    if (!deck) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.DECK_UPDATE, deck);
+
+    const { error } = await supabase
+      .from('flashcard_deck_assignments')
+      .delete()
+      .in('flashcard_id', data.ids)
+      .eq('deck_id', data.deckId);
+
+    if (error) throw mapSupabaseError(error);
+
+    return { unlinked: data.ids.length };
   }
 
   async batchTopics(data: BatchTopicsInput, ctx: RequestContext) {
@@ -525,17 +583,88 @@ export class FlashcardService {
     if (!deck) throw new AppError('NOT_FOUND');
     await checkPermission(ctx, Permission.DECK_UPDATE, deck);
 
-    await supabase.from('flashcard_deck_assignments').delete().in('flashcard_id', data.ids);
-
     const assignments = data.ids.map((flashcardId) => ({
       flashcard_id: flashcardId,
       deck_id: data.targetDeckId,
     }));
 
-    const { error } = await supabase.from('flashcard_deck_assignments').insert(assignments);
-    if (error) throw mapSupabaseError(error);
+    const { error: insertError } = await supabase.from('flashcard_deck_assignments').insert(assignments);
+    if (insertError) throw mapSupabaseError(insertError);
+
+    await supabase.from('flashcard_deck_assignments').delete().in('flashcard_id', data.ids).eq('deck_id', data.sourceDeckId);
 
     return { moved: data.ids.length };
+  }
+
+  async batchCopy(data: BatchCopyInput, ctx: RequestContext) {
+    const supabase = await createClient();
+
+    const { data: originals, error: fetchError } = await supabase
+      .from('flashcards')
+      .select('*')
+      .in('id', data.ids);
+
+    if (fetchError) throw mapSupabaseError(fetchError);
+    if (!originals || originals.length === 0) throw new AppError('NOT_FOUND');
+
+    for (const fc of originals) {
+      await checkPermission(ctx, Permission.FLASHCARD_READ, fc);
+    }
+
+    const { data: deck } = await supabase
+      .from('flashcard_decks')
+      .select('*')
+      .eq('id', data.targetDeckId)
+      .single();
+
+    if (!deck) throw new AppError('NOT_FOUND');
+    await checkPermission(ctx, Permission.DECK_UPDATE, deck);
+
+    const universityId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.universityId : null;
+
+    const cardsToInsert = originals.map((fc) => ({
+      front: fc.front,
+      back: fc.back,
+      created_by: ctx.userId,
+      university_id: universityId,
+    }));
+
+    const { data: newFlashcards, error: insertError } = await supabase
+      .from('flashcards')
+      .insert(cardsToInsert)
+      .select();
+
+    if (insertError) throw mapSupabaseError(insertError);
+    if (!newFlashcards || newFlashcards.length === 0) throw new AppError('NOT_FOUND');
+
+    const { data: topicAssignments } = await supabase
+      .from('flashcard_topic_assignments')
+      .select('flashcard_id, topic_id')
+      .in('flashcard_id', data.ids);
+
+    if (topicAssignments && topicAssignments.length > 0) {
+      const oldToNew = new Map(originals.map((fc, i) => [fc.id, newFlashcards[i].id]));
+      const newAssignments = topicAssignments
+        .map((a) => ({
+          flashcard_id: oldToNew.get(a.flashcard_id),
+          topic_id: a.topic_id,
+        }))
+        .filter((a): a is { flashcard_id: string; topic_id: string } => !!a.flashcard_id);
+
+      if (newAssignments.length > 0) {
+        await supabase.from('flashcard_topic_assignments').insert(newAssignments);
+      }
+    }
+
+    const deckAssignments = newFlashcards.map((fc) => ({
+      flashcard_id: fc.id,
+      deck_id: data.targetDeckId,
+    }));
+
+    const { error: daError } = await supabase.from('flashcard_deck_assignments').insert(deckAssignments);
+    if (daError) throw mapSupabaseError(daError);
+
+    return { copied: data.ids.length, flashcards: newFlashcards };
   }
 }
 

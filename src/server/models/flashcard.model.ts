@@ -96,6 +96,21 @@ export const BatchLinkSchema = registry.register(
   }),
 );
 
+export const UnlinkFlashcardSchema = registry.register(
+  'UnlinkFlashcardRequest',
+  z.object({
+    deckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
+  }),
+);
+
+export const BatchUnlinkSchema = registry.register(
+  'BatchUnlinkRequest',
+  z.object({
+    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    deckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
+  }),
+);
+
 export const BatchTopicsSchema = registry.register(
   'BatchTopicsRequest',
   z.object({
@@ -109,6 +124,15 @@ export const BatchMoveSchema = registry.register(
   'BatchMoveRequest',
   z.object({
     ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    sourceDeckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
+    targetDeckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
+  }),
+);
+
+export const BatchCopySchema = registry.register(
+  'BatchCopyRequest',
+  z.object({
+    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
     targetDeckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
   }),
 );
@@ -117,5 +141,8 @@ export type LinkFlashcardInput = z.infer<typeof LinkFlashcardSchema>;
 export type CopyFlashcardInput = z.infer<typeof CopyFlashcardSchema>;
 export type BatchDeleteInput = z.infer<typeof BatchDeleteSchema>;
 export type BatchLinkInput = z.infer<typeof BatchLinkSchema>;
+export type UnlinkFlashcardInput = z.infer<typeof UnlinkFlashcardSchema>;
+export type BatchUnlinkInput = z.infer<typeof BatchUnlinkSchema>;
 export type BatchTopicsInput = z.infer<typeof BatchTopicsSchema>;
 export type BatchMoveInput = z.infer<typeof BatchMoveSchema>;
+export type BatchCopyInput = z.infer<typeof BatchCopySchema>;

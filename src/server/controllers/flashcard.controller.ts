@@ -9,6 +9,9 @@ import {
   BatchLinkSchema,
   BatchTopicsSchema,
   BatchMoveSchema,
+  BatchCopySchema,
+  UnlinkFlashcardSchema,
+  BatchUnlinkSchema,
 } from '@/server/models';
 import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
@@ -208,6 +211,63 @@ export class FlashcardController {
       }
 
       const result = await flashcardService.batchMove(parsed.data, ctx);
+
+      return { success: true, statusCode: 200, data: result };
+    }, ctx);
+  }
+
+  async unlinkFromDeck(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = UnlinkFlashcardSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const result = await flashcardService.unlinkFromDeck(id, parsed.data, ctx);
+
+      return { success: true, statusCode: 200, data: result };
+    }, ctx);
+  }
+
+  async batchUnlink(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = BatchUnlinkSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const result = await flashcardService.batchUnlinkFromDeck(parsed.data, ctx);
+
+      return { success: true, statusCode: 200, data: result };
+    }, ctx);
+  }
+
+  async batchCopy(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = BatchCopySchema.safeParse(body);
+
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const result = await flashcardService.batchCopy(parsed.data, ctx);
 
       return { success: true, statusCode: 200, data: result };
     }, ctx);

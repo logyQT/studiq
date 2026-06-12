@@ -19,8 +19,11 @@ Backend endpoints for batch flashcard operations. Required before any bulk UI.
 |----------|--------|------|------------|----------|
 | `/api/v1/flashcards/batch/delete` | `POST` | `{ ids: string[] }` | `FLASHCARD_DELETE` per card | Fails on first card without permission |
 | `/api/v1/flashcards/batch/link` | `POST` | `{ ids: string[], deckIds: string[] }` | `FLASHCARD_READ` per card + `DECK_UPDATE` per deck | Bulk upsert `flashcard_deck_assignments` |
+| `/api/v1/flashcards/batch/unlink` | `POST` | `{ ids: string[], deckId: string }` | `DECK_UPDATE` on deck | Remove `flashcard_deck_assignments` rows (trigger cleans orphans) |
 | `/api/v1/flashcards/batch/topics` | `POST` | `{ ids: string[], topicIds?: string[], operation: 'add'\|'remove'\|'set' }` | `FLASHCARD_UPDATE` per card | `add`: merge, `remove`: unassign, `set`: replace all |
-| `/api/v1/flashcards/batch/move` | `POST` | `{ ids: string[], targetDeckId: string }` | `FLASHCARD_UPDATE` per card + `DECK_UPDATE` on target | Delete existing deck assignments, insert target |
+| `/api/v1/flashcards/batch/move` | `POST` | `{ ids: string[], sourceDeckId: string, targetDeckId: string }` | `FLASHCARD_UPDATE` per card + `DECK_UPDATE` on target | Insert target deck assignment first, then delete from source deck (avoids trigger orphan race) |
+| `/api/v1/flashcards/batch/copy` | `POST` | `{ ids: string[], targetDeckId: string }` | `FLASHCARD_READ` per card + `DECK_UPDATE` on target | Duplicate flashcards + topic assignments, assign copies to target deck |
+| `/api/v1/flashcards/[id]/unlink` | `POST` | `{ deckId: string }` | `DECK_UPDATE` on deck | Single-flashcard unlink from deck |
 
 **Files created/modified:**
 
@@ -28,17 +31,23 @@ Backend endpoints for batch flashcard operations. Required before any bulk UI.
 |-------|-------|
 | Routes (new) | `src/app/(backend)/api/v1/flashcards/batch/delete/route.ts` |
 | | `src/app/(backend)/api/v1/flashcards/batch/link/route.ts` |
+| | `src/app/(backend)/api/v1/flashcards/batch/unlink/route.ts` |
 | | `src/app/(backend)/api/v1/flashcards/batch/topics/route.ts` |
 | | `src/app/(backend)/api/v1/flashcards/batch/move/route.ts` |
-| Controller | `src/server/controllers/flashcard.controller.ts` — `batchDelete`, `batchLink`, `batchTopics`, `batchMove` |
-| Service | `src/server/services/flashcard.service.ts` — 4 batch methods with RBAC |
-| Model | `src/server/models/flashcard.model.ts` — `BatchDeleteSchema`, `BatchLinkSchema`, `BatchTopicsSchema`, `BatchMoveSchema` + inferred types |
+| | `src/app/(backend)/api/v1/flashcards/batch/copy/route.ts` |
+| | `src/app/(backend)/api/v1/flashcards/[id]/unlink/route.ts` |
+| Controller | `src/server/controllers/flashcard.controller.ts` — `batchDelete`, `batchLink`, `batchUnlink`, `batchTopics`, `batchMove`, `batchCopy`, `unlinkFromDeck` |
+| Service | `src/server/services/flashcard.service.ts` — 7 batch methods with RBAC |
+| Model | `src/server/models/flashcard.model.ts` — `BatchDeleteSchema`, `BatchLinkSchema`, `BatchUnlinkSchema`, `BatchTopicsSchema`, `BatchMoveSchema`, `BatchCopySchema`, `UnlinkFlashcardSchema` + inferred types |
 
 **Design decisions:**
 - Permission checked per card; first failure throws and aborts the batch.
 - `batch/link` checks each deck once via `in()` query, not per card-deck pair.
 - `batch/topics` uses 3 operations: `add` (deduped), `remove` (filtered), `set` (delete-all + insert).
-- `batch/move`: delete all existing deck assignments for these cards, then insert the new one.
+- `batch/unlink` checks `DECK_UPDATE` on the deck (not flashcard ownership) — deck owner can remove cards.
+- `batch/move`: insert target deck assignment first, then delete from source deck. Order avoids the orphan cleanup trigger (AFTER DELETE FOR EACH STATEMENT) deleting flashcards mid-operation.
+- `batch/copy` duplicates flashcards + their topic assignments, then assigns copies to target deck. Uses `PostgrestBuilder` return to get inserted IDs.
+- `[id]/unlink`: single-card variant. Checks `DECK_UPDATE` only. DB trigger `trg_flashcard_deck_assignments_cleanup` removes flashcards with zero remaining assignments.
 
 ---
 
@@ -102,40 +111,48 @@ Uses simple RBAC filter parameters (not JSONB) — the service resolves `buildQu
 
 | Layer | Files | Changes |
 |-------|-------|---------|
-| `F` | `src/components/flashcards/flashcard-card.tsx` | Added `selected`/`selectable`/`onToggleSelect` props + `Checkbox` (top-left, `e.stopPropagation()`) |
-| `F` | New: `src/components/flashcards/flashcard-bulk-actions.tsx` | Fixed-bottom floating bar with Link/Topics/Move/Delete buttons, count display, cancel |
-| `F` | `src/components/flashcards/deck-detail-dialogs.tsx` | 4 bulk dialogs added: DeleteConfirm (reused), Link (checkbox deck picker), Move (radio deck picker w/ flashcard count), Topics (add/remove/set mode toggle + topic checkboxes). All via `DialogsState`/`DialogsHandlers` bulk fields + dedicated handlers |
-| `F` | `src/components/flashcards/deck-detail-screen.tsx` | `selectedIds: Set<string>` state + `isSelecting` toggle. 4 `useApiMutation` hooks with optimistic cache updates. "Select" header button. `onFlip` disabled during selection. |
-| `I` | `src/i18n/messages/en.json`, `src/i18n/messages/pl.json` | 13 batch keys in both `AppFlashcardDeckViewPage` and `EduDeckViewPage` namespaces (`select_cards`, `cancel_selection`, `n_selected`, `bulk_delete/link/topics/move`, `bulk_delete_title/desc`, `bulk_linked/topics_updated/moved`, `bulk_topics_set`) |
+| `F` | `src/components/flashcards/flashcard-card.tsx` | Added `selected`/`selectable`/`onToggleSelect` props + `Checkbox` (top-left, `e.stopPropagation()`). Context menu delete calls `onDelete` only when `canDelete` (`deck.update`) — otherwise hides. View-only flashcards show delete option when user owns the deck. |
+| `F` | `src/components/flashcards/flashcard-bulk-actions.tsx` | Fixed-bottom floating bar with Copy/Link/Topics/Move/Delete buttons, count display, cancel |
+| `F` | `src/components/flashcards/deck-detail-dialogs.tsx` | 6 bulk dialogs: DeleteConfirm (reused), Link (checkbox deck picker), Unlink (confirmation), Copy (radio deck picker), Move (radio deck picker w/ flashcard count), Topics (add/remove/set mode toggle + topic checkboxes). All via `DialogsState`/`DialogsHandlers` bulk fields + dedicated handlers |
+| `F` | `src/components/flashcards/deck-detail-screen.tsx` | `selectedIds: Set<string>` state + `isSelecting` toggle. 6 `useApiMutation` hooks with optimistic cache updates. "Select" header button + "Select All / Deselect All" toggle. `onFlip` disabled during selection. |
+| `F` | `src/components/flashcards/view-only-flashcard-context-menu.tsx` | Added optional `onDelete` prop — shown when user owns the deck (`deck.update`) |
+| `I` | `src/i18n/messages/en.json`, `src/i18n/messages/pl.json` | 13 original batch keys + 3 new (`select_all`, `deselect_all`, `bulk_copy`) in both `AppFlashcardDeckViewPage` and `EduDeckViewPage` namespaces |
 
 **Files modified:**
 - `src/components/flashcards/deck-detail-screen.tsx` — orchestration layer
 - `src/components/flashcards/deck-detail-dialogs.tsx` — bulk dialogs
-- `src/components/flashcards/flashcard-card.tsx` — selection checkbox
-- `src/i18n/messages/en.json` — 13 keys
-- `src/i18n/messages/pl.json` — 13 keys
+- `src/components/flashcards/flashcard-card.tsx` — selection checkbox + view-only context menu wiring
+- `src/components/flashcards/view-only-flashcard-context-menu.tsx` — `onDelete` prop
+- `src/i18n/messages/en.json` — 16 keys
+- `src/i18n/messages/pl.json` — 16 keys
 
 **Files created:**
 - `src/components/flashcards/flashcard-bulk-actions.tsx` — floating action bar
 
-**Optimistic updates (4 `useApiMutation` hooks):**
+**Optimistic updates (6 `useApiMutation` hooks + 1 single-card):**
 
 | Mutation | Strategy | Invalidates |
 |----------|----------|-------------|
-| `batchDeleteCards` | Filter out selected IDs from cache | `flashcardQueryKey`, `flashcardKeys.decks.all` |
+| `batchDeleteCards` (now calls `batch/unlink`) | Filter out selected IDs from cache | `flashcardQueryKey`, `flashcardKeys.decks.all` |
 | `batchLinkCards` | No cache change (current deck unaffected) | `flashcardKeys.decks.all` |
+| `batchUnlinkCards` | Filter out unlinked IDs from cache | `flashcardQueryKey`, `flashcardKeys.decks.all` |
 | `batchTopicCards` | Update `flashcard_topic_assignments` on cached cards inline (add/remove/set) | `flashcardQueryKey` |
 | `batchMoveCards` | Filter out selected IDs from cache | `flashcardQueryKey`, `flashcardKeys.decks.all` |
+| `batchCopyCards` | No cache change (current deck unaffected) | `flashcardQueryKey`, `flashcardKeys.decks.all` |
+| `createFlashcard` | Prepend new card to cache | No invalidate (optimistic) |
 
-All 4 roll back on error via `onError` restoring the pre-mutation snapshot.
+All 6 batch mutations roll back on error via `onError` restoring the pre-mutation snapshot. `createFlashcard` also rolls back on error.
 
 **Design decisions:**
+- "Delete" in deck context = unlink from deck (remove `flashcard_deck_assignments` row). DB trigger cleans orphan flashcards with zero remaining assignments.
+- Unlink permission checks `DECK_UPDATE` only (deck ownership), not `FLASHCARD_UPDATE`.
 - Selection is a `Set<string>` local to the orchestrator, mirrored as `selectedIds: string[]` in `DialogsState` (snapshot taken when dialog opens, ensures consistent operation even if selection changes while dialog is open).
 - `d.selectedIds` is used by handlers, not the live `selectedIds` Set — prevents stale-closeure bugs from async dialog flow.
-- Each bulk dialog writes to dedicated bulk state fields (`bulkLinkDeckIds`, `bulkMoveTargetDeckId`, `bulkTopicIds`) via dedicated handlers (`onBulkLinkDeckIdsChange`, `onBulkMoveTargetDeckIdChange`, `onBulkTopicIdsChange`) — not the single-card handlers.
+- Each bulk dialog writes to dedicated bulk state fields (`bulkLinkDeckIds`, `bulkMoveTargetDeckId`, `bulkCopyTargetDeckId`, `bulkTopicIds`) via dedicated handlers — not the single-card handlers.
 - `onOpenChange` callbacks properly close dialogs + clear data on cancel/backdrop-dismiss.
 - `onFlip` returns empty function during selection mode — prevents card flip vs checkbox conflict.
 - `clearSelection()` runs on success before toast; selection is preserved on error for retry.
+- Select All / Deselect All is a single dual-toggle button (`CheckCheck` icon, outline variant). Text flips based on whether every visible card is selected.
 
 ---
 

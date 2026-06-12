@@ -75,7 +75,13 @@ export function FlashcardCard({
       className={`group relative min-h-48 cursor-pointer transition-all duration-300 hover:shadow-lg ${
         isFlipped ? `bg-gradient-to-br ${gradient}` : ''
       }`}
-      onClick={() => onFlip(isFlipped ? '' : fc.id)}
+      onClick={() => {
+        if (selectable) {
+          onToggleSelect?.(fc.id);
+        } else {
+          onFlip(isFlipped ? '' : fc.id);
+        }
+      }}
     >
       {selectable && (
         <div className="absolute left-2 top-2 z-10" onClick={(e) => e.stopPropagation()}>
@@ -120,6 +126,7 @@ export function FlashcardCard({
                 t={t}
                 onLink={() => onLink(fc)}
                 onCopy={() => onCopy(fc)}
+                onDelete={canDelete ? () => onDelete(fc.id) : null}
               />
             )}
           </DropdownMenuContent>

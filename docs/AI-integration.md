@@ -3,6 +3,7 @@
 This document describes the phased development of the AI subsystem for the StudiQ educational platform. Each phase builds on the previous one.
 
 **Organization:**
+
 - **Phase 1 (Basic/MVP)** — core AI features, usage controls, chat interface
 - **Phase 2 (V2)** — new input types, modular commands, Tutor Mode
 - **Phase 3 (V3)** — multi-agent pipelines, curriculum builder, workflows
@@ -11,17 +12,113 @@ This document describes the phased development of the AI subsystem for the Studi
 
 ## Legend
 
-| Icon | Meaning |
-|------|---------|
-| ✅ | Already implemented in codebase |
-| ⚠️ | Partially implemented, needs extension |
-| 🆕 | Not yet built |
+| Icon | Meaning                                |
+| ---- | -------------------------------------- |
+| ✅   | Already implemented in codebase        |
+| ⚠️   | Partially implemented, needs extension |
+| 🆕   | Not yet built                          |
+
+---
+
+# LLMGateway — Unified LLM Access Layer
+
+Cross-cutting component — foundational dependency for all phases. A single function `callLLM` that is the **only code path** for all LLM communication — both external SaaS (OpenAI, Anthropic, Google, Groq) and self-hosted (Ollama, vLLM, etc.).
+
+## API
+
+```typescript
+// src/server/ai/llm-gateway.ts  🆕
+
+type LLMGatewayRequest = {
+  prompt: string;
+  systemPrompt?: string;
+  file?: { data: string; mimeType: string };
+  provider?: 'openai' | 'anthropic' | 'google' | 'groq' | 'ollama';
+  model?: string;
+  responseFormat?: 'text' | 'json';
+  maxTokens?: number;
+};
+
+type LLMGatewayResponse = {
+  content: string;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    provider: string;
+    model: string;
+  };
+};
+
+async function callLLM(req: LLMGatewayRequest, ctx: RequestContext): Promise<LLMGatewayResponse>;
+```
+
+## Responsibilities
+
+Inside `callLLM`, executed in order:
+
+1. **Provider resolution** — `req.provider` or fallback to `LLM_PROVIDER` env var
+2. **Auth resolution** — reads correct API key for chosen provider (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_AI_KEY`, `GROQ_API_KEY`, or `LLM_API_KEY`)
+3. **Usage guard** — invoke `checkUsage(ctx.userId, actionType, plan)` before HTTP call; reject early if limit exceeded
+4. **Model selection** — `req.model` overrides `LLM_MODEL_NAME` env var
+5. **Request assembly** — build provider-specific body (attaches file for vision/audio models)
+6. **HTTP call** — `fetch` with timeout, error mapping
+7. **Response parsing** — extract content + token counts from provider's `usage` field
+8. **Usage recording** — `INSERT INTO usage_events(user_id, action_type, input_type, input_tokens, output_tokens, provider, model)`
+9. **Return** — `{ content, usage }`
+
+## Supported Providers
+
+| Provider    | Env Key                     | Default Model             | Notes                                        |
+| ----------- | --------------------------- | ------------------------- | -------------------------------------------- |
+| `openai`    | `OPENAI_API_KEY`            | `gpt-4o-mini`             | Chat completions, vision via content parts   |
+| `anthropic` | `ANTHROPIC_API_KEY`         | `claude-3-haiku-20240307` | Messages API, vision via base64 media        |
+| `google`    | `GOOGLE_AI_KEY`             | `gemini-2.0-flash`        | Gemini API                                   |
+| `groq`      | `GROQ_API_KEY`              | `llama-3.3-70b-versatile` | OpenAI-compatible, fast inference            |
+| `ollama`    | (none, uses `LLM_BASE_URL`) | `llama3`                  | Local, `LLM_BASE_URL=http://localhost:11434` |
+
+## File / Multimodal Support
+
+If `file` is provided, the gateway attaches it per the provider's multimodal API:
+
+- **OpenAI**: `content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: 'data:mimeType;base64,data' } }]`
+- **Anthropic**: `content: [{ type: 'text', text: prompt }, { type: 'image', source: { type: 'base64', media_type: mimeType, data } }]`
+- **Ollama**: `images: [data]` field in generate request
+- **Google**: `inlineData` block in contents array
+
+## Usage in Pipelines
+
+All services call `callLLM` exclusively — they never construct raw HTTP requests to LLM APIs.
+
+```typescript
+// In FlashcardGenerationService:
+const response = await callLLM(
+  {
+    prompt: buildFlashcardPrompt(chunk, language),
+    systemPrompt: 'You generate educational flashcards.',
+    responseFormat: 'json',
+  },
+  ctx,
+);
+const cards = parseJsonResponse(response.content);
+```
+
+## Error Handling
+
+| Condition               | AppError Code          |
+| ----------------------- | ---------------------- |
+| Network error / timeout | `SERVICE_UNAVAILABLE`  |
+| Invalid API key         | `UNAUTHORIZED`         |
+| Provider rate limit     | `RATE_LIMITED`         |
+| Usage limit exceeded    | `USAGE_LIMIT_EXCEEDED` |
+| Unsupported provider    | `BAD_REQUEST`          |
 
 ---
 
 # Phase 1 — Basic (MVP AI)
 
 ## Goals
+
 - Deliver core AI-powered study features to subscribed users
 - Maintain model-agnostic backend (OpenAI / Ollama)
 - Introduce subscription-based access with usage controls
@@ -30,25 +127,28 @@ This document describes the phased development of the AI subsystem for the Studi
 ## Scope
 
 ### Inputs
-| Input | Status |
-|-------|--------|
-| Text (chat input) | 🆕 |
-| PDF upload | ✅ exists — `pdfService.ts`, Buffer extraction, chunking |
-| Text paste (raw) | 🆕 |
+
+| Input             | Status                                                   |
+| ----------------- | -------------------------------------------------------- |
+| Text (chat input) | 🆕                                                       |
+| PDF upload        | ✅ exists — `pdfService.ts`, Buffer extraction, chunking |
+| Text paste (raw)  | 🆕                                                       |
 
 ### AI Commands
-| Command | Status |
-|---------|--------|
-| `/flashcards pdf` | ⚠️ exists — only `frompdf` route, hardcoded to flashcards |
-| `/summary pdf` | 🆕 |
-| `/quiz pdf` | 🆕 |
-| `/explain pdf` | 🆕 |
-| `/flashcards text` | 🆕 — variant without PDF |
-| `/summary text` | 🆕 |
-| `/quiz text` | 🆕 |
-| `/explain text` | 🆕 |
+
+| Command            | Status                                                    |
+| ------------------ | --------------------------------------------------------- |
+| `/flashcards pdf`  | ⚠️ exists — only `frompdf` route, hardcoded to flashcards |
+| `/summary pdf`     | 🆕                                                        |
+| `/quiz pdf`        | 🆕                                                        |
+| `/explain pdf`     | 🆕                                                        |
+| `/flashcards text` | 🆕 — variant without PDF                                  |
+| `/summary text`    | 🆕                                                        |
+| `/quiz text`       | 🆕                                                        |
+| `/explain text`    | 🆕                                                        |
 
 ### Chat Context
+
 - Question-answering on uploaded document
 - Basic intent detection — user types "create flashcards from this" and system routes accordingly
 
@@ -56,64 +156,64 @@ This document describes the phased development of the AI subsystem for the Studi
 
 ### What already works
 
-| Component | File | Description |
-|-----------|------|-------------|
-| `LLMProvider` interface | `src/server/providers/LLMProvider.ts` | Defines `generateFlashcardsFromChunk()` + JSON repair utilities + `FLASHCARD_PROMPT` |
-| `OpenAIProvider` | `src/server/providers/openaiProvider.ts` | Implements `LLMProvider`, calls OpenAI chat completions with `response_format: json_object` |
-| `OllamaProvider` | `src/server/providers/ollamaProvider.ts` | Implements `LLMProvider`, calls Ollama generate |
-| `providerRegistry` | `src/server/providers/providerRegistry.ts` | Factory — selects provider based on `LLM_PROVIDER` env var |
-| `models.config` | `src/server/config/models.config.ts` | Reads `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL_NAME` from `.env` |
-| `pdfService` | `src/server/services/pdfService.ts` | `extractText(buffer)` via pdfjs-dist + `chunkText(text, minWords=500, maxWords=800, overlap=50)` + `suggestDeckName()` |
-| `FlashcardGenerationService` | `src/server/services/flashcard-generation.service.ts` | Orchestrates: extract -> chunk -> provider loop -> SSE callbacks |
-| `FlashcardGenerationController` | `src/server/controllers/flashcard-generation.controller.ts` | Validates language, delegates to service |
-| SSE route `POST /api/v1/flashcards/generate/frompdf` | `src/app/(backend)/api/v1/flashcards/generate/frompdf/route.ts` | ReadableStream + TextEncoder — SSE events: `flashcards`, `progress`, `complete`, `error` |
-| `useGenerateFlashcards` hook | `src/hooks/use-flashcard-generation.ts` | Client-side SSE reader with AbortController |
-| AI flashcard page | `src/app/(frontend)/app/flashcards/ai/page.tsx` | PDF upload -> generate -> review/edit -> save to deck |
-| `UserRole` enum | `src/types/index.ts` | `FREE`, `PREMIUM`, `STUDENT`, `TEACHER`, `UNIVERSITY_ADMIN`, `SYS_ADMIN` |
-| Route middleware | `src/proxy.ts` + `src/server/config/routes.config.ts` | Auth check, role-based access |
-| `authGuard` | `src/server/guards/auth.guard.ts` | Simple authenticated check |
+| Component                                            | File                                                            | Description                                                                                                            |
+| ---------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `LLMProvider` interface                              | `src/server/providers/LLMProvider.ts`                           | ⚠️ Being replaced by `LLMGateway` — JSON repair + prompts moved to `src/server/ai/`                                    |
+| `OpenAIProvider`                                     | `src/server/providers/openaiProvider.ts`                        | ⚠️ Logic moved into `LLMGateway` — file kept temporarily for reference                                                 |
+| `OllamaProvider`                                     | `src/server/providers/ollamaProvider.ts`                        | ⚠️ Logic moved into `LLMGateway` — file kept temporarily for reference                                                 |
+| `providerRegistry`                                   | `src/server/providers/providerRegistry.ts`                      | ⚠️ Being replaced by `LLMGateway` internal routing                                                                     |
+| `models.config`                                      | `src/server/config/models.config.ts`                            | ⚠️ Being replaced — env vars read directly by `LLMGateway`                                                             |
+| `pdfService`                                         | `src/server/services/pdfService.ts`                             | `extractText(buffer)` via pdfjs-dist + `chunkText(text, minWords=500, maxWords=800, overlap=50)` + `suggestDeckName()` |
+| `FlashcardGenerationService`                         | `src/server/services/flashcard-generation.service.ts`           | Orchestrates: extract -> chunk -> provider loop -> SSE callbacks                                                       |
+| `FlashcardGenerationController`                      | `src/server/controllers/flashcard-generation.controller.ts`     | Validates language, delegates to service                                                                               |
+| SSE route `POST /api/v1/flashcards/generate/frompdf` | `src/app/(backend)/api/v1/flashcards/generate/frompdf/route.ts` | ReadableStream + TextEncoder — SSE events: `flashcards`, `progress`, `complete`, `error`                               |
+| `useGenerateFlashcards` hook                         | `src/hooks/use-flashcard-generation.ts`                         | Client-side SSE reader with AbortController                                                                            |
+| AI flashcard page                                    | `src/app/(frontend)/app/flashcards/ai/page.tsx`                 | PDF upload -> generate -> review/edit -> save to deck                                                                  |
+| `UserRole` enum                                      | `src/types/index.ts`                                            | `FREE`, `PREMIUM`, `STUDENT`, `TEACHER`, `UNIVERSITY_ADMIN`, `SYS_ADMIN`                                               |
+| Route middleware                                     | `src/proxy.ts` + `src/server/config/routes.config.ts`           | Auth check, role-based access                                                                                          |
+| `authGuard`                                          | `src/server/guards/auth.guard.ts`                               | Simple authenticated check                                                                                             |
 
 ### What needs building for Phase 1
 
-| Component | Priority | Reason |
-|-----------|----------|--------|
-| General AI chat page | High | Only dedicated flashcard AI page exists |
-| Command parser | High | Current route is hardcoded to flashcards |
-| Usage tracking + subscription tables | High | No limits currently enforced |
-| `LLMProvider` extension | High | Only `generateFlashcardsFromChunk` exists |
-| `POST /ai/command` | High | New multi-command endpoint |
-| `POST /ai/chat` | High | Free-form chat endpoint |
-| `GET /ai/usage` | High | Usage status for UI display |
-| `POST /api/v1/flashcards/generate/fromtext` | Medium | Text variant missing |
-| Usage guard + subscription guard | High | Enforce access and limits before provider call |
+| Component                                   | Priority | Reason                                                       |
+| ------------------------------------------- | -------- | ------------------------------------------------------------ |
+| General AI chat page                        | High     | Only dedicated flashcard AI page exists                      |
+| Command parser                              | High     | Current route is hardcoded to flashcards                     |
+| Usage tracking + subscription tables        | High     | No limits currently enforced                                 |
+| `LLMGateway`                                | High     | Single `callLLM` replaces per-method `LLMProvider` interface |
+| `POST /ai/command`                          | High     | New multi-command endpoint                                   |
+| `POST /ai/chat`                             | High     | Free-form chat endpoint                                      |
+| `GET /ai/usage`                             | High     | Usage status for UI display                                  |
+| `POST /api/v1/flashcards/generate/fromtext` | Medium   | Text variant missing                                         |
+| Usage guard + subscription guard            | High     | Enforce access and limits before provider call               |
 
 ## Users & Access Model
 
-| User Type | AI Access in F1 | Subscription Model |
-|-----------|----------------|-------------------|
-| **Free** (`FREE` role) | ❌ No access. Guard blocks all `/ai/*` routes. Phase 2+ possibility: cheapest provider, extreme limits (e.g., 1 request/day) | N/A |
-| **Premium** (`PREMIUM` role) | ✅ Full access, gated by subscription plan | **Basic / Pro / Max** — personal subscription, usage tracked per user |
-| **Students** (`STUDENT` role) | Depends — mapped to their subscription tier or org plan | Through university org subscription |
-| **Teachers** (`TEACHER` role) | Depends — mapped to org plan | Through university org subscription |
-| **Organizations** | Members inherit org's plan limits | **Basic / Business / Enterprise** — same limit structure, different names for branding |
+| User Type                     | AI Access in F1                                                                                                              | Subscription Model                                                                     |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **Free** (`FREE` role)        | ❌ No access. Guard blocks all `/ai/*` routes. Phase 2+ possibility: cheapest provider, extreme limits (e.g., 1 request/day) | N/A                                                                                    |
+| **Premium** (`PREMIUM` role)  | ✅ Full access, gated by subscription plan                                                                                   | **Basic / Pro / Max** — personal subscription, usage tracked per user                  |
+| **Students** (`STUDENT` role) | Depends — mapped to their subscription tier or org plan                                                                      | Through university org subscription                                                    |
+| **Teachers** (`TEACHER` role) | Depends — mapped to org plan                                                                                                 | Through university org subscription                                                    |
+| **Organizations**             | Members inherit org's plan limits                                                                                            | **Basic / Business / Enterprise** — same limit structure, different names for branding |
 
 ### Subscription Plans
 
 #### Premium (Individual)
 
-| Plan | Hourly | Daily | Monthly | Ideal for |
-|------|--------|-------|---------|-----------|
-| **Basic** | 10 req/h | 50 req/d | 500 req/m | Casual learners |
-| **Pro** | 40 req/h | 200 req/d | 2000 req/m | Regular students |
-| **Max** | 100 req/h | 500 req/d | 5000 req/m | Power users |
+| Plan      | Hourly    | Daily     | Monthly    | Ideal for        |
+| --------- | --------- | --------- | ---------- | ---------------- |
+| **Basic** | 10 req/h  | 50 req/d  | 500 req/m  | Casual learners  |
+| **Pro**   | 40 req/h  | 200 req/d | 2000 req/m | Regular students |
+| **Max**   | 100 req/h | 500 req/d | 5000 req/m | Power users      |
 
 #### Organization
 
-| Plan | Hourly | Daily | Monthly | Ideal for |
-|------|--------|-------|---------|-----------|
-| **Basic** | 10 req/h per member | 50 req/d per member | 500 req/m per member | Small study groups |
-| **Business** | 40 req/h per member | 200 req/d per member | 2000 req/m per member | University departments |
-| **Enterprise** | 100 req/h per member | 500 req/d per member | 5000 req/m per member | Large institutions |
+| Plan           | Hourly               | Daily                | Monthly               | Ideal for              |
+| -------------- | -------------------- | -------------------- | --------------------- | ---------------------- |
+| **Basic**      | 10 req/h per member  | 50 req/d per member  | 500 req/m per member  | Small study groups     |
+| **Business**   | 40 req/h per member  | 200 req/d per member | 2000 req/m per member | University departments |
+| **Enterprise** | 100 req/h per member | 500 req/d per member | 5000 req/m per member | Large institutions     |
 
 > **Note:** Individual vs aggregate org tracking is TBD — the `usage_events` table records `user_id` (and optionally `org_id`), so either aggregation strategy works. Decision deferred to the team.
 
@@ -123,31 +223,11 @@ Billing is out of scope for this document. It will be managed separately by the 
 
 ## Technical Pipeline
 
-### LLM Provider Extension
+### LLM Gateway Integration
 
-Current interface:
-```typescript
-// src/server/providers/LLMProvider.ts
-interface LLMProvider {
-  generateFlashcardsFromChunk(chunk: string, language: string): Promise<GeneratedFlashcard[]>;
-}
-```
+The `LLMGateway` (see cross-cutting section above) replaces the need for a growing `LLMProvider` interface. Instead of adding a new method per command type, all pipelines call `callLLM({ prompt, systemPrompt, responseFormat }, ctx)` and handle the raw response.
 
-Extended interface:
-```typescript
-// Phase 1 additions
-interface LLMProvider {
-  generateFlashcardsFromChunk(chunk: string, language: string): Promise<GeneratedFlashcard[]>;
-  generateSummary(document: string, language: string): Promise<string>;
-  generateQuiz(chunk: string, language: string, count: number): Promise<QuizItem[]>;
-  generateExplanation(chunk: string, language: string): Promise<string>;
-  generateChatResponse(context: ChatContext, message: string): Promise<string>;
-}
-```
-
-Each new method gets its own system prompt constant (e.g., `SUMMARY_PROMPT`, `QUIZ_PROMPT`, `EXPLAIN_PROMPT`) defined in `LLMProvider.ts`.
-
-Both `OpenAIProvider` and `OllamaProvider` implement all new methods. If a method is temporarily unsupported by a provider (e.g., Ollama has weaker JSON mode), it can throw `NotImplementedError` and the service falls back to the other provider or returns a clear error.
+Each command defines its own prompt constant (e.g., `SUMMARY_PROMPT`, `QUIZ_PROMPT`, `EXPLAIN_PROMPT`) and calls `callLLM` with it. Provider selection and token tracking are handled by the gateway automatically.
 
 ### Command Parser
 
@@ -163,6 +243,7 @@ function parseCommand(text: string): ParsedCommand;
 ```
 
 Two tiers of detection:
+
 1. **Explicit** — `/flashcards pdf`, `/summary text`, etc. (regex match)
 2. **Implicit** — LLM-based intent detection when no slash command is present: "summarize this PDF" -> `{ command: 'summary', inputType: 'pdf' }`
 
@@ -186,7 +267,11 @@ const stream = new ReadableStream({
   },
 });
 return new Response(stream, {
-  headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' },
+  headers: {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  },
 });
 ```
 
@@ -208,7 +293,7 @@ User -> Chat UI -> POST /ai/command { text, file?, language? }
       -> Usage guard (new) — check bracket limits
         -> Command parser (new)
           -> Pipeline (flashcards / summary / quiz / explain)
-            -> Provider (OpenAI / Ollama)
+            -> LLMGateway (callLLM)
               -> SSE stream -> UI
 ```
 
@@ -217,14 +302,18 @@ User -> Chat UI -> POST /ai/command { text, file?, language? }
 Three new Supabase tables:
 
 ```sql
--- Track every AI call for usage calculations
+-- Track every AI call for usage and billing calculations
 CREATE TABLE usage_events (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id       UUID NOT NULL REFERENCES auth.users(id),
   org_id        UUID REFERENCES organizations(id),   -- nullable, for org-level aggregation
-  action_type   TEXT NOT NULL,   -- 'flashcards', 'summary', 'quiz', 'explain', 'chat'
-  input_type    TEXT NOT NULL,   -- 'pdf', 'text'
-  cost          INT NOT NULL DEFAULT 1,
+  action_type   TEXT NOT NULL,             -- 'flashcards', 'summary', 'quiz', 'explain', 'chat'
+  input_type    TEXT NOT NULL,             -- 'pdf', 'text'
+  provider      TEXT NOT NULL,             -- 'openai', 'anthropic', 'google', 'groq', 'ollama'
+  model         TEXT NOT NULL,             -- actual model name used (e.g. 'gpt-4o-mini')
+  input_tokens  INT,                       -- tokens sent to provider
+  output_tokens INT,                       -- tokens received from provider
+  cost          INT NOT NULL DEFAULT 1,    -- abstract cost unit for plan limits
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -291,7 +380,11 @@ type UsageCheck = {
   resetsAt: { hourly: string; daily: string; monthly: string };
 };
 
-async function checkUsage(userId: string, actionType: string, plan: SubscriptionPlan): Promise<UsageCheck>;
+async function checkUsage(
+  userId: string,
+  actionType: string,
+  plan: SubscriptionPlan,
+): Promise<UsageCheck>;
 
 // Logic:
 // 1. Query usage_events for this user + action_type in last 60 min -> hourly
@@ -309,13 +402,13 @@ The `GET /ai/usage` endpoint wraps both guards and returns the usage status for 
 
 ### Phase 1 Endpoints
 
-| Method | Path | Status | Description |
-|--------|------|--------|-------------|
-| POST | `/api/v1/flashcards/generate/frompdf` | ✅ Existing | PDF -> flashcards, SSE |
-| POST | `/api/v1/flashcards/generate/fromtext` | 🆕 Needs adding | Text -> flashcards, SSE |
-| POST | `/ai/command` | 🆕 | Universal command endpoint — accepts `{ text, file?, language? }`, detects intent, streams result |
-| POST | `/ai/chat` | 🆕 | Free-form chat with document context |
-| GET | `/ai/usage` | 🆕 | Returns current usage stats and limits for user |
+| Method | Path                                   | Status          | Description                                                                                       |
+| ------ | -------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------- |
+| POST   | `/api/v1/flashcards/generate/frompdf`  | ✅ Existing     | PDF -> flashcards, SSE                                                                            |
+| POST   | `/api/v1/flashcards/generate/fromtext` | 🆕 Needs adding | Text -> flashcards, SSE                                                                           |
+| POST   | `/ai/command`                          | 🆕              | Universal command endpoint — accepts `{ text, file?, language? }`, detects intent, streams result |
+| POST   | `/ai/chat`                             | 🆕              | Free-form chat with document context                                                              |
+| GET    | `/ai/usage`                            | 🆕              | Returns current usage stats and limits for user                                                   |
 
 Route rules in `src/server/config/routes.config.ts` will need entries for `/ai/*` (not yet added):
 
@@ -361,13 +454,13 @@ New page: `src/app/(frontend)/app/ai/page.tsx`
 
 ### Components
 
-| Component | Path | Purpose |
-|-----------|------|---------|
-| `ChatInput` | 🆕 | Text input + file upload + send button |
-| `ChatMessage` | 🆕 | Single message bubble (user vs AI), renders different result types (flashcards, summary text, quiz buttons) |
-| `ChatHistory` | 🆕 | Scrollable message list |
-| `UsageBadge` | 🆕 | Shows "15/50 daily requests used" + plan name |
-| `FileUpload` | 🆕 | Drag & drop zone, file preview, remove button |
+| Component     | Path | Purpose                                                                                                     |
+| ------------- | ---- | ----------------------------------------------------------------------------------------------------------- |
+| `ChatInput`   | 🆕   | Text input + file upload + send button                                                                      |
+| `ChatMessage` | 🆕   | Single message bubble (user vs AI), renders different result types (flashcards, summary text, quiz buttons) |
+| `ChatHistory` | 🆕   | Scrollable message list                                                                                     |
+| `UsageBadge`  | 🆕   | Shows "15/50 daily requests used" + plan name                                                               |
+| `FileUpload`  | 🆕   | Drag & drop zone, file preview, remove button                                                               |
 
 ### Hook
 
@@ -383,6 +476,7 @@ New hook: `src/hooks/use-ai-chat.ts` — modeled after existing `useGenerateFlas
 # Phase 2 — V2 (Extended AI Module)
 
 ## Goals
+
 - Add new input types (YouTube, images, audio, DOCX, TXT, ZIP)
 - Introduce modular command architecture
 - Enable advanced content processing
@@ -391,16 +485,17 @@ New hook: `src/hooks/use-ai-chat.ts` — modeled after existing `useGenerateFlas
 
 ## New Input Types
 
-| Type | Processor | Technology |
-|------|-----------|------------|
-| YouTube URL | `youtube-transcript-service.ts` 🆕 | `ytdl-core` or YouTube Data API v3 |
-| Image | `ocr-service.ts` 🆕 | Tesseract.js or vision-capable LLM |
-| Audio | `asr-service.ts` 🆕 | Whisper API (OpenAI) or local Whisper.cpp |
-| DOCX | `docx-service.ts` 🆕 | `mammoth.js` or `docx` |
-| TXT | `text-service.ts` 🆕 | Direct read (trivial) |
-| ZIP | `zip-service.ts` 🆕 | `adm-zip` or `yauzl`, iterate entries |
+| Type        | Processor                          | Technology                                |
+| ----------- | ---------------------------------- | ----------------------------------------- |
+| YouTube URL | `youtube-transcript-service.ts` 🆕 | `ytdl-core` or YouTube Data API v3        |
+| Image       | `ocr-service.ts` 🆕                | Tesseract.js or vision-capable LLM        |
+| Audio       | `asr-service.ts` 🆕                | Whisper API (OpenAI) or local Whisper.cpp |
+| DOCX        | `docx-service.ts` 🆕               | `mammoth.js` or `docx`                    |
+| TXT         | `text-service.ts` 🆕               | Direct read (trivial)                     |
+| ZIP         | `zip-service.ts` 🆕                | `adm-zip` or `yauzl`, iterate entries     |
 
 All processors follow a common interface:
+
 ```typescript
 interface InputProcessor {
   type: InputType;
@@ -431,18 +526,18 @@ Module registry: `src/server/ai/modules/modules.config.ts` 🆕
 
 Each module is a standalone file in `src/server/ai/modules/`:
 
-| Module | File | Input Types |
-|--------|------|-------------|
-| Flashcards | `flashcards.module.ts` | pdf, text, docx, txt |
-| Summary | `summary.module.ts` | pdf, text, docx, txt, youtube |
-| Quiz | `quiz.module.ts` | pdf, text, docx, txt |
-| Explain | `explain.module.ts` | pdf, text, docx, txt |
-| Mindmap | `mindmap.module.ts` 🆕 | pdf, text, docx, txt, youtube |
-| Notes | `notes.module.ts` 🆕 | pdf, text, docx, txt, youtube, audio |
-| Translate | `translate.module.ts` 🆕 | pdf, text, docx, txt |
-| Compare | `compare.module.ts` 🆕 | any (takes two inputs) |
-| Timeline | `timeline.module.ts` 🆕 | pdf, text, docx, txt, youtube |
-| Lesson | `lesson.module.ts` 🆕 | any |
+| Module     | File                     | Input Types                          |
+| ---------- | ------------------------ | ------------------------------------ |
+| Flashcards | `flashcards.module.ts`   | pdf, text, docx, txt                 |
+| Summary    | `summary.module.ts`      | pdf, text, docx, txt, youtube        |
+| Quiz       | `quiz.module.ts`         | pdf, text, docx, txt                 |
+| Explain    | `explain.module.ts`      | pdf, text, docx, txt                 |
+| Mindmap    | `mindmap.module.ts` 🆕   | pdf, text, docx, txt, youtube        |
+| Notes      | `notes.module.ts` 🆕     | pdf, text, docx, txt, youtube, audio |
+| Translate  | `translate.module.ts` 🆕 | pdf, text, docx, txt                 |
+| Compare    | `compare.module.ts` 🆕   | any (takes two inputs)               |
+| Timeline   | `timeline.module.ts` 🆕  | pdf, text, docx, txt, youtube        |
+| Lesson     | `lesson.module.ts` 🆕    | any                                  |
 
 ### Smart Pipelines
 
@@ -452,13 +547,14 @@ Implementation: `smart-router.ts` 🆕 — uses LLM to classify intent from natu
 
 ### Memory Context
 
-| Storage | Scope | What's stored |
-|---------|-------|---------------|
-| In-memory (Map) | Current session | Last 5 documents, last 3 command invocations |
-| Redis (optional) | Cross-session | Session history per `sessionId` |
-| Database | Persistent | User preferences, saved outputs |
+| Storage          | Scope           | What's stored                                |
+| ---------------- | --------------- | -------------------------------------------- |
+| In-memory (Map)  | Current session | Last 5 documents, last 3 command invocations |
+| Redis (optional) | Cross-session   | Session history per `sessionId`              |
+| Database         | Persistent      | User preferences, saved outputs              |
 
 New table:
+
 ```sql
 CREATE TABLE ai_sessions (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -476,12 +572,14 @@ Supports follow-up commands like "Do the same for the next file" or "Explain thi
 New route: `POST /ai/tutor`
 
 Interactive flow:
+
 1. Student submits material -> AI generates questions
 2. Student answers -> AI evaluates correctness
 3. AI explains mistakes -> AI suggests improvements
 4. Loop continues until student is satisfied
 
 State machine per session:
+
 ```
 IDLE -> QUESTIONING -> AWAITING_ANSWER -> EVALUATING -> FEEDBACK -> QUESTIONING | COMPLETE
 ```
@@ -511,17 +609,18 @@ Free users remain blocked in Phase 2 unless explicitly opted into extreme-cheap-
 
 ### API Endpoints (V2)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/ai/module/:moduleId` | Execute a specific module by ID |
-| POST | `/ai/tutor` | Tutor Mode — question -> answer -> feedback loop |
-| GET | `/ai/modules` | List available modules with their input types |
+| Method | Path                   | Description                                      |
+| ------ | ---------------------- | ------------------------------------------------ |
+| POST   | `/ai/module/:moduleId` | Execute a specific module by ID                  |
+| POST   | `/ai/tutor`            | Tutor Mode — question -> answer -> feedback loop |
+| GET    | `/ai/modules`          | List available modules with their input types    |
 
 ---
 
 # Phase 3 — V3 (Advanced AI Pipeline)
 
 ## Goals
+
 - Full AI learning ecosystem
 - Automated educational workflows
 - Multi-agent pipelines with quality verification
@@ -534,12 +633,14 @@ Free users remain blocked in Phase 2 unless explicitly opted into extreme-cheap-
 Input: multiple source materials (PDFs, YouTube playlists, audio recordings, notes)
 
 Output:
+
 - Study plan with timeline
 - Topic breakdown with difficulty estimates
 - Generated flashcards, quizzes, and tests per module
 - Suggested study schedule
 
 Architecture:
+
 ```
 Material Sources -> Classification Agent -> Topic Grouping Agent
   -> Difficulty Estimator -> Curriculum Generator -> Output Assembler
@@ -551,6 +652,7 @@ Material Sources -> Classification Agent -> Topic Grouping Agent
 `POST /ai/workflow/custom`
 
 Users define pipelines as JSON:
+
 ```json
 {
   "steps": [
@@ -569,12 +671,12 @@ Error handling: retry per step, dead letter queue, partial success reporting
 
 ## Multi-Agent Pipelines
 
-| Agent | Role | Prompt Focus |
-|-------|------|-------------|
-| Extraction Agent | Extracts key concepts, entities, relationships | Information retrieval |
-| Analysis Agent | Identifies patterns, gaps, connections | Critical thinking |
-| Generation Agent | Creates study materials (flashcards, summaries) | Content creation |
-| Verification Agent | Validates accuracy, detects hallucinations | Quality control |
+| Agent              | Role                                            | Prompt Focus          |
+| ------------------ | ----------------------------------------------- | --------------------- |
+| Extraction Agent   | Extracts key concepts, entities, relationships  | Information retrieval |
+| Analysis Agent     | Identifies patterns, gaps, connections          | Critical thinking     |
+| Generation Agent   | Creates study materials (flashcards, summaries) | Content creation      |
+| Verification Agent | Validates accuracy, detects hallucinations      | Quality control       |
 
 Each agent is a specialized LLM call with its own system prompt. Agents pass results through a shared context object.
 
@@ -583,6 +685,7 @@ Each agent is a specialized LLM call with its own system prompt. Agents pass res
 `POST /ai/review`
 
 Scans generated content for:
+
 - Factual errors
 - Missing information
 - Ambiguous statements
@@ -603,46 +706,46 @@ Results can be compared side-by-side in the UI.
 
 ## Integrations (Optional)
 
-| Platform | Integration |
-|----------|-------------|
-| Notion | Export AI-generated notes directly |
-| Google Drive | Import documents for AI processing |
-| OneDrive | Import documents for AI processing |
+| Platform        | Integration                             |
+| --------------- | --------------------------------------- |
+| Notion          | Export AI-generated notes directly      |
+| Google Drive    | Import documents for AI processing      |
+| OneDrive        | Import documents for AI processing      |
 | Canvas / Moodle | LMS integration — pull course materials |
 
 ## Usage Limits (V3)
 
-| Action Type | Basic | Pro | Max |
-|-------------|-------|-----|-----|
-| workflow execute | 5/mo | 20/mo | 100/mo |
-| curriculum build | 2/mo | 5/mo | 30/mo |
-| multi-agent | 2/mo | 10/mo | 50/mo |
-| review | 20/d | 100/d | unlimited |
+| Action Type      | Basic | Pro   | Max       |
+| ---------------- | ----- | ----- | --------- |
+| workflow execute | 5/mo  | 20/mo | 100/mo    |
+| curriculum build | 2/mo  | 5/mo  | 30/mo     |
+| multi-agent      | 2/mo  | 10/mo | 50/mo     |
+| review           | 20/d  | 100/d | unlimited |
 
 ## API Endpoints (V3)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/ai/workflow/execute` | Run a predefined workflow preset |
-| POST | `/ai/workflow/custom` | Run a user-defined workflow |
-| POST | `/ai/curriculum/build` | Build a full curriculum from sources |
-| POST | `/ai/review` | Review and validate generated content |
+| Method | Path                   | Description                           |
+| ------ | ---------------------- | ------------------------------------- |
+| POST   | `/ai/workflow/execute` | Run a predefined workflow preset      |
+| POST   | `/ai/workflow/custom`  | Run a user-defined workflow           |
+| POST   | `/ai/curriculum/build` | Build a full curriculum from sources  |
+| POST   | `/ai/review`           | Review and validate generated content |
 
 ---
 
 # Summary
 
-| Area | Phase 1 | Phase 2 | Phase 3 |
-|------|---------|---------|---------|
-| **Inputs** | Text, PDF | YouTube, Image, Audio, DOCX, TXT, ZIP | Multiple simultaneous sources |
-| **Commands** | flashcards, summary, quiz, explain | mindmap, notes, translate, compare, timeline, lesson | workflows, curriculum |
-| **Processing** | Single command -> single output | Smart pipelines, multi-intent | Multi-agent orchestration |
-| **Context** | Per-request | Session memory (Redis/DB) | Full curriculum context |
-| **Limits** | Hourly / Daily / Monthly brackets | Per-module limits, transcription caps | Workflow, curriculum, institutional overrides |
-| **Access** | Free blocked, Premium + Org via subscription | Same + opt-in free tier possible | Same + institutional plans |
-| **Providers** | OpenAI, Ollama | Same | Anthropic, Groq, model sandbox |
-| **Frontend** | Chat UI with SSE | Module selector, Tutor UI | Workflow builder, curriculum dashboard |
-| **Existing code reused** | LLMProvider, pdfService, SSE pattern, UserRole, auth guard, middleware | Same + Phase 1 | Same + Phase 1+2 |
+| Area                     | Phase 1                                                               | Phase 2                                              | Phase 3                                       |
+| ------------------------ | --------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------- |
+| **Inputs**               | Text, PDF                                                             | YouTube, Image, Audio, DOCX, TXT, ZIP                | Multiple simultaneous sources                 |
+| **Commands**             | flashcards, summary, quiz, explain                                    | mindmap, notes, translate, compare, timeline, lesson | workflows, curriculum                         |
+| **Processing**           | Single command -> single output                                       | Smart pipelines, multi-intent                        | Multi-agent orchestration                     |
+| **Context**              | Per-request                                                           | Session memory (Redis/DB)                            | Full curriculum context                       |
+| **Limits**               | Hourly / Daily / Monthly brackets                                     | Per-module limits, transcription caps                | Workflow, curriculum, institutional overrides |
+| **Access**               | Free blocked, Premium + Org via subscription                          | Same + opt-in free tier possible                     | Same + institutional plans                    |
+| **Providers**            | OpenAI, Ollama (via LLMGateway)                                       | + Anthropic, Google, Groq                            | Model sandbox (via LLMGateway)                |
+| **Frontend**             | Chat UI with SSE                                                      | Module selector, Tutor UI                            | Workflow builder, curriculum dashboard        |
+| **Existing code reused** | LLMGateway, pdfService, SSE pattern, UserRole, auth guard, middleware | Same + Phase 1                                       | Same + Phase 1+2                              |
 
 ---
 
@@ -652,12 +755,11 @@ Results can be compared side-by-side in the UI.
 2. **Seed subscription plans** — Basic / Pro / Max / Business / Enterprise
 3. **Build `subscription.guard.ts`** — block FREE, check active plan
 4. **Build `usage.guard.ts`** — bracket limit checks
-5. **Extend `LLMProvider` interface** — add `generateSummary`, `generateQuiz`, `generateExplanation`, `generateChatResponse`
-6. **Implement new methods in providers** — OpenAI + Ollama
-7. **Build `command-parser.ts`** — regex + LLM intent detection
-8. **Build `POST /ai/command`** — universal streaming endpoint (reuse SSE pattern from `frompdf/route.ts`)
-9. **Build `POST /ai/chat`** — free-form chat with context
-10. **Build `GET /ai/usage`** — usage status endpoint
-11. **Build AI chat page** — `src/app/(frontend)/app/ai/page.tsx` with components
-12. **Add `POST /api/v1/flashcards/generate/fromtext`** — text variant
-13. **Add `/ai/*` route rules** to `routes.config.ts`
+5. **Build `LLMGateway`** — `src/server/ai/llm-gateway.ts` with `callLLM()` + provider routing + token tracking + usage recording
+6. **Build `command-parser.ts`** — regex + LLM intent detection
+7. **Build `POST /ai/command`** — universal streaming endpoint (reuse SSE pattern from `frompdf/route.ts`)
+8. **Build `POST /ai/chat`** — free-form chat with context
+9. **Build `GET /ai/usage`** — usage status endpoint
+10. **Build AI chat page** — `src/app/(frontend)/app/ai/page.tsx` with components
+11. **Add `POST /api/v1/flashcards/generate/fromtext`** — text variant
+12. **Add `/ai/*` route rules** to `routes.config.ts`

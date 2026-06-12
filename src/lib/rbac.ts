@@ -92,9 +92,9 @@ export async function checkPermission(ctx: RequestContext, permission: string, r
     case 'any':
       return;
     case 'university':
-      if (!resource || resource.university_id !== ctx.universityId) {
-        throw new AppError('FORBIDDEN');
-      }
+      if (!resource) throw new AppError('FORBIDDEN');
+      if (resource.created_by === ctx.userId) return;
+      if (resource.university_id !== ctx.universityId) throw new AppError('FORBIDDEN');
       return;
     case 'own':
       if (!resource || resource.created_by !== ctx.userId) {
