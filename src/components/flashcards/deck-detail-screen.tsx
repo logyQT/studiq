@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -69,6 +69,8 @@ export function DeckDetailScreen({
   const { user } = useAuth();
   const role = user?.app_metadata?.role as UserRole | undefined;
   const gradient = getGradient(deckId);
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlight');
 
   const { data: currentDeckData, isLoading: deckLoading, isError: deckError } = useApiQuery<Deck>({
     queryKey: flashcardKeys.decks.detail(deckId),
@@ -94,6 +96,22 @@ export function DeckDetailScreen({
   const topics = topicsData ?? [];
   const allDecks = (allDecksData ?? []).filter((d) => d.id !== deckId);
   const flashcardQueryKey = flashcardKeys.list({ deckIds: [deckId] });
+
+  useEffect(() => {
+    if (!highlightId || flashcards.length === 0) return;
+    const timer = setTimeout(() => {
+      document.getElementById(`fc-${highlightId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [highlightId, flashcards.length]);
+
+  useEffect(() => {
+    if (!highlightId) return;
+    const timer = setTimeout(() => {
+      router.replace(window.location.pathname);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [highlightId, router]);
 
   const createFlashcard = useApiMutation({
     mutationFn: (data: { front: string; back: string; topicIds?: string[] }) =>
@@ -730,6 +748,7 @@ export function DeckDetailScreen({
               topics={topics}
               t={t}
               selected={selectedIds.has(fc.id)}
+              highlighted={fc.id === highlightId}
               selectable={isSelecting}
               onToggleSelect={toggleSelect}
               onFlip={isSelecting ? () => {} : (id) => setFlippedId(id || null)}

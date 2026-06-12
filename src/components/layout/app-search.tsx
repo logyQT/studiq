@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Search, Loader2 } from 'lucide-react';
@@ -16,6 +17,8 @@ export function AppSearch() {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [containerRect, setContainerRect] = useState<DOMRect | null>(null);
 
   const debouncedQuery = useDebounce(query, 300);
 
@@ -26,6 +29,22 @@ export function AppSearch() {
   });
 
   const showDropdown = isFocused && debouncedQuery.length >= 2;
+
+  useEffect(() => {
+    if (!showDropdown) return;
+    const updateRect = () => {
+      if (containerRef.current) {
+        setContainerRect(containerRef.current.getBoundingClientRect());
+      }
+    };
+    updateRect();
+    window.addEventListener('scroll', updateRect, true);
+    window.addEventListener('resize', updateRect);
+    return () => {
+      window.removeEventListener('scroll', updateRect, true);
+      window.removeEventListener('resize', updateRect);
+    };
+  }, [showDropdown]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -76,7 +95,12 @@ export function AppSearch() {
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
         setIsFocused(false);
       }
     };
@@ -86,7 +110,7 @@ export function AppSearch() {
   }, []);
 
   return (
-    <div ref={containerRef} className="relative w-full max-w-lg">
+    <div ref={containerRef} className="w-full max-w-lg">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         <input
@@ -106,8 +130,18 @@ export function AppSearch() {
         />
       </div>
 
-      {showDropdown && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 rounded-md border bg-popover text-popover-foreground shadow-md">
+      {showDropdown && containerRect && createPortal(
+        <div
+          ref={dropdownRef}
+          style={{
+            position: 'fixed',
+            zIndex: 50,
+            top: `${containerRect.bottom + 4}px`,
+            left: `${containerRect.left}px`,
+            width: `${containerRect.width}px`,
+          }}
+          className="rounded-md border bg-popover text-popover-foreground shadow-md"
+        >
           <div className="max-h-[300px] overflow-y-auto p-1">
             {isLoading && (
               <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
@@ -149,7 +183,8 @@ export function AppSearch() {
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

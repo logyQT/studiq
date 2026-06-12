@@ -35,6 +35,7 @@ interface FlashcardCardProps {
   t: ReturnType<typeof useTranslations>;
   selected?: boolean;
   selectable?: boolean;
+  highlighted?: boolean;
   onToggleSelect?: (id: string) => void;
   onFlip: (id: string) => void;
   onEdit: (fc: Flashcard) => void;
@@ -56,6 +57,7 @@ export function FlashcardCard({
   t,
   selected,
   selectable,
+  highlighted,
   onToggleSelect,
   onFlip,
   onEdit,
@@ -72,9 +74,10 @@ export function FlashcardCard({
 
   return (
     <Card
+      id={`fc-${fc.id}`}
       className={`group relative min-h-48 cursor-pointer transition-all duration-300 hover:shadow-lg ${
         isFlipped ? `bg-gradient-to-br ${gradient}` : ''
-      }`}
+      } ${highlighted ? 'ring-2 ring-primary/70 ring-offset-2 animate-pulse' : ''}`}
       onClick={() => {
         if (selectable) {
           onToggleSelect?.(fc.id);
