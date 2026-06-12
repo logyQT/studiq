@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { LanguageToggle } from '@/components/layout/LanguageToggle';
 import { AppSearch } from '@/components/layout/app-search';
+import { cn } from '@/lib/utils';
 import { UserRole } from '@/types';
 import {
   LayoutDashboard,
@@ -89,6 +90,15 @@ const DASHBOARD_TITLE_KEYS: Record<string, string> = {
   '/admin': 'sys_admin_dashboard',
 };
 
+const ROLE_BADGE_STYLES: Record<UserRole, string> = {
+  [UserRole.SYS_ADMIN]: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
+  [UserRole.UNIVERSITY_ADMIN]: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+  [UserRole.TEACHER]: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+  [UserRole.STUDENT]: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+  [UserRole.PREMIUM]: 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20',
+  [UserRole.FREE]: 'bg-muted text-muted-foreground border-border',
+};
+
 function getNavGroup(pathname: string): NavItem[] {
   if (pathname.startsWith('/edu')) return NAV_ITEMS['/edu'];
   if (pathname.startsWith('/manage')) return NAV_ITEMS['/manage'];
@@ -150,32 +160,60 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <Sidebar>
-        <SidebarHeader className="px-4 py-4">
-          <Link href="/" className="flex items-center gap-2">
-            <GraduationCap className="h-6 w-6 text-primary" />
-            <span className="text-lg font-bold tracking-tight">StudiQ</span>
+        {/* Logo */}
+        <SidebarHeader className="px-4 py-5">
+          <Link href="/" className="flex items-center gap-2.5 group">
+            <div className="rounded-xl bg-primary p-1.5 shrink-0 shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all duration-200">
+              <GraduationCap className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <span className="text-lg font-bold tracking-tight">
+              Studi<span className="text-primary">Q</span>
+            </span>
           </Link>
           {userRole && (
-            <span className="text-xs text-muted-foreground">{getRoleLabel(userRole, t)}</span>
+            <span
+              className={cn(
+                'mt-0.5 inline-flex w-fit items-center px-2 py-0.5 rounded-full text-xs font-medium border',
+                ROLE_BADGE_STYLES[userRole],
+              )}
+            >
+              {getRoleLabel(userRole, t)}
+            </span>
           )}
         </SidebarHeader>
+
         <SidebarSeparator />
-        <SidebarContent className="py-2">
-          <SidebarMenu className="gap-1">
+
+        {/* Navigation */}
+        <SidebarContent className="py-3 px-2">
+          <SidebarMenu className="gap-0.5">
             {navItems.map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href !== '/' && pathname.startsWith(item.href + '/'));
               return (
-                <SidebarMenuItem key={item.titleKey}>
+                <SidebarMenuItem key={item.titleKey} className="relative">
+                  {isActive && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-primary rounded-r-full z-10" />
+                  )}
                   <SidebarMenuButton
                     asChild
                     isActive={isActive}
                     tooltip={t(item.titleKey)}
-                    className="h-10 px-4"
+                    className={cn(
+                      'h-10 px-4 rounded-lg transition-all duration-150',
+                      isActive
+                        ? 'bg-primary/10 text-primary font-medium hover:bg-primary/15 data-[active=true]:bg-primary/10 data-[active=true]:text-primary'
+                        : 'text-sidebar-foreground/80 hover:bg-primary/8 hover:text-primary',
+                    )}
                   >
                     <Link href={item.href}>
-                      <item.icon className="h-4 w-4 shrink-0" />
+                      <item.icon
+                        className={cn(
+                          'h-4 w-4 shrink-0 transition-colors',
+                          isActive ? 'text-primary' : 'text-sidebar-foreground/60',
+                        )}
+                      />
                       <span>{t(item.titleKey)}</span>
                     </Link>
                   </SidebarMenuButton>
@@ -184,47 +222,58 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             })}
           </SidebarMenu>
         </SidebarContent>
+
         <SidebarSeparator />
-        <SidebarFooter className="px-4 py-4">
-          <div className="flex items-center gap-3 min-w-0 mb-2">
-            <Avatar className="h-8 w-8 shrink-0">
-              <AvatarFallback className="text-xs">{getInitials(userName)}</AvatarFallback>
+
+        {/* User footer */}
+        <SidebarFooter className="px-3 py-4">
+          <div className="flex items-center gap-3 min-w-0 px-2 mb-1">
+            <Avatar className="h-8 w-8 shrink-0 ring-2 ring-primary/20">
+              <AvatarFallback className="text-xs font-semibold bg-primary/10 text-primary">
+                {getInitials(userName)}
+              </AvatarFallback>
             </Avatar>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{userName}</p>
-              <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium leading-tight">{userName}</p>
+              <p className="truncate text-xs text-muted-foreground leading-tight">{user?.email}</p>
             </div>
           </div>
           <Button
             variant="ghost"
             size="sm"
             onClick={handleLogout}
-            className="w-full justify-start h-9 px-3 text-muted-foreground hover:text-foreground"
+            className="w-full justify-start h-9 px-3 text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/8 transition-colors"
           >
             <LogOut className="h-4 w-4 mr-2" />
             <span>{t('logout')}</span>
           </Button>
         </SidebarFooter>
       </Sidebar>
+
       <SidebarInset>
-        <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        {/* Topbar */}
+        <header className="sticky top-0 z-40 border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
           <div className="flex h-14 items-center gap-4 px-6">
             <div className="flex items-center gap-3 shrink-0">
-              <SidebarTrigger />
-              <h1 className="text-lg font-semibold max-md:hidden">{t(dashboardTitleKey)}</h1>
+              <SidebarTrigger className="hover:bg-primary/8 hover:text-primary transition-colors" />
+              <h1 className="text-base font-semibold text-foreground max-md:hidden">
+                {t(dashboardTitleKey)}
+              </h1>
             </div>
             {showSearch && (
               <div className="flex-1 flex justify-center min-w-0">
                 <AppSearch />
               </div>
             )}
-            <div className="flex items-center gap-2 shrink-0 ml-auto">
+            <div className="flex items-center gap-1.5 shrink-0 ml-auto">
               <LanguageToggle />
               <ThemeToggle />
             </div>
           </div>
         </header>
-        <main className="flex-1 p-8">{children}</main>
+
+        {/* Main content */}
+        <main className="flex-1 p-6 md:p-8">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );
