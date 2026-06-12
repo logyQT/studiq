@@ -259,6 +259,40 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
 
   const backUrl = mode === 'quick' ? '/app' : isPractice ? '/app/flashcards/practice' : '/app/flashcards/study';
 
+  const flippedRef = useRef(flipped);
+  const terminalRef = useRef(sessionComplete || allCaughtUp);
+  const noCardRef = useRef(!currentCard);
+  const handleAnswerRef = useRef(handleAnswer);
+
+  useEffect(() => { flippedRef.current = flipped; }, [flipped]);
+  useEffect(() => { terminalRef.current = sessionComplete || allCaughtUp; }, [sessionComplete, allCaughtUp]);
+  useEffect(() => { noCardRef.current = !currentCard; }, [currentCard]);
+  useEffect(() => { handleAnswerRef.current = handleAnswer; }, [handleAnswer]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (terminalRef.current || noCardRef.current) return;
+
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        setFlipped((prev) => !prev);
+        return;
+      }
+
+      if (!flippedRef.current) return;
+
+      switch (e.key) {
+        case '1': handleAnswerRef.current(false, 1); break;
+        case '2': handleAnswerRef.current(false, 3); break;
+        case '3': handleAnswerRef.current(true, 3); break;
+        case '4': handleAnswerRef.current(true, 5); break;
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   if (allCaughtUp) {
     return (
       <div className="max-w-2xl mx-auto">
@@ -357,6 +391,7 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
       <Card
         className="cursor-pointer min-h-64 flex items-center justify-center transition-all duration-300 hover:shadow-lg"
         onClick={() => setFlipped(!flipped)}
+        aria-keyshortcuts="Space"
       >
         <CardContent className="pt-8 text-center px-8">
           <p className="text-xs text-muted-foreground uppercase mb-4">
@@ -371,16 +406,16 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
 
       {flipped && (
         <div className="grid grid-cols-2 gap-2">
-          <Button onClick={() => handleAnswer(false, 1)}>
+          <Button onClick={() => handleAnswer(false, 1)} aria-keyshortcuts="1">
             <X className="mr-1.5 h-4 w-4 text-red-500" /> {t('rating_again')}
           </Button>
-          <Button onClick={() => handleAnswer(false, 3)}>
+          <Button onClick={() => handleAnswer(false, 3)} aria-keyshortcuts="2">
             <Minus className="mr-1.5 h-4 w-4 text-orange-500" /> {t('rating_hard')}
           </Button>
-          <Button onClick={() => handleAnswer(true, 3)}>
+          <Button onClick={() => handleAnswer(true, 3)} aria-keyshortcuts="3">
             <Check className="mr-1.5 h-4 w-4 text-amber-500" /> {t('rating_good')}
           </Button>
-          <Button onClick={() => handleAnswer(true, 5)}>
+          <Button onClick={() => handleAnswer(true, 5)} aria-keyshortcuts="4">
             <Zap className="mr-1.5 h-4 w-4 text-green-500" /> {t('rating_easy')}
           </Button>
         </div>

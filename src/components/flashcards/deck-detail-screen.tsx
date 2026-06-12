@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -580,6 +580,20 @@ export function DeckDetailScreen({
     onBulkTopicsOpenChange: (open) => setD((prev) => ({ ...prev, bulkTopicsOpen: open })),
   };
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key !== 'n') return;
+      if (!can(role, 'deck.update', currentDeck?.created_by, user?.id)) return;
+      e.preventDefault();
+      resetForm();
+      setD((prev) => ({ ...prev, createOpen: true }));
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [role, currentDeck?.created_by, user?.id]);
+
   if (deckError || (!deckLoading && !currentDeck)) {
     return (
       <div className="space-y-6">
@@ -694,7 +708,7 @@ export function DeckDetailScreen({
             <Button onClick={() => {
               resetForm();
               setD((prev) => ({ ...prev, createOpen: true }));
-            }}>
+            }} aria-keyshortcuts="n">
               <Plus className="mr-2 h-4 w-4" /> {t('new_flashcard')}
             </Button>
           )}
@@ -708,7 +722,7 @@ export function DeckDetailScreen({
             <Button variant="outline" className="mt-4" onClick={() => {
               resetForm();
               setD((prev) => ({ ...prev, createOpen: true }));
-            }}>
+            }} aria-keyshortcuts="n">
               <Plus className="mr-2 h-4 w-4" /> {t('create_first')}
             </Button>
           )}

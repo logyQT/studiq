@@ -168,9 +168,9 @@ No backend changes. Pure frontend.
 | | `3` | Rate "Good" |
 | | `4` | Rate "Easy" |
 | Deck detail (`deck-detail-screen.tsx`) | `n` | New flashcard |
-| | `/` | Focus search |
+| | `/` | Focus search ⏳ deferred — needs 2.4 Search input |
 
-**Implementation:** `useEffect` with `keydown` listener in SessionClient. Add `aria-keyshortcuts` attributes for a11y.
+**Implementation:** `useEffect` with `keydown` listener. `aria-keyshortcuts` attributes on card/buttons for a11y. Uses refs to avoid stale closures without re-attaching the listener. Input/textarea target guard to avoid triggering shortcuts while typing.
 
 ---
 
