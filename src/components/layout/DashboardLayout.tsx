@@ -135,6 +135,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || t('default_user');
   const userRole = user?.app_metadata?.role as UserRole | undefined;
+  const showSearch = pathname.startsWith('/app') || pathname.startsWith('/edu');
 
   const handleLogout = async () => {
     try {
@@ -212,10 +213,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <SidebarTrigger />
               <h1 className="text-lg font-semibold max-md:hidden">{t(dashboardTitleKey)}</h1>
             </div>
-            <div className="flex-1 flex justify-center min-w-0">
-              <AppSearch />
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
+            {showSearch && (
+              <div className="flex-1 flex justify-center min-w-0">
+                <AppSearch />
+              </div>
+            )}
+            <div className="flex items-center gap-2 shrink-0 ml-auto">
               <LanguageToggle />
               <ThemeToggle />
             </div>
