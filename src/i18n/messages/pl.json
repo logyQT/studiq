@@ -157,7 +157,11 @@
     "role_teacher": "Wykładowca",
     "role_student": "Student",
     "role_premium": "Premium",
-    "role_free": "Darmowy"
+    "role_free": "Darmowy",
+    "search_placeholder": "Szukaj fiszek...",
+    "search_no_results": "Brak wyników",
+    "search_shortcut": "Szukaj",
+    "search_loading": "Szukanie..."
   },
   "EduOverviewPage": {
     "title": "Panel Nauczyciela",

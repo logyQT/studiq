@@ -22,6 +22,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { LanguageToggle } from '@/components/layout/LanguageToggle';
+import { AppSearch } from '@/components/layout/app-search';
 import { UserRole } from '@/types';
 import {
   LayoutDashboard,
@@ -207,11 +208,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <SidebarInset>
         <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <div className="flex h-14 items-center gap-4 px-6">
-            <SidebarTrigger />
-            <div className="flex-1">
-              <h1 className="text-lg font-semibold">{t(dashboardTitleKey)}</h1>
+            <div className="flex items-center gap-3 shrink-0">
+              <SidebarTrigger />
+              <h1 className="text-lg font-semibold max-md:hidden">{t(dashboardTitleKey)}</h1>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex-1 flex justify-center min-w-0">
+              <AppSearch />
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
               <LanguageToggle />
               <ThemeToggle />
             </div>

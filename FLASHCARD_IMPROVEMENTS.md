@@ -195,17 +195,43 @@ No backend changes. Pure frontend.
 
 ---
 
-### 2.4 Full-Text Search
+### 2.4 Global Search Infrastructure ✅
+
+**Scope expansion:** What started as flashcard-only search evolved into a global search infrastructure — a unified `/api/v1/search` endpoint with a top-bar search bar in `DashboardLayout`, designed to extend to other domains (questions, notes, etc.).
 
 | Layer | Files | Changes |
 |-------|-------|---------|
-| `B` | New route: `GET /api/v1/flashcards/search?q=` | Returns paginated results matching `q` against `front` or `back` |
-| `B` | `src/server/services/flashcard.service.ts` | Add `search(q, ctx, limit?, offset?)` — uses `supabase.from('flashcards').textSearch('front', q)` or `ilike` |
-| `B` | `src/server/controllers/flashcard.controller.ts` | Add `search` method |
-| `F` | `src/components/flashcards/flashcard-search.tsx` | Search bar with debounced input, dropdown results showing front/back + deck name |
-| `F` | `src/app/(frontend)/app/flashcards/page.tsx` | Add search bar to the main flashcard dashboard |
+| `M` | New: `20260615000000_search_vector.sql` | Add `search_vector tsvector` generated column (GIN indexed) to `flashcards`. Combines English + Polish via `\|\|` operator for bilingual search. |
+| `M` | New: `20260615000001_search_flashcards_rpc.sql` | `search_flashcards(search_query, result_limit)` — PL/pgSQL function querying with both `plainto_tsquery('english', q)` OR `plainto_tsquery('polish', q)`, ranked by sum of `ts_rank`. Returns `(id, front, back, rank, deck_id, deck_name)`. |
+| `B` | New model: `src/server/models/search.model.ts` | `SearchQuerySchema` (Zod, registered for OpenAPI), `SearchResult` type with `type: 'flashcard'` discriminator for union expansion. |
+| `B` | New service: `src/server/services/search.service.ts` | `SearchService.search(q, ctx, limit?)` — calls `supabase.rpc('search_flashcards', ...)`, maps DB rows to `SearchResult[]`. Extensible: add more `.rpc()` calls for other domains. |
+| `B` | New controller: `src/server/controllers/search.controller.ts` | `SearchController.search(body, ctx)` — standard validate+delegate pattern. |
+| `B` | New route: `GET /api/v1/search?q=&limit=` | With `withAuth` wrapper. Already protected by catch-all API route rule. |
+| `F` | New: `src/hooks/use-debounce.ts` | Custom `useDebounce<T>(value, delay)` hook (~15 lines). Avoids adding a package. |
+| `F` | New: `src/components/layout/app-search.tsx` | Debounced (300ms) search input + Command dropdown, 2-char minimum, `Ctrl+K`/`/` shortcut, keyboard nav, loading/no-results states. Uses `cmdk` (already in deps). |
+| `F` | `src/components/layout/DashboardLayout.tsx` | Insert `<AppSearch />` centered between title and toggles in the top bar. |
+| `F` | `src/lib/query-keys.ts` | Add `searchKeys` for future cache invalidation. |
+| `I` | `src/i18n/messages/en.json` + `pl.json` | Add `search_placeholder`, `search_no_results`, `search_shortcut` to `DashboardLayout` namespace. |
 
-**UI pattern:** Global search bar on `/app/flashcards` dashboard. Click result navigates to the deck containing the card.
+**Architecture decisions:**
+
+| Decision | Rationale |
+|----------|-----------|
+| **Separate `SearchService`** (not on `FlashcardService`) | Domain-agnostic service. Adding `searchQuestions()`, `searchNotes()` later means adding methods here, not scattering search logic across domain services. |
+| **PostgreSQL RPC** instead of Supabase JS `.textSearch()` | Supabase JS doesn't support OR-ing two language configs in a single query. The RPC queries both `plainto_tsquery('english', ...)` and `plainto_tsquery('polish', ...)` with proper ranking. |
+| **Combined `\|\|` tsvector** (not two columns) | Single generated column, single GIN index. Both language lexemes coexist. Concatenation preserves position info for ranking. |
+| **`search_vector` as generated STORED** | No trigger needed. Updated automatically on INSERT/UPDATE. Backfilled for existing rows with a one-time UPDATE. |
+| **`useDebounce` custom hook** (not `use-debounce` package) | ~15 lines, one dependency. Avoids adding a package for such a trivial utility. |
+| **`cmdk` Command component** (already in deps) | The shadcn `Command` component is already installed at `cmdk: 1.1.1`. No new dependencies for the dropdown. |
+| **Results link to deck detail** | Click navigates to `/app/flashcards/decks/{deckId}?highlight={flashcardId}`. The highlight param enables future scroll-to-card behavior. |
+| **Top-bar placement, not per-page** | YouTube/Facebook pattern: always-visible search in the DashboardLayout header. Available on every authenticated page. |
+| **Bilingual from day one** | Combined `'english' + 'polish'` tsvector with fallback creation of Polish config via `DO $$` block if absent. |
+
+**Known limitations:**
+- Currently only searches `flashcards` table. Questions, notes, decks, topics are not yet indexed.
+- Polish tsconfig creation assumes `pg_catalog.simple` is available (always true in PostgreSQL).
+- `highlight` search param in deck detail URLs is not yet consumed — the deck detail page doesn't auto-scroll to the highlighted card.
+- RPC function uses `LEFT JOIN` on deck assignments — a flashcard with zero deck assignments returns `href: '#'`.
 
 ---
 

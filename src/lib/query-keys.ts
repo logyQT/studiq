@@ -17,3 +17,8 @@ export const flashcardKeys = {
     difficultyBucket: (bucket: string) => ['flashcards', 'stats', 'difficulty', bucket] as const,
   },
 };
+
+export const searchKeys = {
+  all: ['search'] as const,
+  query: (q: string) => ['search', q] as const,
+};

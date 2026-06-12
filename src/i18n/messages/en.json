@@ -175,7 +175,11 @@
     "role_teacher": "Teacher",
     "role_student": "Student",
     "role_premium": "Premium",
-    "role_free": "Free"
+    "role_free": "Free",
+    "search_placeholder": "Search flashcards...",
+    "search_no_results": "No results",
+    "search_shortcut": "Search",
+    "search_loading": "Searching..."
   },
   "EduOverviewPage": {
     "title": "Teacher Dashboard",
