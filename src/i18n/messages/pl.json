@@ -8,7 +8,8 @@
     "common_edit": "Edytuj",
     "common_close": "Zamknij",
     "common_add": "Dodaj",
-    "common_remove": "Usuń"
+    "common_remove": "Usuń",
+    "common_error": "Coś poszło nie tak. Spróbuj ponownie."
   },
   "Errors": {
     "ERROR_INTERNAL_SERVER": "Wystąpił nieoczekiwany błąd serwera. Spróbuj ponownie później.",
@@ -569,7 +570,8 @@
     "diff_easy": "Łatwa",
     "diff_medium": "Średnia",
     "diff_hard": "Trudna",
-    "question_count_label": "Liczba pytań: {count}"
+    "question_count_label": "Liczba pytań: {count}",
+    "not_enough_questions": "Za mało pytań pasujących do wybranych kryteriów. Zmień filtry lub wybierz mniejszą liczbę pytań."
   },
   "AppFlashcardsPage": {
     "title": "Fiszki",
