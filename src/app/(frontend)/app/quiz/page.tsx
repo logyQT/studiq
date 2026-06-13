@@ -33,6 +33,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Plus, Play, Eye } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiGet, apiPost } from '@/lib/api';
 
 interface QuizAttempt {
   id: string;
@@ -70,8 +71,8 @@ export default function QuizPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/v1/quiz-attempts').then((r) => (r.ok ? r.json() : [])),
-      fetch('/api/v1/subjects').then((r) => (r.ok ? r.json() : [])),
+      apiGet<QuizAttempt[]>('/api/v1/quiz/attempts').catch(() => [] as QuizAttempt[]),
+      apiGet<Subject[]>('/api/v1/subjects').catch(() => [] as Subject[]),
     ])
       .then(([a, s]) => {
         setAttempts(a);
@@ -111,18 +112,7 @@ export default function QuizPage() {
     }
 
     try {
-      const res = await fetch('/api/v1/quizzes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || 'ERROR_GENERATE_QUIZ_FAILED');
-      }
-
-      const data = await res.json();
+      const data = await apiPost<{ id: string }>('/api/v1/quiz/new', body);
       setModalOpen(false);
       router.push(`/app/quiz/${data.id}`);
     } catch (error) {

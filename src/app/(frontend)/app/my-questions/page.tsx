@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, X } from 'lucide-react';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 
 interface Question {
   id: string;
@@ -69,8 +70,7 @@ export default function MyQuestionsPage() {
   });
 
   useEffect(() => {
-    fetch('/api/v1/questions')
-      .then((r) => r.json())
+    apiGet<Question[]>('/api/v1/questions')
       .then((data) => {
         setQuestions(data);
         setLoading(false);
@@ -140,18 +140,12 @@ export default function MyQuestionsPage() {
         .map((a, i) => ({ content: a.content, isCorrect: a.isCorrect, orderIndex: i })),
     };
     try {
-      const url = editing ? `/api/v1/questions/${editing.id}` : '/api/v1/questions';
-      const method = editing ? 'PUT' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
+      let data: Question;
       if (editing) {
+        data = await apiPut<Question>(`/api/v1/questions/${editing.id}`, payload);
         setQuestions(questions.map((q) => (q.id === data.id ? data : q)));
       } else {
+        data = await apiPost<Question>('/api/v1/questions', payload);
         setQuestions([data, ...questions]);
       }
       setDialogOpen(false);
@@ -165,8 +159,7 @@ export default function MyQuestionsPage() {
   async function handleDelete() {
     if (!deleteId) return;
     try {
-      const res = await fetch(`/api/v1/questions/${deleteId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error();
+      await apiDelete(`/api/v1/questions/${deleteId}`);
       setQuestions(questions.filter((q) => q.id !== deleteId));
       toast.success(t('question_deleted'));
     } catch {
