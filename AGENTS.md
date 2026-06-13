@@ -326,6 +326,12 @@ Auth routes (`/login`, `/register`) redirect authenticated users by role.
 
 ---
 
+## Development Philosophy
+
+- **No backward compatibility layers**. The app is pre-market and iterates rapidly. Never keep old code paths, deprecated APIs, or legacy translation keys "just in case". When renaming or restructuring, do it cleanly — delete the old, add the new.
+
+---
+
 ## One-Time / Global Rules
 
 - When creating a new API endpoint, always add the `RouteRule` to `src/server/config/routes.config.ts` if it needs protection
