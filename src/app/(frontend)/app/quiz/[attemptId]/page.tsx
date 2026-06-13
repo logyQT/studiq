@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, ArrowRight, Send } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiGet, apiPost } from '@/lib/api';
 
 interface Question {
   id: string;
@@ -54,11 +55,7 @@ export default function QuizTakingPage() {
   const [answers, setAnswers] = useState<Record<string, string | undefined>>({});
 
   useEffect(() => {
-    fetch(`/api/v1/quiz-attempts/${attemptId}`)
-      .then((r) => {
-        if (!r.ok) throw new Error();
-        return r.json();
-      })
+    apiGet<AttemptDetails>(`/api/v1/quiz/${attemptId}`)
       .then((data) => {
         if (data.completed_at) {
           router.push(`/app/quiz/review/${attemptId}`);
@@ -85,13 +82,7 @@ export default function QuizTakingPage() {
     });
 
     try {
-      const res = await fetch(`/api/v1/quiz-attempts/${attemptId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers: quizAnswers }),
-      });
-
-      if (!res.ok) throw new Error();
+      await apiPost(`/api/v1/quiz/${attemptId}`, { answers: quizAnswers });
       router.push(`/app/quiz/review/${attemptId}`);
     } catch {
       toast.error('Failed to submit quiz');

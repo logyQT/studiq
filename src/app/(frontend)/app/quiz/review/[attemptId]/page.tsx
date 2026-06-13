@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiGet } from '@/lib/api';
 
 interface Question {
   id: string;
@@ -55,11 +56,7 @@ export default function QuizReviewPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`/api/v1/quiz-attempts/${attemptId}`)
-      .then((r) => {
-        if (!r.ok) throw new Error();
-        return r.json();
-      })
+    apiGet<AttemptDetails>(`/api/v1/quiz/${attemptId}`)
       .then((data) => {
         setAttempt(data);
         setLoading(false);
