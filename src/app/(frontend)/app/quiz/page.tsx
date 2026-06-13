@@ -116,7 +116,12 @@ export default function QuizPage() {
       setModalOpen(false);
       router.push(`/app/quiz/${data.id}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'ERROR_GENERATE_QUIZ_FAILED');
+      const msg = error instanceof Error ? error.message : '';
+      if (msg === 'BAD_REQUEST') {
+        toast.error(t('not_enough_questions'));
+      } else {
+        toast.error(msg || t('common_error'));
+      }
     }
   }
 
