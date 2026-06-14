@@ -2,6 +2,7 @@ import { callLLMStreaming } from '@/server/ai';
 import { pdfService } from '@/server/services/pdf.service';
 import type { RequestContext } from '@/lib/request-context';
 import type { TokenUsage } from '@/server/ai/ai.types';
+import type { ChatMessageInput } from '@/server/models/ai-chat.model';
 
 const LOG_PREFIX = '[ChatService]';
 
@@ -18,11 +19,18 @@ export class ChatService {
   async chat(
     text: string,
     file: { data: string; mimeType: string } | undefined,
+    messages: ChatMessageInput[] | undefined,
     ctx: RequestContext,
     callbacks: ChatServiceCallbacks,
   ): Promise<void> {
     try {
-      const prompt = text;
+      let prompt = text;
+      if (messages && messages.length > 0) {
+        const history = messages
+          .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+          .join('\n');
+        prompt = `Previous conversation:\n${history}\n\nUser: ${text}`;
+      }
       let systemPrompt = SYSTEM_PROMPT;
 
       if (file) {

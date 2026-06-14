@@ -41,9 +41,9 @@ export class ChatController {
       return;
     }
 
-    const { text, file } = parsed.data;
+    const { text, file, messages } = parsed.data;
 
-    await chatService.chat(text, file, ctx, {
+    await chatService.chat(text, file, messages, ctx, {
       onToken: (token) => callbacks.onToken(token),
       onResult: (type, data) => callbacks.onResult(type, data),
       onComplete: (summary, usage) => {

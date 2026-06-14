@@ -77,7 +77,14 @@ export function useAiChat(): UseAiChatReturn {
     try {
       if (!isFlashcardIntent(text) || file) {
         // --- NORMAL CHAT FLOW ---
+        const history = messages
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .filter((m) => m.id !== assistantMsg.id && m.id !== userMsg.id)
+          .filter((m) => m.content.length > 0)
+          .map((m) => ({ role: m.role, content: m.content }));
+
         const body: Record<string, unknown> = { text };
+        if (history.length > 0) body.messages = history;
         if (file) {
           const buffer = await file.arrayBuffer();
           const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
@@ -353,7 +360,7 @@ export function useAiChat(): UseAiChatReturn {
     } finally {
       setIsStreaming(false);
     }
-  }, []);
+  }, [messages]);
 
   const clearChat = useCallback(() => {
     abortRef.current?.abort();
