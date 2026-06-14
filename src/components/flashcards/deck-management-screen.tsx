@@ -17,11 +17,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Trash2, Pencil, ArrowRight, Eye } from 'lucide-react';
+import { Plus, Trash2, Pencil, ArrowRight, Eye, Upload, Download, CheckSquare, Square, CheckCheck, Menu } from 'lucide-react';
 import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Checkbox } from '@/components/ui/checkbox';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -30,6 +38,8 @@ import type { Deck } from '@/types/flashcards';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
 import { UserRole } from '@/types';
+import { ImportDialog } from '@/components/flashcards/import-dialog';
+import { DeckBulkActions } from '@/components/flashcards/deck-bulk-actions';
 
 const GRADIENTS = [
   'from-violet-500 to-purple-600',
@@ -112,10 +122,18 @@ export function DeckManagementScreen({ basePath, t, breadcrumbs }: DeckManagemen
       queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous);
     },
   });
+  const batchDeleteDecks = useApiMutation({
+    mutationFn: (data: { ids: string[] }) =>
+      apiPost('/api/v1/flashcards/decks/batch/delete', data),
+    invalidateKeys: [flashcardKeys.decks.all],
+  });
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Deck | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [formData, setFormData] = useState({ name: '', description: '' });
 
   function resetForm() {
@@ -163,6 +181,51 @@ export function DeckManagementScreen({ basePath, t, breadcrumbs }: DeckManagemen
     }
   }
 
+  function handleToggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleSelectAll() {
+    if (!decks) return;
+    setSelectedIds(new Set(decks.map((d) => d.id)));
+  }
+
+  function handleDeselectAll() {
+    setSelectedIds(new Set());
+  }
+
+  function handleClearSelection() {
+    setSelectedIds(new Set());
+    setIsSelecting(false);
+  }
+
+  function handleExportAll() {
+    window.open('/api/v1/flashcards/export/csv', '_blank');
+  }
+
+  function handleBatchExportSelection() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    window.open(`/api/v1/flashcards/export/csv?deckIds=${ids.join(',')}`, '_blank');
+  }
+
+  async function handleBatchDeleteSelection() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    try {
+      await batchDeleteDecks.mutateAsync({ ids });
+      toast.success(t('deck_deleted'));
+      handleClearSelection();
+    } catch {
+      toast.error(t('delete_failed'));
+    }
+  }
+
   async function handleDelete() {
     if (!deleteId) return;
     try {
@@ -178,9 +241,75 @@ export function DeckManagementScreen({ basePath, t, breadcrumbs }: DeckManagemen
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <Breadcrumbs items={breadcrumbs} />
-        <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" /> {t('new_deck')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="hidden lg:flex items-center gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" /> {t('import_csv')}
+            </Button>
+            <Button variant="outline" onClick={handleExportAll}>
+              <Download className="mr-2 h-4 w-4" /> {t('export_csv')}
+            </Button>
+            <Button
+              variant={isSelecting ? 'secondary' : 'outline'}
+              onClick={() => {
+                if (isSelecting) handleClearSelection();
+                else setIsSelecting(true);
+              }}
+            >
+              {isSelecting ? <Square className="mr-2 h-4 w-4" /> : <CheckSquare className="mr-2 h-4 w-4" />}
+              {isSelecting ? t('cancel_selection') : t('select_cards')}
+            </Button>
+            <Button onClick={openCreate}>
+              <Plus className="mr-2 h-4 w-4" /> {t('new_deck')}
+            </Button>
+          </div>
+          <div className="lg:hidden">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Menu className="mr-2 h-4 w-4" /> {t('common_manage')}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setImportOpen(true)}>
+                  <Upload className="mr-2 h-4 w-4" /> {t('import_csv')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportAll}>
+                  <Download className="mr-2 h-4 w-4" /> {t('export_csv')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => {
+                  if (isSelecting) handleClearSelection();
+                  else setIsSelecting(true);
+                }}>
+                  {isSelecting ? <Square className="mr-2 h-4 w-4" /> : <CheckSquare className="mr-2 h-4 w-4" />}
+                  {isSelecting ? t('cancel_selection') : t('select_cards')}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={openCreate}>
+                  <Plus className="mr-2 h-4 w-4" /> {t('new_deck')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      </div>
+
+      <div className={`flex items-center gap-2 py-1 ${isSelecting && decks && decks.length > 0 ? '' : 'invisible'}`}>
+        {(isSelecting && decks && decks.length > 0) && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={selectedIds.size === decks.length ? handleDeselectAll : handleSelectAll}
+            >
+              <CheckCheck className="mr-1.5 h-4 w-4" />
+              {selectedIds.size === decks.length ? t('deselect_all') : t('select_all')}
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              {t('n_selected', { count: selectedIds.size })}
+            </span>
+          </>
+        )}
       </div>
 
       {isLoading ? (
@@ -206,8 +335,14 @@ export function DeckManagementScreen({ basePath, t, breadcrumbs }: DeckManagemen
             return (
               <Card
                 key={deck.id}
-                className="group overflow-hidden cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:border-primary/50 p-0"
-                onClick={() => router.push(`${basePath}/deck/${deck.id}`)}
+                className={`group overflow-hidden cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:border-primary/50 p-0 ${selectedIds.has(deck.id) ? 'ring-2 ring-primary' : ''}`}
+                onClick={() => {
+                  if (isSelecting) {
+                    handleToggleSelect(deck.id);
+                  } else {
+                    router.push(`${basePath}/deck/${deck.id}`);
+                  }
+                }}
               >
                 <div
                   className={`h-20 bg-gradient-to-br ${gradient} flex items-center justify-center relative`}
@@ -215,6 +350,15 @@ export function DeckManagementScreen({ basePath, t, breadcrumbs }: DeckManagemen
                   <span className="text-2xl font-bold text-white/90">
                     {deck.name.charAt(0).toUpperCase()}
                   </span>
+                  {isSelecting && (
+                    <div className="absolute left-2 top-2 z-10">
+                      <Checkbox
+                        checked={selectedIds.has(deck.id)}
+                        onCheckedChange={() => handleToggleSelect(deck.id)}
+                        className="h-5 w-5 bg-background/80"
+                      />
+                    </div>
+                  )}
                   {!can(role, 'deck.update', deck.created_by, user?.id) && (
                     <Eye className="absolute bottom-2 right-2 h-4 w-4 text-white/50" />
                   )}
@@ -229,7 +373,7 @@ export function DeckManagementScreen({ basePath, t, breadcrumbs }: DeckManagemen
                         </p>
                       )}
                     </div>
-                    {can(role, 'deck.update', deck.created_by, user?.id) && (
+                    {can(role, 'deck.update', deck.created_by, user?.id) && !isSelecting && (
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
                         <Button
                           variant="ghost"
@@ -338,6 +482,20 @@ export function DeckManagementScreen({ basePath, t, breadcrumbs }: DeckManagemen
         description={t('delete_dialog_desc')}
         cancelText={t('common_cancel')}
         confirmText={t('common_delete')}
+      />
+
+      <DeckBulkActions
+        selectedCount={selectedIds.size}
+        onExport={handleBatchExportSelection}
+        onDelete={handleBatchDeleteSelection}
+        onClearSelection={handleClearSelection}
+        t={t}
+      />
+
+      <ImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        t={t}
       />
     </div>
   );

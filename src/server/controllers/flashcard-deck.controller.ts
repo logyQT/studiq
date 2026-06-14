@@ -1,5 +1,5 @@
 import { flashcardDeckService } from '@/server/services';
-import { CreateDeckSchema, UpdateDeckSchema } from '@/server/models';
+import { CreateDeckSchema, UpdateDeckSchema, BatchDeleteDeckSchema } from '@/server/models';
 import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
 import type { RequestContext } from '@/lib/request-context';
@@ -64,6 +64,25 @@ export class FlashcardDeckController {
       await flashcardDeckService.delete(id, ctx);
 
       return { success: true, statusCode: 200, data: { success: true } };
+    }, ctx);
+  }
+
+  async batchDelete(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = BatchDeleteDeckSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const result = await flashcardDeckService.batchDelete(parsed.data, ctx);
+
+      return { success: true, statusCode: 200, data: result };
     }, ctx);
   }
 }

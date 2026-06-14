@@ -15,3 +15,5 @@ export * from '@/server/models/stats.model';
 export * from '@/server/models/search.model';
 export * from '@/server/models/flashcard-spaced-repetition.model';
 export * from '@/server/models/flashcard-stats.model';
+export * from '@/server/models/flashcard-import.model';
+export * from '@/server/models/flashcard-export.model';

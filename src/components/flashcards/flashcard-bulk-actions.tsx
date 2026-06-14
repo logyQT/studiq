@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { Trash2, Link2, Tags, ArrowRight, Copy, X } from 'lucide-react';
+import { Trash2, Link2, Tags, ArrowRight, Copy, Download, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 interface FlashcardBulkActionsProps {
@@ -9,11 +9,13 @@ interface FlashcardBulkActionsProps {
   canDelete: boolean;
   canTopics: boolean;
   canMove: boolean;
+  canExport: boolean;
   onDelete: () => void;
   onLink: () => void;
   onCopy: () => void;
   onTopics: () => void;
   onMove: () => void;
+  onExport: () => void;
   onClearSelection: () => void;
   t: ReturnType<typeof useTranslations>;
 }
@@ -23,11 +25,13 @@ export function FlashcardBulkActions({
   canDelete,
   canTopics,
   canMove,
+  canExport,
   onDelete,
   onLink,
   onCopy,
   onTopics,
   onMove,
+  onExport,
   onClearSelection,
   t,
 }: FlashcardBulkActionsProps) {
@@ -45,6 +49,11 @@ export function FlashcardBulkActions({
           <Button variant="outline" size="sm" onClick={onCopy}>
             <Copy className="mr-1.5 h-4 w-4" /> {t('bulk_copy')}
           </Button>
+          {canExport && (
+            <Button variant="outline" size="sm" onClick={onExport}>
+              <Download className="mr-1.5 h-4 w-4" /> {t('common_export')}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={onLink}>
             <Link2 className="mr-1.5 h-4 w-4" /> {t('bulk_link')}
           </Button>
@@ -60,7 +69,7 @@ export function FlashcardBulkActions({
           )}
           {canDelete && (
             <Button variant="destructive" size="sm" onClick={onDelete}>
-              <Trash2 className="mr-1.5 h-4 w-4" /> {t('bulk_delete')}
+              <Trash2 className="mr-1.5 h-4 w-4" /> {t('common_delete')}
             </Button>
           )}
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClearSelection}>

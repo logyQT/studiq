@@ -17,3 +17,5 @@ export * from '@/server/controllers/flashcard-generation.controller';
 export * from '@/server/controllers/error-log.controller';
 export * from '@/server/controllers/permission.controller';
 export * from '@/server/controllers/search.controller';
+export * from '@/server/controllers/flashcard-import.controller';
+export * from '@/server/controllers/flashcard-export.controller';

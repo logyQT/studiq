@@ -224,7 +224,7 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
     const batch = [...pendingUpdatesRef.current];
     pendingUpdatesRef.current = [];
     try {
-      await fetch('/api/v1/flashcards/practice/batch', {
+      await fetch('/api/v1/flashcards/batch/practice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

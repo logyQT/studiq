@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import type { CreateDeckInput, UpdateDeckInput } from '@/server/models';
+import type { CreateDeckInput, UpdateDeckInput, BatchDeleteDeckInput } from '@/server/models';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
 import { checkPermission, shouldSetUniversityId, buildQueryFilter, Permission } from '@/lib/rbac';
@@ -143,6 +143,31 @@ export class FlashcardDeckService {
       .eq('id', id);
 
     if (error) throw mapSupabaseError(error);
+  }
+
+  async batchDelete(data: BatchDeleteDeckInput, ctx: RequestContext) {
+    const supabase = await createClient();
+
+    const { data: decks, error: fetchError } = await supabase
+      .from('flashcard_decks')
+      .select('*')
+      .in('id', data.ids);
+
+    if (fetchError) throw mapSupabaseError(fetchError);
+    if (!decks || decks.length === 0) throw new AppError('NOT_FOUND');
+
+    for (const deck of decks) {
+      await checkPermission(ctx, Permission.DECK_DELETE, deck);
+    }
+
+    const { error } = await supabase
+      .from('flashcard_decks')
+      .delete()
+      .in('id', data.ids);
+
+    if (error) throw mapSupabaseError(error);
+
+    return { deleted: data.ids.length };
   }
 }
 

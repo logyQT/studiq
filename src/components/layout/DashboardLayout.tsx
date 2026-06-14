@@ -262,7 +262,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset>
+      <SidebarInset className="overflow-y-auto max-h-svh">
         {/* Topbar */}
         <header className="sticky top-0 z-40 border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
           <div className="flex h-14 items-center gap-4 px-6">

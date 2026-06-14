@@ -41,7 +41,7 @@ async function submitPracticeBatch(page: Page): Promise<number> {
   );
 
   const result = await page.evaluate(async (body) => {
-    const res = await fetch('/api/v1/flashcards/practice/batch', {
+    const res = await fetch('/api/v1/flashcards/batch/practice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items: body }),

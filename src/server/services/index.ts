@@ -18,3 +18,5 @@ export * from '@/server/services/flashcard-generation.service';
 export * from '@/server/services/flashcard-spaced-repetition.service';
 export * from '@/server/services/pdf.service';
 export * from '@/server/services/search.service';
+export * from '@/server/services/flashcard-import.service';
+export * from '@/server/services/flashcard-export.service';

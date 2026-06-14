@@ -68,55 +68,6 @@
  *         description: Validation error
  *       500:
  *         description: Internal server error
- *   put:
- *     summary: Bulk create flashcards
- *     description: Creates multiple flashcards at once. Teachers' flashcards are scoped to their university. Requires authentication.
- *     tags:
- *       - Flashcards
- *     security:
- *       - cookieAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - cards
- *             properties:
- *               cards:
- *                 type: array
- *                 items:
- *                   type: object
- *                   required:
- *                     - front
- *                     - back
- *                   properties:
- *                     front:
- *                       type: string
- *                       minLength: 1
- *                     back:
- *                       type: string
- *                       minLength: 1
- *                     topicIds:
- *                       type: array
- *                       items:
- *                         type: string
- *                         format: uuid
- *                     deckIds:
- *                       type: array
- *                       items:
- *                         type: string
- *                         format: uuid
- *     responses:
- *       201:
- *         description: Flashcards created successfully
- *       401:
- *         description: Unauthorized (no session)
- *       422:
- *         description: Validation error
- *       500:
- *         description: Internal server error
  */
 
 import { NextRequest } from 'next/server';
@@ -146,9 +97,3 @@ export async function GET(req: NextRequest) {
   });
 }
 
-export async function PUT(req: NextRequest) {
-  return withAuth(req, async (ctx) => {
-    const body = await req.json();
-    return toNextResponse(await flashcardController.bulkCreate(body, ctx));
-  });
-}
