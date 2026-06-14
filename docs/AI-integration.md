@@ -27,7 +27,7 @@ Cross-cutting component — foundational dependency for all phases. A single fun
 ## API
 
 ```typescript
-// src/server/ai/llm-gateway.ts  🆕
+// src/server/ai/llm-gateway.ts  ✅
 
 type LLMGatewayRequest = {
   prompt: string;
@@ -130,7 +130,7 @@ const cards = parseJsonResponse(response.content);
 
 | Input             | Status                                                   |
 | ----------------- | -------------------------------------------------------- |
-| Text (chat input) | 🆕                                                       |
+| Text (chat input) | ✅                                                       |
 | PDF upload        | ✅ exists — `pdfService.ts`, Buffer extraction, chunking |
 | Text paste (raw)  | 🆕                                                       |
 
@@ -142,7 +142,7 @@ const cards = parseJsonResponse(response.content);
 | `/summary pdf`     | 🆕                                                        |
 | `/quiz pdf`        | 🆕                                                        |
 | `/explain pdf`     | 🆕                                                        |
-| `/flashcards text` | 🆕 — variant without PDF                                  |
+| `/flashcards text` | ⚠️ via `/api/v1/ai/flashcard-gen` (chat-based)            |
 | `/summary text`    | 🆕                                                        |
 | `/quiz text`       | 🆕                                                        |
 | `/explain text`    | 🆕                                                        |
@@ -175,17 +175,18 @@ const cards = parseJsonResponse(response.content);
 
 ### What needs building for Phase 1
 
-| Component                                   | Priority | Reason                                                       |
-| ------------------------------------------- | -------- | ------------------------------------------------------------ |
-| General AI chat page                        | High     | Only dedicated flashcard AI page exists                      |
-| Command parser                              | High     | Current route is hardcoded to flashcards                     |
-| Usage tracking + subscription tables        | High     | No limits currently enforced                                 |
-| `LLMGateway`                                | High     | Single `callLLM` replaces per-method `LLMProvider` interface |
-| `POST /ai/command`                          | High     | New multi-command endpoint                                   |
-| `POST /ai/chat`                             | High     | Free-form chat endpoint                                      |
-| `GET /ai/usage`                             | High     | Usage status for UI display                                  |
-| `POST /api/v1/flashcards/generate/fromtext` | Medium   | Text variant missing                                         |
-| Usage guard + subscription guard            | High     | Enforce access and limits before provider call               |
+| Component                                   | Priority | Status | Reason                                                       |
+| ------------------------------------------- | -------- | ------ | ------------------------------------------------------------ |
+| General AI chat page                        | High     | ✅     | Built at `/app/ai`                                           |
+| Command parser                              | High     | 🆕     | Current route is hardcoded to flashcards                     |
+| Usage tracking + subscription tables        | High     | 🆕     | No limits currently enforced                                 |
+| `LLMGateway`                                | High     | ✅     | `callLLM` + `callLLMStreaming` in `src/server/ai/`           |
+| `POST /ai/command`                          | High     | 🆕     | New multi-command endpoint                                   |
+| `POST /ai/chat`                             | High     | ✅     | Built as `/api/v1/ai/chat`                                   |
+| `POST /api/v1/ai/flashcard-gen`             | High     | ✅     | Chat-based flashcard gen with thinking traces                |
+| `GET /ai/usage`                             | High     | 🆕     | Usage status for UI display                                  |
+| `POST /api/v1/flashcards/generate/fromtext` | Medium   | 🆕     | Text variant missing                                         |
+| Usage guard + subscription guard            | High     | ⚠️     | Stubs exist (`allowed: true`), real logic pending DB migration |
 
 ## Users & Access Model
 
@@ -278,17 +279,32 @@ return new Response(stream, {
 Standard event types for all pipelines:
 | Event | Payload | When |
 |-------|---------|------|
+| `token` | `{ text }` | Individual token during chat streaming |
+| `think` | `{ trace }` | Reasoning trace during flashcard generation |
 | `progress` | `{ processedChunks, totalChunks }` | After each chunk |
 | `result` | `{ type, data }` | Partial result (e.g., 3 flashcards) |
+| `flashcards` | `[{ front, back, topic }]` | Final flashcard array from flashcard-gen |
 | `complete` | `{ summary, metadata }` | All processing done |
+| `usage` | `{ current, limit, plan, resetsAt }` | Usage limit info (sent before complete) |
 | `error` | `{ message, ref? }` | Any failure |
 
 ### Architecture Diagram (Phase 1)
 
 ```
-User -> Chat UI -> POST /ai/command { text, file?, language? }
-  -> Route Handler
-    -> Auth guard (existing)
+User -> AI Chat UI -> POST /api/v1/ai/chat { text, file? }
+  -> Auth guard (inline Supabase auth)
+    -> Subscription guard (stub) + Usage guard (stub)
+      -> ChatController -> ChatService -> callLLMStreaming
+        -> SSE stream: token, result, complete, usage -> UI
+
+User -> AI Chat UI -> (flashcard intent detected by keywords)
+  -> POST /api/v1/ai/flashcard-gen { text }
+    -> Auth guard (inline Supabase auth)
+      -> AiCommandController -> AiCommandService -> callLLM
+        -> SSE stream: think, flashcards, complete -> UI
+
+User -> POST /ai/command { text, file?, language? }  [🆕]
+  -> Auth guard (existing)
     -> Subscription guard (new) — block FREE, check active plan
       -> Usage guard (new) — check bracket limits
         -> Command parser (new)
@@ -402,19 +418,20 @@ The `GET /ai/usage` endpoint wraps both guards and returns the usage status for 
 
 ### Phase 1 Endpoints
 
-| Method | Path                                   | Status          | Description                                                                                       |
-| ------ | -------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------- |
-| POST   | `/api/v1/flashcards/generate/frompdf`  | ✅ Existing     | PDF -> flashcards, SSE                                                                            |
-| POST   | `/api/v1/flashcards/generate/fromtext` | 🆕 Needs adding | Text -> flashcards, SSE                                                                           |
-| POST   | `/ai/command`                          | 🆕              | Universal command endpoint — accepts `{ text, file?, language? }`, detects intent, streams result |
-| POST   | `/ai/chat`                             | 🆕              | Free-form chat with document context                                                              |
-| GET    | `/ai/usage`                            | 🆕              | Returns current usage stats and limits for user                                                   |
+| Method | Path                                   | Status      | Description                                                                                       |
+| ------ | -------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------- |
+| POST   | `/api/v1/flashcards/generate/frompdf`  | ✅          | PDF -> flashcards, SSE                                                                            |
+| POST   | `/api/v1/flashcards/generate/fromtext` | 🆕          | Text -> flashcards, SSE                                                                           |
+| POST   | `/api/v1/ai/chat`                      | ✅          | Free-form chat with document context, SSE                                                         |
+| POST   | `/api/v1/ai/flashcard-gen`             | ✅          | Text -> flashcards with thinking traces, SSE                                                      |
+| POST   | `/ai/command`                          | 🆕          | Universal command endpoint — accepts `{ text, file?, language? }`, detects intent, streams result |
+| GET    | `/ai/usage`                            | 🆕          | Returns current usage stats and limits for user                                                   |
 
-Route rules in `src/server/config/routes.config.ts` will need entries for `/ai/*` (not yet added):
+Route rule added in `src/server/config/routes.config.ts`:
 
 ```typescript
 {
-  matcher: /^\/ai(\/.*)?$/,
+  matcher: /^\/api\/v1\/ai(\/.*)?$/,
   requireAuth: true,
   allowedRoles: [UserRole.PREMIUM, UserRole.STUDENT, UserRole.TEACHER],
   isApi: true,
@@ -454,22 +471,24 @@ New page: `src/app/(frontend)/app/ai/page.tsx`
 
 ### Components
 
-| Component     | Path | Purpose                                                                                                     |
-| ------------- | ---- | ----------------------------------------------------------------------------------------------------------- |
-| `ChatInput`   | 🆕   | Text input + file upload + send button                                                                      |
-| `ChatMessage` | 🆕   | Single message bubble (user vs AI), renders different result types (flashcards, summary text, quiz buttons) |
-| `ChatHistory` | 🆕   | Scrollable message list                                                                                     |
-| `UsageBadge`  | 🆕   | Shows "15/50 daily requests used" + plan name                                                               |
-| `FileUpload`  | 🆕   | Drag & drop zone, file preview, remove button                                                               |
+| Component       | Path   | Purpose                                                                                                     |
+| --------------- | ------ | ----------------------------------------------------------------------------------------------------------- |
+| `ChatInput`     | ✅     | Text input + file upload + send button                                                                      |
+| `ChatMessage`   | ✅     | Single message bubble (user vs AI), renders different result types (flashcards, summary text, quiz buttons) |
+| `ChatHistory`   | ✅     | Scrollable message list                                                                                     |
+| `UsageBadge`    | ✅     | Shows "15/50 daily requests used" + plan name                                                               |
+| `FileUpload`    | ✅     | Drag & drop zone, file preview, remove button                                                               |
+| `FlashcardBlock`| ✅     | Renders flashcard previews with "Save as Deck" button                                                       |
+| `ThinkingBlock` | ✅     | Collapsible thinking traces panel with step animation                                                       |
 
 ### Hook
 
-New hook: `src/hooks/use-ai-chat.ts` — modeled after existing `useGenerateFlashcards` but general-purpose:
+New hook: `src/hooks/use-ai-chat.ts` ✅ — modeled after existing `useGenerateFlashcards` but general-purpose:
 
-- Sends to `/ai/command` or `/ai/chat`
-- Reads SSE stream generically (not hardcoded to `flashcards` event)
-- Manages message history state
-- Tracks streaming status per message
+- Detects flashcard intent via keywords — skips chat call, calls `/api/v1/ai/flashcard-gen` directly
+- Reads SSE stream generically (handles `token`, `result`, `think`, `flashcards`, `complete`, `usage`, `error` events)
+- Manages message history state with `thinkingTraces` field
+- Tracks streaming status per message (`sending`, `streaming`, `thinking`, `complete`, `error`)
 
 ---
 
@@ -758,8 +777,20 @@ Results can be compared side-by-side in the UI.
 5. **Build `LLMGateway`** — `src/server/ai/llm-gateway.ts` with `callLLM()` + provider routing + token tracking + usage recording
 6. **Build `command-parser.ts`** — regex + LLM intent detection
 7. **Build `POST /ai/command`** — universal streaming endpoint (reuse SSE pattern from `frompdf/route.ts`)
-8. **Build `POST /ai/chat`** — free-form chat with context
-9. **Build `GET /ai/usage`** — usage status endpoint
+8. **Build `POST /api/v1/ai/chat`** — free-form chat with context, SSE
+9. **Build `POST /api/v1/ai/flashcard-gen`** — text -> flashcards with thinking traces, SSE
 10. **Build AI chat page** — `src/app/(frontend)/app/ai/page.tsx` with components
 11. **Add `POST /api/v1/flashcards/generate/fromtext`** — text variant
-12. **Add `/ai/*` route rules** to `routes.config.ts`
+12. **Add `/api/v1/ai/*` route rules** to `routes.config.ts`
+
+### Completed steps
+
+| Step | Status | Notes |
+|------|--------|-------|
+| 5 (LLMGateway) | ✅ | `callLLM` + `callLLMStreaming` with OpenAI/Ollama provider resolution |
+| 8 (chat endpoint) | ✅ | `/api/v1/ai/chat` with token-by-token SSE streaming |
+| 9 (flashcard-gen) | ✅ | `/api/v1/ai/flashcard-gen` with thinking traces |
+| 10 (chat page) | ✅ | Full page at `/app/ai` with all components |
+| 12 (route rules) | ✅ | `/api/v1/ai/*` — PREMIUM, STUDENT, TEACHER |
+| 3 (subscription guard) | ⚠️ | Stub returns `allowed: true`, real logic pending DB migration |
+| 4 (usage guard) | ⚠️ | Stub returns `allowed: true`, real logic pending DB migration |
