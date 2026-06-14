@@ -4,8 +4,14 @@ export interface GeneratedFlashcard {
   suggestedTopic: string;
 }
 
+export interface StreamCallbacks {
+  onToken: (token: string) => void;
+}
+
 export interface LLMProvider {
   generateFlashcardsFromChunk(chunk: string, language: string): Promise<GeneratedFlashcard[]>;
+  generateChat(prompt: string, systemPrompt?: string): Promise<string>;
+  generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<string>;
 }
 
 function tryParse(raw: string): unknown {

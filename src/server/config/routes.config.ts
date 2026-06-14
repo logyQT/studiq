@@ -28,6 +28,12 @@ export const routeRules: RouteRule[] = [
     allowedRoles: [UserRole.TEACHER, UserRole.SYS_ADMIN],
     isApi: true,
   },
+  {
+    matcher: /^\/api\/v1\/ai(\/.*)?$/,
+    requireAuth: true,
+    allowedRoles: [UserRole.PREMIUM, UserRole.STUDENT, UserRole.TEACHER],
+    isApi: true,
+  },
   // Dev tools are public (only available in dev mode)
   {
     matcher: /^\/api\/v1\/dev(\/.*)?$/,

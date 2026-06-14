@@ -1,4 +1,4 @@
-import { LLMProvider, GeneratedFlashcard, FLASHCARD_PROMPT, parseJsonResponse } from './LLMProvider';
+import { LLMProvider, GeneratedFlashcard, FLASHCARD_PROMPT, parseJsonResponse, type StreamCallbacks } from './LLMProvider';
 import type { ModelsConfig } from '@/server/config/models.config';
 
 const LOG_PREFIX = '[OpenAIProvider]';
@@ -56,6 +56,91 @@ export class OpenAIProvider implements LLMProvider {
     console.log(`${LOG_PREFIX} Raw response length=${content.length}, preview="${content.slice(0, 200)}..."`);
 
     return parseJsonResponse(content);
+  }
+
+  async generateChat(prompt: string, systemPrompt?: string): Promise<string> {
+    const messages: Array<{ role: string; content: string }> = [];
+    if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+    messages.push({ role: 'user', content: prompt });
+
+    const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: this.modelName,
+        messages,
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '(no body)');
+      throw new Error(`OpenAI request failed: ${res.status} ${text}`);
+    }
+
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || '';
+  }
+
+  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<string> {
+    const messages: Array<{ role: string; content: string }> = [];
+    if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+    messages.push({ role: 'user', content: prompt });
+
+    const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: this.modelName,
+        messages,
+        stream: true,
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '(no body)');
+      throw new Error(`OpenAI request failed: ${res.status} ${text}`);
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error('Response body is not readable');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullContent = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+        const payload = trimmed.slice(6);
+        if (payload === '[DONE]') break;
+        try {
+          const parsed = JSON.parse(payload);
+          const delta = parsed.choices?.[0]?.delta?.content;
+          if (delta) {
+            fullContent += delta;
+            callbacks.onToken(delta);
+          }
+        } catch {
+          // skip malformed chunks
+        }
+      }
+    }
+
+    return fullContent;
   }
 }
 
