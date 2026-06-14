@@ -762,7 +762,7 @@
   "AppFlashcardPracticePage": {
     "back": "Powrót",
     "deck_picker_title": "Ćwicz Talię",
-    "deck_picker_desc": "Wybierz talię do ćwiczenia. Fiszki są powtarzane lokalnie z powtórkami rozłożonymi w czasie — bez wywołań serwera.",
+    "deck_picker_desc": "Wybierz talię do ćwiczenia.",
     "flashcards_count": "{count, plural, one {# fiszka} few {# fiszki} many {# fiszek} other {# fiszek}}",
     "no_decks_picker": "Brak talii. Utwórz najpierw!",
     "start_practice": "Ćwicz",

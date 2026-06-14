@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
 import { flashcardSpacedRepetitionService } from './flashcard-spaced-repetition.service';
-import type { BatchPracticeInput, CompleteSessionInput } from '@/server/models';
+import type { BatchPracticeInput, CompleteSessionInput, PracticeCardData } from '@/server/models';
 import { buildQueryFilter, Permission } from '@/lib/rbac';
 
 export class FlashcardPracticeService {
@@ -383,6 +383,56 @@ export class FlashcardPracticeService {
     if (error) throw mapSupabaseError(error);
 
     return { success: true };
+  }
+
+  async getCardsForPractice(
+    ctx: RequestContext,
+    filters: { deckIds?: string[]; topicIds?: string[] },
+  ): Promise<PracticeCardData[]> {
+    const supabase = await createClient();
+
+    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    if (filter._impossible) return [];
+
+    const matchingIds = await this.getMatchingFlashcardIds(ctx, filters);
+
+    if (matchingIds.length === 0) return [];
+
+    const { data: reviewStates } = await supabase
+      .from('flashcard_review_state')
+      .select('flashcard_id, easiness_factor, interval_days, repetitions, next_review_at, last_reviewed_at, last_quality')
+      .eq('user_id', ctx.userId)
+      .in('flashcard_id', matchingIds);
+
+    const stateByCard = new Map((reviewStates ?? []).map((s) => [s.flashcard_id, s]));
+
+    let query = supabase
+      .from('flashcards')
+      .select('id, front, back, created_at')
+      .in('id', matchingIds);
+
+    const { data: flashcards, error } = await query;
+    if (error) throw mapSupabaseError(error);
+
+    return (flashcards ?? []).map((fc) => {
+      const state = stateByCard.get(fc.id);
+      return {
+        id: fc.id,
+        front: fc.front,
+        back: fc.back,
+        createdAt: fc.created_at,
+        reviewState: state
+          ? {
+              easinessFactor: state.easiness_factor,
+              intervalDays: state.interval_days,
+              repetitions: state.repetitions,
+              nextReviewAt: state.next_review_at,
+              lastReviewedAt: state.last_reviewed_at,
+              lastQuality: state.last_quality,
+            }
+          : null,
+      };
+    });
   }
 }
 

@@ -34,19 +34,35 @@ export default async function SessionPage({ searchParams }: SessionPageProps) {
 
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
-  let initialCards: Array<{ id: string; front: string; back: string }> = [];
+  let initialCards: Array<{
+    id: string; front: string; back: string;
+    createdAt: string | null;
+    reviewState: {
+      easinessFactor: number; intervalDays: number; repetitions: number;
+      nextReviewAt: string; lastReviewedAt: string | null; lastQuality: number | null;
+    } | null;
+  }> = [];
 
   if (isPractice && deckId) {
-    const res = await fetch(`${baseUrl}/api/v1/flashcards?deckIds=${deckId}`, {
+    const res = await fetch(`${baseUrl}/api/v1/flashcards/practice/prepare?deckIds=${deckId}`, {
       headers: { Cookie: cookieHeader },
       cache: 'no-store',
     });
     if (res.ok) {
       const body = await res.json();
-      initialCards = (body.data ?? []).map((fc: { id: string; front: string; back: string }) => ({
+      initialCards = (body.data ?? []).map((fc: {
+        id: string; front: string; back: string;
+        createdAt?: string | null;
+        reviewState?: {
+          easinessFactor: number; intervalDays: number; repetitions: number;
+          nextReviewAt: string; lastReviewedAt: string | null; lastQuality: number | null;
+        } | null;
+      }) => ({
         id: fc.id,
         front: fc.front,
         back: fc.back,
+        createdAt: fc.createdAt ?? null,
+        reviewState: fc.reviewState ?? null,
       }));
     }
   } else if (!isPractice) {
@@ -61,10 +77,19 @@ export default async function SessionPage({ searchParams }: SessionPageProps) {
     });
     if (res.ok) {
       const body = await res.json();
-      initialCards = (body.data ?? []).map((fc: { id: string; front: string; back: string }) => ({
+      initialCards = (body.data ?? []).map((fc: {
+        id: string; front: string; back: string;
+        createdAt?: string | null;
+        reviewState?: {
+          easinessFactor: number; intervalDays: number; repetitions: number;
+          nextReviewAt: string; lastReviewedAt: string | null; lastQuality: number | null;
+        } | null;
+      }) => ({
         id: fc.id,
         front: fc.front,
         back: fc.back,
+        createdAt: fc.createdAt ?? null,
+        reviewState: fc.reviewState ?? null,
       }));
     }
   }

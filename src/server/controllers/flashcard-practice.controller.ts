@@ -114,6 +114,16 @@ export class FlashcardPracticeController {
     }, ctx);
   }
 
+  async prepare(
+    ctx: RequestContext,
+    filters: { deckIds?: string[]; topicIds?: string[] },
+  ): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const cards = await flashcardPracticeService.getCardsForPractice(ctx, filters);
+      return { success: true, statusCode: 200, data: cards };
+    }, ctx);
+  }
+
   async completeSession(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
       const parsed = CompleteSessionSchema.safeParse(body);

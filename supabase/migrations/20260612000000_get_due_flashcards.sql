@@ -72,7 +72,7 @@ BEGIN
           'lastQuality', d.last_quality
         )
       ELSE NULL END
-    )) FROM due),
+    )) FROM due d),
     (SELECT json_agg(json_build_object(
       'id', f.id,
       'front', f.front,
@@ -86,7 +86,7 @@ BEGIN
         'lastReviewedAt', f.last_reviewed_at,
         'lastQuality', f.last_quality
       )
-    )) FROM fallback),
+    )) FROM fallback f),
     '[]'::json
   ) INTO v_result;
 

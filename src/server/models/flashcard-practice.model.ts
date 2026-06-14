@@ -1,6 +1,37 @@
 import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
 
+export const ReviewStateSchema = registry.register(
+  'ReviewState',
+  z.object({
+    easinessFactor: z.number(),
+    intervalDays: z.number(),
+    repetitions: z.number(),
+    nextReviewAt: z.string(),
+    lastReviewedAt: z.string().nullable(),
+    lastQuality: z.number().nullable(),
+  }),
+);
+
+export const PracticeCardSchema = registry.register(
+  'PracticeCard',
+  z.object({
+    id: z.string().uuid(),
+    front: z.string(),
+    back: z.string(),
+    createdAt: z.string().nullable(),
+    reviewState: ReviewStateSchema.nullable(),
+  }),
+);
+
+export const PreparePracticeSchema = registry.register(
+  'PreparePracticeRequest',
+  z.object({
+    deckIds: z.array(z.string().uuid()).optional(),
+    topicIds: z.array(z.string().uuid()).optional(),
+  }),
+);
+
 export const LogPracticeSchema = registry.register(
   'LogFlashcardPracticeRequest',
   z.object({
@@ -60,3 +91,5 @@ export type LogPracticeInput = z.infer<typeof LogPracticeSchema>;
 export type BatchPracticeItemInput = z.infer<typeof BatchPracticeItemSchema>;
 export type BatchPracticeInput = z.infer<typeof BatchPracticeSchema>;
 export type CompleteSessionInput = z.infer<typeof CompleteSessionSchema>;
+export type PracticeCardData = z.infer<typeof PracticeCardSchema>;
+export type PreparePracticeInput = z.infer<typeof PreparePracticeSchema>;
