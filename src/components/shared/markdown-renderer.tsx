@@ -46,8 +46,8 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
         rehypePlugins={[rehypeRaw, rehypeHighlight, [rehypeSanitize, sanitizeSchema], rehypeKatex]}
         components={{
           p: ({ children }) => <div className="mb-1 last:mb-0">{children}</div>,
-          ul: ({ children }) => <ul className="list-disc pl-4 mb-1 last:mb-0">{children}</ul>,
-          ol: ({ children }) => <ol className="list-decimal pl-4 mb-1 last:mb-0">{children}</ol>,
+          ul: ({ children }) => <ul className="list-disc pl-4 mb-1 last:mb-0 text-left">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal pl-4 mb-1 last:mb-0 text-left">{children}</ol>,
           li: ({ children }) => <li className="mb-0.5 last:mb-0">{children}</li>,
           pre: ({ children }) => <>{children}</>,
           code: ({ className, children }) => {
@@ -61,7 +61,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           em: ({ children }) => <em>{children}</em>,
           blockquote: ({ children }) => (
-            <blockquote className="border-l-2 border-muted-foreground/30 pl-3 italic mb-1 last:mb-0">
+            <blockquote className="border-l-2 border-muted-foreground/30 pl-3 italic mb-1 last:mb-0 text-left">
               {children}
             </blockquote>
           ),
@@ -71,7 +71,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
             </a>
           ),
           table: ({ children }) => (
-            <div className="overflow-x-auto mb-1 last:mb-0">
+            <div className="overflow-x-auto mb-1 last:mb-0 text-left">
               <table className="w-full border-collapse text-sm">{children}</table>
             </div>
           ),

@@ -149,7 +149,7 @@ export function FlashcardCard({
         >
           {isFlipped ? t('answer_label') : t('question_label')}
         </p>
-        <div className="max-w-lg mx-auto w-full text-center flex-1 flex items-center justify-center">
+        <div className="w-full text-center flex-1 flex items-center justify-center">
           <div className="text-lg font-medium grid">
             <div className={`[grid-area:1/1] ${isFlipped ? 'invisible' : ''}`}>
               <MarkdownRenderer content={fc.front} />
