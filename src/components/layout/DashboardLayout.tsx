@@ -23,6 +23,8 @@ import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { LanguageToggle } from '@/components/layout/LanguageToggle';
 import { AppSearch } from '@/components/layout/app-search';
+import { Breadcrumbs } from '@/components/layout/breadcrumbs';
+import { useBreadcrumbs } from '@/hooks/use-breadcrumbs';
 import { cn } from '@/lib/utils';
 import { UserRole } from '@/types';
 import {
@@ -83,13 +85,6 @@ const NAV_ITEMS: Record<string, NavItem[]> = {
   ],
 };
 
-const DASHBOARD_TITLE_KEYS: Record<string, string> = {
-  '/edu': 'teacher_dashboard',
-  '/manage': 'university_dashboard',
-  '/app': 'student_dashboard',
-  '/admin': 'sys_admin_dashboard',
-};
-
 const ROLE_BADGE_STYLES: Record<UserRole, string> = {
   [UserRole.SYS_ADMIN]: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
   [UserRole.UNIVERSITY_ADMIN]: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
@@ -120,13 +115,6 @@ function getActiveHref(pathname: string, navItems: NavItem[]): string | null {
   return best?.href ?? null;
 }
 
-function getDashboardTitleKey(pathname: string): string {
-  for (const [prefix, key] of Object.entries(DASHBOARD_TITLE_KEYS)) {
-    if (pathname.startsWith(prefix)) return key;
-  }
-  return 'teacher_dashboard';
-}
-
 function getInitials(name: string | null | undefined): string {
   if (!name) return '?';
   return name
@@ -155,11 +143,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const t = useTranslations('DashboardLayout');
   const navItems = getNavGroup(pathname);
   const activeHref = getActiveHref(pathname, navItems);
-  const dashboardTitleKey = getDashboardTitleKey(pathname);
 
   const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || t('default_user');
   const userRole = user?.app_metadata?.role as UserRole | undefined;
   const showSearch = pathname.startsWith('/app') || pathname.startsWith('/edu');
+  const crumbs = useBreadcrumbs(pathname);
 
   const handleLogout = async () => {
     try {
@@ -264,14 +252,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
       <SidebarInset className="overflow-y-auto max-h-svh">
         {/* Topbar */}
-        <header className="sticky top-0 z-40 border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
-          <div className="flex h-14 items-center gap-4 px-6">
-            <div className="flex items-center gap-3 shrink-0">
-              <SidebarTrigger className="hover:bg-primary/8 hover:text-primary transition-colors" />
-              <h1 className="text-base font-semibold text-foreground max-md:hidden">
-                {t(dashboardTitleKey)}
-              </h1>
-            </div>
+        <header className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
+          <div className="flex h-14 items-center gap-4 px-6 border-b border-border/60">
+            <SidebarTrigger className="hover:bg-primary/8 hover:text-primary transition-colors" />
             {showSearch && (
               <div className="flex-1 flex justify-center min-w-0">
                 <AppSearch />
@@ -282,6 +265,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <ThemeToggle />
             </div>
           </div>
+          {crumbs.length > 0 && (
+            <div className="px-6 pt-2">
+              <Breadcrumbs items={crumbs} />
+            </div>
+          )}
         </header>
 
         {/* Main content */}

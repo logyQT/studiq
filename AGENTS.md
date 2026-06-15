@@ -202,6 +202,34 @@ useRealtimeChannel(builder);
 
 For AI/flashcard generation streams, use raw `fetch` + `AbortController` + `ReadableStream`. Events: `flashcards`, `progress`, `complete`, `error`.
 
+### Breadcrumbs
+
+Auto-generated from route config, rendered in `DashboardLayout` topbar (second row, below title). Always start with the section root (`/app`, `/edu`, `/admin`, `/manage`).
+
+**Key files:**
+- `src/config/breadcrumbs.ts` — maps routes to `{ labelKey, namespace }` (i18n keys)
+- `src/hooks/use-breadcrumbs.ts` — `useBreadcrumbs(pathname)` → `Crumb[]` via route matching + translation
+- `src/components/providers/BreadcrumbProvider.tsx` — context for dynamic segments (e.g., deck name)
+- `src/components/layout/breadcrumbs.tsx` — presentational `<Breadcrumbs items={crumbs} />`
+- `src/components/layout/DashboardLayout.tsx` — renders breadcrumbs in topbar when `crumbs.length > 1`
+
+**How it works:**
+1. `DashboardLayout` calls `useBreadcrumbs(pathname)`
+2. Hook splits pathname into progressive candidates (`/app`, `/app/flashcards`, ...) and matches against `BREADCRUMB_ROUTES`
+3. For each match, translates `labelKey` via the correct i18n namespace
+4. Merges dynamic segments from `BreadcrumbProvider` context (if any)
+5. Returns `Crumb[]` → rendered by `<Breadcrumbs>`
+
+**Adding a new route:**
+1. Add entry to `BREADCRUMB_ROUTES` in `src/config/breadcrumbs.ts`
+2. If the namespace is new, add `useTranslations` call + entry in the `translators` map in `use-breadcrumbs.ts`
+3. For dynamic routes (e.g., `/app/foo/[id]`), the hook matches the pattern and uses the parent label as fallback until `BreadcrumbUpdater` provides the real label
+
+**Dynamic segments (async labels):**
+Pages with async data (e.g., deck name) wrap content in `<BreadcrumbProvider>` and render `<BreadcrumbUpdater label={name} href="#" />` when data arrives. The hook appends these to the breadcrumb chain.
+
+**Route matching:** Exact match or dynamic segment match only (`[param]` matches any value). No prefix/startsWith matching — each breadcrumb level must have an explicit config entry.
+
 ---
 
 ## RBAC

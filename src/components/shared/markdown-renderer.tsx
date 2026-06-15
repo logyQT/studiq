@@ -1,12 +1,15 @@
 'use client';
 
+import { type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
+import rehypeHighlight from 'rehype-highlight';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { AudioPlayer } from '@/components/shared/audio-player';
+import { CodeBlock } from '@/components/shared/code-block';
 import 'katex/dist/katex.min.css';
 
 const sanitizeSchema = structuredClone(defaultSchema);
@@ -14,7 +17,7 @@ sanitizeSchema.tagNames!.push('audio');
 sanitizeSchema.attributes!.audio = ['src', 'controls'];
 sanitizeSchema.attributes!.span = [
   ...(sanitizeSchema.attributes!.span || []),
-  ['className', 'math', 'math-inline', 'math-display'],
+  ['className', 'math', 'math-inline', 'math-display', /^hljs-/],
 ];
 sanitizeSchema.attributes!.div = [
   ...(sanitizeSchema.attributes!.div || []),
@@ -26,20 +29,35 @@ interface MarkdownRendererProps {
   className?: string;
 }
 
+function extractText(node: ReactNode): string {
+  if (typeof node === 'string') return node;
+  if (typeof node === 'number') return String(node);
+  if (node == null || typeof node === 'boolean') return '';
+  if (Array.isArray(node)) return node.map(extractText).join('');
+  if (node && typeof node === 'object' && 'props' in node) return extractText((node as React.ReactElement).props.children);
+  return '';
+}
+
 export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
   return (
     <div className={className}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema], rehypeKatex]}
+        rehypePlugins={[rehypeRaw, rehypeHighlight, [rehypeSanitize, sanitizeSchema], rehypeKatex]}
         components={{
           p: ({ children }) => <div className="mb-1 last:mb-0">{children}</div>,
           ul: ({ children }) => <ul className="list-disc pl-4 mb-1 last:mb-0">{children}</ul>,
           ol: ({ children }) => <ol className="list-decimal pl-4 mb-1 last:mb-0">{children}</ol>,
           li: ({ children }) => <li className="mb-0.5 last:mb-0">{children}</li>,
-          code: ({ children }) => (
-            <code className="rounded bg-muted px-1 py-0.5 text-sm font-mono">{children}</code>
-          ),
+          pre: ({ children }) => <>{children}</>,
+          code: ({ className, children }) => {
+            const isFenced = /language-\w+/.test(className ?? '');
+            if (isFenced) {
+              const language = className?.replace('language-', '');
+              return <CodeBlock language={language} rawCode={extractText(children)}>{children}</CodeBlock>;
+            }
+            return <code className="rounded bg-black/10 px-1 py-0.5 text-sm font-mono">{children}</code>;
+          },
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           em: ({ children }) => <em>{children}</em>,
           blockquote: ({ children }) => (

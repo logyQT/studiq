@@ -18,7 +18,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Plus, Trash2, Pencil, ArrowRight, Eye, Upload, Download, CheckSquare, Square, CheckCheck, Menu } from 'lucide-react';
-import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -64,19 +63,13 @@ function getGradient(id: string) {
   return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
 }
 
-interface Crumb {
-  label: string;
-  href: string;
-}
-
 interface DeckManagementScreenProps {
   apiBase: string;
   basePath: string;
   t: ReturnType<typeof useTranslations>;
-  breadcrumbs: Crumb[];
 }
 
-export function DeckManagementScreen({ basePath, t, breadcrumbs }: DeckManagementScreenProps) {
+export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -239,8 +232,7 @@ export function DeckManagementScreen({ basePath, t, breadcrumbs }: DeckManagemen
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <Breadcrumbs items={breadcrumbs} />
+      <div className="flex items-center justify-end">
         <div className="flex items-center gap-2">
           <div className="hidden lg:flex items-center gap-2">
             <Button variant="outline" onClick={() => setImportOpen(true)}>

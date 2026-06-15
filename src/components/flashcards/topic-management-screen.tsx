@@ -17,7 +17,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Plus, Trash2, Eye, Pencil } from 'lucide-react';
-import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
@@ -44,18 +43,12 @@ function getTopicColor(name: string) {
   return TOPIC_COLORS[name.length % TOPIC_COLORS.length];
 }
 
-interface Crumb {
-  label: string;
-  href: string;
-}
-
 interface TopicManagementScreenProps {
   apiBase: string;
   t: ReturnType<typeof useTranslations>;
-  breadcrumbs: Crumb[];
 }
 
-export function TopicManagementScreen({ t, breadcrumbs }: TopicManagementScreenProps) {
+export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   const queryClient = useQueryClient();
   const { data: topics, isLoading } = useApiQuery<Topic[]>({
     queryKey: flashcardKeys.topics.all,
@@ -164,8 +157,7 @@ export function TopicManagementScreen({ t, breadcrumbs }: TopicManagementScreenP
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <Breadcrumbs items={breadcrumbs} />
+      <div className="flex items-center justify-end">
         <Button onClick={openCreate}>
           <Plus className="mr-2 h-4 w-4" /> {t('new_topic')}
         </Button>

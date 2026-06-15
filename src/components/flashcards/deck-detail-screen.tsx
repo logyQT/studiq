@@ -19,7 +19,7 @@ import {
   Download,
   Menu,
 } from 'lucide-react';
-import { Breadcrumbs } from '@/components/layout/breadcrumbs';
+import { BreadcrumbUpdater } from '@/components/providers/BreadcrumbProvider';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
@@ -68,7 +68,6 @@ interface DeckDetailScreenProps {
   apiBase: string;
   t: ReturnType<typeof useTranslations>;
   practiceHref?: string;
-  parentBreadcrumbs: { label: string; href: string }[];
 }
 
 export function DeckDetailScreen({
@@ -77,7 +76,6 @@ export function DeckDetailScreen({
   apiBase,
   t,
   practiceHref,
-  parentBreadcrumbs,
 }: DeckDetailScreenProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -622,7 +620,6 @@ export function DeckDetailScreen({
   if (deckError || (!deckLoading && !currentDeck)) {
     return (
       <div className="space-y-6">
-        <Breadcrumbs items={parentBreadcrumbs} />
         <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
           <p className="text-lg">Deck not found</p>
         </div>
@@ -636,12 +633,10 @@ export function DeckDetailScreen({
 
   return (
     <div className="space-y-6">
-      <Breadcrumbs items={[
-        ...parentBreadcrumbs,
-        { label: currentDeck?.name ?? '', href: '#' },
-      ]} />
+      <BreadcrumbUpdater label={currentDeck?.name ?? ''} href="#" />
 
       <div className={`relative group rounded-xl bg-gradient-to-br ${gradient} p-8 text-white`}>
+        <div className="absolute inset-0 rounded-xl bg-black/10 pointer-events-none" />
         <div className="absolute right-4 top-4 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
           <TooltipProvider delayDuration={500}>
             {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (

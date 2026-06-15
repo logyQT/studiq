@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl';
 import { FolderOpen, Tags, Play, Dumbbell } from 'lucide-react';
-import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { DashboardPanel } from '@/components/flashcards/dashboard-panel';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
@@ -79,7 +78,6 @@ export default function FlashcardsClient() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <Breadcrumbs items={[{ label: t('title'), href: '/app/flashcards' }]} />
         <p className="text-muted-foreground">{t('subtitle')}</p>
       </div>
 

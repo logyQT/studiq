@@ -18,7 +18,6 @@ import {
 } from '@/components/ui/select';
 import { Loader2, Upload, Trash2, Check, Sparkles, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { useGenerateFlashcards } from '@/hooks/use-flashcard-generation';
 import type { GeneratedFlashcard } from '@/hooks/use-flashcard-generation';
 
@@ -26,8 +25,6 @@ type CardState = GeneratedFlashcard & { kept: boolean };
 
 export default function AiFlashcardPage() {
   const t = useTranslations('FlashcardAiPage');
-  const navT = useTranslations('AppFlashcardsPage');
-  const dashT = useTranslations('DashboardLayout');
   const router = useRouter();
   const { flashcards, suggestedDeckName, progress, status, errorMessage, generate, reset } = useGenerateFlashcards();
 
@@ -145,11 +142,6 @@ export default function AiFlashcardPage() {
 
   return (
     <div className="space-y-6">
-      <Breadcrumbs items={[
-        { label: navT('title'), href: '/app/flashcards' },
-        { label: dashT('app_ai_generate'), href: '/app/flashcards/ai' },
-      ]} />
-
       {status === 'idle' && (
         <Card>
           <CardContent className="p-6 space-y-4">

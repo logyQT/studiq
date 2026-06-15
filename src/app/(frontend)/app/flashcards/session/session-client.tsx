@@ -8,7 +8,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Check, X, ArrowLeft, Minus, Zap } from 'lucide-react';
-import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { SessionSummaryDialog } from '@/components/flashcards/session-summary-dialog';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -146,7 +145,6 @@ interface SessionClientProps {
 
 export default function SessionClient({ initialCards, mode, studyMode, targetCount, hasMore: initialHasMore, deckIds }: SessionClientProps) {
   const t = useTranslations('AppFlashcardSessionPage');
-  const navT = useTranslations('AppFlashcardsPage');
   const router = useRouter();
 
   const isPractice = mode === 'practice';
@@ -462,11 +460,7 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <Breadcrumbs items={[
-          { label: navT('title'), href: '/app/flashcards' },
-          { label: isPractice ? t('mode_practice') : t('mode_study'), href: backUrl },
-          { label: t('breadcrumb_session'), href: '#' },
-        ]} />
+        <div />
         <div className="flex items-center gap-2">
           <Badge variant="outline">
             {t('correct_badge', { correct: correctCount, total: totalAnswered })}

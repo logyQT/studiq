@@ -9,7 +9,6 @@ interface DeckClientProps {
 
 export default function DeckClient({ deckId }: DeckClientProps) {
   const t = useTranslations('AppFlashcardDeckViewPage');
-  const navT = useTranslations('AppFlashcardsPage');
 
   return (
     <DeckDetailScreen
@@ -18,10 +17,6 @@ export default function DeckClient({ deckId }: DeckClientProps) {
       apiBase="/api/v1/flashcards"
       practiceHref="/app/flashcards/session?mode=practice&deckId="
       t={t}
-      parentBreadcrumbs={[
-        { label: navT('title'), href: '/app/flashcards' },
-        { label: navT('decks_title'), href: '/app/flashcards/decks' },
-      ]}
     />
   );
 }
