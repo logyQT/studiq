@@ -8,13 +8,13 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Pencil, Tags, Plus, Trash2, ExternalLink, Link2, Copy } from 'lucide-react';
+import { Pencil, Tags, Plus, Settings, ExternalLink, Link2, Copy, Trash2 } from 'lucide-react';
 
 interface OwnedFlashcardContextMenuProps {
   t: ReturnType<typeof useTranslations>;
   onEdit: () => void;
   onAddTopic: () => void;
-  onRemoveTopic: () => void;
+  onManageTopics: () => void;
   onViewByTopic: () => void;
   onLink: () => void;
   onCopy: () => void;
@@ -25,7 +25,7 @@ export function OwnedFlashcardContextMenu({
   t,
   onEdit,
   onAddTopic,
-  onRemoveTopic,
+  onManageTopics,
   onViewByTopic,
   onLink,
   onCopy,
@@ -44,8 +44,8 @@ export function OwnedFlashcardContextMenu({
           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onAddTopic(); }}>
             <Plus className="mr-2 h-4 w-4" /> {t('menu_add_topic')}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onRemoveTopic(); }}>
-            <Trash2 className="mr-2 h-4 w-4" /> {t('menu_remove_topic')}
+          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onManageTopics(); }}>
+            <Settings className="mr-2 h-4 w-4" /> {t('menu_manage_topics')}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onViewByTopic(); }}>
             <ExternalLink className="mr-2 h-4 w-4" /> {t('menu_view_by_topic')}

@@ -1,0 +1,78 @@
+'use client';
+
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import { AudioPlayer } from '@/components/shared/audio-player';
+import 'katex/dist/katex.min.css';
+
+const sanitizeSchema = structuredClone(defaultSchema);
+sanitizeSchema.tagNames!.push('audio');
+sanitizeSchema.attributes!.audio = ['src', 'controls'];
+sanitizeSchema.attributes!.span = [
+  ...(sanitizeSchema.attributes!.span || []),
+  ['className', 'math', 'math-inline', 'math-display'],
+];
+sanitizeSchema.attributes!.div = [
+  ...(sanitizeSchema.attributes!.div || []),
+  ['className', 'math', 'math-display'],
+];
+
+interface MarkdownRendererProps {
+  content: string;
+  className?: string;
+}
+
+export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
+  return (
+    <div className={className}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema], rehypeKatex]}
+        components={{
+          p: ({ children }) => <div className="mb-1 last:mb-0">{children}</div>,
+          ul: ({ children }) => <ul className="list-disc pl-4 mb-1 last:mb-0">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal pl-4 mb-1 last:mb-0">{children}</ol>,
+          li: ({ children }) => <li className="mb-0.5 last:mb-0">{children}</li>,
+          code: ({ children }) => (
+            <code className="rounded bg-muted px-1 py-0.5 text-sm font-mono">{children}</code>
+          ),
+          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+          em: ({ children }) => <em>{children}</em>,
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-2 border-muted-foreground/30 pl-3 italic mb-1 last:mb-0">
+              {children}
+            </blockquote>
+          ),
+          a: ({ href, children }) => (
+            <a href={href} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+              {children}
+            </a>
+          ),
+          table: ({ children }) => (
+            <div className="overflow-x-auto mb-1 last:mb-0">
+              <table className="w-full border-collapse text-sm">{children}</table>
+            </div>
+          ),
+          th: ({ children }) => (
+            <th className="border border-border bg-muted px-3 py-1.5 text-left font-medium">{children}</th>
+          ),
+          td: ({ children }) => (
+            <td className="border border-border px-3 py-1.5">{children}</td>
+          ),
+          del: ({ children }) => <del className="line-through">{children}</del>,
+          img: ({ src, alt }) =>
+            src ? <img src={src} alt={alt ?? ''} className="block max-w-full h-auto rounded-lg mx-auto" /> : null,
+          hr: () => <hr className="my-2 border-border" />,
+          audio: ({ src }) =>
+            typeof src === 'string' ? <AudioPlayer src={src} /> : null,
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}

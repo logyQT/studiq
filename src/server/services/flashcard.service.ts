@@ -164,6 +164,7 @@ export class FlashcardService {
 
     const { data, error } = await query;
     if (error) throw mapSupabaseError(error);
+
     return data;
   }
 
@@ -186,6 +187,7 @@ export class FlashcardService {
     const { data, error } = await query.single();
 
     if (error || !data) throw new AppError('NOT_FOUND');
+
     return data;
   }
 

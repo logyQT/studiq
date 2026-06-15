@@ -21,6 +21,7 @@ import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { apiPost, apiPut, apiDelete } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
@@ -324,11 +325,11 @@ export function TopicManagementScreen({ t, breadcrumbs }: TopicManagementScreenP
                 <div key={fc.id} className="p-4 rounded-lg border space-y-2">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase">{t('question_label')}</p>
-                    <p className="text-sm font-medium">{fc.front}</p>
+                    <p className="text-sm font-medium"><MarkdownRenderer content={fc.front} /></p>
                   </div>
                   <div className="border-t pt-2">
                     <p className="text-xs text-muted-foreground uppercase">{t('answer_label')}</p>
-                    <p className="text-sm">{fc.back}</p>
+                    <p className="text-sm"><MarkdownRenderer content={fc.back} /></p>
                   </div>
                 </div>
               ))

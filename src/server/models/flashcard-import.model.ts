@@ -4,8 +4,8 @@ import { ValidationErrorCode } from '@/lib/validation-errors';
 export const CsvImportRowSchema = registry.register(
   'CsvImportRow',
   z.object({
-    front: z.string().min(1, { error: ValidationErrorCode.REQUIRED }).max(255, { error: ValidationErrorCode.TOO_LONG }),
-    back: z.string().min(1, { error: ValidationErrorCode.REQUIRED }).max(255, { error: ValidationErrorCode.TOO_LONG }),
+    front: z.string().min(1, { error: ValidationErrorCode.REQUIRED }).max(5000, { error: ValidationErrorCode.TOO_LONG }),
+    back: z.string().min(1, { error: ValidationErrorCode.REQUIRED }).max(5000, { error: ValidationErrorCode.TOO_LONG }),
     topic: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
     deck: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
   }),

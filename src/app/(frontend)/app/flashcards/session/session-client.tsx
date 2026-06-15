@@ -10,6 +10,9 @@ import { Progress } from '@/components/ui/progress';
 import { Check, X, ArrowLeft, Minus, Zap } from 'lucide-react';
 import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { SessionSummaryDialog } from '@/components/flashcards/session-summary-dialog';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { toast } from 'sonner';
 
 interface Flashcard {
   id: string;
@@ -111,7 +114,8 @@ function isMastered(card: Flashcard): boolean {
 }
 
 function buildInitialQueue(cards: Flashcard[], isPractice: boolean): QueueItem[] {
-  const effective = isPractice ? cards.filter((c) => !isMastered(c)) : cards;
+  let effective = isPractice ? cards.filter((c) => !isMastered(c)) : cards;
+  if (effective.length === 0) effective = cards;
   const items: QueueItem[] = effective.map((card) => ({
     card,
     priority: 100,
@@ -180,7 +184,8 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
   const [_localSM2, setLocalSM2] = useState<Map<string, LocalSM2State>>(() => {
     if (isPractice) {
       const m = new Map<string, LocalSM2State>();
-      const effective = initialCards.filter((c) => !isMastered(c));
+      let effective = initialCards.filter((c) => !isMastered(c));
+      if (effective.length === 0) effective = initialCards;
       effective.forEach((c) => {
         const rs = c.reviewState;
         m.set(c.id, {
@@ -398,6 +403,14 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
   const terminalRef = useRef(sessionComplete || allCaughtUp);
   const noCardRef = useRef(!currentCard);
   const handleAnswerRef = useRef(handleAnswer);
+  const toastShownRef = useRef(false);
+
+  useEffect(() => {
+    if (!toastShownRef.current) {
+      toastShownRef.current = true;
+      toast(t('shortcut_toast'), { duration: 3000 });
+    }
+  }, [t]);
 
   useEffect(() => { flippedRef.current = flipped; }, [flipped]);
   useEffect(() => { terminalRef.current = sessionComplete || allCaughtUp; }, [sessionComplete, allCaughtUp]);
@@ -471,38 +484,70 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
 
       {isLimited && <Progress value={progress} />}
 
-      <Card
-        className="cursor-pointer min-h-64 flex items-center justify-center transition-all duration-300 hover:shadow-lg"
-        onClick={() => setFlipped(!flipped)}
-        aria-keyshortcuts="Space"
-      >
-        <CardContent className="pt-8 text-center px-8">
-          <p className="text-xs text-muted-foreground uppercase mb-4">
-            {flipped ? t('answer_label') : t('question_label')}
-          </p>
-          <p className="text-2xl font-medium">{flipped ? currentCard.back : currentCard.front}</p>
-          <p className="text-sm text-muted-foreground mt-4">
-            {t('click_hint', { action: flipped ? t('see_question') : t('reveal_answer') })}
-          </p>
-        </CardContent>
-      </Card>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Card
+            className="cursor-pointer min-h-64 flex items-center justify-center transition-all duration-300 hover:shadow-lg"
+            onClick={() => setFlipped(!flipped)}
+            aria-keyshortcuts="Space"
+          >
+            <CardContent className="pt-8 px-8 text-center">
+              <p className="text-xs text-muted-foreground uppercase mb-4">
+                {flipped ? t('answer_label') : t('question_label')}
+              </p>
+              <div className="text-2xl font-medium grid">
+                <div className={`[grid-area:1/1] ${flipped ? 'invisible' : ''}`}>
+                  <MarkdownRenderer content={currentCard.front} />
+                </div>
+                <div className={`[grid-area:1/1] ${flipped ? '' : 'invisible'}`}>
+                  <MarkdownRenderer content={currentCard.back} />
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground mt-4">
+                {t('click_hint', { action: flipped ? t('see_question') : t('reveal_answer') })}
+              </p>
+            </CardContent>
+          </Card>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{t('shortcut_flip')}</TooltipContent>
+      </Tooltip>
 
-      {flipped && (
-        <div className="grid grid-cols-2 gap-2">
-          <Button onClick={() => handleAnswer(false, 1)} aria-keyshortcuts="1">
-            <X className="mr-1.5 h-4 w-4 text-red-500" /> {t('rating_again')}
-          </Button>
-          <Button onClick={() => handleAnswer(false, 3)} aria-keyshortcuts="2">
-            <Minus className="mr-1.5 h-4 w-4 text-orange-500" /> {t('rating_hard')}
-          </Button>
-          <Button onClick={() => handleAnswer(true, 3)} aria-keyshortcuts="3">
-            <Check className="mr-1.5 h-4 w-4 text-amber-500" /> {t('rating_good')}
-          </Button>
-          <Button onClick={() => handleAnswer(true, 5)} aria-keyshortcuts="4">
-            <Zap className="mr-1.5 h-4 w-4 text-green-500" /> {t('rating_easy')}
-          </Button>
-        </div>
-      )}
+      <div className={`grid grid-cols-2 gap-2 transition-opacity duration-150 ${
+        flipped ? '' : 'pointer-events-none opacity-30'
+      }`}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button onClick={() => handleAnswer(false, 1)} aria-keyshortcuts="1">
+              <X className="mr-1.5 h-4 w-4 text-red-500" /> {t('rating_again')}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t('shortcut_again')}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button onClick={() => handleAnswer(false, 3)} aria-keyshortcuts="2">
+              <Minus className="mr-1.5 h-4 w-4 text-orange-500" /> {t('rating_hard')}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t('shortcut_hard')}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button onClick={() => handleAnswer(true, 3)} aria-keyshortcuts="3">
+              <Check className="mr-1.5 h-4 w-4 text-amber-500" /> {t('rating_good')}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t('shortcut_good')}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button onClick={() => handleAnswer(true, 5)} aria-keyshortcuts="4">
+              <Zap className="mr-1.5 h-4 w-4 text-green-500" /> {t('rating_easy')}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t('shortcut_easy')}</TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   );
 }

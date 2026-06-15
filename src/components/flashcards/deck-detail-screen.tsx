@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { apiPost, apiPut, apiDelete } from '@/lib/api';
+import { formatMarkdown } from '@/lib/markdown-utils';
 import { flashcardKeys } from '@/lib/query-keys';
 import { DeckDetailSkeleton } from '@/components/flashcards/deck-detail-skeleton';
 import { FlashcardCard } from '@/components/flashcards/flashcard-card';
@@ -305,7 +307,7 @@ export function DeckDetailScreen({
     deckFormData: { name: '', description: '' },
     viewTopicId: null,
     addTopicOpen: false,
-    removeTopicOpen: false,
+    manageTopicOpen: false,
     topicActionIds: [],
     selectedIds: [],
     bulkDeleteOpen: false,
@@ -344,8 +346,8 @@ export function DeckDetailScreen({
     }
     try {
       await createFlashcard.mutateAsync({
-        front: d.formData.front,
-        back: d.formData.back,
+        front: formatMarkdown(d.formData.front),
+        back: formatMarkdown(d.formData.back),
         topicIds: d.formData.topicIds.length > 0 ? d.formData.topicIds : undefined,
       });
       setD((prev) => ({ ...prev, createOpen: false }));
@@ -365,8 +367,8 @@ export function DeckDetailScreen({
     try {
       await updateFlashcard.mutateAsync({
         id: d.activeFlashcardId,
-        front: d.formData.front,
-        back: d.formData.back,
+        front: formatMarkdown(d.formData.front),
+        back: formatMarkdown(d.formData.back),
         topicIds: d.formData.topicIds,
       });
       setD((prev) => ({ ...prev, editOpen: false }));
@@ -473,25 +475,6 @@ export function DeckDetailScreen({
     setD((prev) => ({ ...prev, addTopicOpen: false, topicActionIds: [] }));
   }
 
-  async function handleRemoveTopicConfirm() {
-    const fc = flashcards.find((f) => f.id === d.activeFlashcardId);
-    if (!fc || d.topicActionIds.length === 0) return;
-    const currentIds = fc.flashcard_topic_assignments?.map((a) => a.topic_id) ?? [];
-    const newIds = currentIds.filter((id) => !d.topicActionIds.includes(id));
-    try {
-      await updateFlashcard.mutateAsync({
-        id: d.activeFlashcardId!,
-        front: fc.front,
-        back: fc.back,
-        topicIds: newIds,
-      });
-      toast.success(t('topic_removed'));
-    } catch {
-      toast.error(t('save_failed'));
-    }
-    setD((prev) => ({ ...prev, removeTopicOpen: false, topicActionIds: [] }));
-  }
-
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -591,7 +574,7 @@ export function DeckDetailScreen({
     onDeckDeleteOpenChange: (open) => setD((prev) => ({ ...prev, deckDeleteOpen: open })),
     onViewTopicIdChange: (id) => setD((prev) => ({ ...prev, viewTopicId: id })),
     onAddTopicOpenChange: (open) => setD((prev) => ({ ...prev, addTopicOpen: open })),
-    onRemoveTopicOpenChange: (open) => setD((prev) => ({ ...prev, removeTopicOpen: open })),
+    onManageTopicOpenChange: (open) => setD((prev) => ({ ...prev, manageTopicOpen: open })),
     onFormDataChange: (formData) => setD((prev) => ({ ...prev, formData })),
     onLinkDeckIdsChange: (linkDeckIds) => setD((prev) => ({ ...prev, linkDeckIds })),
     onCopyTargetDeckIdChange: (copyTargetDeckId) => setD((prev) => ({ ...prev, copyTargetDeckId })),
@@ -605,7 +588,6 @@ export function DeckDetailScreen({
     onDeckUpdate: handleDeckUpdate,
     onDeckDelete: handleDeckDelete,
     onAddTopicConfirm: handleAddTopicConfirm,
-    onRemoveTopicConfirm: handleRemoveTopicConfirm,
     onBulkDelete: handleBulkDelete,
     onBulkLink: handleBulkLink,
     onBulkTopics: handleBulkTopics,
@@ -731,11 +713,10 @@ export function DeckDetailScreen({
                 {t('flashcards_count', { count: flashcards.length })}
               </Badge>
               {practiceHref && (
-                <Button
-                  variant="secondary" size="sm" className="bg-white/20 text-white hover:bg-white/30 gap-1"
-                  onClick={() => router.push(`${practiceHref}${currentDeck!.id}`)}
-                >
-                  <Play className="h-3 w-3" /> {t('practice_deck')}
+                <Button variant="secondary" size="sm" className="bg-white/20 text-white hover:bg-white/30 gap-1" asChild>
+                  <Link href={`${practiceHref}${currentDeck!.id}`}>
+                    <Play className="h-3 w-3" /> {t('practice_deck')}
+                  </Link>
                 </Button>
               )}
             </div>
@@ -761,12 +742,15 @@ export function DeckDetailScreen({
               {isSelecting ? t('cancel_selection') : t('select_cards')}
             </Button>
             {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
-              <Button onClick={() => {
-                resetForm();
-                setD((prev) => ({ ...prev, createOpen: true }));
-              }} aria-keyshortcuts="n">
-                <Plus className="mr-2 h-4 w-4" /> {t('new_flashcard')}
-              </Button>
+              <>
+                <Button onClick={() => {
+                  resetForm();
+                  setD((prev) => ({ ...prev, createOpen: true }));
+                }} aria-keyshortcuts="n">
+                  <Plus className="mr-2 h-4 w-4" /> {t('new_flashcard')}
+                </Button>
+
+              </>
             )}
           </div>
           <div className="md:hidden">
@@ -860,7 +844,7 @@ export function DeckDetailScreen({
               onLink={(fc) => setD((prev) => ({ ...prev, activeFlashcardId: fc.id, linkDeckIds: [], linkOpen: true }))}
               onCopy={(fc) => setD((prev) => ({ ...prev, activeFlashcardId: fc.id, copyTargetDeckId: null, copyOpen: true }))}
               onAddTopic={(fc) => setD((prev) => ({ ...prev, activeFlashcardId: fc.id, topicActionIds: [], addTopicOpen: true }))}
-              onRemoveTopic={(fc) => setD((prev) => ({ ...prev, activeFlashcardId: fc.id, topicActionIds: [], removeTopicOpen: true }))}
+              onManageTopics={(fc) => setD((prev) => ({ ...prev, activeFlashcardId: fc.id, manageTopicOpen: true }))}
               onViewByTopic={(_fc, topicId) => setD((prev) => ({ ...prev, viewTopicId: topicId }))}
             />
           ))}
