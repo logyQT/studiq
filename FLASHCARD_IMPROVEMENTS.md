@@ -251,47 +251,29 @@ Streaks are a habit-retention mechanic (Duolingo, Snapchat). StudiQ is a study t
 
 ### 3.1 Media in Cards
 
-| Layer | Files | Changes |
-|-------|-------|---------|
-| `M` | Migration: `ALTER TABLE flashcards ADD COLUMN media jsonb` | Store `[{ type: 'image'|'audio'|'latex', url: string, alt?: string }]` |
-| `B` | New route: `POST /api/v1/flashcards/media/upload` | Accept multipart file, upload to Supabase Storage (`flashcard-media/<userId>/<uuid>`), return URL |
-| `B` | `src/server/models/flashcard.model.ts` | Update `CreateFlashcardSchema`, `UpdateFlashcardSchema` with optional `media` |
-| `B` | `src/server/services/flashcard.service.ts` | Pass `media` through create/update |
-| `F` | New: `src/components/flashcards/media-upload.tsx` | Image/audio upload with preview, drag & drop |
-| `F` | `src/components/flashcards/flashcard-card.tsx` | Render images/audio/latex inside card front/back (React `dangerouslySetInnerHTML` for LaTeX via KaTeX) |
+See [`docs/MARKDOWN-FLASHCARDS.md`](docs/MARKDOWN-FLASHCARDS.md) for the full implementation plan.
 
-**Priority:** Images first (most requested), then LaTeX (STEM), then audio (language learning).
-
-**Infrastructure needed:**
-- `supabase/config.toml`: define `flashcard-media` bucket with 50MiB limit, allowed MIME types (`image/*`, `audio/*`)
-- Migration: `INSERT INTO storage.buckets` + RLS policies for `storage.objects`
-- New: `src/server/services/storage.service.ts` — singleton, wraps `supabase.storage.from('flashcard-media')`
-- Install `katex` for LaTeX rendering on frontend
-- **Decision needed:** Client-side upload (browser → Supabase via anon key + RLS) vs server-side (browser → API → Supabase via service role)
+**Summary of changes from the original draft:**
+- LaTeX moved inline into `front`/`back` via Markdown + KaTeX (`$...$` syntax) — removed as a `media` type
+- `media jsonb` now stores only `image` and `audio` attachments
+- Front/back content supports Markdown formatting via `react-markdown`
+- `rehype-sanitize` strips external images and raw HTML (security)
+- Upload is server-side (browser → API → Supabase via service role)
+- Newline handling: automatic conversion to Markdown line breaks on save
 
 ---
 
-### 3.2 Cloze Deletion
+### 3.2 Cloze Deletion ⏳ DEFERRED — likely question type instead
 
-| Layer | Files | Changes |
-|-------|-------|---------|
-| `M` | Migration: `ALTER TABLE flashcards ADD COLUMN type text DEFAULT 'basic'` | `type` can be `'basic'` or `'cloze'`. For cloze, `front` stores the cloze text with `{{c1::answer}}` markers. |
-| `B` | `src/server/models/flashcard.model.ts` | Add optional `type` to create/update schemas |
-| `B` | `src/server/services/flashcard.service.ts` | Pass `type` through |
-| `F` | New: `src/components/flashcards/cloze-card.tsx` | Parses `{{c1::text}}` syntax, renders hidden/revealed segments, handles multiple cloze indices (`c1`, `c2`) |
-| `F` | New: `src/components/flashcards/cloze-editor.tsx` | WYSIWYG-like: select text → "Cloze" button wraps in `{{c1::...}}`, auto-increments index |
-| `F` | `src/components/flashcards/deck-detail-dialogs.tsx` | Type toggle in create/edit dialog (basic / cloze) |
-| `F` | `src/components/flashcards/flashcard-card.tsx` | Conditionally render `ClozeCard` vs basic card |
+**Decision:** Cloze deletion will not be implemented as a flashcard feature. The `{{c1::...}}` syntax with flip-to-reveal is passive and doesn't leverage active recall as effectively as typed input.
 
-**Infrastructure needed:**
-- Session rendering integration: `SessionClient` renders front/back inline (not via `FlashcardCard`)
-  - Option A (simpler): conditionally render `<ClozeCard>` vs inline `<p>` in `SessionClient`
-  - Option B (cleaner): extract card rendering into shared component, use everywhere — larger refactor
-- **Recommendation:** Option A for now
+**Revisit as:** A new `'cloze'` question type alongside `mcq`, `true_false`, `open` in `QuestionTypeEnum`. Content stores text with gaps, answers store the correct fill values, and the UI accepts typed input with auto-validation. Questions would need spaced repetition infrastructure (due queue, review state) if we want cloze practice outside of quizzes — otherwise it's quiz-only.
+
+**Depends on:** Spaced repetition for questions (if desired) or quiz infra (if quiz-only).
 
 ---
 
-### 3.3 CSV Import/Export
+### 3.3 CSV Import/Export ✅
 
 | Layer | Files | Changes |
 |-------|-------|---------|
@@ -344,22 +326,22 @@ front,back,topic,deck
 
 | Order | Feature | Why |
 |-------|---------|-----|
-| 1st | **3.3 CSV Import/Export** | No migration, no external deps (just `papaparse`), immediate user value, quickest win |
-| 2nd | **3.2 Cloze Deletion** | Self-contained — needs one migration (`type` column) + UI only, no storage or packages |
-| 3rd | **3.1 Media in Cards** | Foundational — sets up Supabase Storage bucket/service that 3.4 also needs. Installs `katex`. |
-| 4th | **3.4 APKG Import/Export** | Hardest — needs `jszip` + SQLite parsing + media handling from 3.1 storage |
+| 1st | **3.3 CSV Import/Export** ✅ | No migration, no external deps (just `papaparse`), immediate user value, quickest win |
+| 2nd | **3.1 Media in Cards** | Foundational — sets up Supabase Storage bucket/service that 3.4 also needs. Installs `katex`. |
+| 3rd | **3.4 APKG Import/Export** | Hardest — needs `jszip` + SQLite parsing + media handling from 3.1 storage |
+| — | **3.2 Cloze Deletion** ⏳ | Deferred — likely implemented as a `'cloze'` question type instead |
 
 ### Infrastructure Inventory
 
 | Item | 3.1 Media | 3.2 Cloze | 3.3 CSV | 3.4 APKG |
 |------|-----------|-----------|---------|----------|
-| **Migration** | `ADD COLUMN media jsonb` | `ADD COLUMN type text` | None | None |
-| **New package** | `katex` | None | `papaparse` | `jszip` (Bun built-in `bun:sqlite` for APKG SQLite) |
-| **Storage bucket** | `flashcard-media` (new) | None | None | Uses 3.1's bucket for extracted media |
-| **Storage RLS** | SELECT/INSERT/DELETE policies | None | None | None |
-| **New service** | `storage.service.ts` | None | `flashcard-import.service.ts` | `flashcard-apkg-{import,export}.service.ts` |
-| **New component** | `media-upload.tsx` | `cloze-card.tsx`, `cloze-editor.tsx` | `import-dialog.tsx`, `export-button.tsx` | Tab in import-dialog |
-| **Key decision** | Client-side vs server-side upload | Session rendering: Option A (inline conditional) vs B (shared component) | — | — |
+| **Migration** | `ADD COLUMN media jsonb` | N/A — deferred (question type) | None | None |
+| **New package** | `katex` | N/A — deferred (question type) | `papaparse` | `jszip` (Bun built-in `bun:sqlite` for APKG SQLite) |
+| **Storage bucket** | `flashcard-media` (new) | N/A | None | Uses 3.1's bucket for extracted media |
+| **Storage RLS** | SELECT/INSERT/DELETE policies | N/A | None | None |
+| **New service** | `storage.service.ts` | N/A | `flashcard-import.service.ts` | `flashcard-apkg-{import,export}.service.ts` |
+| **New component** | `media-upload.tsx` | N/A — deferred (question type) | `import-dialog.tsx`, `export-button.tsx` | Tab in import-dialog |
+| **Key decision** | Client-side vs server-side upload | N/A — deferred (question type) | — | — |
 
 ---
 
@@ -433,11 +415,11 @@ Phase 2 — 4/5 complete ✅
 ├── 2.4 Search (independent)
 └── 2.5 Streaks (deferred — not worth the infra)
 
-Phase 3 — build order: 3.3 → 3.2 → 3.1 → 3.4
-├── 3.3 CSV Import/Export (independent, no deps, quickest win) — done
-├── 3.2 Cloze Deletion (needs migration, independent) — done
+Phase 3 — build order: 3.3 → 3.1 → 3.4 (3.2 deferred)
+├── 3.3 CSV Import/Export ✅ (independent, no deps, quickest win)
+├── 3.2 Cloze Deletion ⏳ (deferred — likely `'cloze'` question type instead)
 ├── 3.1 Media in Cards (needs migration + storage bucket + katex) ───► 3.4 needs storage
-└── 3.4 APKG Import/Export (needs jszip + bun:sqlite + 3.1 storage for media) — done
+└── 3.4 APKG Import/Export (needs jszip + bun:sqlite + 3.1 storage for media)
 
 Phase 4 — not started
 ├── 4.1 Per-Student Insights (needs 1.3 foundation)
