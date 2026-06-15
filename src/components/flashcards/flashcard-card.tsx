@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -54,7 +55,7 @@ interface FlashcardCardProps {
   onViewByTopic: (fc: Flashcard, topicId: string) => void;
 }
 
-export function FlashcardCard({
+export const FlashcardCard = memo(function FlashcardCard({
   fc,
   isFlipped,
   gradient,
@@ -82,7 +83,7 @@ export function FlashcardCard({
   return (
     <Card
       id={`fc-${fc.id}`}
-      className={`group relative min-h-48 cursor-pointer transition-all duration-300 hover:shadow-lg ${
+      className={`group relative min-h-48 cursor-pointer transition-shadow duration-300 hover:shadow-lg ${
         isFlipped ? `bg-gradient-to-br ${gradient}` : ''
       } ${highlighted ? 'ring-2 ring-primary/70 ring-offset-2 animate-pulse' : ''}`}
       onClick={() => {
@@ -175,4 +176,4 @@ export function FlashcardCard({
       )}
     </Card>
   );
-}
+});

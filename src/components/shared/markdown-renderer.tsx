@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode } from 'react';
+import { type ReactNode, memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -34,17 +34,24 @@ function extractText(node: ReactNode): string {
   if (typeof node === 'number') return String(node);
   if (node == null || typeof node === 'boolean') return '';
   if (Array.isArray(node)) return node.map(extractText).join('');
-  if (node && typeof node === 'object' && 'props' in node) return extractText((node as React.ReactElement).props.children);
+  const el = node as React.ReactElement<{ children?: ReactNode }>;
+  if (typeof node === 'object' && el.props) return extractText(el.props.children);
   return '';
 }
 
-export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
   return (
     <div className={className}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeRaw, rehypeHighlight, [rehypeSanitize, sanitizeSchema], rehypeKatex]}
         components={{
+          h1: ({ children }) => <h1 className="text-2xl font-bold mt-4 mb-2">{children}</h1>,
+          h2: ({ children }) => <h2 className="text-xl font-bold mt-3 mb-1.5">{children}</h2>,
+          h3: ({ children }) => <h3 className="text-lg font-semibold mt-3 mb-1">{children}</h3>,
+          h4: ({ children }) => <h4 className="text-base font-semibold mt-2 mb-1">{children}</h4>,
+          h5: ({ children }) => <h5 className="text-sm font-semibold mt-2 mb-1">{children}</h5>,
+          h6: ({ children }) => <h6 className="text-sm font-medium mt-2 mb-1 text-muted-foreground">{children}</h6>,
           p: ({ children }) => <div className="mb-1 last:mb-0">{children}</div>,
           ul: ({ children }) => <ul className="list-disc pl-4 mb-1 last:mb-0 text-left">{children}</ul>,
           ol: ({ children }) => <ol className="list-decimal pl-4 mb-1 last:mb-0 text-left">{children}</ol>,
@@ -93,4 +100,4 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
       </ReactMarkdown>
     </div>
   );
-}
+});

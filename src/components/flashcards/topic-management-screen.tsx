@@ -54,11 +54,11 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     queryKey: flashcardKeys.topics.all,
     url: '/api/v1/flashcards/topics',
   });
-  const { data: allFlashcards } = useApiQuery<Flashcard[]>({
+  const { data: allFlashcardsData } = useApiQuery<{ items: Flashcard[]; nextCursor: string | null; hasMore: boolean }>({
     queryKey: flashcardKeys.list({}),
     url: '/api/v1/flashcards',
   });
-  const flashcards = allFlashcards ?? [];
+  const flashcards = allFlashcardsData?.items ?? [];
   const createTopic = useApiMutation({
     mutationFn: (data: { name: string }) => apiPost<Topic>('/api/v1/flashcards/topics', data),
     invalidateKeys: [flashcardKeys.topics.all],

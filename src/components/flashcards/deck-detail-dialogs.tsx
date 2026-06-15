@@ -22,7 +22,6 @@ import type { UserRole } from '@/types';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
-import { FlashcardEditorDialog } from '@/components/flashcards/flashcard-editor-dialog';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { useTranslations } from 'next-intl';
 import { useState, useCallback } from 'react';
@@ -41,14 +40,11 @@ function getTopicColor(name: string) {
 }
 
 export interface DialogsState {
-  createOpen: boolean;
-  editOpen: boolean;
   deleteId: string | null;
   linkOpen: boolean;
   copyOpen: boolean;
   copyResult: { id: string; deckId: string } | null;
   activeFlashcardId: string | null;
-  formData: { front: string; back: string; topicIds: string[] };
   linkDeckIds: string[];
   copyTargetDeckId: string | null;
   deckEditOpen: boolean;
@@ -72,8 +68,6 @@ export interface DialogsState {
 }
 
 export interface DialogsHandlers {
-  onCreateOpenChange: (open: boolean) => void;
-  onEditOpenChange: (open: boolean) => void;
   onDeleteOpenChange: () => void;
   onLinkOpenChange: (open: boolean) => void;
   onCopyOpenChange: (open: boolean) => void;
@@ -83,13 +77,10 @@ export interface DialogsHandlers {
   onViewTopicIdChange: (id: string | null) => void;
   onAddTopicOpenChange: (open: boolean) => void;
   onManageTopicOpenChange: (open: boolean) => void;
-  onFormDataChange: (data: { front: string; back: string; topicIds: string[] }) => void;
   onLinkDeckIdsChange: (ids: string[]) => void;
   onCopyTargetDeckIdChange: (id: string | null) => void;
   onDeckFormDataChange: (data: { name: string; description: string }) => void;
   onTopicActionIdsChange: (ids: string[]) => void;
-  onCreate: () => void;
-  onUpdate: () => void;
   onDelete: () => void;
   onLink: () => void;
   onCopy: () => void;
@@ -145,15 +136,6 @@ export function DeckDetailDialogs({
   // access to Link / Copy / Move operations on decks the user doesn't own.
   const ownedDecks = allDecks.filter((d) => can(role, 'deck.update', d.created_by, user?.id));
 
-  function toggleTopic(id: string) {
-    handlers.onFormDataChange({
-      ...state.formData,
-      topicIds: state.formData.topicIds.includes(id)
-        ? state.formData.topicIds.filter((tid) => tid !== id)
-        : [...state.formData.topicIds, id],
-    });
-  }
-
   function getTopicIds(fc: Flashcard | undefined) {
     return fc?.flashcard_topic_assignments?.map((a) => a.topic_id) ?? [];
   }
@@ -204,38 +186,6 @@ export function DeckDetailDialogs({
 
   return (
     <>
-      <FlashcardEditorDialog
-        open={state.createOpen}
-        onOpenChange={handlers.onCreateOpenChange}
-        mode="create"
-        front={state.formData.front}
-        back={state.formData.back}
-        topicIds={state.formData.topicIds}
-        topics={topics}
-        onFrontChange={(front) => handlers.onFormDataChange({ ...state.formData, front })}
-        onBackChange={(back) => handlers.onFormDataChange({ ...state.formData, back })}
-        onTopicIdsChange={(topicIds) => handlers.onFormDataChange({ ...state.formData, topicIds })}
-        onSave={handlers.onCreate}
-        onCancel={() => { handlers.onCreateOpenChange(false); handlers.onFormDataChange({ front: '', back: '', topicIds: [] }); }}
-        t={t}
-      />
-
-      <FlashcardEditorDialog
-        open={state.editOpen}
-        onOpenChange={handlers.onEditOpenChange}
-        mode="edit"
-        front={state.formData.front}
-        back={state.formData.back}
-        topicIds={state.formData.topicIds}
-        topics={topics}
-        onFrontChange={(front) => handlers.onFormDataChange({ ...state.formData, front })}
-        onBackChange={(back) => handlers.onFormDataChange({ ...state.formData, back })}
-        onTopicIdsChange={(topicIds) => handlers.onFormDataChange({ ...state.formData, topicIds })}
-        onSave={handlers.onUpdate}
-        onCancel={() => { handlers.onEditOpenChange(false); handlers.onFormDataChange({ front: '', back: '', topicIds: [] }); }}
-        t={t}
-      />
-
       <Dialog open={state.linkOpen} onOpenChange={handlers.onLinkOpenChange}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>

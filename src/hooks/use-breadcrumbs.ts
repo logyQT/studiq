@@ -32,6 +32,13 @@ function findLongestMatch(pathname: string): string[] {
   return matches;
 }
 
+function resolveHref(pathname: string, entryHref?: string): string {
+  if (entryHref) return entryHref;
+  const parts = pathname.split('/');
+  parts.pop();
+  return parts.join('/') || '/';
+}
+
 export function useBreadcrumbs(pathname: string): Crumb[] {
   const { dynamicSegments } = useBreadcrumbContext();
 
@@ -39,12 +46,14 @@ export function useBreadcrumbs(pathname: string): Crumb[] {
   const tAppFlashcards = useTranslations('AppFlashcardsPage');
   const tEduFlashcards = useTranslations('EduFlashcardsPage');
   const tSession = useTranslations('AppFlashcardSessionPage');
+  const tDeckView = useTranslations('AppFlashcardDeckViewPage');
 
   const translators: Record<string, (key: string) => string> = {
     DashboardLayout: (key) => tDashboard(key),
     AppFlashcardsPage: (key) => tAppFlashcards(key),
     EduFlashcardsPage: (key) => tEduFlashcards(key),
     AppFlashcardSessionPage: (key) => tSession(key),
+    AppFlashcardDeckViewPage: (key) => tDeckView(key),
   };
 
   const matchedRoutes = findLongestMatch(pathname);
@@ -52,19 +61,19 @@ export function useBreadcrumbs(pathname: string): Crumb[] {
 
   for (const routeKey of matchedRoutes) {
     const entry = BREADCRUMB_ROUTES[routeKey];
-    const translate = translators[entry.namespace];
+    if (!entry) continue;
 
+    const translate = entry.namespace ? translators[entry.namespace] : null;
     const isDynamicRoute = routeKey.includes('[');
-    const isLastMatch = routeKey === matchedRoutes[matchedRoutes.length - 1];
 
-    if (isDynamicRoute && isLastMatch) {
+    if (isDynamicRoute) {
       crumbs.push({
-        label: translate(entry.labelKey),
-        href: entry.href ?? routeKey.replace(/\[[^\]]+\]/, ''),
+        label: translate ? translate(entry.labelKey) : entry.labelKey,
+        href: resolveHref(pathname, entry.href),
       });
     } else {
       crumbs.push({
-        label: translate(entry.labelKey),
+        label: translate ? translate(entry.labelKey) : entry.labelKey,
         href: routeKey,
       });
     }

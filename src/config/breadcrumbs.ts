@@ -1,6 +1,6 @@
 export interface BreadcrumbRouteEntry {
   labelKey: string;
-  namespace: string;
+  namespace?: string;
   href?: string;
 }
 
@@ -15,8 +15,8 @@ export const BREADCRUMB_ROUTES: Record<string, BreadcrumbRouteEntry> = {
   '/app/flashcards/session': { labelKey: 'breadcrumb_session', namespace: 'AppFlashcardSessionPage' },
   '/app/flashcards/ai': { labelKey: 'app_ai_generate', namespace: 'DashboardLayout' },
   '/app/quiz': { labelKey: 'app_quiz', namespace: 'DashboardLayout' },
-  '/app/quiz/[attemptId]': { labelKey: 'app_quiz', namespace: 'DashboardLayout' },
-  '/app/quiz/review/[attemptId]': { labelKey: 'app_quiz', namespace: 'DashboardLayout' },
+  '/app/quiz/session/[attemptId]': { labelKey: 'breadcrumb_quiz_session', namespace: 'DashboardLayout' },
+  '/app/quiz/review/[attemptId]': { labelKey: 'breadcrumb_quiz_review', namespace: 'DashboardLayout' },
   '/app/my-questions': { labelKey: 'app_my_questions', namespace: 'DashboardLayout' },
   '/app/statistics': { labelKey: 'app_statistics', namespace: 'DashboardLayout' },
 

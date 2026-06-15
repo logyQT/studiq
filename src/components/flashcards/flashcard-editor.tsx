@@ -6,6 +6,10 @@ import {
   Italic,
   Heading1,
   Heading2,
+  Heading3,
+  Heading4,
+  Heading5,
+  Heading6,
   List,
   ListOrdered,
   Link,
@@ -154,6 +158,18 @@ export function FlashcardEditor({
           </Toggle>
           <Toggle onClick={() => wrap('## ', '')} aria-label={t('toolbar_heading2')} title={t('toolbar_heading2')} size="sm">
             <Heading2 className="h-4 w-4" />
+          </Toggle>
+          <Toggle onClick={() => wrap('### ', '')} aria-label={t('toolbar_heading3')} title={t('toolbar_heading3')} size="sm">
+            <Heading3 className="h-4 w-4" />
+          </Toggle>
+          <Toggle onClick={() => wrap('#### ', '')} aria-label={t('toolbar_heading4')} title={t('toolbar_heading4')} size="sm">
+            <Heading4 className="h-4 w-4" />
+          </Toggle>
+          <Toggle onClick={() => wrap('##### ', '')} aria-label={t('toolbar_heading5')} title={t('toolbar_heading5')} size="sm">
+            <Heading5 className="h-4 w-4" />
+          </Toggle>
+          <Toggle onClick={() => wrap('###### ', '')} aria-label={t('toolbar_heading6')} title={t('toolbar_heading6')} size="sm">
+            <Heading6 className="h-4 w-4" />
           </Toggle>
           <Separator orientation="vertical" className="mx-1 h-6" />
           <Toggle onClick={() => wrap('- ', '')} aria-label={t('toolbar_bullet_list')} title={t('toolbar_bullet_list')} size="sm">

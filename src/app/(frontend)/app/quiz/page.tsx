@@ -114,7 +114,7 @@ export default function QuizPage() {
     try {
       const data = await apiPost<{ id: string }>('/api/v1/quiz/new', body);
       setModalOpen(false);
-      router.push(`/app/quiz/${data.id}`);
+      router.push(`/app/quiz/session/${data.id}`);
     } catch (error) {
       const msg = error instanceof Error ? error.message : '';
       if (msg === 'BAD_REQUEST') {
@@ -194,7 +194,7 @@ export default function QuizPage() {
                       </Button>
                     </Link>
                   ) : (
-                    <Link href={`/app/quiz/${attempt.id}`} className="w-full">
+                    <Link href={`/app/quiz/session/${attempt.id}`} className="w-full">
                       <Button className="w-full">
                         <Play className="mr-2 h-4 w-4" /> {t('resume')}
                       </Button>

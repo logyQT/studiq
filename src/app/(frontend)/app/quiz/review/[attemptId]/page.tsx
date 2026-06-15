@@ -2,11 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { apiGet } from '@/lib/api';
 
@@ -74,14 +72,7 @@ export default function QuizReviewPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Quiz Review</h2>
-        <Link href="/app/quiz">
-          <Button variant="outline">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to History
-          </Button>
-        </Link>
-      </div>
+      <h2 className="text-2xl font-bold">Quiz Review</h2>
 
       <Card>
         <CardHeader className="text-center">
