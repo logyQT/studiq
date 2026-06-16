@@ -14,6 +14,7 @@ export const BREADCRUMB_ROUTES: Record<string, BreadcrumbRouteEntry> = {
   '/app/flashcards/practice': { labelKey: 'practice_title', namespace: 'AppFlashcardsPage' },
   '/app/flashcards/session': { labelKey: 'breadcrumb_session', namespace: 'AppFlashcardSessionPage' },
   '/app/flashcards/ai': { labelKey: 'app_ai_generate', namespace: 'DashboardLayout' },
+  '/app/ai': { labelKey: 'app_ai_chat', namespace: 'DashboardLayout' },
   '/app/quiz': { labelKey: 'app_quiz', namespace: 'DashboardLayout' },
   '/app/quiz/session/[attemptId]': { labelKey: 'breadcrumb_quiz_session', namespace: 'DashboardLayout' },
   '/app/quiz/review/[attemptId]': { labelKey: 'breadcrumb_quiz_review', namespace: 'DashboardLayout' },

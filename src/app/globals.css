@@ -155,3 +155,31 @@
     @apply bg-background text-foreground;
   }
 }
+
+/**
+ * =============================================================================
+ * CUSTOM RESPONSIVE UTILITIES
+ * =============================================================================
+ */
+@utility px-content {
+  padding-left: 1rem;
+  padding-right: 1rem;
+  @media (width >= 640px) {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+  @media (width >= 768px) {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+@utility p-content {
+  padding: 1rem;
+  @media (width >= 640px) {
+    padding: 1.5rem;
+  }
+  @media (width >= 768px) {
+    padding: 2rem;
+  }
+}

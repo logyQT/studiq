@@ -305,7 +305,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
       </div>
 
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <Card key={i} className="overflow-hidden p-0">
               <Skeleton className="h-20 w-full rounded-none" />
@@ -321,7 +321,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
           ))}
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {decks?.map((deck) => {
             const gradient = getGradient(deck.id);
             return (
