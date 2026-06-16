@@ -4,3 +4,4 @@ export * from './Navbar';
 export * from './MainLayout';
 export * from './app-search';
 export * from './breadcrumbs';
+export * from './user-menu';

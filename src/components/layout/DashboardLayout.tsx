@@ -4,13 +4,11 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useAuth } from '@/components/providers/AuthProvider';
 import {
   SidebarProvider,
   Sidebar,
   SidebarContent,
   SidebarHeader,
-  SidebarFooter,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
@@ -18,15 +16,13 @@ import {
   SidebarSeparator,
   SidebarInset,
 } from '@/components/ui/sidebar';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { LanguageToggle } from '@/components/layout/LanguageToggle';
+import { UserMenu } from '@/components/layout/user-menu';
 import { AppSearch } from '@/components/layout/app-search';
 import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { useBreadcrumbs } from '@/hooks/use-breadcrumbs';
 import { cn } from '@/lib/utils';
-import { UserRole } from '@/types';
 import {
   LayoutDashboard,
   FileText,
@@ -40,7 +36,6 @@ import {
   ListPlus,
   TrendingUp,
   GraduationCap,
-  LogOut,
   Monitor,
   Tags,
   AlertTriangle,
@@ -57,6 +52,7 @@ export type NavItem = {
 const NAV_ITEMS: Record<string, NavItem[]> = {
   '/edu': [
     { titleKey: 'edu_overview', href: '/edu', icon: LayoutDashboard },
+    { titleKey: 'edu_ai_chat', href: '/app/ai', icon: Sparkles },
     { titleKey: 'edu_questions', href: '/edu/questions', icon: FileText },
     { titleKey: 'edu_flashcards', href: '/edu/flashcards', icon: Layers },
     { titleKey: 'edu_flashcard_topics', href: '/edu/flashcards/topics', icon: Tags },
@@ -70,9 +66,9 @@ const NAV_ITEMS: Record<string, NavItem[]> = {
   ],
   '/app': [
     { titleKey: 'app_overview', href: '/app', icon: LayoutDashboard },
-    { titleKey: 'app_quiz', href: '/app/quiz', icon: BookOpen },
+    { titleKey: 'app_ai_chat', href: '/app/flashcards/ai', icon: Sparkles },
     { titleKey: 'app_flashcards', href: '/app/flashcards', icon: Brain },
-    { titleKey: 'app_ai_generate', href: '/app/flashcards/ai', icon: Sparkles },
+    { titleKey: 'app_quiz', href: '/app/quiz', icon: BookOpen },
     { titleKey: 'app_my_questions', href: '/app/my-questions', icon: ListPlus },
     { titleKey: 'app_statistics', href: '/app/statistics', icon: TrendingUp },
   ],
@@ -83,17 +79,6 @@ const NAV_ITEMS: Record<string, NavItem[]> = {
     { titleKey: 'admin_permissions', href: '/admin/permissions', icon: ShieldCheck },
     { titleKey: 'admin_system', href: '/admin', icon: Monitor },
   ],
-};
-
-const ROLE_BADGE_STYLES: Record<UserRole, string> = {
-  [UserRole.SYS_ADMIN]: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
-  [UserRole.UNIVERSITY_ADMIN]:
-    'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
-  [UserRole.TEACHER]: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
-  [UserRole.STUDENT]:
-    'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
-  [UserRole.PREMIUM]: 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20',
-  [UserRole.FREE]: 'bg-muted text-muted-foreground border-border',
 };
 
 function getNavGroup(pathname: string): NavItem[] {
@@ -116,49 +101,14 @@ function getActiveHref(pathname: string, navItems: NavItem[]): string | null {
   return best?.href ?? null;
 }
 
-function getInitials(name: string | null | undefined): string {
-  if (!name) return '?';
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-}
-
-const getRoleLabel = (role: UserRole, t: (key: string) => string): string => {
-  const map: Record<UserRole, string> = {
-    [UserRole.SYS_ADMIN]: t('role_sys_admin'),
-    [UserRole.UNIVERSITY_ADMIN]: t('role_uni_admin'),
-    [UserRole.TEACHER]: t('role_teacher'),
-    [UserRole.STUDENT]: t('role_student'),
-    [UserRole.PREMIUM]: t('role_premium'),
-    [UserRole.FREE]: t('role_free'),
-  };
-  return map[role];
-};
-
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
   const pathname = usePathname();
   const t = useTranslations('DashboardLayout');
   const navItems = getNavGroup(pathname);
   const activeHref = getActiveHref(pathname, navItems);
 
-  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || t('default_user');
-  const userRole = user?.app_metadata?.role as UserRole | undefined;
   const showSearch = pathname.startsWith('/app') || pathname.startsWith('/edu');
   const crumbs = useBreadcrumbs(pathname);
-
-  const handleLogout = async () => {
-    try {
-      const res = await fetch('/api/v1/auth/logout', { method: 'POST' });
-      if (!res.ok) throw new Error('Logout failed');
-      window.location.href = '/login';
-    } catch {
-      window.location.href = '/login';
-    }
-  };
 
   return (
     <SidebarProvider>
@@ -173,16 +123,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               Studi<span className="text-primary">Q</span>
             </span>
           </Link>
-          {userRole && (
-            <span
-              className={cn(
-                'mt-0.5 inline-flex w-fit items-center px-2 py-0.5 rounded-full text-xs font-medium border',
-                ROLE_BADGE_STYLES[userRole],
-              )}
-            >
-              {getRoleLabel(userRole, t)}
-            </span>
-          )}
         </SidebarHeader>
 
         <SidebarSeparator />
@@ -223,32 +163,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             })}
           </SidebarMenu>
         </SidebarContent>
-
-        <SidebarSeparator />
-
-        {/* User footer */}
-        <SidebarFooter className="px-3 py-4">
-          <div className="flex items-center gap-3 min-w-0 px-2 mb-1">
-            <Avatar className="h-8 w-8 shrink-0 ring-2 ring-primary/20">
-              <AvatarFallback className="text-xs font-semibold bg-primary/10 text-primary">
-                {getInitials(userName)}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium leading-tight">{userName}</p>
-              <p className="truncate text-xs text-muted-foreground leading-tight">{user?.email}</p>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleLogout}
-            className="w-full justify-start h-9 px-3 text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/8 transition-colors"
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            <span>{t('logout')}</span>
-          </Button>
-        </SidebarFooter>
       </Sidebar>
 
       <SidebarInset className="overflow-y-auto max-h-svh">
@@ -264,6 +178,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-1.5 shrink-0 ml-auto">
               <LanguageToggle />
               <ThemeToggle />
+              <UserMenu />
             </div>
           </div>
           {crumbs.length > 0 && (

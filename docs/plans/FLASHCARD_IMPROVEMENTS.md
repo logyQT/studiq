@@ -258,19 +258,20 @@ Streaks are a habit-retention mechanic (Duolingo, Snapchat). StudiQ is a study t
 
 Topics follow the industry-standard "decks + tags" model (Anki, Mochi). Decks are required containers; topics are optional cross-cutting classification tags. The backend is solid — these improvements close UI gaps where topics are underutilized.
 
-| Priority | Issue | Impact |
-|----------|-------|--------|
-| **High** | Topic badges not shown during study sessions | Students can't see which topic they're studying |
-| **High** | Session refetch loses topic/deck filters | New card batches mid-session ignore previously selected filters |
-| **Medium** | No student-facing per-topic progress view | Students can't track which topics they struggle with |
+| Priority   | Issue                                        | Impact                                                          |
+| ---------- | -------------------------------------------- | --------------------------------------------------------------- |
+| **High**   | Topic badges not shown during study sessions | Students can't see which topic they're studying                 |
+| **High**   | Session refetch loses topic/deck filters     | New card batches mid-session ignore previously selected filters |
+| **Medium** | No student-facing per-topic progress view    | Students can't track which topics they struggle with            |
 
 **2.6.1 Show topic badges during study sessions**
 
-| Layer | Files | Changes |
-|-------|-------|---------|
-| `F` | `src/app/(frontend)/app/flashcards/session/session-client.tsx` | Render topic badges below the flashcard content (inside the Card, below MarkdownRenderer). Fetch topic names from the flashcard's `flashcard_topic_assignments` — data is already available in `currentCard`. |
+| Layer | Files                                                          | Changes                                                                                                                                                                                                       |
+| ----- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `F`   | `src/app/(frontend)/app/flashcards/session/session-client.tsx` | Render topic badges below the flashcard content (inside the Card, below MarkdownRenderer). Fetch topic names from the flashcard's `flashcard_topic_assignments` — data is already available in `currentCard`. |
 
 **Design:**
+
 - Topic badges appear below the question/answer label, above the hint text
 - When flipped (gradient background), badges use `bg-white/20 text-white` styling (same as `FlashcardCard`)
 - Only shown when the flashcard has assigned topics
@@ -278,9 +279,9 @@ Topics follow the industry-standard "decks + tags" model (Anki, Mochi). Decks ar
 
 **2.6.2 Fix session refetch to preserve filters**
 
-| Layer | Files | Changes |
-|-------|-------|---------|
-| `F` | `src/app/(frontend)/app/flashcards/session/session-client.tsx` | Pass `topicIds` and `deckIds` (from session props) to the `fetchDueCards` function when refilling the queue mid-session. Currently the refetch calls `/api/v1/flashcards/practice/due` without filter params. |
+| Layer | Files                                                          | Changes                                                                                                                                                                                                       |
+| ----- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `F`   | `src/app/(frontend)/app/flashcards/session/session-client.tsx` | Pass `topicIds` and `deckIds` (from session props) to the `fetchDueCards` function when refilling the queue mid-session. Currently the refetch calls `/api/v1/flashcards/practice/due` without filter params. |
 
 **Bug:** When the session queue runs low and `fetchDueCards` is called (line ~203-225), the refetch does NOT pass `topicIds`/`deckIds` from the original session configuration. This means new batches of cards are unfiltered — students studying "Nomenclature" cards suddenly get cards from all topics.
 
@@ -288,15 +289,16 @@ Topics follow the industry-standard "decks + tags" model (Anki, Mochi). Decks ar
 
 **2.6.3 Student-facing per-topic progress view**
 
-| Layer | Files | Changes |
-|-------|-------|---------|
-| `B` | New route: `GET /api/v1/flashcards/stats/student/topics` | Returns per-topic stats for the authenticated student: `{ topicId, topicName, totalCards, dueCount, accuracyPct }` |
-| `B` | `src/server/services/flashcard-stats.service.ts` | Add `getStudentTopicStats(ctx)` — queries `flashcard_topic_assignments` + `flashcard_review_state` + `flashcard_practice` for per-topic aggregation |
-| `B` | New model: `src/server/models/flashcard-stats.model.ts` | Add `StudentTopicStatsSchema` response type |
-| `F` | `src/app/(frontend)/app/flashcards/study/study-client.tsx` | Add "Topic Progress" section below the topic filter panel — shows accuracy % and due count per topic |
-| `F` | `src/app/(frontend)/app/flashcards/practice/practice-client.tsx` | Add topic progress summary below the deck picker |
+| Layer | Files                                                            | Changes                                                                                                                                             |
+| ----- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `B`   | New route: `GET /api/v1/flashcards/stats/student/topics`         | Returns per-topic stats for the authenticated student: `{ topicId, topicName, totalCards, dueCount, accuracyPct }`                                  |
+| `B`   | `src/server/services/flashcard-stats.service.ts`                 | Add `getStudentTopicStats(ctx)` — queries `flashcard_topic_assignments` + `flashcard_review_state` + `flashcard_practice` for per-topic aggregation |
+| `B`   | New model: `src/server/models/flashcard-stats.model.ts`          | Add `StudentTopicStatsSchema` response type                                                                                                         |
+| `F`   | `src/app/(frontend)/app/flashcards/study/study-client.tsx`       | Add "Topic Progress" section below the topic filter panel — shows accuracy % and due count per topic                                                |
+| `F`   | `src/app/(frontend)/app/flashcards/practice/practice-client.tsx` | Add topic progress summary below the deck picker                                                                                                    |
 
 **Design:**
+
 - Uses existing `flashcard_review_state` table (accuracy + due counts) joined with `flashcard_topic_assignments`
 - Follows the same pattern as `getTeacherStats` but scoped to the current student
 - Permission: any authenticated user (students see their own stats)
@@ -391,7 +393,7 @@ front,back,topic,deck
 | Order | Feature                      | Why                                                                                           |
 | ----- | ---------------------------- | --------------------------------------------------------------------------------------------- |
 | 1st   | **3.3 CSV Import/Export** ✅ | No migration, no external deps (just `papaparse`), immediate user value, quickest win         |
-| 2nd   | **3.1 Media in Cards**       | Foundational — sets up Supabase Storage bucket/service that 3.4 also needs. Installs `katex`. |
+| 2nd   | **3.1 Media in Cards** ✅    | Foundational — sets up Supabase Storage bucket/service that 3.4 also needs. Installs `katex`. |
 | 3rd   | **3.4 APKG Import/Export**   | Hardest — needs `jszip` + SQLite parsing + media handling from 3.1 storage                    |
 | —     | **3.2 Cloze Deletion** ⏳    | Deferred — likely implemented as a `'cloze'` question type instead                            |
 

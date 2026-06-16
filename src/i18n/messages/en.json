@@ -147,6 +147,7 @@
     "SUCCESS_PASSWORD_UPDATED": "Password has been updated. Welcome back!"
   },
   "DashboardLayout": {
+    "edu_ai_chat": "AI Agent",
     "edu_overview": "Overview",
     "edu_questions": "Questions",
     "edu_flashcards": "Flashcards",
@@ -158,6 +159,7 @@
     "manage_invitations": "Invitations",
     "manage_settings": "Settings",
     "app_overview": "Overview",
+    "app_ai_chat": "AI Agent",
     "app_quiz": "Quiz",
     "breadcrumb_quiz_session": "Quiz Session",
     "breadcrumb_quiz_review": "Quiz Review",
