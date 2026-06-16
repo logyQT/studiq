@@ -83,7 +83,7 @@ export const FlashcardCard = memo(function FlashcardCard({
   return (
     <Card
       id={`fc-${fc.id}`}
-      className={`group relative min-h-48 cursor-pointer transition-shadow duration-300 hover:shadow-lg ${
+      className={`group relative min-h-48 max-h-96 overflow-hidden cursor-pointer transition-shadow duration-300 hover:shadow-lg ${
         isFlipped ? `bg-gradient-to-br ${gradient}` : ''
       } ${highlighted ? 'ring-2 ring-primary/70 ring-offset-2 animate-pulse' : ''}`}
       onClick={() => {
@@ -150,12 +150,12 @@ export const FlashcardCard = memo(function FlashcardCard({
         >
           {isFlipped ? t('answer_label') : t('question_label')}
         </p>
-        <div className="w-full text-center flex-1 flex items-center justify-center">
-          <div className="text-lg font-medium grid">
-            <div className={`[grid-area:1/1] ${isFlipped ? 'invisible' : ''}`}>
+        <div className="w-full text-center flex-1 flex items-center justify-center overflow-hidden">
+            <div className="text-lg font-medium grid w-full">
+            <div className={`[grid-area:1/1] min-w-0 ${isFlipped ? 'invisible' : ''}`}>
               <MarkdownRenderer content={fc.front} />
             </div>
-            <div className={`[grid-area:1/1] ${isFlipped ? 'text-white' : 'invisible'}`}>
+            <div className={`[grid-area:1/1] min-w-0 ${isFlipped ? 'text-white' : 'invisible'}`}>
               <MarkdownRenderer content={fc.back} />
             </div>
           </div>

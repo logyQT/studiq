@@ -41,7 +41,7 @@ function extractText(node: ReactNode): string {
 
 export const MarkdownRenderer = memo(function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
   return (
-    <div className={className}>
+    <div className={`overflow-hidden break-words whitespace-normal ${className ?? ''}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeRaw, rehypeHighlight, [rehypeSanitize, sanitizeSchema], rehypeKatex]}
@@ -90,7 +90,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, classN
           ),
           del: ({ children }) => <del className="line-through">{children}</del>,
           img: ({ src, alt }) =>
-            src ? <img src={src} alt={alt ?? ''} className="block max-w-full h-auto rounded-lg mx-auto" /> : null,
+            src ? <img src={src} alt={alt ?? ''} className="block max-w-full max-h-48 h-auto rounded-lg mx-auto" /> : null,
           hr: () => <hr className="my-2 border-border" />,
           audio: ({ src }) =>
             typeof src === 'string' ? <AudioPlayer src={src} /> : null,

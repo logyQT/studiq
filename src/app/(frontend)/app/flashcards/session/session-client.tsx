@@ -481,19 +481,19 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
       <Tooltip>
         <TooltipTrigger asChild>
           <Card
-            className="cursor-pointer min-h-64 flex items-center justify-center transition-all duration-300 hover:shadow-lg"
+            className="cursor-pointer min-h-64 max-h-96 overflow-hidden flex items-center justify-center transition-all duration-300 hover:shadow-lg"
             onClick={() => setFlipped(!flipped)}
             aria-keyshortcuts="Space"
           >
-            <CardContent className="pt-8 px-8 text-center">
+            <CardContent className="pt-8 px-8 text-center overflow-y-auto">
               <p className="text-xs text-muted-foreground uppercase mb-4">
                 {flipped ? t('answer_label') : t('question_label')}
               </p>
-              <div className="text-2xl font-medium grid">
-                <div className={`[grid-area:1/1] ${flipped ? 'invisible' : ''}`}>
+              <div className="text-2xl font-medium grid w-full">
+                <div className={`[grid-area:1/1] min-w-0 ${flipped ? 'invisible' : ''}`}>
                   <MarkdownRenderer content={currentCard.front} />
                 </div>
-                <div className={`[grid-area:1/1] ${flipped ? '' : 'invisible'}`}>
+                <div className={`[grid-area:1/1] min-w-0 ${flipped ? '' : 'invisible'}`}>
                   <MarkdownRenderer content={currentCard.back} />
                 </div>
               </div>
