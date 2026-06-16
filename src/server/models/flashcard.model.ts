@@ -10,12 +10,12 @@ export const CreateFlashcardSchema = registry.register(
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(255, { error: ValidationErrorCode.TOO_LONG }),
+      .max(5000, { error: ValidationErrorCode.TOO_LONG }),
     back: z
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(255, { error: ValidationErrorCode.TOO_LONG }),
+      .max(5000, { error: ValidationErrorCode.TOO_LONG }),
   }),
 );
 
@@ -31,12 +31,12 @@ export const BulkCreateFlashcardsSchema = registry.register(
             .string({ error: ValidationErrorCode.REQUIRED })
             .nonempty({ error: ValidationErrorCode.REQUIRED })
             .min(1, { error: ValidationErrorCode.TOO_SHORT })
-            .max(255, { error: ValidationErrorCode.TOO_LONG }),
+            .max(5000, { error: ValidationErrorCode.TOO_LONG }),
           back: z
             .string({ error: ValidationErrorCode.REQUIRED })
             .nonempty({ error: ValidationErrorCode.REQUIRED })
             .min(1, { error: ValidationErrorCode.TOO_SHORT })
-            .max(255, { error: ValidationErrorCode.TOO_LONG }),
+            .max(5000, { error: ValidationErrorCode.TOO_LONG }),
         }),
       )
       .min(1, { error: ValidationErrorCode.TOO_FEW }),
@@ -52,13 +52,13 @@ export const UpdateFlashcardSchema = registry.register(
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(255, { error: ValidationErrorCode.TOO_LONG })
+      .max(5000, { error: ValidationErrorCode.TOO_LONG })
       .optional(),
     back: z
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(255, { error: ValidationErrorCode.TOO_LONG })
+      .max(5000, { error: ValidationErrorCode.TOO_LONG })
       .optional(),
   }),
 );

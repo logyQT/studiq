@@ -20,10 +20,11 @@ export class FlashcardExportService {
       listFilters.deckIds = filters.deckIds;
     }
 
-    const flashcards = await flashcardService.list(
+    const result = await flashcardService.list(
       ctx,
       Object.keys(listFilters).length > 0 ? listFilters : undefined,
-    ) as FlashcardWithAssignments[];
+    );
+    const flashcards = result.items as unknown as FlashcardWithAssignments[];
 
     const filtered = filters?.ids && filters.ids.length > 0
       ? flashcards.filter((fc) => filters.ids!.includes(fc.id))

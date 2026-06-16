@@ -10,7 +10,7 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
 
-interface Crumb {
+export interface Crumb {
   label: string;
   href: string;
 }

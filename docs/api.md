@@ -36,6 +36,8 @@ src/app/(backend)/api/v1/
           [bucket]/   # Per-difficulty stats
     topics/           # Flashcard topic CRUD
   health/             # Health check endpoint
+  avatar/             # DiceBear avatar generation (public, no auth)
+    [seed]/           # GET — returns SVG avatar based on seed string
   questions/          # Question CRUD
   quiz/               # Quiz system
     new/              # Start a new quiz
@@ -49,6 +51,18 @@ src/app/(backend)/api/v1/
     invitations/      # Invitation CRUD + bulk
     members/          # University members
 ```
+
+## Avatar
+
+Public endpoint for generating deterministic avatars. Uses [DiceBear](https://www.dicebear.com/) with the `lorelei` style. Same seed always produces the same avatar.
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/v1/avatar/[seed]` | ❌ | Generate SVG avatar (immutable cache, 1 year) |
+
+**Response:** `image/svg+xml` with `Cache-Control: public, max-age=31536000, immutable`
+
+The seed is typically the user's email address. The route is excluded from auth in `routes.config.ts` so `<img>` tags can load it without cookies.
 
 ## Request Flow
 

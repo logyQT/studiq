@@ -39,12 +39,12 @@ export class FlashcardController {
 
   async list(
     ctx: RequestContext,
-    filters?: { topicIds?: string[]; deckIds?: string[] },
+    filters?: { topicIds?: string[]; deckIds?: string[]; cursor?: string; limit?: number },
   ): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const flashcards = await flashcardService.list(ctx, filters);
+      const result = await flashcardService.list(ctx, filters);
 
-      return { success: true, statusCode: 200, data: flashcards };
+      return { success: true, statusCode: 200, data: result };
     }, ctx);
   }
 

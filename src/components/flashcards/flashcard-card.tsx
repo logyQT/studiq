@@ -1,7 +1,7 @@
 'use client';
 
+import { memo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
@@ -12,13 +12,21 @@ import { Button } from '@/components/ui/button';
 import { MoreVertical } from 'lucide-react';
 import { OwnedFlashcardContextMenu } from '@/components/flashcards/owned-flashcard-context-menu';
 import { ViewOnlyFlashcardContextMenu } from '@/components/flashcards/view-only-flashcard-context-menu';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import type { Flashcard, Topic } from '@/types/flashcards';
 import { useTranslations } from 'next-intl';
 
 const TOPIC_COLORS = [
-  'bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500',
-  'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500',
-  'bg-orange-500', 'bg-cyan-500',
+  'bg-red-500',
+  'bg-blue-500',
+  'bg-green-500',
+  'bg-yellow-500',
+  'bg-purple-500',
+  'bg-pink-500',
+  'bg-indigo-500',
+  'bg-teal-500',
+  'bg-orange-500',
+  'bg-cyan-500',
 ];
 
 function getTopicColor(name: string) {
@@ -43,11 +51,11 @@ interface FlashcardCardProps {
   onLink: (fc: Flashcard) => void;
   onCopy: (fc: Flashcard) => void;
   onAddTopic: (fc: Flashcard) => void;
-  onRemoveTopic: (fc: Flashcard) => void;
+  onManageTopics: (fc: Flashcard) => void;
   onViewByTopic: (fc: Flashcard, topicId: string) => void;
 }
 
-export function FlashcardCard({
+export const FlashcardCard = memo(function FlashcardCard({
   fc,
   isFlipped,
   gradient,
@@ -65,7 +73,7 @@ export function FlashcardCard({
   onLink,
   onCopy,
   onAddTopic,
-  onRemoveTopic,
+  onManageTopics,
   onViewByTopic,
 }: FlashcardCardProps) {
   const fcTopics = topics.filter((topic) =>
@@ -75,7 +83,7 @@ export function FlashcardCard({
   return (
     <Card
       id={`fc-${fc.id}`}
-      className={`group relative min-h-48 cursor-pointer transition-all duration-300 hover:shadow-lg ${
+      className={`group relative min-h-48 max-h-96 overflow-hidden cursor-pointer transition-shadow duration-300 hover:shadow-lg ${
         isFlipped ? `bg-gradient-to-br ${gradient}` : ''
       } ${highlighted ? 'ring-2 ring-primary/70 ring-offset-2 animate-pulse' : ''}`}
       onClick={() => {
@@ -113,7 +121,7 @@ export function FlashcardCard({
                 t={t}
                 onEdit={() => onEdit(fc)}
                 onAddTopic={() => onAddTopic(fc)}
-                onRemoveTopic={() => onRemoveTopic(fc)}
+                onManageTopics={() => onManageTopics(fc)}
                 onViewByTopic={() => {
                   const firstAssigned = topics.find((topic) =>
                     fc.flashcard_topic_assignments?.some((a) => a.topic_id === topic.id),
@@ -136,32 +144,36 @@ export function FlashcardCard({
         </DropdownMenu>
       </div>
 
-      <CardContent className="flex flex-col items-center justify-center p-6 pt-8">
-        <p className={`mb-2 text-xs uppercase ${isFlipped ? 'text-white/70' : 'text-muted-foreground'}`}>
+      <CardContent className="flex-1 flex flex-col items-center p-4 pt-6">
+        <p
+          className={`mb-2 text-xs uppercase ${isFlipped ? 'text-white/70' : 'text-muted-foreground'}`}
+        >
           {isFlipped ? t('answer_label') : t('question_label')}
         </p>
-        <p className={`text-center text-lg font-medium ${isFlipped ? 'text-white' : ''}`}>
-          {isFlipped ? fc.back : fc.front}
-        </p>
-        <div className="mt-auto pt-4 w-full">
-          {fcTopics.length > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {fcTopics.map((topic) => (
-                <Badge
-                  key={topic.id}
-                  variant="secondary"
-                  className={`gap-1 text-xs ${isFlipped ? 'bg-white/20 text-white border-white/20 hover:bg-white/30' : ''}`}
-                >
-                  <div className={`h-1.5 w-1.5 rounded-full ${isFlipped ? 'bg-white/80' : getTopicColor(topic.name)}`} />
-                  {topic.name}
-                </Badge>
-              ))}
+        <div className="w-full text-center flex-1 flex items-center justify-center overflow-hidden">
+            <div className="text-lg font-medium grid w-full">
+            <div className={`[grid-area:1/1] min-w-0 ${isFlipped ? 'invisible' : ''}`}>
+              <MarkdownRenderer content={fc.front} />
             </div>
-          ) : (
-            <p className={`text-xs ${isFlipped ? 'text-white/60' : 'text-muted-foreground'}`}>{t('no_topics')}</p>
-          )}
+            <div className={`[grid-area:1/1] min-w-0 ${isFlipped ? 'text-white' : 'invisible'}`}>
+              <MarkdownRenderer content={fc.back} />
+            </div>
+          </div>
         </div>
       </CardContent>
+
+      {fcTopics.length > 0 && (
+        <div className="absolute bottom-3 left-3 z-10 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {fcTopics.map((topic) => (
+            <div key={topic.id} className="relative group/topic">
+              <div className={`h-2.5 w-2.5 rounded-full ${getTopicColor(topic.name)}`} />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 whitespace-nowrap text-xs bg-background/80 backdrop-blur rounded px-1.5 py-0.5 shadow-sm border hidden group-hover/topic:block z-20">
+                {topic.name}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </Card>
   );
-}
+});

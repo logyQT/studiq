@@ -123,48 +123,60 @@ export class FlashcardService {
     return flashcards;
   }
 
-  async list(ctx: RequestContext, filters?: { topicIds?: string[]; deckIds?: string[] }) {
+  async list(ctx: RequestContext, filters?: { topicIds?: string[]; deckIds?: string[]; cursor?: string; limit?: number }) {
     const supabase = await createClient();
+    const pageSize = Math.min(filters?.limit ?? 50, 100);
+
+    const hasDeckFilter = !!(filters?.deckIds && filters.deckIds.length > 0);
+    const hasTopicFilter = !!(filters?.topicIds && filters.topicIds.length > 0);
 
     const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     let query = supabase
       .from('flashcards')
-      .select('*, flashcard_topic_assignments(topic_id), flashcard_deck_assignments(deck_id)');
+      .select(
+        '*, ' +
+        `flashcard_topic_assignments${hasTopicFilter ? '!inner' : ''}(topic_id), ` +
+        `flashcard_deck_assignments${hasDeckFilter ? '!inner' : ''}(deck_id)`,
+      );
 
-    if (filter._impossible) return [];
+    if (filter._impossible) return { items: [], nextCursor: null, hasMore: false };
     if (filter.or) {
       query = query.or(filter.or);
     } else if (filter.created_by) {
       query = query.eq('created_by', filter.created_by);
     }
 
-    query = query.order('created_at', { ascending: false });
-
-    if (filters?.topicIds && filters.topicIds.length > 0) {
-      const { data: assignments } = await supabase
-        .from('flashcard_topic_assignments')
-        .select('flashcard_id')
-        .in('topic_id', filters.topicIds);
-
-      const flashcardIds = [...new Set(assignments?.map((a) => a.flashcard_id) ?? [])];
-      if (flashcardIds.length === 0) return [];
-      query = query.in('id', flashcardIds);
+    if (hasTopicFilter) {
+      if (filters!.topicIds!.length === 1) {
+        query = query.filter('flashcard_topic_assignments.topic_id', 'eq', filters!.topicIds![0]);
+      } else {
+        query = query.filter('flashcard_topic_assignments.topic_id', 'in', `(${filters!.topicIds!.join(',')})`);
+      }
     }
 
-    if (filters?.deckIds && filters.deckIds.length > 0) {
-      const { data: assignments } = await supabase
-        .from('flashcard_deck_assignments')
-        .select('flashcard_id')
-        .in('deck_id', filters.deckIds);
+    if (hasDeckFilter) {
+      if (filters!.deckIds!.length === 1) {
+        query = query.filter('flashcard_deck_assignments.deck_id', 'eq', filters!.deckIds![0]);
+      } else {
+        query = query.filter('flashcard_deck_assignments.deck_id', 'in', `(${filters!.deckIds!.join(',')})`);
+      }
+    }
 
-      const flashcardIds = [...new Set(assignments?.map((a) => a.flashcard_id) ?? [])];
-      if (flashcardIds.length === 0) return [];
-      query = query.in('id', flashcardIds);
+    query = query.order('id').limit(pageSize + 1);
+
+    if (filters?.cursor) {
+      query = query.gt('id', filters.cursor);
     }
 
     const { data, error } = await query;
     if (error) throw mapSupabaseError(error);
-    return data;
+
+    const rows = data as unknown as Array<{ id: string; [key: string]: unknown }>;
+    const hasMore = (rows?.length ?? 0) > pageSize;
+    const items = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
+    const nextCursor = hasMore ? items[items.length - 1].id : null;
+
+    return { items, nextCursor, hasMore };
   }
 
   async getById(id: string, ctx: RequestContext) {
@@ -186,6 +198,7 @@ export class FlashcardService {
     const { data, error } = await query.single();
 
     if (error || !data) throw new AppError('NOT_FOUND');
+
     return data;
   }
 

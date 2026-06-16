@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl';
 import { FolderOpen, Tags, Play, Dumbbell } from 'lucide-react';
-import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { DashboardPanel } from '@/components/flashcards/dashboard-panel';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
@@ -25,9 +24,18 @@ const GRADIENTS = [
 
 export default function FlashcardsClient() {
   const t = useTranslations('AppFlashcardsPage');
-  const { data: decks } = useApiQuery<Deck[]>({ queryKey: flashcardKeys.decks.all, url: '/api/v1/flashcards/decks' });
-  const { data: topics } = useApiQuery<Topic[]>({ queryKey: flashcardKeys.topics.all, url: '/api/v1/flashcards/topics' });
-  const { data: dueData } = useApiQuery<{ count: number }>({ queryKey: [...flashcardKeys.all, 'practice', 'due', 'count'], url: '/api/v1/flashcards/practice/due/count' });
+  const { data: decks } = useApiQuery<Deck[]>({
+    queryKey: flashcardKeys.decks.all,
+    url: '/api/v1/flashcards/decks',
+  });
+  const { data: topics } = useApiQuery<Topic[]>({
+    queryKey: flashcardKeys.topics.all,
+    url: '/api/v1/flashcards/topics',
+  });
+  const { data: dueData } = useApiQuery<{ count: number }>({
+    queryKey: [...flashcardKeys.all, 'practice', 'due', 'count'],
+    url: '/api/v1/flashcards/practice/due/count',
+  });
 
   const deckCount = decks?.length ?? 0;
   const topicCount = topics?.length ?? 0;
@@ -78,10 +86,9 @@ export default function FlashcardsClient() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <Breadcrumbs items={[{ label: t('title'), href: '/app/flashcards' }]} />
+      {/* <div className="space-y-1">
         <p className="text-muted-foreground">{t('subtitle')}</p>
-      </div>
+      </div> */}
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {panels.map((panel) => (

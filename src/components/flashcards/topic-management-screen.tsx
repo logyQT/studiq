@@ -17,10 +17,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Plus, Trash2, Eye, Pencil } from 'lucide-react';
-import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { apiPost, apiPut, apiDelete } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
@@ -43,28 +43,22 @@ function getTopicColor(name: string) {
   return TOPIC_COLORS[name.length % TOPIC_COLORS.length];
 }
 
-interface Crumb {
-  label: string;
-  href: string;
-}
-
 interface TopicManagementScreenProps {
   apiBase: string;
   t: ReturnType<typeof useTranslations>;
-  breadcrumbs: Crumb[];
 }
 
-export function TopicManagementScreen({ t, breadcrumbs }: TopicManagementScreenProps) {
+export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   const queryClient = useQueryClient();
   const { data: topics, isLoading } = useApiQuery<Topic[]>({
     queryKey: flashcardKeys.topics.all,
     url: '/api/v1/flashcards/topics',
   });
-  const { data: allFlashcards } = useApiQuery<Flashcard[]>({
+  const { data: allFlashcardsData } = useApiQuery<{ items: Flashcard[]; nextCursor: string | null; hasMore: boolean }>({
     queryKey: flashcardKeys.list({}),
     url: '/api/v1/flashcards',
   });
-  const flashcards = allFlashcards ?? [];
+  const flashcards = allFlashcardsData?.items ?? [];
   const createTopic = useApiMutation({
     mutationFn: (data: { name: string }) => apiPost<Topic>('/api/v1/flashcards/topics', data),
     invalidateKeys: [flashcardKeys.topics.all],
@@ -163,8 +157,7 @@ export function TopicManagementScreen({ t, breadcrumbs }: TopicManagementScreenP
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <Breadcrumbs items={breadcrumbs} />
+      <div className="flex items-center justify-end">
         <Button onClick={openCreate}>
           <Plus className="mr-2 h-4 w-4" /> {t('new_topic')}
         </Button>
@@ -324,11 +317,11 @@ export function TopicManagementScreen({ t, breadcrumbs }: TopicManagementScreenP
                 <div key={fc.id} className="p-4 rounded-lg border space-y-2">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase">{t('question_label')}</p>
-                    <p className="text-sm font-medium">{fc.front}</p>
+                    <p className="text-sm font-medium"><MarkdownRenderer content={fc.front} /></p>
                   </div>
                   <div className="border-t pt-2">
                     <p className="text-xs text-muted-foreground uppercase">{t('answer_label')}</p>
-                    <p className="text-sm">{fc.back}</p>
+                    <p className="text-sm"><MarkdownRenderer content={fc.back} /></p>
                   </div>
                 </div>
               ))

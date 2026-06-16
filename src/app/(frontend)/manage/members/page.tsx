@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { RoleBadge } from '@/components/ui/role-badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { DicebearAvatar } from '@/components/ui/dicebear-avatar';
 import {
   Table,
   TableBody,
@@ -105,16 +105,6 @@ export default function MembersPage() {
     setChangingRole(null);
   }
 
-  function getInitials(name: string | null): string {
-    if (!name) return '?';
-    return name
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
-  }
-
   if (loading) return <div className="flex justify-center py-12">{t('common_loading')}</div>;
 
   return (
@@ -164,11 +154,7 @@ export default function MembersPage() {
               <TableRow key={m.id}>
                 <TableCell>
                   <div className="flex items-center gap-3">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback className="text-xs">
-                        {getInitials(m.full_name)}
-                      </AvatarFallback>
-                    </Avatar>
+                    <DicebearAvatar seed={m.email} size={32} />
                     <div>
                       <p className="font-medium">{m.full_name || t('unnamed')}</p>
                       <p className="text-xs text-muted-foreground">{m.email}</p>

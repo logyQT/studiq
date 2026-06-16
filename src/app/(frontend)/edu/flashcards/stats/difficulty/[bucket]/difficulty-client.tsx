@@ -13,6 +13,7 @@ import { Empty, EmptyHeader, EmptyTitle, EmptyMedia } from '@/components/ui/empt
 import { DeckDetailSkeleton } from '@/components/flashcards/deck-detail-skeleton';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { DifficultyFlashcardDetail } from '@/server/models';
@@ -121,8 +122,8 @@ export default function DifficultyBucketClient() {
             <Card key={fc.id} className="flex flex-col">
               <CardContent className="p-5 flex flex-col gap-3 flex-1">
                 <div className="space-y-1.5 min-h-0">
-                  <p className="text-sm font-medium leading-snug line-clamp-2">{fc.front}</p>
-                  <p className="text-sm text-muted-foreground leading-snug line-clamp-2">{fc.back}</p>
+                  <p className="text-sm font-medium leading-snug line-clamp-2"><MarkdownRenderer content={fc.front} /></p>
+                  <p className="text-sm text-muted-foreground leading-snug line-clamp-2"><MarkdownRenderer content={fc.back} /></p>
                 </div>
 
                 <div className="flex flex-wrap gap-1.5">

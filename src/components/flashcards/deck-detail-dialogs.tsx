@@ -15,13 +15,19 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
-import { ExternalLink, X } from 'lucide-react';
+import { ExternalLink, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type { Flashcard, Deck, Topic } from '@/types/flashcards';
 import type { UserRole } from '@/types';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
+import { MultiSelect } from '@/components/ui/multi-select';
 import { useTranslations } from 'next-intl';
+import { useState, useCallback } from 'react';
+import { apiPost, apiPut } from '@/lib/api';
+import { useQueryClient } from '@tanstack/react-query';
+import { flashcardKeys } from '@/lib/query-keys';
 
 const TOPIC_COLORS = [
   'bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500',
@@ -34,14 +40,11 @@ function getTopicColor(name: string) {
 }
 
 export interface DialogsState {
-  createOpen: boolean;
-  editOpen: boolean;
   deleteId: string | null;
   linkOpen: boolean;
   copyOpen: boolean;
   copyResult: { id: string; deckId: string } | null;
   activeFlashcardId: string | null;
-  formData: { front: string; back: string; topicIds: string[] };
   linkDeckIds: string[];
   copyTargetDeckId: string | null;
   deckEditOpen: boolean;
@@ -49,7 +52,7 @@ export interface DialogsState {
   deckFormData: { name: string; description: string };
   viewTopicId: string | null;
   addTopicOpen: boolean;
-  removeTopicOpen: boolean;
+  manageTopicOpen: boolean;
   topicActionIds: string[];
   selectedIds: string[];
   bulkDeleteOpen: boolean;
@@ -65,8 +68,6 @@ export interface DialogsState {
 }
 
 export interface DialogsHandlers {
-  onCreateOpenChange: (open: boolean) => void;
-  onEditOpenChange: (open: boolean) => void;
   onDeleteOpenChange: () => void;
   onLinkOpenChange: (open: boolean) => void;
   onCopyOpenChange: (open: boolean) => void;
@@ -75,21 +76,17 @@ export interface DialogsHandlers {
   onDeckDeleteOpenChange: (open: boolean) => void;
   onViewTopicIdChange: (id: string | null) => void;
   onAddTopicOpenChange: (open: boolean) => void;
-  onRemoveTopicOpenChange: (open: boolean) => void;
-  onFormDataChange: (data: { front: string; back: string; topicIds: string[] }) => void;
+  onManageTopicOpenChange: (open: boolean) => void;
   onLinkDeckIdsChange: (ids: string[]) => void;
   onCopyTargetDeckIdChange: (id: string | null) => void;
   onDeckFormDataChange: (data: { name: string; description: string }) => void;
   onTopicActionIdsChange: (ids: string[]) => void;
-  onCreate: () => void;
-  onUpdate: () => void;
   onDelete: () => void;
   onLink: () => void;
   onCopy: () => void;
   onDeckUpdate: () => void;
   onDeckDelete: () => void;
   onAddTopicConfirm: () => void;
-  onRemoveTopicConfirm: () => void;
   onBulkDelete: () => void;
   onBulkLink: () => void;
   onBulkTopics: () => void;
@@ -129,169 +126,66 @@ export function DeckDetailDialogs({
   basePath,
 }: DeckDetailDialogsProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const role = user?.app_metadata?.role as UserRole | undefined;
+  const [newTopicName, setNewTopicName] = useState('');
+  const [creatingTopic, setCreatingTopic] = useState(false);
 
   // Only expose decks the user has permission to update — prevents UI-level
   // access to Link / Copy / Move operations on decks the user doesn't own.
   const ownedDecks = allDecks.filter((d) => can(role, 'deck.update', d.created_by, user?.id));
 
-  function toggleTopic(id: string) {
-    handlers.onFormDataChange({
-      ...state.formData,
-      topicIds: state.formData.topicIds.includes(id)
-        ? state.formData.topicIds.filter((tid) => tid !== id)
-        : [...state.formData.topicIds, id],
-    });
-  }
-
   function getTopicIds(fc: Flashcard | undefined) {
     return fc?.flashcard_topic_assignments?.map((a) => a.topic_id) ?? [];
   }
 
+  const handleCreateAndLinkTopic = useCallback(async () => {
+    const name = newTopicName.trim();
+    if (!name || !state.activeFlashcardId) return;
+    const fc = flashcards.find((f) => f.id === state.activeFlashcardId);
+    if (!fc) return;
+
+    setCreatingTopic(true);
+    try {
+      const newTopic = await apiPost<{ id: string; name: string }>('/api/v1/flashcards/topics', { name });
+      const currentIds = getTopicIds(fc);
+      const newIds = [...new Set([...currentIds, newTopic.id])];
+      await apiPut<Flashcard>(`/api/v1/flashcards/${fc.id}`, {
+        front: fc.front,
+        back: fc.back,
+        topicIds: newIds,
+      });
+      queryClient.invalidateQueries({ queryKey: flashcardKeys.topics.all });
+      queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
+      setNewTopicName('');
+      handlers.onAddTopicOpenChange(false);
+    } catch {
+      // error handled by parent
+    } finally {
+      setCreatingTopic(false);
+    }
+  }, [newTopicName, state.activeFlashcardId, flashcards, queryClient, handlers]);
+
+  const handleManageTopicsConfirm = useCallback(async () => {
+    if (!state.activeFlashcardId) return;
+    const fc = flashcards.find((f) => f.id === state.activeFlashcardId);
+    if (!fc) return;
+    try {
+      await apiPut<Flashcard>(`/api/v1/flashcards/${fc.id}`, {
+        front: fc.front,
+        back: fc.back,
+        topicIds: state.topicActionIds,
+      });
+      queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
+      handlers.onManageTopicOpenChange(false);
+    } catch {
+      // error handled by parent
+    }
+  }, [state.activeFlashcardId, state.topicActionIds, flashcards, queryClient, handlers]);
+
   return (
     <>
-      <Dialog open={state.createOpen} onOpenChange={handlers.onCreateOpenChange}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t('create_title')}</DialogTitle>
-            <DialogDescription>{t('create_desc')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label>{t('front_label')}</Label>
-              <Textarea
-                value={state.formData.front}
-                onChange={(e) => handlers.onFormDataChange({ ...state.formData, front: e.target.value })}
-                placeholder={t('front_placeholder')}
-                rows={3}
-              />
-            </div>
-            <div>
-              <Label>{t('back_label')}</Label>
-              <Textarea
-                value={state.formData.back}
-                onChange={(e) => handlers.onFormDataChange({ ...state.formData, back: e.target.value })}
-                placeholder={t('back_placeholder')}
-                rows={3}
-              />
-            </div>
-            <div>
-              <Label>{t('topics_label')}</Label>
-              <div className="space-y-2 mt-2 max-h-40 overflow-y-auto">
-                {topics.map((topic) => (
-                  <div key={topic.id} className="flex items-center gap-3 p-2 rounded-lg border">
-                    <Checkbox
-                      checked={state.formData.topicIds.includes(topic.id)}
-                      onCheckedChange={() => toggleTopic(topic.id)}
-                    />
-                    <div className={`h-2 w-2 rounded-full ${getTopicColor(topic.name)}`} />
-                    <span className="text-sm">{topic.name}</span>
-                  </div>
-                ))}
-                {topics.length === 0 && (
-                  <p className="text-sm text-muted-foreground">{t('no_topics_available')}</p>
-                )}
-              </div>
-              {state.formData.topicIds.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2 p-2 rounded-lg bg-muted">
-                  {state.formData.topicIds.map((id) => {
-                    const topic = topics.find((t) => t.id === id);
-                    if (!topic) return null;
-                    return (
-                      <Badge key={id} variant="secondary" className="gap-1">
-                        <div className={`h-1.5 w-1.5 rounded-full ${getTopicColor(topic.name)}`} />
-                        {topic.name}
-                        <button
-                          className="ml-1 hover:text-destructive"
-                          onClick={() => toggleTopic(id)}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { handlers.onCreateOpenChange(false); handlers.onFormDataChange({ front: '', back: '', topicIds: [] }); }}>
-              {t('common_cancel')}
-            </Button>
-            <Button onClick={handlers.onCreate}>{t('common_create')}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={state.editOpen} onOpenChange={handlers.onEditOpenChange}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t('edit_title')}</DialogTitle>
-            <DialogDescription>{t('edit_desc')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label>{t('front_label')}</Label>
-              <Textarea
-                value={state.formData.front}
-                onChange={(e) => handlers.onFormDataChange({ ...state.formData, front: e.target.value })}
-                rows={3}
-              />
-            </div>
-            <div>
-              <Label>{t('back_label')}</Label>
-              <Textarea
-                value={state.formData.back}
-                onChange={(e) => handlers.onFormDataChange({ ...state.formData, back: e.target.value })}
-                rows={3}
-              />
-            </div>
-            <div>
-              <Label>{t('topics_label')}</Label>
-              <div className="space-y-2 mt-2 max-h-40 overflow-y-auto">
-                {topics.map((topic) => (
-                  <div key={topic.id} className="flex items-center gap-3 p-2 rounded-lg border">
-                    <Checkbox
-                      checked={state.formData.topicIds.includes(topic.id)}
-                      onCheckedChange={() => toggleTopic(topic.id)}
-                    />
-                    <div className={`h-2 w-2 rounded-full ${getTopicColor(topic.name)}`} />
-                    <span className="text-sm">{topic.name}</span>
-                  </div>
-                ))}
-              </div>
-              {state.formData.topicIds.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2 p-2 rounded-lg bg-muted">
-                  {state.formData.topicIds.map((id) => {
-                    const topic = topics.find((t) => t.id === id);
-                    if (!topic) return null;
-                    return (
-                      <Badge key={id} variant="secondary" className="gap-1">
-                        <div className={`h-1.5 w-1.5 rounded-full ${getTopicColor(topic.name)}`} />
-                        {topic.name}
-                        <button
-                          className="ml-1 hover:text-destructive"
-                          onClick={() => toggleTopic(id)}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { handlers.onEditOpenChange(false); handlers.onFormDataChange({ front: '', back: '', topicIds: [] }); }}>
-              {t('common_cancel')}
-            </Button>
-            <Button onClick={handlers.onUpdate}>{t('common_update')}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={state.linkOpen} onOpenChange={handlers.onLinkOpenChange}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -506,12 +400,12 @@ export function DeckDetailDialogs({
                 .map((fc) => (
                   <div key={fc.id} className="p-4 rounded-lg border space-y-2">
                     <div>
-                      <p className="text-xs text-muted-foreground uppercase">{t('question_label')}</p>
-                      <p className="text-sm font-medium">{fc.front}</p>
-                    </div>
-                    <div className="border-t pt-2">
-                      <p className="text-xs text-muted-foreground uppercase">{t('answer_label')}</p>
-                      <p className="text-sm">{fc.back}</p>
+                    <p className="text-xs text-muted-foreground uppercase">{t('question_label')}</p>
+                    <p className="text-sm font-medium"><MarkdownRenderer content={fc.front} /></p>
+                  </div>
+                  <div className="border-t pt-2">
+                    <p className="text-xs text-muted-foreground uppercase">{t('answer_label')}</p>
+                    <p className="text-sm"><MarkdownRenderer content={fc.back} /></p>
                     </div>
                   </div>
                 ))
@@ -523,105 +417,116 @@ export function DeckDetailDialogs({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={state.addTopicOpen} onOpenChange={handlers.onAddTopicOpenChange}>
+      <Dialog open={state.addTopicOpen} onOpenChange={(open) => {
+        if (!open) setNewTopicName('');
+        handlers.onAddTopicOpenChange(open);
+      }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t('menu_add_topic')}</DialogTitle>
+            <DialogTitle>{t('add_topic_title')}</DialogTitle>
             <DialogDescription>{t('add_topic_desc')}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 max-h-60 overflow-y-auto py-2">
-            {(() => {
-              const fc = flashcards.find((f) => f.id === state.activeFlashcardId);
-              const assignedIds = getTopicIds(fc);
-              const available = topics.filter((topic) => !assignedIds.includes(topic.id));
-              return (
-                <>
-                  {available.map((topic) => (
-                    <div key={topic.id} className="flex items-center gap-3 p-2 rounded-lg border">
-                      <Checkbox
-                        checked={state.topicActionIds.includes(topic.id)}
-                        onCheckedChange={() =>
-                          handlers.onTopicActionIdsChange(
-                            state.topicActionIds.includes(topic.id)
-                              ? state.topicActionIds.filter((id) => id !== topic.id)
-                              : [...state.topicActionIds, topic.id],
-                          )
-                        }
-                      />
-                      <div className={`h-2 w-2 rounded-full ${getTopicColor(topic.name)}`} />
-                      <span className="text-sm">{topic.name}</span>
-                    </div>
-                  ))}
-                  {available.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      {t('no_other_topics_to_add')}
-                    </p>
-                  )}
-                </>
-              );
-            })()}
+          <div className="space-y-3 py-2">
+            <Input
+              value={newTopicName}
+              onChange={(e) => setNewTopicName(e.target.value)}
+              placeholder={t('add_topic_input_placeholder')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newTopicName.trim()) {
+                  e.preventDefault();
+                  handleCreateAndLinkTopic();
+                }
+              }}
+            />
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {(() => {
+                const fc = flashcards.find((f) => f.id === state.activeFlashcardId);
+                const assignedIds = getTopicIds(fc);
+                const filtered = topics.filter((topic) =>
+                  !assignedIds.includes(topic.id) &&
+                  topic.name.toLowerCase().includes(newTopicName.toLowerCase()),
+                );
+                const exactMatch = topics.find(
+                  (topic) => topic.name.toLowerCase() === newTopicName.trim().toLowerCase(),
+                );
+                return (
+                  <>
+                    {newTopicName.trim() && !exactMatch && (
+                      <button
+                        onClick={handleCreateAndLinkTopic}
+                        disabled={creatingTopic}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent transition-colors"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span className="text-muted-foreground">{t('add_topic_create_new', { name: newTopicName.trim() })}</span>
+                      </button>
+                    )}
+                    {filtered.map((topic) => (
+                      <button
+                        key={topic.id}
+                        onClick={() => {
+                          const currentIds = getTopicIds(flashcards.find((f) => f.id === state.activeFlashcardId));
+                          handlers.onTopicActionIdsChange([...new Set([...currentIds, topic.id])]);
+                          handlers.onAddTopicConfirm();
+                          setNewTopicName('');
+                        }}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent transition-colors"
+                      >
+                        <div className={`h-2 w-2 rounded-full shrink-0 ${getTopicColor(topic.name)}`} />
+                        {topic.name}
+                      </button>
+                    ))}
+                    {newTopicName.trim() && filtered.length === 0 && !exactMatch && (
+                      <p className="text-xs text-muted-foreground text-center py-2">
+                        {t('add_topic_no_matches')}
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => handlers.onAddTopicOpenChange(false)}>
+            <Button variant="outline" onClick={() => { setNewTopicName(''); handlers.onAddTopicOpenChange(false); }}>
               {t('common_cancel')}
             </Button>
             <Button
-              onClick={handlers.onAddTopicConfirm}
-              disabled={state.topicActionIds.length === 0}
+              onClick={handleCreateAndLinkTopic}
+              disabled={!newTopicName.trim() || creatingTopic}
             >
-              {t('common_add')}
+              {creatingTopic ? t('common_adding') : t('common_add')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={state.removeTopicOpen} onOpenChange={handlers.onRemoveTopicOpenChange}>
+      <Dialog open={state.manageTopicOpen} onOpenChange={handlers.onManageTopicOpenChange}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t('menu_remove_topic')}</DialogTitle>
-            <DialogDescription>{t('remove_topic_desc')}</DialogDescription>
+            <DialogTitle>{t('manage_topic_title')}</DialogTitle>
+            <DialogDescription>{t('manage_topic_desc')}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 max-h-60 overflow-y-auto py-2">
+          <div className="py-2">
             {(() => {
               const fc = flashcards.find((f) => f.id === state.activeFlashcardId);
-              const assignedIds = getTopicIds(fc);
-              const assigned = topics.filter((topic) => assignedIds.includes(topic.id));
+              const currentIds = getTopicIds(fc);
+              const topicOptions = topics.map((topic) => ({ label: topic.name, value: topic.id }));
               return (
-                <>
-                  {assigned.map((topic) => (
-                    <div key={topic.id} className="flex items-center gap-3 p-2 rounded-lg border">
-                      <Checkbox
-                        checked={state.topicActionIds.includes(topic.id)}
-                        onCheckedChange={() =>
-                          handlers.onTopicActionIdsChange(
-                            state.topicActionIds.includes(topic.id)
-                              ? state.topicActionIds.filter((id) => id !== topic.id)
-                              : [...state.topicActionIds, topic.id],
-                          )
-                        }
-                      />
-                      <div className={`h-2 w-2 rounded-full ${getTopicColor(topic.name)}`} />
-                      <span className="text-sm">{topic.name}</span>
-                    </div>
-                  ))}
-                  {assigned.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      {t('no_topics_to_remove')}
-                    </p>
-                  )}
-                </>
+                <MultiSelect
+                  options={topicOptions}
+                  selected={state.topicActionIds.length > 0 ? state.topicActionIds : currentIds}
+                  onChange={(ids) => handlers.onTopicActionIdsChange(ids)}
+                  placeholder={t('manage_topic_select')}
+                />
               );
             })()}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => handlers.onRemoveTopicOpenChange(false)}>
+            <Button variant="outline" onClick={() => handlers.onManageTopicOpenChange(false)}>
               {t('common_cancel')}
             </Button>
-            <Button
-              onClick={handlers.onRemoveTopicConfirm}
-              disabled={state.topicActionIds.length === 0}
-            >
-              {t('common_remove')}
+            <Button onClick={handleManageTopicsConfirm}>
+              {t('common_save')}
             </Button>
           </DialogFooter>
         </DialogContent>
