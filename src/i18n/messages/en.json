@@ -129,6 +129,26 @@
     "back_home": "Back to home page",
     "system_status": "Check system status"
   },
+  "DashboardNotFound": {
+    "title": "Well, this is awkward...",
+    "description": "This page doesn't exist. Maybe it was a typo, or maybe you're just exploring. Either way, you're lost.",
+    "go_dashboard": "Back to Dashboard",
+    "try_these": "Or try one of these instead:",
+    "flashcards": "Flashcards",
+    "quiz": "Quiz",
+    "statistics": "Statistics"
+  },
+  "EntityNotFound": {
+    "go_dashboard": "Dashboard",
+    "deck_not_found": "Deck not found",
+    "deck_not_found_desc": "This deck may have been deleted or you don't have access to it.",
+    "card_not_found": "Card not found",
+    "card_not_found_desc": "This flashcard may have been deleted or you don't have access to it.",
+    "quiz_not_found": "Quiz not found",
+    "quiz_not_found_desc": "This quiz may have been deleted or you don't have access to it.",
+    "attempt_not_found": "Attempt not found",
+    "attempt_not_found_desc": "This quiz attempt may have been deleted or you don't have access to it."
+  },
   "PasswordResetPage": {
     "title": "Forgot your password?",
     "description": "Enter your email address and we'll send you a link to reset your password.",
@@ -191,7 +211,9 @@
     "search_placeholder": "Search flashcards...",
     "search_no_results": "No results",
     "search_shortcut": "Search",
-    "search_loading": "Searching..."
+    "search_loading": "Searching...",
+    "language": "Language",
+    "theme": "Theme"
   },
   "EduOverviewPage": {
     "title": "Teacher Dashboard",

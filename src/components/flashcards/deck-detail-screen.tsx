@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { EntityNotFound } from '@/components/shared/entity-not-found';
 import {
   Plus,
   Pencil,
@@ -494,9 +495,7 @@ export function DeckDetailScreen({
   if (deckError || (!deckLoading && !currentDeck)) {
     return (
       <div className="space-y-6">
-        <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
-          <p className="text-lg">Deck not found</p>
-        </div>
+        <EntityNotFound titleKey="deck_not_found" descriptionKey="deck_not_found_desc" />
       </div>
     );
   }

@@ -71,6 +71,26 @@
     "back_home": "Wróć do strony głównej",
     "system_status": "Sprawdź status systemu"
   },
+  "DashboardNotFound": {
+    "title": "No to niezłe combo...",
+    "description": "Ta strona nie istnieje. Może to literówka, a może po prostu eksplorujesz. W obu przypadkach — zgubiłeś się.",
+    "go_dashboard": "Wróć do panelu",
+    "try_these": "Albo spróbuj jednego z tych:",
+    "flashcards": "Fiszki",
+    "quiz": "Quiz",
+    "statistics": "Statystyki"
+  },
+  "EntityNotFound": {
+    "go_dashboard": "Panel",
+    "deck_not_found": "Nie znaleziono talii",
+    "deck_not_found_desc": "Ta talia mogła zostać usunięta lub nie masz do niej dostępu.",
+    "card_not_found": "Nie znaleziono fiszki",
+    "card_not_found_desc": "Ta fiszka mogła zostać usunięta lub nie masz do niej dostępu.",
+    "quiz_not_found": "Nie znaleziono quizu",
+    "quiz_not_found_desc": "Ten quiz mógł zostać usunięty lub nie masz do niego dostępu.",
+    "attempt_not_found": "Nie znaleziono próby",
+    "attempt_not_found_desc": "Ta próba quizu mogła zostać usunięta lub nie masz do niej dostępu."
+  },
   "Navbar": {
     "logo": "StudiQ",
     "dashboard": "Dashboard",
@@ -173,7 +193,9 @@
     "search_placeholder": "Szukaj fiszek...",
     "search_no_results": "Brak wyników",
     "search_shortcut": "Szukaj",
-    "search_loading": "Szukanie..."
+    "search_loading": "Szukanie...",
+    "language": "Język",
+    "theme": "Motyw"
   },
   "EduOverviewPage": {
     "title": "Panel Nauczyciela",

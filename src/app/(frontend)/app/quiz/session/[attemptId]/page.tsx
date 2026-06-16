@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ArrowRight, ArrowLeft, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiGet, apiPost } from '@/lib/api';
+import { EntityNotFound } from '@/components/shared/entity-not-found';
 
 interface Question {
   id: string;
@@ -89,7 +90,7 @@ export default function QuizTakingPage() {
   }
 
   if (loading) return <div className="flex justify-center py-12">Loading...</div>;
-  if (!attempt) return <div className="flex justify-center py-12">Quiz not found</div>;
+  if (!attempt) return <EntityNotFound titleKey="quiz_not_found" descriptionKey="quiz_not_found_desc" />;
 
   const questions = attempt.questions;
   const currentQuestion = questions[currentQ];

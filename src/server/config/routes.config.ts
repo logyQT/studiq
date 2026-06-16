@@ -35,7 +35,7 @@ export const routeRules: RouteRule[] = [
   },
   // Catch-all for authenticated API routes (auth and health are unprotected by design)
   {
-    matcher: /^\/api\/v\d+\/(?!auth|health|dev)(.*)$/,
+    matcher: /^\/api\/v\d+\/(?!auth|health|dev|avatar)(.*)$/,
     requireAuth: true,
     isApi: true,
   },

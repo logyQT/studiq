@@ -13,8 +13,6 @@ import {
   SidebarMenuButton,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
-import { ThemeToggle } from '@/components/layout/ThemeToggle';
-import { LanguageToggle } from '@/components/layout/LanguageToggle';
 import { UserMenu } from '@/components/layout/user-menu';
 import { AppSearch } from '@/components/layout/app-search';
 import { Breadcrumbs } from '@/components/layout/breadcrumbs';
@@ -117,7 +115,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       className="flex-col !h-svh"
     >
       {/* Full-width topbar */}
-      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm border-b border-border/60">
+      <header className="shrink-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm border-b border-border/60">
         <div className="flex min-h-14 items-center gap-4 px-2">
           <Link href="/" className="hidden md:flex items-center gap-2.5 group shrink-0">
             <div className="rounded-xl bg-primary p-1.5 shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all duration-200">
@@ -137,10 +135,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </div>
           )}
           <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-            <div className="hidden md:flex items-center gap-1.5">
-              <LanguageToggle />
-              <ThemeToggle />
-            </div>
             <UserMenu />
           </div>
         </div>
@@ -199,12 +193,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="flex-1 flex flex-col min-w-0">
-          {crumbs.length > 0 && (
-            <div className="px-3 py-3 border-b border-border/60 shadow-sm">
-              <Breadcrumbs items={crumbs} />
-            </div>
-          )}
-          <main className="flex-1 overflow-y-auto p-content">{children}</main>
+          <div className="md:pl-12 flex-1 flex flex-col min-w-0 min-h-0">
+            {crumbs.length > 0 && (
+              <div className="shrink-0 px-3 py-3 border-b border-border/60 shadow-sm">
+                <Breadcrumbs items={crumbs} />
+              </div>
+            )}
+            <main className="flex-1 overflow-y-auto p-content scrollbar-gutter-stable">{children}</main>
+          </div>
         </div>
       </div>
     </SidebarProvider>

@@ -7,6 +7,7 @@ import { Loader2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { MultiSelect } from '@/components/ui/multi-select';
+import { EntityNotFound } from '@/components/shared/entity-not-found';
 import { FlashcardEditor } from '@/components/flashcards/flashcard-editor';
 import { useBreadcrumbContext } from '@/components/providers/BreadcrumbProvider';
 import { useApiQuery } from '@/hooks/use-api';
@@ -102,7 +103,7 @@ export default function EditCardClient({ deckId, cardId }: EditCardClientProps) 
   if (flashcardError || !flashcard) {
     return (
       <div className="space-y-6">
-        <p className="text-muted-foreground">The flashcard you are looking for does not exist or you do not have access.</p>
+        <EntityNotFound titleKey="card_not_found" descriptionKey="card_not_found_desc" />
       </div>
     );
   }
