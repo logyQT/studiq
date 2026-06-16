@@ -324,6 +324,7 @@ UI dashboards: `/admin` (SYS_ADMIN), `/manage` (UNIVERSITY_ADMIN), `/edu` (TEACH
 ## One-Time / Global Rules
 
 - When creating a new API endpoint, always add the `RouteRule` to `src/server/config/routes.config.ts` if it needs protection
+- The `/api/v1/avatar/[seed]` route is **public** (excluded from auth via `(?!auth|health|dev|avatar)` in the catch-all regex). It generates deterministic DiceBear SVGs. The `@dicebear/core` package is server-only (API route), never bundled to the client.
 - When creating a new DB table, add a migration in `supabase/migrations/` and a schema file in `supabase/schemas/`
 - When adding a feature that needs realtime, compose `useRealtimeChannel` with existing query keys
 - When adding a new model file, register schemas with `registry.register()` for OpenAPI docs

@@ -27,9 +27,10 @@ studiq/
 │   │
 │   ├── components/
 │   │   ├── flashcards/          # Flashcard-specific components
-│   │   ├── layout/              # Navbar, sidebar, footer
+│   │   ├── layout/              # Navbar, sidebar, footer, user-menu
 │   │   ├── providers/           # AuthProvider, ThemeProvider, QueryProvider
-│   │   └── ui/                  # 60+ shadcn/ui components
+│   │   ├── shared/              # Shared generic components (entity-not-found, markdown-renderer, audio-player)
+│   │   └── ui/                  # 60+ shadcn/ui components (includes dicebear-avatar)
 │   │
 │   ├── hooks/                   # Custom React hooks
 │   │   ├── use-api.ts
