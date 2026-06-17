@@ -11,19 +11,21 @@ interface SessionPageProps {
     decks?: string;
     target?: string;
     limit?: string;
+    newOnly?: string;
   }>;
 }
 
 export default async function SessionPage({ searchParams }: SessionPageProps) {
   const params = await searchParams;
-  const mode = params.mode || 'study';
+  const mode = params.mode || 'review';
   const studyMode = params.studyMode || 'endless';
-  const isPractice = mode === 'practice';
+  const isCram = mode === 'cram';
   const isQuick = mode === 'quick';
   const deckId = params.deckId;
   const topicsStr = params.topics;
   const decksStr = params.decks;
   const targetCount = parseInt(params.target || '10');
+  const newOnly = params.newOnly === 'true';
   const batchSize = isQuick ? parseInt(params.limit || '5', 10) : 20;
 
   const cookieStore = await cookies();
@@ -37,13 +39,16 @@ export default async function SessionPage({ searchParams }: SessionPageProps) {
   let initialCards: Array<{
     id: string; front: string; back: string;
     createdAt: string | null;
+    deckName: string | null;
+    topicNames: string[];
     reviewState: {
       easinessFactor: number; intervalDays: number; repetitions: number;
       nextReviewAt: string; lastReviewedAt: string | null; lastQuality: number | null;
+      learningState?: string; learningStep?: number; lapseCount?: number; isLeech?: boolean;
     } | null;
   }> = [];
 
-  if (isPractice && deckId) {
+  if (isCram && deckId) {
     const res = await fetch(`${baseUrl}/api/v1/flashcards/practice/prepare?deckIds=${deckId}`, {
       headers: { Cookie: cookieHeader },
       cache: 'no-store',
@@ -53,23 +58,25 @@ export default async function SessionPage({ searchParams }: SessionPageProps) {
       initialCards = (body.data ?? []).map((fc: {
         id: string; front: string; back: string;
         createdAt?: string | null;
-        reviewState?: {
-          easinessFactor: number; intervalDays: number; repetitions: number;
-          nextReviewAt: string; lastReviewedAt: string | null; lastQuality: number | null;
-        } | null;
+        deckName?: string | null;
+        topicNames?: string[];
+        reviewState?: Record<string, unknown> | null;
       }) => ({
         id: fc.id,
         front: fc.front,
         back: fc.back,
         createdAt: fc.createdAt ?? null,
+        deckName: fc.deckName ?? null,
+        topicNames: fc.topicNames ?? [],
         reviewState: fc.reviewState ?? null,
       }));
     }
-  } else if (!isPractice) {
+  } else if (!isCram) {
     const fetchUrl = new URL(`${baseUrl}/api/v1/flashcards/practice/due`);
     if (topicsStr) fetchUrl.searchParams.set('topicIds', topicsStr);
     if (decksStr) fetchUrl.searchParams.set('deckIds', decksStr);
     fetchUrl.searchParams.set('limit', String(batchSize));
+    if (newOnly) fetchUrl.searchParams.set('newOnly', 'true');
 
     const res = await fetch(fetchUrl.toString(), {
       headers: { Cookie: cookieHeader },
@@ -80,15 +87,16 @@ export default async function SessionPage({ searchParams }: SessionPageProps) {
       initialCards = (body.data ?? []).map((fc: {
         id: string; front: string; back: string;
         createdAt?: string | null;
-        reviewState?: {
-          easinessFactor: number; intervalDays: number; repetitions: number;
-          nextReviewAt: string; lastReviewedAt: string | null; lastQuality: number | null;
-        } | null;
+        deckName?: string | null;
+        topicNames?: string[];
+        reviewState?: Record<string, unknown> | null;
       }) => ({
         id: fc.id,
         front: fc.front,
         back: fc.back,
         createdAt: fc.createdAt ?? null,
+        deckName: fc.deckName ?? null,
+        topicNames: fc.topicNames ?? [],
         reviewState: fc.reviewState ?? null,
       }));
     }
@@ -96,7 +104,6 @@ export default async function SessionPage({ searchParams }: SessionPageProps) {
 
   if (initialCards.length === 0) {
     if (isQuick) redirect('/app');
-    if (isPractice) redirect('/app/flashcards/practice');
     redirect('/app/flashcards/study');
   }
 
@@ -112,7 +119,7 @@ export default async function SessionPage({ searchParams }: SessionPageProps) {
       mode={mode}
       studyMode={studyMode}
       targetCount={targetCount}
-      hasMore={!isPractice && initialCards.length >= batchSize}
+      hasMore={!isCram && initialCards.length >= batchSize}
       deckIds={deckIds}
     />
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
@@ -17,18 +17,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Trash2, Pencil, ArrowRight, Eye, Upload, Download, CheckSquare, Square, CheckCheck, Menu } from 'lucide-react';
+import { SquarePen, Trash2, Pencil, ArrowRight, Eye, Upload, CheckSquare, CheckCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { apiPost, apiPut, apiDelete } from '@/lib/api';
@@ -39,6 +32,7 @@ import { can } from '@/lib/frontend-rbac';
 import { UserRole } from '@/types';
 import { ImportDialog } from '@/components/flashcards/import-dialog';
 import { DeckBulkActions } from '@/components/flashcards/deck-bulk-actions';
+import { SpeedDial } from '@/components/shared/speed-dial';
 
 const GRADIENTS = [
   'from-violet-500 to-purple-600',
@@ -128,6 +122,18 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [formData, setFormData] = useState({ name: '', description: '' });
+
+  useEffect(() => {
+    if (!isSelecting) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleClearSelection();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isSelecting]);
 
   function resetForm() {
     setFormData({ name: '', description: '' });
@@ -232,59 +238,6 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end">
-        <div className="flex items-center gap-2">
-          <div className="hidden lg:flex items-center gap-2">
-            <Button variant="outline" onClick={() => setImportOpen(true)}>
-              <Upload className="mr-2 h-4 w-4" /> {t('import_csv')}
-            </Button>
-            <Button variant="outline" onClick={handleExportAll}>
-              <Download className="mr-2 h-4 w-4" /> {t('export_csv')}
-            </Button>
-            <Button
-              variant={isSelecting ? 'secondary' : 'outline'}
-              onClick={() => {
-                if (isSelecting) handleClearSelection();
-                else setIsSelecting(true);
-              }}
-            >
-              {isSelecting ? <Square className="mr-2 h-4 w-4" /> : <CheckSquare className="mr-2 h-4 w-4" />}
-              {isSelecting ? t('cancel_selection') : t('select_cards')}
-            </Button>
-            <Button onClick={openCreate}>
-              <Plus className="mr-2 h-4 w-4" /> {t('new_deck')}
-            </Button>
-          </div>
-          <div className="lg:hidden">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Menu className="mr-2 h-4 w-4" /> {t('common_manage')}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setImportOpen(true)}>
-                  <Upload className="mr-2 h-4 w-4" /> {t('import_csv')}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleExportAll}>
-                  <Download className="mr-2 h-4 w-4" /> {t('export_csv')}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => {
-                  if (isSelecting) handleClearSelection();
-                  else setIsSelecting(true);
-                }}>
-                  {isSelecting ? <Square className="mr-2 h-4 w-4" /> : <CheckSquare className="mr-2 h-4 w-4" />}
-                  {isSelecting ? t('cancel_selection') : t('select_cards')}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={openCreate}>
-                  <Plus className="mr-2 h-4 w-4" /> {t('new_deck')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-      </div>
 
       <div className={`flex items-center gap-2 py-1 ${isSelecting && decks && decks.length > 0 ? '' : 'invisible'}`}>
         {(isSelecting && decks && decks.length > 0) && (
@@ -489,6 +442,16 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         onOpenChange={setImportOpen}
         t={t}
       />
+
+      {!isSelecting && (
+        <SpeedDial
+          items={[
+            { icon: SquarePen, label: t('new_deck'), onClick: openCreate },
+            { icon: Upload, label: t('import_csv'), onClick: () => setImportOpen(true) },
+            { icon: CheckSquare, label: t('select_cards'), onClick: () => setIsSelecting(true) },
+          ]}
+        />
+      )}
     </div>
   );
 }

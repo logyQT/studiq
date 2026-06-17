@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner';
 import { Upload, FileText, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { flashcardKeys } from '@/lib/query-keys';
 
 type CsvPreviewRow = Record<string, string>;
 
@@ -25,6 +27,7 @@ interface ImportDialogProps {
 }
 
 export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProps) {
+  const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<'upload' | 'preview' | 'importing' | 'done'>('upload');
   const [parsedRows, setParsedRows] = useState<CsvPreviewRow[]>([]);
@@ -125,6 +128,11 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
 
       setImportResult(json.data);
       setStep('done');
+
+      if (deckId) {
+        queryClient.removeQueries({ queryKey: flashcardKeys.list({ deckIds: [deckId] }) });
+      }
+      queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
     } catch {
       toast.error(t('import_failed'));
       setStep('preview');

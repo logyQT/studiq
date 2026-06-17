@@ -32,6 +32,10 @@ export function SessionSummaryDialog({
   onBackToSetup,
 }: SessionSummaryDialogProps) {
   const t = useTranslations('AppFlashcardSessionPage');
+  const modeKey = data.mode as 'review' | 'cram' | 'quick';
+  const practiceAgainLabel = t(`practice_again_${modeKey}` as const);
+  const backLabel = t(`back_${modeKey}` as const);
+
   const percentage = data.cardsStudied > 0
     ? Math.round((data.cardsCorrect / data.cardsStudied) * 100)
     : 0;
@@ -63,7 +67,7 @@ export function SessionSummaryDialog({
           </p>
 
           <Badge variant="secondary">
-            {data.mode === 'practice' ? t('mode_practice') : t('mode_study')}
+            {data.mode === 'cram' ? t('mode_practice') : t('mode_study')}
           </Badge>
         </div>
 
@@ -85,11 +89,11 @@ export function SessionSummaryDialog({
         <DialogFooter className="flex justify-center gap-3 sm:justify-center">
           {onPracticeAgain && (
             <Button variant="outline" onClick={onPracticeAgain}>
-              <RotateCcw className="mr-2 h-4 w-4" /> {t('practice_again')}
+              <RotateCcw className="mr-2 h-4 w-4" /> {practiceAgainLabel}
             </Button>
           )}
           <Button onClick={onBackToSetup}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_to_setup')}
+            <ArrowLeft className="mr-2 h-4 w-4" /> {backLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -15,7 +15,7 @@ export default function DeckClient({ deckId }: DeckClientProps) {
       deckId={deckId}
       basePath="/app/flashcards"
       apiBase="/api/v1/flashcards"
-      practiceHref="/app/flashcards/session?mode=practice&deckId="
+      practiceHref="/app/flashcards/session?mode=cram&deckId="
       t={t}
     />
   );

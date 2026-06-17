@@ -10,7 +10,7 @@ CREATE TABLE public.flashcard_study_sessions (
   cards_studied integer NOT NULL DEFAULT 0,
   cards_correct integer NOT NULL DEFAULT 0,
   deck_ids uuid[] DEFAULT '{}',
-  mode text NOT NULL CHECK (mode IN ('study', 'practice', 'quick')),
+  mode text NOT NULL CHECK (mode IN ('review', 'cram', 'quick')),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 

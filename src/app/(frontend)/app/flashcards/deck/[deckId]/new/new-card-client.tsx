@@ -47,7 +47,8 @@ export default function NewCardClient({ deckId }: NewCardClientProps) {
     mutationFn: (data: { front: string; back: string; deckId: string; topicIds?: string[] }) =>
       apiPost('/api/v1/flashcards', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: flashcardKeys.all });
+      queryClient.removeQueries({ queryKey: flashcardKeys.list({ deckIds: [deckId] }) });
+      queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
       toast.success(t('flashcard_created'));
       router.push(`/app/flashcards/deck/${deckId}`);
     },

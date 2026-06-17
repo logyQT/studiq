@@ -15,6 +15,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import { DeckCheckboxSelector } from '@/components/flashcards/deck-checkbox-selector';
+import { DeckRadioSelector } from '@/components/flashcards/deck-radio-selector';
 import { ExternalLink, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type { Flashcard, Deck, Topic } from '@/types/flashcards';
@@ -186,99 +188,34 @@ export function DeckDetailDialogs({
 
   return (
     <>
-      <Dialog open={state.linkOpen} onOpenChange={handlers.onLinkOpenChange}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t('link_title')}</DialogTitle>
-            <DialogDescription>{t('link_desc')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
-            {ownedDecks.map((d) => (
-              <div key={d.id} className="flex items-center gap-3 p-3 rounded-lg border">
-                <Checkbox
-                  checked={state.linkDeckIds.includes(d.id)}
-                  onCheckedChange={() =>
-                    handlers.onLinkDeckIdsChange(
-                      state.linkDeckIds.includes(d.id)
-                        ? state.linkDeckIds.filter((x) => x !== d.id)
-                        : [...state.linkDeckIds, d.id],
-                    )
-                  }
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{d.name}</p>
-                  {d.description && (
-                    <p className="text-xs text-muted-foreground truncate">{d.description}</p>
-                  )}
-                </div>
-              </div>
-            ))}
-            {ownedDecks.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                {t('no_other_decks')}
-              </p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { handlers.onLinkOpenChange(false); handlers.onLinkDeckIdsChange([]); }}>
-              {t('common_cancel')}
-            </Button>
-            <Button onClick={handlers.onLink} disabled={state.linkDeckIds.length === 0}>
-              {t('link_button', { count: state.linkDeckIds.length })}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeckCheckboxSelector
+        open={state.linkOpen}
+        onOpenChange={(open) => { if (!open) { handlers.onLinkOpenChange(false); handlers.onLinkDeckIdsChange([]); } }}
+        decks={ownedDecks}
+        selectedIds={state.linkDeckIds}
+        onSelectionChange={handlers.onLinkDeckIdsChange}
+        title={t('link_title')}
+        description={t('link_desc')}
+        buttonLabel={t('link_button', { count: state.linkDeckIds.length })}
+        onConfirm={handlers.onLink}
+        cancelLabel={t('common_cancel')}
+        emptyLabel={t('no_other_decks')}
+      />
 
-      <Dialog open={state.copyOpen} onOpenChange={handlers.onCopyOpenChange}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t('copy_title')}</DialogTitle>
-            <DialogDescription>{t('copy_desc')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
-            {ownedDecks.map((d) => (
-              <button
-                key={d.id}
-                className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
-                  state.copyTargetDeckId === d.id ? 'border-primary bg-primary/5' : 'hover:bg-muted'
-                }`}
-                onClick={() => handlers.onCopyTargetDeckIdChange(d.id)}
-              >
-                <div
-                  className={`h-4 w-4 rounded-full border-2 flex items-center justify-center ${
-                    state.copyTargetDeckId === d.id ? 'border-primary' : 'border-muted-foreground'
-                  }`}
-                >
-                  {state.copyTargetDeckId === d.id && <div className="h-2 w-2 rounded-full bg-primary" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{d.name}</p>
-                  {d.description && (
-                    <p className="text-xs text-muted-foreground truncate">{d.description}</p>
-                  )}
-                </div>
-                <Badge variant="secondary">
-                  {t('flashcards_count', { count: d.flashcard_count })}
-                </Badge>
-              </button>
-            ))}
-            {ownedDecks.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                {t('no_other_decks')}
-              </p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { handlers.onCopyOpenChange(false); handlers.onCopyTargetDeckIdChange(null); }}>
-              {t('common_cancel')}
-            </Button>
-            <Button onClick={handlers.onCopy} disabled={!state.copyTargetDeckId}>
-              {t('copy_button')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeckRadioSelector
+        open={state.copyOpen}
+        onOpenChange={(open) => { if (!open) { handlers.onCopyOpenChange(false); handlers.onCopyTargetDeckIdChange(null); } }}
+        decks={ownedDecks}
+        selectedId={state.copyTargetDeckId}
+        onSelectionChange={handlers.onCopyTargetDeckIdChange}
+        title={t('copy_title')}
+        description={t('copy_desc')}
+        buttonLabel={t('copy_button')}
+        onConfirm={handlers.onCopy}
+        cancelLabel={t('common_cancel')}
+        emptyLabel={t('no_other_decks')}
+        countLabel={(count) => t('flashcards_count', { count })}
+      />
 
       <Dialog
         open={!!state.copyResult}
@@ -542,167 +479,47 @@ export function DeckDetailDialogs({
         confirmText={t('common_delete')}
       />
 
-      <Dialog open={state.bulkLinkOpen} onOpenChange={(open) => {
-        if (!open) {
-          handlers.onBulkLinkOpenChange(false);
-          handlers.onBulkLinkDeckIdsChange([]);
-        }
-      }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t('link_title')}</DialogTitle>
-            <DialogDescription>{t('link_desc')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
-            {ownedDecks.map((d) => (
-              <div key={d.id} className="flex items-center gap-3 p-3 rounded-lg border">
-                <Checkbox
-                  checked={state.bulkLinkDeckIds.includes(d.id)}
-                  onCheckedChange={() =>
-                    handlers.onBulkLinkDeckIdsChange(
-                      state.bulkLinkDeckIds.includes(d.id)
-                        ? state.bulkLinkDeckIds.filter((x) => x !== d.id)
-                        : [...state.bulkLinkDeckIds, d.id],
-                    )
-                  }
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{d.name}</p>
-                  {d.description && (
-                    <p className="text-xs text-muted-foreground truncate">{d.description}</p>
-                  )}
-                </div>
-              </div>
-            ))}
-            {ownedDecks.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                {t('no_other_decks')}
-              </p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              handlers.onBulkLinkOpenChange(false);
-              handlers.onBulkLinkDeckIdsChange([]);
-            }}>
-              {t('common_cancel')}
-            </Button>
-            <Button onClick={handlers.onBulkLink} disabled={state.bulkLinkDeckIds.length === 0}>
-              {t('link_button', { count: state.bulkLinkDeckIds.length })}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeckCheckboxSelector
+        open={state.bulkLinkOpen}
+        onOpenChange={(open) => { if (!open) { handlers.onBulkLinkOpenChange(false); handlers.onBulkLinkDeckIdsChange([]); } }}
+        decks={ownedDecks}
+        selectedIds={state.bulkLinkDeckIds}
+        onSelectionChange={handlers.onBulkLinkDeckIdsChange}
+        title={t('link_title')}
+        description={t('link_desc')}
+        buttonLabel={t('link_button', { count: state.bulkLinkDeckIds.length })}
+        onConfirm={handlers.onBulkLink}
+        cancelLabel={t('common_cancel')}
+        emptyLabel={t('no_other_decks')}
+      />
 
-      <Dialog open={state.bulkMoveOpen} onOpenChange={(open) => {
-        if (!open) {
-          handlers.onBulkMoveOpenChange(false);
-          handlers.onBulkMoveTargetDeckIdChange(null);
-        }
-      }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t('bulk_move')}</DialogTitle>
-            <DialogDescription>{t('bulk_move')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
-            {ownedDecks.map((d) => (
-              <button
-                key={d.id}
-                className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
-                  state.bulkMoveTargetDeckId === d.id ? 'border-primary bg-primary/5' : 'hover:bg-muted'
-                }`}
-                onClick={() => handlers.onBulkMoveTargetDeckIdChange(d.id)}
-              >
-                <div
-                  className={`h-4 w-4 rounded-full border-2 flex items-center justify-center ${
-                    state.bulkMoveTargetDeckId === d.id ? 'border-primary' : 'border-muted-foreground'
-                  }`}
-                >
-                  {state.bulkMoveTargetDeckId === d.id && <div className="h-2 w-2 rounded-full bg-primary" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{d.name}</p>
-                  {d.description && (
-                    <p className="text-xs text-muted-foreground truncate">{d.description}</p>
-                  )}
-                </div>
-              </button>
-            ))}
-            {ownedDecks.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                {t('no_other_decks')}
-              </p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              handlers.onBulkMoveOpenChange(false);
-              handlers.onBulkMoveTargetDeckIdChange(null);
-            }}>
-              {t('common_cancel')}
-            </Button>
-            <Button onClick={handlers.onBulkMove} disabled={!state.bulkMoveTargetDeckId}>
-              {t('bulk_move')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeckRadioSelector
+        open={state.bulkMoveOpen}
+        onOpenChange={(open) => { if (!open) { handlers.onBulkMoveOpenChange(false); handlers.onBulkMoveTargetDeckIdChange(null); } }}
+        decks={ownedDecks}
+        selectedId={state.bulkMoveTargetDeckId}
+        onSelectionChange={handlers.onBulkMoveTargetDeckIdChange}
+        title={t('bulk_move')}
+        description={t('bulk_move')}
+        buttonLabel={t('bulk_move')}
+        onConfirm={handlers.onBulkMove}
+        cancelLabel={t('common_cancel')}
+        emptyLabel={t('no_other_decks')}
+      />
 
-      <Dialog open={state.bulkCopyOpen} onOpenChange={(open) => {
-        if (!open) {
-          handlers.onBulkCopyOpenChange(false);
-          handlers.onBulkCopyTargetDeckIdChange(null);
-        }
-      }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t('bulk_copy')}</DialogTitle>
-            <DialogDescription>{t('bulk_copy')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
-            {ownedDecks.map((d) => (
-              <button
-                key={d.id}
-                className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
-                  state.bulkCopyTargetDeckId === d.id ? 'border-primary bg-primary/5' : 'hover:bg-muted'
-                }`}
-                onClick={() => handlers.onBulkCopyTargetDeckIdChange(d.id)}
-              >
-                <div
-                  className={`h-4 w-4 rounded-full border-2 flex items-center justify-center ${
-                    state.bulkCopyTargetDeckId === d.id ? 'border-primary' : 'border-muted-foreground'
-                  }`}
-                >
-                  {state.bulkCopyTargetDeckId === d.id && <div className="h-2 w-2 rounded-full bg-primary" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{d.name}</p>
-                  {d.description && (
-                    <p className="text-xs text-muted-foreground truncate">{d.description}</p>
-                  )}
-                </div>
-              </button>
-            ))}
-            {ownedDecks.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                {t('no_other_decks')}
-              </p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              handlers.onBulkCopyOpenChange(false);
-              handlers.onBulkCopyTargetDeckIdChange(null);
-            }}>
-              {t('common_cancel')}
-            </Button>
-            <Button onClick={handlers.onBulkCopy} disabled={!state.bulkCopyTargetDeckId}>
-              {t('bulk_copy')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeckRadioSelector
+        open={state.bulkCopyOpen}
+        onOpenChange={(open) => { if (!open) { handlers.onBulkCopyOpenChange(false); handlers.onBulkCopyTargetDeckIdChange(null); } }}
+        decks={ownedDecks}
+        selectedId={state.bulkCopyTargetDeckId}
+        onSelectionChange={handlers.onBulkCopyTargetDeckIdChange}
+        title={t('bulk_copy')}
+        description={t('bulk_copy')}
+        buttonLabel={t('bulk_copy')}
+        onConfirm={handlers.onBulkCopy}
+        cancelLabel={t('common_cancel')}
+        emptyLabel={t('no_other_decks')}
+      />
 
       <Dialog open={state.bulkTopicsOpen} onOpenChange={(open) => {
         if (!open) {

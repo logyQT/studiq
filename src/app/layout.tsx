@@ -82,7 +82,19 @@ export default async function RootLayout({
             <QueryProvider>
               <AuthProvider>
                 <ToastProvider>{children}</ToastProvider>
-                <Toaster />
+                <Toaster
+                  position="top-center"
+                  richColors
+                  duration={4000}
+                  toastOptions={{
+                    classNames: {
+                      success: 'toast-success',
+                      error: 'toast-error',
+                      warning: 'toast-warning',
+                      info: 'toast-info',
+                    },
+                  }}
+                />
               </AuthProvider>
             </QueryProvider>
           </NextIntlClientProvider>

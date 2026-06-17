@@ -10,6 +10,10 @@ export const ReviewStateSchema = registry.register(
     nextReviewAt: z.string(),
     lastReviewedAt: z.string().nullable(),
     lastQuality: z.number().nullable(),
+    learningState: z.enum(['new', 'learning', 'review', 'relearning']),
+    learningStep: z.number().int(),
+    lapseCount: z.number().int(),
+    isLeech: z.boolean(),
   }),
 );
 
@@ -20,6 +24,8 @@ export const PracticeCardSchema = registry.register(
     front: z.string(),
     back: z.string(),
     createdAt: z.string().nullable(),
+    deckName: z.string().nullable(),
+    topicNames: z.array(z.string()),
     reviewState: ReviewStateSchema.nullable(),
   }),
 );
@@ -83,7 +89,7 @@ export const CompleteSessionSchema = registry.register(
     cardsStudied: z.number({ error: ValidationErrorCode.NUMBER }).int({ error: ValidationErrorCode.INTEGER }).min(0, { error: ValidationErrorCode.TOO_SMALL }),
     cardsCorrect: z.number({ error: ValidationErrorCode.NUMBER }).int({ error: ValidationErrorCode.INTEGER }).min(0, { error: ValidationErrorCode.TOO_SMALL }),
     deckIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
-    mode: z.enum(['study', 'practice', 'quick'], { error: ValidationErrorCode.INVALID_INPUT }),
+    mode: z.enum(['review', 'cram', 'quick'], { error: ValidationErrorCode.INVALID_INPUT }),
   }),
 );
 

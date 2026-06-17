@@ -71,6 +71,7 @@
     "katex": "^0.17.0",
     "lucide-react": "^0.564.0",
     "marked": "^18.0.5",
+    "motion": "^12.40.0",
     "next": "16.2.6",
     "next-intl": "^4.9.1",
     "next-swagger-doc": "^0.4.1",

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -31,7 +31,11 @@ import { FlashcardCard } from '@/components/flashcards/flashcard-card';
 import { FlashcardBulkActions } from '@/components/flashcards/flashcard-bulk-actions';
 import { TooltipProvider, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
-import { DeckDetailDialogs, type DialogsState, type DialogsHandlers } from '@/components/flashcards/deck-detail-dialogs';
+const DeckDetailDialogs = lazy(() =>
+  import('@/components/flashcards/deck-detail-dialogs').then((mod) => ({ default: mod.DeckDetailDialogs }))
+);
+type DialogsState = import('@/components/flashcards/deck-detail-dialogs').DialogsState;
+type DialogsHandlers = import('@/components/flashcards/deck-detail-dialogs').DialogsHandlers;
 import { ImportDialog } from '@/components/flashcards/import-dialog';
 import {
   DropdownMenu,
@@ -92,11 +96,6 @@ export function DeckDetailScreen({
     }
   }, [highlightParam]);
 
-  const { data: currentDeckData, isLoading: deckLoading, isError: deckError } = useApiQuery<Deck>({
-    queryKey: flashcardKeys.decks.detail(deckId),
-    url: `/api/v1/flashcards/decks/${deckId}`,
-    enabled: !!deckId,
-  });
   const { data: flashcardsData, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: flashcardKeys.list({ deckIds: [deckId] }),
     queryFn: ({ pageParam }) =>
@@ -106,18 +105,22 @@ export function DeckDetailScreen({
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: '',
     enabled: !!deckId,
+    staleTime: Infinity,
+    refetchOnMount: false,
   });
   const { data: topicsData } = useApiQuery<Topic[]>({
     queryKey: flashcardKeys.topics.all,
     url: '/api/v1/flashcards/topics',
   });
-  const { data: allDecksData } = useApiQuery<Deck[]>({
+  const { data: allDecksData, isLoading: decksLoading } = useApiQuery<Deck[]>({
     queryKey: flashcardKeys.decks.all,
     url: '/api/v1/flashcards/decks',
   });
 
   const flashcards = flashcardsData?.pages.flatMap((page) => page.items) ?? [];
-  const currentDeck = currentDeckData ?? null;
+  const currentDeck = allDecksData?.find((d) => d.id === deckId) ?? null;
+  const deckLoading = decksLoading;
+  const deckError = !decksLoading && !currentDeck;
   const topics = topicsData ?? [];
   const allDecks = (allDecksData ?? []).filter((d) => d.id !== deckId);
   const flashcardQueryKey = flashcardKeys.list({ deckIds: [deckId] });
@@ -744,16 +747,18 @@ export function DeckDetailScreen({
         );
       })()}
 
-      <DeckDetailDialogs
-        state={d}
-        handlers={h}
-        flashcards={flashcards}
-        currentDeck={currentDeck}
-        allDecks={allDecks}
-        topics={topics}
-        t={t}
-        basePath={basePath}
-      />
+      <Suspense fallback={null}>
+        <DeckDetailDialogs
+          state={d}
+          handlers={h}
+          flashcards={flashcards}
+          currentDeck={currentDeck}
+          allDecks={allDecks}
+          topics={topics}
+          t={t}
+          basePath={basePath}
+        />
+      </Suspense>
 
       <ImportDialog
         open={importOpen}

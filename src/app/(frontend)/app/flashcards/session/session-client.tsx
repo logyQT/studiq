@@ -1,137 +1,100 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Check, X, ArrowLeft, Minus, Zap } from 'lucide-react';
+import { Check, X, ArrowLeft, Minus, Zap, Brain } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { SessionSummaryDialog } from '@/components/flashcards/session-summary-dialog';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { toast } from 'sonner';
+import { KeyboardShortcutsPanel } from '@/components/shared/keyboard-shortcuts-panel';
 
 interface Flashcard {
   id: string;
   front: string;
   back: string;
   createdAt: string | null;
-  reviewState: {
-    easinessFactor: number;
-    intervalDays: number;
-    repetitions: number;
-    nextReviewAt: string;
-    lastReviewedAt: string | null;
-    lastQuality: number | null;
-  } | null;
+  deckName: string | null;
+  topicNames: string[];
+  reviewState: Record<string, unknown> | null;
 }
 
-interface LocalSM2State {
-  interval: number;
-  easeFactor: number;
-  repetitions: number;
-  correctStreak: number;
+interface CardStateInfo {
+  label: string;
+  labelKey: string;
+  isLeech: boolean;
+  step?: number;
 }
 
-interface QueueItem {
-  card: Flashcard;
-  priority: number;
+function getCardStateInfo(
+  card: Flashcard | null,
+  t: (key: string, params?: any) => string,
+): CardStateInfo {
+  if (!card) return { label: '', labelKey: '', isLeech: false };
+
+  const rs = card.reviewState;
+  if (!rs) return { label: t('card_state_new'), labelKey: 'card_state_new', isLeech: false };
+
+  const isLeech = !!rs.isLeech;
+  if (isLeech) {
+    return {
+      label: t('card_state_leech'),
+      labelKey: 'card_state_leech',
+      isLeech: true,
+      step: rs.learningStep as number,
+    };
+  }
+
+  const ls = rs.learningState as string;
+  const step = rs.learningStep as number;
+
+  if (ls === 'learning')
+    return {
+      label: t('card_state_learning'),
+      labelKey: 'card_state_learning',
+      isLeech: false,
+      step,
+    };
+  if (ls === 'relearning')
+    return {
+      label: t('card_state_relearning'),
+      labelKey: 'card_state_relearning',
+      isLeech: false,
+      step,
+    };
+  if (ls === 'review')
+    return { label: t('card_state_review'), labelKey: 'card_state_review', isLeech: false };
+
+  return { label: t('card_state_new'), labelKey: 'card_state_new', isLeech: false };
 }
 
 const BATCH_SIZE = 20;
 const REFILL_THRESHOLD = 5;
-const MASTERED_INTERVAL_DAYS = 21;
-const MASTERED_REPETITIONS = 5;
-const MASTERED_EASINESS_FACTOR = 2.5;
 
 function generateUUID(): string {
   return crypto.randomUUID();
 }
 
-function calculateSM2(
-  state: LocalSM2State,
-  confidence: number,
-): LocalSM2State {
-  const { interval, easeFactor, repetitions, correctStreak } = state;
-
-  if (confidence <= 1) {
-    return { interval: 1, easeFactor: Math.max(1.3, easeFactor - 0.2), repetitions: 0, correctStreak: 0 };
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
-  if (confidence === 2) {
-    return { interval: Math.max(1, Math.round(interval * 1.2)), easeFactor: Math.max(1.3, easeFactor - 0.15), repetitions, correctStreak: 0 };
-  }
-  const newReps = repetitions + 1;
-  const newInterval = newReps === 1 ? 1 : newReps === 2 ? 6 : Math.round(interval * easeFactor * (confidence === 4 ? 1.3 : 1));
-  const newEF = easeFactor + (0.1 - (5 - confidence) * (0.08 + (5 - confidence) * 0.02));
-  return { interval: newInterval, easeFactor: Math.max(1.3, newEF), repetitions: newReps, correctStreak: correctStreak + 1 };
-}
-
-function calculatePriority(card: Flashcard, sm2: LocalSM2State): number {
-  const rs = card.reviewState;
-  if (!rs) {
-    return sm2.correctStreak === 0 && sm2.repetitions === 0 ? 150 : 120;
-  }
-
-  const { intervalDays, repetitions, easinessFactor, lastQuality } = rs;
-
-  let priority = 0;
-
-  const recency = Math.max(0, 30 - intervalDays);
-  priority += recency * 8;
-
-  const unfamiliarity = Math.max(0, 10 - repetitions) * 12;
-  priority += unfamiliarity;
-
-  const difficulty = Math.max(0, 2.5 - easinessFactor) * 35;
-  priority += difficulty;
-
-  if (lastQuality != null && lastQuality < 3) {
-    priority += 60;
-  }
-
-  if (sm2.correctStreak === 0 && (sm2.repetitions === 0 || intervalDays <= 1)) {
-    priority += 40;
-  }
-
-  if (sm2.correctStreak >= 3) {
-    priority -= 30;
-  }
-
-  return Math.max(1, priority);
-}
-
-function isMastered(card: Flashcard): boolean {
-  const rs = card.reviewState;
-  if (!rs) return false;
-  return (
-    rs.intervalDays >= MASTERED_INTERVAL_DAYS &&
-    rs.repetitions >= MASTERED_REPETITIONS &&
-    rs.easinessFactor >= MASTERED_EASINESS_FACTOR
-  );
-}
-
-function buildInitialQueue(cards: Flashcard[], isPractice: boolean): QueueItem[] {
-  let effective = isPractice ? cards.filter((c) => !isMastered(c)) : cards;
-  if (effective.length === 0) effective = cards;
-  const items: QueueItem[] = effective.map((card) => ({
-    card,
-    priority: 100,
-  }));
-  items.sort(() => Math.random() - 0.5);
-  return items;
-}
-
-function reinsertByPriority(queue: QueueItem[], updated: QueueItem): QueueItem[] {
-  const filtered = queue.filter((item) => item.card.id !== updated.card.id);
-  const idx = filtered.findIndex((item) => item.priority <= updated.priority);
-  if (idx === -1) {
-    filtered.push(updated);
-  } else {
-    filtered.splice(idx, 0, updated);
-  }
-  return filtered;
+  return shuffled;
 }
 
 interface SessionClientProps {
@@ -143,20 +106,31 @@ interface SessionClientProps {
   deckIds?: string[];
 }
 
-export default function SessionClient({ initialCards, mode, studyMode, targetCount, hasMore: initialHasMore, deckIds }: SessionClientProps) {
+export default function SessionClient({
+  initialCards,
+  mode,
+  studyMode,
+  targetCount,
+  hasMore: initialHasMore,
+  deckIds,
+}: SessionClientProps) {
   const t = useTranslations('AppFlashcardSessionPage');
   const router = useRouter();
 
-  const isPractice = mode === 'practice';
-  const isStudy = mode === 'study';
+  const isCram = mode === 'cram';
+  const isReview = mode === 'review';
   const isLimited = studyMode === 'limited';
 
   const sessionIdRef = useRef<string>(generateUUID());
-  const startedAtRef = useRef<number>(Date.now());
+  const [startedAt] = useState(() => Date.now());
   const processingRef = useRef(false);
   const answeredCountRef = useRef(0);
-  const pendingUpdatesRef = useRef<Array<{ flashcardId: string; wasCorrect: boolean; confidenceLevel: number }>>([]);
+  const pendingUpdatesRef = useRef<
+    Array<{ flashcardId: string; wasCorrect: boolean; confidenceLevel: number }>
+  >([]);
   const hasFinalisedRef = useRef(false);
+  const leechedCardIdsRef = useRef<Set<string>>(new Set());
+  const suspendedIdsRef = useRef<Set<string>>(new Set());
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -171,52 +145,47 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
     durationMs: number;
     mode: string;
   } | null>(null);
+  const [leechDialogCardId, setLeechDialogCardId] = useState<string | null>(null);
+  const [leechDialogResolve, setLeechDialogResolve] = useState<
+    ((action: 'suspend' | 'keep') => void) | null
+  >(null);
 
-  const [queueItems, setQueueItems] = useState<QueueItem[]>(() => {
-    if (isPractice) {
-      return buildInitialQueue(initialCards, true);
-    }
-    return initialCards.map((c) => ({ card: c, priority: 100 }));
+  const [cards, setCards] = useState<Flashcard[]>(() => {
+    return shuffleArray(initialCards);
   });
 
-  const [_localSM2, setLocalSM2] = useState<Map<string, LocalSM2State>>(() => {
-    if (isPractice) {
-      const m = new Map<string, LocalSM2State>();
-      let effective = initialCards.filter((c) => !isMastered(c));
-      if (effective.length === 0) effective = initialCards;
-      effective.forEach((c) => {
-        const rs = c.reviewState;
-        m.set(c.id, {
-          interval: rs?.intervalDays ?? 1,
-          easeFactor: rs?.easinessFactor ?? 2.5,
-          repetitions: rs?.repetitions ?? 0,
-          correctStreak: 0,
-        });
-      });
-      return m;
-    }
-    return new Map();
-  });
+  const visibleCards = useMemo(
+    () => cards.filter((c) => !suspendedIdsRef.current.has(c.id)),
+    [cards],
+  );
+
+  const currentCard = visibleCards[currentIndex] ?? null;
+  const cardState = useMemo(() => getCardStateInfo(currentCard, t), [currentCard, t]);
 
   const fetchDueCards = useCallback(async (): Promise<Flashcard[]> => {
     try {
       const res = await fetch(`/api/v1/flashcards/practice/due?limit=${BATCH_SIZE}`);
       if (!res.ok) return [];
       const body = await res.json();
-      return (body.data ?? []).map((card: {
-        id: string; front: string; back: string;
-        createdAt?: string | null;
-        reviewState?: {
-          easinessFactor: number; intervalDays: number; repetitions: number;
-          nextReviewAt: string; lastReviewedAt: string | null; lastQuality: number | null;
-        } | null;
-      }) => ({
-        id: card.id,
-        front: card.front,
-        back: card.back,
-        createdAt: card.createdAt ?? null,
-        reviewState: card.reviewState ?? null,
-      }));
+      return (body.data ?? []).map(
+        (card: {
+          id: string;
+          front: string;
+          back: string;
+          createdAt?: string | null;
+          deckName?: string | null;
+          topicNames?: string[];
+          reviewState?: Record<string, unknown> | null;
+        }) => ({
+          id: card.id,
+          front: card.front,
+          back: card.back,
+          createdAt: card.createdAt ?? null,
+          deckName: card.deckName ?? null,
+          topicNames: card.topicNames ?? [],
+          reviewState: card.reviewState ?? null,
+        }),
+      );
     } catch {
       return [];
     }
@@ -227,17 +196,43 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
     const batch = [...pendingUpdatesRef.current];
     pendingUpdatesRef.current = [];
     try {
-      await fetch('/api/v1/flashcards/batch/practice', {
+      const res = await fetch('/api/v1/flashcards/batch/practice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           items: batch.map((b) => ({ ...b, sessionId: sessionIdRef.current })),
         }),
       });
+      if (res.ok) {
+        const body = await res.json();
+        if (body.data?.results) {
+          for (const r of body.data.results) {
+            if (r.isLeech) {
+              leechedCardIdsRef.current.add(r.flashcardId);
+            }
+          }
+        }
+      }
     } catch {
       pendingUpdatesRef.current.unshift(...batch);
     }
   }, []);
+
+  const showLeechDialog = useCallback((cardId: string): Promise<'suspend' | 'keep'> => {
+    return new Promise((resolve) => {
+      setLeechDialogCardId(cardId);
+      setLeechDialogResolve(() => resolve);
+    });
+  }, []);
+
+  const handleLeechAction = useCallback(
+    (action: 'suspend' | 'keep') => {
+      leechDialogResolve?.(action);
+      setLeechDialogCardId(null);
+      setLeechDialogResolve(null);
+    },
+    [leechDialogResolve],
+  );
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -251,27 +246,29 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
     if (hasFinalisedRef.current) return;
     hasFinalisedRef.current = true;
 
-    const durationMs = Date.now() - startedAtRef.current;
+    const durationMs = Date.now() - startedAt;
 
     const finalise = async () => {
       await sendBatchUpdate();
 
+      const modeStr = isCram ? 'cram' : isReview ? 'review' : 'quick';
+
       const sessionData = {
         sessionId: sessionIdRef.current,
-        startedAt: new Date(startedAtRef.current).toISOString(),
+        startedAt: new Date(startedAt).toISOString(),
         completedAt: new Date().toISOString(),
         durationMs,
         cardsStudied: totalAnswered,
         cardsCorrect: correctCount,
         deckIds: deckIds ?? [],
-        mode: isPractice ? 'practice' : isStudy ? 'study' : 'quick',
+        mode: modeStr,
       };
 
       setSummaryData({
         cardsStudied: totalAnswered,
         cardsCorrect: correctCount,
         durationMs,
-        mode: isPractice ? 'practice' : isStudy ? 'study' : 'quick',
+        mode: modeStr,
       });
 
       await fetch('/api/v1/flashcards/practice/sessions/complete', {
@@ -282,54 +279,84 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
     };
 
     finalise();
-  }, [sessionComplete, allCaughtUp, totalAnswered, correctCount, isPractice, isStudy, deckIds, sendBatchUpdate]);
+  }, [
+    sessionComplete,
+    allCaughtUp,
+    totalAnswered,
+    correctCount,
+    isCram,
+    isReview,
+    deckIds,
+    sendBatchUpdate,
+  ]);
 
   const refillQueue = useCallback(async () => {
-    if (!hasMore || isPractice) return;
+    if (!hasMore || isCram) return;
     const moreCards = await fetchDueCards();
     if (moreCards.length === 0) {
       setHasMore(false);
       return;
     }
-    setQueueItems((prev) => {
-      const existingIds = new Set(prev.map((c) => c.card.id));
+    setCards((prev) => {
+      const existingIds = new Set(prev.map((c) => c.id));
       const unique = moreCards.filter((c) => !existingIds.has(c.id));
-      return [...prev, ...unique.map((c) => ({ card: c, priority: 100 }))];
+      return [...prev, ...unique];
     });
     if (moreCards.length < BATCH_SIZE) {
       setHasMore(false);
     }
-  }, [fetchDueCards, hasMore, isPractice]);
+  }, [fetchDueCards, hasMore, isCram]);
+
+  const advanceCard = useCallback(async () => {
+    const nextRaw = visibleCards.findIndex(
+      (c, i) => i > currentIndex && !suspendedIdsRef.current.has(c.id),
+    );
+    if (nextRaw !== -1) {
+      setCurrentIndex(nextRaw);
+      setFlipped(false);
+      return;
+    }
+
+    if (isCram) {
+      const anyUnsuspended = visibleCards.some((c) => !suspendedIdsRef.current.has(c.id));
+      if (anyUnsuspended) {
+        setCurrentIndex(0);
+        setFlipped(false);
+      } else {
+        setSessionComplete(true);
+      }
+      return;
+    }
+
+    if (hasMore) {
+      const moreCards = await fetchDueCards();
+      if (moreCards.length === 0) {
+        setHasMore(false);
+        setAllCaughtUp(true);
+        return;
+      }
+      setCards(moreCards);
+      setHasMore(moreCards.length >= BATCH_SIZE);
+      setCurrentIndex(0);
+      setFlipped(false);
+    } else {
+      setAllCaughtUp(true);
+    }
+  }, [visibleCards, currentIndex, isCram, hasMore, fetchDueCards]);
 
   const handleAnswer = useCallback(
     async (wasCorrect: boolean, confidenceLevel: number) => {
       if (processingRef.current) return;
       processingRef.current = true;
       try {
-        const currentItem = queueItems[currentIndex];
-        if (!currentItem) return;
-        const currentCard = currentItem.card;
+        const card = currentCard;
+        if (!card) return;
 
-        pendingUpdatesRef.current.push({ flashcardId: currentCard.id, wasCorrect, confidenceLevel });
+        pendingUpdatesRef.current.push({ flashcardId: card.id, wasCorrect, confidenceLevel });
         answeredCountRef.current++;
         if (answeredCountRef.current >= 10) {
           answeredCountRef.current = 0;
           await sendBatchUpdate();
-        }
-
-        if (isPractice) {
-          const prevState = _localSM2.get(currentCard.id) ?? { interval: 1, easeFactor: 2.5, repetitions: 0, correctStreak: 0 };
-          const newSM2 = calculateSM2(prevState, confidenceLevel);
-          setLocalSM2((prev) => {
-            const updated = new Map(prev);
-            updated.set(currentCard.id, newSM2);
-            return updated;
-          });
-          const newPriority = calculatePriority(currentCard, newSM2);
-          setQueueItems((qPrev) => {
-            const updatedItem: QueueItem = { card: currentCard, priority: newPriority };
-            return reinsertByPriority(qPrev, updatedItem);
-          });
         }
 
         setTotalAnswered((prev) => prev + 1);
@@ -342,37 +369,10 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
           return;
         }
 
-        const nextRaw = currentIndex + 1;
+        await advanceCard();
 
-        if (nextRaw >= queueItems.length) {
-          if (isPractice) {
-            if (queueItems.length > 1) {
-              setCurrentIndex(0);
-            } else {
-              setSessionComplete(true);
-            }
-          } else if (hasMore) {
-            const moreCards = await fetchDueCards();
-            if (moreCards.length === 0) {
-              setHasMore(false);
-              setAllCaughtUp(true);
-              return;
-            }
-            setQueueItems(moreCards.map((c) => ({ card: c, priority: 100 })));
-            setHasMore(moreCards.length >= BATCH_SIZE);
-            setCurrentIndex(0);
-          } else {
-            setAllCaughtUp(true);
-            return;
-          }
-        } else {
-          setCurrentIndex(nextRaw);
-        }
-
-        setFlipped(false);
-
-        if (!isPractice) {
-          const remaining = queueItems.length - currentIndex;
+        if (!isCram) {
+          const remaining = visibleCards.filter((c) => !suspendedIdsRef.current.has(c.id)).length;
           if (remaining <= REFILL_THRESHOLD) {
             refillQueue();
           }
@@ -381,12 +381,34 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
         processingRef.current = false;
       }
     },
-    [queueItems, currentIndex, correctCount, isLimited, targetCount, hasMore, fetchDueCards, refillQueue, isPractice, sendBatchUpdate, _localSM2],
+    [
+      currentCard,
+      correctCount,
+      isLimited,
+      targetCount,
+      isCram,
+      sendBatchUpdate,
+      advanceCard,
+      refillQueue,
+      visibleCards,
+    ],
   );
 
-  const currentCard = queueItems[currentIndex]?.card ?? null;
+  useEffect(() => {
+    if (!currentCard || leechDialogCardId) return;
+    const id = currentCard.id;
+    if (leechedCardIdsRef.current.has(id) || cardState.isLeech) {
+      showLeechDialog(id).then((action) => {
+        if (action === 'suspend') {
+          suspendedIdsRef.current.add(id);
+          setCards((prev) => [...prev]);
+          advanceCard();
+        }
+      });
+    }
+  }, [currentCard?.id, cardState.isLeech, leechDialogCardId, showLeechDialog, advanceCard]);
 
-  const backUrl = mode === 'quick' ? '/app' : isPractice ? '/app/flashcards/practice' : '/app/flashcards/study';
+  const backUrl = mode === 'quick' ? '/app' : '/app/flashcards/study';
 
   const handlePracticeAgain = useCallback(() => {
     router.refresh();
@@ -401,23 +423,25 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
   const terminalRef = useRef(sessionComplete || allCaughtUp);
   const noCardRef = useRef(!currentCard);
   const handleAnswerRef = useRef(handleAnswer);
-  const toastShownRef = useRef(false);
 
   useEffect(() => {
-    if (!toastShownRef.current) {
-      toastShownRef.current = true;
-      toast(t('shortcut_toast'), { duration: 3000 });
-    }
-  }, [t]);
-
-  useEffect(() => { flippedRef.current = flipped; }, [flipped]);
-  useEffect(() => { terminalRef.current = sessionComplete || allCaughtUp; }, [sessionComplete, allCaughtUp]);
-  useEffect(() => { noCardRef.current = !currentCard; }, [currentCard]);
-  useEffect(() => { handleAnswerRef.current = handleAnswer; }, [handleAnswer]);
+    flippedRef.current = flipped;
+  }, [flipped]);
+  useEffect(() => {
+    terminalRef.current = sessionComplete || allCaughtUp;
+  }, [sessionComplete, allCaughtUp]);
+  useEffect(() => {
+    noCardRef.current = !currentCard;
+  }, [currentCard]);
+  useEffect(() => {
+    handleAnswerRef.current = handleAnswer;
+  }, [handleAnswer]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (terminalRef.current || noCardRef.current) return;
+      const tag = (document.activeElement as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement as HTMLElement)?.isContentEditable) return;
 
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
@@ -428,10 +452,18 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
       if (!flippedRef.current) return;
 
       switch (e.key) {
-        case '1': handleAnswerRef.current(false, 1); break;
-        case '2': handleAnswerRef.current(false, 3); break;
-        case '3': handleAnswerRef.current(true, 3); break;
-        case '4': handleAnswerRef.current(true, 5); break;
+        case '1':
+          handleAnswerRef.current(false, 1);
+          break;
+        case '2':
+          handleAnswerRef.current(false, 2);
+          break;
+        case '3':
+          handleAnswerRef.current(true, 3);
+          break;
+        case '4':
+          handleAnswerRef.current(true, 4);
+          break;
       }
     };
 
@@ -456,92 +488,141 @@ export default function SessionClient({ initialCards, mode, studyMode, targetCou
   }
 
   const progress = isLimited ? (correctCount / targetCount) * 100 : 0;
+  const isLearningState =
+    cardState.labelKey === 'card_state_learning' ||
+    cardState.labelKey === 'card_state_relearning' ||
+    cardState.labelKey === 'card_state_new';
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div />
-        <div className="flex items-center gap-2">
-          <Badge variant="outline">
-            {t('correct_badge', { correct: correctCount, total: totalAnswered })}
-          </Badge>
-          {isLimited && (
-            <Badge>
-              {t('remembered_badge', { correct: correctCount, target: targetCount })}
+    <>
+      <AlertDialog open={leechDialogCardId !== null}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('leech_dialog_title')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('leech_dialog_description')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => handleLeechAction('keep')}>
+              {t('leech_keep')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => handleLeechAction('suspend')}>
+              {t('leech_suspend')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <div className="max-w-2xl mx-auto min-h-full flex flex-col">
+        <div className="flex-1 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {cardState.labelKey !== 'card_state_review' && cardState.labelKey !== '' && (
+              <Badge variant={cardState.isLeech ? 'destructive' : 'secondary'}>
+                {cardState.isLeech && <Brain className="mr-1 h-3 w-3" />}
+                {cardState.label}
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">
+              {t('correct_badge', { correct: correctCount, total: totalAnswered })}
             </Badge>
-          )}
-          <Button variant="outline" size="sm" onClick={async () => { await sendBatchUpdate(); router.push(backUrl); }}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> {t('exit_session')}
+            {isLimited && (
+              <Badge>{t('remembered_badge', { correct: correctCount, target: targetCount })}</Badge>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                await sendBatchUpdate();
+                router.push(backUrl);
+              }}
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" /> {t('exit_session')}
+            </Button>
+          </div>
+        </div>
+
+        {isLimited && <Progress value={progress} />}
+
+        {(currentCard.deckName || currentCard.topicNames.length > 0) && (
+          <div className="flex items-center gap-1.5 flex-wrap justify-center">
+            {currentCard.deckName && (
+              <Badge variant="outline" className="text-xs font-normal">
+                {currentCard.deckName}
+              </Badge>
+            )}
+            {currentCard.topicNames.map((topic) => (
+              <Badge key={topic} variant="secondary" className="text-xs font-normal">
+                {topic}
+              </Badge>
+            ))}
+          </div>
+        )}
+
+        <Card
+          className="cursor-pointer min-h-64 max-h-96 overflow-hidden flex items-center justify-center py-0 transition-all duration-300 hover:shadow-lg"
+          onClick={() => setFlipped(!flipped)}
+          aria-keyshortcuts="Space"
+        >
+          <CardContent className="py-4 px-8 text-center overflow-y-auto">
+            <p className="text-xs text-muted-foreground uppercase mb-4">
+              {flipped ? t('answer_label') : t('question_label')}
+            </p>
+            <div className="text-2xl font-medium grid w-full">
+              <div className={`[grid-area:1/1] min-w-0 ${flipped ? 'invisible' : ''}`}>
+                <MarkdownRenderer content={currentCard.front} />
+              </div>
+              <div className={`[grid-area:1/1] min-w-0 ${flipped ? '' : 'invisible'}`}>
+                <MarkdownRenderer content={currentCard.back} />
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground mt-4">
+              {t('click_hint', { action: flipped ? t('see_question') : t('reveal_answer') })}
+            </p>
+          </CardContent>
+        </Card>
+
+        {isLearningState && (
+          <div className="text-center text-sm text-muted-foreground">
+            {t('step_indicator', { step: (cardState.step ?? 0) + 1 })}
+          </div>
+        )}
+
+        <div
+          className={`grid grid-cols-2 gap-2 transition-opacity duration-150 ${
+            flipped ? '' : 'pointer-events-none opacity-30'
+          }`}
+        >
+          <Button onClick={() => handleAnswer(false, 1)} aria-keyshortcuts="1">
+            <X className="mr-1.5 h-4 w-4 text-red-500" />{' '}
+            {isLearningState ? t('rating_again_learning') : t('rating_again')}
+          </Button>
+          <Button onClick={() => handleAnswer(false, 2)} aria-keyshortcuts="2">
+            <Minus className="mr-1.5 h-4 w-4 text-orange-500" />{' '}
+            {isLearningState ? t('rating_hard_learning') : t('rating_hard')}
+          </Button>
+          <Button onClick={() => handleAnswer(true, 3)} aria-keyshortcuts="3">
+            <Check className="mr-1.5 h-4 w-4 text-amber-500" />{' '}
+            {isLearningState ? t('rating_good_learning') : t('rating_good')}
+          </Button>
+          <Button onClick={() => handleAnswer(true, 4)} aria-keyshortcuts="4">
+            <Zap className="mr-1.5 h-4 w-4 text-green-500" />{' '}
+            {isLearningState ? t('rating_easy_learning') : t('rating_easy')}
           </Button>
         </div>
+        </div>
+
+      <KeyboardShortcutsPanel
+        shortcuts={[
+          { key: 'Space', label: t('rating_flip') },
+          { key: '1', label: t('rating_again') },
+          { key: '2', label: t('rating_hard') },
+          { key: '3', label: t('rating_good') },
+          { key: '4', label: t('rating_easy') },
+        ]}
+      />
       </div>
-
-      {isLimited && <Progress value={progress} />}
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Card
-            className="cursor-pointer min-h-64 max-h-96 overflow-hidden flex items-center justify-center transition-all duration-300 hover:shadow-lg"
-            onClick={() => setFlipped(!flipped)}
-            aria-keyshortcuts="Space"
-          >
-            <CardContent className="pt-8 px-8 text-center overflow-y-auto">
-              <p className="text-xs text-muted-foreground uppercase mb-4">
-                {flipped ? t('answer_label') : t('question_label')}
-              </p>
-              <div className="text-2xl font-medium grid w-full">
-                <div className={`[grid-area:1/1] min-w-0 ${flipped ? 'invisible' : ''}`}>
-                  <MarkdownRenderer content={currentCard.front} />
-                </div>
-                <div className={`[grid-area:1/1] min-w-0 ${flipped ? '' : 'invisible'}`}>
-                  <MarkdownRenderer content={currentCard.back} />
-                </div>
-              </div>
-              <p className="text-sm text-muted-foreground mt-4">
-                {t('click_hint', { action: flipped ? t('see_question') : t('reveal_answer') })}
-              </p>
-            </CardContent>
-          </Card>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">{t('shortcut_flip')}</TooltipContent>
-      </Tooltip>
-
-      <div className={`grid grid-cols-2 gap-2 transition-opacity duration-150 ${
-        flipped ? '' : 'pointer-events-none opacity-30'
-      }`}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button onClick={() => handleAnswer(false, 1)} aria-keyshortcuts="1">
-              <X className="mr-1.5 h-4 w-4 text-red-500" /> {t('rating_again')}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{t('shortcut_again')}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button onClick={() => handleAnswer(false, 3)} aria-keyshortcuts="2">
-              <Minus className="mr-1.5 h-4 w-4 text-orange-500" /> {t('rating_hard')}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{t('shortcut_hard')}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button onClick={() => handleAnswer(true, 3)} aria-keyshortcuts="3">
-              <Check className="mr-1.5 h-4 w-4 text-amber-500" /> {t('rating_good')}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{t('shortcut_good')}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button onClick={() => handleAnswer(true, 5)} aria-keyshortcuts="4">
-              <Zap className="mr-1.5 h-4 w-4 text-green-500" /> {t('rating_easy')}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{t('shortcut_easy')}</TooltipContent>
-        </Tooltip>
-      </div>
-    </div>
+    </>
   );
 }

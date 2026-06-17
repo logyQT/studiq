@@ -47,6 +47,7 @@ export function useBreadcrumbs(pathname: string): Crumb[] {
   const tEduFlashcards = useTranslations('EduFlashcardsPage');
   const tSession = useTranslations('AppFlashcardSessionPage');
   const tDeckView = useTranslations('AppFlashcardDeckViewPage');
+  const tStats = useTranslations('AppFlashcardStatsPage');
 
   const translators: Record<string, (key: string) => string> = {
     DashboardLayout: (key) => tDashboard(key),
@@ -54,6 +55,7 @@ export function useBreadcrumbs(pathname: string): Crumb[] {
     EduFlashcardsPage: (key) => tEduFlashcards(key),
     AppFlashcardSessionPage: (key) => tSession(key),
     AppFlashcardDeckViewPage: (key) => tDeckView(key),
+    AppFlashcardStatsPage: (key) => tStats(key),
   };
 
   const matchedRoutes = findLongestMatch(pathname);

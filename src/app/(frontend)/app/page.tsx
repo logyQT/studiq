@@ -137,7 +137,7 @@ export default function AppOverviewPage() {
             <CardDescription>{t('flashcard_actions_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 pb-6">
-            {/* Hero: Quick Practice */}
+            {/* Hero: Quick Review */}
             <Link href="/app/flashcards/session?mode=quick&limit=5" className="group block">
               <div className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-violet-500/10 to-primary/10 hover:from-violet-500/15 hover:to-primary/15 border border-violet-500/15 hover:border-violet-500/30 transition-all duration-200 cursor-pointer">
                 <div className="rounded-xl bg-gradient-to-br from-violet-500 to-primary p-3 shrink-0 shadow-sm group-hover:shadow-md group-hover:scale-110 transition-all duration-200">

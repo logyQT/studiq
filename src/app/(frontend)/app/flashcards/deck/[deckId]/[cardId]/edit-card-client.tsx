@@ -67,7 +67,8 @@ export default function EditCardClient({ deckId, cardId }: EditCardClientProps) 
     mutationFn: (data: { id: string; front: string; back: string; topicIds: string[] }) =>
       apiPut(`/api/v1/flashcards/${data.id}`, { front: data.front, back: data.back, topicIds: data.topicIds }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: flashcardKeys.all });
+      queryClient.removeQueries({ queryKey: flashcardKeys.list({ deckIds: [deckId] }) });
+      queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
       toast.success(t('flashcard_updated'));
       router.push(`/app/flashcards/deck/${deckId}`);
     },
