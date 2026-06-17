@@ -30,21 +30,32 @@ function KeycapSmall({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function KeyboardShortcutsPanel({ shortcuts, trigger = 'icon' }: KeyboardShortcutsPanelProps) {
+export function KeyboardShortcutsPanel({
+  shortcuts,
+  trigger = 'icon',
+}: KeyboardShortcutsPanelProps) {
   const [open, setOpen] = useState(false);
 
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    const tag = (document.activeElement as HTMLElement)?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement as HTMLElement)?.isContentEditable) return;
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      const tag = (document.activeElement as HTMLElement)?.tagName;
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        (document.activeElement as HTMLElement)?.isContentEditable
+      )
+        return;
 
-    if (e.altKey && e.key.toLowerCase() === 'k') {
-      e.preventDefault();
-      setOpen((prev) => !prev);
-    }
-    if (e.key === 'Escape' && open) {
-      setOpen(false);
-    }
-  }, [open]);
+      if (e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setOpen((prev) => !prev);
+      }
+      if (e.key === 'Escape' && open) {
+        setOpen(false);
+      }
+    },
+    [open],
+  );
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -52,7 +63,7 @@ export function KeyboardShortcutsPanel({ shortcuts, trigger = 'icon' }: Keyboard
   }, [handleKeyDown]);
 
   return (
-    <div className="sticky bottom-6 flex justify-center">
+    <div className="sticky bottom-0 flex justify-center">
       <HoverCard open={open} onOpenChange={setOpen} openDelay={0} closeDelay={0}>
         <HoverCardTrigger asChild>
           {trigger === 'icon' ? (

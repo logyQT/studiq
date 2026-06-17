@@ -239,23 +239,21 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   return (
     <div className="space-y-6">
 
-      <div className={`flex items-center gap-2 py-1 ${isSelecting && decks && decks.length > 0 ? '' : 'invisible'}`}>
-        {(isSelecting && decks && decks.length > 0) && (
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={selectedIds.size === decks.length ? handleDeselectAll : handleSelectAll}
-            >
-              <CheckCheck className="mr-1.5 h-4 w-4" />
-              {selectedIds.size === decks.length ? t('deselect_all') : t('select_all')}
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              {t('n_selected', { count: selectedIds.size })}
-            </span>
-          </>
-        )}
-      </div>
+      {isSelecting && decks && decks.length > 0 && (
+        <div className="flex items-center gap-2 py-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={selectedIds.size === decks.length ? handleDeselectAll : handleSelectAll}
+          >
+            <CheckCheck className="mr-1.5 h-4 w-4" />
+            {selectedIds.size === decks.length ? t('deselect_all') : t('select_all')}
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            {t('n_selected', { count: selectedIds.size })}
+          </span>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

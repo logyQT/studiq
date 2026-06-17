@@ -1,6 +1,6 @@
 'use client';
 
-import { Bot, User, FileText, Loader2, AlertCircle } from 'lucide-react';
+import { FileText, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ChatMessage as ChatMessageType } from '@/hooks/use-ai-chat';
 import { FlashcardBlock } from './flashcard-block';
@@ -22,29 +22,15 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const isComplete = message.status === 'complete';
 
   return (
-    <div className={cn('flex gap-3', isUser ? 'flex-row-reverse' : 'flex-row')}>
-      {/* Avatar */}
+    <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'flex h-8 w-8 shrink-0 items-center justify-center rounded-full mt-0.5',
+          'max-w-[80%] space-y-2 rounded-2xl px-4 py-3 text-sm',
           isUser
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-muted text-muted-foreground',
+            ? 'bg-primary text-primary-foreground rounded-br-md'
+            : 'bg-muted/30 text-foreground rounded-bl-md',
         )}
       >
-        {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-      </div>
-
-      {/* Bubble */}
-      <div
-        className={cn(
-          'max-w-[75%] space-y-2 rounded-2xl px-4 py-2.5 text-sm',
-          isUser
-            ? 'bg-primary text-primary-foreground rounded-tr-md'
-            : 'bg-muted/50 text-foreground rounded-tl-md',
-        )}
-      >
-        {/* File attachment */}
         {message.file && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <FileText className="h-3.5 w-3.5" />
@@ -52,7 +38,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
           </div>
         )}
 
-        {/* Content */}
         {isSending && !message.content ? (
           <div className="flex items-center gap-2 text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -61,32 +46,32 @@ export function ChatMessage({ message }: ChatMessageProps) {
         ) : (
           <div className="whitespace-pre-wrap break-words">
             {message.content}
-            {isStreaming && <span className="inline-block w-0.5 h-4 bg-primary ml-0.5 animate-pulse" />}
+            {isStreaming && (
+              <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-primary" />
+            )}
           </div>
         )}
 
-        {/* Thinking traces (collapsible) */}
         {(isThinking || hasThinkingTraces) && (
           <ThinkingBlock traces={message.thinkingTraces} isComplete={isComplete || isError} />
         )}
 
-        {/* Flashcard result */}
         {isFlashcardResult && (isComplete || isError) && Array.isArray(message.result!.data) && (
-          <FlashcardBlock flashcards={message.result!.data as Array<{ front: string; back: string; topic?: string }>} />
+          <FlashcardBlock
+            flashcards={message.result!.data as Array<{ front: string; back: string; topic?: string }>}
+          />
         )}
 
-        {/* Generic result block */}
         {message.result && !isFlashcardResult && !isStreaming && (
-          <div className="rounded-lg border bg-background/80 p-3 text-xs text-muted-foreground mt-2">
+          <div className="mt-2 rounded-lg border bg-background/80 p-3 text-xs text-muted-foreground">
             {message.result.type === 'summary' && <span>Summary ready</span>}
             {message.result.type === 'quiz' && <span>Quiz questions ready</span>}
             {message.result.type === 'explain' && <span>Explanation ready</span>}
           </div>
         )}
 
-        {/* Error */}
         {isError && message.error && (
-          <div className="flex items-center gap-1.5 text-xs text-destructive mt-1">
+          <div className="mt-1 flex items-center gap-1.5 text-xs text-destructive">
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
             <span>{message.error}</span>
           </div>

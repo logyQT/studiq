@@ -149,66 +149,68 @@ export function AppSearch() {
           onFocus={() => setIsFocused(true)}
           onKeyDown={handleKeyDown}
           placeholder={t('search_placeholder')}
-          className="flex h-9 w-full rounded-md border border-input bg-secondary pl-9 pr-3 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-9 w-full rounded-md border border-input bg-foreground/3 pl-9 pr-3 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
           aria-keyshortcuts="Ctrl+K /"
           aria-label={t('search_shortcut')}
         />
       </div>
 
-      {showDropdown && containerRect && createPortal(
-        <div
-          ref={dropdownRef}
-          style={{
-            position: 'fixed',
-            zIndex: 50,
-            top: `${containerRect.bottom + 4}px`,
-            left: `${containerRect.left}px`,
-            width: `${containerRect.width}px`,
-          }}
-          className="rounded-md border bg-popover text-popover-foreground shadow-md"
-        >
-          <div className="max-h-[300px] overflow-y-auto p-1">
-            {isLoading && (
-              <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {t('search_loading')}
-              </div>
-            )}
+      {showDropdown &&
+        containerRect &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            style={{
+              position: 'fixed',
+              zIndex: 50,
+              top: `${containerRect.bottom + 4}px`,
+              left: `${containerRect.left}px`,
+              width: `${containerRect.width}px`,
+            }}
+            className="rounded-md border bg-popover text-popover-foreground shadow-md"
+          >
+            <div className="max-h-[300px] overflow-y-auto p-1">
+              {isLoading && (
+                <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {t('search_loading')}
+                </div>
+              )}
 
-            {!isLoading && (!results || results.length === 0) && (
-              <div className="py-6 text-center text-sm text-muted-foreground">
-                {t('search_no_results')}
-              </div>
-            )}
+              {!isLoading && (!results || results.length === 0) && (
+                <div className="py-6 text-center text-sm text-muted-foreground">
+                  {t('search_no_results')}
+                </div>
+              )}
 
-            {!isLoading && results && results.length > 0 && (
-              <div className="space-y-0.5">
-                {results.map((result, ri) => {
-                  const offset = itemOffsets[ri];
-                  const activeSub = selectedIndex >= offset ? selectedIndex - offset : -1;
+              {!isLoading && results && results.length > 0 && (
+                <div className="space-y-0.5">
+                  {results.map((result, ri) => {
+                    const offset = itemOffsets[ri];
+                    const activeSub = selectedIndex >= offset ? selectedIndex - offset : -1;
 
-                  switch (result.type) {
-                    case 'flashcard':
-                      return (
-                        <FlashcardSearchResult
-                          key={result.id}
-                          result={result}
-                          activeSubIndex={activeSub}
-                          offset={offset}
-                          onNavigate={handleNavigate}
-                          onHover={(subIdx) => setSelectedIndex(offset + subIdx)}
-                        />
-                      );
-                    default:
-                      return null;
-                  }
-                })}
-              </div>
-            )}
-          </div>
-        </div>,
-        document.body,
-      )}
+                    switch (result.type) {
+                      case 'flashcard':
+                        return (
+                          <FlashcardSearchResult
+                            key={result.id}
+                            result={result}
+                            activeSubIndex={activeSub}
+                            offset={offset}
+                            onNavigate={handleNavigate}
+                            onHover={(subIdx) => setSelectedIndex(offset + subIdx)}
+                          />
+                        );
+                      default:
+                        return null;
+                    }
+                  })}
+                </div>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

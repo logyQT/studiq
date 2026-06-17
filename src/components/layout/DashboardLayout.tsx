@@ -47,7 +47,7 @@ export type NavItem = {
 const NAV_ITEMS: Record<string, NavItem[]> = {
   '/edu': [
     { titleKey: 'edu_overview', href: '/edu', icon: LayoutDashboard },
-    { titleKey: 'edu_ai_chat', href: '/app/ai', icon: Sparkles },
+    { titleKey: 'ai_chat', href: '/edu/ai', icon: Sparkles },
     { titleKey: 'edu_questions', href: '/edu/questions', icon: FileText },
     { titleKey: 'edu_flashcards', href: '/edu/flashcards', icon: Layers },
     { titleKey: 'edu_flashcard_topics', href: '/edu/flashcards/topics', icon: Tags },
@@ -55,13 +55,14 @@ const NAV_ITEMS: Record<string, NavItem[]> = {
   ],
   '/manage': [
     { titleKey: 'manage_overview', href: '/manage', icon: LayoutDashboard },
+    { titleKey: 'ai_chat', href: '/manage/ai', icon: Sparkles },
     { titleKey: 'manage_members', href: '/manage/members', icon: Users },
     { titleKey: 'manage_invitations', href: '/manage/invitations', icon: Mail },
     { titleKey: 'manage_settings', href: '/manage/settings', icon: Settings },
   ],
   '/app': [
     { titleKey: 'app_overview', href: '/app', icon: LayoutDashboard },
-    { titleKey: 'app_ai_chat', href: '/app/ai', icon: Sparkles },
+    { titleKey: 'ai_chat', href: '/app/ai', icon: Sparkles },
     { titleKey: 'app_flashcards', href: '/app/flashcards', icon: Brain },
     { titleKey: 'app_quiz', href: '/app/quiz', icon: BookOpen },
     { titleKey: 'app_my_questions', href: '/app/my-questions', icon: ListPlus },
@@ -69,6 +70,7 @@ const NAV_ITEMS: Record<string, NavItem[]> = {
   ],
   '/admin': [
     { titleKey: 'admin_overview', href: '/admin', icon: LayoutDashboard },
+    { titleKey: 'ai_chat', href: '/admin/ai', icon: Sparkles },
     { titleKey: 'admin_universities', href: '/admin', icon: GraduationCap },
     { titleKey: 'admin_error_logs', href: '/admin/logs', icon: AlertTriangle },
     { titleKey: 'admin_permissions', href: '/admin/permissions', icon: ShieldCheck },
@@ -96,7 +98,13 @@ function getActiveHref(pathname: string, navItems: NavItem[]): string | null {
   return best?.href ?? null;
 }
 
-export function DashboardLayout({ children }: { children: React.ReactNode }) {
+export function DashboardLayout({
+  children,
+  fullWidth = false,
+}: {
+  children: React.ReactNode;
+  fullWidth?: boolean;
+}) {
   const pathname = usePathname();
   const t = useTranslations('DashboardLayout');
   const navItems = getNavGroup(pathname);
@@ -199,7 +207,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <Breadcrumbs items={crumbs} />
               </div>
             )}
-            <main className="flex-1 overflow-y-auto p-content scrollbar-gutter-stable">
+            <main
+              className={cn(
+                'flex-1 min-h-0 overflow-y-auto scrollbar-gutter-stable',
+                fullWidth ? 'flex flex-col' : 'p-content',
+              )}
+            >
               {children}
             </main>
           </div>

@@ -1,31 +1,65 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useState } from 'react';
+import { AnimatePresence } from 'motion/react';
 import { useAiChat } from '@/hooks/use-ai-chat';
+import { useAuth } from '@/components/providers';
+import { cn } from '@/lib/utils';
+import { AiChatGreeting } from './ai-chat-greeting';
+import { AiChatInput } from './ai-chat-input';
 import { ChatHistory } from './chat-history';
-import { ChatInput } from './chat-input';
 import { UsageBadge } from './usage-badge';
 
 export function AiChatScreen() {
-  const t = useTranslations('AiChatPage');
   const { messages, usage, isStreaming, sendMessage, abort } = useAiChat();
+  const { user } = useAuth();
+  const [file, setFile] = useState<File | null>(null);
+
+  const isActive = messages.length > 0 || isStreaming;
+
+  const firstName = user?.user_metadata?.name?.split(' ')[0] ?? user?.email?.split('@')[0];
 
   return (
-    <div className="flex h-[calc(100vh-10rem)] flex-col rounded-xl border bg-background shadow-sm">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <div>
-          <h2 className="text-sm font-semibold">{t('title')}</h2>
-          <p className="text-xs text-muted-foreground">{t('subtitle')}</p>
+    <div className="flex flex-1 flex-col">
+      {isActive && (
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-3xl px-4 py-6">
+            <ChatHistory messages={messages} />
+          </div>
         </div>
-        <UsageBadge usage={usage} />
+      )}
+
+      <div
+        className={cn(
+          'flex flex-col items-center transition-all duration-300',
+          isActive ? 'shrink-0 pb-6' : 'justify-center flex-1',
+        )}
+      >
+        <div className="w-full max-w-3xl px-4">
+          <AnimatePresence>
+            {!isActive && (
+              <AiChatGreeting
+                userName={firstName}
+                onSuggestion={(text) => sendMessage(text)}
+              />
+            )}
+          </AnimatePresence>
+
+          <AiChatInput
+            onSend={(text, f) => sendMessage(text, f)}
+            isStreaming={isStreaming}
+            onAbort={abort}
+            file={file}
+            onFileChange={setFile}
+          />
+
+          {isActive && (
+            <div className="mt-2 flex justify-center">
+              <UsageBadge usage={usage} />
+            </div>
+          )}
+        </div>
       </div>
-
-      {/* Messages */}
-      <ChatHistory messages={messages} />
-
-      {/* Input */}
-      <ChatInput onSend={sendMessage} isStreaming={isStreaming} onAbort={abort} />
     </div>
   );
 }

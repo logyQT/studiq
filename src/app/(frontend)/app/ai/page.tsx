@@ -4,7 +4,7 @@ import { AiChatScreen } from '@/components/ai';
 
 export default function AiChatPage() {
   return (
-    <div className="h-full">
+    <div className="flex flex-1 flex-col">
       <AiChatScreen />
     </div>
   );

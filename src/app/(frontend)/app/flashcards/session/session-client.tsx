@@ -4,7 +4,6 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Check, X, ArrowLeft, Minus, Zap, Brain } from 'lucide-react';
@@ -19,8 +18,10 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { SessionSummaryDialog } from '@/components/flashcards/session-summary-dialog';
+import { FlashcardFlip } from '@/components/flashcards/flashcard-flip';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { KeyboardShortcutsPanel } from '@/components/shared/keyboard-shortcuts-panel';
+import { AnimatePresence, motion } from 'motion/react';
 
 interface Flashcard {
   id: string;
@@ -441,7 +442,12 @@ export default function SessionClient({
     const onKeyDown = (e: KeyboardEvent) => {
       if (terminalRef.current || noCardRef.current) return;
       const tag = (document.activeElement as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement as HTMLElement)?.isContentEditable) return;
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        (document.activeElement as HTMLElement)?.isContentEditable
+      )
+        return;
 
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
@@ -514,114 +520,168 @@ export default function SessionClient({
 
       <div className="max-w-2xl mx-auto min-h-full flex flex-col">
         <div className="flex-1 space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {cardState.labelKey !== 'card_state_review' && cardState.labelKey !== '' && (
-              <Badge variant={cardState.isLeech ? 'destructive' : 'secondary'}>
-                {cardState.isLeech && <Brain className="mr-1 h-3 w-3" />}
-                {cardState.label}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {cardState.labelKey !== 'card_state_review' && cardState.labelKey !== '' && (
+                <Badge variant={cardState.isLeech ? 'destructive' : 'secondary'}>
+                  {cardState.isLeech && <Brain className="mr-1 h-3 w-3" />}
+                  {cardState.label}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">
+                {t('correct_badge', { correct: correctCount, total: totalAnswered })}
               </Badge>
-            )}
+              {isLimited && (
+                <Badge>
+                  {t('remembered_badge', { correct: correctCount, target: targetCount })}
+                </Badge>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  await sendBatchUpdate();
+                  router.push(backUrl);
+                }}
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" /> {t('exit_session')}
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline">
-              {t('correct_badge', { correct: correctCount, total: totalAnswered })}
-            </Badge>
-            {isLimited && (
-              <Badge>{t('remembered_badge', { correct: correctCount, target: targetCount })}</Badge>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                await sendBatchUpdate();
-                router.push(backUrl);
+
+          {isLimited && <Progress value={progress} />}
+
+          {(currentCard.deckName || currentCard.topicNames.length > 0) && (
+            <div className="flex items-center gap-1.5 flex-wrap justify-center">
+              {currentCard.deckName && (
+                <Badge variant="outline" className="text-xs font-normal">
+                  {currentCard.deckName}
+                </Badge>
+              )}
+              {currentCard.topicNames.map((topic) => (
+                <Badge key={topic} variant="secondary" className="text-xs font-normal">
+                  {topic}
+                </Badge>
+              ))}
+            </div>
+          )}
+
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentCard.id}
+              initial={{ rotate: -10, y: 60, opacity: 0 }}
+              animate={{ rotate: 0, y: 0, opacity: 1 }}
+              exit={{
+                rotate: 15,
+                x: 80,
+                opacity: 0,
+                transition: { duration: 0.15, ease: 'easeIn' },
               }}
+              transition={{
+                type: 'spring',
+                stiffness: 300,
+                damping: 25,
+              }}
+              style={{ transformOrigin: 'right center' }}
             >
-              <ArrowLeft className="mr-2 h-4 w-4" /> {t('exit_session')}
+              <FlashcardFlip
+                isFlipped={flipped}
+                onClick={() => setFlipped(!flipped)}
+                className="cursor-pointer max-h-[32rem] transition-shadow duration-300 hover:shadow-lg"
+                front={
+                  <>
+                    <div className="absolute inset-0 overflow-hidden pointer-events-none z-0 flex items-center justify-center">
+                      {/* 1. Oversized container (200%) prevents the corners from being empty when rotated 
+      2. rotate-45 angles the entire brick structure 
+    */}
+                      <div className="absolute w-[200%] h-[200%] flex flex-col items-center justify-center gap-y-16 rotate-[45deg] opacity-[0.02]">
+                        {Array.from({ length: 24 }).map((_, rowIndex) => (
+                          <div
+                            key={rowIndex}
+                            // Shift every even row to the right by exactly half the gap (gap-x-16 = 4rem, translate-x-8 = 2rem) to create the brick stagger
+                            className={`flex items-center gap-x-16 ${
+                              rowIndex % 2 === 0 ? 'translate-x-8' : ''
+                            }`}
+                          >
+                            {Array.from({ length: 24 }).map((_, colIndex) => (
+                              <span
+                                key={colIndex}
+                                // -rotate-45 counter-rotates the question marks so they stay perfectly upright while the grid is angled
+                                className="text-5xl font-bold select-none -rotate-45"
+                              >
+                                ?
+                              </span>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="relative z-10 flex-1 flex items-center justify-center overflow-y-auto text-2xl font-medium w-full px-8">
+                      <MarkdownRenderer content={currentCard.front} />
+                    </div>
+                  </>
+                }
+                back={
+                  <>
+                    <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+                      {/* TODO: answer watermark — up to debate whether to add one */}
+                      {/* <div className="absolute -inset-20 grid grid-cols-6 gap-x-12 gap-y-16 opacity-[0.03]">
+                    {Array.from({ length: 48 }).map((_, i) => (
+                      <span key={i} className="text-5xl font-bold select-none">✓</span>
+                    ))}
+                  </div> */}
+                    </div>
+                    <div className="relative z-10 flex-1 flex items-center justify-center overflow-y-auto text-2xl font-medium w-full px-8">
+                      <MarkdownRenderer content={currentCard.back} />
+                    </div>
+                  </>
+                }
+              />
+            </motion.div>
+          </AnimatePresence>
+
+          {isLearningState && (
+            <div className="text-center text-sm text-muted-foreground">
+              {t('step_indicator', { step: (cardState.step ?? 0) + 1 })}
+            </div>
+          )}
+
+          <div
+            className={`grid grid-cols-2 gap-2 transition-opacity duration-150 ${
+              flipped ? '' : 'pointer-events-none opacity-30'
+            }`}
+          >
+            <Button onClick={() => handleAnswer(false, 1)} aria-keyshortcuts="1">
+              <X className="mr-1.5 h-4 w-4 text-red-500" />{' '}
+              {isLearningState ? t('rating_again_learning') : t('rating_again')}
+            </Button>
+            <Button onClick={() => handleAnswer(false, 2)} aria-keyshortcuts="2">
+              <Minus className="mr-1.5 h-4 w-4 text-orange-500" />{' '}
+              {isLearningState ? t('rating_hard_learning') : t('rating_hard')}
+            </Button>
+            <Button onClick={() => handleAnswer(true, 3)} aria-keyshortcuts="3">
+              <Check className="mr-1.5 h-4 w-4 text-amber-500" />{' '}
+              {isLearningState ? t('rating_good_learning') : t('rating_good')}
+            </Button>
+            <Button onClick={() => handleAnswer(true, 4)} aria-keyshortcuts="4">
+              <Zap className="mr-1.5 h-4 w-4 text-green-500" />{' '}
+              {isLearningState ? t('rating_easy_learning') : t('rating_easy')}
             </Button>
           </div>
         </div>
 
-        {isLimited && <Progress value={progress} />}
-
-        {(currentCard.deckName || currentCard.topicNames.length > 0) && (
-          <div className="flex items-center gap-1.5 flex-wrap justify-center">
-            {currentCard.deckName && (
-              <Badge variant="outline" className="text-xs font-normal">
-                {currentCard.deckName}
-              </Badge>
-            )}
-            {currentCard.topicNames.map((topic) => (
-              <Badge key={topic} variant="secondary" className="text-xs font-normal">
-                {topic}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        <Card
-          className="cursor-pointer min-h-64 max-h-96 overflow-hidden flex items-center justify-center py-0 transition-all duration-300 hover:shadow-lg"
-          onClick={() => setFlipped(!flipped)}
-          aria-keyshortcuts="Space"
-        >
-          <CardContent className="py-4 px-8 text-center overflow-y-auto">
-            <p className="text-xs text-muted-foreground uppercase mb-4">
-              {flipped ? t('answer_label') : t('question_label')}
-            </p>
-            <div className="text-2xl font-medium grid w-full">
-              <div className={`[grid-area:1/1] min-w-0 ${flipped ? 'invisible' : ''}`}>
-                <MarkdownRenderer content={currentCard.front} />
-              </div>
-              <div className={`[grid-area:1/1] min-w-0 ${flipped ? '' : 'invisible'}`}>
-                <MarkdownRenderer content={currentCard.back} />
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground mt-4">
-              {t('click_hint', { action: flipped ? t('see_question') : t('reveal_answer') })}
-            </p>
-          </CardContent>
-        </Card>
-
-        {isLearningState && (
-          <div className="text-center text-sm text-muted-foreground">
-            {t('step_indicator', { step: (cardState.step ?? 0) + 1 })}
-          </div>
-        )}
-
-        <div
-          className={`grid grid-cols-2 gap-2 transition-opacity duration-150 ${
-            flipped ? '' : 'pointer-events-none opacity-30'
-          }`}
-        >
-          <Button onClick={() => handleAnswer(false, 1)} aria-keyshortcuts="1">
-            <X className="mr-1.5 h-4 w-4 text-red-500" />{' '}
-            {isLearningState ? t('rating_again_learning') : t('rating_again')}
-          </Button>
-          <Button onClick={() => handleAnswer(false, 2)} aria-keyshortcuts="2">
-            <Minus className="mr-1.5 h-4 w-4 text-orange-500" />{' '}
-            {isLearningState ? t('rating_hard_learning') : t('rating_hard')}
-          </Button>
-          <Button onClick={() => handleAnswer(true, 3)} aria-keyshortcuts="3">
-            <Check className="mr-1.5 h-4 w-4 text-amber-500" />{' '}
-            {isLearningState ? t('rating_good_learning') : t('rating_good')}
-          </Button>
-          <Button onClick={() => handleAnswer(true, 4)} aria-keyshortcuts="4">
-            <Zap className="mr-1.5 h-4 w-4 text-green-500" />{' '}
-            {isLearningState ? t('rating_easy_learning') : t('rating_easy')}
-          </Button>
-        </div>
-        </div>
-
-      <KeyboardShortcutsPanel
-        shortcuts={[
-          { key: 'Space', label: t('rating_flip') },
-          { key: '1', label: t('rating_again') },
-          { key: '2', label: t('rating_hard') },
-          { key: '3', label: t('rating_good') },
-          { key: '4', label: t('rating_easy') },
-        ]}
-      />
+        <KeyboardShortcutsPanel
+          shortcuts={[
+            { key: 'Space', label: t('rating_flip') },
+            { key: '1', label: t('rating_again') },
+            { key: '2', label: t('rating_hard') },
+            { key: '3', label: t('rating_good') },
+            { key: '4', label: t('rating_easy') },
+          ]}
+        />
       </div>
     </>
   );

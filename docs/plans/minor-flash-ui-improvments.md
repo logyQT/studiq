@@ -2,7 +2,7 @@
 
 ## 1. Flashcard Card (`flashcard-card.tsx`)
 
-- [ ] Add 3D flip animation (CSS perspective + rotateY) — currently swaps front/back via visibility toggle with no transition
+- [x] Add 3D flip animation (CSS perspective + rotateY) — currently swaps front/back via visibility toggle with no transition
 - [ ] Show three-dot menu on touch devices — currently `opacity-0 group-hover:opacity-100`, invisible and unreachable on mobile
 - [ ] Show topic dots on touch devices — same hover-only issue, users never see which topics a card belongs to
 - [ ] Handle long content — add scroll or gradient fade instead of silent clip at `max-h-96`
@@ -56,8 +56,8 @@
 
 ## Priority Tiers
 
-| Tier | Items | Rationale |
-|------|-------|-----------|
-| **P0 — Core UX** | Flip animation, touch device menus, content overflow | Broken or unreachable on mobile |
-| **P1 — Mobile polish** | FAB, empty states, breakpoint consistency, toast hiding | Mobile experience gaps |
-| **P2 — Nice to have** | Editor toolbar cleanup, session button styling, scroll-to-top | Polish, not blocking |
+| Tier                   | Items                                                         | Rationale                       |
+| ---------------------- | ------------------------------------------------------------- | ------------------------------- |
+| **P0 — Core UX**       | Flip animation, touch device menus, content overflow          | Broken or unreachable on mobile |
+| **P1 — Mobile polish** | FAB, empty states, breakpoint consistency, toast hiding       | Mobile experience gaps          |
+| **P2 — Nice to have**  | Editor toolbar cleanup, session button styling, scroll-to-top | Polish, not blocking            |
