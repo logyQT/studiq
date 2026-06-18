@@ -42,6 +42,8 @@ export function useAiChat(): UseAiChatReturn {
   const [usage, setUsage] = useState<UsageInfo | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const conversationIdRef = useRef<string>(generateUUID());
+  const fileSentRef = useRef<boolean>(false);
 
   const sendMessage = useCallback(async (text: string, file?: File, context?: string) => {
     abortRef.current?.abort();
@@ -77,8 +79,11 @@ export function useAiChat(): UseAiChatReturn {
 
       const body: Record<string, unknown> = { text };
       if (context) body.context = context;
+      body.conversationId = conversationIdRef.current;
       if (history.length > 0) body.messages = history;
-      if (file) {
+
+      // Only send file data on the first message or when a new file is attached
+      if (file && !fileSentRef.current) {
         const buffer = await file.arrayBuffer();
         const bytes = new Uint8Array(buffer);
         let binary = '';
@@ -87,6 +92,7 @@ export function useAiChat(): UseAiChatReturn {
           binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
         }
         body.file = { data: btoa(binary), mimeType: file.type };
+        fileSentRef.current = true;
       }
 
       const res = await fetch('/api/v1/ai/chat', {
@@ -277,6 +283,8 @@ export function useAiChat(): UseAiChatReturn {
     setMessages([]);
     setUsage(null);
     setIsStreaming(false);
+    conversationIdRef.current = generateUUID();
+    fileSentRef.current = false;
   }, []);
 
   const abort = useCallback(() => {

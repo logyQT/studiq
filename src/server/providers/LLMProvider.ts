@@ -17,7 +17,7 @@ export type GenerateChatResult = {
 
 export interface LLMProvider {
   generateFlashcardsFromChunk(chunk: string, language: string): Promise<GeneratedFlashcard[]>;
-  generateChat(prompt: string, systemPrompt?: string, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }): Promise<GenerateChatResult | string>;
+  generateChat(prompt: string, systemPrompt?: string, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, maxTokens?: number): Promise<GenerateChatResult | string>;
   generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<string>;
 }
 
@@ -25,7 +25,7 @@ function tryParse(raw: string): unknown {
   return JSON.parse(raw);
 }
 
-function repairJson(raw: string): string {
+export function repairJson(raw: string): string {
   let s = raw.trim();
 
   if (!s.startsWith('[') || !s.endsWith(']')) {

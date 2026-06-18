@@ -1396,6 +1396,7 @@
     "flashcard_saved": "Zapisano {count} fiszek do talii",
     "flashcard_deck_created": "Talia utworzona z {count} fiszkami",
     "flashcard_save_failed": "Nie udało się zapisać fiszek",
+    "open_deck": "Otwórz talię",
     "flashcards_generated": "Wygenerowano {count} fiszek",
     "remove_card": "Usuń kartę",
     "keep_card": "Zachowaj kartę",

@@ -77,11 +77,12 @@ export async function POST(req: NextRequest) {
       const isFlashcardKeyword = hasFlashcardKeyword(text);
       const context = (body as Record<string, unknown>)?.context as string | undefined;
       const file = (body as Record<string, unknown>)?.file as { data: string; mimeType: string } | undefined;
+      const conversationId = (body as Record<string, unknown>)?.conversationId as string | undefined;
       const isFlashcard = isFlashcardKeyword || context === 'flashcards';
-      console.log(`${LOG_PREFIX} Routing: flashcardKeyword=${isFlashcardKeyword}, context=${context ?? 'none'}, hasFile=${!!file} → ${isFlashcard ? 'flashcard' : 'chat'}`);
+      console.log(`${LOG_PREFIX} Routing: flashcardKeyword=${isFlashcardKeyword}, context=${context ?? 'none'}, hasFile=${!!file}, conversationId=${conversationId ?? 'none'} → ${isFlashcard ? 'flashcard' : 'chat'}`);
 
       if (isFlashcard) {
-        await aiCommandController.chat(text, file, ctx, {
+        await aiCommandController.chat(text, file, conversationId, ctx, {
           onToken: () => {},
           onFlashcards: (data) => send('flashcards', data),
           onComplete: (summary) => {

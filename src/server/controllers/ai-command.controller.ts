@@ -33,7 +33,7 @@ export class AiCommandController {
     }
 
     try {
-      const result = await aiCommandService.generateFlashcards(parsed.data.text, undefined, ctx);
+      const result = await aiCommandService.generateFlashcards(parsed.data.text, undefined, undefined, ctx);
       console.log(`${LOG_PREFIX} emit ${result.flashcards.length} flashcards`);
       callbacks.onFlashcards({ deckName: result.deckName, flashcards: result.flashcards });
       callbacks.onComplete();
@@ -47,12 +47,13 @@ export class AiCommandController {
   async chat(
     text: string,
     file: { data: string; mimeType: string } | undefined,
+    conversationId: string | undefined,
     ctx: RequestContext,
     callbacks: FlashcardChatStreamCallbacks,
   ): Promise<void> {
-    console.log(`${LOG_PREFIX} chat called, text="${text.slice(0, 80)}", hasFile=${!!file}`);
+    console.log(`${LOG_PREFIX} chat called, text="${text.slice(0, 80)}", hasFile=${!!file}, conversationId=${conversationId ?? 'none'}`);
     try {
-      const result = await aiCommandService.chat(text, file, ctx);
+      const result = await aiCommandService.chat(text, file, conversationId, ctx);
       console.log(`${LOG_PREFIX} result type=${result.type}`);
 
       if (result.type === 'flashcards') {

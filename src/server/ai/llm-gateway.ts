@@ -23,7 +23,7 @@ export async function callLLM(req: LLMGatewayRequest, _ctx: RequestContext): Pro
   }
 
   try {
-    const result = await provider.generateChat(req.prompt, req.systemPrompt, req.tools, req.toolChoice);
+    const result = await provider.generateChat(req.prompt, req.systemPrompt, req.tools, req.toolChoice, req.maxTokens);
 
     if (typeof result === 'string') {
       return {

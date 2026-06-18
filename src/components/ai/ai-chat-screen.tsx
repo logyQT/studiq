@@ -70,7 +70,6 @@ export function AiChatScreen() {
 
   const handleSend = async (text: string, f?: File) => {
     await sendMessage(text, f, activeContext ?? undefined);
-    setFile(null);
     setActiveContext(null);
   };
 

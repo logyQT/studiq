@@ -64,6 +64,7 @@ export class OpenAIProvider implements LLMProvider {
     systemPrompt?: string,
     tools?: ToolDefinition[],
     toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } },
+    maxTokens?: number,
   ): Promise<GenerateChatResult | string> {
     const messages: Array<Record<string, unknown>> = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
@@ -73,6 +74,8 @@ export class OpenAIProvider implements LLMProvider {
       model: this.modelName,
       messages,
     };
+
+    if (maxTokens) body.max_tokens = maxTokens;
 
     if (tools && tools.length > 0) {
       body.tools = tools;

@@ -53,6 +53,8 @@ export class OllamaProvider implements LLMProvider {
     prompt: string,
     systemPrompt?: string,
     _tools?: ToolDefinition[],
+    _toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } },
+    _maxTokens?: number,
   ): Promise<GenerateChatResult | string> {
     const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
 

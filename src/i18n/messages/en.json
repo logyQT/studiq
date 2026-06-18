@@ -1414,6 +1414,7 @@
     "flashcard_saved": "Saved {count} cards to deck",
     "flashcard_deck_created": "Deck created with {count} flashcards",
     "flashcard_save_failed": "Failed to save flashcards",
+    "open_deck": "Open deck",
     "flashcards_generated": "{count} flashcards generated",
     "remove_card": "Remove card",
     "keep_card": "Keep card",

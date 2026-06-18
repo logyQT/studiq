@@ -1,9 +1,14 @@
 import { callLLM } from '@/server/ai';
 import { pdfService } from '@/server/services/pdf.service';
+import { pdfCacheService } from '@/server/services/pdf-cache.service';
+import { repairJson } from '@/server/providers/LLMProvider';
 import type { ToolDefinition } from '@/server/ai/ai.types';
 import type { RequestContext } from '@/lib/request-context';
 
 const LOG_PREFIX = '[AiCommandService]';
+
+const MAX_FILE_CHARS = parseInt(process.env.LLM_MAX_FILE_CHARS || '200000', 10);
+const FLASHCARD_MAX_TOKENS = 4096;
 
 const FLASHCARD_KEYWORDS = [
   // English
@@ -23,8 +28,8 @@ const FLASHCARD_KEYWORDS = [
   'ściąga', 'ściągę', 'ściągi', 'ściąg', 'ściągą',
   'ściągom', 'ściągami', 'ściągach',
   // Polish — powtórka
-  'powtórka', 'powtórki', 'powtórkę', 'powtórce', 'powtórek',
-  'powtórkom', 'powtórkami', 'powtorkach',
+  'powtórka', 'powtórki', 'powtórkę', 'powtórc', 'powtórek',
+  'powtórkom', 'powtórKami', 'powtorkach',
   // Polish — misc
   'zapamiętaj', 'zapamiętać', 'zapamiętywanie', 'zapamiętywać',
   'przypominajka',
@@ -104,40 +109,66 @@ function parseFlashcards(raw: unknown): FlashcardItem[] {
   }));
 }
 
-async function extractFileContent(file: { data: string; mimeType: string }): Promise<string> {
+async function extractFileContent(
+  file: { data: string; mimeType: string } | undefined,
+  conversationId: string | undefined,
+): Promise<string> {
+  // If no file uploaded, try cache
+  if (!file) {
+    if (conversationId) {
+      const cached = pdfCacheService.get(conversationId);
+      if (cached) {
+        console.log(`${LOG_PREFIX} Retrieved ${cached.text.length} chars from cache for conversation ${conversationId}`);
+        return cached.text;
+      }
+    }
+    return '';
+  }
+
   try {
+    let extracted = '';
     if (file.mimeType === 'application/pdf') {
       console.log(`${LOG_PREFIX} Extracting text from PDF attachment`);
       const buffer = Buffer.from(file.data, 'base64');
-      const text = await pdfService.extractText(buffer);
-      console.log(`${LOG_PREFIX} PDF extracted ${text.length} chars`);
-      return text.slice(0, 15000);
+      extracted = await pdfService.extractText(buffer);
+      console.log(`${LOG_PREFIX} PDF extracted ${extracted.length} chars`);
+    } else if (file.mimeType === 'text/plain') {
+      extracted = Buffer.from(file.data, 'base64').toString('utf-8');
+      console.log(`${LOG_PREFIX} Text file extracted ${extracted.length} chars`);
+    } else {
+      console.log(`${LOG_PREFIX} Unsupported file type: ${file.mimeType}`);
+      return '';
     }
-    if (file.mimeType === 'text/plain') {
-      const text = Buffer.from(file.data, 'base64').toString('utf-8').slice(0, 15000);
-      console.log(`${LOG_PREFIX} Text file extracted ${text.length} chars`);
-      return text;
+
+    // Truncate to configurable limit
+    if (extracted.length > MAX_FILE_CHARS) {
+      console.log(`${LOG_PREFIX} Truncating file content from ${extracted.length} to ${MAX_FILE_CHARS} chars`);
+      extracted = extracted.slice(0, MAX_FILE_CHARS);
     }
-    console.log(`${LOG_PREFIX} Unsupported file type: ${file.mimeType}`);
+
+    // Cache for conversation persistence
+    if (conversationId && extracted) {
+      pdfCacheService.set(conversationId, extracted, file.mimeType);
+    }
+
+    return extracted;
   } catch (error) {
     console.error(`${LOG_PREFIX} File extraction failed:`, error);
+    return '';
   }
-  return '';
 }
 
 export class AiCommandService {
-  async generateFlashcards(text: string, file: { data: string; mimeType: string } | undefined, ctx: RequestContext): Promise<FlashcardGenResult> {
-    console.log(`${LOG_PREFIX} generateFlashcards called, text="${text.slice(0, 100)}", hasFile=${!!file}`);
+  async generateFlashcards(text: string, file: { data: string; mimeType: string } | undefined, conversationId: string | undefined, ctx: RequestContext): Promise<FlashcardGenResult> {
+    console.log(`${LOG_PREFIX} generateFlashcards called, text="${text.slice(0, 100)}", hasFile=${!!file}, conversationId=${conversationId ?? 'none'}`);
 
     let prompt = text;
-    if (file) {
-      const extracted = await extractFileContent(file);
-      if (extracted) {
-        prompt = `${text}\n\nFile content:\n${extracted}`;
-        console.log(`${LOG_PREFIX} Prompt with file content: ${prompt.length} chars`);
-      } else {
-        console.log(`${LOG_PREFIX} No content extracted from file, using original text only`);
-      }
+    const extracted = await extractFileContent(file, conversationId);
+    if (extracted) {
+      prompt = `${text}\n\nFile content:\n${extracted}`;
+      console.log(`${LOG_PREFIX} Prompt with file content: ${prompt.length} chars`);
+    } else {
+      console.log(`${LOG_PREFIX} No content available, using original text only`);
     }
 
     console.log(`${LOG_PREFIX} Calling LLM with tool_choice=generate_flashcards`);
@@ -147,6 +178,7 @@ export class AiCommandService {
         systemPrompt: SYSTEM_PROMPT,
         tools: [GENERATE_FLASHCARDS_TOOL],
         toolChoice: { type: 'function', function: { name: 'generate_flashcards' } },
+        maxTokens: FLASHCARD_MAX_TOKENS,
       },
       ctx,
     );
@@ -157,12 +189,19 @@ export class AiCommandService {
       const toolCall = response.toolCalls.find((tc) => tc.function.name === 'generate_flashcards');
       if (toolCall) {
         console.log(`${LOG_PREFIX} Tool call arguments: ${toolCall.function.arguments.slice(0, 500)}`);
-        const args = JSON.parse(toolCall.function.arguments);
+        let args: Record<string, unknown>;
+        try {
+          args = JSON.parse(toolCall.function.arguments);
+        } catch {
+          const repaired = repairJson(toolCall.function.arguments);
+          console.log(`${LOG_PREFIX} JSON parse failed, repaired: ${repaired.slice(0, 200)}`);
+          args = JSON.parse(repaired);
+        }
         const flashcards = parseFlashcards(args.flashcards);
         console.log(`${LOG_PREFIX} Parsed ${flashcards.length} flashcards, deckName="${args.deck_name}"`);
         return {
           type: 'flashcards',
-          deckName: args.deck_name || 'AI Generated Flashcards',
+          deckName: String(args.deck_name || 'AI Generated Flashcards'),
           flashcards,
         };
       }
@@ -178,20 +217,18 @@ export class AiCommandService {
     };
   }
 
-  async chat(text: string, file: { data: string; mimeType: string } | undefined, ctx: RequestContext): Promise<FlashcardGenResult | ChatResult> {
+  async chat(text: string, file: { data: string; mimeType: string } | undefined, conversationId: string | undefined, ctx: RequestContext): Promise<FlashcardGenResult | ChatResult> {
     const isFlashcard = hasFlashcardKeyword(text);
-    console.log(`${LOG_PREFIX} chat called, text="${text.slice(0, 100)}", hasFile=${!!file}, flashcardKeyword=${isFlashcard}`);
+    console.log(`${LOG_PREFIX} chat called, text="${text.slice(0, 100)}", hasFile=${!!file}, flashcardKeyword=${isFlashcard}, conversationId=${conversationId ?? 'none'}`);
 
     if (isFlashcard) {
-      return this.generateFlashcards(text, file, ctx);
+      return this.generateFlashcards(text, file, conversationId, ctx);
     }
 
     let prompt = text;
-    if (file) {
-      const extracted = await extractFileContent(file);
-      if (extracted) {
-        prompt = `${text}\n\nFile content:\n${extracted}`;
-      }
+    const extracted = await extractFileContent(file, conversationId);
+    if (extracted) {
+      prompt = `${text}\n\nFile content:\n${extracted}`;
     }
 
     console.log(`${LOG_PREFIX} Calling LLM with tool_choice=auto`);
@@ -201,6 +238,7 @@ export class AiCommandService {
         systemPrompt: SYSTEM_PROMPT,
         tools: [GENERATE_FLASHCARDS_TOOL],
         toolChoice: 'auto',
+        maxTokens: FLASHCARD_MAX_TOKENS,
       },
       ctx,
     );
@@ -211,12 +249,19 @@ export class AiCommandService {
       const toolCall = response.toolCalls.find((tc) => tc.function.name === 'generate_flashcards');
       if (toolCall) {
         console.log(`${LOG_PREFIX} Tool call arguments: ${toolCall.function.arguments.slice(0, 500)}`);
-        const args = JSON.parse(toolCall.function.arguments);
+        let args: Record<string, unknown>;
+        try {
+          args = JSON.parse(toolCall.function.arguments);
+        } catch {
+          const repaired = repairJson(toolCall.function.arguments);
+          console.log(`${LOG_PREFIX} JSON parse failed, repaired: ${repaired.slice(0, 200)}`);
+          args = JSON.parse(repaired);
+        }
         const flashcards = parseFlashcards(args.flashcards);
         console.log(`${LOG_PREFIX} Parsed ${flashcards.length} flashcards, deckName="${args.deck_name}"`);
         return {
           type: 'flashcards',
-          deckName: args.deck_name || 'AI Generated Flashcards',
+          deckName: String(args.deck_name || 'AI Generated Flashcards'),
           flashcards,
         };
       }
