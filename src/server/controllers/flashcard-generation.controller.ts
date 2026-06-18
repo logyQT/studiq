@@ -9,12 +9,20 @@ export interface GenerationStreamCallbacks {
   onError: (message: string) => void;
 }
 
+/**
+ * @deprecated Use AiCommandController.chat() with tool calling instead.
+ * This controller is kept temporarily for the frompdf endpoint.
+ */
 export class FlashcardGenerationController {
+  /**
+   * @deprecated Use AiCommandService.generateFlashcards() with tool calling instead.
+   */
   async generateFromPdf(
     body: { file: Buffer; filename: string; language: string },
     ctx: RequestContext,
     callbacks: GenerationStreamCallbacks,
   ): Promise<void> {
+    console.warn('[DEPRECATED] FlashcardGenerationController.generateFromPdf is deprecated. Use AiCommandService.generateFlashcards() instead.');
     const { file, filename, language } = body;
 
     if (language !== 'en' && language !== 'pl') {

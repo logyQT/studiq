@@ -27,20 +27,23 @@ Cross-cutting component — foundational dependency for all phases. A single fun
 ## API
 
 ```typescript
-// src/server/ai/llm-gateway.ts  ✅
+// src/server/ai/ai.types.ts  ✅
 
 type LLMGatewayRequest = {
   prompt: string;
   systemPrompt?: string;
   file?: { data: string; mimeType: string };
-  provider?: 'openai' | 'anthropic' | 'google' | 'groq' | 'ollama';
+  provider?: 'openai' | 'ollama';
   model?: string;
   responseFormat?: 'text' | 'json';
   maxTokens?: number;
+  tools?: ToolDefinition[];              // ✅ Added — OpenAI tool definitions
+  toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };  // ✅ Added
 };
 
 type LLMGatewayResponse = {
   content: string;
+  toolCalls?: ToolCall[];                // ✅ Added — parsed tool calls from response
   usage: {
     inputTokens: number;
     outputTokens: number;
@@ -58,49 +61,56 @@ async function callLLM(req: LLMGatewayRequest, ctx: RequestContext): Promise<LLM
 Inside `callLLM`, executed in order:
 
 1. **Provider resolution** — `req.provider` or fallback to `LLM_PROVIDER` env var
-2. **Auth resolution** — reads correct API key for chosen provider (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_AI_KEY`, `GROQ_API_KEY`, or `LLM_API_KEY`)
+2. **Auth resolution** — reads correct API key for chosen provider (`OPENAI_API_KEY`, `LLM_API_KEY`)
 3. **Usage guard** — invoke `checkUsage(ctx.userId, actionType, plan)` before HTTP call; reject early if limit exceeded
 4. **Model selection** — `req.model` overrides `LLM_MODEL_NAME` env var
-5. **Request assembly** — build provider-specific body (attaches file for vision/audio models)
+5. **Request assembly** — build provider-specific body, **attach tools if provided**
 6. **HTTP call** — `fetch` with timeout, error mapping
-7. **Response parsing** — extract content + token counts from provider's `usage` field
-8. **Usage recording** — `INSERT INTO usage_events(user_id, action_type, input_type, input_tokens, output_tokens, provider, model)`
-9. **Return** — `{ content, usage }`
+7. **Response parsing** — extract content + **tool_calls** + token counts
+8. **Usage recording** — `INSERT INTO usage_events(...)` (pending DB migration)
+9. **Return** — `{ content, toolCalls?, usage }`
 
 ## Supported Providers
 
-| Provider    | Env Key                     | Default Model             | Notes                                        |
-| ----------- | --------------------------- | ------------------------- | -------------------------------------------- |
-| `openai`    | `OPENAI_API_KEY`            | `gpt-4o-mini`             | Chat completions, vision via content parts   |
-| `anthropic` | `ANTHROPIC_API_KEY`         | `claude-3-haiku-20240307` | Messages API, vision via base64 media        |
-| `google`    | `GOOGLE_AI_KEY`             | `gemini-2.0-flash`        | Gemini API                                   |
-| `groq`      | `GROQ_API_KEY`              | `llama-3.3-70b-versatile` | OpenAI-compatible, fast inference            |
-| `ollama`    | (none, uses `LLM_BASE_URL`) | `llama3`                  | Local, `LLM_BASE_URL=http://localhost:11434` |
+| Provider     | Env Key          | Default Model   | Notes                                               |
+| ------------ | ---------------- | --------------- | --------------------------------------------------- |
+| `openai`     | `OPENAI_API_KEY` | `gpt-4o-mini`   | Chat completions, **tool calling support**          |
+| `ollama`     | (uses `LLM_BASE_URL`) | `phi3:mini` | Local, no tool calling support (text response only) |
+| `opencode`   | `OPENAI_API_KEY` | `mimo-v2.5`     | OpenAI-compatible, **tool calling support**         |
 
 ## File / Multimodal Support
 
-If `file` is provided, the gateway attaches it per the provider's multimodal API:
+PDF and text files are processed server-side via text extraction — the raw file never reaches the LLM API:
 
-- **OpenAI**: `content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: 'data:mimeType;base64,data' } }]`
-- **Anthropic**: `content: [{ type: 'text', text: prompt }, { type: 'image', source: { type: 'base64', media_type: mimeType, data } }]`
-- **Ollama**: `images: [data]` field in generate request
-- **Google**: `inlineData` block in contents array
+- **PDF** — extracted via `unpdf` (previously `pdfjs-dist`), truncated to 15,000 chars, injected into prompt as `"File content:\n..."`
+- **Text files** — decoded from base64, truncated to 15,000 chars, injected into prompt
+- **Images** — not yet supported (mimo-v2.5 does not support vision)
+
+The `file` field on `LLMGatewayRequest` exists but is unused in the gateway layer — file processing happens in the service layer before the LLM call.
 
 ## Usage in Pipelines
 
 All services call `callLLM` exclusively — they never construct raw HTTP requests to LLM APIs.
 
 ```typescript
-// In FlashcardGenerationService:
+// In AiCommandService — flashcard generation via tool calling:
 const response = await callLLM(
   {
-    prompt: buildFlashcardPrompt(chunk, language),
-    systemPrompt: 'You generate educational flashcards.',
-    responseFormat: 'json',
+    prompt,
+    systemPrompt: SYSTEM_PROMPT,
+    tools: [GENERATE_FLASHCARDS_TOOL],
+    toolChoice: { type: 'function', function: { name: 'generate_flashcards' } },
   },
   ctx,
 );
-const cards = parseJsonResponse(response.content);
+
+// Parse tool call response
+if (response.toolCalls?.length) {
+  const toolCall = response.toolCalls.find(tc => tc.function.name === 'generate_flashcards');
+  const args = JSON.parse(toolCall.function.arguments);
+  const flashcards = parseFlashcards(args.flashcards); // handles string or array
+  return { deckName: args.deck_name, flashcards };
+}
 ```
 
 ## Error Handling
@@ -136,21 +146,24 @@ const cards = parseJsonResponse(response.content);
 
 ### AI Commands
 
-| Command            | Status                                                    |
-| ------------------ | --------------------------------------------------------- |
-| `/flashcards pdf`  | ⚠️ exists — only `frompdf` route, hardcoded to flashcards |
-| `/summary pdf`     | 🆕                                                        |
-| `/quiz pdf`        | 🆕                                                        |
-| `/explain pdf`     | 🆕                                                        |
-| `/flashcards text` | ⚠️ via `/api/v1/ai/flashcard-gen` (chat-based)            |
-| `/summary text`    | 🆕                                                        |
-| `/quiz text`       | 🆕                                                        |
-| `/explain text`    | 🆕                                                        |
+| Command            | Status | Notes                                                                    |
+| ------------------ | ------ | ------------------------------------------------------------------------ |
+| `/flashcards pdf`  | 🗑️     | **Deprecated** — unified `/api/v1/ai/chat` with tool calling replaces this. Route kept for large PDF chunking until chat endpoint gains chunk support. |
+| `/summary pdf`     | 🆕     |                                                                          |
+| `/quiz pdf`        | 🆕     |                                                                          |
+| `/explain pdf`     | 🆕     |                                                                          |
+| `/flashcards text` | ✅     | Via `/api/v1/ai/chat` with tool calling                                  |
+| `/summary text`    | 🆕     |                                                                          |
+| `/quiz text`       | 🆕     |                                                                          |
+| `/explain text`    | 🆕     |                                                                          |
 
 ### Chat Context
 
-- Question-answering on uploaded document
-- Basic intent detection — user types "create flashcards from this" and system routes accordingly
+- Question-answering on uploaded document (text extracted via unpdf, injected into prompt)
+- **Tool calling** — LLM uses `generate_flashcards` tool when flashcard intent detected
+- **Client-side context hints** — CTA buttons set `context` field for server-side routing
+- **Server-side keyword detection** — 50+ Polish/English morphological variants for flashcard intent
+- Empty text allowed when file attached — enables "upload file, get flashcards" flow
 
 ## Existing Infrastructure Map
 
@@ -158,17 +171,18 @@ const cards = parseJsonResponse(response.content);
 
 | Component                                            | File                                                            | Description                                                                                                            |
 | ---------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `LLMProvider` interface                              | `src/server/providers/LLMProvider.ts`                           | ⚠️ Being replaced by `LLMGateway` — JSON repair + prompts moved to `src/server/ai/`                                    |
-| `OpenAIProvider`                                     | `src/server/providers/openaiProvider.ts`                        | ⚠️ Logic moved into `LLMGateway` — file kept temporarily for reference                                                 |
-| `OllamaProvider`                                     | `src/server/providers/ollamaProvider.ts`                        | ⚠️ Logic moved into `LLMGateway` — file kept temporarily for reference                                                 |
-| `providerRegistry`                                   | `src/server/providers/providerRegistry.ts`                      | ⚠️ Being replaced by `LLMGateway` internal routing                                                                     |
-| `models.config`                                      | `src/server/config/models.config.ts`                            | ⚠️ Being replaced — env vars read directly by `LLMGateway`                                                             |
-| `pdfService`                                         | `src/server/services/pdfService.ts`                             | `extractText(buffer)` via pdfjs-dist + `chunkText(text, minWords=500, maxWords=800, overlap=50)` + `suggestDeckName()` |
+| `LLMProvider` interface                              | `src/server/providers/LLMProvider.ts`                           | ✅ Active — `generateChat` accepts tools + toolChoice, returns `GenerateChatResult \| string`                              |
+| `OpenAIProvider`                                     | `src/server/providers/openaiProvider.ts`                        | ✅ Active — tool calling support, passes tools in request body, parses `tool_calls` from response                          |
+| `OllamaProvider`                                     | `src/server/providers/ollamaProvider.ts`                        | ✅ Active — text response only (no tool calling), updated interface                                                       |
+| `OpenCodeProvider`                                   | `src/server/providers/opencodeProvider.ts`                      | ✅ Active — tool calling support (mimo-v2.5)                                                                              |
+| `providerRegistry`                                   | `src/server/providers/providerRegistry.ts`                      | ✅ Active — routes to OpenAI/Ollama/OpenCode based on env vars                                                            |
+| `models.config`                                      | `src/server/config/models.config.ts`                            | ✅ Active — env vars read by providers, config shape shared                                                             |
+| `pdfService`                                         | `src/server/services/pdf.service.ts`                              | `extractText(buffer)` via **unpdf** + `chunkText(text)` + `suggestDeckName()` |
 | `FlashcardGenerationService`                         | `src/server/services/flashcard-generation.service.ts`           | Orchestrates: extract -> chunk -> provider loop -> SSE callbacks                                                       |
 | `FlashcardGenerationController`                      | `src/server/controllers/flashcard-generation.controller.ts`     | Validates language, delegates to service                                                                               |
-| SSE route `POST /api/v1/flashcards/generate/frompdf` | `src/app/(backend)/api/v1/flashcards/generate/frompdf/route.ts` | ReadableStream + TextEncoder — SSE events: `flashcards`, `progress`, `complete`, `error`                               |
-| `useGenerateFlashcards` hook                         | `src/hooks/use-flashcard-generation.ts`                         | Client-side SSE reader with AbortController                                                                            |
-| AI flashcard page                                    | `src/app/(frontend)/app/flashcards/ai/page.tsx`                 | PDF upload -> generate -> review/edit -> save to deck                                                                  |
+| SSE route `POST /api/v1/flashcards/generate/frompdf` | `src/app/(backend)/api/v1/flashcards/generate/frompdf/route.ts` | 🗑️ **Deprecated** — unified `/api/v1/ai/chat` replaces this. Kept for large PDF chunking until chat endpoint gains chunk support. |
+| `useGenerateFlashcards` hook                         | `src/hooks/use-flashcard-generation.ts`                         | 🗑️ **Deprecated** — client-side SSE reader for frompdf endpoint. Will be removed when frompdf is deleted.            |
+| AI flashcard page                                    | `src/app/(frontend)/app/flashcards/ai/page.tsx`                 | 🗑️ **Deprecated** — dedicated PDF upload page. Will redirect to `/app/ai` when frompdf is deleted.                    |
 | `UserRole` enum                                      | `src/types/index.ts`                                            | `FREE`, `PREMIUM`, `STUDENT`, `TEACHER`, `UNIVERSITY_ADMIN`, `SYS_ADMIN`                                               |
 | Route middleware                                     | `src/proxy.ts` + `src/server/config/routes.config.ts`           | Auth check, role-based access                                                                                          |
 | `authGuard`                                          | `src/server/guards/auth.guard.ts`                               | Simple authenticated check                                                                                             |
@@ -177,15 +191,15 @@ const cards = parseJsonResponse(response.content);
 
 | Component                                   | Priority | Status | Reason                                                       |
 | ------------------------------------------- | -------- | ------ | ------------------------------------------------------------ |
-| General AI chat page                        | High     | ✅     | Built at `/app/ai`                                           |
-| Command parser                              | High     | 🆕     | Current route is hardcoded to flashcards                     |
+| General AI chat page                        | High     | ✅     | Built at `/app/ai` with markdown rendering, free scrolling   |
+| Command parser                              | High     | ⚠️     | Keyword detection + context hints implemented, LLM-based pending |
 | Usage tracking + subscription tables        | High     | 🆕     | No limits currently enforced                                 |
-| `LLMGateway`                                | High     | ✅     | `callLLM` + `callLLMStreaming` in `src/server/ai/`           |
+| `LLMGateway`                                | High     | ✅     | `callLLM` + `callLLMStreaming` with tool calling support     |
 | `POST /ai/command`                          | High     | 🆕     | New multi-command endpoint                                   |
-| `POST /ai/chat`                             | High     | ✅     | Built as `/api/v1/ai/chat`                                   |
-| `POST /api/v1/ai/flashcard-gen`             | High     | ✅     | Chat-based flashcard gen with thinking traces                |
+| `POST /api/v1/ai/chat`                      | High     | ✅     | Unified endpoint — chat + flashcards via tool calling        |
+| `POST /api/v1/ai/flashcard-gen`             | High     | 🗑️     | **Deleted** — merged into `/api/v1/ai/chat`                  |
 | `GET /ai/usage`                             | High     | 🆕     | Usage status for UI display                                  |
-| `POST /api/v1/flashcards/generate/fromtext` | Medium   | 🆕     | Text variant missing                                         |
+| `POST /api/v1/flashcards/generate/fromtext` | Medium   | 🗑️     | **Deprecated** — unified chat endpoint handles text input. Slated for deletion.  |
 | Usage guard + subscription guard            | High     | ⚠️     | Stubs exist (`allowed: true`), real logic pending DB migration |
 
 ## Users & Access Model
@@ -250,7 +264,7 @@ Two tiers of detection:
 
 ### SSE Streaming (existing pattern to replicate)
 
-The `frompdf/route.ts` file is the canonical pattern. All new streaming endpoints follow this structure:
+The `POST /api/v1/ai/chat` route is the canonical pattern for new streaming endpoints. The legacy `frompdf/route.ts` follows the same structure but is **deprecated**.
 
 ```typescript
 const encoder = new TextEncoder();
@@ -280,38 +294,49 @@ Standard event types for all pipelines:
 | Event | Payload | When |
 |-------|---------|------|
 | `token` | `{ text }` | Individual token during chat streaming |
-| `think` | `{ trace }` | Reasoning trace during flashcard generation |
-| `progress` | `{ processedChunks, totalChunks }` | After each chunk |
-| `result` | `{ type, data }` | Partial result (e.g., 3 flashcards) |
-| `flashcards` | `[{ front, back, topic }]` | Final flashcard array from flashcard-gen |
-| `complete` | `{ summary, metadata }` | All processing done |
+| `flashcards` | `{ deckName, flashcards: [{ front, back, topic }] }` | Flashcard tool call result (includes deck name from LLM) |
+| `result` | `{ type, data }` | Partial result (e.g., 3 flashcards from PDF pipeline) |
+| `progress` | `{ processedChunks, totalChunks }` | After each chunk (PDF pipeline only) |
+| `complete` | `{ message }` | All processing done |
 | `usage` | `{ current, limit, plan, resetsAt }` | Usage limit info (sent before complete) |
-| `error` | `{ message, ref? }` | Any failure |
+| `error` | `{ message }` | Any failure |
+
+> **Note:** The `think` event was removed — tool calling replaced the THINK/JSON parsing approach. The `flashcards` event now always includes `deckName` from the LLM's tool call arguments.
 
 ### Architecture Diagram (Phase 1)
 
 ```
-User -> AI Chat UI -> POST /api/v1/ai/chat { text, file? }
+User -> AI Chat UI -> POST /api/v1/ai/chat { text, file?, context?, messages? }
   -> Auth guard (inline Supabase auth)
-    -> Subscription guard (stub) + Usage guard (stub)
-      -> ChatController -> ChatService -> callLLMStreaming
-        -> SSE stream: token, result, complete, usage -> UI
+    -> Route-level validation (text required unless file attached)
+      -> Keyword scan + context check
+        |
+        ├── [flashcard keyword OR context='flashcards']
+        |     -> AiCommandController.chat(text, file, ctx)
+        |       -> AiCommandService.chat(text, file, ctx)
+        |         -> Server-side keyword re-check + file text extraction
+        |           -> callLLM(prompt, systemPrompt, tools=[generate_flashcards], toolChoice)
+        |             -> Parse tool_calls response -> { deckName, flashcards }
+        |               -> SSE: flashcards { deckName, flashcards }, complete
+        |
+        └── [no flashcard intent]
+              -> ChatController.chat(body, ctx)
+                -> checkSubscription() + checkUsage()
+                  -> ChatService.chat(text, file, messages, ctx)
+                    -> callLLMStreaming(prompt, systemPrompt)
+                      -> SSE: token, complete, usage -> UI
 
-User -> AI Chat UI -> (flashcard intent detected by keywords)
-  -> POST /api/v1/ai/flashcard-gen { text }
-    -> Auth guard (inline Supabase auth)
-      -> AiCommandController -> AiCommandService -> callLLM
-        -> SSE stream: think, flashcards, complete -> UI
-
-User -> POST /ai/command { text, file?, language? }  [🆕]
-  -> Auth guard (existing)
-    -> Subscription guard (new) — block FREE, check active plan
-      -> Usage guard (new) — check bracket limits
-        -> Command parser (new)
-          -> Pipeline (flashcards / summary / quiz / explain)
-            -> LLMGateway (callLLM)
-              -> SSE stream -> UI
+User -> POST /api/v1/flashcards/generate/frompdf [DEPRECATED — kept for large PDF chunking]
+  -> Auth guard
+    -> FlashcardGenerationController -> FlashcardGenerationService
+      -> pdfService.extractText -> chunkText -> provider.generateFlashcardsFromChunk
+        -> SSE: flashcards, progress, complete
 ```
+
+**Key architectural change:** The separate `/api/v1/ai/flashcard-gen` endpoint was **deleted**. All flashcard generation now flows through `/api/v1/ai/chat` using OpenAI tool calling. The server detects intent via:
+1. **Client-side context hint** (`context: 'flashcards'` sent when CTA button is clicked)
+2. **Server-side keyword scan** (50+ Polish/English morphological variants)
+3. **LLM auto-detection** (`tool_choice: 'auto'` lets the model decide when to use `generate_flashcards`)
 
 ## Data Model
 
@@ -418,14 +443,14 @@ The `GET /ai/usage` endpoint wraps both guards and returns the usage status for 
 
 ### Phase 1 Endpoints
 
-| Method | Path                                   | Status      | Description                                                                                       |
-| ------ | -------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------- |
-| POST   | `/api/v1/flashcards/generate/frompdf`  | ✅          | PDF -> flashcards, SSE                                                                            |
-| POST   | `/api/v1/flashcards/generate/fromtext` | 🆕          | Text -> flashcards, SSE                                                                           |
-| POST   | `/api/v1/ai/chat`                      | ✅          | Free-form chat with document context, SSE                                                         |
-| POST   | `/api/v1/ai/flashcard-gen`             | ✅          | Text -> flashcards with thinking traces, SSE                                                      |
-| POST   | `/ai/command`                          | 🆕          | Universal command endpoint — accepts `{ text, file?, language? }`, detects intent, streams result |
-| GET    | `/ai/usage`                            | 🆕          | Returns current usage stats and limits for user                                                   |
+| Method | Path                                   | Status | Description                                                                                                       |
+| ------ | -------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/v1/flashcards/generate/frompdf`  | 🗑️     | **Deprecated** — unified chat endpoint replaces this. Kept for large PDF chunking until chat gains chunk support. |
+| POST   | `/api/v1/flashcards/generate/fromtext` | 🗑️     | **Deprecated** — unified chat endpoint handles text input. Slated for deletion.                                   |
+| POST   | `/api/v1/ai/chat`                      | ✅     | **Unified endpoint** — chat + flashcard generation via tool calling. Accepts `{ text, file?, context?, messages? }` |
+| POST   | `/api/v1/ai/flashcard-gen`             | 🗑️     | **Deleted** — merged into `/api/v1/ai/chat`                                                                       |
+| POST   | `/ai/command`                          | 🆕     | Universal command endpoint — accepts `{ text, file?, language? }`, detects intent, streams result                 |
+| GET    | `/ai/usage`                            | 🆕     | Returns current usage stats and limits for user                                                                   |
 
 Route rule added in `src/server/config/routes.config.ts`:
 
@@ -439,6 +464,20 @@ Route rule added in `src/server/config/routes.config.ts`:
 ```
 
 > Note: `FREE` is intentionally omitted. The subscription guard provides a second layer of protection even if the route rule is bypassed.
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `src/server/ai/llm-gateway.ts` | `callLLM` + `callLLMStreaming` with provider routing and tool calling |
+| `src/server/ai/ai.types.ts` | `ToolDefinition`, `ToolCall`, `LLMGatewayRequest/Response` types |
+| `src/server/services/ai-command.service.ts` | Flashcard tool definition, keyword detection, `generate_flashcards()` + `chat()` |
+| `src/server/controllers/ai-command.controller.ts` | Routes to service, emits SSE events |
+| `src/app/(backend)/api/v1/ai/chat/route.ts` | Unified endpoint — keyword scan + context routing |
+| `src/hooks/use-ai-chat.ts` | Client hook — context hints, `sendLocalResponse`, SSE parsing |
+| `src/components/ai/ai-chat-screen.tsx` | Main UI — scroll management, CTA context, file handling |
+| `src/components/ai/flashcard-block.tsx` | Flashcard preview grid — editable deck name, batch save |
+| `src/server/services/pdf.service.ts` | PDF extraction via `unpdf` (previously `pdfjs-dist`) |
 
 ## Frontend — AI Chat Page
 
@@ -471,24 +510,27 @@ New page: `src/app/(frontend)/app/ai/page.tsx`
 
 ### Components
 
-| Component       | Path   | Purpose                                                                                                     |
-| --------------- | ------ | ----------------------------------------------------------------------------------------------------------- |
-| `ChatInput`     | ✅     | Text input + file upload + send button                                                                      |
-| `ChatMessage`   | ✅     | Single message bubble (user vs AI), renders different result types (flashcards, summary text, quiz buttons) |
-| `ChatHistory`   | ✅     | Scrollable message list                                                                                     |
-| `UsageBadge`    | ✅     | Shows "15/50 daily requests used" + plan name                                                               |
-| `FileUpload`    | ✅     | Drag & drop zone, file preview, remove button                                                               |
-| `FlashcardBlock`| ✅     | Renders flashcard previews with "Save as Deck" button                                                       |
-| `ThinkingBlock` | ✅     | Collapsible thinking traces panel with step animation                                                       |
+| Component        | Status | Purpose                                                                                                     |
+| ---------------- | ------ | ----------------------------------------------------------------------------------------------------------- |
+| `ChatInput`      | ✅     | Text input + file upload + send button                                                                      |
+| `ChatMessage`    | ✅     | Single message bubble — user text, AI markdown rendering (when complete), plain text (during streaming)      |
+| `ChatHistory`    | ✅     | Scrollable message list (parent manages auto-scroll)                                                        |
+| `UsageBadge`     | ✅     | Shows "15/50 daily requests used" + plan name                                                               |
+| `FlashcardBlock` | ✅     | Scrollable 2-column grid, editable deck name, per-card delete, batch save                                   |
+| `ThinkingBlock`  | ✅     | Collapsible thinking traces panel with step animation                                                       |
+| `AiChatGreeting` | ✅     | CTA buttons with local fake responses (no LLM call)                                                         |
 
 ### Hook
 
-New hook: `src/hooks/use-ai-chat.ts` ✅ — modeled after existing `useGenerateFlashcards` but general-purpose:
+`src/hooks/use-ai-chat.ts` ✅ — unified chat + flashcard generation hook:
 
-- Detects flashcard intent via keywords — skips chat call, calls `/api/v1/ai/flashcard-gen` directly
-- Reads SSE stream generically (handles `token`, `result`, `think`, `flashcards`, `complete`, `usage`, `error` events)
-- Manages message history state with `thinkingTraces` field
-- Tracks streaming status per message (`sending`, `streaming`, `thinking`, `complete`, `error`)
+- **All messages go to `/api/v1/ai/chat`** — no separate endpoint routing
+- **Client-side context hints** — `sendMessage(text, file, context)` passes `context` field (e.g., `'flashcards'`) to server for intent routing
+- **`sendLocalResponse(userText, assistantText)`** — adds messages without LLM call (used for CTA greeting responses)
+- **Reads SSE stream generically** — handles `token`, `flashcards` (with `deckName`), `result`, `complete`, `usage`, `error` events
+- **Manages message history state** with `thinkingTraces` field and `result` field (typed by result type)
+- **Tracks streaming status** per message (`sending`, `streaming`, `thinking`, `complete`, `error`)
+- **File handling** — chunked base64 conversion (avoids stack overflow on large files), passes file to server
 
 ---
 
@@ -754,17 +796,131 @@ Results can be compared side-by-side in the UI.
 
 # Summary
 
-| Area                     | Phase 1                                                               | Phase 2                                              | Phase 3                                       |
-| ------------------------ | --------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------- |
-| **Inputs**               | Text, PDF                                                             | YouTube, Image, Audio, DOCX, TXT, ZIP                | Multiple simultaneous sources                 |
-| **Commands**             | flashcards, summary, quiz, explain                                    | mindmap, notes, translate, compare, timeline, lesson | workflows, curriculum                         |
-| **Processing**           | Single command -> single output                                       | Smart pipelines, multi-intent                        | Multi-agent orchestration                     |
-| **Context**              | Per-request                                                           | Session memory (Redis/DB)                            | Full curriculum context                       |
-| **Limits**               | Hourly / Daily / Monthly brackets                                     | Per-module limits, transcription caps                | Workflow, curriculum, institutional overrides |
-| **Access**               | Free blocked, Premium + Org via subscription                          | Same + opt-in free tier possible                     | Same + institutional plans                    |
-| **Providers**            | OpenAI, Ollama (via LLMGateway)                                       | + Anthropic, Google, Groq                            | Model sandbox (via LLMGateway)                |
-| **Frontend**             | Chat UI with SSE                                                      | Module selector, Tutor UI                            | Workflow builder, curriculum dashboard        |
-| **Existing code reused** | LLMGateway, pdfService, SSE pattern, UserRole, auth guard, middleware | Same + Phase 1                                       | Same + Phase 1+2                              |
+| Area                     | Phase 1                                                                          | Phase 2                                              | Phase 3                                       |
+| ------------------------ | -------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------- |
+| **Inputs**               | Text, PDF                                                                        | YouTube, Image, Audio, DOCX, TXT, ZIP                | Multiple simultaneous sources                 |
+| **Commands**             | flashcards, summary, quiz, explain                                               | mindmap, notes, translate, compare, timeline, lesson | workflows, curriculum                         |
+| **Processing**           | **Tool calling** (unified endpoint) or single command → single output            | Smart pipelines, multi-intent                        | Multi-agent orchestration                     |
+| **Context**              | Per-request, **client-side hints**                                               | Session memory (IndexedDB/server)                    | Full curriculum context                       |
+| **Limits**               | Hourly / Daily / Monthly brackets                                                | Per-module limits, transcription caps                | Workflow, curriculum, institutional overrides |
+| **Access**               | Free blocked, Premium + Org via subscription                                     | Same + opt-in free tier possible                     | Same + institutional plans                    |
+| **Providers**            | **OpenAI, Ollama, OpenCode** (via LLMGateway with tool calling)                  | + Anthropic, Google, Groq                            | Model sandbox (via LLMGateway)                |
+| **Frontend**             | Chat UI with SSE, **markdown rendering**, **free scrolling**, **CTA responses**  | Module selector, Tutor UI                            | Workflow builder, curriculum dashboard        |
+| **Persistence**          | **Tier 1 (Ephemeral)** — chat in React state, flashcards saved to DB            | **Tier 2 (IndexedDB)** — local session history       | **Tier 3 (Server)** — tutor mode, event log   |
+| **Existing code reused** | LLMGateway, pdfService (unpdf), SSE pattern, UserRole, auth guard, middleware    | Same + Phase 1                                       | Same + Phase 1+2                              |
+
+---
+
+# Session Persistence — Privacy-First Progressive Model
+
+## Philosophy
+
+> **"Privacy-First, Progressive Persistence"** — Let the user choose their level of commitment, from anonymous to fully persistent, while defaulting to privacy.
+
+## Three-Tier Hybrid Architecture
+
+| Tier | Data Storage | Best For | UX Implication |
+|------|-------------|----------|----------------|
+| **1. Ephemeral Session** | Browser memory (RAM) only | Quick, anonymous tasks. Guest users. | "Live sandbox" — lost on refresh. |
+| **2. Local Persistence** | IndexedDB / localStorage | Registered users wanting device-only history. | "My study notes on this device." |
+| **3. Account Sync** | Server database (Supabase) | Cross-device access, long-term progress, tutor mode. | "My persistent learning profile." |
+
+## How This Applies to StudiQ
+
+### Current Implementation (Tier 1 — Ephemeral)
+
+The AI chat currently operates at **Tier 1**:
+- Chat history lives in React state (`useAiChat` hook)
+- Lost on page refresh or navigation
+- No data sent to server beyond the current message
+- File content extracted server-side, not stored
+
+**This is correct for the current phase** — no persistence needed yet.
+
+### Future: Tier 2 — Local Persistence
+
+When users want to revisit study sessions without an account:
+
+**Implementation approach:**
+- Use **IndexedDB** (not localStorage) for larger structured data (chat histories, flashcard sets)
+- Clear UI toggle: `"💾 Save this session to your browser? This keeps your history on this device only."`
+- On each API call, manage chat history client-side and persist if user opts in
+- Never send raw chat history to AI provider — only relevant prompt/context per request
+
+**When to build:** When user feedback indicates frustration about losing sessions on refresh.
+
+### Future: Tier 3 — Account Sync (Tutor Mode)
+
+Requires server-side persistence. A tutor must remember:
+
+- **Learning history** — topics covered, where student struggled
+- **Performance data** — quiz results, skill levels, proficiency scores
+- **Personal preferences** — learning style, pace, preferred language
+
+**Implementation approach — Event sourcing:**
+
+Don't store raw chat logs. Store structured events:
+
+```json
+{
+  "userId": "abc123",
+  "timestamp": "...",
+  "event": "concept_mastered",
+  "payload": {
+    "topic": "calculus/integration_by_parts",
+    "proficiency": 0.85,
+    "sessionId": "client-side-session-id"
+  }
+}
+```
+
+**Benefits:**
+- GDPR-friendly (structured data, not conversational)
+- Lean database (events are small, chat logs are not)
+- Enables analytics ("student improved 20% on topic X over 3 sessions")
+- Powers tutor mode recommendations
+
+**Migration path:** When a user creates an account, offer to migrate their local Tier 2 history to Tier 3 server sync.
+
+### Future: Tier 3 — AI API Integration
+
+Stateless at the AI API level, stateful at the application level:
+
+```
+User asks: "Create 5 flashcards on mitochondria."
+  -> Server sends structured prompt to AI API (no session ID)
+  -> AI returns JSON-structured flashcards
+  -> Server saves output to database, tied to user/account
+```
+
+**The AI API remains a pure function** (prompt → response). All persistence and state logic lives in the backend.
+
+## Privacy Recommendations
+
+1. **Be transparent** — Show users what is stored where:
+   ```
+   Your Learning Data:
+     ✅ Study sessions on this device: 3
+     ✅ Saved flashcard sets: 2
+     ⚠️ Server-side learning profile (account needed): Not yet created
+   ```
+
+2. **Offer data export/delete** — Critical for GDPR compliance and user trust.
+
+3. **Smart defaults:**
+   - Guest users → ephemeral (Tier 1)
+   - Signed-in users → local persistence with option to sync (Tier 2 → Tier 3)
+
+4. **Never rely on client-side data for critical features** like tutor mode progress — always have a server-side source of truth.
+
+## Current State
+
+| Feature | Tier | Notes |
+|---------|------|-------|
+| AI chat history | 1 (Ephemeral) | React state, lost on refresh |
+| Flashcard decks | 3 (Account Sync) | Saved to Supabase, user-scoped |
+| PDF processing | 1 (Ephemeral) | Text extracted, not stored |
+| File uploads | 1 (Ephemeral) | Base64 in request, not persisted |
 
 ---
 
@@ -776,21 +932,39 @@ Results can be compared side-by-side in the UI.
 4. **Build `usage.guard.ts`** — bracket limit checks
 5. **Build `LLMGateway`** — `src/server/ai/llm-gateway.ts` with `callLLM()` + provider routing + token tracking + usage recording
 6. **Build `command-parser.ts`** — regex + LLM intent detection
-7. **Build `POST /ai/command`** — universal streaming endpoint (reuse SSE pattern from `frompdf/route.ts`)
+7. **Build `POST /ai/command`** — universal streaming endpoint (reuse SSE pattern from `POST /api/v1/ai/chat`)
 8. **Build `POST /api/v1/ai/chat`** — free-form chat with context, SSE
 9. **Build `POST /api/v1/ai/flashcard-gen`** — text -> flashcards with thinking traces, SSE
 10. **Build AI chat page** — `src/app/(frontend)/app/ai/page.tsx` with components
-11. **Add `POST /api/v1/flashcards/generate/fromtext`** — text variant
+11. **~~Add `POST /api/v1/flashcards/generate/fromtext`~~** — 🗑️ Deprecated, unified chat endpoint handles text input
 12. **Add `/api/v1/ai/*` route rules** to `routes.config.ts`
 
 ### Completed steps
 
 | Step | Status | Notes |
 |------|--------|-------|
-| 5 (LLMGateway) | ✅ | `callLLM` + `callLLMStreaming` with OpenAI/Ollama provider resolution |
-| 8 (chat endpoint) | ✅ | `/api/v1/ai/chat` with token-by-token SSE streaming |
-| 9 (flashcard-gen) | ✅ | `/api/v1/ai/flashcard-gen` with thinking traces |
-| 10 (chat page) | ✅ | Full page at `/app/ai` with all components |
+| 5 (LLMGateway) | ✅ | `callLLM` + `callLLMStreaming` with provider resolution, **tool calling support** (`tools`, `toolChoice` params) |
+| 8 (chat endpoint) | ✅ | `/api/v1/ai/chat` — unified endpoint for chat + flashcard generation via tool calling |
+| 9 (flashcard-gen) | ✅ | **Merged into chat endpoint** — deleted `/api/v1/ai/flashcard-gen`. Flashcards now generated via `generate_flashcards` tool call |
+| 10 (chat page) | ✅ | Full page at `/app/ai` with all components, **markdown rendering**, **free scrolling with chevron**, **CTA local responses** |
 | 12 (route rules) | ✅ | `/api/v1/ai/*` — PREMIUM, STUDENT, TEACHER |
 | 3 (subscription guard) | ⚠️ | Stub returns `allowed: true`, real logic pending DB migration |
 | 4 (usage guard) | ⚠️ | Stub returns `allowed: true`, real logic pending DB migration |
+
+### Additional completions (outside original plan)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **OpenAI tool calling** | ✅ | `generate_flashcards` tool defined, `tool_choice` support, response parsing for `tool_calls` |
+| **Client-side context hints** | ✅ | CTA clicks set `context` field (`'flashcards'`, etc.), server routes based on it |
+| **Expanded Polish keywords** | ✅ | 50+ morphological variants for flashcard intent detection |
+| **unpdf PDF extraction** | ✅ | Replaced `pdfjs-dist` direct import with `unpdf` — fixes Turbopack bundling |
+| **Batch flashcard save** | ✅ | `POST /api/v1/flashcards/batch/create` instead of N sequential POSTs |
+| **Flashcard preview redesign** | ✅ | Scrollable 2-column grid, editable deck name, per-card delete toggle |
+| **3D flip animation** | ✅ | Figma version in session, direction-aware exit (left for Again/Hard, right for Good/Easy) |
+| **Dashboard stats** | ✅ | Drop avg score, add flashcard accuracy with Layers icon, fix API response unwrapping |
+| **File handling fixes** | ✅ | Chunked base64 (stack overflow fix), file data passed through to flashcard flow |
+| **CTA local responses** | ✅ | Greeting clicks show predefined assistant message, no LLM call |
+| **Free scrolling** | ✅ | User can scroll up during streaming, auto-scroll only when at bottom (50px threshold) |
+| **Markdown rendering** | ✅ | Assistant messages rendered via `MarkdownRenderer` when complete, plain text during streaming |
+| **Comprehensive logging** | ✅ | All AI routes log keyword detection, routing, LLM calls, tool calls, parsed results |

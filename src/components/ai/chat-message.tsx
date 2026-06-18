@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import type { ChatMessage as ChatMessageType } from '@/hooks/use-ai-chat';
 import { FlashcardBlock } from './flashcard-block';
 import { ThinkingBlock } from './thinking-block';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -32,7 +33,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
         )}
       >
         {message.file && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-xs text-primary-foreground/80">
             <FileText className="h-3.5 w-3.5" />
             <span>{message.file.name}</span>
           </div>
@@ -43,13 +44,17 @@ export function ChatMessage({ message }: ChatMessageProps) {
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             <span className="text-xs italic">Thinking...</span>
           </div>
-        ) : (
+        ) : isUser ? (
           <div className="whitespace-pre-wrap break-words">
             {message.content}
-            {isStreaming && (
-              <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-primary" />
-            )}
           </div>
+        ) : isStreaming ? (
+          <div className="whitespace-pre-wrap break-words">
+            {message.content}
+            <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-primary" />
+          </div>
+        ) : (
+          <MarkdownRenderer content={message.content} />
         )}
 
         {(isThinking || hasThinkingTraces) && (
