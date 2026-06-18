@@ -1,5 +1,5 @@
-import en from '../src/i18n/messages/en.json';
-import pl from '../src/i18n/messages/pl.json';
+import en from '../../src/i18n/messages/en.json';
+import pl from '../../src/i18n/messages/pl.json';
 
 export const t = (path: string) => {
   const getNested = (obj: Record<string, unknown>, keyPath: string): unknown =>

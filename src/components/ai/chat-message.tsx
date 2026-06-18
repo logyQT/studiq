@@ -59,6 +59,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
         {isFlashcardResult && (isComplete || isError) && Array.isArray(message.result!.data) && (
           <FlashcardBlock
             flashcards={message.result!.data as Array<{ front: string; back: string; topic?: string }>}
+            deckName={message.result!.deckName as string | undefined}
           />
         )}
 

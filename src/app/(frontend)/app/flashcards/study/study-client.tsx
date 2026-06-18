@@ -15,6 +15,7 @@ import { Play, FolderOpen, Tags, BarChart3, BookOpen, Dumbbell, Sparkles } from 
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { Progress } from '@/components/ui/progress';
+import { GRADIENTS, getGradient } from '@/lib/color-utils';
 
 interface Topic {
   id: string;
@@ -39,29 +40,6 @@ interface StudySettings {
   remainingNewCards: number;
   newCardsPerDay: number;
   newCardsIntroduced: number;
-}
-
-const GRADIENTS = [
-  'from-violet-500 to-purple-600',
-  'from-blue-500 to-cyan-500',
-  'from-emerald-500 to-teal-600',
-  'from-orange-500 to-amber-600',
-  'from-pink-500 to-rose-600',
-  'from-indigo-500 to-blue-600',
-  'from-fuchsia-500 to-pink-600',
-  'from-lime-500 to-green-600',
-  'from-red-500 to-orange-500',
-  'from-sky-500 to-indigo-500',
-  'from-yellow-500 to-orange-500',
-  'from-teal-500 to-emerald-600',
-];
-
-function getGradient(id: string) {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = id.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
 }
 
 export default function StudyClient() {
@@ -95,8 +73,8 @@ export default function StudyClient() {
   const isFiltered = selectedTopics.length > 0 || selectedDecks.length > 0;
 
   const displayedCount = isFiltered
-    ? selectedTopics.reduce((sum, id) => sum + ((dueBreakdown?.byTopic[id] ?? 0)), 0) +
-      selectedDecks.reduce((sum, id) => sum + ((dueBreakdown?.byDeck[id] ?? 0)), 0)
+    ? selectedTopics.reduce((sum, id) => sum + (dueBreakdown?.byTopic[id] ?? 0), 0) +
+      selectedDecks.reduce((sum, id) => sum + (dueBreakdown?.byDeck[id] ?? 0), 0)
     : (dueBreakdown?.total ?? 0);
 
   function toggleTopic(id: string) {
@@ -135,7 +113,8 @@ export default function StudyClient() {
 
   const remainingNew = settings?.remainingNewCards ?? 0;
   const newCardsPerDay = settings?.newCardsPerDay ?? 20;
-  const newProgress = newCardsPerDay > 0 ? ((newCardsPerDay - remainingNew) / newCardsPerDay) * 100 : 100;
+  const newProgress =
+    newCardsPerDay > 0 ? ((newCardsPerDay - remainingNew) / newCardsPerDay) * 100 : 100;
 
   return (
     <Tabs defaultValue="review" className="space-y-6">
@@ -219,7 +198,9 @@ export default function StudyClient() {
                       </div>
                     ))}
                     {(!topics || topics.length === 0) && (
-                      <p className="text-center py-4 text-muted-foreground text-sm">{t('no_topics')}</p>
+                      <p className="text-center py-4 text-muted-foreground text-sm">
+                        {t('no_topics')}
+                      </p>
                     )}
                   </div>
                 </CardContent>
@@ -249,7 +230,9 @@ export default function StudyClient() {
                       </div>
                     ))}
                     {(!decks || decks.length === 0) && (
-                      <p className="text-center py-4 text-muted-foreground text-sm">{t('no_decks')}</p>
+                      <p className="text-center py-4 text-muted-foreground text-sm">
+                        {t('no_decks')}
+                      </p>
                     )}
                   </div>
                 </CardContent>
@@ -342,15 +325,15 @@ export default function StudyClient() {
                 <>
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">{t('remaining_label', { remaining: remainingNew, total: newCardsPerDay })}</span>
+                      <span className="text-muted-foreground">
+                        {t('remaining_label', { remaining: remainingNew, total: newCardsPerDay })}
+                      </span>
                       <span className="font-medium">{Math.round(newProgress)}%</span>
                     </div>
                     <Progress value={newProgress} />
                   </div>
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">
-                      {t('remaining_desc')}
-                    </p>
+                    <p className="text-sm text-muted-foreground">{t('remaining_desc')}</p>
                     <Button onClick={startLearning}>
                       <Play className="mr-2 h-4 w-4" /> {t('start_learning')}
                     </Button>
@@ -370,7 +353,7 @@ export default function StudyClient() {
         <p className="text-muted-foreground">{t('deck_picker_desc')}</p>
 
         {isLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 6 }).map((_, i) => (
               <Card key={i} className="overflow-hidden p-0">
                 <Skeleton className="h-20 w-full rounded-none" />
@@ -386,25 +369,23 @@ export default function StudyClient() {
             ))}
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {decks?.map((deck) => {
               const gradient = getGradient(deck.id);
               return (
                 <Card
                   key={deck.id}
-                  className="group overflow-hidden cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:border-primary/50 p-0"
+                  className="group cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:border-primary/50"
                   onClick={() => startCram(deck.id)}
                 >
-                  <div
-                    className={`h-20 bg-gradient-to-br ${gradient} flex items-center justify-center`}
-                  >
-                    <span className="text-2xl font-bold text-white/90">
-                      {deck.name.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
                   <div className="p-5 pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="min-w-0">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={`h-10 w-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center shrink-0`}
+                      >
+                        <FolderOpen className="h-5 w-5 text-white" />
+                      </div>
+                      <div className="min-w-0 flex-1">
                         <h3 className="text-lg font-semibold truncate">{deck.name}</h3>
                         {deck.description && (
                           <p className="text-sm text-muted-foreground line-clamp-2 mt-0.5">

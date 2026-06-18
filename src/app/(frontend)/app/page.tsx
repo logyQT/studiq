@@ -34,8 +34,8 @@ export default function AppOverviewPage() {
   useEffect(() => {
     fetch('/api/v1/stats/student')
       .then((r) => r.json())
-      .then((data) => {
-        setStats(data);
+      .then((res) => {
+        setStats(res.data);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -52,23 +52,22 @@ export default function AppOverviewPage() {
           variant="blue"
         />
         <StatCard
-          title={t('avg_score')}
-          value={loading ? '...' : `${stats?.avgScore ?? 0}%`}
-          icon={BookOpen}
-          variant="emerald"
-          progress={loading ? undefined : (stats?.avgScore ?? 0)}
-        />
-        <StatCard
-          title={t('flashcards_practiced')}
-          value={loading ? '...' : (stats?.flashcardsPracticed ?? 0)}
-          icon={Brain}
-          variant="violet"
-        />
-        <StatCard
           title={t('questions_created')}
           value={loading ? '...' : (stats?.totalQuestionsCreated ?? 0)}
           icon={ListPlus}
           variant="amber"
+        />
+        <StatCard
+          title={t('flashcards_practiced')}
+          value={loading ? '...' : (stats?.flashcardsPracticed ?? 0)}
+          icon={Layers}
+          variant="violet"
+        />
+        <StatCard
+          title={t('flashcard_accuracy')}
+          value={loading ? '...' : `${stats?.flashcardAccuracy ?? 0}%`}
+          icon={Brain}
+          variant="rose"
         />
       </div>
 
@@ -145,7 +144,9 @@ export default function AppOverviewPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-sm text-foreground">{t('quick_practice')}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{t('flashcard_actions_desc')}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {t('flashcard_actions_desc')}
+                  </p>
                 </div>
                 <ArrowRight className="h-4 w-4 text-primary group-hover:translate-x-1 transition-all duration-200 shrink-0" />
               </div>

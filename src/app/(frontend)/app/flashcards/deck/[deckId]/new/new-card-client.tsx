@@ -28,7 +28,7 @@ export default function NewCardClient({ deckId }: NewCardClientProps) {
   const [back, setBack] = useState('');
   const [topicIds, setTopicIds] = useState<string[]>([]);
 
-  const deck = queryClient.getQueryData<Deck>(flashcardKeys.decks.detail(deckId));
+  const deck = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all)?.find(d => d.id === deckId);
 
   useEffect(() => {
     setDynamicSegments([

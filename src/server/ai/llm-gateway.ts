@@ -3,6 +3,7 @@ import { getModelsConfig } from '@/server/config/models.config';
 import { AppError } from '@/lib/errors';
 import type { RequestContext } from '@/lib/request-context';
 import type { LLMGatewayRequest, LLMGatewayResponse, GatewayStreamCallbacks } from './ai.types';
+import type { GenerateChatResult } from '@/server/providers/LLMProvider';
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -22,14 +23,29 @@ export async function callLLM(req: LLMGatewayRequest, _ctx: RequestContext): Pro
   }
 
   try {
-    const result = await provider.generateChat(req.prompt, req.systemPrompt);
+    const result = await provider.generateChat(req.prompt, req.systemPrompt, req.tools, req.toolChoice);
 
+    if (typeof result === 'string') {
+      return {
+        content: result,
+        usage: {
+          inputTokens: estimateTokens((req.systemPrompt || '') + req.prompt),
+          outputTokens: estimateTokens(result),
+          totalTokens: estimateTokens((req.systemPrompt || '') + req.prompt + result),
+          provider: providerName,
+          model,
+        },
+      };
+    }
+
+    const chatResult = result as GenerateChatResult;
     return {
-      content: result,
+      content: chatResult.content,
+      toolCalls: chatResult.toolCalls,
       usage: {
         inputTokens: estimateTokens((req.systemPrompt || '') + req.prompt),
-        outputTokens: estimateTokens(result),
-        totalTokens: estimateTokens((req.systemPrompt || '') + req.prompt + result),
+        outputTokens: estimateTokens(chatResult.content),
+        totalTokens: estimateTokens((req.systemPrompt || '') + req.prompt + chatResult.content),
         provider: providerName,
         model,
       },

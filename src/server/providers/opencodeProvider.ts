@@ -1,5 +1,6 @@
-import { LLMProvider, GeneratedFlashcard, FLASHCARD_PROMPT, parseJsonResponse, type StreamCallbacks } from './LLMProvider';
+import { LLMProvider, GeneratedFlashcard, FLASHCARD_PROMPT, parseJsonResponse, type StreamCallbacks, type GenerateChatResult } from './LLMProvider';
 import type { ModelsConfig } from '@/server/config/models.config';
+import type { ToolDefinition, ToolCall } from '@/server/ai/ai.types';
 
 const LOG_PREFIX = '[OpenCodeProvider]';
 
@@ -55,10 +56,25 @@ export class OpenCodeProvider implements LLMProvider {
     return parseJsonResponse(content);
   }
 
-  async generateChat(prompt: string, systemPrompt?: string): Promise<string> {
-    const messages: Array<{ role: string; content: string }> = [];
+  async generateChat(
+    prompt: string,
+    systemPrompt?: string,
+    tools?: ToolDefinition[],
+    toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } },
+  ): Promise<GenerateChatResult | string> {
+    const messages: Array<Record<string, unknown>> = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
     messages.push({ role: 'user', content: prompt });
+
+    const body: Record<string, unknown> = {
+      model: this.modelName,
+      messages,
+    };
+
+    if (tools && tools.length > 0) {
+      body.tools = tools;
+      if (toolChoice) body.tool_choice = toolChoice;
+    }
 
     const res = await fetch(this.baseUrl, {
       method: 'POST',
@@ -66,10 +82,7 @@ export class OpenCodeProvider implements LLMProvider {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.apiKey}`,
       },
-      body: JSON.stringify({
-        model: this.modelName,
-        messages,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
@@ -78,7 +91,24 @@ export class OpenCodeProvider implements LLMProvider {
     }
 
     const data = await res.json();
-    return data.choices?.[0]?.message?.content || '';
+    const message = data.choices?.[0]?.message;
+
+    if (message?.tool_calls?.length > 0) {
+      const toolCalls: ToolCall[] = message.tool_calls.map((tc: Record<string, unknown>) => ({
+        id: String(tc.id ?? ''),
+        type: 'function' as const,
+        function: {
+          name: String((tc.function as Record<string, unknown>)?.name ?? ''),
+          arguments: String((tc.function as Record<string, unknown>)?.arguments ?? ''),
+        },
+      }));
+      return {
+        content: message.content || '',
+        toolCalls,
+      };
+    }
+
+    return message?.content || '';
   }
 
   async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<string> {

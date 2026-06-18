@@ -15,23 +15,7 @@ import { ViewOnlyFlashcardContextMenu } from '@/components/flashcards/view-only-
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import type { Flashcard, Topic } from '@/types/flashcards';
 import { useTranslations } from 'next-intl';
-
-const TOPIC_COLORS = [
-  'bg-red-500',
-  'bg-blue-500',
-  'bg-green-500',
-  'bg-yellow-500',
-  'bg-purple-500',
-  'bg-pink-500',
-  'bg-indigo-500',
-  'bg-teal-500',
-  'bg-orange-500',
-  'bg-cyan-500',
-];
-
-function getTopicColor(name: string) {
-  return TOPIC_COLORS[name.length % TOPIC_COLORS.length];
-}
+import { getTopicColor } from '@/lib/color-utils';
 
 interface FlashcardCardProps {
   fc: Flashcard;
@@ -43,7 +27,6 @@ interface FlashcardCardProps {
   t: ReturnType<typeof useTranslations>;
   selected?: boolean;
   selectable?: boolean;
-  highlighted?: boolean;
   onToggleSelect?: (id: string) => void;
   onFlip: (id: string) => void;
   onEdit: (fc: Flashcard) => void;
@@ -65,7 +48,6 @@ export const FlashcardCard = memo(function FlashcardCard({
   t,
   selected,
   selectable,
-  highlighted,
   onToggleSelect,
   onFlip,
   onEdit,
@@ -85,7 +67,7 @@ export const FlashcardCard = memo(function FlashcardCard({
       id={`fc-${fc.id}`}
       className={`group relative min-h-48 max-h-96 overflow-hidden cursor-pointer transition-shadow duration-300 hover:shadow-lg ${
         isFlipped ? `bg-gradient-to-br ${gradient}` : ''
-      } ${highlighted ? 'ring-2 ring-primary/70 ring-offset-2 animate-pulse' : ''}`}
+      }`}
       onClick={() => {
         if (selectable) {
           onToggleSelect?.(fc.id);

@@ -6,7 +6,7 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  result?: { type: string; data: unknown };
+  result?: { type: string; data: unknown; deckName?: string };
   status: 'sending' | 'streaming' | 'thinking' | 'complete' | 'error';
   error?: string;
   file?: { name: string; mimeType: string; data: string };
@@ -24,16 +24,10 @@ export interface UseAiChatReturn {
   messages: ChatMessage[];
   usage: UsageInfo | null;
   isStreaming: boolean;
-  sendMessage: (text: string, file?: File) => Promise<void>;
+  sendMessage: (text: string, file?: File, context?: string) => Promise<void>;
+  sendLocalResponse: (userText: string, assistantText: string) => void;
   clearChat: () => void;
   abort: () => void;
-}
-
-const FLASHCARD_KEYWORDS = ['flashcard', 'fiszki', 'fiszk', 'notatki', 'mnemonic'];
-
-function isFlashcardIntent(text: string): boolean {
-  const lower = text.toLowerCase();
-  return FLASHCARD_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
 function generateUUID(): string {
@@ -49,7 +43,7 @@ export function useAiChat(): UseAiChatReturn {
   const [isStreaming, setIsStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
-  const sendMessage = useCallback(async (text: string, file?: File) => {
+  const sendMessage = useCallback(async (text: string, file?: File, context?: string) => {
     abortRef.current?.abort();
     const abortController = new AbortController();
     abortRef.current = abortController;
@@ -75,276 +69,174 @@ export function useAiChat(): UseAiChatReturn {
     setIsStreaming(true);
 
     try {
-      if (!isFlashcardIntent(text) || file) {
-        // --- NORMAL CHAT FLOW ---
-        const history = messages
-          .filter((m) => m.role === 'user' || m.role === 'assistant')
-          .filter((m) => m.id !== assistantMsg.id && m.id !== userMsg.id)
-          .filter((m) => m.content.length > 0)
-          .map((m) => ({ role: m.role, content: m.content }));
+      const history = messages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .filter((m) => m.id !== assistantMsg.id && m.id !== userMsg.id)
+        .filter((m) => m.content.length > 0)
+        .map((m) => ({ role: m.role, content: m.content }));
 
-        const body: Record<string, unknown> = { text };
-        if (history.length > 0) body.messages = history;
-        if (file) {
-          const buffer = await file.arrayBuffer();
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-          body.file = { data: base64, mimeType: file.type };
+      const body: Record<string, unknown> = { text };
+      if (context) body.context = context;
+      if (history.length > 0) body.messages = history;
+      if (file) {
+        const buffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        const chunkSize = 8192;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
         }
+        body.file = { data: btoa(binary), mimeType: file.type };
+      }
 
-        const res = await fetch('/api/v1/ai/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-          signal: abortController.signal,
-        });
+      const res = await fetch('/api/v1/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: abortController.signal,
+      });
 
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: 'UNKNOWN' }));
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsg.id
-                ? { ...m, status: 'error', error: err.error || `HTTP ${res.status}` }
-                : m,
-            ),
-          );
-          setIsStreaming(false);
-          return;
-        }
-
-        const reader = res.body?.getReader();
-        if (!reader) {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsg.id
-                ? { ...m, status: 'error', error: 'Response body is not readable' }
-                : m,
-            ),
-          );
-          setIsStreaming(false);
-          return;
-        }
-
-        const decoder = new TextDecoder();
-        let sseBuffer = '';
-
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'UNKNOWN' }));
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === assistantMsg.id ? { ...m, status: 'streaming' } : m,
+            m.id === assistantMsg.id
+              ? { ...m, status: 'error', error: err.error || `HTTP ${res.status}` }
+              : m,
           ),
         );
+        setIsStreaming(false);
+        return;
+      }
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          sseBuffer += decoder.decode(value, { stream: true });
-          const lines = sseBuffer.split('\n');
-          sseBuffer = lines.pop() || '';
-
-          let currentEvent = '';
-          let currentData = '';
-
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              currentEvent = line.slice(7).trim();
-            } else if (line.startsWith('data: ')) {
-              currentData = line.slice(6).trim();
-            } else if (line === '' && currentEvent && currentData) {
-              try {
-                const parsed = JSON.parse(currentData);
-
-                switch (currentEvent) {
-                  case 'token': {
-                    const token = parsed.text || parsed.token || '';
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === assistantMsg.id
-                          ? { ...m, content: m.content + token }
-                          : m,
-                      ),
-                    );
-                    break;
-                  }
-                  case 'result': {
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === assistantMsg.id
-                          ? { ...m, result: { type: parsed.type, data: parsed.data } }
-                          : m,
-                      ),
-                    );
-                    break;
-                  }
-                  case 'complete':
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === assistantMsg.id
-                          ? { ...m, status: 'complete', content: m.content || parsed.message || '' }
-                          : m,
-                      ),
-                    );
-                    break;
-                  case 'usage':
-                    setUsage({
-                      current: parsed.current ?? 0,
-                      limit: parsed.limit ?? 0,
-                      plan: parsed.plan ?? '',
-                      resetsAt: parsed.resetsAt ?? '',
-                    });
-                    break;
-                  case 'error':
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === assistantMsg.id
-                          ? { ...m, status: 'error', error: parsed.message || 'Request failed' }
-                          : m,
-                      ),
-                    );
-                    break;
-                }
-              } catch {
-                // skip malformed events
-              }
-
-              currentEvent = '';
-              currentData = '';
-            }
-          }
-        }
-
-        // If we exited the loop without a 'complete' event, mark as complete
-        setMessages((prev) => {
-          const found = prev.find((m) => m.id === assistantMsg.id);
-          if (found && found.status === 'streaming') {
-            return prev.map((m) =>
-              m.id === assistantMsg.id ? { ...m, status: 'complete' } : m,
-            );
-          }
-          return prev;
-        });
-      } else {
-        // --- FLASHCARD GENERATION FLOW ---
+      const reader = res.body?.getReader();
+      if (!reader) {
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === assistantMsg.id ? { ...m, status: 'thinking' } : m,
+            m.id === assistantMsg.id
+              ? { ...m, status: 'error', error: 'Response body is not readable' }
+              : m,
           ),
         );
+        setIsStreaming(false);
+        return;
+      }
 
-        const res = await fetch('/api/v1/ai/flashcard-gen', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text }),
-          signal: abortController.signal,
-        });
+      const decoder = new TextDecoder();
+      let sseBuffer = '';
 
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: 'UNKNOWN' }));
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsg.id
-                ? { ...m, status: 'error', error: err.error || `HTTP ${res.status}` }
-                : m,
-            ),
-          );
-          setIsStreaming(false);
-          return;
-        }
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMsg.id ? { ...m, status: 'streaming' } : m,
+        ),
+      );
 
-        const reader = res.body?.getReader();
-        if (!reader) {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsg.id
-                ? { ...m, status: 'error', error: 'Response body is not readable' }
-                : m,
-            ),
-          );
-          setIsStreaming(false);
-          return;
-        }
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-        const decoder = new TextDecoder();
-        let sseBuffer = '';
+        sseBuffer += decoder.decode(value, { stream: true });
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop() || '';
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        let currentEvent = '';
+        let currentData = '';
 
-          sseBuffer += decoder.decode(value, { stream: true });
-          const lines = sseBuffer.split('\n');
-          sseBuffer = lines.pop() || '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            currentData = line.slice(6).trim();
+          } else if (line === '' && currentEvent && currentData) {
+            try {
+              const parsed = JSON.parse(currentData);
 
-          let currentEvent = '';
-          let currentData = '';
-
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              currentEvent = line.slice(7).trim();
-            } else if (line.startsWith('data: ')) {
-              currentData = line.slice(6).trim();
-            } else if (line === '' && currentEvent && currentData) {
-              try {
-                const parsed = JSON.parse(currentData);
-
-                switch (currentEvent) {
-                  case 'think': {
-                    const trace = parsed.trace || '';
-                    if (trace) {
-                      setMessages((prev) =>
-                        prev.map((m) =>
-                          m.id === assistantMsg.id
-                            ? { ...m, thinkingTraces: [...m.thinkingTraces, trace] }
-                            : m,
-                        ),
-                      );
-                    }
-                    break;
-                  }
-                  case 'flashcards': {
-                    const cards = Array.isArray(parsed) ? parsed : [];
-                    const mappedCards = cards.map((c: Record<string, unknown>) => ({
-                      front: String(c.question ?? c.front ?? ''),
-                      back: String(c.answer ?? c.back ?? ''),
-                      topic: String(c.suggestedTopic ?? c.topic ?? '') || undefined,
-                    }));
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === assistantMsg.id
-                          ? { ...m, result: { type: 'flashcards', data: mappedCards } }
-                          : m,
-                      ),
-                    );
-                    break;
-                  }
-                  case 'complete':
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === assistantMsg.id
-                          ? { ...m, status: 'complete', content: '' }
-                          : m,
-                      ),
-                    );
-                    break;
-                  case 'error':
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === assistantMsg.id
-                          ? { ...m, status: 'error', error: parsed.message || 'Flashcard generation failed' }
-                          : m,
-                      ),
-                    );
-                    break;
+              switch (currentEvent) {
+                case 'token': {
+                  const token = parsed.text || parsed.token || '';
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMsg.id
+                        ? { ...m, content: m.content + token }
+                        : m,
+                    ),
+                  );
+                  break;
                 }
-              } catch {
-                // skip malformed events
+                case 'flashcards': {
+                  const deckName = parsed.deckName || 'AI Generated Flashcards';
+                  const cards = Array.isArray(parsed.flashcards) ? parsed.flashcards : Array.isArray(parsed) ? parsed : [];
+                  const mappedCards = cards.map((c: Record<string, unknown>) => ({
+                    front: String(c.front ?? c.question ?? ''),
+                    back: String(c.back ?? c.answer ?? ''),
+                    topic: String(c.topic ?? c.suggestedTopic ?? '') || undefined,
+                  }));
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMsg.id
+                        ? { ...m, result: { type: 'flashcards', data: mappedCards, deckName } }
+                        : m,
+                    ),
+                  );
+                  break;
+                }
+                case 'result': {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMsg.id
+                        ? { ...m, result: { type: parsed.type, data: parsed.data } }
+                        : m,
+                    ),
+                  );
+                  break;
+                }
+                case 'complete':
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMsg.id
+                        ? { ...m, status: 'complete', content: m.content || parsed.message || '' }
+                        : m,
+                    ),
+                  );
+                  break;
+                case 'usage':
+                  setUsage({
+                    current: parsed.current ?? 0,
+                    limit: parsed.limit ?? 0,
+                    plan: parsed.plan ?? '',
+                    resetsAt: parsed.resetsAt ?? '',
+                  });
+                  break;
+                case 'error':
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMsg.id
+                        ? { ...m, status: 'error', error: parsed.message || 'Request failed' }
+                        : m,
+                    ),
+                  );
+                  break;
               }
-
-              currentEvent = '';
-              currentData = '';
+            } catch {
+              // skip malformed events
             }
+
+            currentEvent = '';
+            currentData = '';
           }
         }
       }
+
+      // If we exited the loop without a 'complete' event, mark as complete
+      setMessages((prev) => {
+        const found = prev.find((m) => m.id === assistantMsg.id);
+        if (found && found.status === 'streaming') {
+          return prev.map((m) =>
+            m.id === assistantMsg.id ? { ...m, status: 'complete' } : m,
+          );
+        }
+        return prev;
+      });
     } catch (error) {
       if (abortController.signal.aborted) {
         setIsStreaming(false);
@@ -362,6 +254,24 @@ export function useAiChat(): UseAiChatReturn {
     }
   }, [messages]);
 
+  const sendLocalResponse = useCallback((userText: string, assistantText: string) => {
+    const userMsg: ChatMessage = {
+      id: generateUUID(),
+      role: 'user',
+      content: userText,
+      status: 'complete',
+      thinkingTraces: [],
+    };
+    const assistantMsg: ChatMessage = {
+      id: generateUUID(),
+      role: 'assistant',
+      content: assistantText,
+      status: 'complete',
+      thinkingTraces: [],
+    };
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+  }, []);
+
   const clearChat = useCallback(() => {
     abortRef.current?.abort();
     setMessages([]);
@@ -373,5 +283,5 @@ export function useAiChat(): UseAiChatReturn {
     abortRef.current?.abort();
   }, []);
 
-  return { messages, usage, isStreaming, sendMessage, clearChat, abort };
+  return { messages, usage, isStreaming, sendMessage, sendLocalResponse, clearChat, abort };
 }

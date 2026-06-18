@@ -1,3 +1,21 @@
+export type ToolDefinition = {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+};
+
+export type ToolCall = {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+};
+
 export type LLMGatewayRequest = {
   prompt: string;
   systemPrompt?: string;
@@ -6,6 +24,8 @@ export type LLMGatewayRequest = {
   model?: string;
   responseFormat?: 'text' | 'json';
   maxTokens?: number;
+  tools?: ToolDefinition[];
+  toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
 };
 
 export type TokenUsage = {
@@ -18,6 +38,7 @@ export type TokenUsage = {
 
 export type LLMGatewayResponse = {
   content: string;
+  toolCalls?: ToolCall[];
   usage: TokenUsage;
 };
 

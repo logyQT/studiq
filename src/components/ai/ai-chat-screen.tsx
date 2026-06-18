@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { AnimatePresence } from 'motion/react';
+import { useTranslations } from 'next-intl';
 import { useAiChat } from '@/hooks/use-ai-chat';
 import { useAuth } from '@/components/providers';
 import { cn } from '@/lib/utils';
@@ -10,14 +11,38 @@ import { AiChatInput } from './ai-chat-input';
 import { ChatHistory } from './chat-history';
 import { UsageBadge } from './usage-badge';
 
+const CTA_CONTEXT_MAP: Record<string, string> = {};
+
 export function AiChatScreen() {
-  const { messages, usage, isStreaming, sendMessage, abort } = useAiChat();
+  const { messages, usage, isStreaming, sendMessage, sendLocalResponse, abort } = useAiChat();
   const { user } = useAuth();
+  const t = useTranslations('AiChatPage');
   const [file, setFile] = useState<File | null>(null);
+  const [activeContext, setActiveContext] = useState<string | null>(null);
 
   const isActive = messages.length > 0 || isStreaming;
 
   const firstName = user?.user_metadata?.name?.split(' ')[0] ?? user?.email?.split('@')[0];
+
+  const handleSuggestion = (text: string) => {
+    const responses: Record<string, string> = {
+      [t('suggestion_1')]: t('cta_response_study'),
+      [t('suggestion_2')]: t('cta_response_flashcards'),
+      [t('suggestion_3')]: t('cta_response_summarize'),
+      [t('suggestion_4')]: t('cta_response_explain'),
+    };
+    const contextMap: Record<string, string> = {
+      [t('suggestion_2')]: 'flashcards',
+    };
+    sendLocalResponse(text, responses[text] || t('cta_response_default'));
+    setActiveContext(contextMap[text] || null);
+  };
+
+  const handleSend = async (text: string, f?: File) => {
+    await sendMessage(text, f, activeContext ?? undefined);
+    setFile(null);
+    setActiveContext(null);
+  };
 
   return (
     <div className="flex flex-1 flex-col">
@@ -40,13 +65,13 @@ export function AiChatScreen() {
             {!isActive && (
               <AiChatGreeting
                 userName={firstName}
-                onSuggestion={(text) => sendMessage(text)}
+                onSuggestion={handleSuggestion}
               />
             )}
           </AnimatePresence>
 
           <AiChatInput
-            onSend={(text, f) => sendMessage(text, f)}
+            onSend={handleSend}
             isStreaming={isStreaming}
             onAbort={abort}
             file={file}

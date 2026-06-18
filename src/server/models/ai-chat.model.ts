@@ -6,7 +6,8 @@ export const ChatMessageSchema = z.object({
 });
 
 export const ChatRequestSchema = z.object({
-  text: z.string().min(1).max(10000),
+  text: z.string().max(10000),
+  context: z.string().optional(),
   messages: z.array(ChatMessageSchema).max(100).optional(),
   file: z.object({
     data: z.string().min(1),

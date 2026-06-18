@@ -30,16 +30,7 @@ import { useState, useCallback } from 'react';
 import { apiPost, apiPut } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { flashcardKeys } from '@/lib/query-keys';
-
-const TOPIC_COLORS = [
-  'bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500',
-  'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500',
-  'bg-orange-500', 'bg-cyan-500',
-];
-
-function getTopicColor(name: string) {
-  return TOPIC_COLORS[name.length % TOPIC_COLORS.length];
-}
+import { getTopicColor } from '@/lib/color-utils';
 
 export interface DialogsState {
   deleteId: string | null;

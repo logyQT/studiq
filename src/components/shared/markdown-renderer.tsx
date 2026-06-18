@@ -8,7 +8,6 @@ import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
-import { AudioPlayer } from '@/components/shared/audio-player';
 import { CodeBlock } from '@/components/shared/code-block';
 import 'katex/dist/katex.min.css';
 
@@ -93,7 +92,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, classN
             src ? <img src={src} alt={alt ?? ''} className="block max-w-full max-h-48 h-auto rounded-lg mx-auto" /> : null,
           hr: () => <hr className="my-2 border-border" />,
           audio: ({ src }) =>
-            typeof src === 'string' ? <AudioPlayer src={src} /> : null,
+            typeof src === 'string' ? <audio controls src={src} className="w-full min-w-96 h-9 my-2 rounded-lg" /> : null,
         }}
       >
         {content}

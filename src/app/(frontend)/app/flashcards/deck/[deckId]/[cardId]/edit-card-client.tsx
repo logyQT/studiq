@@ -32,7 +32,7 @@ export default function EditCardClient({ deckId, cardId }: EditCardClientProps) 
   const [topicIds, setTopicIds] = useState<string[]>([]);
   const [initialized, setInitialized] = useState(false);
 
-  const deck = queryClient.getQueryData<Deck>(flashcardKeys.decks.detail(deckId));
+  const deck = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all)?.find(d => d.id === deckId);
 
   const { data: flashcard, isLoading: flashcardLoading, error: flashcardError } = useApiQuery<Flashcard>({
     queryKey: [...flashcardKeys.all, cardId],

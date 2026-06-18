@@ -8,7 +8,6 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +16,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { SquarePen, Trash2, Pencil, ArrowRight, Eye, Upload, CheckSquare, CheckCheck } from 'lucide-react';
+import {
+  SquarePen,
+  ArrowRight,
+  Eye,
+  Upload,
+  CheckSquare,
+  CheckCheck,
+  Plus,
+  FolderOpen,
+  MoreVertical,
+} from 'lucide-react';
+import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -31,31 +41,15 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
 import { UserRole } from '@/types';
 import { ImportDialog } from '@/components/flashcards/import-dialog';
+import { DeckContextMenu } from '@/components/flashcards/deck-context-menu';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+} from '@/components/ui/dropdown-menu';
 import { DeckBulkActions } from '@/components/flashcards/deck-bulk-actions';
 import { SpeedDial } from '@/components/shared/speed-dial';
-
-const GRADIENTS = [
-  'from-violet-500 to-purple-600',
-  'from-blue-500 to-cyan-500',
-  'from-emerald-500 to-teal-600',
-  'from-orange-500 to-amber-600',
-  'from-pink-500 to-rose-600',
-  'from-indigo-500 to-blue-600',
-  'from-fuchsia-500 to-pink-600',
-  'from-lime-500 to-green-600',
-  'from-red-500 to-orange-500',
-  'from-sky-500 to-indigo-500',
-  'from-yellow-500 to-orange-500',
-  'from-teal-500 to-emerald-600',
-];
-
-function getGradient(id: string) {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = id.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
-}
+import { GRADIENTS, getGradient } from '@/lib/color-utils';
 
 interface DeckManagementScreenProps {
   apiBase: string;
@@ -110,8 +104,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     },
   });
   const batchDeleteDecks = useApiMutation({
-    mutationFn: (data: { ids: string[] }) =>
-      apiPost('/api/v1/flashcards/decks/batch/delete', data),
+    mutationFn: (data: { ids: string[] }) => apiPost('/api/v1/flashcards/decks/batch/delete', data),
     invalidateKeys: [flashcardKeys.decks.all],
   });
 
@@ -203,10 +196,6 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     setIsSelecting(false);
   }
 
-  function handleExportAll() {
-    window.open('/api/v1/flashcards/export/csv', '_blank');
-  }
-
   function handleBatchExportSelection() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
@@ -238,7 +227,6 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
 
   return (
     <div className="space-y-6">
-
       {isSelecting && decks && decks.length > 0 && (
         <div className="flex items-center gap-2 py-1">
           <Button
@@ -257,7 +245,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 6 }).map((_, i) => (
+          {Array.from({ length: 8 }).map((_, i) => (
             <Card key={i} className="overflow-hidden p-0">
               <Skeleton className="h-20 w-full rounded-none" />
               <div className="p-5 space-y-3">
@@ -278,7 +266,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
             return (
               <Card
                 key={deck.id}
-                className={`group overflow-hidden cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:border-primary/50 p-0 ${selectedIds.has(deck.id) ? 'ring-2 ring-primary' : ''}`}
+                className={`group cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:border-primary/50 ${selectedIds.has(deck.id) ? 'ring-2 ring-primary' : ''}`}
                 onClick={() => {
                   if (isSelecting) {
                     handleToggleSelect(deck.id);
@@ -287,61 +275,66 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
                   }
                 }}
               >
-                <div
-                  className={`h-20 bg-gradient-to-br ${gradient} flex items-center justify-center relative`}
-                >
-                  <span className="text-2xl font-bold text-white/90">
-                    {deck.name.charAt(0).toUpperCase()}
-                  </span>
-                  {isSelecting && (
-                    <div className="absolute left-2 top-2 z-10">
-                      <Checkbox
-                        checked={selectedIds.has(deck.id)}
-                        onCheckedChange={() => handleToggleSelect(deck.id)}
-                        className="h-5 w-5 bg-background/80"
-                      />
-                    </div>
-                  )}
-                  {!can(role, 'deck.update', deck.created_by, user?.id) && (
-                    <Eye className="absolute bottom-2 right-2 h-4 w-4 text-white/50" />
-                  )}
-                </div>
                 <div className="p-5 pb-3">
                   <div className="flex items-start justify-between">
-                    <div className="min-w-0">
-                      <h3 className="text-lg font-semibold truncate">{deck.name}</h3>
-                      {deck.description && (
-                        <p className="text-sm text-muted-foreground line-clamp-2 mt-0.5">
-                          {deck.description}
-                        </p>
-                      )}
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div className="relative shrink-0">
+                        <div
+                          className={`h-10 w-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center`}
+                        >
+                          <FolderOpen className="h-5 w-5 text-white" />
+                          {!can(role, 'deck.update', deck.created_by, user?.id) && (
+                            <Eye className="absolute -bottom-1 -right-1 h-3 w-3 text-white/50" />
+                          )}
+                        </div>
+                        {isSelecting && (
+                          <div className="absolute -top-2 -left-2 z-10">
+                            <Checkbox
+                              checked={selectedIds.has(deck.id)}
+                              onCheckedChange={() => handleToggleSelect(deck.id)}
+                              className="h-4 w-4 bg-background/80"
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-lg font-semibold truncate">{deck.name}</h3>
+                        {deck.description && (
+                          <p className="text-sm text-muted-foreground line-clamp-2 mt-0.5">
+                            {deck.description}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    {can(role, 'deck.update', deck.created_by, user?.id) && !isSelecting && (
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          aria-label={t('common_edit')}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEdit(deck);
-                          }}
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          aria-label={t('common_delete')}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteId(deck.id);
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3 text-destructive" />
-                        </Button>
+                    {!isSelecting && (
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                              <MoreVertical className="h-3 w-3" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DeckContextMenu
+                              t={t}
+                              canUpdate={can(role, 'deck.update', deck.created_by, user?.id)}
+                              canDelete={can(role, 'deck.delete', deck.created_by, user?.id)}
+                              onSelect={() => {
+                                setIsSelecting(true);
+                                handleToggleSelect(deck.id);
+                              }}
+                              onEdit={() => openEdit(deck)}
+                              onDelete={() => setDeleteId(deck.id)}
+                              onImport={() => setImportOpen(true)}
+                              onExport={() =>
+                                window.open(
+                                  `/api/v1/flashcards/export/csv?deckIds=${deck.id}`,
+                                  '_blank',
+                                )
+                              }
+                            />
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     )}
                   </div>
@@ -366,38 +359,62 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
             );
           })}
           {(!decks || decks.length === 0) && (
-            <div className="col-span-full text-center py-12 text-muted-foreground">
-              {t('no_decks')}
-            </div>
+            <Empty className="col-span-full">
+              <EmptyMedia>
+                <FolderOpen className="h-10 w-10 text-muted-foreground" />
+              </EmptyMedia>
+              <EmptyTitle>{t('no_decks')}</EmptyTitle>
+              <EmptyDescription>
+                <Button variant="outline" size="sm" onClick={openCreate}>
+                  <Plus className="mr-1.5 h-4 w-4" /> {t('new_deck')}
+                </Button>
+              </EmptyDescription>
+            </Empty>
           )}
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setTimeout(resetForm, 200);
+        }}
+      >
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? t('edit_title') : t('new_deck_title')}</DialogTitle>
             <DialogDescription>{editing ? t('edit_desc') : t('new_deck_desc')}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="deck-name">{t('name_label')}</Label>
-              <Input
-                id="deck-name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder={t('name_placeholder')}
-              />
-            </div>
-            <div>
-              <Label htmlFor="deck-description">{t('description_label')}</Label>
-              <Textarea
-                id="deck-description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder={t('description_placeholder')}
-                rows={2}
-              />
+          <div className="py-4">
+            <Card className="p-5 pb-3">
+              <div className="flex items-start gap-3">
+                <div
+                  className={`h-10 w-10 rounded-lg bg-gradient-to-br ${editing ? getGradient(editing.id) : GRADIENTS[0]} flex items-center justify-center shrink-0`}
+                >
+                  <FolderOpen className="h-5 w-5 text-white" />
+                </div>
+                <div className="flex-1 space-y-3">
+                  <Input
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder={t('name_placeholder')}
+                    className="text-lg font-semibold h-auto py-0 px-0 border-0 border-b rounded-none focus-visible:ring-0 focus-visible:border-primary"
+                  />
+                  <Textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder={t('description_placeholder')}
+                    rows={2}
+                    className="text-sm text-muted-foreground resize-none px-0 border-0 border-b rounded-none focus-visible:ring-0 focus-visible:border-primary"
+                  />
+                </div>
+              </div>
+            </Card>
+            <div className="mt-3">
+              <Badge variant="secondary">
+                {t('flashcards_count', { count: editing?.flashcard_count ?? 0 })}
+              </Badge>
             </div>
           </div>
           <DialogFooter>
@@ -435,11 +452,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         t={t}
       />
 
-      <ImportDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        t={t}
-      />
+      <ImportDialog open={importOpen} onOpenChange={setImportOpen} t={t} />
 
       {!isSelecting && (
         <SpeedDial

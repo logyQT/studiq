@@ -135,6 +135,7 @@ export default function SessionClient({
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
+  const [exitDirection, setExitDirection] = useState<'left' | 'right'>('right');
   const [correctCount, setCorrectCount] = useState(0);
   const [totalAnswered, setTotalAnswered] = useState(0);
   const [sessionComplete, setSessionComplete] = useState(false);
@@ -370,6 +371,7 @@ export default function SessionClient({
           return;
         }
 
+        setExitDirection(confidenceLevel <= 2 ? 'left' : 'right');
         await advanceCard();
 
         if (!isCram) {
@@ -452,6 +454,14 @@ export default function SessionClient({
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
         setFlipped((prev) => !prev);
+        return;
+      }
+
+      if (e.key === 'p') {
+        const audio = document.querySelector('audio') as HTMLAudioElement | null;
+        if (audio) {
+          audio.paused ? audio.play() : audio.pause();
+        }
         return;
       }
 
@@ -568,28 +578,44 @@ export default function SessionClient({
             </div>
           )}
 
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="wait" custom={exitDirection}>
             <motion.div
               key={currentCard.id}
-              initial={{ rotate: -10, y: 60, opacity: 0 }}
-              animate={{ rotate: 0, y: 0, opacity: 1 }}
-              exit={{
-                rotate: 15,
-                x: 80,
-                opacity: 0,
-                transition: { duration: 0.15, ease: 'easeIn' },
+              custom={exitDirection}
+              variants={{
+                initial: (direction: string) => ({
+                  rotate: -10,
+                  y: 60,
+                  opacity: 0,
+                  transformOrigin: direction === 'left' ? 'left center' : 'right center',
+                }),
+                animate: (direction: string) => ({
+                  rotate: 0,
+                  y: 0,
+                  opacity: 1,
+                  transformOrigin: direction === 'left' ? 'left center' : 'right center',
+                }),
+                exit: (direction: string) => ({
+                  rotate: direction === 'left' ? -15 : 15,
+                  x: direction === 'left' ? -200 : 80,
+                  opacity: 0,
+                  transformOrigin: direction === 'left' ? 'left center' : 'right center',
+                  transition: { duration: direction === 'left' ? 0.2 : 0.15, ease: 'easeIn' },
+                }),
               }}
+              initial="initial"
+              animate="animate"
+              exit="exit"
               transition={{
                 type: 'spring',
                 stiffness: 300,
                 damping: 25,
               }}
-              style={{ transformOrigin: 'right center' }}
             >
               <FlashcardFlip
                 isFlipped={flipped}
                 onClick={() => setFlipped(!flipped)}
-                className="cursor-pointer max-h-[32rem] transition-shadow duration-300 hover:shadow-lg"
+                className="cursor-pointer max-h-[32rem]"
                 front={
                   <>
                     <div className="absolute inset-0 overflow-hidden pointer-events-none z-0 flex items-center justify-center">
@@ -619,7 +645,7 @@ export default function SessionClient({
                       </div>
                     </div>
 
-                    <div className="relative z-10 flex-1 flex items-center justify-center overflow-y-auto text-2xl font-medium w-full px-8">
+                    <div className="relative z-10 flex-1 flex items-center justify-center overflow-y-auto text-2xl font-medium w-full px-8 text-center">
                       <MarkdownRenderer content={currentCard.front} />
                     </div>
                   </>
@@ -634,7 +660,7 @@ export default function SessionClient({
                     ))}
                   </div> */}
                     </div>
-                    <div className="relative z-10 flex-1 flex items-center justify-center overflow-y-auto text-2xl font-medium w-full px-8">
+                    <div className="relative z-10 flex-1 flex items-center justify-center overflow-y-auto text-2xl font-medium w-full px-8 text-center">
                       <MarkdownRenderer content={currentCard.back} />
                     </div>
                   </>
@@ -676,6 +702,7 @@ export default function SessionClient({
         <KeyboardShortcutsPanel
           shortcuts={[
             { key: 'Space', label: t('rating_flip') },
+            { key: 'p', label: t('play_audio') },
             { key: '1', label: t('rating_again') },
             { key: '2', label: t('rating_hard') },
             { key: '3', label: t('rating_good') },

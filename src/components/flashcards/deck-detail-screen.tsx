@@ -2,10 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
 import {
@@ -18,8 +17,10 @@ import {
   CheckCheck,
   Upload,
   Download,
-  Menu,
+  Sparkles,
+  Layers,
 } from 'lucide-react';
+import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { BreadcrumbUpdater } from '@/components/providers/BreadcrumbProvider';
 import { toast } from 'sonner';
 import { useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
@@ -32,39 +33,19 @@ import { FlashcardBulkActions } from '@/components/flashcards/flashcard-bulk-act
 import { TooltipProvider, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 const DeckDetailDialogs = lazy(() =>
-  import('@/components/flashcards/deck-detail-dialogs').then((mod) => ({ default: mod.DeckDetailDialogs }))
+  import('@/components/flashcards/deck-detail-dialogs').then((mod) => ({
+    default: mod.DeckDetailDialogs,
+  })),
 );
 type DialogsState = import('@/components/flashcards/deck-detail-dialogs').DialogsState;
 type DialogsHandlers = import('@/components/flashcards/deck-detail-dialogs').DialogsHandlers;
 import { ImportDialog } from '@/components/flashcards/import-dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { SpeedDial } from '@/components/shared/speed-dial';
 import type { Deck, Flashcard, Topic } from '@/types/flashcards';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
 import { UserRole } from '@/types';
-
-const GRADIENTS = [
-  'from-violet-500 to-purple-600', 'from-blue-500 to-cyan-500',
-  'from-emerald-500 to-teal-600', 'from-orange-500 to-amber-600',
-  'from-pink-500 to-rose-600', 'from-indigo-500 to-blue-600',
-  'from-fuchsia-500 to-pink-600', 'from-lime-500 to-green-600',
-  'from-red-500 to-orange-500', 'from-sky-500 to-indigo-500',
-  'from-yellow-500 to-orange-500', 'from-teal-500 to-emerald-600',
-];
-
-function getGradient(id: string) {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = id.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
-}
+import { getGradient } from '@/lib/color-utils';
 
 interface DeckDetailScreenProps {
   deckId: string;
@@ -86,17 +67,13 @@ export function DeckDetailScreen({
   const { user } = useAuth();
   const role = user?.app_metadata?.role as UserRole | undefined;
   const gradient = getGradient(deckId);
-  const searchParams = useSearchParams();
-  const highlightParam = searchParams.get('highlight');
-  const [highlightId, setHighlightId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (highlightParam) {
-      setHighlightId(highlightParam);
-    }
-  }, [highlightParam]);
-
-  const { data: flashcardsData, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+  const {
+    data: flashcardsData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: flashcardKeys.list({ deckIds: [deckId] }),
     queryFn: ({ pageParam }) =>
       apiGet<{ items: Flashcard[]; nextCursor: string | null; hasMore: boolean }>(
@@ -124,23 +101,6 @@ export function DeckDetailScreen({
   const topics = topicsData ?? [];
   const allDecks = (allDecksData ?? []).filter((d) => d.id !== deckId);
   const flashcardQueryKey = flashcardKeys.list({ deckIds: [deckId] });
-
-  useEffect(() => {
-    if (!highlightId || flashcards.length === 0) return;
-    const timer = setTimeout(() => {
-      document.getElementById(`fc-${highlightId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [highlightId, flashcards.length]);
-
-  useEffect(() => {
-    if (!highlightId) return;
-    const timer = setTimeout(() => {
-      window.history.replaceState(null, '', window.location.pathname);
-      setHighlightId(null);
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [highlightId]);
 
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const handleObserver = useCallback(
@@ -178,7 +138,9 @@ export function DeckDetailScreen({
       );
       return { previous: prev };
     },
-    onError: (_err, _vars, ctx) => { queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous); },
+    onError: (_err, _vars, ctx) => {
+      queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous);
+    },
   });
   const deleteDeck = useApiMutation({
     mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/decks/${id}`),
@@ -191,7 +153,9 @@ export function DeckDetailScreen({
       );
       return { previous: prev };
     },
-    onError: (_err, _id, ctx) => { queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous); },
+    onError: (_err, _id, ctx) => {
+      queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous);
+    },
   });
 
   const batchUnlinkCards = useApiMutation({
@@ -472,8 +436,10 @@ export function DeckDetailScreen({
     onBulkCopy: handleBulkCopy,
     onBulkTopicsOperationChange: (op) => setD((prev) => ({ ...prev, bulkTopicsOperation: op })),
     onBulkLinkDeckIdsChange: (bulkLinkDeckIds) => setD((prev) => ({ ...prev, bulkLinkDeckIds })),
-    onBulkMoveTargetDeckIdChange: (bulkMoveTargetDeckId) => setD((prev) => ({ ...prev, bulkMoveTargetDeckId })),
-    onBulkCopyTargetDeckIdChange: (bulkCopyTargetDeckId) => setD((prev) => ({ ...prev, bulkCopyTargetDeckId })),
+    onBulkMoveTargetDeckIdChange: (bulkMoveTargetDeckId) =>
+      setD((prev) => ({ ...prev, bulkMoveTargetDeckId })),
+    onBulkCopyTargetDeckIdChange: (bulkCopyTargetDeckId) =>
+      setD((prev) => ({ ...prev, bulkCopyTargetDeckId })),
     onBulkTopicIdsChange: (bulkTopicIds) => setD((prev) => ({ ...prev, bulkTopicIds })),
     onBulkDeleteOpenChange: (open) => setD((prev) => ({ ...prev, bulkDeleteOpen: open })),
     onBulkLinkOpenChange: (open) => setD((prev) => ({ ...prev, bulkLinkOpen: open })),
@@ -519,8 +485,19 @@ export function DeckDetailScreen({
               <TooltipPrimitive.Root>
                 <TooltipTrigger asChild>
                   <Button
-                    variant="ghost" size="icon" className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20"
-                    onClick={() => setD((prev) => ({ ...prev, deckEditOpen: true, deckFormData: { name: currentDeck?.name ?? '', description: currentDeck?.description ?? '' } }))}
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20"
+                    onClick={() =>
+                      setD((prev) => ({
+                        ...prev,
+                        deckEditOpen: true,
+                        deckFormData: {
+                          name: currentDeck?.name ?? '',
+                          description: currentDeck?.description ?? '',
+                        },
+                      }))
+                    }
                   >
                     <Pencil className="h-4 w-4" />
                   </Button>
@@ -532,7 +509,9 @@ export function DeckDetailScreen({
               <TooltipPrimitive.Root>
                 <TooltipTrigger asChild>
                   <Button
-                    variant="ghost" size="icon" className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20"
                     onClick={() => setImportOpen(true)}
                   >
                     <Upload className="h-4 w-4" />
@@ -544,7 +523,9 @@ export function DeckDetailScreen({
             <TooltipPrimitive.Root>
               <TooltipTrigger asChild>
                 <Button
-                  variant="ghost" size="icon" className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20"
                   onClick={() => {
                     const params = deckId ? `?deckId=${deckId}` : '';
                     window.open(`/api/v1/flashcards/export/csv${params}`, '_blank');
@@ -559,7 +540,9 @@ export function DeckDetailScreen({
               <TooltipPrimitive.Root>
                 <TooltipTrigger asChild>
                   <Button
-                    variant="ghost" size="icon" className="h-8 w-8 text-white/80 hover:text-red-200 hover:bg-white/20"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-white/80 hover:text-red-200 hover:bg-white/20"
                     onClick={() => setD((prev) => ({ ...prev, deckDeleteOpen: true }))}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -584,7 +567,12 @@ export function DeckDetailScreen({
                 {t('flashcards_count', { count: flashcards.length })}
               </Badge>
               {practiceHref && (
-                <Button variant="secondary" size="sm" className="bg-white/20 text-white hover:bg-white/30 gap-1" asChild>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="bg-white/20 text-white hover:bg-white/30 gap-1"
+                  asChild
+                >
                   <Link href={`${practiceHref}${currentDeck!.id}`}>
                     <Play className="h-3 w-3" /> {t('practice_deck')}
                   </Link>
@@ -600,73 +588,34 @@ export function DeckDetailScreen({
           <h3 className="text-lg font-semibold">{t('flashcards_section')}</h3>
           <p className="text-sm text-muted-foreground">{t('flip_hint')}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="hidden md:flex items-center gap-2">
-            <Button
-              variant={isSelecting ? 'secondary' : 'outline'}
-              onClick={() => {
-                if (isSelecting) clearSelection();
-                else setIsSelecting(true);
-              }}
-            >
-              {isSelecting ? <Square className="mr-2 h-4 w-4" /> : <CheckSquare className="mr-2 h-4 w-4" />}
-              {isSelecting ? t('cancel_selection') : t('select_cards')}
-            </Button>
-            {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
-              <>
-                <Button onClick={() => router.push(`${basePath}/deck/${deckId}/new`)} aria-keyshortcuts="n">
-                  <Plus className="mr-2 h-4 w-4" /> {t('new_flashcard')}
-                </Button>
-
-              </>
-            )}
-          </div>
-          <div className="md:hidden">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Menu className="mr-2 h-4 w-4" /> {t('common_manage')}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => {
-                  if (isSelecting) clearSelection();
-                  else setIsSelecting(true);
-                }}>
-                  {isSelecting ? <Square className="mr-2 h-4 w-4" /> : <CheckSquare className="mr-2 h-4 w-4" />}
-                  {isSelecting ? t('cancel_selection') : t('select_cards')}
-                </DropdownMenuItem>
-                {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => router.push(`${basePath}/deck/${deckId}/new`)}>
-                      <Plus className="mr-2 h-4 w-4" /> {t('new_flashcard')}
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
+        {isSelecting && (
+          <Button variant="outline" size="sm" onClick={clearSelection}>
+            <Square className="mr-2 h-4 w-4" /> {t('cancel_selection')}
+          </Button>
+        )}
       </div>
 
-      <div className={`flex items-center gap-2 py-1 ${isSelecting && flashcards.length > 0 ? '' : 'invisible'}`}>
+      <div
+        className={`flex items-center gap-2 py-1 ${isSelecting && flashcards.length > 0 ? '' : 'invisible'}`}
+      >
         {isSelecting && flashcards.length > 0 && (
           <>
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
-                const allSelected = flashcards.every(fc => selectedIds.has(fc.id));
+                const allSelected = flashcards.every((fc) => selectedIds.has(fc.id));
                 if (allSelected) {
                   handleDeselectAll();
                 } else {
-                  setSelectedIds(new Set(flashcards.map(fc => fc.id)));
+                  setSelectedIds(new Set(flashcards.map((fc) => fc.id)));
                 }
               }}
             >
               <CheckCheck className="mr-1.5 h-4 w-4" />
-              {flashcards.every(fc => selectedIds.has(fc.id)) ? t('deselect_all') : t('select_all')}
+              {flashcards.every((fc) => selectedIds.has(fc.id))
+                ? t('deselect_all')
+                : t('select_all')}
             </Button>
             <span className="text-sm text-muted-foreground">
               {t('n_selected', { count: selectedIds.size })}
@@ -676,14 +625,24 @@ export function DeckDetailScreen({
       </div>
 
       {flashcards.length === 0 ? (
-        <Card className="p-12 text-center">
-          <p className="text-muted-foreground">{t('no_flashcards')}</p>
+        <Empty>
+          <EmptyMedia>
+            <Layers className="h-10 w-10 text-muted-foreground" />
+          </EmptyMedia>
+          <EmptyTitle>{t('no_flashcards')}</EmptyTitle>
           {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
-            <Button variant="outline" className="mt-4" onClick={() => router.push(`${basePath}/deck/${deckId}/new`)} aria-keyshortcuts="n">
-              <Plus className="mr-2 h-4 w-4" /> {t('create_first')}
-            </Button>
+            <EmptyDescription>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`${basePath}/deck/${deckId}/new`)}
+                aria-keyshortcuts="n"
+              >
+                <Plus className="mr-1.5 h-4 w-4" /> {t('create_first')}
+              </Button>
+            </EmptyDescription>
           )}
-        </Card>
+        </Empty>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {flashcards.map((fc) => (
@@ -697,16 +656,38 @@ export function DeckDetailScreen({
               topics={topics}
               t={t}
               selected={selectedIds.has(fc.id)}
-              highlighted={fc.id === highlightId}
               selectable={isSelecting}
               onToggleSelect={toggleSelect}
               onFlip={isSelecting ? () => {} : (id) => setFlippedId(id || null)}
               onEdit={openEdit}
               onDelete={(id) => setD((prev) => ({ ...prev, deleteId: id }))}
-              onLink={(fc) => setD((prev) => ({ ...prev, activeFlashcardId: fc.id, linkDeckIds: [], linkOpen: true }))}
-              onCopy={(fc) => setD((prev) => ({ ...prev, activeFlashcardId: fc.id, copyTargetDeckId: null, copyOpen: true }))}
-              onAddTopic={(fc) => setD((prev) => ({ ...prev, activeFlashcardId: fc.id, topicActionIds: [], addTopicOpen: true }))}
-              onManageTopics={(fc) => setD((prev) => ({ ...prev, activeFlashcardId: fc.id, manageTopicOpen: true }))}
+              onLink={(fc) =>
+                setD((prev) => ({
+                  ...prev,
+                  activeFlashcardId: fc.id,
+                  linkDeckIds: [],
+                  linkOpen: true,
+                }))
+              }
+              onCopy={(fc) =>
+                setD((prev) => ({
+                  ...prev,
+                  activeFlashcardId: fc.id,
+                  copyTargetDeckId: null,
+                  copyOpen: true,
+                }))
+              }
+              onAddTopic={(fc) =>
+                setD((prev) => ({
+                  ...prev,
+                  activeFlashcardId: fc.id,
+                  topicActionIds: [],
+                  addTopicOpen: true,
+                }))
+              }
+              onManageTopics={(fc) =>
+                setD((prev) => ({ ...prev, activeFlashcardId: fc.id, manageTopicOpen: true }))
+              }
               onViewByTopic={(_fc, topicId) => setD((prev) => ({ ...prev, viewTopicId: topicId }))}
             />
           ))}
@@ -721,9 +702,11 @@ export function DeckDetailScreen({
 
       {(() => {
         const selectedFlashcards = flashcards.filter((fc) => selectedIds.has(fc.id));
-        const canBulkTopics = selectedFlashcards.length > 0 &&
+        const canBulkTopics =
+          selectedFlashcards.length > 0 &&
           selectedFlashcards.every((fc) => can(role, 'flashcard.update', fc.created_by, user?.id));
-        const canBulkMove = (can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false) &&
+        const canBulkMove =
+          (can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false) &&
           selectedFlashcards.every((fc) => can(role, 'flashcard.update', fc.created_by, user?.id));
         return (
           <FlashcardBulkActions
@@ -732,11 +715,46 @@ export function DeckDetailScreen({
             canTopics={canBulkTopics}
             canMove={canBulkMove}
             canExport={selectedIds.size > 0}
-            onDelete={() => setD((prev) => ({ ...prev, bulkDeleteOpen: true, selectedIds: Array.from(selectedIds) }))}
-            onLink={() => setD((prev) => ({ ...prev, bulkLinkOpen: true, bulkLinkDeckIds: [], selectedIds: Array.from(selectedIds) }))}
-            onTopics={() => setD((prev) => ({ ...prev, bulkTopicsOpen: true, bulkTopicIds: [], bulkTopicsOperation: 'set', selectedIds: Array.from(selectedIds) }))}
-            onCopy={() => setD((prev) => ({ ...prev, bulkCopyOpen: true, bulkCopyTargetDeckId: null, selectedIds: Array.from(selectedIds) }))}
-            onMove={() => setD((prev) => ({ ...prev, bulkMoveOpen: true, bulkMoveTargetDeckId: null, selectedIds: Array.from(selectedIds) }))}
+            onDelete={() =>
+              setD((prev) => ({
+                ...prev,
+                bulkDeleteOpen: true,
+                selectedIds: Array.from(selectedIds),
+              }))
+            }
+            onLink={() =>
+              setD((prev) => ({
+                ...prev,
+                bulkLinkOpen: true,
+                bulkLinkDeckIds: [],
+                selectedIds: Array.from(selectedIds),
+              }))
+            }
+            onTopics={() =>
+              setD((prev) => ({
+                ...prev,
+                bulkTopicsOpen: true,
+                bulkTopicIds: [],
+                bulkTopicsOperation: 'set',
+                selectedIds: Array.from(selectedIds),
+              }))
+            }
+            onCopy={() =>
+              setD((prev) => ({
+                ...prev,
+                bulkCopyOpen: true,
+                bulkCopyTargetDeckId: null,
+                selectedIds: Array.from(selectedIds),
+              }))
+            }
+            onMove={() =>
+              setD((prev) => ({
+                ...prev,
+                bulkMoveOpen: true,
+                bulkMoveTargetDeckId: null,
+                selectedIds: Array.from(selectedIds),
+              }))
+            }
             onExport={() => {
               const ids = Array.from(selectedIds).join(',');
               window.open(`/api/v1/flashcards/export/csv?ids=${ids}`, '_blank');
@@ -760,12 +778,30 @@ export function DeckDetailScreen({
         />
       </Suspense>
 
-      <ImportDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        deckId={deckId}
-        t={t}
-      />
+      <ImportDialog open={importOpen} onOpenChange={setImportOpen} deckId={deckId} t={t} />
+
+      {!isSelecting && (
+        <SpeedDial
+          items={[
+            ...(can(role, 'deck.update', currentDeck?.created_by, user?.id)
+              ? [
+                  {
+                    icon: Plus,
+                    label: t('new_flashcard'),
+                    onClick: () => router.push(`${basePath}/deck/${deckId}/new`),
+                  },
+                ]
+              : []),
+
+            {
+              icon: Sparkles,
+              label: t('generate'),
+              onClick: () => router.push(`/app/ai?deckId=${deckId}`),
+            },
+            { icon: CheckSquare, label: t('select_cards'), onClick: () => setIsSelecting(true) },
+          ]}
+        />
+      )}
     </div>
   );
 }
