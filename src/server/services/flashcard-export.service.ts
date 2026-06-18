@@ -20,11 +20,20 @@ export class FlashcardExportService {
       listFilters.deckIds = filters.deckIds;
     }
 
-    const result = await flashcardService.list(
-      ctx,
-      Object.keys(listFilters).length > 0 ? listFilters : undefined,
-    );
-    const flashcards = result.items as unknown as FlashcardWithAssignments[];
+    const allFlashcards: FlashcardWithAssignments[] = [];
+    let cursor: string | undefined;
+
+    do {
+      const result = await flashcardService.list(ctx, {
+        ...listFilters,
+        limit: 100,
+        cursor,
+      });
+      allFlashcards.push(...(result.items as unknown as FlashcardWithAssignments[]));
+      cursor = result.hasMore && result.nextCursor ? result.nextCursor : undefined;
+    } while (cursor);
+
+    const flashcards = allFlashcards;
 
     const filtered = filters?.ids && filters.ids.length > 0
       ? flashcards.filter((fc) => filters.ids!.includes(fc.id))
