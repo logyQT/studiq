@@ -123,27 +123,37 @@ export async function POST(req: NextRequest) {
 
     const existingState = stateByCard.get(fc.id);
 
+    const rating = Math.min(Math.max(confidenceLevel, 1), 4) as 1 | 2 | 3 | 4;
+
     const result = flashcardSpacedRepetitionService.calculateNextReview({
-      wasCorrect,
-      confidenceLevel,
-      currentEF: existingState?.easiness_factor ?? 2.5,
-      currentInterval: existingState?.interval_days ?? 0,
-      currentRepetitions: existingState?.repetitions ?? 0,
+      learningState: existingState?.learning_state ?? 'new',
+      currentStep: existingState?.learning_step ?? 0,
+      learningSteps: [1, 10],
+      rating,
+      easinessFactor: existingState?.easiness_factor ?? 2.5,
+      interval: existingState?.interval_days ?? 0,
+      repetitions: existingState?.repetitions ?? 0,
+      lapseCount: existingState?.lapse_count ?? 0,
+      leechThreshold: 8,
     });
 
-    const quality = flashcardSpacedRepetitionService.mapToQuality(wasCorrect, confidenceLevel);
+    const quality = flashcardSpacedRepetitionService.mapToQuality(rating);
 
     const { error: reviewError } = await supabase
       .from('flashcard_review_state')
       .upsert({
         user_id: profile.id,
         flashcard_id: fc.id,
-        easiness_factor: result.newEF,
+        easiness_factor: result.newEasinessFactor,
         interval_days: result.newInterval,
         repetitions: result.newRepetitions,
         next_review_at: result.nextReviewAt.toISOString(),
         last_reviewed_at: now.toISOString(),
         last_quality: quality,
+        learning_state: result.learningState,
+        learning_step: result.learningStep,
+        lapse_count: result.lapseCount,
+        is_leech: result.isLeech,
       }, {
         onConflict: 'user_id, flashcard_id',
       });

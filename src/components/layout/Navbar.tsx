@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from './ThemeToggle';
 import { LanguageToggle } from './LanguageToggle';
-import Avatar from 'boring-avatars';
+import { DicebearAvatar } from '@/components/ui/dicebear-avatar';
 import { Menu, X, LayoutDashboard, GraduationCap, Sparkles, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -127,23 +127,13 @@ export function Navbar() {
                     }}
                     className="rounded-full transition hover:scale-105 active:scale-95"
                   >
-                    <Avatar
-                      size={36}
-                      name={user.email || t('default_user')}
-                      variant="beam"
-                      colors={['#444', '#555', '#666', '#777', '#888']}
-                    />
+                    <DicebearAvatar seed={user.email} size={36} />
                   </button>
 
                   {avatarOpen && (
                     <div className="absolute right-0 mt-3 w-64 rounded-xl border bg-background/95 backdrop-blur-xl shadow-xl p-4 z-50 animate-in fade-in zoom-in-95">
                       <div className="flex items-center gap-3 mb-3">
-                        <Avatar
-                          size={36}
-                          name={user.email || t('default_user')}
-                          variant="beam"
-                          colors={['#444', '#555', '#666', '#777', '#888']}
-                        />
+                        <DicebearAvatar seed={user.email} size={36} />
                         <div className="flex flex-col leading-tight">
                           <span className="font-semibold text-sm">
                             {user.user_metadata.name || t('default_user')}

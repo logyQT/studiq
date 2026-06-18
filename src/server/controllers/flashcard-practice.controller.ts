@@ -1,5 +1,5 @@
 import { flashcardPracticeService } from '@/server/services';
-import { LogPracticeSchema, BatchPracticeSchema } from '@/server/models';
+import { LogPracticeSchema, BatchPracticeSchema, CompleteSessionSchema } from '@/server/models';
 import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
 import type { RequestContext } from '@/lib/request-context';
@@ -53,29 +53,14 @@ export class FlashcardPracticeController {
     }, ctx);
   }
 
-  async getHistory(ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      // kept for backward compatibility, delegates to service
-      return { success: true, statusCode: 200, data: [] };
-    }, ctx);
-  }
-
-  async getHistoryForFlashcard(
-    flashcardId: string,
-    ctx: RequestContext,
-  ): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      return { success: true, statusCode: 200, data: [] };
-    }, ctx);
-  }
-
   async getDueCards(
     ctx: RequestContext,
     filters: { topicIds?: string[]; deckIds?: string[] },
     limit: number = 20,
+    newOnly: boolean = false,
   ): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const cards = await flashcardPracticeService.getDueCards(ctx, filters, limit);
+      const cards = await flashcardPracticeService.getDueCards(ctx, filters, limit, newOnly);
       return { success: true, statusCode: 200, data: cards };
     }, ctx);
   }
@@ -111,6 +96,58 @@ export class FlashcardPracticeController {
     return withErrorHandling(async () => {
       const stats = await flashcardPracticeService.getStatsAll(ctx);
       return { success: true, statusCode: 200, data: stats };
+    }, ctx);
+  }
+
+  async getStateBreakdown(ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const breakdown = await flashcardPracticeService.getStateBreakdown(ctx);
+      return { success: true, statusCode: 200, data: breakdown };
+    }, ctx);
+  }
+
+  async getAllCardStats(
+    ctx: RequestContext,
+    filters?: { deckIds?: string[]; topicIds?: string[]; state?: string; sortBy?: string; order?: string; limit?: number; cursor?: string },
+  ): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const result = await flashcardPracticeService.getAllCardStats(ctx, filters);
+      return { success: true, statusCode: 200, data: result };
+    }, ctx);
+  }
+
+  async getSettings(ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const settings = await flashcardPracticeService.getSettings(ctx);
+      return { success: true, statusCode: 200, data: settings };
+    }, ctx);
+  }
+
+  async prepare(
+    ctx: RequestContext,
+    filters: { deckIds?: string[]; topicIds?: string[] },
+  ): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const cards = await flashcardPracticeService.getCardsForPractice(ctx, filters);
+      return { success: true, statusCode: 200, data: cards };
+    }, ctx);
+  }
+
+  async completeSession(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = CompleteSessionSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const result = await flashcardPracticeService.completeSession(parsed.data, ctx);
+      return { success: true, statusCode: 200, data: result };
     }, ctx);
   }
 }

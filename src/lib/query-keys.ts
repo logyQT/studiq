@@ -9,8 +9,16 @@ export const flashcardKeys = {
   topics: {
     all: ['flashcards', 'topics'] as const,
   },
+  practice: {
+    dueBreakdown: ['flashcards', 'practice', 'dueBreakdown'] as const,
+  },
   stats: {
     teacher: ['flashcards', 'stats', 'teacher'] as const,
     difficultyBucket: (bucket: string) => ['flashcards', 'stats', 'difficulty', bucket] as const,
   },
+};
+
+export const searchKeys = {
+  all: ['search'] as const,
+  query: (q: string) => ['search', q] as const,
 };

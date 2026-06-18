@@ -20,7 +20,13 @@ export interface UseGenerateReturn {
   reset: () => void;
 }
 
+/**
+ * @deprecated Use useAiChat() with sendMessage() and context="flashcards" instead.
+ * This hook is kept temporarily for the /app/flashcards/ai page.
+ * Will be removed once that page redirects to the AI chat.
+ */
 export function useGenerateFlashcards(): UseGenerateReturn {
+  console.warn('[DEPRECATED] useGenerateFlashcards is deprecated. Use useAiChat() instead.');
   const [flashcards, setFlashcards] = useState<GeneratedFlashcard[]>([]);
   const [suggestedDeckName, setSuggestedDeckName] = useState('');
   const [progress, setProgress] = useState({ processedChunks: 0, totalChunks: 0 });

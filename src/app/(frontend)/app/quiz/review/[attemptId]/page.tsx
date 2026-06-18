@@ -2,13 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { apiGet } from '@/lib/api';
+import { EntityNotFound } from '@/components/shared/entity-not-found';
 
 interface Question {
   id: string;
@@ -68,20 +67,13 @@ export default function QuizReviewPage() {
   }, [attemptId]);
 
   if (loading) return <div className="flex justify-center py-12">Loading...</div>;
-  if (!attempt) return <div className="flex justify-center py-12">Attempt not found</div>;
+  if (!attempt) return <EntityNotFound titleKey="attempt_not_found" descriptionKey="attempt_not_found_desc" />;
 
   const percentage = Math.round((attempt.score / attempt.total_questions) * 100);
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Quiz Review</h2>
-        <Link href="/app/quiz">
-          <Button variant="outline">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to History
-          </Button>
-        </Link>
-      </div>
+      <h2 className="text-2xl font-bold">Quiz Review</h2>
 
       <Card>
         <CardHeader className="text-center">

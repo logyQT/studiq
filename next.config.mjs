@@ -10,7 +10,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  serverExternalPackages: ['pdfjs-dist'],
   async rewrites() {
     return [
       {

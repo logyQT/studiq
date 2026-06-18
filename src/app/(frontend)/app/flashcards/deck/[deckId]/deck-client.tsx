@@ -13,10 +13,9 @@ export default function DeckClient({ deckId }: DeckClientProps) {
   return (
     <DeckDetailScreen
       deckId={deckId}
-      backHref="/app/flashcards/decks"
       basePath="/app/flashcards"
       apiBase="/api/v1/flashcards"
-      practiceHref="/app/flashcards/session?mode=practice&deckId="
+      practiceHref="/app/flashcards/session?mode=cram&deckId="
       t={t}
     />
   );

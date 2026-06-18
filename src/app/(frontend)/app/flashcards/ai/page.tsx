@@ -16,9 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Upload, Trash2, Check, Sparkles, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Loader2, Upload, Trash2, Check, Sparkles, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import Link from 'next/link';
 import { useGenerateFlashcards } from '@/hooks/use-flashcard-generation';
 import type { GeneratedFlashcard } from '@/hooks/use-flashcard-generation';
 
@@ -143,15 +142,6 @@ export default function AiFlashcardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href="/app/flashcards">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-2 h-4 w-4" /> {t('back')}
-          </Button>
-        </Link>
-        <h2 className="text-2xl font-bold">{t('title')}</h2>
-      </div>
-
       {status === 'idle' && (
         <Card>
           <CardContent className="p-6 space-y-4">

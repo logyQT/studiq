@@ -8,7 +8,6 @@ export default function DecksClient() {
 
   return (
     <DeckManagementScreen
-      backHref="/app/flashcards"
       apiBase="/api/v1/flashcards"
       basePath="/app/flashcards"
       t={t}

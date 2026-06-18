@@ -8,7 +8,6 @@ export default function EduDecksClient() {
 
   return (
     <DeckManagementScreen
-      backHref="/edu/flashcards"
       apiBase="/api/v1/flashcards"
       basePath="/edu/flashcards"
       t={t}

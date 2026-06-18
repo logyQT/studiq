@@ -12,13 +12,21 @@ export interface GenerationCallbacks {
   onError: (message: string) => void;
 }
 
+/**
+ * @deprecated Use AiCommandService.generateFlashcards() with tool calling instead.
+ * This service is kept temporarily for large PDF chunking support.
+ */
 export class FlashcardGenerationService {
+  /**
+   * @deprecated Use AiCommandService.generateFlashcards() with tool calling instead.
+   */
   async generateStreaming(
     fileBuffer: Buffer,
     filename: string,
     language: string,
     callbacks: GenerationCallbacks,
   ): Promise<void> {
+    console.warn('[DEPRECATED] FlashcardGenerationService.generateStreaming is deprecated. Use AiCommandService.generateFlashcards() instead.');
     const config = getModelsConfig();
     console.log(`${LOG_PREFIX} Config: provider=${config.provider}, model=${config.modelName}, baseUrl=${config.baseUrl}`);
 

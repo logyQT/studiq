@@ -8,7 +8,6 @@ export default function TopicsClient() {
 
   return (
     <TopicManagementScreen
-      backHref="/app/flashcards"
       apiBase="/api/v1/flashcards"
       t={t}
     />

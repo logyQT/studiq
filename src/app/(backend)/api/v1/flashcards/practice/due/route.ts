@@ -45,9 +45,10 @@ export async function GET(req: NextRequest) {
     const topicIds = searchParams.get('topicIds')?.split(',').filter(Boolean);
     const deckIds = searchParams.get('deckIds')?.split(',').filter(Boolean);
     const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '20', 10) || 20, 1), 100);
+    const newOnly = searchParams.get('newOnly') === 'true';
 
     return toNextResponse(
-      await flashcardPracticeController.getDueCards(ctx, { topicIds, deckIds }, limit),
+      await flashcardPracticeController.getDueCards(ctx, { topicIds, deckIds }, limit, newOnly),
     );
   });
 }

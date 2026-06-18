@@ -13,7 +13,20 @@ function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
+/**
+ * @deprecated Use POST /api/v1/ai/chat with context="flashcards" instead.
+ * This endpoint is kept temporarily for large PDF chunking support.
+ * Will be removed once the chat endpoint gains chunked PDF processing.
+ *
+ * @swagger
+ * /api/v1/flashcards/generate/frompdf:
+ *   post:
+ *     deprecated: true
+ *     summary: "[DEPRECATED] Generate flashcards from PDF"
+ *     description: "Deprecated. Use POST /api/v1/ai/chat with context=flashcards instead. This endpoint is kept for large PDF chunking until the chat endpoint gains chunk support."
+ */
 export async function POST(req: NextRequest) {
+  console.warn('[DEPRECATED] POST /api/v1/flashcards/generate/frompdf is deprecated. Use POST /api/v1/ai/chat with context="flashcards" instead.');
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 

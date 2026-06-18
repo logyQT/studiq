@@ -1,7 +1,9 @@
+'use client';
+
+import { useParams } from 'next/navigation';
 import DeckClient from './deck-client';
 
-export default async function DeckViewPage({ params }: { params: Promise<{ deckId: string }> }) {
-  const { deckId } = await params;
-
+export default function DeckViewPage() {
+  const { deckId } = useParams<{ deckId: string }>();
   return <DeckClient deckId={deckId} />;
 }

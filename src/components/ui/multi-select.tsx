@@ -18,6 +18,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { useTranslations } from 'next-intl';
 
 type Option = { label: string; value: string };
 
@@ -34,11 +35,15 @@ export function MultiSelect({
   options,
   selected,
   onChange,
-  placeholder = 'Wybierz...',
-  emptyText = 'Nie znaleziono.',
+  placeholder,
+  emptyText,
   className,
 }: MultiSelectProps) {
+  const t = useTranslations('MultiSelectComponent');
   const [open, setOpen] = useState(false);
+
+  const resolvedPlaceholder = placeholder ?? t('placeholder');
+  const resolvedEmptyText = emptyText ?? t('no_results');
 
   const toggle = (value: string) => {
     onChange(
@@ -67,7 +72,7 @@ export function MultiSelect({
         >
           <div className="flex flex-wrap gap-1">
             {selected.length === 0 && (
-              <span className="text-muted-foreground">{placeholder}</span>
+              <span className="text-muted-foreground">{resolvedPlaceholder}</span>
             )}
             {selectedLabels.slice(0, 3).map((label) => (
               <Badge
@@ -76,17 +81,25 @@ export function MultiSelect({
                 className="gap-1 whitespace-nowrap"
               >
                 {label}
-                <button
-                  type="button"
-                  className="ml-0.5 rounded-full outline-hidden hover:bg-muted"
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="ml-0.5 rounded-full outline-hidden hover:bg-muted cursor-pointer"
                   onClick={(e) => {
                     e.stopPropagation();
                     const option = options.find((o) => o.label === label);
                     if (option) remove(option.value);
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.stopPropagation();
+                      const option = options.find((o) => o.label === label);
+                      if (option) remove(option.value);
+                    }
+                  }}
                 >
                   <X className="h-3 w-3" />
-                </button>
+                </span>
               </Badge>
             ))}
             {selectedLabels.length > 3 && (
@@ -100,9 +113,9 @@ export function MultiSelect({
       </PopoverTrigger>
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
         <Command>
-          <CommandInput placeholder="Szukaj..." />
+          <CommandInput placeholder={t('search')} />
           <CommandList>
-            <CommandEmpty>{emptyText}</CommandEmpty>
+            <CommandEmpty>{resolvedEmptyText}</CommandEmpty>
             <CommandGroup>
               {options.map((option) => {
                 const isSelected = selected.includes(option.value);

@@ -1,11 +1,24 @@
+import type { ToolDefinition, ToolCall } from '@/server/ai/ai.types';
+
 export interface GeneratedFlashcard {
   question: string;
   answer: string;
   suggestedTopic: string;
 }
 
+export interface StreamCallbacks {
+  onToken: (token: string) => void;
+}
+
+export type GenerateChatResult = {
+  content: string;
+  toolCalls?: ToolCall[];
+};
+
 export interface LLMProvider {
   generateFlashcardsFromChunk(chunk: string, language: string): Promise<GeneratedFlashcard[]>;
+  generateChat(prompt: string, systemPrompt?: string, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }): Promise<GenerateChatResult | string>;
+  generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<string>;
 }
 
 function tryParse(raw: string): unknown {

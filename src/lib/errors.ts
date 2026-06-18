@@ -6,7 +6,10 @@ export const APP_ERRORS = {
   GONE: { code: 'ERROR_GONE', status: 410 },
   CONFLICT: { code: 'ERROR_CONFLICT', status: 409 },
   UNPROCESSABLE_ENTITY: { code: 'ERROR_UNPROCESSABLE_ENTITY', status: 422 },
+  RATE_LIMITED: { code: 'ERROR_RATE_LIMITED', status: 429 },
+  USAGE_LIMIT_EXCEEDED: { code: 'ERROR_USAGE_LIMIT_EXCEEDED', status: 429 },
   INTERNAL_SERVER: { code: 'ERROR_INTERNAL_SERVER', status: 500 },
+  SERVICE_UNAVAILABLE: { code: 'ERROR_SERVICE_UNAVAILABLE', status: 503 },
 } as const;
 
 export type AppErrorCode = keyof typeof APP_ERRORS;

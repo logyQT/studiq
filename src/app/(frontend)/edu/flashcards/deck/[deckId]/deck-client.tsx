@@ -13,7 +13,6 @@ export default function EduDeckClient({ deckId }: EduDeckClientProps) {
   return (
     <DeckDetailScreen
       deckId={deckId}
-      backHref="/edu/flashcards/decks"
       basePath="/edu/flashcards"
       apiBase="/api/v1/flashcards"
       t={t}

@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => {
       globals: true,
       environment: 'node',
       setupFiles: ['./__tests__/setup.ts'],
-      include: ['__test__/unit/**/*.test.ts', '__tests__/integration/**/*.test.ts'],
+      include: ['__tests__/unit/**/*.test.ts', '__tests__/integration/**/*.test.ts'],
       exclude: ['node_modules', 'dist', '.next'],
       sequence: {
         concurrent: false,

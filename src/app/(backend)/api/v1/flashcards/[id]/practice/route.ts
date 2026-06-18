@@ -48,28 +48,6 @@
  *         description: Validation error
  *       500:
  *         description: Internal server error
- *   get:
- *     summary: Get practice history for a flashcard
- *     description: Returns practice history for the authenticated user on a specific flashcard.
- *     tags:
- *       - Flashcard Practice
- *     security:
- *       - cookieAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *         description: Flashcard ID
- *     responses:
- *       200:
- *         description: Practice history retrieved
- *       401:
- *         description: Unauthorized (no session)
- *       500:
- *         description: Internal server error
  */
 
 import { NextRequest } from 'next/server';
@@ -82,12 +60,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
     const body = await req.json();
     return toNextResponse(await flashcardPracticeController.log(id, body, ctx));
-  });
-}
-
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withAuth(req, async (ctx) => {
-    const { id } = await params;
-    return toNextResponse(await flashcardPracticeController.getHistoryForFlashcard(id, ctx));
   });
 }

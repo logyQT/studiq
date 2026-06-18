@@ -38,3 +38,12 @@ export async function apiDelete(url: string): Promise<void> {
   const res = await fetch(url, { method: 'DELETE' });
   await throwIfNotOk(res, 'DELETE', url);
 }
+
+export async function apiUploadFile<T>(url: string, file: File): Promise<T> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(url, { method: 'POST', body: formData });
+  await throwIfNotOk(res, 'POST', url);
+  const json = await res.json();
+  return json.data as T;
+}

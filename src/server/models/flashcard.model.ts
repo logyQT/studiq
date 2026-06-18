@@ -10,12 +10,12 @@ export const CreateFlashcardSchema = registry.register(
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(255, { error: ValidationErrorCode.TOO_LONG }),
+      .max(5000, { error: ValidationErrorCode.TOO_LONG }),
     back: z
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(255, { error: ValidationErrorCode.TOO_LONG }),
+      .max(5000, { error: ValidationErrorCode.TOO_LONG }),
   }),
 );
 
@@ -31,12 +31,12 @@ export const BulkCreateFlashcardsSchema = registry.register(
             .string({ error: ValidationErrorCode.REQUIRED })
             .nonempty({ error: ValidationErrorCode.REQUIRED })
             .min(1, { error: ValidationErrorCode.TOO_SHORT })
-            .max(255, { error: ValidationErrorCode.TOO_LONG }),
+            .max(5000, { error: ValidationErrorCode.TOO_LONG }),
           back: z
             .string({ error: ValidationErrorCode.REQUIRED })
             .nonempty({ error: ValidationErrorCode.REQUIRED })
             .min(1, { error: ValidationErrorCode.TOO_SHORT })
-            .max(255, { error: ValidationErrorCode.TOO_LONG }),
+            .max(5000, { error: ValidationErrorCode.TOO_LONG }),
         }),
       )
       .min(1, { error: ValidationErrorCode.TOO_FEW }),
@@ -52,13 +52,13 @@ export const UpdateFlashcardSchema = registry.register(
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(255, { error: ValidationErrorCode.TOO_LONG })
+      .max(5000, { error: ValidationErrorCode.TOO_LONG })
       .optional(),
     back: z
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(255, { error: ValidationErrorCode.TOO_LONG })
+      .max(5000, { error: ValidationErrorCode.TOO_LONG })
       .optional(),
   }),
 );
@@ -81,5 +81,68 @@ export const CopyFlashcardSchema = registry.register(
   }),
 );
 
+export const BatchDeleteSchema = registry.register(
+  'BatchDeleteRequest',
+  z.object({
+    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+  }),
+);
+
+export const BatchLinkSchema = registry.register(
+  'BatchLinkRequest',
+  z.object({
+    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    deckIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+  }),
+);
+
+export const UnlinkFlashcardSchema = registry.register(
+  'UnlinkFlashcardRequest',
+  z.object({
+    deckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
+  }),
+);
+
+export const BatchUnlinkSchema = registry.register(
+  'BatchUnlinkRequest',
+  z.object({
+    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    deckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
+  }),
+);
+
+export const BatchTopicsSchema = registry.register(
+  'BatchTopicsRequest',
+  z.object({
+    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+    operation: z.enum(['add', 'remove', 'set']).default('set'),
+  }),
+);
+
+export const BatchMoveSchema = registry.register(
+  'BatchMoveRequest',
+  z.object({
+    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    sourceDeckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
+    targetDeckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
+  }),
+);
+
+export const BatchCopySchema = registry.register(
+  'BatchCopyRequest',
+  z.object({
+    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    targetDeckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
+  }),
+);
+
 export type LinkFlashcardInput = z.infer<typeof LinkFlashcardSchema>;
 export type CopyFlashcardInput = z.infer<typeof CopyFlashcardSchema>;
+export type BatchDeleteInput = z.infer<typeof BatchDeleteSchema>;
+export type BatchLinkInput = z.infer<typeof BatchLinkSchema>;
+export type UnlinkFlashcardInput = z.infer<typeof UnlinkFlashcardSchema>;
+export type BatchUnlinkInput = z.infer<typeof BatchUnlinkSchema>;
+export type BatchTopicsInput = z.infer<typeof BatchTopicsSchema>;
+export type BatchMoveInput = z.infer<typeof BatchMoveSchema>;
+export type BatchCopyInput = z.infer<typeof BatchCopySchema>;

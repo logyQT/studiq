@@ -8,7 +8,6 @@ export default function EduTopicsClient() {
 
   return (
     <TopicManagementScreen
-      backHref="/edu/flashcards"
       apiBase="/api/v1/flashcards"
       t={t}
     />

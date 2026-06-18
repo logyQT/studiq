@@ -28,5 +28,13 @@ export const UpdateDeckSchema = registry.register(
   }),
 );
 
+export const BatchDeleteDeckSchema = registry.register(
+  'BatchDeleteDeckRequest',
+  z.object({
+    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+  }),
+);
+
 export type CreateDeckInput = z.infer<typeof CreateDeckSchema>;
 export type UpdateDeckInput = z.infer<typeof UpdateDeckSchema>;
+export type BatchDeleteDeckInput = z.infer<typeof BatchDeleteDeckSchema>;

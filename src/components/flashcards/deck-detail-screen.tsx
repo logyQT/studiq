@@ -1,96 +1,54 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
+import { EntityNotFound } from '@/components/shared/entity-not-found';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  ArrowLeft,
   Plus,
-  MoreVertical,
   Pencil,
   Trash2,
-  X,
-  ExternalLink,
   Play,
+  CheckSquare,
+  Square,
+  CheckCheck,
+  Upload,
+  Download,
+  Sparkles,
+  Layers,
 } from 'lucide-react';
-import { OwnedFlashcardContextMenu } from '@/components/flashcards/owned-flashcard-context-menu';
-import { ViewOnlyFlashcardContextMenu } from '@/components/flashcards/view-only-flashcard-context-menu';
+import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+import { BreadcrumbUpdater } from '@/components/providers/BreadcrumbProvider';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { apiPost, apiPut, apiDelete } from '@/lib/api';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { DeckDetailSkeleton } from '@/components/flashcards/deck-detail-skeleton';
+import { FlashcardCard } from '@/components/flashcards/flashcard-card';
+import { FlashcardBulkActions } from '@/components/flashcards/flashcard-bulk-actions';
+import { TooltipProvider, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import * as TooltipPrimitive from '@radix-ui/react-tooltip';
+const DeckDetailDialogs = lazy(() =>
+  import('@/components/flashcards/deck-detail-dialogs').then((mod) => ({
+    default: mod.DeckDetailDialogs,
+  })),
+);
+type DialogsState = import('@/components/flashcards/deck-detail-dialogs').DialogsState;
+type DialogsHandlers = import('@/components/flashcards/deck-detail-dialogs').DialogsHandlers;
+import { ImportDialog } from '@/components/flashcards/import-dialog';
+import { SpeedDial } from '@/components/shared/speed-dial';
 import type { Deck, Flashcard, Topic } from '@/types/flashcards';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
 import { UserRole } from '@/types';
-
-const GRADIENTS = [
-  'from-violet-500 to-purple-600',
-  'from-blue-500 to-cyan-500',
-  'from-emerald-500 to-teal-600',
-  'from-orange-500 to-amber-600',
-  'from-pink-500 to-rose-600',
-  'from-indigo-500 to-blue-600',
-  'from-fuchsia-500 to-pink-600',
-  'from-lime-500 to-green-600',
-  'from-red-500 to-orange-500',
-  'from-sky-500 to-indigo-500',
-  'from-yellow-500 to-orange-500',
-  'from-teal-500 to-emerald-600',
-];
-
-const TOPIC_COLORS = [
-  'bg-red-500',
-  'bg-blue-500',
-  'bg-green-500',
-  'bg-yellow-500',
-  'bg-purple-500',
-  'bg-pink-500',
-  'bg-indigo-500',
-  'bg-teal-500',
-  'bg-orange-500',
-  'bg-cyan-500',
-];
-
-function getGradient(id: string) {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = id.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
-}
-
-function getTopicColor(name: string) {
-  return TOPIC_COLORS[name.length % TOPIC_COLORS.length];
-}
+import { getGradient } from '@/lib/color-utils';
 
 interface DeckDetailScreenProps {
   deckId: string;
-  backHref: string;
   basePath: string;
   apiBase: string;
   t: ReturnType<typeof useTranslations>;
@@ -99,7 +57,6 @@ interface DeckDetailScreenProps {
 
 export function DeckDetailScreen({
   deckId,
-  backHref,
   basePath,
   apiBase,
   t,
@@ -112,77 +69,62 @@ export function DeckDetailScreen({
   const gradient = getGradient(deckId);
 
   const {
-    data: currentDeckData,
-    isLoading: deckLoading,
-    isError: deckError,
-  } = useApiQuery<Deck>({
-    queryKey: flashcardKeys.decks.detail(deckId),
-    url: `/api/v1/flashcards/decks/${deckId}`,
-    enabled: !!deckId,
-  });
-  const { data: flashcardsData } = useApiQuery<Flashcard[]>({
+    data: flashcardsData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: flashcardKeys.list({ deckIds: [deckId] }),
-    url: `/api/v1/flashcards?deckIds=${deckId}`,
+    queryFn: ({ pageParam }) =>
+      apiGet<{ items: Flashcard[]; nextCursor: string | null; hasMore: boolean }>(
+        `/api/v1/flashcards?deckIds=${deckId}&limit=50${pageParam ? `&cursor=${pageParam}` : ''}`,
+      ),
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: '',
     enabled: !!deckId,
+    staleTime: Infinity,
+    refetchOnMount: false,
   });
   const { data: topicsData } = useApiQuery<Topic[]>({
     queryKey: flashcardKeys.topics.all,
     url: '/api/v1/flashcards/topics',
   });
-  const { data: allDecksData } = useApiQuery<Deck[]>({
+  const { data: allDecksData, isLoading: decksLoading } = useApiQuery<Deck[]>({
     queryKey: flashcardKeys.decks.all,
     url: '/api/v1/flashcards/decks',
   });
 
-  const flashcards = flashcardsData ?? [];
-  const currentDeck = currentDeckData ?? null;
+  const flashcards = flashcardsData?.pages.flatMap((page) => page.items) ?? [];
+  const currentDeck = allDecksData?.find((d) => d.id === deckId) ?? null;
+  const deckLoading = decksLoading;
+  const deckError = !decksLoading && !currentDeck;
   const topics = topicsData ?? [];
   const allDecks = (allDecksData ?? []).filter((d) => d.id !== deckId);
-
   const flashcardQueryKey = flashcardKeys.list({ deckIds: [deckId] });
 
-  const createFlashcard = useApiMutation({
-    mutationFn: (data: { front: string; back: string; topicIds?: string[] }) =>
-      apiPost<Flashcard>('/api/v1/flashcards', { ...data, deckId }),
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const handleObserver = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      const [entry] = entries;
+      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    },
+    [hasNextPage, isFetchingNextPage, fetchNextPage],
+  );
+
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(handleObserver, { rootMargin: '200px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [handleObserver]);
+
+  const unlinkFlashcard = useApiMutation({
+    mutationFn: (data: { id: string; deckId: string }) =>
+      apiPost(`/api/v1/flashcards/${data.id}/unlink`, { deckId: data.deckId }),
     invalidateKeys: [flashcardQueryKey],
-  });
-  const updateFlashcard = useApiMutation({
-    mutationFn: ({
-      id,
-      ...data
-    }: {
-      id: string;
-      front: string;
-      back: string;
-      topicIds: string[];
-    }) => apiPut<Flashcard>(`/api/v1/flashcards/${id}`, data),
-    invalidateKeys: [flashcardQueryKey],
-    onMutate: async ({ id, ...data }) => {
-      await queryClient.cancelQueries({ queryKey: flashcardQueryKey });
-      const prev = queryClient.getQueryData<Flashcard[]>(flashcardQueryKey);
-      queryClient.setQueryData<Flashcard[]>(flashcardQueryKey, (old) =>
-        old?.map((fc) => (fc.id === id ? { ...fc, ...data } : fc)),
-      );
-      return { previous: prev };
-    },
-    onError: (_err, _vars, ctx) => {
-      queryClient.setQueryData(flashcardQueryKey, ctx?.previous);
-    },
-  });
-  const deleteFlashcard = useApiMutation({
-    mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/${id}`),
-    invalidateKeys: [flashcardQueryKey],
-    onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: flashcardQueryKey });
-      const prev = queryClient.getQueryData<Flashcard[]>(flashcardQueryKey);
-      queryClient.setQueryData<Flashcard[]>(flashcardQueryKey, (old) =>
-        old?.filter((fc) => fc.id !== id),
-      );
-      return { previous: prev };
-    },
-    onError: (_err, _id, ctx) => {
-      queryClient.setQueryData(flashcardQueryKey, ctx?.previous);
-    },
   });
   const updateDeck = useApiMutation({
     mutationFn: ({ id, ...data }: { id: string; name: string; description?: string }) =>
@@ -216,140 +158,94 @@ export function DeckDetailScreen({
     },
   });
 
+  const batchUnlinkCards = useApiMutation({
+    mutationFn: (data: { ids: string[]; deckId: string }) =>
+      apiPost('/api/v1/flashcards/batch/unlink', { ids: data.ids, deckId: data.deckId }),
+    invalidateKeys: [flashcardQueryKey, flashcardKeys.decks.all],
+  });
+
+  const batchLinkCards = useApiMutation({
+    mutationFn: (data: { ids: string[]; deckIds: string[] }) =>
+      apiPost('/api/v1/flashcards/batch/link', data),
+    invalidateKeys: [flashcardKeys.decks.all],
+  });
+
+  const batchTopicCards = useApiMutation({
+    mutationFn: (data: { ids: string[]; topicIds: string[]; operation: string }) =>
+      apiPost('/api/v1/flashcards/batch/topics', data),
+    invalidateKeys: [flashcardQueryKey],
+  });
+
+  const batchCopyCards = useApiMutation({
+    mutationFn: (data: { ids: string[]; targetDeckId: string }) =>
+      apiPost('/api/v1/flashcards/batch/copy', data),
+    invalidateKeys: [flashcardQueryKey, flashcardKeys.decks.all],
+  });
+
+  const batchMoveCards = useApiMutation({
+    mutationFn: (data: { ids: string[]; sourceDeckId: string; targetDeckId: string }) =>
+      apiPost('/api/v1/flashcards/batch/move', data),
+    invalidateKeys: [flashcardQueryKey, flashcardKeys.decks.all],
+  });
+
   const [flippedId, setFlippedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [linkOpen, setLinkOpen] = useState(false);
-  const [copyOpen, setCopyOpen] = useState(false);
-  const [copyResult, setCopyResult] = useState<{ id: string; deckId: string } | null>(null);
-  const [activeFlashcardId, setActiveFlashcardId] = useState<string | null>(null);
-
-  const [formData, setFormData] = useState({ front: '', back: '', topicIds: [] as string[] });
-  const [linkDeckIds, setLinkDeckIds] = useState<string[]>([]);
-  const [copyTargetDeckId, setCopyTargetDeckId] = useState<string | null>(null);
-
-  const [deckEditOpen, setDeckEditOpen] = useState(false);
-  const [deckDeleteOpen, setDeckDeleteOpen] = useState(false);
-  const [deckFormData, setDeckFormData] = useState({ name: '', description: '' });
-
-  const [viewTopicId, setViewTopicId] = useState<string | null>(null);
-  const [addTopicOpen, setAddTopicOpen] = useState(false);
-  const [removeTopicOpen, setRemoveTopicOpen] = useState(false);
-  const [topicActionIds, setTopicActionIds] = useState<string[]>([]);
-
-  const getTopicIds = useCallback(
-    (fc: Flashcard | undefined) => fc?.flashcard_topic_assignments?.map((a) => a.topic_id) ?? [],
-    [],
-  );
-
-  const getTopicNames = useCallback(
-    (fc: Flashcard) => {
-      const ids = getTopicIds(fc);
-      return (topics ?? []).filter((topic) => ids.includes(topic.id));
-    },
-    [topics, getTopicIds],
-  );
-
-  const viewTopicFlashcards = viewTopicId
-    ? (flashcards ?? []).filter((fc) =>
-        fc.flashcard_topic_assignments?.some((a) => a.topic_id === viewTopicId),
-      )
-    : [];
-
-  const viewTopic = topics?.find((tp) => tp.id === viewTopicId);
-
-  function resetForm() {
-    setFormData({ front: '', back: '', topicIds: [] });
-  }
-
-  function openCreate() {
-    resetForm();
-    setCreateOpen(true);
-  }
+  const [d, setD] = useState<DialogsState>({
+    deleteId: null,
+    linkOpen: false,
+    copyOpen: false,
+    copyResult: null,
+    activeFlashcardId: null,
+    linkDeckIds: [],
+    copyTargetDeckId: null,
+    deckEditOpen: false,
+    deckDeleteOpen: false,
+    deckFormData: { name: '', description: '' },
+    viewTopicId: null,
+    addTopicOpen: false,
+    manageTopicOpen: false,
+    topicActionIds: [],
+    selectedIds: [],
+    bulkDeleteOpen: false,
+    bulkLinkOpen: false,
+    bulkLinkDeckIds: [],
+    bulkMoveOpen: false,
+    bulkMoveTargetDeckId: null,
+    bulkCopyOpen: false,
+    bulkCopyTargetDeckId: null,
+    bulkTopicsOpen: false,
+    bulkTopicsOperation: 'set',
+    bulkTopicIds: [],
+  });
 
   function openEdit(fc: Flashcard) {
-    setFormData({
-      front: fc.front,
-      back: fc.back,
-      topicIds: getTopicIds(fc),
-    });
-    setActiveFlashcardId(fc.id);
-    setEditOpen(true);
-  }
-
-  function toggleTopic(id: string) {
-    setFormData((prev) => ({
-      ...prev,
-      topicIds: prev.topicIds.includes(id)
-        ? prev.topicIds.filter((tid) => tid !== id)
-        : [...prev.topicIds, id],
-    }));
-  }
-
-  async function handleCreate() {
-    if (!formData.front.trim() || !formData.back.trim()) {
-      toast.error(t('front_back_required'));
-      return;
-    }
-    try {
-      await createFlashcard.mutateAsync({
-        front: formData.front,
-        back: formData.back,
-        topicIds: formData.topicIds.length > 0 ? formData.topicIds : undefined,
-      });
-      setCreateOpen(false);
-      resetForm();
-      toast.success(t('flashcard_created'));
-    } catch {
-      toast.error(t('save_failed'));
-    }
-  }
-
-  async function handleUpdate() {
-    if (!activeFlashcardId) return;
-    if (!formData.front.trim() || !formData.back.trim()) {
-      toast.error(t('front_back_required'));
-      return;
-    }
-    try {
-      await updateFlashcard.mutateAsync({
-        id: activeFlashcardId,
-        front: formData.front,
-        back: formData.back,
-        topicIds: formData.topicIds,
-      });
-      setEditOpen(false);
-      resetForm();
-      toast.success(t('flashcard_updated'));
-    } catch {
-      toast.error(t('save_failed'));
-    }
+    router.push(`${basePath}/deck/${deckId}/${fc.id}`);
   }
 
   async function handleDelete() {
-    if (!deleteId) return;
+    if (!d.deleteId) return;
     try {
-      await deleteFlashcard.mutateAsync(deleteId);
+      await unlinkFlashcard.mutateAsync({ id: d.deleteId, deckId });
       toast.success(t('flashcard_deleted'));
     } catch {
       toast.error(t('delete_failed'));
     }
-    setDeleteId(null);
+    setD((prev) => ({ ...prev, deleteId: null }));
   }
 
   async function handleLink() {
-    if (!activeFlashcardId || linkDeckIds.length === 0) return;
+    if (!d.activeFlashcardId || d.linkDeckIds.length === 0) return;
     try {
-      const res = await fetch(`${apiBase}/${activeFlashcardId}/link`, {
+      const res = await fetch(`${apiBase}/${d.activeFlashcardId}/link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deckIds: linkDeckIds }),
+        body: JSON.stringify({ deckIds: d.linkDeckIds }),
       });
       if (!res.ok) throw new Error();
-      setLinkOpen(false);
-      setLinkDeckIds([]);
+      setD((prev) => ({ ...prev, linkOpen: false, linkDeckIds: [] }));
       toast.success(t('flashcard_linked'));
     } catch {
       toast.error(t('link_failed'));
@@ -357,39 +253,37 @@ export function DeckDetailScreen({
   }
 
   async function handleCopy() {
-    if (!activeFlashcardId || !copyTargetDeckId) return;
+    if (!d.activeFlashcardId || !d.copyTargetDeckId) return;
     try {
-      const res = await fetch(`${apiBase}/${activeFlashcardId}/copy`, {
+      const res = await fetch(`${apiBase}/${d.activeFlashcardId}/copy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetDeckId: copyTargetDeckId }),
+        body: JSON.stringify({ targetDeckId: d.copyTargetDeckId }),
       });
       if (!res.ok) throw new Error();
       const body = await res.json();
-      setCopyOpen(false);
-      setCopyResult({ id: body.data.id, deckId: copyTargetDeckId });
+      setD((prev) => ({
+        ...prev,
+        copyOpen: false,
+        copyResult: { id: body.data.id, deckId: d.copyTargetDeckId! },
+      }));
       toast.success(t('flashcard_copied'));
     } catch {
       toast.error(t('copy_failed'));
     }
   }
 
-  function openDeckEdit() {
-    setDeckFormData({ name: currentDeck?.name ?? '', description: currentDeck?.description ?? '' });
-    setDeckEditOpen(true);
-  }
-
   async function handleDeckUpdate() {
-    if (!deckFormData.name.trim()) {
+    if (!d.deckFormData.name.trim()) {
       toast.error(t('name_required'));
       return;
     }
-    setDeckEditOpen(false);
+    setD((prev) => ({ ...prev, deckEditOpen: false }));
     try {
       await updateDeck.mutateAsync({
         id: deckId,
-        name: deckFormData.name,
-        description: deckFormData.description || undefined,
+        name: d.deckFormData.name,
+        description: d.deckFormData.description || undefined,
       });
       toast.success(t('deck_updated'));
     } catch {
@@ -401,26 +295,176 @@ export function DeckDetailScreen({
     try {
       await deleteDeck.mutateAsync(deckId);
       toast.success(t('deck_deleted'));
-      router.push(backHref);
+      router.push('/app/flashcards/decks');
     } catch {
       toast.error(t('delete_failed'));
     }
-    setDeckDeleteOpen(false);
+    setD((prev) => ({ ...prev, deckDeleteOpen: false }));
   }
+
+  async function handleAddTopicConfirm() {
+    const fc = flashcards.find((f) => f.id === d.activeFlashcardId);
+    if (!fc || d.topicActionIds.length === 0) return;
+    const currentIds = fc.flashcard_topic_assignments?.map((a) => a.topic_id) ?? [];
+    const newIds = [...new Set([...currentIds, ...d.topicActionIds])];
+    try {
+      await apiPut(`/api/v1/flashcards/${d.activeFlashcardId}`, {
+        front: fc.front,
+        back: fc.back,
+        topicIds: newIds,
+      });
+      queryClient.invalidateQueries({ queryKey: flashcardQueryKey });
+      toast.success(t('topic_added'));
+    } catch {
+      toast.error(t('save_failed'));
+    }
+    setD((prev) => ({ ...prev, addTopicOpen: false, topicActionIds: [] }));
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+    setIsSelecting(false);
+  }
+
+  function handleDeselectAll() {
+    setSelectedIds(new Set());
+  }
+
+  async function handleBulkDelete() {
+    const ids = d.selectedIds;
+    if (ids.length === 0) return;
+    try {
+      await batchUnlinkCards.mutateAsync({ ids, deckId });
+      clearSelection();
+      setD((prev) => ({ ...prev, bulkDeleteOpen: false }));
+      toast.success(t('flashcard_deleted'));
+    } catch {
+      toast.error(t('delete_failed'));
+    }
+  }
+
+  async function handleBulkLink() {
+    const ids = d.selectedIds;
+    const deckIds = d.bulkLinkDeckIds;
+    if (ids.length === 0 || deckIds.length === 0) return;
+    try {
+      await batchLinkCards.mutateAsync({ ids, deckIds });
+      clearSelection();
+      setD((prev) => ({ ...prev, bulkLinkOpen: false, bulkLinkDeckIds: [] }));
+      toast.success(t('bulk_linked'));
+    } catch {
+      toast.error(t('link_failed'));
+    }
+  }
+
+  async function handleBulkTopics() {
+    const ids = d.selectedIds;
+    const topicIds = d.bulkTopicIds;
+    const operation = d.bulkTopicsOperation;
+    if (ids.length === 0) return;
+    try {
+      await batchTopicCards.mutateAsync({ ids, topicIds, operation });
+      clearSelection();
+      setD((prev) => ({ ...prev, bulkTopicsOpen: false, bulkTopicIds: [] }));
+      toast.success(t('bulk_topics_updated', { count: ids.length }));
+    } catch {
+      toast.error(t('save_failed'));
+    }
+  }
+
+  async function handleBulkMove() {
+    const ids = d.selectedIds;
+    const targetDeckId = d.bulkMoveTargetDeckId;
+    if (ids.length === 0 || !targetDeckId) return;
+    try {
+      await batchMoveCards.mutateAsync({ ids, sourceDeckId: deckId, targetDeckId });
+      clearSelection();
+      setD((prev) => ({ ...prev, bulkMoveOpen: false, bulkMoveTargetDeckId: null }));
+      toast.success(t('bulk_moved'));
+    } catch {
+      toast.error(t('save_failed'));
+    }
+  }
+
+  async function handleBulkCopy() {
+    const ids = d.selectedIds;
+    const targetDeckId = d.bulkCopyTargetDeckId;
+    if (ids.length === 0 || !targetDeckId) return;
+    try {
+      await batchCopyCards.mutateAsync({ ids, targetDeckId });
+      clearSelection();
+      setD((prev) => ({ ...prev, bulkCopyOpen: false, bulkCopyTargetDeckId: null }));
+      toast.success(t('flashcard_copied'));
+    } catch {
+      toast.error(t('copy_failed'));
+    }
+  }
+
+  const h: DialogsHandlers = {
+    onDeleteOpenChange: () => setD((prev) => ({ ...prev, deleteId: null })),
+    onLinkOpenChange: (open) => setD((prev) => ({ ...prev, linkOpen: open })),
+    onCopyOpenChange: (open) => setD((prev) => ({ ...prev, copyOpen: open })),
+    onCopyResultClose: () => setD((prev) => ({ ...prev, copyResult: null })),
+    onDeckEditOpenChange: (open) => setD((prev) => ({ ...prev, deckEditOpen: open })),
+    onDeckDeleteOpenChange: (open) => setD((prev) => ({ ...prev, deckDeleteOpen: open })),
+    onViewTopicIdChange: (id) => setD((prev) => ({ ...prev, viewTopicId: id })),
+    onAddTopicOpenChange: (open) => setD((prev) => ({ ...prev, addTopicOpen: open })),
+    onManageTopicOpenChange: (open) => setD((prev) => ({ ...prev, manageTopicOpen: open })),
+    onLinkDeckIdsChange: (linkDeckIds) => setD((prev) => ({ ...prev, linkDeckIds })),
+    onCopyTargetDeckIdChange: (copyTargetDeckId) => setD((prev) => ({ ...prev, copyTargetDeckId })),
+    onDeckFormDataChange: (deckFormData) => setD((prev) => ({ ...prev, deckFormData })),
+    onTopicActionIdsChange: (topicActionIds) => setD((prev) => ({ ...prev, topicActionIds })),
+    onDelete: handleDelete,
+    onLink: handleLink,
+    onCopy: handleCopy,
+    onDeckUpdate: handleDeckUpdate,
+    onDeckDelete: handleDeckDelete,
+    onAddTopicConfirm: handleAddTopicConfirm,
+    onBulkDelete: handleBulkDelete,
+    onBulkLink: handleBulkLink,
+    onBulkTopics: handleBulkTopics,
+    onBulkMove: handleBulkMove,
+    onBulkCopy: handleBulkCopy,
+    onBulkTopicsOperationChange: (op) => setD((prev) => ({ ...prev, bulkTopicsOperation: op })),
+    onBulkLinkDeckIdsChange: (bulkLinkDeckIds) => setD((prev) => ({ ...prev, bulkLinkDeckIds })),
+    onBulkMoveTargetDeckIdChange: (bulkMoveTargetDeckId) =>
+      setD((prev) => ({ ...prev, bulkMoveTargetDeckId })),
+    onBulkCopyTargetDeckIdChange: (bulkCopyTargetDeckId) =>
+      setD((prev) => ({ ...prev, bulkCopyTargetDeckId })),
+    onBulkTopicIdsChange: (bulkTopicIds) => setD((prev) => ({ ...prev, bulkTopicIds })),
+    onBulkDeleteOpenChange: (open) => setD((prev) => ({ ...prev, bulkDeleteOpen: open })),
+    onBulkLinkOpenChange: (open) => setD((prev) => ({ ...prev, bulkLinkOpen: open })),
+    onBulkMoveOpenChange: (open) => setD((prev) => ({ ...prev, bulkMoveOpen: open })),
+    onBulkCopyOpenChange: (open) => setD((prev) => ({ ...prev, bulkCopyOpen: open })),
+    onBulkTopicsOpenChange: (open) => setD((prev) => ({ ...prev, bulkTopicsOpen: open })),
+  };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key !== 'n') return;
+      if (!can(role, 'deck.update', currentDeck?.created_by, user?.id)) return;
+      e.preventDefault();
+      router.push(`${basePath}/deck/${deckId}/new`);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [role, currentDeck?.created_by, user?.id, basePath, deckId, router]);
 
   if (deckError || (!deckLoading && !currentDeck)) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Link href={backHref}>
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-2 h-4 w-4" /> {t('back')}
-            </Button>
-          </Link>
-        </div>
-        <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
-          <p className="text-lg">Deck not found</p>
-        </div>
+        <EntityNotFound titleKey="deck_not_found" descriptionKey="deck_not_found_desc" />
       </div>
     );
   }
@@ -431,36 +475,83 @@ export function DeckDetailScreen({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href={backHref}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-2 h-4 w-4" /> {t('back')}
-          </Button>
-        </Link>
-      </div>
+      <BreadcrumbUpdater label={currentDeck?.name ?? ''} href="#" />
 
       <div className={`relative group rounded-xl bg-gradient-to-br ${gradient} p-8 text-white`}>
+        <div className="absolute inset-0 rounded-xl bg-black/10 pointer-events-none" />
         <div className="absolute right-4 top-4 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20"
-              onClick={openDeckEdit}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-          )}
-          {can(role, 'deck.delete', currentDeck?.created_by, user?.id) && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-white/80 hover:text-red-200 hover:bg-white/20"
-              onClick={() => setDeckDeleteOpen(true)}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
+          <TooltipProvider delayDuration={500}>
+            {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
+              <TooltipPrimitive.Root>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20"
+                    onClick={() =>
+                      setD((prev) => ({
+                        ...prev,
+                        deckEditOpen: true,
+                        deckFormData: {
+                          name: currentDeck?.name ?? '',
+                          description: currentDeck?.description ?? '',
+                        },
+                      }))
+                    }
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t('menu_edit')}</TooltipContent>
+              </TooltipPrimitive.Root>
+            )}
+            {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
+              <TooltipPrimitive.Root>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20"
+                    onClick={() => setImportOpen(true)}
+                  >
+                    <Upload className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t('import_csv')}</TooltipContent>
+              </TooltipPrimitive.Root>
+            )}
+            <TooltipPrimitive.Root>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20"
+                  onClick={() => {
+                    const params = deckId ? `?deckId=${deckId}` : '';
+                    window.open(`/api/v1/flashcards/export/csv${params}`, '_blank');
+                  }}
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t('export_csv')}</TooltipContent>
+            </TooltipPrimitive.Root>
+            {can(role, 'deck.delete', currentDeck?.created_by, user?.id) && (
+              <TooltipPrimitive.Root>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-white/80 hover:text-red-200 hover:bg-white/20"
+                    onClick={() => setD((prev) => ({ ...prev, deckDeleteOpen: true }))}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t('menu_delete')}</TooltipContent>
+              </TooltipPrimitive.Root>
+            )}
+          </TooltipProvider>
         </div>
         <div className="flex items-start gap-4">
           <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-white/20 text-2xl font-bold">
@@ -480,9 +571,11 @@ export function DeckDetailScreen({
                   variant="secondary"
                   size="sm"
                   className="bg-white/20 text-white hover:bg-white/30 gap-1"
-                  onClick={() => router.push(`${practiceHref}${currentDeck!.id}`)}
+                  asChild
                 >
-                  <Play className="h-3 w-3" /> {t('practice_deck')}
+                  <Link href={`${practiceHref}${currentDeck!.id}`}>
+                    <Play className="h-3 w-3" /> {t('practice_deck')}
+                  </Link>
                 </Button>
               )}
             </div>
@@ -495,627 +588,220 @@ export function DeckDetailScreen({
           <h3 className="text-lg font-semibold">{t('flashcards_section')}</h3>
           <p className="text-sm text-muted-foreground">{t('flip_hint')}</p>
         </div>
-        {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
-          <Button onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" /> {t('new_flashcard')}
+        {isSelecting && (
+          <Button variant="outline" size="sm" onClick={clearSelection}>
+            <Square className="mr-2 h-4 w-4" /> {t('cancel_selection')}
           </Button>
         )}
       </div>
 
-      {flashcards.length === 0 ? (
-        <Card className="p-12 text-center">
-          <p className="text-muted-foreground">{t('no_flashcards')}</p>
-          {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
-            <Button variant="outline" className="mt-4" onClick={openCreate}>
-              <Plus className="mr-2 h-4 w-4" /> {t('create_first')}
+      <div
+        className={`flex items-center gap-2 py-1 ${isSelecting && flashcards.length > 0 ? '' : 'invisible'}`}
+      >
+        {isSelecting && flashcards.length > 0 && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const allSelected = flashcards.every((fc) => selectedIds.has(fc.id));
+                if (allSelected) {
+                  handleDeselectAll();
+                } else {
+                  setSelectedIds(new Set(flashcards.map((fc) => fc.id)));
+                }
+              }}
+            >
+              <CheckCheck className="mr-1.5 h-4 w-4" />
+              {flashcards.every((fc) => selectedIds.has(fc.id))
+                ? t('deselect_all')
+                : t('select_all')}
             </Button>
+            <span className="text-sm text-muted-foreground">
+              {t('n_selected', { count: selectedIds.size })}
+            </span>
+          </>
+        )}
+      </div>
+
+      {flashcards.length === 0 ? (
+        <Empty>
+          <EmptyMedia>
+            <Layers className="h-10 w-10 text-muted-foreground" />
+          </EmptyMedia>
+          <EmptyTitle>{t('no_flashcards')}</EmptyTitle>
+          {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
+            <EmptyDescription>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`${basePath}/deck/${deckId}/new`)}
+                aria-keyshortcuts="n"
+              >
+                <Plus className="mr-1.5 h-4 w-4" /> {t('create_first')}
+              </Button>
+            </EmptyDescription>
           )}
-        </Card>
+        </Empty>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {flashcards.map((fc) => {
-            const isFlipped = flippedId === fc.id;
-            const fcTopics = getTopicNames(fc);
-            const canUpdate = can(role, 'flashcard.update', fc.created_by, user?.id);
-            return (
-              <Card
-                key={fc.id}
-                className={`group relative min-h-48 cursor-pointer transition-all duration-300 hover:shadow-lg ${
-                  isFlipped ? `bg-gradient-to-br ${gradient}` : ''
-                }`}
-                onClick={() => setFlippedId(isFlipped ? null : fc.id)}
-              >
-                <div className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="secondary"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <MoreVertical className="h-3 w-3" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {canUpdate ? (
-                        <OwnedFlashcardContextMenu
-                          t={t}
-                          onEdit={() => openEdit(fc)}
-                          onAddTopic={() => { setTopicActionIds([]); setAddTopicOpen(true); }}
-                          onRemoveTopic={() => { setTopicActionIds([]); setRemoveTopicOpen(true); }}
-                          onViewByTopic={() => {
-                            const assignedIds = getTopicIds(fc);
-                            const firstAssigned = topics.find((tp) => assignedIds.includes(tp.id));
-                            if (firstAssigned) setViewTopicId(firstAssigned.id);
-                          }}
-                          onLink={() => { setActiveFlashcardId(fc.id); setLinkDeckIds([]); setLinkOpen(true); }}
-                          onCopy={() => { setActiveFlashcardId(fc.id); setCopyTargetDeckId(null); setCopyOpen(true); }}
-                          onDelete={can(role, 'flashcard.delete', fc.created_by, user?.id) ? () => setDeleteId(fc.id) : null}
-                        />
-                      ) : (
-                        <ViewOnlyFlashcardContextMenu
-                          t={t}
-                          onLink={() => { setActiveFlashcardId(fc.id); setLinkDeckIds([]); setLinkOpen(true); }}
-                          onCopy={() => { setActiveFlashcardId(fc.id); setCopyTargetDeckId(null); setCopyOpen(true); }}
-                        />
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-
-                <CardContent className="flex flex-col items-center justify-center p-6 pt-8">
-                  <p className="mb-2 text-xs uppercase text-muted-foreground">
-                    {isFlipped ? t('answer_label') : t('question_label')}
-                  </p>
-                  <p className={`text-center text-lg font-medium ${isFlipped ? 'text-white' : ''}`}>
-                    {isFlipped ? fc.back : fc.front}
-                  </p>
-                  <div className="mt-auto pt-4 w-full">
-                    {fcTopics.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {fcTopics.map((topic) => (
-                          <Badge key={topic.id} variant="secondary" className="gap-1 text-xs">
-                            <div
-                              className={`h-1.5 w-1.5 rounded-full ${getTopicColor(topic.name)}`}
-                            />
-                            {topic.name}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">{t('no_topics')}</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          {flashcards.map((fc) => (
+            <FlashcardCard
+              key={fc.id}
+              fc={fc}
+              isFlipped={flippedId === fc.id}
+              gradient={gradient}
+              canUpdate={can(role, 'flashcard.update', fc.created_by, user?.id)}
+              canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false}
+              topics={topics}
+              t={t}
+              selected={selectedIds.has(fc.id)}
+              selectable={isSelecting}
+              onToggleSelect={toggleSelect}
+              onFlip={isSelecting ? () => {} : (id) => setFlippedId(id || null)}
+              onEdit={openEdit}
+              onDelete={(id) => setD((prev) => ({ ...prev, deleteId: id }))}
+              onLink={(fc) =>
+                setD((prev) => ({
+                  ...prev,
+                  activeFlashcardId: fc.id,
+                  linkDeckIds: [],
+                  linkOpen: true,
+                }))
+              }
+              onCopy={(fc) =>
+                setD((prev) => ({
+                  ...prev,
+                  activeFlashcardId: fc.id,
+                  copyTargetDeckId: null,
+                  copyOpen: true,
+                }))
+              }
+              onAddTopic={(fc) =>
+                setD((prev) => ({
+                  ...prev,
+                  activeFlashcardId: fc.id,
+                  topicActionIds: [],
+                  addTopicOpen: true,
+                }))
+              }
+              onManageTopics={(fc) =>
+                setD((prev) => ({ ...prev, activeFlashcardId: fc.id, manageTopicOpen: true }))
+              }
+              onViewByTopic={(_fc, topicId) => setD((prev) => ({ ...prev, viewTopicId: topicId }))}
+            />
+          ))}
+          <div ref={loadMoreRef} className="col-span-full h-4" />
+          {isFetchingNextPage && (
+            <div className="col-span-full flex justify-center py-4">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          )}
         </div>
       )}
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t('create_title')}</DialogTitle>
-            <DialogDescription>{t('create_desc')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label>{t('front_label')}</Label>
-              <Textarea
-                value={formData.front}
-                onChange={(e) => setFormData({ ...formData, front: e.target.value })}
-                placeholder={t('front_placeholder')}
-                rows={3}
-              />
-            </div>
-            <div>
-              <Label>{t('back_label')}</Label>
-              <Textarea
-                value={formData.back}
-                onChange={(e) => setFormData({ ...formData, back: e.target.value })}
-                placeholder={t('back_placeholder')}
-                rows={3}
-              />
-            </div>
-            <div>
-              <Label>{t('topics_label')}</Label>
-              <div className="space-y-2 mt-2 max-h-40 overflow-y-auto">
-                {topics.map((topic) => (
-                  <div key={topic.id} className="flex items-center gap-3 p-2 rounded-lg border">
-                    <Checkbox
-                      checked={formData.topicIds.includes(topic.id)}
-                      onCheckedChange={() => toggleTopic(topic.id)}
-                    />
-                    <div className={`h-2 w-2 rounded-full ${getTopicColor(topic.name)}`} />
-                    <span className="text-sm">{topic.name}</span>
-                  </div>
-                ))}
-                {topics.length === 0 && (
-                  <p className="text-sm text-muted-foreground">{t('no_topics_available')}</p>
-                )}
-              </div>
-              {formData.topicIds.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2 p-2 rounded-lg bg-muted">
-                  {formData.topicIds.map((id) => {
-                    const topic = topics.find((t) => t.id === id);
-                    if (!topic) return null;
-                    return (
-                      <Badge key={id} variant="secondary" className="gap-1">
-                        <div className={`h-1.5 w-1.5 rounded-full ${getTopicColor(topic.name)}`} />
-                        {topic.name}
-                        <button
-                          className="ml-1 hover:text-destructive"
-                          onClick={() => toggleTopic(id)}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setCreateOpen(false);
-                resetForm();
-              }}
-            >
-              {t('common_cancel')}
-            </Button>
-            <Button onClick={handleCreate}>{t('common_create')}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {(() => {
+        const selectedFlashcards = flashcards.filter((fc) => selectedIds.has(fc.id));
+        const canBulkTopics =
+          selectedFlashcards.length > 0 &&
+          selectedFlashcards.every((fc) => can(role, 'flashcard.update', fc.created_by, user?.id));
+        const canBulkMove =
+          (can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false) &&
+          selectedFlashcards.every((fc) => can(role, 'flashcard.update', fc.created_by, user?.id));
+        return (
+          <FlashcardBulkActions
+            selectedCount={selectedIds.size}
+            canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false}
+            canTopics={canBulkTopics}
+            canMove={canBulkMove}
+            canExport={selectedIds.size > 0}
+            onDelete={() =>
+              setD((prev) => ({
+                ...prev,
+                bulkDeleteOpen: true,
+                selectedIds: Array.from(selectedIds),
+              }))
+            }
+            onLink={() =>
+              setD((prev) => ({
+                ...prev,
+                bulkLinkOpen: true,
+                bulkLinkDeckIds: [],
+                selectedIds: Array.from(selectedIds),
+              }))
+            }
+            onTopics={() =>
+              setD((prev) => ({
+                ...prev,
+                bulkTopicsOpen: true,
+                bulkTopicIds: [],
+                bulkTopicsOperation: 'set',
+                selectedIds: Array.from(selectedIds),
+              }))
+            }
+            onCopy={() =>
+              setD((prev) => ({
+                ...prev,
+                bulkCopyOpen: true,
+                bulkCopyTargetDeckId: null,
+                selectedIds: Array.from(selectedIds),
+              }))
+            }
+            onMove={() =>
+              setD((prev) => ({
+                ...prev,
+                bulkMoveOpen: true,
+                bulkMoveTargetDeckId: null,
+                selectedIds: Array.from(selectedIds),
+              }))
+            }
+            onExport={() => {
+              const ids = Array.from(selectedIds).join(',');
+              window.open(`/api/v1/flashcards/export/csv?ids=${ids}`, '_blank');
+            }}
+            onClearSelection={clearSelection}
+            t={t}
+          />
+        );
+      })()}
 
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t('edit_title')}</DialogTitle>
-            <DialogDescription>{t('edit_desc')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label>{t('front_label')}</Label>
-              <Textarea
-                value={formData.front}
-                onChange={(e) => setFormData({ ...formData, front: e.target.value })}
-                rows={3}
-              />
-            </div>
-            <div>
-              <Label>{t('back_label')}</Label>
-              <Textarea
-                value={formData.back}
-                onChange={(e) => setFormData({ ...formData, back: e.target.value })}
-                rows={3}
-              />
-            </div>
-            <div>
-              <Label>{t('topics_label')}</Label>
-              <div className="space-y-2 mt-2 max-h-40 overflow-y-auto">
-                {topics.map((topic) => (
-                  <div key={topic.id} className="flex items-center gap-3 p-2 rounded-lg border">
-                    <Checkbox
-                      checked={formData.topicIds.includes(topic.id)}
-                      onCheckedChange={() => toggleTopic(topic.id)}
-                    />
-                    <div className={`h-2 w-2 rounded-full ${getTopicColor(topic.name)}`} />
-                    <span className="text-sm">{topic.name}</span>
-                  </div>
-                ))}
-              </div>
-              {formData.topicIds.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2 p-2 rounded-lg bg-muted">
-                  {formData.topicIds.map((id) => {
-                    const topic = topics.find((t) => t.id === id);
-                    if (!topic) return null;
-                    return (
-                      <Badge key={id} variant="secondary" className="gap-1">
-                        <div className={`h-1.5 w-1.5 rounded-full ${getTopicColor(topic.name)}`} />
-                        {topic.name}
-                        <button
-                          className="ml-1 hover:text-destructive"
-                          onClick={() => toggleTopic(id)}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setEditOpen(false);
-                resetForm();
-              }}
-            >
-              {t('common_cancel')}
-            </Button>
-            <Button onClick={handleUpdate}>{t('common_update')}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <Suspense fallback={null}>
+        <DeckDetailDialogs
+          state={d}
+          handlers={h}
+          flashcards={flashcards}
+          currentDeck={currentDeck}
+          allDecks={allDecks}
+          topics={topics}
+          t={t}
+          basePath={basePath}
+        />
+      </Suspense>
 
-      <Dialog open={linkOpen} onOpenChange={setLinkOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t('link_title')}</DialogTitle>
-            <DialogDescription>{t('link_desc')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
-            {allDecks.map((d) => (
-              <div key={d.id} className="flex items-center gap-3 p-3 rounded-lg border">
-                <Checkbox
-                  checked={linkDeckIds.includes(d.id)}
-                  onCheckedChange={() =>
-                    setLinkDeckIds((prev) =>
-                      prev.includes(d.id) ? prev.filter((x) => x !== d.id) : [...prev, d.id],
-                    )
-                  }
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{d.name}</p>
-                  {d.description && (
-                    <p className="text-xs text-muted-foreground truncate">{d.description}</p>
-                  )}
-                </div>
-              </div>
-            ))}
-            {allDecks.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                {t('no_other_decks')}
-              </p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setLinkOpen(false);
-                setLinkDeckIds([]);
-              }}
-            >
-              {t('common_cancel')}
-            </Button>
-            <Button onClick={handleLink} disabled={linkDeckIds.length === 0}>
-              {t('link_button', { count: linkDeckIds.length })}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ImportDialog open={importOpen} onOpenChange={setImportOpen} deckId={deckId} t={t} />
 
-      <Dialog open={copyOpen} onOpenChange={setCopyOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t('copy_title')}</DialogTitle>
-            <DialogDescription>{t('copy_desc')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
-            {allDecks.map((d) => (
-              <button
-                key={d.id}
-                className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
-                  copyTargetDeckId === d.id ? 'border-primary bg-primary/5' : 'hover:bg-muted'
-                }`}
-                onClick={() => setCopyTargetDeckId(d.id)}
-              >
-                <div
-                  className={`h-4 w-4 rounded-full border-2 flex items-center justify-center ${
-                    copyTargetDeckId === d.id ? 'border-primary' : 'border-muted-foreground'
-                  }`}
-                >
-                  {copyTargetDeckId === d.id && <div className="h-2 w-2 rounded-full bg-primary" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{d.name}</p>
-                  {d.description && (
-                    <p className="text-xs text-muted-foreground truncate">{d.description}</p>
-                  )}
-                </div>
-                <Badge variant="secondary">
-                  {t('flashcards_count', { count: d.flashcard_count })}
-                </Badge>
-              </button>
-            ))}
-            {allDecks.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                {t('no_other_decks')}
-              </p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setCopyOpen(false);
-                setCopyTargetDeckId(null);
-              }}
-            >
-              {t('common_cancel')}
-            </Button>
-            <Button onClick={handleCopy} disabled={!copyTargetDeckId}>
-              {t('copy_button')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {!isSelecting && (
+        <SpeedDial
+          items={[
+            ...(can(role, 'deck.update', currentDeck?.created_by, user?.id)
+              ? [
+                  {
+                    icon: Plus,
+                    label: t('new_flashcard'),
+                    onClick: () => router.push(`${basePath}/deck/${deckId}/new`),
+                  },
+                ]
+              : []),
 
-      <Dialog
-        open={!!copyResult}
-        onOpenChange={(open) => {
-          if (!open) setCopyResult(null);
-        }}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{t('copy_success_title')}</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            <Button
-              onClick={() => {
-                router.push(`${basePath}/deck/${copyResult?.deckId}`);
-                setCopyResult(null);
-              }}
-            >
-              <ExternalLink className="mr-2 h-4 w-4" /> {t('copy_go_to_card')}
-            </Button>
-            <Button variant="outline" onClick={() => setCopyResult(null)}>
-              {t('copy_stay_here')}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <DeleteConfirmDialog
-        open={!!deleteId}
-        onOpenChange={() => setDeleteId(null)}
-        onConfirm={handleDelete}
-        title={t('delete_dialog_title')}
-        description={t('delete_dialog_desc')}
-        cancelText={t('common_cancel')}
-        confirmText={t('common_delete')}
-      />
-
-      <Dialog open={deckEditOpen} onOpenChange={setDeckEditOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('deck_edit_title')}</DialogTitle>
-            <DialogDescription>{t('deck_edit_desc')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label>{t('deck_name_label')}</Label>
-              <Input
-                value={deckFormData.name}
-                onChange={(e) => setDeckFormData({ ...deckFormData, name: e.target.value })}
-                placeholder={t('deck_name_placeholder')}
-              />
-            </div>
-            <div>
-              <Label>{t('deck_description_label')}</Label>
-              <Textarea
-                value={deckFormData.description}
-                onChange={(e) => setDeckFormData({ ...deckFormData, description: e.target.value })}
-                placeholder={t('deck_description_placeholder')}
-                rows={2}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeckEditOpen(false)}>
-              {t('common_cancel')}
-            </Button>
-            <Button onClick={handleDeckUpdate}>{t('common_update')}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <DeleteConfirmDialog
-        open={deckDeleteOpen}
-        onOpenChange={setDeckDeleteOpen}
-        onConfirm={handleDeckDelete}
-        title={t('deck_delete_title')}
-        description={t('deck_delete_desc')}
-        cancelText={t('common_cancel')}
-        confirmText={t('common_delete')}
-      />
-
-      <Dialog
-        open={!!viewTopicId}
-        onOpenChange={(open) => {
-          if (!open) setViewTopicId(null);
-        }}
-      >
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {viewTopic && (
-                <span className="flex items-center gap-2">
-                  <div className={`h-5 w-5 rounded ${getTopicColor(viewTopic.name)}`} />
-                  {viewTopic.name}
-                </span>
-              )}
-            </DialogTitle>
-            <DialogDescription>
-              {t('view_flashcards_for_topic', { count: viewTopicFlashcards.length })}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-4">
-            {viewTopicFlashcards.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">
-                {t('no_flashcards_for_topic')}
-              </p>
-            ) : (
-              viewTopicFlashcards.map((fc) => (
-                <div key={fc.id} className="p-4 rounded-lg border space-y-2">
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase">{t('question_label')}</p>
-                    <p className="text-sm font-medium">{fc.front}</p>
-                  </div>
-                  <div className="border-t pt-2">
-                    <p className="text-xs text-muted-foreground uppercase">{t('answer_label')}</p>
-                    <p className="text-sm">{fc.back}</p>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setViewTopicId(null)}>{t('common_close')}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={addTopicOpen} onOpenChange={setAddTopicOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('menu_add_topic')}</DialogTitle>
-            <DialogDescription>{t('add_topic_desc')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 max-h-60 overflow-y-auto py-2">
-            {(() => {
-              const assignedIds = getTopicIds(flashcards.find((f) => f.id === activeFlashcardId));
-              const available = topics.filter((topic) => !assignedIds.includes(topic.id));
-              return (
-                <>
-                  {available.map((topic) => (
-                    <div key={topic.id} className="flex items-center gap-3 p-2 rounded-lg border">
-                      <Checkbox
-                        checked={topicActionIds.includes(topic.id)}
-                        onCheckedChange={() =>
-                          setTopicActionIds((prev) =>
-                            prev.includes(topic.id)
-                              ? prev.filter((id) => id !== topic.id)
-                              : [...prev, topic.id],
-                          )
-                        }
-                      />
-                      <div className={`h-2 w-2 rounded-full ${getTopicColor(topic.name)}`} />
-                      <span className="text-sm">{topic.name}</span>
-                    </div>
-                  ))}
-                  {available.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      {t('no_other_topics_to_add')}
-                    </p>
-                  )}
-                </>
-              );
-            })()}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddTopicOpen(false)}>
-              {t('common_cancel')}
-            </Button>
-            <Button
-              onClick={async () => {
-                if (!activeFlashcardId || topicActionIds.length === 0) return;
-                const fc = flashcards?.find((f) => f.id === activeFlashcardId);
-                if (!fc) return;
-                const currentIds = getTopicIds(fc);
-                const newIds = [...new Set([...currentIds, ...topicActionIds])];
-                try {
-                  await updateFlashcard.mutateAsync({
-                    id: activeFlashcardId,
-                    front: fc.front,
-                    back: fc.back,
-                    topicIds: newIds,
-                  });
-                  toast.success(t('topic_added'));
-                } catch {
-                  toast.error(t('save_failed'));
-                }
-                setAddTopicOpen(false);
-                setTopicActionIds([]);
-              }}
-              disabled={topicActionIds.length === 0}
-            >
-              {t('common_add')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={removeTopicOpen} onOpenChange={setRemoveTopicOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('menu_remove_topic')}</DialogTitle>
-            <DialogDescription>{t('remove_topic_desc')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 max-h-60 overflow-y-auto py-2">
-            {(() => {
-              const assignedIds = getTopicIds(flashcards.find((f) => f.id === activeFlashcardId));
-              const assigned = topics.filter((topic) => assignedIds.includes(topic.id));
-              return (
-                <>
-                  {assigned.map((topic) => (
-                    <div key={topic.id} className="flex items-center gap-3 p-2 rounded-lg border">
-                      <Checkbox
-                        checked={topicActionIds.includes(topic.id)}
-                        onCheckedChange={() =>
-                          setTopicActionIds((prev) =>
-                            prev.includes(topic.id)
-                              ? prev.filter((id) => id !== topic.id)
-                              : [...prev, topic.id],
-                          )
-                        }
-                      />
-                      <div className={`h-2 w-2 rounded-full ${getTopicColor(topic.name)}`} />
-                      <span className="text-sm">{topic.name}</span>
-                    </div>
-                  ))}
-                  {assigned.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      {t('no_topics_to_remove')}
-                    </p>
-                  )}
-                </>
-              );
-            })()}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRemoveTopicOpen(false)}>
-              {t('common_cancel')}
-            </Button>
-            <Button
-              onClick={async () => {
-                if (!activeFlashcardId || topicActionIds.length === 0) return;
-                const fc = flashcards?.find((f) => f.id === activeFlashcardId);
-                if (!fc) return;
-                const currentIds = getTopicIds(fc);
-                const newIds = currentIds.filter((id) => !topicActionIds.includes(id));
-                try {
-                  await updateFlashcard.mutateAsync({
-                    id: activeFlashcardId,
-                    front: fc.front,
-                    back: fc.back,
-                    topicIds: newIds,
-                  });
-                  toast.success(t('topic_removed'));
-                } catch {
-                  toast.error(t('save_failed'));
-                }
-                setRemoveTopicOpen(false);
-                setTopicActionIds([]);
-              }}
-              disabled={topicActionIds.length === 0}
-            >
-              {t('common_remove')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            {
+              icon: Sparkles,
+              label: t('generate'),
+              onClick: () => router.push(`/app/ai?deckId=${deckId}`),
+            },
+            { icon: CheckSquare, label: t('select_cards'), onClick: () => setIsSelecting(true) },
+          ]}
+        />
+      )}
     </div>
   );
 }

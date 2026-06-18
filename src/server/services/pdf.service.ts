@@ -1,25 +1,15 @@
+import { extractText, getDocumentProxy } from 'unpdf';
+
 const LOG_PREFIX = '[PdfService]';
 
 export class PdfService {
   async extractText(buffer: Buffer): Promise<string> {
     console.log(`${LOG_PREFIX} Extracting text from PDF (bufferSize=${buffer.length})`);
     try {
-      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-      const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise;
-      const pages: string[] = [];
-
-      for (let i = 1; i <= doc.numPages; i++) {
-        const page = await doc.getPage(i);
-        const content = await page.getTextContent();
-        const text = content.items.map((item: unknown) => (item as { str: string }).str).join(' ');
-        pages.push(text);
-        page.cleanup();
-      }
-
-      const text = pages.join('\n\n').trim();
-      console.log(`${LOG_PREFIX} Extracted ${text.length} characters, pages=${doc.numPages}`);
-      doc.destroy();
-      return text;
+      const pdf = await getDocumentProxy(new Uint8Array(buffer));
+      const { totalPages, text } = await extractText(pdf, { mergePages: true });
+      console.log(`${LOG_PREFIX} Extracted ${text.length} characters, pages=${totalPages}`);
+      return text.trim();
     } catch (error) {
       console.error(`${LOG_PREFIX} PDF extraction failed:`, error);
       throw error;

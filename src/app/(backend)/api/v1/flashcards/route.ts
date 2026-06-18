@@ -68,55 +68,6 @@
  *         description: Validation error
  *       500:
  *         description: Internal server error
- *   put:
- *     summary: Bulk create flashcards
- *     description: Creates multiple flashcards at once. Teachers' flashcards are scoped to their university. Requires authentication.
- *     tags:
- *       - Flashcards
- *     security:
- *       - cookieAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - cards
- *             properties:
- *               cards:
- *                 type: array
- *                 items:
- *                   type: object
- *                   required:
- *                     - front
- *                     - back
- *                   properties:
- *                     front:
- *                       type: string
- *                       minLength: 1
- *                     back:
- *                       type: string
- *                       minLength: 1
- *                     topicIds:
- *                       type: array
- *                       items:
- *                         type: string
- *                         format: uuid
- *                     deckIds:
- *                       type: array
- *                       items:
- *                         type: string
- *                         format: uuid
- *     responses:
- *       201:
- *         description: Flashcards created successfully
- *       401:
- *         description: Unauthorized (no session)
- *       422:
- *         description: Validation error
- *       500:
- *         description: Internal server error
  */
 
 import { NextRequest } from 'next/server';
@@ -136,9 +87,13 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const topicIds = searchParams.get('topicIds')?.split(',').filter(Boolean);
     const deckIds = searchParams.get('deckIds')?.split(',').filter(Boolean);
-    const filters: { topicIds?: string[]; deckIds?: string[] } = {};
+    const cursor = searchParams.get('cursor') ?? undefined;
+    const limit = searchParams.get('limit') ? Number(searchParams.get('limit')) : undefined;
+    const filters: { topicIds?: string[]; deckIds?: string[]; cursor?: string; limit?: number } = {};
     if (topicIds && topicIds.length > 0) filters.topicIds = topicIds;
     if (deckIds && deckIds.length > 0) filters.deckIds = deckIds;
+    if (cursor) filters.cursor = cursor;
+    if (limit) filters.limit = limit;
 
     return toNextResponse(
       await flashcardController.list(ctx, Object.keys(filters).length > 0 ? filters : undefined),
@@ -146,9 +101,3 @@ export async function GET(req: NextRequest) {
   });
 }
 
-export async function PUT(req: NextRequest) {
-  return withAuth(req, async (ctx) => {
-    const body = await req.json();
-    return toNextResponse(await flashcardController.bulkCreate(body, ctx));
-  });
-}

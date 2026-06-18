@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
 import { flashcardSpacedRepetitionService } from './flashcard-spaced-repetition.service';
-import type { BatchPracticeInput } from '@/server/models';
+import type { BatchPracticeInput, CompleteSessionInput, PracticeCardData, Rating } from '@/server/models';
 import { buildQueryFilter, Permission } from '@/lib/rbac';
 
 export class FlashcardPracticeService {
@@ -41,7 +41,7 @@ export class FlashcardPracticeService {
 
   async batch(data: BatchPracticeInput, ctx: RequestContext) {
     const supabase = await createClient();
-    let updated = 0;
+    const results: Array<{ flashcardId: string; isLeech: boolean }> = [];
 
     for (const item of data.items) {
       const { error: practiceError } = await supabase
@@ -55,18 +55,19 @@ export class FlashcardPracticeService {
         });
 
       if (practiceError) {
+        results.push({ flashcardId: item.flashcardId, isLeech: false });
         continue;
       }
 
       try {
-        await this.upsertReviewState(item.flashcardId, item.wasCorrect, item.confidenceLevel, ctx);
-        updated++;
+        const reviewState = await this.upsertReviewState(item.flashcardId, item.wasCorrect, item.confidenceLevel, ctx);
+        results.push({ flashcardId: item.flashcardId, isLeech: reviewState.is_leech });
       } catch {
-        // skip individual failures
+        results.push({ flashcardId: item.flashcardId, isLeech: false });
       }
     }
 
-    return { success: true, updated };
+    return { success: true, results };
   }
 
   private async getReviewState(flashcardId: string, ctx: RequestContext) {
@@ -82,41 +83,101 @@ export class FlashcardPracticeService {
     return data;
   }
 
+  private async ensureStudySettings(ctx: RequestContext) {
+    const supabase = await createClient();
+
+    const { data: existing } = await supabase
+      .from('user_study_settings')
+      .select('*')
+      .eq('user_id', ctx.userId)
+      .maybeSingle();
+
+    if (existing) return existing;
+
+    const { data: created, error } = await supabase
+      .from('user_study_settings')
+      .insert({ user_id: ctx.userId })
+      .select()
+      .single();
+
+    if (error) throw mapSupabaseError(error);
+    return created;
+  }
+
+  private async resetDailyIfNeeded(ctx: RequestContext) {
+    const supabase = await createClient();
+    const settings = await this.ensureStudySettings(ctx);
+
+    const today = new Date().toISOString().split('T')[0];
+    if (settings.daily_reset_date < today) {
+      const { data: updated, error } = await supabase
+        .from('user_study_settings')
+        .update({ new_cards_introduced: 0, daily_reset_date: today })
+        .eq('user_id', ctx.userId)
+        .select()
+        .single();
+
+      if (error) throw mapSupabaseError(error);
+      return updated;
+    }
+
+    return settings;
+  }
+
+  async getSettings(ctx: RequestContext) {
+    const settings = await this.resetDailyIfNeeded(ctx);
+    return {
+      learningSteps: settings.learning_steps,
+      newCardsPerDay: settings.new_cards_per_day,
+      newCardsIntroduced: settings.new_cards_introduced,
+      leechThreshold: settings.leech_threshold,
+      dailyResetDate: settings.daily_reset_date,
+      remainingNewCards: Math.max(0, settings.new_cards_per_day - settings.new_cards_introduced),
+    };
+  }
+
   private async upsertReviewState(
     flashcardId: string,
-    wasCorrect: boolean,
+    _wasCorrect: boolean,
     confidenceLevel: number | undefined,
     ctx: RequestContext,
   ) {
     const supabase = await createClient();
 
     const existing = await this.getReviewState(flashcardId, ctx);
+    const settings = await this.resetDailyIfNeeded(ctx);
 
-    const currentEF = existing?.easiness_factor ?? 2.5;
-    const currentInterval = existing?.interval_days ?? 0;
-    const currentRepetitions = existing?.repetitions ?? 0;
+    const rating = (Math.min(Math.max(confidenceLevel ?? 3, 1), 4)) as Rating;
 
     const result = flashcardSpacedRepetitionService.calculateNextReview({
-      wasCorrect,
-      confidenceLevel,
-      currentEF,
-      currentInterval,
-      currentRepetitions,
+      learningState: existing?.learning_state ?? 'new',
+      currentStep: existing?.learning_step ?? 0,
+      learningSteps: settings.learning_steps,
+      rating,
+      easinessFactor: existing?.easiness_factor ?? 2.5,
+      interval: existing?.interval_days ?? 0,
+      repetitions: existing?.repetitions ?? 0,
+      lapseCount: existing?.lapse_count ?? 0,
+      leechThreshold: settings.leech_threshold,
     });
 
-    const quality = flashcardSpacedRepetitionService.mapToQuality(wasCorrect, confidenceLevel);
+    const quality = flashcardSpacedRepetitionService.mapToQuality(rating);
 
     const { data: reviewState, error } = await supabase
       .from('flashcard_review_state')
       .upsert({
         user_id: ctx.userId,
         flashcard_id: flashcardId,
-        easiness_factor: result.newEF,
+        easiness_factor: result.newEasinessFactor,
         interval_days: result.newInterval,
         repetitions: result.newRepetitions,
         next_review_at: result.nextReviewAt.toISOString(),
         last_reviewed_at: new Date().toISOString(),
         last_quality: quality,
+        learning_state: result.learningState,
+        learning_step: result.learningStep,
+        lapse_count: result.lapseCount,
+        is_leech: result.isLeech,
       }, {
         onConflict: 'user_id, flashcard_id',
       })
@@ -124,6 +185,15 @@ export class FlashcardPracticeService {
       .single();
 
     if (error) throw mapSupabaseError(error);
+
+    if (!existing) {
+      const { error: introError } = await supabase
+        .from('user_study_settings')
+        .update({ new_cards_introduced: settings.new_cards_introduced + 1 })
+        .eq('user_id', ctx.userId);
+      if (introError) throw mapSupabaseError(introError);
+    }
+
     return reviewState;
   }
 
@@ -131,71 +201,49 @@ export class FlashcardPracticeService {
     ctx: RequestContext,
     filters: { topicIds?: string[]; deckIds?: string[] },
     limit: number = 20,
+    newOnly: boolean = false,
   ) {
     const supabase = await createClient();
 
-    const matchingIds = await this.getMatchingFlashcardIds(ctx, filters);
-    if (matchingIds.length === 0) return [];
+    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    if (filter._impossible) return [];
 
-    const { data: states } = await supabase
-      .from('flashcard_review_state')
-      .select('*')
-      .eq('user_id', ctx.userId)
-      .in('flashcard_id', matchingIds);
-
-    const stateByCard = new Map((states ?? []).map((s) => [s.flashcard_id, s]));
-
-    const { data: flashcards, error } = await supabase
-      .from('flashcards')
-      .select('id, front, back, created_at')
-      .in('id', matchingIds);
-
-    if (error) throw mapSupabaseError(error);
-
-    const now = new Date();
-    const due: NonNullable<typeof flashcards> = [];
-    const notDue: NonNullable<typeof flashcards> = [];
-
-    for (const fc of flashcards ?? []) {
-      const state = stateByCard.get(fc.id);
-      if (!state || new Date(state.next_review_at) <= now) {
-        due.push(fc);
-      } else {
-        notDue.push(fc);
-      }
+    let filterType: string;
+    let universityId: string | null;
+    if (filter.or) {
+      filterType = 'university';
+      universityId = ctx.universityId ?? null;
+    } else if (filter.created_by) {
+      filterType = 'own';
+      universityId = null;
+    } else {
+      filterType = 'any';
+      universityId = null;
     }
 
-    type FlashcardRow = NonNullable<typeof flashcards>[number];
-    const mapCard = (fc: FlashcardRow) => ({
-      id: fc.id,
-      front: fc.front,
-      back: fc.back,
-      createdAt: fc.created_at,
-      reviewState: stateByCard.get(fc.id) ?? null,
+    const settings = await this.resetDailyIfNeeded(ctx);
+    const newCardLimit = Math.max(0, settings.new_cards_per_day - settings.new_cards_introduced);
+
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('get_due_flashcards', {
+      p_user_id: ctx.userId,
+      p_filter_type: filterType,
+      p_university_id: universityId,
+      p_limit: newOnly ? Math.min(limit, newCardLimit) : limit,
+      p_deck_ids: filters.deckIds?.length ? filters.deckIds : null,
+      p_topic_ids: filters.topicIds?.length ? filters.topicIds : null,
+      p_new_card_limit: newCardLimit,
+      p_new_only: newOnly,
     });
 
-    if (due.length > 0) {
-      due.sort((a, b) => {
-        const sa = stateByCard.get(a.id);
-        const sb = stateByCard.get(b.id);
-        if (!sa && !sb) return 0;
-        if (!sa) return -1;
-        if (!sb) return 1;
-        return new Date(sa.next_review_at).getTime() - new Date(sb.next_review_at).getTime();
-      });
+    if (rpcError) throw mapSupabaseError(rpcError);
+    const cards = (rpcResult as unknown as Array<{
+      id: string; front: string; back: string;
+      createdAt: string; reviewState: Record<string, unknown> | null;
+      deckName: string | null;
+      topicNames: string[];
+    }>) ?? [];
 
-      return due.slice(0, limit).map(mapCard);
-    }
-
-    notDue.sort((a, b) => {
-      const sa = stateByCard.get(a.id);
-      const sb = stateByCard.get(b.id);
-      const qa = sa?.last_quality ?? 999;
-      const qb = sb?.last_quality ?? 999;
-      return qa - qb;
-    });
-
-    return notDue.slice(0, limit).map(mapCard);
+    return cards;
   }
 
   async getDueBreakdown(ctx: RequestContext) {
@@ -232,7 +280,7 @@ export class FlashcardPracticeService {
     const stateByCard = new Map((states ?? []).map((s) => [s.flashcard_id, s]));
     const dueFlashcardIds = flashcardIds.filter((fcId) => {
       const state = stateByCard.get(fcId);
-      return !state || new Date(state.next_review_at) <= now;
+      return state && new Date(state.next_review_at) <= now;
     });
 
     if (dueFlashcardIds.length === 0) {
@@ -287,7 +335,7 @@ export class FlashcardPracticeService {
     const now = new Date();
     const count = (flashcards ?? []).filter((fc) => {
       const state = stateByCard.get(fc.id);
-      return !state || new Date(state.next_review_at) <= now;
+      return state && new Date(state.next_review_at) <= now;
     }).length;
 
     return { count };
@@ -326,6 +374,63 @@ export class FlashcardPracticeService {
     };
   }
 
+  async getStateBreakdown(ctx: RequestContext) {
+    const supabase = await createClient();
+
+    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    let query = supabase.from('flashcards').select('id');
+
+    if (filter._impossible) {
+      return { totalCards: 0, neverPracticed: 0, learning: 0, review: 0, relearning: 0, leeched: 0 };
+    }
+    if (filter.or) {
+      query = query.or(filter.or);
+    } else if (filter.created_by) {
+      query = query.eq('created_by', filter.created_by);
+    }
+
+    const { data: flashcards, error } = await query;
+    if (error || !flashcards) {
+      return { totalCards: 0, neverPracticed: 0, learning: 0, review: 0, relearning: 0, leeched: 0 };
+    }
+
+    const totalCards = flashcards.length;
+    const flashcardIds = flashcards.map((fc) => fc.id);
+
+    const { data: states } = await supabase
+      .from('flashcard_review_state')
+      .select('flashcard_id, learning_state, is_leech')
+      .eq('user_id', ctx.userId)
+      .in('flashcard_id', flashcardIds);
+
+    const stateByCard = new Map((states ?? []).map((s) => [s.flashcard_id, s]));
+
+    let neverPracticed = 0;
+    let learning = 0;
+    let review = 0;
+    let relearning = 0;
+    let leeched = 0;
+
+    for (const fcId of flashcardIds) {
+      const s = stateByCard.get(fcId);
+      if (!s) {
+        neverPracticed++;
+      } else if (s.is_leech) {
+        leeched++;
+      } else if (s.learning_state === 'learning') {
+        learning++;
+      } else if (s.learning_state === 'relearning') {
+        relearning++;
+      } else if (s.learning_state === 'review') {
+        review++;
+      } else {
+        neverPracticed++;
+      }
+    }
+
+    return { totalCards, neverPracticed, learning, review, relearning, leeched };
+  }
+
   async getStatsForFlashcard(flashcardId: string, ctx: RequestContext) {
     const supabase = await createClient();
 
@@ -350,6 +455,113 @@ export class FlashcardPracticeService {
       averageResponseTimeMs: Math.round(avgResponseTime),
       reviewState,
     };
+  }
+
+  async getAllCardStats(
+    ctx: RequestContext,
+    filters?: { deckIds?: string[]; topicIds?: string[]; state?: string; sortBy?: string; order?: string; limit?: number; cursor?: string },
+  ) {
+    const supabase = await createClient();
+
+    const cardFilter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    let query = supabase
+      .from('flashcards')
+      .select('id, front, back, created_at');
+
+    if (cardFilter._impossible) return { items: [], nextCursor: null, hasMore: false };
+    if (cardFilter.or) {
+      query = query.or(cardFilter.or);
+    } else if (cardFilter.created_by) {
+      query = query.eq('created_by', cardFilter.created_by);
+    }
+
+    const pageSize = Math.min(filters?.limit ?? 50, 100);
+    query = query.order('id').limit(pageSize + 1);
+    if (filters?.cursor) {
+      query = query.gt('id', filters.cursor);
+    }
+
+    const { data: flashcards, error } = await query;
+    if (error) throw mapSupabaseError(error);
+
+    const rows = (flashcards ?? []) as Array<{ id: string; front: string; back: string; created_at: string }>;
+    const hasMore = rows.length > pageSize;
+    const page = hasMore ? rows.slice(0, pageSize) : rows;
+
+    if (page.length === 0) return { items: [], nextCursor: null, hasMore: false };
+
+    const flashcardIds = page.map((fc) => fc.id);
+
+    const { data: states } = await supabase
+      .from('flashcard_review_state')
+      .select('*')
+      .eq('user_id', ctx.userId)
+      .in('flashcard_id', flashcardIds);
+
+    const stateMap = new Map((states ?? []).map((s) => [s.flashcard_id, s]));
+
+    const { data: practiceRows } = await supabase
+      .from('flashcard_practice')
+      .select('flashcard_id, was_correct, practiced_at')
+      .eq('user_id', ctx.userId)
+      .in('flashcard_id', flashcardIds)
+      .order('practiced_at', { ascending: false });
+
+    const practiceByCard = new Map<string, { total: number; correct: number; lastPracticedAt: string | null }>();
+    for (const row of practiceRows ?? []) {
+      const entry = practiceByCard.get(row.flashcard_id) ?? { total: 0, correct: 0, lastPracticedAt: null };
+      entry.total++;
+      if (row.was_correct) entry.correct++;
+      if (!entry.lastPracticedAt) entry.lastPracticedAt = row.practiced_at;
+      practiceByCard.set(row.flashcard_id, entry);
+    }
+
+    let items = page.map((fc) => {
+      const state = stateMap.get(fc.id) ?? null;
+      const practice = practiceByCard.get(fc.id);
+
+      const ls = state?.learning_state ?? null;
+      const isLeech = state?.is_leech ?? false;
+      let stateLabel: string;
+      if (!state) stateLabel = 'new';
+      else if (isLeech) stateLabel = 'leech';
+      else stateLabel = ls ?? 'new';
+
+      return {
+        id: fc.id,
+        front: fc.front,
+        back: fc.back,
+        createdAt: fc.created_at,
+        state: stateLabel,
+        totalAttempts: practice?.total ?? 0,
+        correctRate: practice && practice.total > 0 ? Math.round((practice.correct / practice.total) * 100) : 0,
+        lastPracticedAt: practice?.lastPracticedAt ?? null,
+        easinessFactor: state?.easiness_factor ?? null,
+        intervalDays: state?.interval_days ?? null,
+        nextReviewAt: state?.next_review_at ?? null,
+        repetitions: state?.repetitions ?? null,
+        isLeech,
+        learningStep: state?.learning_step ?? null,
+        lapseCount: state?.lapse_count ?? null,
+      };
+    });
+
+    if (filters?.state) {
+      items = items.filter((i) => i.state === filters.state);
+    }
+
+    const sortField = filters?.sortBy ?? 'createdAt';
+    const sortOrder = filters?.order === 'asc' ? 1 : -1;
+    items.sort((a: any, b: any) => {
+      const av = a[sortField] ?? '';
+      const bv = b[sortField] ?? '';
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * sortOrder;
+      return String(av).localeCompare(String(bv)) * sortOrder;
+    });
+
+    const nextCursor = hasMore ? page[page.length - 1].id : null;
+
+    return { items, nextCursor, hasMore };
   }
 
   private async getMatchingFlashcardIds(
@@ -395,6 +607,80 @@ export class FlashcardPracticeService {
     const { data, error } = await query;
     if (error) throw mapSupabaseError(error);
     return (data ?? []).map((r) => r.id);
+  }
+
+  async completeSession(data: CompleteSessionInput, ctx: RequestContext) {
+    const supabase = await createClient();
+
+    const { error } = await supabase.from('flashcard_study_sessions').insert({
+      id: data.sessionId,
+      user_id: ctx.userId,
+      started_at: data.startedAt,
+      completed_at: data.completedAt,
+      duration_ms: data.durationMs,
+      cards_studied: data.cardsStudied,
+      cards_correct: data.cardsCorrect,
+      deck_ids: data.deckIds ?? [],
+      mode: data.mode,
+    });
+
+    if (error) throw mapSupabaseError(error);
+
+    return { success: true };
+  }
+
+  async getCardsForPractice(
+    ctx: RequestContext,
+    filters: { deckIds?: string[]; topicIds?: string[] },
+  ): Promise<PracticeCardData[]> {
+    const supabase = await createClient();
+
+    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    if (filter._impossible) return [];
+
+    const matchingIds = await this.getMatchingFlashcardIds(ctx, filters);
+
+    if (matchingIds.length === 0) return [];
+
+    const { data: reviewStates } = await supabase
+      .from('flashcard_review_state')
+      .select('flashcard_id, easiness_factor, interval_days, repetitions, next_review_at, last_reviewed_at, last_quality, learning_state, learning_step, lapse_count, is_leech')
+      .eq('user_id', ctx.userId)
+      .in('flashcard_id', matchingIds);
+
+    const stateByCard = new Map((reviewStates ?? []).map((s) => [s.flashcard_id, s]));
+
+    const { data: flashcards, error } = await supabase
+      .from('flashcards')
+      .select('id, front, back, created_at, flashcard_deck_assignments(deck_id, flashcard_decks(name)), flashcard_topic_assignments(topic_id, flashcard_topics(name))')
+      .in('id', matchingIds);
+    if (error) throw mapSupabaseError(error);
+
+    return (flashcards ?? []).map((fc: any) => {
+      const state = stateByCard.get(fc.id);
+      return {
+        id: fc.id,
+        front: fc.front,
+        back: fc.back,
+        createdAt: fc.created_at,
+        deckName: fc.flashcard_deck_assignments?.[0]?.flashcard_decks?.name ?? null,
+        topicNames: fc.flashcard_topic_assignments?.map((a: any) => a.flashcard_topics?.name).filter(Boolean) ?? [],
+        reviewState: state
+          ? {
+              easinessFactor: state.easiness_factor,
+              intervalDays: state.interval_days,
+              repetitions: state.repetitions,
+              nextReviewAt: state.next_review_at,
+              lastReviewedAt: state.last_reviewed_at,
+              lastQuality: state.last_quality,
+              learningState: state.learning_state,
+              learningStep: state.learning_step,
+              lapseCount: state.lapse_count,
+              isLeech: state.is_leech,
+            }
+          : null,
+      };
+    });
   }
 }
 

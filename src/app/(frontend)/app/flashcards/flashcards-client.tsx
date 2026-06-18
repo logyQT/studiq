@@ -1,32 +1,42 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { FolderOpen, Tags, Play, Dumbbell } from 'lucide-react';
+import { FolderOpen, Tags, Play, Sparkles, BookOpen, RotateCcw, AlertTriangle } from 'lucide-react';
 import { DashboardPanel } from '@/components/flashcards/dashboard-panel';
+import { StatCard } from '@/components/ui/stat-card';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { Deck, Topic } from '@/types/flashcards';
+import { GRADIENTS } from '@/lib/color-utils';
 
-const GRADIENTS = [
-  'from-violet-500 to-purple-600',
-  'from-blue-500 to-cyan-500',
-  'from-emerald-500 to-teal-600',
-  'from-orange-500 to-amber-600',
-  'from-pink-500 to-rose-600',
-  'from-indigo-500 to-blue-600',
-  'from-fuchsia-500 to-pink-600',
-  'from-lime-500 to-green-600',
-  'from-red-500 to-orange-500',
-  'from-sky-500 to-indigo-500',
-  'from-yellow-500 to-orange-500',
-  'from-teal-500 to-emerald-600',
-];
+interface StateBreakdown {
+  totalCards: number;
+  neverPracticed: number;
+  learning: number;
+  review: number;
+  relearning: number;
+  leeched: number;
+}
 
 export default function FlashcardsClient() {
   const t = useTranslations('AppFlashcardsPage');
-  const { data: decks } = useApiQuery<Deck[]>({ queryKey: flashcardKeys.decks.all, url: '/api/v1/flashcards/decks' });
-  const { data: topics } = useApiQuery<Topic[]>({ queryKey: flashcardKeys.topics.all, url: '/api/v1/flashcards/topics' });
-  const { data: dueData } = useApiQuery<{ count: number }>({ queryKey: [...flashcardKeys.all, 'practice', 'due', 'count'], url: '/api/v1/flashcards/practice/due/count' });
+  const { data: decks } = useApiQuery<Deck[]>({
+    queryKey: flashcardKeys.decks.all,
+    url: '/api/v1/flashcards/decks',
+  });
+  const { data: topics } = useApiQuery<Topic[]>({
+    queryKey: flashcardKeys.topics.all,
+    url: '/api/v1/flashcards/topics',
+  });
+  const { data: dueData } = useApiQuery<{ count: number }>({
+    queryKey: [...flashcardKeys.all, 'practice', 'due', 'count'],
+    url: '/api/v1/flashcards/practice/due/count',
+  });
+
+  const { data: stateBreakdown } = useApiQuery<StateBreakdown>({
+    queryKey: [...flashcardKeys.all, 'practice', 'states'],
+    url: '/api/v1/flashcards/practice/states',
+  });
 
   const deckCount = decks?.length ?? 0;
   const topicCount = topics?.length ?? 0;
@@ -56,33 +66,55 @@ export default function FlashcardsClient() {
     {
       id: 'study',
       icon: Play,
-      title: t('study_title'),
-      description: t('study_desc'),
+      title: t('review_title'),
+      description: t('review_desc'),
       href: '/app/flashcards/study',
       count: dueCount,
-      countLabel: t('study_count', { count: dueCount }),
+      countLabel: t('review_count', { count: dueCount }),
       gradient: GRADIENTS[8],
-    },
-    {
-      id: 'practice',
-      icon: Dumbbell,
-      title: t('practice_title'),
-      description: t('practice_desc'),
-      href: '/app/flashcards/practice',
-      count: deckCount,
-      countLabel: t('practice_count', { count: deckCount }),
-      gradient: GRADIENTS[10],
     },
   ];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">{t('title')}</h2>
-        <p className="text-muted-foreground mt-1">{t('subtitle')}</p>
+      {/* <div className="space-y-1">
+        <p className="text-muted-foreground">{t('subtitle')}</p>
+      </div> */}
+
+      <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        <StatCard
+          title={t('state_total')}
+          value={stateBreakdown?.totalCards ?? '...'}
+          icon={BookOpen}
+          variant="blue"
+        />
+        <StatCard
+          title={t('state_new')}
+          value={stateBreakdown?.neverPracticed ?? '...'}
+          icon={Sparkles}
+          variant="violet"
+        />
+        <StatCard
+          title={t('state_learning')}
+          value={stateBreakdown?.learning ?? '...'}
+          icon={Play}
+          variant="amber"
+        />
+        <StatCard
+          title={t('state_review')}
+          value={stateBreakdown?.review ?? '...'}
+          icon={RotateCcw}
+          variant="emerald"
+        />
+        <StatCard
+          title={t('state_relearning')}
+          value={stateBreakdown?.relearning ?? '...'}
+          icon={AlertTriangle}
+          variant="rose"
+        />
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {panels.map((panel) => (
           <DashboardPanel key={panel.id} {...panel} />
         ))}
