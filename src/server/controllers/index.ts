@@ -16,6 +16,7 @@ export * from '@/server/controllers/flashcard-stats.controller';
 export * from '@/server/controllers/flashcard-generation.controller';
 export * from '@/server/controllers/ai-chat.controller';
 export * from '@/server/controllers/ai-command.controller';
+export * from '@/server/controllers/ai-agent.controller';
 export * from '@/server/controllers/error-log.controller';
 export * from '@/server/controllers/permission.controller';
 export * from '@/server/controllers/search.controller';

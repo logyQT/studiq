@@ -12,7 +12,7 @@ interface ThinkingBlockProps {
 
 export function ThinkingBlock({ traces, isComplete }: ThinkingBlockProps) {
   const t = useTranslations('AiChatPage');
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   if (traces.length === 0 && !isComplete) {
     return (

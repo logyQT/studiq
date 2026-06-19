@@ -12,6 +12,7 @@ export interface FlashcardGenStreamCallbacks {
 }
 
 export interface FlashcardChatStreamCallbacks {
+  onThink: (trace: string) => void;
   onToken: (text: string) => void;
   onFlashcards: (data: { deckName: string; flashcards: unknown[] }) => void;
   onComplete: (summary: string) => void;
@@ -33,7 +34,9 @@ export class AiCommandController {
     }
 
     try {
-      const result = await aiCommandService.generateFlashcards(parsed.data.text, undefined, undefined, ctx);
+      const result = await aiCommandService.generateFlashcards(parsed.data.text, undefined, undefined, ctx, {
+        onThink: callbacks.onThink,
+      });
       console.log(`${LOG_PREFIX} emit ${result.flashcards.length} flashcards`);
       callbacks.onFlashcards({ deckName: result.deckName, flashcards: result.flashcards });
       callbacks.onComplete();
@@ -53,7 +56,9 @@ export class AiCommandController {
   ): Promise<void> {
     console.log(`${LOG_PREFIX} chat called, text="${text.slice(0, 80)}", hasFile=${!!file}, conversationId=${conversationId ?? 'none'}`);
     try {
-      const result = await aiCommandService.chat(text, file, conversationId, ctx);
+      const result = await aiCommandService.chat(text, file, conversationId, ctx, {
+        onThink: callbacks.onThink,
+      });
       console.log(`${LOG_PREFIX} result type=${result.type}`);
 
       if (result.type === 'flashcards') {

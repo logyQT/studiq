@@ -3,6 +3,9 @@ import { createClient } from '@/lib/supabase/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { chatController } from '@/server/controllers/ai-chat.controller';
 import { aiCommandController } from '@/server/controllers/ai-command.controller';
+import { aiAgentController } from '@/server/controllers/ai-agent.controller';
+import { hasFlashcardKeyword } from '@/server/services/ai-utils';
+import { FEATURE_FLAG_AGENTIC } from '@/lib/feature-flags';
 import type { RequestContext } from '@/lib/request-context';
 import type { UserRole } from '@/types';
 
@@ -11,28 +14,6 @@ function sseEvent(event: string, data: unknown): string {
 }
 
 const LOG_PREFIX = '[ChatRoute]';
-
-const FLASHCARD_KEYWORDS = [
-  'flashcard', 'flash card', 'study card', 'index card', 'cue card',
-  'flashcards', 'study cards', 'index cards',
-  'fiszka', 'fiszki', 'fiszkę', 'fiszce', 'fiszek',
-  'fiszkom', 'fiszkami', 'fiszkach',
-  'notatka', 'notatki', 'notatkę', 'notatce', 'notatek',
-  'notatkom', 'notatkami', 'notatkach',
-  'karta', 'karty', 'kartę', 'karcie', 'kart',
-  'kartom', 'kartami', 'kartach',
-  'ściąga', 'ściągę', 'ściągi', 'ściąg', 'ściągą',
-  'ściągom', 'ściągami', 'ściągach',
-  'powtórka', 'powtórki', 'powtórkę', 'powtórce', 'powtórek',
-  'powtórkom', 'powtórkami', 'powtorkach',
-  'zapamiętaj', 'zapamiętać', 'zapamiętywanie', 'zapamiętywać',
-  'przypominajka',
-];
-
-function hasFlashcardKeyword(text: string): boolean {
-  const lower = text.toLowerCase();
-  return FLASHCARD_KEYWORDS.some((kw) => lower.includes(kw));
-}
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -78,13 +59,16 @@ export async function POST(req: NextRequest) {
       const context = (body as Record<string, unknown>)?.context as string | undefined;
       const file = (body as Record<string, unknown>)?.file as { data: string; mimeType: string } | undefined;
       const conversationId = (body as Record<string, unknown>)?.conversationId as string | undefined;
-      const isFlashcard = isFlashcardKeyword || context === 'flashcards';
-      console.log(`${LOG_PREFIX} Routing: flashcardKeyword=${isFlashcardKeyword}, context=${context ?? 'none'}, hasFile=${!!file}, conversationId=${conversationId ?? 'none'} → ${isFlashcard ? 'flashcard' : 'chat'}`);
 
-      if (isFlashcard) {
-        await aiCommandController.chat(text, file, conversationId, ctx, {
-          onToken: () => {},
+      if (FEATURE_FLAG_AGENTIC) {
+        console.log(`${LOG_PREFIX} Routing: agent pipeline (FEATURE_FLAG_AGENTIC=true), conversationId=${conversationId ?? 'none'}`);
+
+        await aiAgentController.process(text, file, conversationId, ctx, {
+          onThought: (data) => send('thought', data),
+          onToolCall: (data) => send('tool_call', data),
+          onToolResult: (data) => send('tool_result', data),
           onFlashcards: (data) => send('flashcards', data),
+          onQuestion: (data) => send('question', data),
           onComplete: (summary) => {
             send('complete', { message: summary });
             controller.close();
@@ -95,19 +79,38 @@ export async function POST(req: NextRequest) {
           },
         });
       } else {
-        await chatController.chat(body, ctx, {
-          onToken: (token) => send('token', { text: token }),
-          onResult: (type, data) => send('result', { type, data }),
-          onComplete: (summary) => {
-            send('complete', { message: summary });
-            controller.close();
-          },
-          onUsage: (usage) => send('usage', usage),
-          onError: (message) => {
-            send('error', { message });
-            controller.close();
-          },
-        });
+        const isFlashcard = isFlashcardKeyword || context === 'flashcards';
+        console.log(`${LOG_PREFIX} Routing: flashcardKeyword=${isFlashcardKeyword}, context=${context ?? 'none'}, hasFile=${!!file} → ${isFlashcard ? 'flashcard' : 'chat'}`);
+
+        if (isFlashcard) {
+          await aiCommandController.chat(text, file, conversationId, ctx, {
+            onThink: (trace) => send('thinking', { text: trace }),
+            onToken: () => {},
+            onFlashcards: (data) => send('flashcards', data),
+            onComplete: (summary) => {
+              send('complete', { message: summary });
+              controller.close();
+            },
+            onError: (message) => {
+              send('error', { message });
+              controller.close();
+            },
+          });
+        } else {
+          await chatController.chat(body, ctx, {
+            onToken: (token) => send('token', { text: token }),
+            onResult: (type, data) => send('result', { type, data }),
+            onComplete: (summary) => {
+              send('complete', { message: summary });
+              controller.close();
+            },
+            onUsage: (usage) => send('usage', usage),
+            onError: (message) => {
+              send('error', { message });
+              controller.close();
+            },
+          });
+        }
       }
     },
   });

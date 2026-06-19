@@ -2,15 +2,31 @@
 
 import { useState, useCallback, useRef } from 'react';
 
+export interface QuestionData {
+  id: string;
+  question: string;
+  options?: { label: string; value: string }[];
+  answered?: boolean;
+}
+
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'thought' | 'tool_call';
   content: string;
   result?: { type: string; data: unknown; deckName?: string };
-  status: 'sending' | 'streaming' | 'thinking' | 'complete' | 'error';
+  status: 'sending' | 'streaming' | 'thinking' | 'complete' | 'error' | 'running';
   error?: string;
   file?: { name: string; mimeType: string; data: string };
   thinkingTraces: string[];
+  question?: QuestionData;
+  step?: number;
+  reasoning?: string;
+  agent?: string;
+  toolName?: string;
+  label?: string;
+  args?: unknown;
+  toolResult?: unknown;
+  durationMs?: number;
 }
 
 export interface UsageInfo {
@@ -44,6 +60,7 @@ export function useAiChat(): UseAiChatReturn {
   const abortRef = useRef<AbortController | null>(null);
   const conversationIdRef = useRef<string>(generateUUID());
   const fileSentRef = useRef<boolean>(false);
+  const toolStartTimesRef = useRef<Map<string, number>>(new Map());
 
   const sendMessage = useCallback(async (text: string, file?: File, context?: string) => {
     abortRef.current?.abort();
@@ -63,7 +80,7 @@ export function useAiChat(): UseAiChatReturn {
       id: generateUUID(),
       role: 'assistant',
       content: '',
-      status: 'sending',
+      status: context === 'flashcards' ? 'thinking' : 'sending',
       thinkingTraces: [],
     };
 
@@ -82,7 +99,6 @@ export function useAiChat(): UseAiChatReturn {
       body.conversationId = conversationIdRef.current;
       if (history.length > 0) body.messages = history;
 
-      // Only send file data on the first message or when a new file is attached
       if (file && !fileSentRef.current) {
         const buffer = await file.arrayBuffer();
         const bytes = new Uint8Array(buffer);
@@ -169,6 +185,69 @@ export function useAiChat(): UseAiChatReturn {
                   );
                   break;
                 }
+                case 'thinking': {
+                  const trace = parsed.text || parsed.message || '';
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMsg.id
+                        ? {
+                            ...m,
+                            status: 'thinking',
+                            thinkingTraces: [...m.thinkingTraces, trace],
+                          }
+                        : m,
+                    ),
+                  );
+                  break;
+                }
+                case 'thought': {
+                  const thoughtMsg: ChatMessage = {
+                    id: generateUUID(),
+                    role: 'thought',
+                    content: '',
+                    status: 'complete',
+                    step: parsed.step,
+                    reasoning: parsed.reasoning,
+                    agent: parsed.agent,
+                    thinkingTraces: [],
+                  };
+                  setMessages((prev) => [...prev, thoughtMsg]);
+                  break;
+                }
+                case 'tool_call': {
+                  const toolCallMsg: ChatMessage = {
+                    id: generateUUID(),
+                    role: 'tool_call',
+                    content: '',
+                    status: 'running',
+                    toolName: parsed.tool,
+                    label: parsed.label,
+                    args: parsed.args,
+                    thinkingTraces: [],
+                  };
+                  toolStartTimesRef.current.set(parsed.id, Date.now());
+                  setMessages((prev) => [...prev, toolCallMsg]);
+                  break;
+                }
+                case 'tool_result': {
+                  const startTime = toolStartTimesRef.current.get(parsed.id);
+                  const duration = startTime ? Date.now() - startTime : undefined;
+                  toolStartTimesRef.current.delete(parsed.id);
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.role === 'tool_call' && m.toolName === parsed.tool && m.status === 'running'
+                        ? {
+                            ...m,
+                            status: 'complete',
+                            toolResult: parsed.result,
+                            label: parsed.label,
+                            durationMs: duration,
+                          }
+                        : m,
+                    ),
+                  );
+                  break;
+                }
                 case 'flashcards': {
                   const deckName = parsed.deckName || 'AI Generated Flashcards';
                   const cards = Array.isArray(parsed.flashcards) ? parsed.flashcards : Array.isArray(parsed) ? parsed : [];
@@ -196,6 +275,15 @@ export function useAiChat(): UseAiChatReturn {
                   );
                   break;
                 }
+                case 'question':
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMsg.id
+                        ? { ...m, question: parsed }
+                        : m,
+                    ),
+                  );
+                  break;
                 case 'complete':
                   setMessages((prev) =>
                     prev.map((m) =>
@@ -285,6 +373,7 @@ export function useAiChat(): UseAiChatReturn {
     setIsStreaming(false);
     conversationIdRef.current = generateUUID();
     fileSentRef.current = false;
+    toolStartTimesRef.current.clear();
   }, []);
 
   const abort = useCallback(() => {

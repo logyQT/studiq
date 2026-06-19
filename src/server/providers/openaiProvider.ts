@@ -117,7 +117,7 @@ export class OpenAIProvider implements LLMProvider {
     return message?.content || '';
   }
 
-  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<string> {
+  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
     const messages: Array<{ role: string; content: string }> = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
     messages.push({ role: 'user', content: prompt });
@@ -173,6 +173,6 @@ export class OpenAIProvider implements LLMProvider {
       }
     }
 
-    return fullContent;
+    return { content: fullContent };
   }
 }

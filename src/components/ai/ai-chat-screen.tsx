@@ -68,6 +68,13 @@ export function AiChatScreen() {
     setActiveContext(contextMap[text] || null);
   };
 
+  const handleAnswer = useCallback(
+    (text: string) => {
+      sendMessage(text);
+    },
+    [sendMessage],
+  );
+
   const handleSend = async (text: string, f?: File) => {
     await sendMessage(text, f, activeContext ?? undefined);
     setActiveContext(null);
@@ -82,7 +89,7 @@ export function AiChatScreen() {
           onScroll={handleScroll}
         >
           <div className="mx-auto max-w-3xl px-4 py-6">
-            <ChatHistory messages={messages} />
+            <ChatHistory messages={messages} onAnswer={handleAnswer} />
           </div>
         </div>
       )}

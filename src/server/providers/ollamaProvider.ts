@@ -1,6 +1,6 @@
 import { LLMProvider, GeneratedFlashcard, FLASHCARD_PROMPT, parseJsonResponse, type StreamCallbacks, type GenerateChatResult } from './LLMProvider';
 import type { ModelsConfig } from '@/server/config/models.config';
-import type { ToolDefinition } from '@/server/ai/ai.types';
+import type { ToolDefinition, ToolCall } from '@/server/ai/ai.types';
 
 const LOG_PREFIX = '[OllamaProvider]';
 
@@ -77,7 +77,7 @@ export class OllamaProvider implements LLMProvider {
     return (data.response || '').trim();
   }
 
-  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<string> {
+  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
     const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
 
     const res = await fetch(`${this.baseUrl}/api/generate`, {
@@ -127,6 +127,6 @@ export class OllamaProvider implements LLMProvider {
       }
     }
 
-    return fullContent;
+    return { content: fullContent };
   }
 }

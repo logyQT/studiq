@@ -175,6 +175,10 @@ export function AiChatInput({
           )
         )}
       </div>
+
+      <p className="mt-2 text-center text-[10px] text-muted-foreground">
+        {t('disclaimer')}
+      </p>
     </div>
   );
 }

@@ -1423,7 +1423,8 @@
     "cta_response_flashcards": "Great! What topic should the flashcards be about? You can describe the material or upload a file.",
     "cta_response_summarize": "Sure! Paste your notes or upload a file and I'll summarize them for you.",
     "cta_response_explain": "What concept would you like me to explain?",
-    "cta_response_default": "How can I help you study?"
+    "cta_response_default": "How can I help you study?",
+    "disclaimer": "Artificial Inteligence can make mistakes. Always verify important information."
   },
   "FlashcardAiPage": {
     "title": "AI Flashcard Generator",

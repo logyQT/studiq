@@ -8,17 +8,19 @@ export interface GeneratedFlashcard {
 
 export interface StreamCallbacks {
   onToken: (token: string) => void;
+  onReasoning?: (text: string) => void;
 }
 
 export type GenerateChatResult = {
   content: string;
+  reasoning?: string;
   toolCalls?: ToolCall[];
 };
 
 export interface LLMProvider {
   generateFlashcardsFromChunk(chunk: string, language: string): Promise<GeneratedFlashcard[]>;
   generateChat(prompt: string, systemPrompt?: string, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, maxTokens?: number): Promise<GenerateChatResult | string>;
-  generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<string>;
+  generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }>;
 }
 
 function tryParse(raw: string): unknown {

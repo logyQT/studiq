@@ -1405,7 +1405,8 @@
     "cta_response_flashcards": "Świetnie! O czym mają być fiszki? Możesz opisać materiał lub przesłać plik.",
     "cta_response_summarize": "Jasne! Wklej swoje notatki lub prześlij plik, a je podsumuję.",
     "cta_response_explain": "Jakie pojęcie mam Ci wyjaśnić?",
-    "cta_response_default": "Jak mogę pomóc Ci w nauce?"
+    "cta_response_default": "Jak mogę pomóc Ci w nauce?",
+    "disclaimer": "Sztuczna inteligencja może popełniać błędy. Zawsze weryfikuj ważne informacje."
   },
   "FlashcardAiPage": {
     "title": "AI Generator Fiszki",

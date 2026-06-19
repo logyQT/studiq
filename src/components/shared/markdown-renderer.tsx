@@ -52,8 +52,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, classN
           h5: ({ children }) => <h5 className="text-sm font-semibold mt-2 mb-1">{children}</h5>,
           h6: ({ children }) => <h6 className="text-sm font-medium mt-2 mb-1 text-muted-foreground">{children}</h6>,
           p: ({ children }) => <div className="mb-1 last:mb-0">{children}</div>,
-          ul: ({ children }) => <ul className="list-disc pl-4 mb-1 last:mb-0 text-left">{children}</ul>,
-          ol: ({ children }) => <ol className="list-decimal pl-4 mb-1 last:mb-0 text-left">{children}</ol>,
+          ul: ({ children }) => <ul className="list-disc pl-8 mb-1 last:mb-0 text-left">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal pl-8 mb-1 last:mb-0 text-left">{children}</ol>,
           li: ({ children }) => <li className="mb-0.5 last:mb-0">{children}</li>,
           pre: ({ children }) => <>{children}</>,
           code: ({ className, children }) => {

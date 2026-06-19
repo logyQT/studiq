@@ -96,6 +96,8 @@ export class OpenCodeProvider implements LLMProvider {
     const data = await res.json();
     const message = data.choices?.[0]?.message;
 
+    const reasoning = message?.reasoning || undefined;
+
     if (message?.tool_calls?.length > 0) {
       const toolCalls: ToolCall[] = message.tool_calls.map((tc: Record<string, unknown>) => ({
         id: String(tc.id ?? ''),
@@ -107,6 +109,7 @@ export class OpenCodeProvider implements LLMProvider {
       }));
       return {
         content: message.content || '',
+        reasoning,
         toolCalls,
       };
     }
@@ -114,7 +117,7 @@ export class OpenCodeProvider implements LLMProvider {
     return message?.content || '';
   }
 
-  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<string> {
+  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
     const messages: Array<{ role: string; content: string }> = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
     messages.push({ role: 'user', content: prompt });
@@ -143,6 +146,8 @@ export class OpenCodeProvider implements LLMProvider {
     const decoder = new TextDecoder();
     let buffer = '';
     let fullContent = '';
+    let fullReasoning = '';
+    const streamedToolCalls: ToolCall[] = [];
 
     while (true) {
       const { done, value } = await reader.read();
@@ -159,10 +164,31 @@ export class OpenCodeProvider implements LLMProvider {
         if (payload === '[DONE]') break;
         try {
           const parsed = JSON.parse(payload);
-          const delta = parsed.choices?.[0]?.delta?.content;
-          if (delta) {
-            fullContent += delta;
-            callbacks.onToken(delta);
+          const delta = parsed.choices?.[0]?.delta;
+          if (delta?.content) {
+            fullContent += delta.content;
+            callbacks.onToken(delta.content);
+          }
+          if (delta?.reasoning) {
+            fullReasoning += delta.reasoning;
+            callbacks.onReasoning?.(delta.reasoning);
+          }
+          if (delta?.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              if (tc.id) {
+                streamedToolCalls.push({
+                  id: String(tc.id),
+                  type: 'function',
+                  function: {
+                    name: String(tc.function?.name ?? ''),
+                    arguments: String(tc.function?.arguments ?? ''),
+                  },
+                });
+              } else if (tc.function?.arguments && streamedToolCalls.length > 0) {
+                const last = streamedToolCalls[streamedToolCalls.length - 1];
+                last.function.arguments += tc.function.arguments;
+              }
+            }
           }
         } catch {
           // skip malformed chunks
@@ -170,6 +196,10 @@ export class OpenCodeProvider implements LLMProvider {
       }
     }
 
-    return fullContent;
+    return {
+      content: fullContent,
+      reasoning: fullReasoning || undefined,
+      toolCalls: streamedToolCalls.length > 0 ? streamedToolCalls : undefined,
+    };
   }
 }
