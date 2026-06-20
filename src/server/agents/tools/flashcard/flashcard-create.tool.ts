@@ -52,8 +52,6 @@ export const flashcardCreateTool: Tool = {
     ctx.state.results['flashcards'] = flashcards;
     ctx.state.results['deckName'] = deckName;
 
-    ctx.callbacks?.onFlashcards?.({ deckName, flashcards });
-
     return { deckName, flashcards };
   },
 };

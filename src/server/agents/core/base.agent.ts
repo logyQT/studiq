@@ -38,10 +38,7 @@ export abstract class BaseAgent {
       'Available tools:',
       descriptions,
       '',
-      'CRITICAL: Think step by step with thorough reasoning before every action.',
-      'Explain your thought process in detail — consider multiple approaches, weigh tradeoffs, and justify each decision.',
-      'Do NOT rush. Analyze the problem completely before responding or calling a tool.',
-      'When the task is complete, call the "finish" tool to return results.',
+      'Think naturally. Use tools only when they help. When done, call "finish" to return results.',
     ].join('\n');
   }
 
@@ -206,14 +203,7 @@ export abstract class BaseAgent {
           }
 
           if (tool.name === 'finish') {
-            const result = toolResult as AgentResult;
-            if (result.type === 'flashcards' && result.flashcards?.length && this.name === 'general') {
-              ctx.callbacks?.onFlashcards?.({
-                deckName: result.deckName || 'Generated Flashcards',
-                flashcards: result.flashcards,
-              });
-            }
-            return result as AgentResult;
+            return toolResult as AgentResult;
           }
 
           if (tool.name === 'chat') {
