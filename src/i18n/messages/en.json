@@ -900,6 +900,7 @@
     "target_count_label": "Target: {count} correct",
     "due_for_review": "due for review",
     "filtered": "filtered",
+    "next_review_at": "Next review:",
     "calculating": "Calculating...",
     "start_review": "Start Review",
     "statistics": "Statistics",

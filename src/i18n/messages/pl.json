@@ -882,6 +882,7 @@
     "target_count_label": "Cel: {count} poprawnych",
     "due_for_review": "oczekuje na powtórkę",
     "filtered": "przefiltrowane",
+    "next_review_at": "Następna powtórka:",
     "calculating": "Obliczanie...",
     "start_review": "Rozpocznij Przegląd",
     "statistics": "Statystyki",

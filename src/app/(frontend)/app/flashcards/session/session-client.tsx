@@ -105,6 +105,8 @@ interface SessionClientProps {
   targetCount: number;
   hasMore: boolean;
   deckIds?: string[];
+  topicIds?: string[];
+  newOnly?: boolean;
 }
 
 export default function SessionClient({
@@ -114,6 +116,8 @@ export default function SessionClient({
   targetCount,
   hasMore: initialHasMore,
   deckIds,
+  topicIds,
+  newOnly,
 }: SessionClientProps) {
   const t = useTranslations('AppFlashcardSessionPage');
   const router = useRouter();
@@ -166,7 +170,12 @@ export default function SessionClient({
 
   const fetchDueCards = useCallback(async (): Promise<Flashcard[]> => {
     try {
-      const res = await fetch(`/api/v1/flashcards/practice/due?limit=${BATCH_SIZE}`);
+      const params = new URLSearchParams();
+      params.set('limit', String(BATCH_SIZE));
+      if (deckIds && deckIds.length > 0) params.set('deckIds', deckIds.join(','));
+      if (topicIds && topicIds.length > 0) params.set('topicIds', topicIds.join(','));
+      if (newOnly) params.set('newOnly', 'true');
+      const res = await fetch(`/api/v1/flashcards/practice/due?${params.toString()}`);
       if (!res.ok) return [];
       const body = await res.json();
       return (body.data ?? []).map(
@@ -191,7 +200,7 @@ export default function SessionClient({
     } catch {
       return [];
     }
-  }, []);
+  }, [deckIds, topicIds, newOnly]);
 
   const sendBatchUpdate = useCallback(async () => {
     if (pendingUpdatesRef.current.length === 0) return;
