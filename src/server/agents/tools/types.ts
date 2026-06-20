@@ -24,6 +24,7 @@ export interface ToolContext {
     tools?: unknown[];
     toolChoice?: unknown;
     maxTokens?: number;
+    onReasoning?: (token: string) => void;
   } & AgentLLMConfig) => Promise<{ content: string; reasoning?: string; toolCalls?: Array<{ function: { name: string; arguments: string } }> }>;
 }
 

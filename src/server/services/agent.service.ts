@@ -77,6 +77,7 @@ export class AgentService {
           tools: req.tools as LLMGatewayRequest['tools'],
           toolChoice: req.toolChoice as LLMGatewayRequest['toolChoice'],
           maxTokens: req.maxTokens,
+          onReasoningToken: req.onReasoning,
           ...modelConfig,
           onRetry: (attempt, maxRetries, delayMs) => {
             const msg = `LLM temporarily unavailable, retrying in ${delayMs / 1000}s (${attempt}/${maxRetries})...`;
@@ -101,7 +102,7 @@ export class AgentService {
           data: { content: resp.content.slice(0, 1000), toolCalls: toolCallsInfo },
         });
 
-        return { content: resp.content, toolCalls: resp.toolCalls };
+        return { content: resp.content, reasoning: resp.reasoning, toolCalls: resp.toolCalls };
       },
     };
 

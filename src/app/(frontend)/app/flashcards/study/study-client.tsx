@@ -32,6 +32,7 @@ interface Deck {
 
 interface DueBreakdown {
   total: number;
+  nextReviewAt: string | null;
   byTopic: Record<string, number>;
   byDeck: Record<string, number>;
 }
@@ -287,7 +288,13 @@ export default function StudyClient() {
                 <div className="flex items-center justify-between pt-2">
                   <div className="text-sm text-muted-foreground">
                     <span className="font-medium text-foreground">
-                      {displayedCount} {t('due_for_review')}
+                      {displayedCount > 0 ? (
+                        <>{displayedCount} {t('due_for_review')}</>
+                      ) : dueBreakdown?.nextReviewAt ? (
+                        <>Next review: {new Date(dueBreakdown.nextReviewAt).toLocaleString('pl-PL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</>
+                      ) : (
+                        <>{t('due_for_review')}</>
+                      )}
                     </span>
                     {isFiltered && <span className="ml-2">({t('filtered')})</span>}
                   </div>

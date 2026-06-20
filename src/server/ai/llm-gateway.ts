@@ -44,14 +44,20 @@ async function generateStreamingWithRetry(
     try {
       const result = await provider.generateChatStreaming(req.prompt, req.systemPrompt, {
         onToken: () => {},
-        onReasoning: () => {},
-      });
+        onReasoning: req.onReasoningToken ? (token: string) => req.onReasoningToken!(token) : () => {},
+      }, req.tools, req.toolChoice, req.reasoningEffort);
       return result;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       const msg = lastError.message;
 
-      if (is5xxError(msg) && attempt < MAX_5XX_RETRIES) {
+      const isRetryable = is5xxError(msg) ||
+        msg.includes('400') ||
+        msg.includes('422') ||
+        msg.includes('invalid_type') ||
+        msg.includes('validation');
+
+      if (isRetryable && attempt < MAX_5XX_RETRIES) {
         const delayMs = RETRY_DELAY_MS * (attempt + 1);
         req.onRetry?.(attempt + 1, MAX_5XX_RETRIES, delayMs);
         await new Promise((r) => setTimeout(r, delayMs));
@@ -119,7 +125,7 @@ export async function callLLMStreaming(
   }
 
   try {
-    const result = await provider.generateChatStreaming(req.prompt, req.systemPrompt, callbacks);
+    const result = await provider.generateChatStreaming(req.prompt, req.systemPrompt, callbacks, req.tools, req.toolChoice, req.reasoningEffort);
 
     return {
       content: result.content,

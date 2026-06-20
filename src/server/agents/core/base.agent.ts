@@ -38,7 +38,10 @@ export abstract class BaseAgent {
       'Available tools:',
       descriptions,
       '',
-      'Think step by step. Use a tool when appropriate. When the task is complete, call the "finish" tool to return results.',
+      'CRITICAL: Think step by step with thorough reasoning before every action.',
+      'Explain your thought process in detail — consider multiple approaches, weigh tradeoffs, and justify each decision.',
+      'Do NOT rush. Analyze the problem completely before responding or calling a tool.',
+      'When the task is complete, call the "finish" tool to return results.',
     ].join('\n');
   }
 
@@ -87,6 +90,8 @@ export abstract class BaseAgent {
       const prompt = this.buildPrompt(ctx.state.text, history);
       const systemMsg = this.buildSystemMessage();
 
+      ctx.callbacks?.onThinking?.(iteration === 0 ? 'Analyzing request...' : `Step ${stepNumber}: thinking...`);
+
       const result = await ctx.callLLM({
         prompt,
         systemPrompt: systemMsg,
@@ -95,6 +100,7 @@ export abstract class BaseAgent {
         maxTokens: (ctx.state.metadata?.maxTokens as number) || 4096,
         model: ctx.state.metadata?.model as string | undefined,
         provider: ctx.state.metadata?.provider as string | undefined,
+        onReasoning: ctx.callbacks?.onThinking,
       });
 
       ctx.trace.log({
@@ -112,7 +118,8 @@ export abstract class BaseAgent {
       });
 
       const thinkingText = result.reasoning || result.content;
-      const looksLikeToolCallJson = thinkingText && (
+      const hasToolCalls = result.toolCalls && result.toolCalls.length > 0;
+      const looksLikeToolCallJson = !hasToolCalls && thinkingText && (
         thinkingText.trimStart().startsWith('{') ||
         thinkingText.trimStart().startsWith('```json') ||
         thinkingText.includes('"tool"') && thinkingText.includes('"input"')
@@ -199,7 +206,14 @@ export abstract class BaseAgent {
           }
 
           if (tool.name === 'finish') {
-            return toolResult as AgentResult;
+            const result = toolResult as AgentResult;
+            if (result.type === 'flashcards' && result.flashcards?.length && this.name === 'general') {
+              ctx.callbacks?.onFlashcards?.({
+                deckName: result.deckName || 'Generated Flashcards',
+                flashcards: result.flashcards,
+              });
+            }
+            return result as AgentResult;
           }
 
           if (tool.name === 'chat') {

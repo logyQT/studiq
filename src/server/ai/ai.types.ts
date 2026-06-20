@@ -22,6 +22,7 @@ export type AgentLLMConfig = {
   apiKey?: string;
   baseUrl?: string;
   maxTokens?: number;
+  reasoningEffort?: 'low' | 'medium' | 'high';
 };
 
 export type LLMGatewayRequest = {
@@ -32,6 +33,7 @@ export type LLMGatewayRequest = {
   tools?: ToolDefinition[];
   toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
   onRetry?: (attempt: number, maxRetries: number, delayMs: number) => void;
+  onReasoningToken?: (token: string) => void;
 } & AgentLLMConfig;
 
 export type TokenUsage = {

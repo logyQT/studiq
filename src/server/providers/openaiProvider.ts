@@ -117,10 +117,25 @@ export class OpenAIProvider implements LLMProvider {
     return message?.content || '';
   }
 
-  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
+  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, reasoningEffort?: 'low' | 'medium' | 'high'): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
     const messages: Array<{ role: string; content: string }> = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
     messages.push({ role: 'user', content: prompt });
+
+    const body: Record<string, unknown> = {
+      model: this.modelName,
+      messages,
+      stream: true,
+    };
+
+    if (tools && tools.length > 0) {
+      body.tools = tools;
+      if (toolChoice) body.tool_choice = toolChoice;
+    }
+
+    if (reasoningEffort) {
+      body.reasoning = { effort: reasoningEffort };
+    }
 
     const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {
       method: 'POST',
@@ -128,11 +143,7 @@ export class OpenAIProvider implements LLMProvider {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.apiKey}`,
       },
-      body: JSON.stringify({
-        model: this.modelName,
-        messages,
-        stream: true,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
@@ -146,6 +157,7 @@ export class OpenAIProvider implements LLMProvider {
     const decoder = new TextDecoder();
     let buffer = '';
     let fullContent = '';
+    const streamedToolCalls: ToolCall[] = [];
 
     while (true) {
       const { done, value } = await reader.read();
@@ -162,10 +174,27 @@ export class OpenAIProvider implements LLMProvider {
         if (payload === '[DONE]') break;
         try {
           const parsed = JSON.parse(payload);
-          const delta = parsed.choices?.[0]?.delta?.content;
-          if (delta) {
-            fullContent += delta;
-            callbacks.onToken(delta);
+          const delta = parsed.choices?.[0]?.delta;
+          if (delta?.content) {
+            fullContent += delta.content;
+            callbacks.onToken(delta.content);
+          }
+          if (delta?.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              if (tc.id) {
+                streamedToolCalls.push({
+                  id: String(tc.id),
+                  type: 'function',
+                  function: {
+                    name: String(tc.function?.name ?? ''),
+                    arguments: String(tc.function?.arguments ?? ''),
+                  },
+                });
+              } else if (tc.function?.arguments && streamedToolCalls.length > 0) {
+                const last = streamedToolCalls[streamedToolCalls.length - 1];
+                last.function.arguments += tc.function.arguments;
+              }
+            }
           }
         } catch {
           // skip malformed chunks
@@ -173,6 +202,9 @@ export class OpenAIProvider implements LLMProvider {
       }
     }
 
-    return { content: fullContent };
+    return {
+      content: fullContent,
+      toolCalls: streamedToolCalls.length > 0 ? streamedToolCalls : undefined,
+    };
   }
 }

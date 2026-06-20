@@ -682,7 +682,8 @@
     "state_new": "Nowe",
     "state_learning": "Do nauczenia",
     "state_review": "Do utrwalenia",
-    "state_relearning": "Do przypomnienia"
+    "state_relearning": "Do przypomnienia",
+    "state_leech": "Oporne"
   },
   "AppFlashcardStatsPage": {
     "title": "Statystyki fiszek",
@@ -707,7 +708,7 @@
     "state_learning": "W nauce",
     "state_review": "Powtórka",
     "state_relearning": "Poprawa",
-    "state_leech": "Zacięcie",
+    "state_leech": "Oporne",
     "question": "Pytanie",
     "answer": "Odpowiedź",
     "repetitions": "Powtórzenia",

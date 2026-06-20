@@ -700,7 +700,8 @@
     "state_new": "New",
     "state_learning": "Learning",
     "state_review": "Review",
-    "state_relearning": "Relearning"
+    "state_relearning": "Relearning",
+    "state_leech": "Leech"
   },
   "AppFlashcardStatsPage": {
     "title": "Card Statistics",

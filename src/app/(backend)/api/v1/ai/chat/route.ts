@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
 
         await aiAgentController.process(text, file, conversationId, ctx, {
           onThought: (data) => send('thought', data),
+          onThinking: (text) => send('thinking', { text }),
           onToolCall: (data) => send('tool_call', data),
           onToolResult: (data) => send('tool_result', data),
           onFlashcards: (data) => send('flashcards', data),

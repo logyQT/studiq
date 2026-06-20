@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 interface ThinkingBlockProps {
   traces: string[];
@@ -36,25 +35,13 @@ export function ThinkingBlock({ traces, isComplete }: ThinkingBlockProps) {
         {!isComplete && <span className="ml-auto flex gap-0.5"><span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '0ms' }} /><span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '150ms' }} /><span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '300ms' }} /></span>}
       </button>
       {open && traces.length > 0 && (
-        <div className="space-y-0.5 px-3 pb-2">
+        <div className="space-y-1 px-3 pb-2">
           {traces.map((trace, i) => (
-            <div
-              key={i}
-              className={cn(
-                'flex items-start gap-2 py-0.5',
-                i === traces.length - 1 && !isComplete ? 'opacity-80' : 'opacity-100',
-              )}
-            >
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/60" />
-              <span className="text-muted-foreground">{trace}</span>
+            <div key={i} className="text-muted-foreground/80 whitespace-pre-wrap">
+              {i > 0 && <span className="text-muted-foreground/40 text-[10px] block mb-0.5">step {i + 1}</span>}
+              {trace}
             </div>
           ))}
-          {!isComplete && (
-            <div className="flex items-center gap-2 py-1 text-muted-foreground/60">
-              <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-primary/40" />
-              <span className="italic">Processing...</span>
-            </div>
-          )}
         </div>
       )}
     </div>

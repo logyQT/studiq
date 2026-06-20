@@ -21,7 +21,7 @@ export function ChatMessage({ message, onAnswer }: ChatMessageProps) {
   const isToolCall = message.role === 'tool_call';
 
   if (isThought) {
-    return <ThoughtMessage reasoning={message.reasoning} step={message.step} agent={message.agent} />;
+    return <ThoughtMessage message={message} />;
   }
 
   if (isToolCall) {
@@ -119,10 +119,11 @@ export function ChatMessage({ message, onAnswer }: ChatMessageProps) {
   );
 }
 
-function ThoughtMessage({ reasoning, step, agent }: { reasoning?: string; step?: number; agent?: string }) {
+function ThoughtMessage({ message }: { message: ChatMessageType }) {
   const [open, setOpen] = useState(false);
+  const isThinking = message.status === 'thinking';
 
-  if (!reasoning) return null;
+  if (!message.content && !isThinking) return null;
 
   return (
     <div className="flex justify-start">
@@ -135,13 +136,20 @@ function ThoughtMessage({ reasoning, step, agent }: { reasoning?: string; step?:
           {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
           <Sparkles className="h-3 w-3 shrink-0" />
           <span className="font-medium">
-            Step {step ?? '?'}
-            {agent ? `: ${agent}` : ''} reasoning
+            {isThinking ? 'Thinking...' : 'Thought'}
           </span>
+          {isThinking && (
+            <span className="ml-auto flex gap-0.5">
+              <span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '0ms' }} />
+              <span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '150ms' }} />
+              <span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '300ms' }} />
+            </span>
+          )}
         </button>
-        {open && (
+        {(open || isThinking) && message.content && (
           <div className="whitespace-pre-wrap px-3 pb-2 text-muted-foreground/80">
-            {reasoning}
+            {message.content}
+            {isThinking && <span className="animate-pulse">▌</span>}
           </div>
         )}
       </div>

@@ -25,11 +25,20 @@ export const callAgentTool: Tool = {
 
     ctx.callbacks?.onThinking?.(`Delegating to ${parsed.agent} agent...`);
 
+    let concepts = parsed.context?.concepts;
+    if (typeof concepts === 'string') {
+      try {
+        concepts = JSON.parse(concepts);
+      } catch {
+        concepts = undefined;
+      }
+    }
+
     const subState = {
       ...ctx.state,
       text: parsed.task,
       material: parsed.context?.material || ctx.state.material,
-      concepts: parsed.context?.concepts as any || ctx.state.concepts,
+      concepts: concepts || ctx.state.concepts,
       metadata: {
         ...(ctx.state.metadata || {}),
         ...(parsed.context?.count ? { count: parsed.context.count } : {}),
@@ -42,6 +51,13 @@ export const callAgentTool: Tool = {
     };
 
     const result = await agentExecute.execute(parsed.task, { ...ctx, state: subState });
+
+    if (result.type === 'flashcards' && result.flashcards?.length) {
+      ctx.callbacks?.onFlashcards?.({
+        deckName: result.deckName || 'Generated Flashcards',
+        flashcards: result.flashcards,
+      });
+    }
 
     return result;
   },

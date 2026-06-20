@@ -18,6 +18,11 @@ interface StateBreakdown {
   leeched: number;
 }
 
+interface DueBreakdown {
+  total: number;
+  nextReviewAt: string | null;
+}
+
 export default function FlashcardsClient() {
   const t = useTranslations('AppFlashcardsPage');
   const { data: decks } = useApiQuery<Deck[]>({
@@ -28,9 +33,9 @@ export default function FlashcardsClient() {
     queryKey: flashcardKeys.topics.all,
     url: '/api/v1/flashcards/topics',
   });
-  const { data: dueData } = useApiQuery<{ count: number }>({
-    queryKey: [...flashcardKeys.all, 'practice', 'due', 'count'],
-    url: '/api/v1/flashcards/practice/due/count',
+  const { data: dueBreakdown } = useApiQuery<DueBreakdown>({
+    queryKey: flashcardKeys.practice.dueBreakdown,
+    url: '/api/v1/flashcards/practice/due/breakdown',
   });
 
   const { data: stateBreakdown } = useApiQuery<StateBreakdown>({
@@ -40,7 +45,10 @@ export default function FlashcardsClient() {
 
   const deckCount = decks?.length ?? 0;
   const topicCount = topics?.length ?? 0;
-  const dueCount = dueData?.count ?? 0;
+  const dueCount = dueBreakdown?.total ?? 0;
+  const nextReviewLabel = dueCount === 0 && dueBreakdown?.nextReviewAt
+    ? `Next: ${new Date(dueBreakdown.nextReviewAt).toLocaleString('pl-PL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+    : '';
 
   const panels = [
     {
@@ -70,7 +78,7 @@ export default function FlashcardsClient() {
       description: t('review_desc'),
       href: '/app/flashcards/study',
       count: dueCount,
-      countLabel: t('review_count', { count: dueCount }),
+      countLabel: dueCount > 0 ? t('review_count', { count: dueCount }) : nextReviewLabel,
       gradient: GRADIENTS[8],
     },
   ];

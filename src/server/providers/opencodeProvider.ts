@@ -117,10 +117,25 @@ export class OpenCodeProvider implements LLMProvider {
     return message?.content || '';
   }
 
-  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
+  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, reasoningEffort?: 'low' | 'medium' | 'high'): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
     const messages: Array<{ role: string; content: string }> = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
     messages.push({ role: 'user', content: prompt });
+
+    const body: Record<string, unknown> = {
+      model: this.modelName,
+      messages,
+      stream: true,
+    };
+
+    if (tools && tools.length > 0) {
+      body.tools = tools;
+      if (toolChoice) body.tool_choice = toolChoice;
+    }
+
+    if (reasoningEffort) {
+      body.reasoning = { effort: reasoningEffort };
+    }
 
     const res = await fetch(this.baseUrl, {
       method: 'POST',
@@ -128,11 +143,7 @@ export class OpenCodeProvider implements LLMProvider {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.apiKey}`,
       },
-      body: JSON.stringify({
-        model: this.modelName,
-        messages,
-        stream: true,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
