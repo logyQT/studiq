@@ -5,6 +5,7 @@ import type { AgentCallbacks, AgentQuestion, AgentResult } from '@/server/agents
 export interface AgentStreamCallbacks {
   onThought: (data: { reasoning: string; step: number; agent: string }) => void;
   onThinking: (text: string) => void;
+  onToken: (token: string) => void;
   onToolCall: (data: { id: string; tool: string; label: string; args: unknown }) => void;
   onToolResult: (data: { id: string; tool: string; label: string; result: unknown }) => void;
   onFlashcards: (data: { deckName: string; flashcards: unknown[] }) => void;
@@ -87,6 +88,7 @@ export class AiAgentController {
       const agentCallbacks: AgentCallbacks = {
         onThought: (data) => callbacks.onThought(data),
         onThinking: (text) => callbacks.onThinking(text),
+        onToken: (token) => callbacks.onToken?.(token),
         onToolCall: (data) => callbacks.onToolCall({
           ...data,
           label: generateToolCallLabel(data.tool, data.args),

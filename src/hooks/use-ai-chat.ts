@@ -330,6 +330,12 @@ export function useAiChat(): UseAiChatReturn {
                         m.id === lastThought.id ? { ...m, status: 'complete' } : m,
                       );
                     }
+                    const lastStreaming = prev.findLast((m) => m.role === 'assistant' && m.status === 'streaming');
+                    if (lastStreaming) {
+                      return prev.map((m) =>
+                        m.id === lastStreaming.id ? { ...m, status: 'complete' } : m,
+                      );
+                    }
                     if (message) {
                       return [...prev, {
                         id: generateUUID(), role: 'assistant', content: message,

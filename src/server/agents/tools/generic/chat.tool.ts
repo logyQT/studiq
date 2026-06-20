@@ -11,6 +11,11 @@ export const chatTool: Tool = {
   parameters: params,
   async execute(args, ctx) {
     const parsed = params.parse(args);
+    if (parsed.text) {
+      for (let i = 0; i < parsed.text.length; i += 50) {
+        ctx.callbacks?.onToken?.(parsed.text.slice(i, i + 50));
+      }
+    }
     return { type: 'chat', content: parsed.text };
   },
 };

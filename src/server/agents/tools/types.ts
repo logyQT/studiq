@@ -42,6 +42,7 @@ export interface AgentCallbacks {
   onThinking?: (text: string) => void;
   onQuestion?: (question: AgentQuestion) => void;
   onThought?: (data: { reasoning: string; step: number; agent: string }) => void;
+  onToken?: (token: string) => void;
   onToolCall?: (data: { id: string; tool: string; args: unknown }) => void;
   onToolResult?: (data: { id: string; tool: string; result: unknown }) => void;
   onFlashcards?: (data: { deckName: string; flashcards: FlashcardItem[] }) => void;
