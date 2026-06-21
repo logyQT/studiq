@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
 type DicebearAvatarProps = {
@@ -8,7 +9,7 @@ type DicebearAvatarProps = {
 
 export function DicebearAvatar({ seed, size = 32, className }: DicebearAvatarProps) {
   return (
-    <img
+    <Image
       src={`/api/v1/avatar/${encodeURIComponent(seed ?? 'unknown')}`}
       alt=""
       width={size}
