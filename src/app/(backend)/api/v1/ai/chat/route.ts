@@ -1,3 +1,4 @@
+import { log } from '@/lib/logger';
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { toNextResponse } from '@/lib/http-utils';
@@ -12,8 +13,6 @@ import type { UserRole } from '@/types';
 function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
-
-const LOG_PREFIX = '[ChatRoute]';
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -58,12 +57,12 @@ export async function POST(req: NextRequest) {
         try { controller.close(); } catch { /* already closed */ }
       };
       const streamTimeout = setTimeout(() => {
-        console.error(`${LOG_PREFIX} Stream timeout — closing after 5min`);
+        log.api.error('Stream timeout — closing after 5min');
         safeClose();
       }, 300_000);
 
       const send = (event: string, data: unknown) => {
-        console.log(`${LOG_PREFIX} SSE → event=${event}, data=${JSON.stringify(data).slice(0, 200)}`);
+        log.api.info(`SSE → event=${event}, data=${JSON.stringify(data).slice(0, 200)}`);
         controller.enqueue(encoder.encode(sseEvent(event, data)));
       };
 
@@ -73,7 +72,7 @@ export async function POST(req: NextRequest) {
       const conversationId = (body as Record<string, unknown>)?.conversationId as string | undefined;
 
       if (FEATURE_FLAG_AGENTIC) {
-        console.log(`${LOG_PREFIX} Routing: agent pipeline (FEATURE_FLAG_AGENTIC=true), conversationId=${conversationId ?? 'none'}`);
+        log.api.info(`Routing: agent pipeline (FEATURE_FLAG_AGENTIC=true), conversationId=${conversationId ?? 'none'}`);
 
         await aiAgentController.process(text, file, conversationId, ctx, {
           onThought: (data: unknown) => send('thought', data),
@@ -94,7 +93,7 @@ export async function POST(req: NextRequest) {
         });
       } else {
         const isFlashcard = isFlashcardKeyword || context === 'flashcards';
-        console.log(`${LOG_PREFIX} Routing: flashcardKeyword=${isFlashcardKeyword}, context=${context ?? 'none'}, hasFile=${!!file} → ${isFlashcard ? 'flashcard' : 'chat'}`);
+        log.api.info(`Routing: flashcardKeyword=${isFlashcardKeyword}, context=${context ?? 'none'}, hasFile=${!!file} → ${isFlashcard ? 'flashcard' : 'chat'}`);
 
         if (isFlashcard) {
           await aiCommandController.chat(text, file, conversationId, ctx, {

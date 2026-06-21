@@ -1,8 +1,7 @@
+import { log } from '@/lib/logger';
 import { FlashcardGenRequestSchema } from '@/server/models/ai-command.model';
 import { aiCommandService } from '@/server/services/ai-command.service';
 import type { RequestContext } from '@/lib/request-context';
-
-const LOG_PREFIX = '[AiCommandController]';
 
 export interface FlashcardGenStreamCallbacks {
   onThink: (trace: string) => void;
@@ -25,10 +24,10 @@ export class AiCommandController {
     ctx: RequestContext,
     callbacks: FlashcardGenStreamCallbacks,
   ): Promise<void> {
-    console.log(`${LOG_PREFIX} generateFlashcards called`);
+    log.ai.info('generateFlashcards called');
     const parsed = FlashcardGenRequestSchema.safeParse(body);
     if (!parsed.success) {
-      console.error(`${LOG_PREFIX} Invalid request body:`, parsed.error.issues);
+      log.ai.error('Invalid request body', { metadata: { issues: parsed.error.issues } });
       callbacks.onError('Invalid request body');
       return;
     }
@@ -37,12 +36,12 @@ export class AiCommandController {
       const result = await aiCommandService.generateFlashcards(parsed.data.text, undefined, undefined, ctx, {
         onThink: callbacks.onThink,
       });
-      console.log(`${LOG_PREFIX} emit ${result.flashcards.length} flashcards`);
+      log.ai.info(`emit ${result.flashcards.length} flashcards`);
       callbacks.onFlashcards({ deckName: result.deckName, flashcards: result.flashcards });
       callbacks.onComplete();
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Internal server error';
-      console.error(`${LOG_PREFIX} Error:`, msg);
+      log.ai.error('Error', { metadata: { msg } });
       callbacks.onError(msg);
     }
   }
@@ -54,15 +53,15 @@ export class AiCommandController {
     ctx: RequestContext,
     callbacks: FlashcardChatStreamCallbacks,
   ): Promise<void> {
-    console.log(`${LOG_PREFIX} chat called, text="${text.slice(0, 80)}", hasFile=${!!file}, conversationId=${conversationId ?? 'none'}`);
+    log.ai.info('chat called', { metadata: { text: text.slice(0, 80), hasFile: !!file, conversationId: conversationId ?? 'none' } });
     try {
       const result = await aiCommandService.chat(text, file, conversationId, ctx, {
         onThink: callbacks.onThink,
       });
-      console.log(`${LOG_PREFIX} result type=${result.type}`);
+      log.ai.info(`result type=${result.type}`);
 
       if (result.type === 'flashcards') {
-        console.log(`${LOG_PREFIX} emit ${result.flashcards.length} flashcards, deckName="${result.deckName}"`);
+        log.ai.info(`emit ${result.flashcards.length} flashcards, deckName="${result.deckName}"`);
         callbacks.onFlashcards({ deckName: result.deckName, flashcards: result.flashcards });
         callbacks.onComplete('');
       } else {
@@ -70,7 +69,7 @@ export class AiCommandController {
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Internal server error';
-      console.error(`${LOG_PREFIX} Error:`, msg);
+      log.ai.error('Error', { metadata: { msg } });
       callbacks.onError(msg);
     }
   }

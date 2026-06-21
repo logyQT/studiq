@@ -1,7 +1,7 @@
+import { log } from '@/lib/logger';
 import { callLLM } from '@/server/ai';
 import type { RequestContext } from '@/lib/request-context';
 import {
-  LOG_PREFIX,
   FLASHCARD_MAX_TOKENS,
   FlashcardItem,
   FlashcardGenResult,
@@ -37,20 +37,20 @@ interface ExtractedTerm {
 export class AiCommandService {
   async generateFlashcards(text: string, file: { data: string; mimeType: string } | undefined, conversationId: string | undefined, ctx: RequestContext, callbacks?: ThinkingCallbacks): Promise<FlashcardGenResult> {
     const pipelineStart = Date.now();
-    console.log(`${LOG_PREFIX} generateFlashcards called, text="${text.slice(0, 100)}", hasFile=${!!file}, conversationId=${conversationId ?? 'none'}`);
+    log.ai.info('generateFlashcards called', { metadata: { text: text.slice(0, 100), hasFile: !!file, conversationId: conversationId ?? 'none' } });
 
     let prompt = text;
     const extracted = await extractFileContent(file, conversationId);
     if (extracted) {
       prompt = `${text}\n\nFile content:\n${extracted}`;
-      console.log(`${LOG_PREFIX} Prompt with file content: ${prompt.length} chars`);
+      log.ai.info(`Prompt with file content: ${prompt.length} chars`);
     } else {
-      console.log(`${LOG_PREFIX} No source material provided`);
+      log.ai.info('No source material provided');
     }
 
     // Step 0: Generate material when no source provided
     if (!extracted) {
-      console.log(`${LOG_PREFIX} === Step 0/3: Generate Material ===`);
+      log.ai.info('=== Step 0/3: Generate Material ===');
       callbacks?.onThink('Collecting knowledge about the topic...');
       const generated = await withRetry(
         () => this.generateMaterial(text, ctx, callbacks),
@@ -61,17 +61,17 @@ export class AiCommandService {
       );
       if (generated) {
         prompt = `${text}\n\nGenerated educational content:\n${generated}`;
-        console.log(`${LOG_PREFIX} Step 0 complete, generated material: ${generated.length} chars`);
+        log.ai.info(`Step 0 complete, generated material: ${generated.length} chars`);
         callbacks?.onThink(`Collected ${generated.length.toLocaleString()} words of study material`);
       } else {
-        console.log(`${LOG_PREFIX} Step 0 returned empty, proceeding with user request only`);
+        log.ai.info('Step 0 returned empty, proceeding with user request only');
         callbacks?.onThink('Proceeding with provided context');
         prompt = text;
       }
     }
 
     // Step 1: Analyze — extract atomic concepts
-    console.log(`${LOG_PREFIX} === Step 1/3: Analyze ===`);
+    log.ai.info('=== Step 1/3: Analyze ===');
     callbacks?.onThink('Identifying key concepts and terms...');
     const terms = await withRetry(
       () => this.analyzeContent(prompt, ctx, callbacks),
@@ -81,7 +81,7 @@ export class AiCommandService {
       callbacks,
     );
     if (terms.length === 0) {
-      console.log(`${LOG_PREFIX} Pipeline aborted at Step 1: no terms extracted (${Date.now() - pipelineStart}ms total)`);
+      log.ai.warn(`Pipeline aborted at Step 1: no terms extracted (${Date.now() - pipelineStart}ms total)`);
       callbacks?.onThink('Could not identify key concepts after multiple attempts');
       return {
         type: 'flashcards',
@@ -94,7 +94,7 @@ export class AiCommandService {
     callbacks?.onThink(`Found ${terms.length} key terms: ${termNames}${terms.length > 3 ? '...' : ''}`);
 
     // Step 2: Generate — create flashcards from terms
-    console.log(`${LOG_PREFIX} === Step 2/3: Generate ===`);
+    log.ai.info('=== Step 2/3: Generate ===');
     callbacks?.onThink(`Building flashcards from ${terms.length} key terms...`);
     const { deckName, flashcards: rawCards } = await withRetry(
       () => this.generateFromTerms(terms, text, ctx, callbacks),
@@ -104,7 +104,7 @@ export class AiCommandService {
       callbacks,
     );
     if (rawCards.length === 0) {
-      console.log(`${LOG_PREFIX} Pipeline aborted at Step 2: no flashcards generated (${Date.now() - pipelineStart}ms total)`);
+      log.ai.warn(`Pipeline aborted at Step 2: no flashcards generated (${Date.now() - pipelineStart}ms total)`);
       callbacks?.onThink('Could not generate flashcards after multiple attempts');
       return {
         type: 'flashcards',
@@ -115,13 +115,13 @@ export class AiCommandService {
     callbacks?.onThink(`Created ${rawCards.length} flashcards in "${deckName}"`);
 
     // Step 3: Review — quality gate, drop bad cards
-    console.log(`${LOG_PREFIX} === Step 3/3: Review ===`);
+    log.ai.info('=== Step 3/3: Review ===');
     callbacks?.onThink('Reviewing flashcards for quality...');
     const { kept, reasons: _reasons } = await this.reviewFlashcards(rawCards, ctx);
     const reviewedCards = kept.map((i) => rawCards[i]).filter(Boolean);
     const elapsed = Date.now() - pipelineStart;
     const droppedCount = rawCards.length - reviewedCards.length;
-    console.log(`${LOG_PREFIX} Pipeline complete: ${reviewedCards.length}/${rawCards.length} cards survived review (${elapsed}ms total)`);
+    log.ai.info(`Pipeline complete: ${reviewedCards.length}/${rawCards.length} cards survived review`, { durationMs: elapsed });
     if (droppedCount > 0) {
       callbacks?.onThink(`Kept ${reviewedCards.length} high-quality cards, dropped ${droppedCount}`);
     } else {
@@ -136,7 +136,7 @@ export class AiCommandService {
   }
 
   private async generateMaterial(topic: string, ctx: RequestContext, callbacks?: ThinkingCallbacks): Promise<string> {
-    console.log(`${LOG_PREFIX} [Step 0] generateMaterial called, topic="${topic.slice(0, 100)}"`);
+    log.ai.info('[Step 0] generateMaterial called', { metadata: { topic: topic.slice(0, 100) } });
     const start = Date.now();
     const timers = startSlowTimers(callbacks);
 
@@ -151,22 +151,22 @@ export class AiCommandService {
         ctx,
       );
     } catch (error) {
-      console.error(`${LOG_PREFIX} [Step 0] LLM call failed:`, error);
+      log.ai.error('[Step 0] LLM call failed', { metadata: { error } });
       return '';
     } finally {
       clearSlowTimers(timers);
     }
 
-    console.log(`${LOG_PREFIX} [Step 0] LLM responded in ${Date.now() - start}ms, content length=${response.content.length}`);
+    log.ai.info('[Step 0] LLM responded', { durationMs: Date.now() - start, metadata: { contentLength: response.content.length } });
     if (response.content.length > 0) {
-      console.log(`${LOG_PREFIX} [Step 0] Content preview: "${response.content.slice(0, 200)}..."`);
+      log.ai.info('[Step 0] Content preview', { metadata: { preview: response.content.slice(0, 200) } });
     }
 
     return response.content;
   }
 
   private async analyzeContent(material: string, ctx: RequestContext, callbacks?: ThinkingCallbacks): Promise<ExtractedTerm[]> {
-    console.log(`${LOG_PREFIX} [Step 1] analyzeContent called, material length=${material.length}`);
+    log.ai.info('[Step 1] analyzeContent called', { metadata: { materialLength: material.length } });
     const start = Date.now();
     const timers = startSlowTimers(callbacks);
 
@@ -183,29 +183,29 @@ export class AiCommandService {
         ctx,
       );
     } catch (error) {
-      console.error(`${LOG_PREFIX} [Step 1] LLM call failed:`, error);
+      log.ai.error('[Step 1] LLM call failed', { metadata: { error } });
       return [];
     } finally {
       clearSlowTimers(timers);
     }
 
-    console.log(`${LOG_PREFIX} [Step 1] LLM responded in ${Date.now() - start}ms, content="${response.content.slice(0, 200)}", toolCalls=${response.toolCalls?.length ?? 0}`);
+    log.ai.info('[Step 1] LLM responded', { durationMs: Date.now() - start, metadata: { content: response.content.slice(0, 200), toolCalls: response.toolCalls?.length ?? 0 } });
 
     const args = parseToolCallArgs<{ terms: ExtractedTerm[] }>(response.toolCalls, 'extract_terms');
     if (!args) {
-      console.log(`${LOG_PREFIX} [Step 1] No extract_terms tool call found`);
+      log.ai.warn('[Step 1] No extract_terms tool call found');
       return [];
     }
     if (!args.terms) {
-      console.log(`${LOG_PREFIX} [Step 1] Tool call missing "terms" field, args keys: ${Object.keys(args).join(', ')}`);
+      log.ai.warn(`[Step 1] Tool call missing "terms" field`, { metadata: { keys: Object.keys(args).join(', ') } });
       return [];
     }
 
     const valid = args.terms.filter((t) => t.term && t.definition);
     const dropped = args.terms.length - valid.length;
-    console.log(`${LOG_PREFIX} [Step 1] Parsed ${args.terms.length} raw terms, ${valid.length} valid, ${dropped} dropped (missing term or definition)`);
+    log.ai.info(`[Step 1] Parsed ${args.terms.length} raw terms, ${valid.length} valid, ${dropped} dropped (missing term or definition)`);
     if (valid.length > 0) {
-      console.log(`${LOG_PREFIX} [Step 1] Sample terms: ${valid.slice(0, 3).map((t) => `"${t.term}"`).join(', ')}${valid.length > 3 ? ` (+${valid.length - 3} more)` : ''}`);
+      log.ai.info(`[Step 1] Sample terms: ${valid.slice(0, 3).map((t) => `"${t.term}"`).join(', ')}${valid.length > 3 ? ` (+${valid.length - 3} more)` : ''}`);
     }
 
     return valid;
@@ -214,7 +214,7 @@ export class AiCommandService {
   private async generateFromTerms(terms: ExtractedTerm[], originalRequest: string, ctx: RequestContext, callbacks?: ThinkingCallbacks): Promise<{ deckName: string; flashcards: FlashcardItem[] }> {
     const termsJson = JSON.stringify(terms, null, 2);
     const prompt = `User request: ${originalRequest}\n\nExtracted terms:\n${termsJson}`;
-    console.log(`${LOG_PREFIX} [Step 2] generateFromTerms called, ${terms.length} terms, prompt length=${prompt.length}`);
+    log.ai.info('[Step 2] generateFromTerms called', { metadata: { termCount: terms.length, promptLength: prompt.length } });
     const start = Date.now();
     const timers = startSlowTimers(callbacks);
 
@@ -231,29 +231,29 @@ export class AiCommandService {
         ctx,
       );
     } catch (error) {
-      console.error(`${LOG_PREFIX} [Step 2] LLM call failed:`, error);
+      log.ai.error('[Step 2] LLM call failed', { metadata: { error } });
       return { deckName: 'AI Generated Flashcards', flashcards: [] };
     } finally {
       clearSlowTimers(timers);
     }
 
-    console.log(`${LOG_PREFIX} [Step 2] LLM responded in ${Date.now() - start}ms, content="${response.content.slice(0, 200)}", toolCalls=${response.toolCalls?.length ?? 0}`);
+    log.ai.info('[Step 2] LLM responded', { durationMs: Date.now() - start, metadata: { content: response.content.slice(0, 200), toolCalls: response.toolCalls?.length ?? 0 } });
 
     const args = parseToolCallArgs<{ deck_name?: string; flashcards: unknown[] }>(response.toolCalls, 'generate_flashcards');
     if (!args) {
-      console.log(`${LOG_PREFIX} [Step 2] No generate_flashcards tool call found`);
+      log.ai.warn('[Step 2] No generate_flashcards tool call found');
       return { deckName: 'AI Generated Flashcards', flashcards: [] };
     }
     if (!args.flashcards) {
-      console.log(`${LOG_PREFIX} [Step 2] Tool call missing "flashcards" field, args keys: ${Object.keys(args).join(', ')}`);
+      log.ai.warn('[Step 2] Tool call missing "flashcards" field', { metadata: { keys: Object.keys(args).join(', ') } });
       return { deckName: 'AI Generated Flashcards', flashcards: [] };
     }
 
     const cards = parseFlashcards(args.flashcards);
     const deckName = String(args.deck_name || 'AI Generated Flashcards');
-    console.log(`${LOG_PREFIX} [Step 2] Parsed ${cards.length} flashcards, deckName="${deckName}"`);
+    log.ai.info(`[Step 2] Parsed ${cards.length} flashcards, deckName="${deckName}"`);
     if (cards.length > 0) {
-      console.log(`${LOG_PREFIX} [Step 2] Sample cards: ${cards.slice(0, 2).map((c) => `Q:"${c.front.slice(0, 60)}..." A:"${c.back.slice(0, 60)}..."`).join(' | ')}`);
+      log.ai.info(`[Step 2] Sample cards: ${cards.slice(0, 2).map((c) => `Q:"${c.front.slice(0, 60)}..." A:"${c.back.slice(0, 60)}..."`).join(' | ')}`);
     }
 
     return { deckName, flashcards: cards };
@@ -261,7 +261,7 @@ export class AiCommandService {
 
   private async reviewFlashcards(cards: FlashcardItem[], ctx: RequestContext): Promise<{ kept: number[]; reasons: Record<string, string> }> {
     const cardsJson = JSON.stringify(cards.map((c, i) => ({ index: i, front: c.front, back: c.back, topic: c.topic })), null, 2);
-    console.log(`${LOG_PREFIX} [Step 3] reviewFlashcards called, ${cards.length} cards, prompt length=${cardsJson.length}`);
+    log.ai.info('[Step 3] reviewFlashcards called', { metadata: { cardCount: cards.length, promptLength: cardsJson.length } });
     const start = Date.now();
 
     let response;
@@ -277,27 +277,27 @@ export class AiCommandService {
         ctx,
       );
     } catch (error) {
-      console.error(`${LOG_PREFIX} [Step 3] LLM call failed:`, error);
-      console.log(`${LOG_PREFIX} [Step 3] Keeping all ${cards.length} cards as fallback`);
+      log.ai.error('[Step 3] LLM call failed', { metadata: { error } });
+      log.ai.warn(`[Step 3] Keeping all ${cards.length} cards as fallback`);
       return { kept: cards.map((_, i) => i), reasons: {} };
     }
 
-    console.log(`${LOG_PREFIX} [Step 3] LLM responded in ${Date.now() - start}ms, content="${response.content.slice(0, 200)}", toolCalls=${response.toolCalls?.length ?? 0}`);
+    log.ai.info('[Step 3] LLM responded', { durationMs: Date.now() - start, metadata: { content: response.content.slice(0, 200), toolCalls: response.toolCalls?.length ?? 0 } });
 
     const args = parseToolCallArgs<{ kept: number[]; reasons?: Record<string, string> }>(response.toolCalls, 'review_cards');
     if (!args) {
-      console.log(`${LOG_PREFIX} [Step 3] No review_cards tool call found, keeping all ${cards.length} cards`);
+      log.ai.warn(`[Step 3] No review_cards tool call found, keeping all ${cards.length} cards`);
       return { kept: cards.map((_, i) => i), reasons: {} };
     }
 
     const keptIndices = args.kept ?? [];
     const reasons = args.reasons ?? {};
     const droppedCount = cards.length - keptIndices.length;
-    console.log(`${LOG_PREFIX} [Step 3] Review result: keeping ${keptIndices.length}/${cards.length}, dropping ${droppedCount}`);
+    log.ai.info(`[Step 3] Review result: keeping ${keptIndices.length}/${cards.length}, dropping ${droppedCount}`);
     if (droppedCount > 0) {
       for (const [idx, reason] of Object.entries(reasons)) {
         const card = cards[Number(idx)];
-        console.log(`${LOG_PREFIX} [Step 3]   Drop card #${idx}: Q="${card?.front?.slice(0, 50)}..." reason="${reason}"`);
+        log.ai.info(`[Step 3] Drop card #${idx}: Q="${card?.front?.slice(0, 50)}..." reason="${reason}"`);
       }
     }
 
@@ -306,7 +306,7 @@ export class AiCommandService {
 
   async chat(text: string, file: { data: string; mimeType: string } | undefined, conversationId: string | undefined, ctx: RequestContext, callbacks?: ThinkingCallbacks): Promise<FlashcardGenResult | ChatResult> {
     const isFlashcard = hasFlashcardKeyword(text);
-    console.log(`${LOG_PREFIX} chat called, text="${text.slice(0, 100)}", hasFile=${!!file}, flashcardKeyword=${isFlashcard}, conversationId=${conversationId ?? 'none'}`);
+    log.ai.info('chat called', { metadata: { text: text.slice(0, 100), hasFile: !!file, flashcardKeyword: isFlashcard, conversationId: conversationId ?? 'none' } });
 
     if (isFlashcard) {
       const result = await this.generateFlashcards(text, file, conversationId, ctx, callbacks);
@@ -322,7 +322,7 @@ export class AiCommandService {
       prompt = `${text}\n\nFile content:\n${extracted}`;
     }
 
-    console.log(`${LOG_PREFIX} Calling LLM with tool_choice=auto`);
+    log.ai.info('Calling LLM with tool_choice=auto');
     const response = await callLLM(
       {
         prompt,
@@ -334,22 +334,22 @@ export class AiCommandService {
       ctx,
     );
 
-    console.log(`${LOG_PREFIX} LLM response: content="${response.content.slice(0, 200)}", toolCalls=${response.toolCalls?.length ?? 0}`);
+    log.ai.info('LLM response', { metadata: { content: response.content.slice(0, 200), toolCalls: response.toolCalls?.length ?? 0 } });
 
     if (response.toolCalls && response.toolCalls.length > 0) {
       const toolCall = response.toolCalls.find((tc) => tc.function.name === 'generate_flashcards');
       if (toolCall) {
-        console.log(`${LOG_PREFIX} Tool call arguments: ${toolCall.function.arguments.slice(0, 500)}`);
+        log.ai.info('Tool call arguments', { metadata: { args: toolCall.function.arguments.slice(0, 500) } });
         let args: Record<string, unknown>;
         try {
           args = JSON.parse(toolCall.function.arguments);
         } catch {
           try {
             const repaired = repairJson(toolCall.function.arguments);
-            console.log(`${LOG_PREFIX} JSON parse failed, repaired: ${repaired.slice(0, 200)}`);
+            log.ai.warn('JSON parse failed, repaired', { metadata: { repaired: repaired.slice(0, 200) } });
             args = JSON.parse(repaired);
           } catch {
-            console.log(`${LOG_PREFIX} Tool call args unrecoverable, falling back to text`);
+            log.ai.warn('Tool call args unrecoverable, falling back to text');
             return {
               type: 'chat',
               content: response.content,
@@ -357,7 +357,7 @@ export class AiCommandService {
           }
         }
         const flashcards = parseFlashcards(args.flashcards);
-        console.log(`${LOG_PREFIX} Parsed ${flashcards.length} flashcards, deckName="${args.deck_name}"`);
+        log.ai.info(`Parsed ${flashcards.length} flashcards, deckName="${args.deck_name}"`);
         return {
           type: 'flashcards',
           deckName: String(args.deck_name || 'AI Generated Flashcards'),

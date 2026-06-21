@@ -1,3 +1,4 @@
+import { log } from '@/lib/logger';
 import { RegisterInput, LoginInput, User } from '@/server/models';
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
@@ -19,11 +20,8 @@ export class AuthService {
       }
 
       if (invite.email !== data.email || invite.name !== data.name) {
-        console.error('Invite token does not match email or name:', {
-          tokenEmail: invite.email,
-          tokenName: invite.name,
-          inputEmail: data.email,
-          inputName: data.name,
+        log.auth.error('Invite token does not match email or name', {
+          metadata: { tokenEmail: invite.email, tokenName: invite.name, inputEmail: data.email, inputName: data.name },
         });
         throw new AppError('UNPROCESSABLE_ENTITY');
       }

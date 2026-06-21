@@ -45,6 +45,7 @@
  *           Redirects the user to the target page on success, or back to login
  *           with an error query parameter if the link is invalid or expired.
  */
+import { log } from '@/lib/logger';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { EmailOtpType } from '@supabase/supabase-js';
@@ -84,7 +85,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${origin}${next}`);
     }
 
-    console.error('Auth Callback Error (TokenHash):', error.message);
+    log.auth.error('Auth Callback Error (TokenHash)', { metadata: { message: error.message } });
   } else if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
@@ -92,7 +93,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${origin}${next}`);
     }
 
-    console.error('Auth Callback Error (PKCE):', error.message);
+    log.auth.error('Auth Callback Error (PKCE)', { metadata: { message: error.message } });
   }
 
   return NextResponse.redirect(`${origin}/login?error=${APP_ERRORS.INTERNAL_SERVER.code}`);

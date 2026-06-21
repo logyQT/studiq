@@ -1,3 +1,4 @@
+import { log } from '@/lib/logger';
 import { getProvider } from '@/server/providers/providerRegistry';
 import { getModelsConfig } from '@/server/config/models.config';
 import { AppError } from '@/lib/errors';
@@ -94,7 +95,7 @@ export async function callLLM(req: LLMGatewayRequest, _ctx: RequestContext): Pro
 
   const result = await generateStreamingWithRetry(provider, req);
 
-  console.log(`[callLLM] Streaming result: content=${result.content?.length ?? 0}chars, reasoning=${result.reasoning?.length ?? 0}chars, toolCalls=${result.toolCalls?.length ?? 0} [${result.toolCalls?.map((tc) => tc.function.name).join(', ') ?? ''}]`);
+  log.ai.info('Streaming result', { metadata: { contentLength: result.content?.length ?? 0, reasoningLength: result.reasoning?.length ?? 0, toolCallCount: result.toolCalls?.length ?? 0, toolNames: result.toolCalls?.map((tc) => tc.function.name).join(', ') ?? '' } });
 
   return {
     content: result.content,

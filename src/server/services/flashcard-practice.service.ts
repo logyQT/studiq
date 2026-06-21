@@ -1,3 +1,4 @@
+import { log } from '@/lib/logger';
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
@@ -63,7 +64,7 @@ export class FlashcardPracticeService {
         const reviewState = await this.upsertReviewState(item.flashcardId, item.wasCorrect, item.confidenceLevel, ctx);
         results.push({ flashcardId: item.flashcardId, isLeech: reviewState.is_leech });
       } catch (err) {
-        console.error(`[batch] upsertReviewState failed for card ${item.flashcardId}:`, err);
+        log.system.error(`[batch] upsertReviewState failed for card ${item.flashcardId}`, { metadata: { err } });
         results.push({ flashcardId: item.flashcardId, isLeech: false });
       }
     }
@@ -349,7 +350,7 @@ export class FlashcardPracticeService {
     });
 
     if (error) {
-      console.error('[getStateBreakdown] RPC failed:', JSON.stringify(error));
+      log.system.error('[getStateBreakdown] RPC failed', { metadata: { error } });
       return { totalCards: 0, neverPracticed: 0, learning: 0, review: 0, relearning: 0, leeched: 0 };
     }
 

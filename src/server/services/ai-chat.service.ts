@@ -1,11 +1,10 @@
+import { log } from '@/lib/logger';
 import { callLLMStreaming } from '@/server/ai';
 import { pdfService } from '@/server/services/pdf.service';
 import { pdfCacheService } from '@/server/services/pdf-cache.service';
 import type { RequestContext } from '@/lib/request-context';
 import type { TokenUsage } from '@/server/ai/ai.types';
 import type { ChatMessageInput } from '@/server/models/ai-chat.model';
-
-const LOG_PREFIX = '[ChatService]';
 
 const MAX_FILE_CHARS = parseInt(process.env.LLM_MAX_FILE_CHARS || '200000', 10);
 
@@ -45,20 +44,20 @@ export class ChatService {
           if (file.mimeType === 'application/pdf') {
             const buffer = Buffer.from(file.data, 'base64');
             extracted = await pdfService.extractText(buffer);
-            console.log(`${LOG_PREFIX} PDF extracted ${extracted.length} chars`);
+            log.ai.info(`PDF extracted ${extracted.length} chars`);
           } else if (file.mimeType === 'text/plain') {
             extracted = Buffer.from(file.data, 'base64').toString('utf-8');
           }
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Unknown error';
-          console.error(`${LOG_PREFIX} File extraction failed:`, error);
+          log.ai.error('File extraction failed', { metadata: { error } });
           callbacks.onError(`Failed to extract file content: ${msg}`);
           return;
         }
 
         // Truncate to configurable limit
         if (extracted.length > MAX_FILE_CHARS) {
-          console.log(`${LOG_PREFIX} Truncating file content from ${extracted.length} to ${MAX_FILE_CHARS} chars`);
+          log.ai.warn(`Truncating file content from ${extracted.length} to ${MAX_FILE_CHARS} chars`);
           extracted = extracted.slice(0, MAX_FILE_CHARS);
         }
 
@@ -71,7 +70,7 @@ export class ChatService {
         const cached = pdfCacheService.get(conversationId);
         if (cached) {
           extracted = cached.text;
-          console.log(`${LOG_PREFIX} Retrieved ${extracted.length} chars from cache for conversation ${conversationId}`);
+          log.ai.info(`Retrieved ${extracted.length} chars from cache for conversation ${conversationId}`);
         }
       }
 
@@ -92,7 +91,7 @@ export class ChatService {
       callbacks.onComplete(response.content, response.usage);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Internal server error';
-      console.error(`${LOG_PREFIX} Chat failed:`, error);
+      log.ai.error('Chat failed', { metadata: { error } });
       callbacks.onError(msg);
     }
   }

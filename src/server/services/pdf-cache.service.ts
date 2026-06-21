@@ -1,4 +1,4 @@
-const LOG_PREFIX = '[PdfCache]';
+import { log } from '@/lib/logger';
 
 const DEFAULT_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 const DEFAULT_MAX_ENTRIES = 1000;
@@ -35,32 +35,32 @@ export class PdfCacheService {
       extractedAt: new Date(),
       lastAccessed: new Date(),
     });
-    console.log(`${LOG_PREFIX} Cached ${text.length} chars for conversation ${conversationId} (file: ${fileName})`);
+    log.cache.info(`Cached ${text.length} chars for conversation ${conversationId} (file: ${fileName})`);
   }
 
   get(conversationId: string): { text: string; fileName: string } | null {
     const entry = this.cache.get(conversationId);
     if (!entry) {
-      console.log(`${LOG_PREFIX} Cache miss for conversation ${conversationId}`);
+      log.cache.info(`Cache miss for conversation ${conversationId}`);
       return null;
     }
 
     // Check TTL
     if (Date.now() - entry.extractedAt.getTime() > this.ttlMs) {
       this.cache.delete(conversationId);
-      console.log(`${LOG_PREFIX} Cache expired for conversation ${conversationId}`);
+      log.cache.warn(`Cache expired for conversation ${conversationId}`);
       return null;
     }
 
     // Update access time for LRU
     entry.lastAccessed = new Date();
-    console.log(`${LOG_PREFIX} Cache hit for conversation ${conversationId} (${entry.text.length} chars)`);
+    log.cache.info(`Cache hit for conversation ${conversationId} (${entry.text.length} chars)`);
     return { text: entry.text, fileName: entry.fileName };
   }
 
   delete(conversationId: string): void {
     this.cache.delete(conversationId);
-    console.log(`${LOG_PREFIX} Deleted cache for conversation ${conversationId}`);
+    log.cache.info(`Deleted cache for conversation ${conversationId}`);
   }
 
   private evictExpired(): void {
@@ -73,7 +73,7 @@ export class PdfCacheService {
       }
     }
     if (evicted > 0) {
-      console.log(`${LOG_PREFIX} Evicted ${evicted} expired entries, ${this.cache.size} remaining`);
+      log.cache.info(`Evicted ${evicted} expired entries, ${this.cache.size} remaining`);
     }
   }
 
@@ -90,7 +90,7 @@ export class PdfCacheService {
 
     if (oldestKey) {
       this.cache.delete(oldestKey);
-      console.log(`${LOG_PREFIX} LRU evicted conversation ${oldestKey}`);
+      log.cache.info(`LRU evicted conversation ${oldestKey}`);
     }
   }
 }

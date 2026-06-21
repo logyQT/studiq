@@ -1,8 +1,7 @@
+import { log } from '@/lib/logger';
 import { repairJson } from '@/server/providers/LLMProvider';
 import { pdfService } from '@/server/services/pdf.service';
 import { pdfCacheService } from '@/server/services/pdf-cache.service';
-
-export const LOG_PREFIX = '[AiCommandService]';
 
 export const MAX_FILE_CHARS = parseInt(process.env.LLM_MAX_FILE_CHARS || '200000', 10);
 export const FLASHCARD_MAX_TOKENS = parseInt(process.env.LLM_FLASHCARD_MAX_TOKENS || '16384', 10);
@@ -100,25 +99,25 @@ export function parseReviewResult(raw: unknown): { kept: number[]; reasons: Reco
 
 export function parseToolCallArgs<T = Record<string, unknown>>(toolCalls: Array<{ function: { name: string; arguments: string } }> | undefined, toolName: string): T | null {
   if (!toolCalls || toolCalls.length === 0) {
-    console.log(`${LOG_PREFIX} parseToolCallArgs: no tool calls provided`);
+    log.ai.debug('parseToolCallArgs: no tool calls provided');
     return null;
   }
   const toolCall = toolCalls.find((tc) => tc.function.name === toolName);
   if (!toolCall) {
-    console.log(`${LOG_PREFIX} parseToolCallArgs: tool "${toolName}" not found in [${toolCalls.map((tc) => tc.function.name).join(', ')}]`);
+    log.ai.debug(`parseToolCallArgs: tool "${toolName}" not found`, { metadata: { available: toolCalls.map((tc) => tc.function.name).join(', ') } });
     return null;
   }
-  console.log(`${LOG_PREFIX} parseToolCallArgs: parsing "${toolName}", args length=${toolCall.function.arguments.length}`);
+  log.ai.debug(`parseToolCallArgs: parsing "${toolName}"`, { metadata: { argsLength: toolCall.function.arguments.length } });
   try {
     return JSON.parse(toolCall.function.arguments) as T;
   } catch (_parseError) {
-    console.log(`${LOG_PREFIX} parseToolCallArgs: JSON.parse failed for "${toolName}", attempting repair`);
+    log.ai.debug(`parseToolCallArgs: JSON.parse failed for "${toolName}", attempting repair`);
     try {
       const repaired = repairJson(toolCall.function.arguments);
-      console.log(`${LOG_PREFIX} parseToolCallArgs: repaired args (first 200): ${repaired.slice(0, 200)}`);
+      log.ai.debug(`parseToolCallArgs: repaired args (first 200): ${repaired.slice(0, 200)}`);
       return JSON.parse(repaired) as T;
     } catch (_repairError) {
-      console.error(`${LOG_PREFIX} parseToolCallArgs: repair also failed for "${toolName}"`);
+      log.ai.error(`parseToolCallArgs: repair also failed for "${toolName}"`);
       return null;
     }
   }
@@ -163,7 +162,7 @@ export async function extractFileContent(
     if (conversationId) {
       const cached = pdfCacheService.get(conversationId);
       if (cached) {
-        console.log(`${LOG_PREFIX} Retrieved ${cached.text.length} chars from cache for conversation ${conversationId}`);
+        log.ai.info(`Retrieved ${cached.text.length} chars from cache for conversation ${conversationId}`);
         return cached.text;
       }
     }
@@ -173,21 +172,21 @@ export async function extractFileContent(
   try {
     let extracted = '';
     if (file.mimeType === 'application/pdf') {
-      console.log(`${LOG_PREFIX} Extracting text from PDF attachment`);
+      log.pdf.info('Extracting text from PDF attachment');
       const buffer = Buffer.from(file.data, 'base64');
       extracted = await pdfService.extractText(buffer);
-      console.log(`${LOG_PREFIX} PDF extracted ${extracted.length} chars`);
+      log.pdf.info(`PDF extracted ${extracted.length} chars`);
     } else if (file.mimeType === 'text/plain') {
       extracted = Buffer.from(file.data, 'base64').toString('utf-8');
-      console.log(`${LOG_PREFIX} Text file extracted ${extracted.length} chars`);
+      log.pdf.info(`Text file extracted ${extracted.length} chars`);
     } else {
-      console.log(`${LOG_PREFIX} Unsupported file type: ${file.mimeType}`);
+      log.pdf.warn(`Unsupported file type: ${file.mimeType}`);
       return '';
     }
 
     // Truncate to configurable limit
     if (extracted.length > MAX_FILE_CHARS) {
-      console.log(`${LOG_PREFIX} Truncating file content from ${extracted.length} to ${MAX_FILE_CHARS} chars`);
+      log.pdf.warn(`Truncating file content from ${extracted.length} to ${MAX_FILE_CHARS} chars`);
       extracted = extracted.slice(0, MAX_FILE_CHARS);
     }
 
@@ -198,7 +197,7 @@ export async function extractFileContent(
 
     return extracted;
   } catch (error) {
-    console.error(`${LOG_PREFIX} File extraction failed:`, error);
+    log.pdf.error('File extraction failed', { metadata: { error } });
     return '';
   }
 }

@@ -1,8 +1,7 @@
+import { log } from '@/lib/logger';
 import { LLMProvider, GeneratedFlashcard, FLASHCARD_PROMPT, parseJsonResponse, type StreamCallbacks, type GenerateChatResult } from './LLMProvider';
 import type { ModelsConfig } from '@/server/config/models.config';
 import type { ToolDefinition, ToolCall } from '@/server/ai/ai.types';
-
-const LOG_PREFIX = '[OpenAIProvider]';
 
 export class OpenAIProvider implements LLMProvider {
   private apiKey: string;
@@ -16,7 +15,7 @@ export class OpenAIProvider implements LLMProvider {
     this.apiKey = config.apiKey;
     this.baseUrl = config.baseUrl || 'https://api.openai.com';
     this.modelName = config.modelName || 'gpt-4o-mini';
-    console.log(`${LOG_PREFIX} Initialized: baseUrl=${this.baseUrl}, model=${this.modelName}`);
+    log.providers.info(`Initialized: baseUrl=${this.baseUrl}, model=${this.modelName}`);
   }
 
   async generateFlashcardsFromChunk(chunk: string, language: string): Promise<GeneratedFlashcard[]> {
@@ -25,10 +24,10 @@ export class OpenAIProvider implements LLMProvider {
       .replace('{chunk}', chunk);
     const chunkPreview = chunk.slice(0, 100).replace(/\n/g, ' ');
 
-    console.log(`${LOG_PREFIX} Generating flashcards: language=${language}, chunkLength=${chunk.length}, preview="${chunkPreview}..."`);
+    log.providers.info('Generating flashcards', { metadata: { language, chunkLength: chunk.length, preview: chunkPreview } });
 
     const url = `${this.baseUrl}/v1/chat/completions`;
-    console.log(`${LOG_PREFIX} POST ${url} model=${this.modelName}`);
+    log.providers.info(`POST ${url} model=${this.modelName}`);
 
     const res = await fetch(url, {
       method: 'POST',
@@ -48,13 +47,13 @@ export class OpenAIProvider implements LLMProvider {
 
     if (!res.ok) {
       const text = await res.text().catch(() => '(no body)');
-      console.error(`${LOG_PREFIX} Request failed: status=${res.status}, body=${text}`);
+      log.providers.error('Request failed', { metadata: { status: res.status, body: text } });
       throw new Error(`OpenAI request failed: ${res.status} ${text}`);
     }
 
     const data = await res.json();
     const content = data.choices?.[0]?.message?.content || '';
-    console.log(`${LOG_PREFIX} Raw response length=${content.length}, preview="${content.slice(0, 200)}..."`);
+    log.providers.info('Raw response', { metadata: { length: content.length, preview: content.slice(0, 200) } });
 
     return parseJsonResponse(content);
   }

@@ -1,3 +1,4 @@
+import { log } from '@/lib/logger';
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { toNextResponse } from '@/lib/http-utils';
@@ -6,8 +7,6 @@ import { flashcardGenerationController } from '@/server/controllers';
 import type { RequestContext } from '@/lib/request-context';
 import type { UserRole } from '@/types';
 import type { GeneratedFlashcard } from '@/server/providers/LLMProvider';
-
-const LOG_PREFIX = '[API /flashcards/generate/frompdf]';
 
 function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -26,7 +25,7 @@ function sseEvent(event: string, data: unknown): string {
  *     description: "Deprecated. Use POST /api/v1/ai/chat with context=flashcards instead. This endpoint is kept for large PDF chunking until the chat endpoint gains chunk support."
  */
 export async function POST(req: NextRequest) {
-  console.warn('[DEPRECATED] POST /api/v1/flashcards/generate/frompdf is deprecated. Use POST /api/v1/ai/chat with context="flashcards" instead.');
+  log.api.warn('[DEPRECATED] POST /api/v1/flashcards/generate/frompdf is deprecated. Use POST /api/v1/ai/chat with context="flashcards" instead.');
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -60,7 +59,7 @@ export async function POST(req: NextRequest) {
     return toNextResponse({ success: false, statusCode: 422, error: 'UNPROCESSABLE_ENTITY' });
   }
 
-  console.log(`${LOG_PREFIX} Starting generation: file=${fileField.name}, size=${fileField.size}, language=${language}`);
+  log.api.info(`Starting generation: file=${fileField.name}, size=${fileField.size}, language=${language}`);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -96,7 +95,7 @@ export async function POST(req: NextRequest) {
         const message = error instanceof Error ? error.message : 'Internal server error';
         const errorId = crypto.randomUUID?.() ?? Date.now().toString(36);
 
-        console.error(`${LOG_PREFIX} [errorId=${errorId}] Unhandled error:`, error);
+        log.api.error(`[errorId=${errorId}] Unhandled error`, { metadata: { error } });
 
         if (error instanceof AppError) {
           send('error', { message });
