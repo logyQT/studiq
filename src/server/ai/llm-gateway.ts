@@ -45,7 +45,7 @@ async function generateStreamingWithRetry(
   for (let attempt = 0; attempt <= MAX_5XX_RETRIES; attempt++) {
     try {
       const result = await provider.generateChatStreaming(req.prompt, req.systemPrompt, {
-        onToken: () => {},
+        onToken: (token) => req.onToken?.(token),
         onReasoning: req.onReasoningToken ? (token: string) => req.onReasoningToken!(token) : () => {},
       }, req.tools, req.toolChoice, req.maxTokens, req.reasoningEffort);
       return result;

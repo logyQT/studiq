@@ -77,6 +77,7 @@ export class AgentService {
           tools: req.tools as LLMGatewayRequest['tools'],
           toolChoice: req.toolChoice as LLMGatewayRequest['toolChoice'],
           maxTokens: req.maxTokens,
+          onToken: req.onToken,
           onReasoningToken: req.onReasoning,
           ...modelConfig,
           onRetry: async (attempt, maxRetries, delayMs) => {

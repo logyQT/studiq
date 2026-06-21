@@ -33,6 +33,7 @@ export type LLMGatewayRequest = {
   tools?: ToolDefinition[];
   toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
   onRetry?: (attempt: number, maxRetries: number, delayMs: number) => void;
+  onToken?: (token: string) => void;
   onReasoningToken?: (token: string) => void;
 } & AgentLLMConfig;
 

@@ -98,6 +98,7 @@ export abstract class BaseAgent {
         model: ctx.state.metadata?.model as string | undefined,
         provider: ctx.state.metadata?.provider as string | undefined,
         onReasoning: ctx.callbacks?.onThinking,
+        onToken: (token) => ctx.callbacks?.onToken?.(token),
       });
 
       ctx.trace.log({
@@ -114,7 +115,7 @@ export abstract class BaseAgent {
         },
       });
 
-      const thinkingText = result.reasoning || result.content;
+      const thinkingText = result.reasoning;
       const hasToolCalls = result.toolCalls && result.toolCalls.length > 0;
       const looksLikeToolCallJson = !hasToolCalls && thinkingText && (
         thinkingText.trimStart().startsWith('{') ||
@@ -161,9 +162,7 @@ export abstract class BaseAgent {
             continue;
           }
 
-          if (tool.name !== 'chat') {
-            ctx.callbacks?.onToolCall?.({ id: toolCallId, tool: tool.name, args });
-          }
+          ctx.callbacks?.onToolCall?.({ id: toolCallId, tool: tool.name, args });
 
           ctx.trace.log({
             conversationId,
@@ -176,9 +175,7 @@ export abstract class BaseAgent {
 
           const toolResult = await tool.execute(args, ctx);
 
-          if (tool.name !== 'chat') {
-            ctx.callbacks?.onToolResult?.({ id: toolCallId, tool: tool.name, result: toolResult });
-          }
+          ctx.callbacks?.onToolResult?.({ id: toolCallId, tool: tool.name, result: toolResult });
 
           ctx.trace.log({
             conversationId,
@@ -203,10 +200,6 @@ export abstract class BaseAgent {
           }
 
           if (tool.name === 'finish') {
-            return toolResult as AgentResult;
-          }
-
-          if (tool.name === 'chat') {
             return toolResult as AgentResult;
           }
 
@@ -237,8 +230,13 @@ export abstract class BaseAgent {
           history.push(`[Result]: ${JSON.stringify(toolResult)}`);
         }
       } else {
-        if (result.content) {
-          history.push(`[Thought]: ${result.content}`);
+        const directContent = result.content?.trim();
+        if (directContent) {
+          return { type: 'chat', content: directContent };
+        }
+
+        if (result.reasoning) {
+          history.push(`[Thought]: ${result.reasoning}`);
         }
 
         if (recentToolNames.length >= 2) {
