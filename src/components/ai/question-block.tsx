@@ -31,7 +31,7 @@ export function QuestionBlock({ question, onAnswer }: QuestionBlockProps) {
             <button
               key={opt.value}
               type="button"
-              onClick={() => handleOption(opt.value)}
+              onClick={() => handleOption(opt.label)}
               className="rounded-full border bg-background px-4 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
             >
               {opt.label}

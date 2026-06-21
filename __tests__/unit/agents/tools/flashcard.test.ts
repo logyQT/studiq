@@ -53,7 +53,6 @@ describe('brainstormConceptsTool', () => {
       toolCalls: [{ function: { name: 'brainstorm_output', arguments: JSON.stringify({ terms: [{ term: 'Atom', definition: 'Basic unit' }] }) } }],
     });
     const result = await brainstormConceptsTool.execute({ topic: 'Chemistry', count: 10 }, ctx);
-    expect(ctx.callbacks.onThinking).toHaveBeenCalledWith(expect.stringContaining('Chemistry'));
     expect(result.concepts).toHaveLength(1);
     expect(ctx.state.concepts).toHaveLength(1);
   });

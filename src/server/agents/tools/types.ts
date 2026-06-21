@@ -39,6 +39,13 @@ export interface AgentState {
   metadata: Record<string, unknown>;
 }
 
+export interface PlanStep {
+  index: number;
+  action: string;
+  rationale: string;
+  dependsOn?: string[];
+}
+
 export interface AgentCallbacks {
   onThinking?: (text: string) => void;
   onQuestion?: (question: AgentQuestion) => void;
@@ -47,6 +54,7 @@ export interface AgentCallbacks {
   onToolCall?: (data: { id: string; tool: string; args: unknown }) => void;
   onToolResult?: (data: { id: string; tool: string; result: unknown }) => void;
   onFlashcards?: (data: { deckName: string; flashcards: FlashcardItem[] }) => void;
+  onPlan?: (steps: PlanStep[]) => void;
   onComplete?: (message: string) => void;
   onError?: (error: string) => void;
 }

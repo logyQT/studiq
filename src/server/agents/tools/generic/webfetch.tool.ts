@@ -12,7 +12,6 @@ export const webfetchTool: Tool = {
   async execute(args, ctx) {
     const parsed = params.parse(args);
 
-    ctx.callbacks?.onThinking?.(`Fetching content from ${parsed.url}...`);
 
     let text: string;
     try {

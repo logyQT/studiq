@@ -1,10 +1,11 @@
 import { z } from '@/lib/zod';
 import { parseExtractedTerms } from '@/server/services/ai-utils';
+import type { ExtractedTerm } from '@/server/services/ai-utils';
 import type { Tool } from '../types';
 
 const params = z.object({
   topic: z.string(),
-  count: z.number().min(5).max(50).optional(),
+  count: z.number().min(5).max(200).optional(),
   categories: z.array(z.string()).optional(),
 });
 
@@ -14,7 +15,6 @@ export const brainstormConceptsTool: Tool = {
   parameters: params,
   async execute(args, ctx) {
     const parsed = params.parse(args);
-    ctx.callbacks?.onThinking?.(`Brainstorming concepts for "${parsed.topic}"...`);
 
     const prompt = parsed.categories?.length
       ? `Topic: ${parsed.topic}\nFocus categories: ${parsed.categories.join(', ')}\n\nList key concepts with definitions.`
@@ -51,7 +51,7 @@ export const brainstormConceptsTool: Tool = {
         },
       }],
       toolChoice: { type: 'function', function: { name: 'brainstorm_output' } },
-      maxTokens: 4096,
+      maxTokens: 16384,
     });
 
     const toolCall = result.toolCalls?.find((tc) => tc.function.name === 'brainstorm_output');
@@ -59,7 +59,18 @@ export const brainstormConceptsTool: Tool = {
       return { concepts: [] };
     }
 
-    const concepts = parseExtractedTerms(toolCall.function.arguments);
+    let concepts: ExtractedTerm[];
+    try {
+      concepts = parseExtractedTerms(toolCall.function.arguments);
+    } catch {
+      ctx.callbacks?.onThinking?.('Brainstorm output was truncated — using partial results');
+      const truncated = toolCall.function.arguments + ']}';
+      try {
+        concepts = parseExtractedTerms(truncated);
+      } catch {
+        concepts = [];
+      }
+    }
     ctx.state.concepts = concepts;
     ctx.state.results['concepts'] = concepts;
 

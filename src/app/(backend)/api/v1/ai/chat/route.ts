@@ -76,12 +76,24 @@ export async function POST(req: NextRequest) {
 
         await aiAgentController.process(text, file, conversationId, ctx, {
           onThought: (data: unknown) => send('thought', data),
-          onThinking: (text: string) => send('thinking', { text }),
+          onThinking: (text: string) => {
+            const agentMatch = text.match(/^\[(\w+)\]\s*(.+)/);
+            if (agentMatch) {
+              send('subagent_task', { agent: agentMatch[1], text: agentMatch[2] });
+            } else {
+              send('thinking', { text });
+            }
+          },
           onToken: (token: string) => send('token', { text: token }),
           onToolCall: (data: unknown) => send('tool_call', data),
           onToolResult: (data: unknown) => send('tool_result', data),
           onFlashcards: (data: unknown) => send('flashcards', data),
           onQuestion: (data: unknown) => send('question', data),
+          onPlan: (data: unknown) => send('plan', data),
+          onPaused: () => {
+            send('paused', {});
+            safeClose();
+          },
           onComplete: (summary: unknown) => {
             send('complete', { message: summary });
             safeClose();

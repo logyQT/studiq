@@ -14,19 +14,21 @@ export const extractConceptsTool: Tool = {
   parameters: params,
   async execute(args, ctx) {
     const parsed = params.parse(args);
-    const material = parsed.material || ctx.state.material;
+    let material = parsed.material || ctx.state.material;
     if (!material) {
       return { terms: [], error: 'No material provided' };
     }
 
-    ctx.callbacks?.onThinking?.('Extracting key concepts...');
+    if (material.length > 20000) {
+      material = material.slice(0, 20000) + '\n\n[...content truncated for length]';
+    }
 
     const result = await ctx.callLLM({
       prompt: material,
       systemPrompt: ANALYZE_SYSTEM_PROMPT,
       tools: [EXTRACT_TERMS_TOOL],
       toolChoice: { type: 'function', function: { name: 'extract_terms' } },
-      maxTokens: 4096,
+      maxTokens: 16384,
     });
 
     const toolCall = result.toolCalls?.find((tc) => tc.function.name === 'extract_terms');

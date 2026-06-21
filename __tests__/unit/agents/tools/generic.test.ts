@@ -13,7 +13,6 @@ import { extractConceptsTool } from '@/server/agents/tools/generic/extract-conce
 import { fetchMaterialTool } from '@/server/agents/tools/generic/fetch-material.tool';
 import { finishTool } from '@/server/agents/tools/generic/finish.tool';
 import { webfetchTool } from '@/server/agents/tools/generic/webfetch.tool';
-import { chatTool } from '@/server/agents/tools/generic/chat.tool';
 
 function mockCtx(overrides?: Record<string, unknown>) {
   return {
@@ -81,7 +80,7 @@ describe('callAgentTool', () => {
     ctx.agentRegistry.get = vi.fn().mockReturnValue(subAgent);
     const result = await callAgentTool.execute({ agent: 'flashcard', task: 'make cards' }, ctx);
     expect(subAgent.execute).toHaveBeenCalledWith('make cards', expect.anything());
-    expect(result).toEqual({ type: 'flashcards', deckName: 'D', flashcards: [] });
+    expect(result).toEqual({ type: 'flashcards', deckName: 'D', flashcards: [], toolCount: 0, summary: 'flashcard completed → 0 tool calls executed' });
   });
 });
 
@@ -195,14 +194,6 @@ describe('webfetchTool', () => {
   });
 });
 
-describe('chatTool', () => {
-  it('returns chat result with provided text', async () => {
-    const ctx = mockCtx();
-    const result = await chatTool.execute({ text: 'Hello, how can I help?' }, ctx);
-    expect(result).toEqual({ type: 'chat', content: 'Hello, how can I help?' });
-  });
-});
-
 describe('finishTool', () => {
   it('returns flashcards from state results', async () => {
     const ctx = mockCtx({ results: { flashcards: [{ front: 'Q', back: 'A' }], deckName: 'Test Deck' } });
@@ -212,15 +203,17 @@ describe('finishTool', () => {
     expect(result.deckName).toBe('Test Deck');
   });
 
-  it('calls onFlashcards when flashcards exist', async () => {
-    const ctx = mockCtx({ results: { flashcards: [{ front: 'Q', back: 'A' }] } });
-    await finishTool.execute({}, ctx);
-    expect(ctx.callbacks.onFlashcards).toHaveBeenCalled();
+  it('returns type chat with message when no flashcards', async () => {
+    const ctx = mockCtx({ results: {} });
+    const result = await finishTool.execute({ message: 'Hello' }, ctx);
+    expect(result.type).toBe('chat');
+    expect(result.content).toBe('Hello');
   });
 
-  it('returns empty flashcards when none in state', async () => {
+  it('returns chat with empty content when no flashcards and no message', async () => {
     const ctx = mockCtx();
     const result = await finishTool.execute({}, ctx);
-    expect(result.flashcards).toEqual([]);
+    expect(result.type).toBe('chat');
+    expect(result.content).toBe('');
   });
 });

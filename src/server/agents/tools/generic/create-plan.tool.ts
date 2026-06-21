@@ -17,7 +17,11 @@ export const createPlanTool: Tool = {
   description: 'Create an execution plan for generating educational content. Defines steps in order, dependencies, and whether clarification is needed.',
   parameters: params,
   async execute(args, ctx) {
-    ctx.state.metadata['plan'] = args;
-    return args;
+    const parsed = params.safeParse(args);
+    if (!parsed.success) {
+      return { error: 'Validation failed', issues: parsed.error.issues };
+    }
+    ctx.state.metadata['plan'] = parsed.data;
+    return parsed.data;
   },
 };

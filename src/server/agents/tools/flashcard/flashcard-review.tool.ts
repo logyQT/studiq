@@ -16,7 +16,6 @@ export const flashcardReviewTool: Tool = {
   parameters: params,
   async execute(args, ctx) {
     const parsed = params.parse(args);
-    ctx.callbacks?.onThinking?.('Reviewing flashcards for quality...');
 
     const cardsJson = JSON.stringify(
       parsed.cards.map((c: { front: string; back: string; topic?: string }, i: number) => ({ index: i, front: c.front, back: c.back, topic: c.topic })),

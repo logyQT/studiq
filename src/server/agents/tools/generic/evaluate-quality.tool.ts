@@ -11,9 +11,8 @@ export const evaluateQualityTool: Tool = {
   name: 'evaluate_quality',
   description: 'Evaluate the quality of generated educational content. Checks against criteria and returns a pass/fail assessment.',
   parameters: params,
-  async execute(args, ctx) {
+  async execute(args, _ctx) {
     const parsed = params.parse(args);
-    ctx.callbacks?.onThinking?.('Evaluating quality...');
 
     const assessment = {
       passed: true,

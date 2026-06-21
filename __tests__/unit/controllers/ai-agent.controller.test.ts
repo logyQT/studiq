@@ -64,6 +64,10 @@ describe('AiAgentController', () => {
 
       await aiAgentController.process('Make flashcards', undefined, undefined, mockCtx, mockCallbacks);
 
+      expect(mockCallbacks.onFlashcards).toHaveBeenCalledWith({
+        deckName: 'Science Deck',
+        flashcards: [{ front: 'Q', back: 'A' }],
+      });
       expect(mockCallbacks.onComplete).toHaveBeenCalledWith('');
     });
 

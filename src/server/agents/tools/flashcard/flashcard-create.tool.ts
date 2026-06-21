@@ -1,6 +1,7 @@
 import { z } from '@/lib/zod';
 import { GENERATE_FROM_TERMS_SYSTEM_PROMPT, GENERATE_FLASHCARDS_TOOL } from '@/server/services/ai-prompts';
 import { parseFlashcards } from '@/server/services/ai-utils';
+import type { FlashcardItem } from '@/server/services/ai-utils';
 import type { Tool } from '../types';
 
 const params = z.object({
@@ -12,7 +13,7 @@ const params = z.object({
   })),
   deckName: z.string().optional(),
   style: z.enum(['basic', 'detailed']).optional(),
-  count: z.number().min(1).max(100).optional(),
+  count: z.number().min(1).max(200).optional(),
 });
 
 export const flashcardCreateTool: Tool = {
@@ -21,7 +22,6 @@ export const flashcardCreateTool: Tool = {
   parameters: params,
   async execute(args, ctx) {
     const parsed = params.parse(args);
-    ctx.callbacks?.onThinking?.(`Creating flashcards from ${parsed.concepts.length} concepts...`);
 
     const countLine = parsed.count ? `\nDesired number of flashcards: ${parsed.count}` : '';
     const prompt = `User request: ${ctx.state.text}${countLine}\n\nExtracted terms:\n${JSON.stringify(parsed.concepts, null, 2)}`;
@@ -49,7 +49,8 @@ export const flashcardCreateTool: Tool = {
     const flashcards = parseFlashcards(llmResult.flashcards);
     const deckName = String(llmResult.deck_name || parsed.deckName || 'AI Generated Flashcards');
 
-    ctx.state.results['flashcards'] = flashcards;
+    const existing = (ctx.state.results['flashcards'] as FlashcardItem[]) || [];
+    ctx.state.results['flashcards'] = [...existing, ...flashcards];
     ctx.state.results['deckName'] = deckName;
 
     return { deckName, flashcards };

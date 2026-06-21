@@ -1,4 +1,5 @@
 import { z } from '@/lib/zod';
+import type { FlashcardItem } from '@/server/services/ai-utils';
 import type { Tool, AgentResult, ToolContext } from '../types';
 
 const params = z.object({
@@ -7,7 +8,7 @@ const params = z.object({
   context: z.object({
     material: z.string().optional(),
     concepts: z.array(z.any()).optional(),
-    count: z.number().min(1).max(100).optional(),
+    count: z.number().min(1).max(1000).optional(),
     style: z.enum(['basic', 'detailed']).optional(),
   }).optional(),
 });
@@ -23,7 +24,15 @@ export const callAgentTool: Tool = {
       return { type: 'error', error: `Agent "${parsed.agent}" not found` };
     }
 
-    ctx.callbacks?.onThinking?.(`Delegating to ${parsed.agent} agent...`);
+    let subToolCount = 0;
+    const wrappedCallbacks = {
+      ...ctx.callbacks,
+      onToolCall: () => { subToolCount++; },
+      onToolResult: () => {},
+      onThinking: (text: string) => {
+        ctx.callbacks?.onThinking?.(`[${parsed.agent}] ${text}`);
+      },
+    };
 
     let concepts = parsed.context?.concepts;
     if (typeof concepts === 'string') {
@@ -50,15 +59,14 @@ export const callAgentTool: Tool = {
       execute(task: string, ctx: ToolContext): Promise<AgentResult>;
     };
 
-    const result = await agentExecute.execute(parsed.task, { ...ctx, state: subState });
+    const result = await agentExecute.execute(parsed.task, { ...ctx, state: subState, callbacks: wrappedCallbacks });
 
     if (result.type === 'flashcards' && result.flashcards?.length) {
-      ctx.callbacks?.onFlashcards?.({
-        deckName: result.deckName || 'Generated Flashcards',
-        flashcards: result.flashcards,
-      });
+      const existing = (ctx.state.results['flashcards'] as FlashcardItem[]) || [];
+      ctx.state.results['flashcards'] = [...existing, ...result.flashcards];
+      ctx.state.results['deckName'] = result.deckName || 'Generated Flashcards';
     }
 
-    return result;
+    return { ...result, toolCount: subToolCount, summary: `${parsed.agent} completed → ${subToolCount} tool calls executed` };
   },
 };

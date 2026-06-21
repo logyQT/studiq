@@ -6,3 +6,4 @@ export { evaluateQualityTool } from './evaluate-quality.tool';
 export { callAgentTool } from './call-agent.tool';
 export { finishTool } from './finish.tool';
 export { webfetchTool } from './webfetch.tool';
+export { batchCallAgentTool } from './batch-call-agent.tool';

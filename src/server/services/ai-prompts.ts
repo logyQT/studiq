@@ -28,7 +28,7 @@ BAD cards — never produce these:
 - "Compare TCP and UDP" (tests two concepts at once)
 - Answers longer than 3 sentences (too verbose for memorization)
 
-Generate 5-12 cards unless the user specifies otherwise.`,
+Match the requested number of flashcards exactly. If the user specifies a count, generate that many cards. Otherwise default to 5-12.`,
     parameters: {
       type: 'object',
       properties: {
@@ -107,7 +107,7 @@ BAD extractions — avoid these:
 - "Networking" (too broad, not a specific term)
 - "The TCP handshake involves SYN, SYN-ACK, and ACK packets" (full sentence, not a definition)
 
-Extract 15-40 terms depending on content density. If content has fewer terms, extract what's available — don't pad.`,
+Extract 50-200 terms depending on content density. For large documents, extract up to 200 terms. If content has fewer terms, extract what's available — don't pad.`,
     parameters: {
       type: 'object',
       properties: {
@@ -151,7 +151,7 @@ RULES:
 - Do NOT create broad/overview cards (e.g. "Explain the topic of X")
 - Do NOT combine multiple concepts in one card
 - Each card should be answerable from memory in under 10 seconds
-- Generate 5-12 cards unless the user specifies otherwise
+- Generate the exact number of cards requested by the user. If no count specified, default to 5-12 cards
 - Group related cards under meaningful topic labels
 - Respond in the same language as the terms`;
 
@@ -162,7 +162,7 @@ RULES:
 - Front: specific question (e.g. "What is X?", "Define X")
 - Back: 1-3 sentences, precise and factual
 - Never produce broad questions like "Explain the topic of X"
-- Generate 5-12 cards unless user specifies otherwise
+- Match the requested number of flashcards exactly. If user requests a specific count, generate that many cards. Otherwise default to 5-12
 - Suggest a descriptive deck name summarizing the topic
 - Group related cards under meaningful topic labels
 - Respond in the same language as the terms`;

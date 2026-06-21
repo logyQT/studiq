@@ -14,7 +14,6 @@ export const fetchMaterialTool: Tool = {
   parameters: params,
   async execute(args, ctx) {
     const parsed = params.parse(args);
-    ctx.callbacks?.onThinking?.(`Generating material on "${parsed.topic}"...`);
 
     const prompt = parsed.focusAreas?.length
       ? `Topic: ${parsed.topic}\nFocus areas: ${parsed.focusAreas.join(', ')}`

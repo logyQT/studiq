@@ -8,6 +8,8 @@ import { FlashcardBlock } from './flashcard-block';
 import { ThinkingBlock } from './thinking-block';
 import { QuestionBlock } from './question-block';
 import { ToolCallBlock } from './tool-call-block';
+import { PlanBlock } from './plan-block';
+import { AgentCallBlock } from './agent-call-block';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 
 interface ChatMessageProps {
@@ -19,9 +21,42 @@ export function ChatMessage({ message, onAnswer }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const isThought = message.role === 'thought';
   const isToolCall = message.role === 'tool_call';
+  const isPlan = message.role === 'plan';
 
   if (isThought) {
     return <ThoughtMessage message={message} />;
+  }
+
+  if (isPlan) {
+    return (
+      <div className="flex justify-start">
+        <div className="max-w-[80%] w-full">
+          <PlanBlock
+            steps={message.plan || []}
+            isComplete={message.planCompleted ?? false}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (isToolCall && message.toolName === 'call_agent') {
+    return (
+      <div className="flex justify-start">
+        <div className="max-w-[80%]">
+          <AgentCallBlock
+            agentName={(message.args as Record<string, string> | undefined)?.agent || 'sub-agent'}
+            status={message.status as 'running' | 'complete'}
+            subTask={message.subTask}
+            toolCount={message.subToolCount}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (isToolCall && (message.toolName === 'create_plan' || message.toolName === 'finish' || message.toolName === 'ask_user')) {
+    return null;
   }
 
   if (isToolCall) {

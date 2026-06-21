@@ -9,9 +9,16 @@ export interface QuestionData {
   answered?: boolean;
 }
 
+export interface PlanStep {
+  index: number;
+  action: string;
+  rationale: string;
+  dependsOn?: string[];
+}
+
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant' | 'thought' | 'tool_call';
+  role: 'user' | 'assistant' | 'thought' | 'tool_call' | 'plan';
   content: string;
   result?: { type: string; data: unknown; deckName?: string };
   status: 'sending' | 'streaming' | 'thinking' | 'complete' | 'error' | 'running';
@@ -19,11 +26,15 @@ export interface ChatMessage {
   file?: { name: string; mimeType: string; data: string };
   thinkingTraces: string[];
   question?: QuestionData;
+  plan?: PlanStep[];
+  planCompleted?: boolean;
   step?: number;
   reasoning?: string;
   agent?: string;
   toolName?: string;
   label?: string;
+  subTask?: string;
+  subToolCount?: number;
   args?: unknown;
   toolResult?: unknown;
   durationMs?: number;
@@ -103,7 +114,7 @@ export function useAiChat(): UseAiChatReturn {
 
     const fetchTimeout = setTimeout(() => {
       abortController.abort();
-    }, 300_000);
+    }, 600_000);
 
     try {
       const history = messages
@@ -239,6 +250,11 @@ export function useAiChat(): UseAiChatReturn {
                   break;
                 }
                 case 'tool_call': {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.status === 'thinking' ? { ...m, status: 'complete' as const } : m,
+                    ),
+                  );
                   currentThoughtIdRef.current = null;
                   const toolCallMsg: ChatMessage = {
                     id: generateUUID(),
@@ -258,6 +274,8 @@ export function useAiChat(): UseAiChatReturn {
                   const startTime = toolStartTimesRef.current.get(parsed.id);
                   const duration = startTime ? Date.now() - startTime : undefined;
                   toolStartTimesRef.current.delete(parsed.id);
+                  const resultData = parsed.result as Record<string, unknown> | undefined;
+                  const toolCount = resultData?.toolCount as number | undefined;
                   setMessages((prev) =>
                     prev.map((m) =>
                       m.role === 'tool_call' && m.toolName === parsed.tool && m.status === 'running'
@@ -266,6 +284,7 @@ export function useAiChat(): UseAiChatReturn {
                             status: 'complete',
                             toolResult: parsed.result,
                             label: parsed.label,
+                            subToolCount: parsed.tool === 'call_agent' ? toolCount : undefined,
                             durationMs: duration,
                           }
                         : m,
@@ -318,38 +337,80 @@ export function useAiChat(): UseAiChatReturn {
                   setMessages((prev) => [...prev, questionMsg]);
                   break;
                 }
+                case 'plan': {
+                  const steps = Array.isArray(parsed) ? parsed : (parsed as { steps?: PlanStep[] })?.steps ?? [];
+                  if (steps.length > 0) {
+                    const planMsg: ChatMessage = {
+                      id: generateUUID(),
+                      role: 'plan',
+                      content: '',
+                      status: 'complete',
+                      plan: steps,
+                      planCompleted: false,
+                      thinkingTraces: [],
+                    };
+                    setMessages((prev) => [...prev, planMsg]);
+                  }
+                  break;
+                }
+                case 'subagent_task': {
+                  const taskText = parsed.text || '';
+                  setMessages((prev) => {
+                    const items = [...prev];
+                    const lastIdx = items.length - 1;
+                    for (let i = lastIdx; i >= 0; i--) {
+                      const m = items[i];
+                      if (m.role === 'tool_call' && m.toolName === 'call_agent' && m.status === 'running') {
+                        items[i] = { ...m, subTask: taskText };
+                        break;
+                      }
+                    }
+                    return items;
+                  });
+                  break;
+                }
+                case 'paused': {
+                  currentThoughtIdRef.current = null;
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.status === 'streaming' || m.status === 'thinking'
+                        ? { ...m, status: 'complete' } : m,
+                    ),
+                  );
+                  break;
+                }
                 case 'complete': {
                   const message = parsed.message || '';
                   setMessages((prev) => {
+                    const markPlans = (items: ChatMessage[]): ChatMessage[] =>
+                      items.map((m) => m.role === 'plan' && !m.planCompleted ? { ...m, planCompleted: true } : m);
+
                     if (currentThoughtIdRef.current) {
                       const id = currentThoughtIdRef.current;
                       currentThoughtIdRef.current = null;
-                      return prev.map((m) =>
+                      return markPlans(prev.map((m) =>
                         m.id === id ? { ...m, status: 'complete' } : m,
-                      );
+                      ));
                     }
                     const lastThought = prev.findLast((m) => m.role === 'thought' && m.status === 'thinking');
                     if (lastThought) {
-                      return prev.map((m) =>
+                      return markPlans(prev.map((m) =>
                         m.id === lastThought.id ? { ...m, status: 'complete' } : m,
-                      );
+                      ));
                     }
                     const lastStreaming = prev.findLast((m) => m.role === 'assistant' && m.status === 'streaming');
                     if (lastStreaming) {
-                      return prev.map((m) =>
+                      return markPlans(prev.map((m) =>
                         m.id === lastStreaming.id ? { ...m, status: 'complete' } : m,
-                      );
+                      ));
                     }
-                    if (message) {
-                      return [...prev, {
-                        id: generateUUID(), role: 'assistant', content: message,
-                        status: 'complete', thinkingTraces: [],
-                      }];
-                    }
-                    return prev.map((m) =>
-                      m.status === 'running' || m.status === 'thinking' || m.status === 'streaming'
-                        ? { ...m, status: 'complete' } : m,
-                    );
+                    const updated: ChatMessage[] = message
+                      ? [...prev, { id: generateUUID(), role: 'assistant', content: message, status: 'complete' as const, thinkingTraces: [] }]
+                      : prev.map((m) =>
+                          m.status === 'running' || m.status === 'thinking' || m.status === 'streaming'
+                            ? { ...m, status: 'complete' as const } : m,
+                        );
+                    return markPlans(updated);
                   });
                   break;
                 }

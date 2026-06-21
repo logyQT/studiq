@@ -18,7 +18,6 @@ export const flashcardReviseTool: Tool = {
   parameters: params,
   async execute(args, ctx) {
     const parsed = params.parse(args);
-    ctx.callbacks?.onThinking?.(`Revising ${parsed.cards.length} flashcards...`);
 
     const prompt = `Revise these flashcards based on the feedback below.\n\nFeedback: ${parsed.feedback}\n\nCards:\n${JSON.stringify(parsed.cards, null, 2)}`;
 

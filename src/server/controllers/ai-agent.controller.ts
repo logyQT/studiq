@@ -1,6 +1,6 @@
 import { agentService } from '@/server/services/agent.service';
 import type { RequestContext } from '@/lib/request-context';
-import type { AgentCallbacks, AgentQuestion, AgentResult } from '@/server/agents/tools/types';
+import type { AgentCallbacks, AgentQuestion, AgentResult, PlanStep } from '@/server/agents/tools/types';
 
 export interface AgentStreamCallbacks {
   onThought: (data: { reasoning: string; step: number; agent: string }) => void;
@@ -10,6 +10,8 @@ export interface AgentStreamCallbacks {
   onToolResult: (data: { id: string; tool: string; label: string; result: unknown }) => void;
   onFlashcards: (data: { deckName: string; flashcards: unknown[] }) => void;
   onQuestion: (data: AgentQuestion) => void;
+  onPlan: (steps: PlanStep[]) => void;
+  onPaused: () => void;
   onComplete: (summary: string) => void;
   onError: (message: string) => void;
 }
@@ -26,7 +28,11 @@ function generateToolCallLabel(tool: string, args: unknown): string {
     case 'extract_concepts': return '🔍 Extracting key concepts...';
     case 'evaluate_quality': return '✅ Evaluating quality...';
     case 'call_agent':
-      return `🤖 Asking ${a.agent as string} agent...`;
+      return `🤖 Running ${a.agent as string}...`;
+    case 'batch_call_agent': {
+      const batches = a.batches as Array<unknown> | undefined;
+      return `🤖 Running ${batches?.length ?? 0} sub-agents in parallel...`;
+    }
     case 'finish': return '🏁 Finishing up...';
     case 'flashcard_create': return '📇 Creating flashcards...';
     case 'flashcard_review': return '🔎 Reviewing flashcards...';
@@ -53,7 +59,14 @@ function generateToolResultLabel(tool: string, result: unknown): string {
       return `🔍 Found ${terms?.length ?? 0} key concepts`;
     }
     case 'evaluate_quality': return r.passed ? '✅ Quality check passed' : '❌ Quality check failed';
-    case 'call_agent': return '🤖 Sub-agent completed';
+    case 'call_agent': {
+      const summary = (r.summary as string) || 'Sub-agent completed';
+      return `🤖 ${summary}`;
+    }
+    case 'batch_call_agent': {
+      const summary = (r.summary as string) || 'Batch completed';
+      return `🤖 ${summary}`;
+    }
     case 'finish': return '🏁 Task complete';
     case 'flashcard_create': {
       const cards = r.flashcards as Array<unknown> | undefined;
@@ -93,12 +106,22 @@ export class AiAgentController {
           ...data,
           label: generateToolCallLabel(data.tool, data.args),
         }),
-        onToolResult: (data) => callbacks.onToolResult({
-          ...data,
-          label: generateToolResultLabel(data.tool, data.result),
-        }),
+        onToolResult: (data) => {
+          if (data.tool === 'create_plan') {
+            const steps = (data.result as Record<string, unknown>)?.steps as Array<{ action: string; rationale: string; dependsOn?: string[] }> | undefined;
+            if (steps) {
+              const planSteps = steps.map((s, i) => ({ index: i, ...s }));
+              callbacks.onPlan(planSteps);
+            }
+          }
+          callbacks.onToolResult({
+            ...data,
+            label: generateToolResultLabel(data.tool, data.result),
+          });
+        },
         onFlashcards: (data) => callbacks.onFlashcards(data),
         onQuestion: (q) => callbacks.onQuestion(q),
+        onPlan: (steps) => callbacks.onPlan(steps),
         onError: (err) => callbacks.onError(err),
       };
 
@@ -113,13 +136,14 @@ export class AiAgentController {
           callbacks.onComplete(result.content);
           break;
         case 'flashcards':
+          callbacks.onFlashcards({ deckName: result.deckName, flashcards: result.flashcards });
           callbacks.onComplete('');
           break;
         case 'question':
           for (const q of result.questions) {
             callbacks.onQuestion(q);
           }
-          callbacks.onComplete('');
+          callbacks.onPaused();
           break;
         case 'error':
           callbacks.onError(result.error);

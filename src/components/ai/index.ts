@@ -6,3 +6,5 @@ export { ChatHistory } from './chat-history';
 export { UsageBadge } from './usage-badge';
 export { FlashcardBlock } from './flashcard-block';
 export { ThinkingBlock } from './thinking-block';
+export { PlanBlock } from './plan-block';
+export { AgentCallBlock } from './agent-call-block';

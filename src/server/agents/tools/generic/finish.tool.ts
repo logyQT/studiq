@@ -15,11 +15,17 @@ export const finishTool: Tool = {
     const flashcards = ctx.state.results['flashcards'] as FlashcardItem[] | undefined;
     const deckName = ctx.state.results['deckName'] as string | undefined;
 
+    if (flashcards && flashcards.length > 0) {
+      return {
+        type: 'flashcards',
+        deckName: deckName || 'Generated Flashcards',
+        flashcards,
+      };
+    }
+
     return {
-      type: 'flashcards',
-      deckName: deckName || 'Generated Flashcards',
-      flashcards: flashcards || [],
-      message: parsed.message,
+      type: 'chat',
+      content: parsed.message || '',
     };
   },
 };

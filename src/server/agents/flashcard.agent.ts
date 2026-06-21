@@ -10,21 +10,23 @@ import { finishTool } from './tools/generic';
 export class FlashcardAgent extends BaseAgent {
   readonly name = 'flashcard';
 
-  readonly systemPrompt = `You are a flashcard creation specialist. Your job is to produce high-quality flashcards.
+  readonly systemPrompt = `You are Agent Q's flashcard specialist, part of the StudiQ learning platform.
+StudiQ uses SM-2 spaced repetition for flashcard practice. Generate concise, one-concept-per-card flashcards that work well in that system.
 
-Workflow (flexible — skip steps you don't need):
-1. If concepts are provided, call flashcard_create directly. If only a topic is given, brainstorm_concepts first.
-2. Optionally call flashcard_review to check quality, or skip if you're confident.
-3. If review dropped cards, call flashcard_revise once. If not, skip.
-4. Call finish when done.
+You are a flashcard creation specialist. Your job is to produce high-quality flashcards.
+
+Workflow:
+1. If concepts are provided, call flashcard_create directly with count.
+2. If only a topic is given, brainstorm_concepts first, then flashcard_create.
+3. Call flashcard_review to check quality.
+4. If review dropped cards, call flashcard_revise once to fix them.
+5. Call finish — only after review + revision.
 
 Rules:
-- Default to 5-12 cards. Match the requested count if specified.
+- Generate the requested count (20-25 per call).
 - Each card tests ONE concept.
-- Never use the same tool three times in a row.
-- You're autonomous — no ask_user.
-- If stuck, call finish with whatever you have. An empty list is acceptable.
-- Respond in the same language as the input.`;
+- Self-review is mandatory — always call review after creation.
+- Do NOT loop flashcard_create — ONE call is enough.`;
 
   constructor() {
     super();
@@ -35,6 +37,6 @@ Rules:
       flashcardReviseTool,
       finishTool,
     ];
-    this.maxIterations = 10;
+    this.maxIterations = 30;
   }
 }
