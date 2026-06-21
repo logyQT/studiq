@@ -16,17 +16,26 @@ export type ToolCall = {
   };
 };
 
+export type AgentLLMConfig = {
+  provider?: string;
+  model?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  maxTokens?: number;
+  reasoningEffort?: 'low' | 'medium' | 'high';
+};
+
 export type LLMGatewayRequest = {
   prompt: string;
   systemPrompt?: string;
   file?: { data: string; mimeType: string };
-  provider?: 'openai' | 'ollama';
-  model?: string;
   responseFormat?: 'text' | 'json';
-  maxTokens?: number;
   tools?: ToolDefinition[];
   toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
-};
+  onRetry?: (attempt: number, maxRetries: number, delayMs: number) => void;
+  onToken?: (token: string) => void;
+  onReasoningToken?: (token: string) => void;
+} & AgentLLMConfig;
 
 export type TokenUsage = {
   inputTokens: number;
@@ -38,10 +47,12 @@ export type TokenUsage = {
 
 export type LLMGatewayResponse = {
   content: string;
+  reasoning?: string;
   toolCalls?: ToolCall[];
   usage: TokenUsage;
 };
 
 export type GatewayStreamCallbacks = {
   onToken: (token: string) => void;
+  onReasoning?: (text: string) => void;
 };

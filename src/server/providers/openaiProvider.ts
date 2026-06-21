@@ -1,8 +1,7 @@
+import { log } from '@/lib/logger';
 import { LLMProvider, GeneratedFlashcard, FLASHCARD_PROMPT, parseJsonResponse, type StreamCallbacks, type GenerateChatResult } from './LLMProvider';
 import type { ModelsConfig } from '@/server/config/models.config';
 import type { ToolDefinition, ToolCall } from '@/server/ai/ai.types';
-
-const LOG_PREFIX = '[OpenAIProvider]';
 
 export class OpenAIProvider implements LLMProvider {
   private apiKey: string;
@@ -16,7 +15,7 @@ export class OpenAIProvider implements LLMProvider {
     this.apiKey = config.apiKey;
     this.baseUrl = config.baseUrl || 'https://api.openai.com';
     this.modelName = config.modelName || 'gpt-4o-mini';
-    console.log(`${LOG_PREFIX} Initialized: baseUrl=${this.baseUrl}, model=${this.modelName}`);
+    log.providers.info(`Initialized: baseUrl=${this.baseUrl}, model=${this.modelName}`);
   }
 
   async generateFlashcardsFromChunk(chunk: string, language: string): Promise<GeneratedFlashcard[]> {
@@ -25,10 +24,10 @@ export class OpenAIProvider implements LLMProvider {
       .replace('{chunk}', chunk);
     const chunkPreview = chunk.slice(0, 100).replace(/\n/g, ' ');
 
-    console.log(`${LOG_PREFIX} Generating flashcards: language=${language}, chunkLength=${chunk.length}, preview="${chunkPreview}..."`);
+    log.providers.info('Generating flashcards', { metadata: { language, chunkLength: chunk.length, preview: chunkPreview } });
 
     const url = `${this.baseUrl}/v1/chat/completions`;
-    console.log(`${LOG_PREFIX} POST ${url} model=${this.modelName}`);
+    log.providers.info(`POST ${url} model=${this.modelName}`);
 
     const res = await fetch(url, {
       method: 'POST',
@@ -48,13 +47,13 @@ export class OpenAIProvider implements LLMProvider {
 
     if (!res.ok) {
       const text = await res.text().catch(() => '(no body)');
-      console.error(`${LOG_PREFIX} Request failed: status=${res.status}, body=${text}`);
+      log.providers.error('Request failed', { metadata: { status: res.status, body: text } });
       throw new Error(`OpenAI request failed: ${res.status} ${text}`);
     }
 
     const data = await res.json();
     const content = data.choices?.[0]?.message?.content || '';
-    console.log(`${LOG_PREFIX} Raw response length=${content.length}, preview="${content.slice(0, 200)}..."`);
+    log.providers.info('Raw response', { metadata: { length: content.length, preview: content.slice(0, 200) } });
 
     return parseJsonResponse(content);
   }
@@ -64,6 +63,7 @@ export class OpenAIProvider implements LLMProvider {
     systemPrompt?: string,
     tools?: ToolDefinition[],
     toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } },
+    maxTokens?: number,
   ): Promise<GenerateChatResult | string> {
     const messages: Array<Record<string, unknown>> = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
@@ -73,6 +73,8 @@ export class OpenAIProvider implements LLMProvider {
       model: this.modelName,
       messages,
     };
+
+    if (maxTokens) body.max_tokens = maxTokens;
 
     if (tools && tools.length > 0) {
       body.tools = tools;
@@ -114,10 +116,25 @@ export class OpenAIProvider implements LLMProvider {
     return message?.content || '';
   }
 
-  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<string> {
+  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, maxTokens?: number, reasoningEffort?: 'low' | 'medium' | 'high'): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
     const messages: Array<{ role: string; content: string }> = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
     messages.push({ role: 'user', content: prompt });
+
+    const body: Record<string, unknown> = {
+      model: this.modelName,
+      messages,
+      stream: true,
+    };
+
+    if (tools && tools.length > 0) {
+      body.tools = tools;
+      if (toolChoice) body.tool_choice = toolChoice;
+    }
+
+    if (reasoningEffort) {
+      body.reasoning = { effort: reasoningEffort };
+    }
 
     const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {
       method: 'POST',
@@ -125,11 +142,7 @@ export class OpenAIProvider implements LLMProvider {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.apiKey}`,
       },
-      body: JSON.stringify({
-        model: this.modelName,
-        messages,
-        stream: true,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
@@ -143,6 +156,7 @@ export class OpenAIProvider implements LLMProvider {
     const decoder = new TextDecoder();
     let buffer = '';
     let fullContent = '';
+    const streamedToolCalls: ToolCall[] = [];
 
     while (true) {
       const { done, value } = await reader.read();
@@ -159,10 +173,27 @@ export class OpenAIProvider implements LLMProvider {
         if (payload === '[DONE]') break;
         try {
           const parsed = JSON.parse(payload);
-          const delta = parsed.choices?.[0]?.delta?.content;
-          if (delta) {
-            fullContent += delta;
-            callbacks.onToken(delta);
+          const delta = parsed.choices?.[0]?.delta;
+          if (delta?.content) {
+            fullContent += delta.content;
+            callbacks.onToken(delta.content);
+          }
+          if (delta?.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              if (tc.id) {
+                streamedToolCalls.push({
+                  id: String(tc.id),
+                  type: 'function',
+                  function: {
+                    name: String(tc.function?.name ?? ''),
+                    arguments: String(tc.function?.arguments ?? ''),
+                  },
+                });
+              } else if (tc.function?.arguments && streamedToolCalls.length > 0) {
+                const last = streamedToolCalls[streamedToolCalls.length - 1];
+                last.function.arguments += tc.function.arguments;
+              }
+            }
           }
         } catch {
           // skip malformed chunks
@@ -170,6 +201,9 @@ export class OpenAIProvider implements LLMProvider {
       }
     }
 
-    return fullContent;
+    return {
+      content: fullContent,
+      toolCalls: streamedToolCalls.length > 0 ? streamedToolCalls : undefined,
+    };
   }
 }

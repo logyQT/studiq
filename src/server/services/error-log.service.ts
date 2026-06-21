@@ -1,3 +1,4 @@
+import { log } from '@/lib/logger';
 import { createServiceClient } from '@/lib/supabase/service';
 
 export interface ErrorLogContext {
@@ -52,7 +53,7 @@ export class ErrorLogService {
       .single();
 
     if (insertError) {
-      console.error('[ErrorLogService] Failed to persist error log:', insertError);
+      log.system.error('Failed to persist error log', { metadata: { insertError } });
     }
 
     return data?.id ?? 'unknown';
@@ -96,7 +97,7 @@ export class ErrorLogService {
     const { data, error, count } = await query;
 
     if (error) {
-      console.error('[ErrorLogService] Failed to list error logs:', error);
+      log.system.error('Failed to list error logs', { metadata: { error } });
       return { data: [], count: 0 };
     }
 

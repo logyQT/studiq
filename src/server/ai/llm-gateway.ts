@@ -1,20 +1,91 @@
+import { log } from '@/lib/logger';
 import { getProvider } from '@/server/providers/providerRegistry';
 import { getModelsConfig } from '@/server/config/models.config';
 import { AppError } from '@/lib/errors';
+import type { LLMProvider } from '@/server/providers/LLMProvider';
 import type { RequestContext } from '@/lib/request-context';
 import type { LLMGatewayRequest, LLMGatewayResponse, GatewayStreamCallbacks } from './ai.types';
-import type { GenerateChatResult } from '@/server/providers/LLMProvider';
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-export async function callLLM(req: LLMGatewayRequest, _ctx: RequestContext): Promise<LLMGatewayResponse> {
-  const config = getModelsConfig();
-  const providerName = req.provider || config.provider || 'openai';
-  const model = req.model || config.modelName || 'gpt-4o-mini';
+const DEFAULT_PROVIDER = 'opencode';
+const DEFAULT_MODEL = 'mimo-v2.5';
 
-  const providerConfig = { ...config, provider: providerName, modelName: model };
+const MAX_5XX_RETRIES = parseInt(process.env.LLM_RETRY_MAX || '3', 10);
+const RETRY_DELAY_MS = parseInt(process.env.LLM_RETRY_DELAY_MS || '5000', 10);
+
+function is5xxError(msg: string): boolean {
+  return /\b5\d{2}\b/.test(msg);
+}
+
+function resolveProviderConfig(req: LLMGatewayRequest) {
+  const envConfig = getModelsConfig();
+
+  const providerName = req.provider || envConfig.provider || DEFAULT_PROVIDER;
+  const model = req.model || envConfig.modelName || DEFAULT_MODEL;
+  const apiKey = req.apiKey || envConfig.apiKey || '';
+  const baseUrl = req.baseUrl || envConfig.baseUrl || '';
+
+  return {
+    provider: providerName,
+    apiKey,
+    baseUrl,
+    modelName: model,
+  };
+}
+
+async function generateStreamingWithRetry(
+  provider: LLMProvider,
+  req: LLMGatewayRequest,
+): Promise<{ content: string; reasoning?: string; toolCalls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> }> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= MAX_5XX_RETRIES; attempt++) {
+    try {
+      const result = await provider.generateChatStreaming(req.prompt, req.systemPrompt, {
+        onToken: (token) => req.onToken?.(token),
+        onReasoning: req.onReasoningToken ? (token: string) => req.onReasoningToken!(token) : () => {},
+      }, req.tools, req.toolChoice, req.maxTokens, req.reasoningEffort);
+      return result;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      const msg = lastError.message;
+
+      const isRetryable = is5xxError(msg) ||
+        msg.includes('400') ||
+        msg.includes('422') ||
+        msg.includes('invalid_type') ||
+        msg.includes('validation');
+
+      if (isRetryable && attempt < MAX_5XX_RETRIES) {
+        const delayMs = RETRY_DELAY_MS * (attempt + 1);
+        req.onRetry?.(attempt + 1, MAX_5XX_RETRIES, delayMs);
+        await new Promise((r) => setTimeout(r, delayMs));
+        continue;
+      }
+
+      if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('API key')) {
+        throw new AppError('UNAUTHORIZED');
+      }
+      if (msg.includes('429') || msg.includes('rate limit')) {
+        throw new AppError('RATE_LIMITED');
+      }
+      if (msg.includes('fetch') || msg.includes('ECONNREFUSED') || msg.includes('Failed to initialize')) {
+        throw new AppError('SERVICE_UNAVAILABLE');
+      }
+      throw lastError;
+    }
+  }
+
+  throw lastError || new AppError('SERVICE_UNAVAILABLE');
+}
+
+export async function callLLM(req: LLMGatewayRequest, _ctx: RequestContext): Promise<LLMGatewayResponse> {
+  const providerConfig = resolveProviderConfig(req);
+  const { modelName: model, provider: providerName } = providerConfig;
+
   let provider;
   try {
     provider = getProvider(providerConfig);
@@ -22,47 +93,22 @@ export async function callLLM(req: LLMGatewayRequest, _ctx: RequestContext): Pro
     throw new AppError('SERVICE_UNAVAILABLE');
   }
 
-  try {
-    const result = await provider.generateChat(req.prompt, req.systemPrompt, req.tools, req.toolChoice);
+  const result = await generateStreamingWithRetry(provider, req);
 
-    if (typeof result === 'string') {
-      return {
-        content: result,
-        usage: {
-          inputTokens: estimateTokens((req.systemPrompt || '') + req.prompt),
-          outputTokens: estimateTokens(result),
-          totalTokens: estimateTokens((req.systemPrompt || '') + req.prompt + result),
-          provider: providerName,
-          model,
-        },
-      };
-    }
+  log.ai.info('Streaming result', { metadata: { contentLength: result.content?.length ?? 0, reasoningLength: result.reasoning?.length ?? 0, toolCallCount: result.toolCalls?.length ?? 0, toolNames: result.toolCalls?.map((tc) => tc.function.name).join(', ') ?? '' } });
 
-    const chatResult = result as GenerateChatResult;
-    return {
-      content: chatResult.content,
-      toolCalls: chatResult.toolCalls,
-      usage: {
-        inputTokens: estimateTokens((req.systemPrompt || '') + req.prompt),
-        outputTokens: estimateTokens(chatResult.content),
-        totalTokens: estimateTokens((req.systemPrompt || '') + req.prompt + chatResult.content),
-        provider: providerName,
-        model,
-      },
-    };
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : '';
-    if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('API key')) {
-      throw new AppError('UNAUTHORIZED');
-    }
-    if (msg.includes('429') || msg.includes('rate limit')) {
-      throw new AppError('RATE_LIMITED');
-    }
-    if (msg.includes('fetch') || msg.includes('ECONNREFUSED') || msg.includes('Failed to initialize')) {
-      throw new AppError('SERVICE_UNAVAILABLE');
-    }
-    throw error;
-  }
+  return {
+    content: result.content,
+    reasoning: result.reasoning,
+    toolCalls: result.toolCalls,
+    usage: {
+      inputTokens: estimateTokens((req.systemPrompt || '') + req.prompt),
+      outputTokens: estimateTokens(result.content),
+      totalTokens: estimateTokens((req.systemPrompt || '') + req.prompt + result.content),
+      provider: providerName,
+      model,
+    },
+  };
 }
 
 export async function callLLMStreaming(
@@ -70,11 +116,9 @@ export async function callLLMStreaming(
   _ctx: RequestContext,
   callbacks: GatewayStreamCallbacks,
 ): Promise<LLMGatewayResponse> {
-  const config = getModelsConfig();
-  const providerName = req.provider || config.provider || 'openai';
-  const model = req.model || config.modelName || 'gpt-4o-mini';
+  const providerConfig = resolveProviderConfig(req);
+  const { modelName: model, provider: providerName } = providerConfig;
 
-  const providerConfig = { ...config, provider: providerName, modelName: model };
   let provider;
   try {
     provider = getProvider(providerConfig);
@@ -83,14 +127,16 @@ export async function callLLMStreaming(
   }
 
   try {
-    const result = await provider.generateChatStreaming(req.prompt, req.systemPrompt, callbacks);
+    const result = await provider.generateChatStreaming(req.prompt, req.systemPrompt, callbacks, req.tools, req.toolChoice, req.maxTokens, req.reasoningEffort);
 
     return {
-      content: result,
+      content: result.content,
+      reasoning: result.reasoning,
+      toolCalls: result.toolCalls,
       usage: {
         inputTokens: estimateTokens((req.systemPrompt || '') + req.prompt),
-        outputTokens: estimateTokens(result),
-        totalTokens: estimateTokens((req.systemPrompt || '') + req.prompt + result),
+        outputTokens: estimateTokens(result.content),
+        totalTokens: estimateTokens((req.systemPrompt || '') + req.prompt + result.content),
         provider: providerName,
         model,
       },

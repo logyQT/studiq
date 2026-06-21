@@ -1,10 +1,12 @@
+import { log } from '@/lib/logger';
 import { callLLMStreaming } from '@/server/ai';
 import { pdfService } from '@/server/services/pdf.service';
+import { pdfCacheService } from '@/server/services/pdf-cache.service';
 import type { RequestContext } from '@/lib/request-context';
 import type { TokenUsage } from '@/server/ai/ai.types';
 import type { ChatMessageInput } from '@/server/models/ai-chat.model';
 
-const LOG_PREFIX = '[ChatService]';
+const MAX_FILE_CHARS = parseInt(process.env.LLM_MAX_FILE_CHARS || '200000', 10);
 
 export interface ChatServiceCallbacks {
   onToken: (token: string) => void;
@@ -20,6 +22,7 @@ export class ChatService {
     text: string,
     file: { data: string; mimeType: string } | undefined,
     messages: ChatMessageInput[] | undefined,
+    conversationId: string | undefined,
     ctx: RequestContext,
     callbacks: ChatServiceCallbacks,
   ): Promise<void> {
@@ -33,26 +36,46 @@ export class ChatService {
       }
       let systemPrompt = SYSTEM_PROMPT;
 
+      // Resolve file content: either from new upload or from cache
+      let extracted = '';
+
       if (file) {
-        let extracted = '';
         try {
           if (file.mimeType === 'application/pdf') {
             const buffer = Buffer.from(file.data, 'base64');
             extracted = await pdfService.extractText(buffer);
-            extracted = extracted.slice(0, 15000);
+            log.ai.info(`PDF extracted ${extracted.length} chars`);
           } else if (file.mimeType === 'text/plain') {
-            extracted = Buffer.from(file.data, 'base64').toString('utf-8').slice(0, 15000);
+            extracted = Buffer.from(file.data, 'base64').toString('utf-8');
           }
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Unknown error';
-          console.error(`${LOG_PREFIX} File extraction failed:`, error);
+          log.ai.error('File extraction failed', { metadata: { error } });
           callbacks.onError(`Failed to extract file content: ${msg}`);
           return;
         }
 
-        if (extracted) {
-          systemPrompt = `${SYSTEM_PROMPT}\n\nThe user has attached a file with the following content:\n\n${extracted}\n\nUse the file content to answer the user's questions.`;
+        // Truncate to configurable limit
+        if (extracted.length > MAX_FILE_CHARS) {
+          log.ai.warn(`Truncating file content from ${extracted.length} to ${MAX_FILE_CHARS} chars`);
+          extracted = extracted.slice(0, MAX_FILE_CHARS);
         }
+
+        // Cache extracted text for conversation persistence
+        if (conversationId && extracted) {
+          pdfCacheService.set(conversationId, extracted, file.mimeType);
+        }
+      } else if (conversationId) {
+        // No new file — try to retrieve cached text for this conversation
+        const cached = pdfCacheService.get(conversationId);
+        if (cached) {
+          extracted = cached.text;
+          log.ai.info(`Retrieved ${extracted.length} chars from cache for conversation ${conversationId}`);
+        }
+      }
+
+      if (extracted) {
+        systemPrompt = `${SYSTEM_PROMPT}\n\nThe user has attached a file with the following content:\n\n${extracted}\n\nUse the file content to answer the user's questions.`;
       }
 
       const response = await callLLMStreaming(
@@ -68,7 +91,7 @@ export class ChatService {
       callbacks.onComplete(response.content, response.usage);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Internal server error';
-      console.error(`${LOG_PREFIX} Chat failed:`, error);
+      log.ai.error('Chat failed', { metadata: { error } });
       callbacks.onError(msg);
     }
   }

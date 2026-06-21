@@ -113,14 +113,20 @@ export default async function SessionPage({ searchParams }: SessionPageProps) {
       ? decksStr.split(',').filter(Boolean)
       : [];
 
+  const topicIds = topicsStr
+    ? topicsStr.split(',').filter(Boolean)
+    : [];
+
   return (
     <SessionClient
       initialCards={initialCards}
       mode={mode}
       studyMode={studyMode}
       targetCount={targetCount}
-      hasMore={!isCram && initialCards.length >= batchSize}
+      hasMore={!isCram && initialCards.length > 0}
       deckIds={deckIds}
+      topicIds={topicIds}
+      newOnly={newOnly}
     />
   );
 }

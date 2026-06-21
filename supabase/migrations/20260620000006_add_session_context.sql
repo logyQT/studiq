@@ -53,7 +53,7 @@ BEGIN
   ),
   learning AS (
     SELECT * FROM with_state
-    WHERE learning_state = 'learning' AND next_review_at <= NOW()
+    WHERE learning_state IN ('learning', 'relearning') AND next_review_at <= NOW()
     ORDER BY next_review_at ASC
     LIMIT p_limit
   ),
@@ -71,7 +71,7 @@ BEGIN
   ),
   fallback AS (
     SELECT * FROM with_state
-    WHERE learning_state = 'review' AND next_review_at > NOW()
+    WHERE learning_state IN ('review', 'relearning') AND next_review_at > NOW()
     ORDER BY last_quality ASC NULLS FIRST
     LIMIT p_limit
   ),

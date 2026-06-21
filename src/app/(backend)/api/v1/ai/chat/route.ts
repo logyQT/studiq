@@ -1,37 +1,17 @@
+import { log } from '@/lib/logger';
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { chatController } from '@/server/controllers/ai-chat.controller';
 import { aiCommandController } from '@/server/controllers/ai-command.controller';
+import { aiAgentController } from '@/server/controllers/ai-agent.controller';
+import { hasFlashcardKeyword } from '@/server/services/ai-utils';
+import { FEATURE_FLAG_AGENTIC } from '@/lib/feature-flags';
 import type { RequestContext } from '@/lib/request-context';
 import type { UserRole } from '@/types';
 
 function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-}
-
-const LOG_PREFIX = '[ChatRoute]';
-
-const FLASHCARD_KEYWORDS = [
-  'flashcard', 'flash card', 'study card', 'index card', 'cue card',
-  'flashcards', 'study cards', 'index cards',
-  'fiszka', 'fiszki', 'fiszkę', 'fiszce', 'fiszek',
-  'fiszkom', 'fiszkami', 'fiszkach',
-  'notatka', 'notatki', 'notatkę', 'notatce', 'notatek',
-  'notatkom', 'notatkami', 'notatkach',
-  'karta', 'karty', 'kartę', 'karcie', 'kart',
-  'kartom', 'kartami', 'kartach',
-  'ściąga', 'ściągę', 'ściągi', 'ściąg', 'ściągą',
-  'ściągom', 'ściągami', 'ściągach',
-  'powtórka', 'powtórki', 'powtórkę', 'powtórce', 'powtórek',
-  'powtórkom', 'powtórkami', 'powtorkach',
-  'zapamiętaj', 'zapamiętać', 'zapamiętywanie', 'zapamiętywać',
-  'przypominajka',
-];
-
-function hasFlashcardKeyword(text: string): boolean {
-  const lower = text.toLowerCase();
-  return FLASHCARD_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
 export async function POST(req: NextRequest) {
@@ -69,44 +49,93 @@ export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      let closed = false;
+      const safeClose = () => {
+        if (closed) return;
+        closed = true;
+        clearTimeout(streamTimeout);
+        try { controller.close(); } catch { /* already closed */ }
+      };
+      const streamTimeout = setTimeout(() => {
+        log.api.error('Stream timeout — closing after 5min');
+        safeClose();
+      }, 300_000);
+
       const send = (event: string, data: unknown) => {
-        console.log(`${LOG_PREFIX} SSE → event=${event}, data=${JSON.stringify(data).slice(0, 200)}`);
+        log.api.info(`SSE → event=${event}, data=${JSON.stringify(data).slice(0, 200)}`);
         controller.enqueue(encoder.encode(sseEvent(event, data)));
       };
 
       const isFlashcardKeyword = hasFlashcardKeyword(text);
       const context = (body as Record<string, unknown>)?.context as string | undefined;
       const file = (body as Record<string, unknown>)?.file as { data: string; mimeType: string } | undefined;
-      const isFlashcard = isFlashcardKeyword || context === 'flashcards';
-      console.log(`${LOG_PREFIX} Routing: flashcardKeyword=${isFlashcardKeyword}, context=${context ?? 'none'}, hasFile=${!!file} → ${isFlashcard ? 'flashcard' : 'chat'}`);
+      const conversationId = (body as Record<string, unknown>)?.conversationId as string | undefined;
 
-      if (isFlashcard) {
-        await aiCommandController.chat(text, file, ctx, {
-          onToken: () => {},
-          onFlashcards: (data) => send('flashcards', data),
-          onComplete: (summary) => {
-            send('complete', { message: summary });
-            controller.close();
+      if (FEATURE_FLAG_AGENTIC) {
+        log.api.info(`Routing: agent pipeline (FEATURE_FLAG_AGENTIC=true), conversationId=${conversationId ?? 'none'}`);
+
+        await aiAgentController.process(text, file, conversationId, ctx, {
+          onThought: (data: unknown) => send('thought', data),
+          onThinking: (text: string) => {
+            const agentMatch = text.match(/^\[(\w+)\]\s*(.+)/);
+            if (agentMatch) {
+              send('subagent_task', { agent: agentMatch[1], text: agentMatch[2] });
+            } else {
+              send('thinking', { text });
+            }
           },
-          onError: (message) => {
+          onToken: (token: string) => send('token', { text: token }),
+          onToolCall: (data: unknown) => send('tool_call', data),
+          onToolResult: (data: unknown) => send('tool_result', data),
+          onFlashcards: (data: unknown) => send('flashcards', data),
+          onQuestion: (data: unknown) => send('question', data),
+          onPlan: (data: unknown) => send('plan', data),
+          onPaused: () => {
+            send('paused', {});
+            safeClose();
+          },
+          onComplete: (summary: unknown) => {
+            send('complete', { message: summary });
+            safeClose();
+          },
+          onError: (message: string) => {
             send('error', { message });
-            controller.close();
+            safeClose();
           },
         });
       } else {
-        await chatController.chat(body, ctx, {
-          onToken: (token) => send('token', { text: token }),
-          onResult: (type, data) => send('result', { type, data }),
-          onComplete: (summary) => {
-            send('complete', { message: summary });
-            controller.close();
-          },
-          onUsage: (usage) => send('usage', usage),
-          onError: (message) => {
-            send('error', { message });
-            controller.close();
-          },
-        });
+        const isFlashcard = isFlashcardKeyword || context === 'flashcards';
+        log.api.info(`Routing: flashcardKeyword=${isFlashcardKeyword}, context=${context ?? 'none'}, hasFile=${!!file} → ${isFlashcard ? 'flashcard' : 'chat'}`);
+
+        if (isFlashcard) {
+          await aiCommandController.chat(text, file, conversationId, ctx, {
+            onThink: (trace: string) => send('thinking', { text: trace }),
+            onToken: () => {},
+            onFlashcards: (data: unknown) => send('flashcards', data),
+            onComplete: (summary: unknown) => {
+              send('complete', { message: summary });
+              safeClose();
+            },
+            onError: (message: string) => {
+              send('error', { message });
+              safeClose();
+            },
+          });
+        } else {
+          await chatController.chat(body, ctx, {
+            onToken: (token: string) => send('token', { text: token }),
+            onResult: (type: string, data: unknown) => send('result', { type, data }),
+            onComplete: (summary: unknown) => {
+              send('complete', { message: summary });
+              safeClose();
+            },
+            onUsage: (usage: unknown) => send('usage', usage),
+            onError: (message: string) => {
+              send('error', { message });
+              safeClose();
+            },
+          });
+        }
       }
     },
   });

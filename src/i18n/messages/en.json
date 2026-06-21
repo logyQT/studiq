@@ -700,7 +700,9 @@
     "state_new": "New",
     "state_learning": "Learning",
     "state_review": "Review",
-    "state_relearning": "Relearning"
+    "state_relearning": "Relearning",
+    "state_leech": "Leech",
+    "next_review_at": "Next review:"
   },
   "AppFlashcardStatsPage": {
     "title": "Card Statistics",
@@ -899,6 +901,7 @@
     "target_count_label": "Target: {count} correct",
     "due_for_review": "due for review",
     "filtered": "filtered",
+    "next_review_at": "Next review:",
     "calculating": "Calculating...",
     "start_review": "Start Review",
     "statistics": "Statistics",
@@ -1414,6 +1417,7 @@
     "flashcard_saved": "Saved {count} cards to deck",
     "flashcard_deck_created": "Deck created with {count} flashcards",
     "flashcard_save_failed": "Failed to save flashcards",
+    "open_deck": "Open deck",
     "flashcards_generated": "{count} flashcards generated",
     "remove_card": "Remove card",
     "keep_card": "Keep card",
@@ -1422,7 +1426,8 @@
     "cta_response_flashcards": "Great! What topic should the flashcards be about? You can describe the material or upload a file.",
     "cta_response_summarize": "Sure! Paste your notes or upload a file and I'll summarize them for you.",
     "cta_response_explain": "What concept would you like me to explain?",
-    "cta_response_default": "How can I help you study?"
+    "cta_response_default": "How can I help you study?",
+    "disclaimer": "Artificial Inteligence can make mistakes. Always verify important information."
   },
   "FlashcardAiPage": {
     "title": "AI Flashcard Generator",

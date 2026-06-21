@@ -1,3 +1,4 @@
+import { log } from '@/lib/logger';
 import { flashcardGenerationService } from '@/server/services';
 import type { RequestContext } from '@/lib/request-context';
 import type { GeneratedFlashcard } from '@/server/providers/LLMProvider';
@@ -22,7 +23,7 @@ export class FlashcardGenerationController {
     ctx: RequestContext,
     callbacks: GenerationStreamCallbacks,
   ): Promise<void> {
-    console.warn('[DEPRECATED] FlashcardGenerationController.generateFromPdf is deprecated. Use AiCommandService.generateFlashcards() instead.');
+    log.ai.warn('[DEPRECATED] FlashcardGenerationController.generateFromPdf is deprecated. Use AiCommandService.generateFlashcards() instead.');
     const { file, filename, language } = body;
 
     if (language !== 'en' && language !== 'pl') {

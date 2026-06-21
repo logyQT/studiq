@@ -1,9 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Layers, Loader2, Check, Trash2, Pencil } from 'lucide-react';
+import { Layers, Loader2, Check, Trash2, Pencil, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -23,9 +22,8 @@ interface FlashcardBlockProps {
 
 export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
   const t = useTranslations('AiChatPage');
-  const router = useRouter();
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [savedDeckId, setSavedDeckId] = useState<string | null>(null);
   const [name, setName] = useState(deckName || t('flashcard_deck_name'));
   const [removedIndices, setRemovedIndices] = useState<Set<number>>(new Set());
 
@@ -68,9 +66,8 @@ export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
       });
       if (!batchRes.ok) throw new Error('Failed to create flashcards');
 
-      setSaved(true);
+      setSavedDeckId(deckId);
       toast.success(t('flashcard_deck_created', { count: visibleCards.length }));
-      router.push(`/app/flashcards/deck/${deckId}`);
     } catch {
       toast.error(t('flashcard_save_failed'));
     } finally {
@@ -78,11 +75,22 @@ export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
     }
   };
 
-  if (saved) {
+  if (savedDeckId) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-xs text-green-600 dark:text-green-400 mt-2">
-        <Check className="h-4 w-4 shrink-0" />
-        <span>{t('flashcard_saved', { count: visibleCards.length })}</span>
+      <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 mt-2 space-y-2">
+        <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400">
+          <Check className="h-4 w-4 shrink-0" />
+          <span>{t('flashcard_saved', { count: visibleCards.length })}</span>
+        </div>
+        <a
+          href={`/app/flashcards/deck/${savedDeckId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+        >
+          {t('open_deck')}
+          <ExternalLink className="h-3 w-3" />
+        </a>
       </div>
     );
   }

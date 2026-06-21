@@ -137,7 +137,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
       toast.error(t('import_failed'));
       setStep('preview');
     }
-  }, [columnMap, parsedRows, deckId, t]);
+  }, [columnMap, parsedRows, deckId, t, queryClient]);
 
   const handleClose = useCallback(() => {
     reset();

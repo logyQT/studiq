@@ -1,6 +1,5 @@
 'use client';
 
-import { useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
@@ -42,24 +41,16 @@ import type { TeacherFlashcardStatsResponse } from '@/server/models';
 export default function EduFlashcardStatsClient() {
   const t = useTranslations('EduFlashcardStatsPage');
   const queryClient = useQueryClient();
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data, isLoading } = useApiQuery<TeacherFlashcardStatsResponse>({
     queryKey: flashcardKeys.stats.teacher,
     url: '/api/v1/flashcards/stats/teacher',
   });
 
-  const invalidateWithDebounce = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.teacher });
-    }, 1000); // FIXME: restore 10000ms debounce after dev testing
-  }, [queryClient]);
-
   useRealtimeChannel(
     channel('teacher-flashcard-stats')
-      .listen('flashcard_practice', invalidateWithDebounce)
-      .listen('flashcard_review_state', invalidateWithDebounce),
+      .listen('flashcard_practice', () => { queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.teacher }); })
+      .listen('flashcard_review_state', () => { queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.teacher }); }),
   );
 
   if (isLoading) return <DeckDetailSkeleton />;

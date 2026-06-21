@@ -16,7 +16,10 @@ This document describes the phased development of the AI subsystem for the Studi
 | ---- | -------------------------------------- |
 | ✅   | Already implemented in codebase        |
 | ⚠️   | Partially implemented, needs extension |
+| 🗑️   | Deprecated — will be removed           |
 | 🆕   | Not yet built                          |
+
+> **Hybrid architecture notice:** Both the ReAct multi-agent pipeline and the legacy tool-calling pipeline coexist. The legacy pipeline is the **fast path** (3-4 LLM calls, ~15-30s) for simple content generation (flashcards). The agent pipeline is the **flexible path** (ReAct loop, 2-5 minutes) for complex/ambiguous requests that need clarification, planning, or multi-step workflows. The user will choose between them via a UI toggle in the chat input. Both share the same `/api/v1/ai/chat` route.
 
 ---
 
@@ -195,8 +198,8 @@ if (response.toolCalls?.length) {
 | Command parser                              | High     | ⚠️     | Keyword detection + context hints implemented, LLM-based pending |
 | Usage tracking + subscription tables        | High     | 🆕     | No limits currently enforced                                 |
 | `LLMGateway`                                | High     | ✅     | `callLLM` + `callLLMStreaming` with tool calling support     |
-| `POST /ai/command`                          | High     | 🆕     | New multi-command endpoint                                   |
-| `POST /api/v1/ai/chat`                      | High     | ✅     | Unified endpoint — chat + flashcards via tool calling        |
+| `POST /ai/command`                          | High     | 🆕     | New multi-command endpoint (superseded by agent pipeline)     |
+| `POST /api/v1/ai/chat`                      | High     | ⚠️     | Legacy code path — will be replaced by agent pipeline entirely |
 | `POST /api/v1/ai/flashcard-gen`             | High     | 🗑️     | **Deleted** — merged into `/api/v1/ai/chat`                  |
 | `GET /ai/usage`                             | High     | 🆕     | Usage status for UI display                                  |
 | `POST /api/v1/flashcards/generate/fromtext` | Medium   | 🗑️     | **Deprecated** — unified chat endpoint handles text input. Slated for deletion.  |
@@ -297,11 +300,15 @@ Standard event types for all pipelines:
 | `flashcards` | `{ deckName, flashcards: [{ front, back, topic }] }` | Flashcard tool call result (includes deck name from LLM) |
 | `result` | `{ type, data }` | Partial result (e.g., 3 flashcards from PDF pipeline) |
 | `progress` | `{ processedChunks, totalChunks }` | After each chunk (PDF pipeline only) |
+| `thinking` | `{ agent, step, label, description }` | Each ReAct iteration / sub-agent step (agent pipeline only) |
+| `question` | `{ id, text, options }` | Agent needs user clarification (agent pipeline only) |
+| `tool_call` | `{ toolName, label, args }` | Tool execution starts — renders as collapsible block with spinner (agent pipeline only) |
+| `tool_result` | `{ toolName, label, result, durationMs }` | Tool execution completes — updates block to ✓ (agent pipeline only) |
 | `complete` | `{ message }` | All processing done |
 | `usage` | `{ current, limit, plan, resetsAt }` | Usage limit info (sent before complete) |
 | `error` | `{ message }` | Any failure |
 
-> **Note:** The `think` event was removed — tool calling replaced the THINK/JSON parsing approach. The `flashcards` event now always includes `deckName` from the LLM's tool call arguments.
+> **Note:** The `think` event was removed — tool calling replaced the THINK/JSON parsing approach. The `flashcards` event now always includes `deckName` from the LLM's tool call arguments. The `thinking` and `question` events are emitted exclusively by the ReAct agent pipeline.
 
 ### Architecture Diagram (Phase 1)
 
@@ -309,9 +316,19 @@ Standard event types for all pipelines:
 User -> AI Chat UI -> POST /api/v1/ai/chat { text, file?, context?, messages? }
   -> Auth guard (inline Supabase auth)
     -> Route-level validation (text required unless file attached)
-      -> Keyword scan + context check
+      -> Feature flag check
         |
-        ├── [flashcard keyword OR context='flashcards']
+        ├── [FEATURE_FLAG_AGENTIC = true]
+        |     -> AgentService.execute(text, file, fileHistory, callbacks)
+        |       -> GeneralAgent.execute(task, ctx)
+        |         -> ReAct loop: tool calls (create_plan, ask_user, fetch_material, call_agent, ...)
+        |           -> FlashcardAgent.execute (on call_agent delegation)
+        |             -> SSE: thinking { agent, step, label, description }
+        |                   flashcards { deckName, flashcards }
+        |                   question { id, text, options }
+        |                   complete
+        |
+        ├── [flashcard keyword OR context='flashcards']  ← LEGACY PATH (will be removed)
         |     -> AiCommandController.chat(text, file, ctx)
         |       -> AiCommandService.chat(text, file, ctx)
         |         -> Server-side keyword re-check + file text extraction
@@ -319,7 +336,7 @@ User -> AI Chat UI -> POST /api/v1/ai/chat { text, file?, context?, messages? }
         |             -> Parse tool_calls response -> { deckName, flashcards }
         |               -> SSE: flashcards { deckName, flashcards }, complete
         |
-        └── [no flashcard intent]
+        └── [no flashcard intent]  ← LEGACY PATH (will be removed when agent handles all intents)
               -> ChatController.chat(body, ctx)
                 -> checkSubscription() + checkUsage()
                   -> ChatService.chat(text, file, messages, ctx)
@@ -333,10 +350,11 @@ User -> POST /api/v1/flashcards/generate/frompdf [DEPRECATED — kept for large 
         -> SSE: flashcards, progress, complete
 ```
 
-**Key architectural change:** The separate `/api/v1/ai/flashcard-gen` endpoint was **deleted**. All flashcard generation now flows through `/api/v1/ai/chat` using OpenAI tool calling. The server detects intent via:
-1. **Client-side context hint** (`context: 'flashcards'` sent when CTA button is clicked)
-2. **Server-side keyword scan** (50+ Polish/English morphological variants)
-3. **LLM auto-detection** (`tool_choice: 'auto'` lets the model decide when to use `generate_flashcards`)
+**Current architecture:** The `FEATURE_FLAG_AGENTIC` env var enables the agent pipeline. When enabled, ALL requests go through the agent pipeline (routing fix). The legacy path remains available in the `else` branch. Both paths share the same `/api/v1/ai/chat` route.
+
+The pipeline (legacy path) is the **fast path** for simple flashcard generation: generate material → extract concepts → generate cards → review → done (3-4 LLM calls, ~15-30s). The agent pipeline is the **flexible path** for complex requests: plan → ask questions → fetch material → delegate to sub-agents → review → finish (ReAct loop, 2-5 minutes). The user will choose between them via a UI toggle (planned).
+
+The earlier architectural change — deleting `/api/v1/ai/flashcard-gen` and merging into `/api/v1/ai/chat` via tool calling — remains in effect for the legacy path. The agent pipeline supersedes this with a more flexible ReAct-based approach.
 
 ## Data Model
 
@@ -471,13 +489,27 @@ Route rule added in `src/server/config/routes.config.ts`:
 |------|---------|
 | `src/server/ai/llm-gateway.ts` | `callLLM` + `callLLMStreaming` with provider routing and tool calling |
 | `src/server/ai/ai.types.ts` | `ToolDefinition`, `ToolCall`, `LLMGatewayRequest/Response` types |
-| `src/server/services/ai-command.service.ts` | Flashcard tool definition, keyword detection, `generate_flashcards()` + `chat()` |
-| `src/server/controllers/ai-command.controller.ts` | Routes to service, emits SSE events |
-| `src/app/(backend)/api/v1/ai/chat/route.ts` | Unified endpoint — keyword scan + context routing |
+| `src/server/services/ai-command.service.ts` | ⚠️ Legacy — flashcard tool definition, keyword detection |
+| `src/server/controllers/ai-command.controller.ts` | ⚠️ Legacy — routes to service, emits SSE events |
+| `src/app/(backend)/api/v1/ai/chat/route.ts` | **Unified endpoint** — feature flag dispatch to agent or legacy pipeline |
 | `src/hooks/use-ai-chat.ts` | Client hook — context hints, `sendLocalResponse`, SSE parsing |
 | `src/components/ai/ai-chat-screen.tsx` | Main UI — scroll management, CTA context, file handling |
 | `src/components/ai/flashcard-block.tsx` | Flashcard preview grid — editable deck name, batch save |
+| `src/components/ai/thinking-block.tsx` | Agent step traces (thinking events) — collapsible panel |
+| `src/components/ai/question-block.tsx` | Agent clarification questions (question events) — option buttons |
+| `src/components/ai/chat-message.tsx` | Renders `ThinkingBlock` and `QuestionBlock` when present |
 | `src/server/services/pdf.service.ts` | PDF extraction via `unpdf` (previously `pdfjs-dist`) |
+| `src/server/services/agent.service.ts` | Agent pipeline entry point — constructs ToolContext, calls GeneralAgent |
+| `src/server/controllers/ai-agent.controller.ts` | Bridges SSE callbacks to agent pipeline |
+| `src/server/agents/core/base.agent.ts` | Abstract ReAct loop — iterates LLM calls + tool execution |
+| `src/server/agents/general.agent.ts` | Orchestrator agent (8 generic tools: create_plan, ask_user, webfetch, call_agent, ...) |
+| `src/server/agents/flashcard.agent.ts` | Flashcard sub-agent (4 tools: create, review, revise, brainstorm) |
+| `src/server/agents/agent-registry.ts` | Singleton registry, auto-discovers agents |
+| `src/server/agents/tools/types.ts` | `Tool`, `ToolContext`, `AgentState` types |
+| `src/server/config/agent-models.config.ts` | Per-agent LLM model overrides |
+| `src/lib/feature-flags.ts` | `FEATURE_FLAG_AGENTIC` boolean |
+| `src/server/services/agent-trace.service.ts` | In-memory + SQLite trace event store for debugging |
+| `src/app/(backend)/api/v1/dev/traces/route.ts` | Dev-only endpoint: `GET /api/v1/dev/traces?conversationId=` |
 
 ## Frontend — AI Chat Page
 
@@ -517,7 +549,8 @@ New page: `src/app/(frontend)/app/ai/page.tsx`
 | `ChatHistory`    | ✅     | Scrollable message list (parent manages auto-scroll)                                                        |
 | `UsageBadge`     | ✅     | Shows "15/50 daily requests used" + plan name                                                               |
 | `FlashcardBlock` | ✅     | Scrollable 2-column grid, editable deck name, per-card delete, batch save                                   |
-| `ThinkingBlock`  | ✅     | Collapsible thinking traces panel with step animation                                                       |
+| `ThinkingBlock`  | ✅     | Collapsible thinking traces panel with step animation (agent pipeline only)                                 |
+| `QuestionBlock`  | ✅     | Renders question text + clickable option buttons when agent calls `ask_user` tool                           |
 | `AiChatGreeting` | ✅     | CTA buttons with local fake responses (no LLM call)                                                         |
 
 ### Hook
@@ -531,6 +564,87 @@ New page: `src/app/(frontend)/app/ai/page.tsx`
 - **Manages message history state** with `thinkingTraces` field and `result` field (typed by result type)
 - **Tracks streaming status** per message (`sending`, `streaming`, `thinking`, `complete`, `error`)
 - **File handling** — chunked base64 conversion (avoids stack overflow on large files), passes file to server
+
+---
+
+# ReAct Multi-Agent Pipeline (Primary Development Track)
+
+This section describes the agentic system that replaces the Phase 1-3 modular command architecture. The agent pipeline is already live behind `FEATURE_FLAG_AGENTIC` and is the **primary development track**. The legacy tool-calling pipeline will be removed entirely within 1-2 iterations once feature parity is reached.
+
+## Architecture
+
+A **GeneralAgent** receives the user's request and enters a ReAct (Reasoning + Acting) loop. At each iteration, the LLM decides whether to call a tool, ask the user for clarification, or finish. The General Agent has access to generic cross-domain tools; for domain-specific work (e.g., flashcard creation) it delegates to sub-agents via the `call_agent` tool.
+
+```
+User Request → GeneralAgent.execute()
+  → ReAct loop:
+    1. LLM decides next action (tool call, question, or finish)
+    2. Execute tool → append result to state
+    3. Loop until finish tool or agent returns
+
+  Tools available to GeneralAgent:
+  ├── create_plan       — build execution plan
+  ├── ask_user          — clarify ambiguities via SSE question event
+  ├── fetch_material    — generate content on topic (LLM-based)
+  ├── webfetch          — fetch URL content via HTTP
+  ├── extract_concepts  — identify key ideas from material
+  ├── evaluate_quality  — self-review output quality
+  ├── call_agent        — delegate to sub-agent (e.g., FlashcardAgent)
+  └── finish            — finalize and return structured result
+
+  Sub-Agents (domain-specific, each with own ReAct loop):
+  ├── FlashcardAgent (✅ live)
+  │   Tools: flashcard_create, flashcard_review, flashcard_revise, brainstorm_concepts
+  ├── QuestionAgent (⏳ planned)
+  ├── NotesAgent (⏳ planned)
+  └── LearningPathAgent (⏳ planned)
+```
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `src/server/agents/core/base.agent.ts` | Abstract ReAct loop — iterates LLM calls + tool execution |
+| `src/server/agents/general.agent.ts` | Orchestrator — 8 generic tools |
+| `src/server/agents/flashcard.agent.ts` | Flashcard sub-agent — 4 tools |
+| `src/server/agents/agent-registry.ts` | Singleton, auto-registers agents |
+| `src/server/services/agent.service.ts` | Entry point — constructs `ToolContext`, calls `agent.execute()` |
+| `src/server/controllers/ai-agent.controller.ts` | Bridges SSE callbacks to agent results |
+| `src/server/agents/tools/generic/*.tool.ts` | 8 generic tool files |
+| `src/server/agents/tools/flashcard/*.tool.ts` | 4 flashcard tool files |
+
+## SSE Events
+
+The agent pipeline emits two additional SSE events not present in the legacy path:
+
+| Event | Payload | When |
+|-------|---------|------|
+| `thinking` | `{ agent, step, label, description }` | Each ReAct iteration / sub-agent step |
+| `question` | `{ id, text, options }` | `ask_user` tool call — agent needs clarification |
+
+The frontend renders these as `ThinkingBlock` (collapsible traces panel) and `QuestionBlock` (option buttons + free-text input).
+
+## Configuration
+
+- **Feature flag**: `FEATURE_FLAG_AGENTIC` (env var) — when `true`, the route dispatches to `AgentService` instead of the legacy pipeline
+- **Per-agent model config**: `src/server/config/agent-models.config.ts` — each agent can specify a different provider/model
+- **LLM retry**: 3 retries with 5s/10s/15s exponential backoff on transient 5xx errors, logged to `AgentTraceService`
+
+## Debugging
+
+- **In-memory trace store**: All ReAct iterations, tool calls, LLM requests/responses, and errors are logged to `AgentTraceService`
+- **Optional SQLite persistence**: In dev mode, traces are written to `.dev/traces.db`
+- **Dev endpoint**: `GET /api/v1/dev/traces?conversationId=xxx` returns full JSON (403 in production)
+
+## Deprecation Path
+
+The legacy pipeline (tool calling via `AiCommandService` + `ChatService`) is in **maintenance mode**. It will be removed when:
+
+1. The agent pipeline handles flashcard generation via `call_agent` + `FlashcardAgent` with the same quality
+2. The agent pipeline handles general chat (free-form conversation without tool calls)
+3. PDF uploads are processed through the agent pipeline (via `fetch_material` + `extract_concepts`)
+
+Until then, `FEATURE_FLAG_AGENTIC` controls which path the `/api/v1/ai/chat` route takes.
 
 ---
 
@@ -732,14 +846,16 @@ Error handling: retry per step, dead letter queue, partial success reporting
 
 ## Multi-Agent Pipelines
 
-| Agent              | Role                                            | Prompt Focus          |
-| ------------------ | ----------------------------------------------- | --------------------- |
-| Extraction Agent   | Extracts key concepts, entities, relationships  | Information retrieval |
-| Analysis Agent     | Identifies patterns, gaps, connections          | Critical thinking     |
-| Generation Agent   | Creates study materials (flashcards, summaries) | Content creation      |
-| Verification Agent | Validates accuracy, detects hallucinations      | Quality control       |
+**Partially implemented.** The ReAct multi-agent architecture (see "ReAct Multi-Agent Pipeline" section) already realizes the orchestration pattern described here, though with different agent boundaries:
 
-Each agent is a specialized LLM call with its own system prompt. Agents pass results through a shared context object.
+| Agent              | Role                                            | Status |
+| ------------------ | ----------------------------------------------- | ------ |
+| Extraction Agent   | Extracts key concepts, entities, relationships  | ⚠️ Implemented as tools within GeneralAgent (`extract_concepts`, `fetch_material`) |
+| Analysis Agent     | Identifies patterns, gaps, connections          | ⏳ Planned — future sub-agent or tool |
+| Generation Agent   | Creates study materials (flashcards, summaries) | ✅ FlashcardAgent live |
+| Verification Agent | Validates accuracy, detects hallucinations      | ⚠️ Implemented as tool (`evaluate_quality`) |
+
+The legacy vision of separate specialized agents is superseded by the GeneralAgent + sub-agent pattern. New agents will be added as standalone files extending `BaseAgent` and registered in `agent-registry.ts`.
 
 ## AI Reviewer
 
@@ -800,7 +916,7 @@ Results can be compared side-by-side in the UI.
 | ------------------------ | -------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------- |
 | **Inputs**               | Text, PDF                                                                        | YouTube, Image, Audio, DOCX, TXT, ZIP                | Multiple simultaneous sources                 |
 | **Commands**             | flashcards, summary, quiz, explain                                               | mindmap, notes, translate, compare, timeline, lesson | workflows, curriculum                         |
-| **Processing**           | **Tool calling** (unified endpoint) or single command → single output            | Smart pipelines, multi-intent                        | Multi-agent orchestration                     |
+| **Processing**           | **Agentic pipeline (FEATURE_FLAG_AGENTIC)** — ReAct multi-agent orchestration with tool calling. Legacy: single command → single output. **Legacy path will be removed 1-2 iterations.** | Smart pipelines, multi-intent (superseded by agent approach) | ✅ **Multi-agent orchestration (ReAct)** — GeneralAgent + FlashcardAgent live. More sub-agents planned. |
 | **Context**              | Per-request, **client-side hints**                                               | Session memory (IndexedDB/server)                    | Full curriculum context                       |
 | **Limits**               | Hourly / Daily / Monthly brackets                                                | Per-module limits, transcription caps                | Workflow, curriculum, institutional overrides |
 | **Access**               | Free blocked, Premium + Org via subscription                                     | Same + opt-in free tier possible                     | Same + institutional plans                    |
@@ -961,6 +1077,12 @@ User asks: "Create 5 flashcards on mitochondria."
 | **unpdf PDF extraction** | ✅ | Replaced `pdfjs-dist` direct import with `unpdf` — fixes Turbopack bundling |
 | **Batch flashcard save** | ✅ | `POST /api/v1/flashcards/batch/create` instead of N sequential POSTs |
 | **Flashcard preview redesign** | ✅ | Scrollable 2-column grid, editable deck name, per-card delete toggle |
+| **`chat` tool** | ✅ | GeneralAgent can respond conversationally without spinning through 25 ReAct iterations |
+| **FlashcardAgent `finish` tool** | ✅ | Added `finish` to FlashcardAgent tools — prevents infinite `flashcard_review` loops |
+| **`flashcard_review` `passed` signal** | ✅ | Returns `passed: boolean` — clear "done" signal for LLM |
+| **Consecutive tool call guard** | ✅ | `base.agent.ts` force-finishes if same tool called 3+ times in a row |
+| **`globalThis` trace singleton** | ✅ | Fixes module isolation between POST and GET handlers in Next.js dev mode |
+| **Conversation state persistence** | ✅ | Multi-turn memory via `conversationId` Map in `agent.service.ts` |
 | **3D flip animation** | ✅ | Figma version in session, direction-aware exit (left for Again/Hard, right for Good/Easy) |
 | **Dashboard stats** | ✅ | Drop avg score, add flashcard accuracy with Layers icon, fix API response unwrapping |
 | **File handling fixes** | ✅ | Chunked base64 (stack overflow fix), file data passed through to flashcard flow |
@@ -968,3 +1090,12 @@ User asks: "Create 5 flashcards on mitochondria."
 | **Free scrolling** | ✅ | User can scroll up during streaming, auto-scroll only when at bottom (50px threshold) |
 | **Markdown rendering** | ✅ | Assistant messages rendered via `MarkdownRenderer` when complete, plain text during streaming |
 | **Comprehensive logging** | ✅ | All AI routes log keyword detection, routing, LLM calls, tool calls, parsed results |
+| **ReAct multi-agent architecture** | ✅ | GeneralAgent + FlashcardAgent + 12 tools (8 generic + 4 flashcard) |
+| **Agent trace logging** | ✅ | `AgentTraceService` — in-memory + optional SQLite persistence |
+| **Dev trace endpoint** | ✅ | `GET /api/v1/dev/traces?conversationId=` — returns JSON (403 in production) |
+| **LLM retry logic** | ✅ | 3 retries with 5s/10s/15s exponential backoff on transient 5xx |
+| **SSE `thinking` event** | ✅ | Agent step traces per ReAct iteration — rendered as `ThinkingBlock` |
+| **SSE `question` event** | ✅ | Agent clarification via `ask_user` tool — rendered as `QuestionBlock` |
+| **`webfetch` tool** | ✅ | Generic URL fetch into agent pipeline |
+| **Feature flag routing** | ✅ | `FEATURE_FLAG_AGENTIC` env var controls path dispatch |
+| **Per-agent LLM config** | ✅ | `agent-models.config.ts` — per-agent provider/model overrides |

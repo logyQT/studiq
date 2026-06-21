@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ChevronDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAiChat } from '@/hooks/use-ai-chat';
+import { useScrollToBottom } from '@/hooks/use-scroll-to-bottom';
 import { useAuth } from '@/components/providers';
-import { cn } from '@/lib/utils';
 import { AiChatGreeting } from './ai-chat-greeting';
 import { AiChatInput } from './ai-chat-input';
 import { ChatHistory } from './chat-history';
@@ -18,41 +18,11 @@ export function AiChatScreen() {
   const t = useTranslations('AiChatPage');
   const [file, setFile] = useState<File | null>(null);
   const [activeContext, setActiveContext] = useState<string | null>(null);
-  const [isAtBottom, setIsAtBottom] = useState(true);
-
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const shouldAutoScrollRef = useRef(true);
+  const { containerRef: scrollRef, handleScroll, isAtBottom, scrollToBottom } = useScrollToBottom();
 
   const isActive = messages.length > 0 || isStreaming;
 
   const firstName = user?.user_metadata?.name?.split(' ')[0] ?? user?.email?.split('@')[0];
-
-  const scrollToBottom = useCallback(() => {
-    const el = scrollRef.current;
-    if (el) {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-    }
-    shouldAutoScrollRef.current = true;
-    setIsAtBottom(true);
-  }, []);
-
-  const handleScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
-    setIsAtBottom(atBottom);
-    shouldAutoScrollRef.current = atBottom;
-  }, []);
-
-  // Auto-scroll to bottom when new messages arrive and user is at bottom
-  useEffect(() => {
-    if (shouldAutoScrollRef.current && messages.length > 0) {
-      const el = scrollRef.current;
-      if (el) {
-        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-      }
-    }
-  }, [messages]);
 
   const handleSuggestion = (text: string) => {
     const responses: Record<string, string> = {
@@ -68,14 +38,20 @@ export function AiChatScreen() {
     setActiveContext(contextMap[text] || null);
   };
 
+  const handleAnswer = useCallback(
+    (text: string) => {
+      sendMessage(text);
+    },
+    [sendMessage],
+  );
+
   const handleSend = async (text: string, f?: File) => {
     await sendMessage(text, f, activeContext ?? undefined);
-    setFile(null);
     setActiveContext(null);
   };
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex flex-1 flex-col min-h-0">
       {isActive && (
         <div
           ref={scrollRef}
@@ -83,58 +59,71 @@ export function AiChatScreen() {
           onScroll={handleScroll}
         >
           <div className="mx-auto max-w-3xl px-4 py-6">
-            <ChatHistory messages={messages} />
+            <ChatHistory messages={messages} onAnswer={handleAnswer} />
+            <div className="pt-4">
+              <AiChatInput
+                onSend={handleSend}
+                isStreaming={isStreaming}
+                onAbort={abort}
+                file={file}
+                onFileChange={setFile}
+              />
+              {usage && (
+                <div className="mt-2 flex justify-center">
+                  <UsageBadge usage={usage} />
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Scroll to bottom button */}
+      {/* Glassmorphism scroll-to-bottom bar */}
       <AnimatePresence>
         {!isAtBottom && isActive && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            transition={{ duration: 0.15 }}
-            onClick={scrollToBottom}
-            className="fixed bottom-32 right-6 z-50 rounded-full border bg-background shadow-lg p-2 hover:bg-muted transition-colors"
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.2 }}
+            className="fixed bottom-0 left-0 right-0 z-50 h-24 bg-gradient-to-t from-background/95 via-background/50 to-transparent backdrop-blur-sm [mask-image:linear-gradient(to_top,black_35%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_top,black_35%,transparent_100%)] flex items-end justify-center pb-3"
           >
-            <ChevronDown className="h-4 w-4" />
-          </motion.button>
+            <div className="mx-auto flex w-full max-w-3xl items-center justify-center">
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.15 }}
+                onClick={() => scrollToBottom(true)}
+                className="text-foreground/70 hover:text-foreground transition-colors"
+              >
+                <ChevronDown className="h-10 w-10" />
+              </motion.button>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
-      <div
-        className={cn(
-          'flex flex-col items-center transition-all duration-300',
-          isActive ? 'shrink-0 pb-6' : 'justify-center flex-1',
-        )}
-      >
-        <div className="w-full max-w-3xl px-4">
-          <AnimatePresence>
-            {!isActive && (
+      {!isActive && (
+        <div className="flex flex-1 flex-col items-center justify-center">
+          <div className="w-full max-w-3xl px-4">
+            <AnimatePresence>
               <AiChatGreeting
                 userName={firstName}
                 onSuggestion={handleSuggestion}
               />
-            )}
-          </AnimatePresence>
+            </AnimatePresence>
 
-          <AiChatInput
-            onSend={handleSend}
-            isStreaming={isStreaming}
-            onAbort={abort}
-            file={file}
-            onFileChange={setFile}
-          />
-
-          {isActive && (
-            <div className="mt-2 flex justify-center">
-              <UsageBadge usage={usage} />
-            </div>
-          )}
+            <AiChatInput
+              onSend={handleSend}
+              isStreaming={isStreaming}
+              onAbort={abort}
+              file={file}
+              onFileChange={setFile}
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

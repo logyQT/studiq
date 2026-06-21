@@ -1,7 +1,13 @@
-import { OpenAPIRegistry, extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 
-extendZodWithOpenApi(z);
+const definitions: z.ZodTypeAny[] = [];
 
-export const registry = new OpenAPIRegistry();
+export const registry = {
+  register: <T extends z.ZodTypeAny>(name: string, schema: T): T => {
+    definitions.push(schema);
+    return schema;
+  },
+  definitions,
+};
+
 export { z };

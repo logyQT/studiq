@@ -1,4 +1,6 @@
-import { useEffect, useRef } from 'react';
+'use client';
+
+import { useEffect, useRef, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
@@ -42,6 +44,11 @@ function channel(name: string): RealtimeBuilder {
 function useRealtimeChannel(builder: RealtimeBuilder): void {
   const handlersRef = useRef<Handler[]>([]);
 
+  const subKey = useMemo(
+    () => builder.subscriptions.map((s) => `${s.table}:${s.event}:${s.filter}`).join(','),
+    [builder.subscriptions],
+  );
+
   useEffect(() => {
     handlersRef.current = builder.subscriptions.map((s) => s.handler);
 
@@ -67,7 +74,7 @@ function useRealtimeChannel(builder: RealtimeBuilder): void {
 
     ch.subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [builder.name, builder.subscriptions.map((s) => `${s.table}:${s.event}:${s.filter}`).join(',')]);
+  }, [builder.name, builder.subscriptions, subKey]);
 }
 
 export { channel, useRealtimeChannel };

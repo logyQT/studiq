@@ -2,15 +2,42 @@
 
 import { useState, useCallback, useRef } from 'react';
 
+export interface QuestionData {
+  id: string;
+  question: string;
+  options?: { label: string; value: string }[];
+  answered?: boolean;
+}
+
+export interface PlanStep {
+  index: number;
+  action: string;
+  rationale: string;
+  dependsOn?: string[];
+}
+
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'thought' | 'tool_call' | 'plan';
   content: string;
   result?: { type: string; data: unknown; deckName?: string };
-  status: 'sending' | 'streaming' | 'thinking' | 'complete' | 'error';
+  status: 'sending' | 'streaming' | 'thinking' | 'complete' | 'error' | 'running';
   error?: string;
   file?: { name: string; mimeType: string; data: string };
   thinkingTraces: string[];
+  question?: QuestionData;
+  plan?: PlanStep[];
+  planCompleted?: boolean;
+  step?: number;
+  reasoning?: string;
+  agent?: string;
+  toolName?: string;
+  label?: string;
+  subTask?: string;
+  subToolCount?: number;
+  args?: unknown;
+  toolResult?: unknown;
+  durationMs?: number;
 }
 
 export interface UsageInfo {
@@ -37,16 +64,32 @@ function generateUUID(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function createErrorMessage(error: string): ChatMessage {
+  return {
+    id: generateUUID(),
+    role: 'assistant',
+    content: '',
+    status: 'error',
+    error,
+    thinkingTraces: [],
+  };
+}
+
 export function useAiChat(): UseAiChatReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [usage, setUsage] = useState<UsageInfo | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const conversationIdRef = useRef<string>(generateUUID());
+  const fileSentRef = useRef<boolean>(false);
+  const toolStartTimesRef = useRef<Map<string, number>>(new Map());
+  const currentThoughtIdRef = useRef<string | null>(null);
 
   const sendMessage = useCallback(async (text: string, file?: File, context?: string) => {
     abortRef.current?.abort();
     const abortController = new AbortController();
     abortRef.current = abortController;
+    currentThoughtIdRef.current = null;
 
     const userMsg: ChatMessage = {
       id: generateUUID(),
@@ -57,28 +100,35 @@ export function useAiChat(): UseAiChatReturn {
       thinkingTraces: [],
     };
 
-    const assistantMsg: ChatMessage = {
+    const initialThought: ChatMessage = {
       id: generateUUID(),
-      role: 'assistant',
+      role: 'thought',
       content: '',
-      status: 'sending',
+      status: 'thinking',
       thinkingTraces: [],
     };
+    currentThoughtIdRef.current = initialThought.id;
 
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setMessages((prev) => [...prev, userMsg, initialThought]);
     setIsStreaming(true);
+
+    const fetchTimeout = setTimeout(() => {
+      abortController.abort();
+    }, 600_000);
 
     try {
       const history = messages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .filter((m) => m.id !== assistantMsg.id && m.id !== userMsg.id)
+        .filter((m) => m.id !== userMsg.id)
         .filter((m) => m.content.length > 0)
         .map((m) => ({ role: m.role, content: m.content }));
 
       const body: Record<string, unknown> = { text };
       if (context) body.context = context;
+      body.conversationId = conversationIdRef.current;
       if (history.length > 0) body.messages = history;
-      if (file) {
+
+      if (file && !fileSentRef.current) {
         const buffer = await file.arrayBuffer();
         const bytes = new Uint8Array(buffer);
         let binary = '';
@@ -87,6 +137,7 @@ export function useAiChat(): UseAiChatReturn {
           binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
         }
         body.file = { data: btoa(binary), mimeType: file.type };
+        fileSentRef.current = true;
       }
 
       const res = await fetch('/api/v1/ai/chat', {
@@ -98,38 +149,20 @@ export function useAiChat(): UseAiChatReturn {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'UNKNOWN' }));
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMsg.id
-              ? { ...m, status: 'error', error: err.error || `HTTP ${res.status}` }
-              : m,
-          ),
-        );
+        setMessages((prev) => [...prev, createErrorMessage(err.error || `HTTP ${res.status}`)]);
         setIsStreaming(false);
         return;
       }
 
       const reader = res.body?.getReader();
       if (!reader) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMsg.id
-              ? { ...m, status: 'error', error: 'Response body is not readable' }
-              : m,
-          ),
-        );
+        setMessages((prev) => [...prev, createErrorMessage('Response body is not readable')]);
         setIsStreaming(false);
         return;
       }
 
       const decoder = new TextDecoder();
       let sseBuffer = '';
-
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantMsg.id ? { ...m, status: 'streaming' } : m,
-        ),
-      );
 
       while (true) {
         const { done, value } = await reader.read();
@@ -154,16 +187,113 @@ export function useAiChat(): UseAiChatReturn {
               switch (currentEvent) {
                 case 'token': {
                   const token = parsed.text || parsed.token || '';
+                  setMessages((prev) => {
+                    const lastStreaming = prev.findLast((m) => m.role === 'assistant' && m.status === 'streaming');
+                    if (lastStreaming) {
+                      return prev.map((m) =>
+                        m.id === lastStreaming.id ? { ...m, content: m.content + token } : m,
+                      );
+                    }
+                    return [...prev, {
+                      id: generateUUID(), role: 'assistant', content: token,
+                      status: 'streaming', thinkingTraces: [],
+                    }];
+                  });
+                  break;
+                }
+                case 'thinking': {
+                  const token = parsed.text || parsed.message || '';
+                  if (!token) break;
+                  if (!currentThoughtIdRef.current) {
+                    const thoughtMsg: ChatMessage = {
+                      id: generateUUID(),
+                      role: 'thought',
+                      content: token,
+                      status: 'thinking',
+                      thinkingTraces: [],
+                    };
+                    currentThoughtIdRef.current = thoughtMsg.id;
+                    setMessages((prev) => [...prev, thoughtMsg]);
+                    break;
+                  }
                   setMessages((prev) =>
                     prev.map((m) =>
-                      m.id === assistantMsg.id
+                      m.id === currentThoughtIdRef.current
                         ? { ...m, content: m.content + token }
                         : m,
                     ),
                   );
                   break;
                 }
+                case 'thought': {
+                  const reasoning = parsed.reasoning || '';
+                  setMessages((prev) => {
+                    if (currentThoughtIdRef.current) {
+                      const id = currentThoughtIdRef.current;
+                      currentThoughtIdRef.current = null;
+                      return prev.map((m) =>
+                        m.id === id
+                          ? { ...m, content: reasoning || m.content, status: 'complete' }
+                          : m,
+                      );
+                    }
+                    const lastThought = prev.findLast((m) => m.role === 'thought' && m.status === 'thinking');
+                    if (lastThought) {
+                      return prev.map((m) =>
+                        m.id === lastThought.id
+                          ? { ...m, content: reasoning || m.content, status: 'complete' }
+                          : m,
+                      );
+                    }
+                    return prev;
+                  });
+                  break;
+                }
+                case 'tool_call': {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.status === 'thinking' ? { ...m, status: 'complete' as const } : m,
+                    ),
+                  );
+                  currentThoughtIdRef.current = null;
+                  const toolCallMsg: ChatMessage = {
+                    id: generateUUID(),
+                    role: 'tool_call',
+                    content: '',
+                    status: 'running',
+                    toolName: parsed.tool,
+                    label: parsed.label,
+                    args: parsed.args,
+                    thinkingTraces: [],
+                  };
+                  toolStartTimesRef.current.set(parsed.id, Date.now());
+                  setMessages((prev) => [...prev, toolCallMsg]);
+                  break;
+                }
+                case 'tool_result': {
+                  const startTime = toolStartTimesRef.current.get(parsed.id);
+                  const duration = startTime ? Date.now() - startTime : undefined;
+                  toolStartTimesRef.current.delete(parsed.id);
+                  const resultData = parsed.result as Record<string, unknown> | undefined;
+                  const toolCount = resultData?.toolCount as number | undefined;
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.role === 'tool_call' && m.toolName === parsed.tool && m.status === 'running'
+                        ? {
+                            ...m,
+                            status: 'complete',
+                            toolResult: parsed.result,
+                            label: parsed.label,
+                            subToolCount: parsed.tool === 'call_agent' ? toolCount : undefined,
+                            durationMs: duration,
+                          }
+                        : m,
+                    ),
+                  );
+                  break;
+                }
                 case 'flashcards': {
+                  currentThoughtIdRef.current = null;
                   const deckName = parsed.deckName || 'AI Generated Flashcards';
                   const cards = Array.isArray(parsed.flashcards) ? parsed.flashcards : Array.isArray(parsed) ? parsed : [];
                   const mappedCards = cards.map((c: Record<string, unknown>) => ({
@@ -171,34 +301,119 @@ export function useAiChat(): UseAiChatReturn {
                     back: String(c.back ?? c.answer ?? ''),
                     topic: String(c.topic ?? c.suggestedTopic ?? '') || undefined,
                   }));
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantMsg.id
-                        ? { ...m, result: { type: 'flashcards', data: mappedCards, deckName } }
-                        : m,
-                    ),
-                  );
+                  const flashcardMsg: ChatMessage = {
+                    id: generateUUID(),
+                    role: 'assistant',
+                    content: '',
+                    status: 'complete',
+                    result: { type: 'flashcards', data: mappedCards, deckName },
+                    thinkingTraces: [],
+                  };
+                  setMessages((prev) => [...prev, flashcardMsg]);
                   break;
                 }
                 case 'result': {
+                  const resultMsg: ChatMessage = {
+                    id: generateUUID(),
+                    role: 'assistant',
+                    content: '',
+                    status: 'complete',
+                    result: { type: parsed.type, data: parsed.data },
+                    thinkingTraces: [],
+                  };
+                  setMessages((prev) => [...prev, resultMsg]);
+                  break;
+                }
+                case 'question': {
+                  currentThoughtIdRef.current = null;
+                  const questionMsg: ChatMessage = {
+                    id: generateUUID(),
+                    role: 'assistant',
+                    content: '',
+                    status: 'complete',
+                    question: parsed,
+                    thinkingTraces: [],
+                  };
+                  setMessages((prev) => [...prev, questionMsg]);
+                  break;
+                }
+                case 'plan': {
+                  const steps = Array.isArray(parsed) ? parsed : (parsed as { steps?: PlanStep[] })?.steps ?? [];
+                  if (steps.length > 0) {
+                    const planMsg: ChatMessage = {
+                      id: generateUUID(),
+                      role: 'plan',
+                      content: '',
+                      status: 'complete',
+                      plan: steps,
+                      planCompleted: false,
+                      thinkingTraces: [],
+                    };
+                    setMessages((prev) => [...prev, planMsg]);
+                  }
+                  break;
+                }
+                case 'subagent_task': {
+                  const taskText = parsed.text || '';
+                  setMessages((prev) => {
+                    const items = [...prev];
+                    const lastIdx = items.length - 1;
+                    for (let i = lastIdx; i >= 0; i--) {
+                      const m = items[i];
+                      if (m.role === 'tool_call' && m.toolName === 'call_agent' && m.status === 'running') {
+                        items[i] = { ...m, subTask: taskText };
+                        break;
+                      }
+                    }
+                    return items;
+                  });
+                  break;
+                }
+                case 'paused': {
+                  currentThoughtIdRef.current = null;
                   setMessages((prev) =>
                     prev.map((m) =>
-                      m.id === assistantMsg.id
-                        ? { ...m, result: { type: parsed.type, data: parsed.data } }
-                        : m,
+                      m.status === 'streaming' || m.status === 'thinking'
+                        ? { ...m, status: 'complete' } : m,
                     ),
                   );
                   break;
                 }
-                case 'complete':
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantMsg.id
-                        ? { ...m, status: 'complete', content: m.content || parsed.message || '' }
-                        : m,
-                    ),
-                  );
+                case 'complete': {
+                  const message = parsed.message || '';
+                  setMessages((prev) => {
+                    const markPlans = (items: ChatMessage[]): ChatMessage[] =>
+                      items.map((m) => m.role === 'plan' && !m.planCompleted ? { ...m, planCompleted: true } : m);
+
+                    if (currentThoughtIdRef.current) {
+                      const id = currentThoughtIdRef.current;
+                      currentThoughtIdRef.current = null;
+                      return markPlans(prev.map((m) =>
+                        m.id === id ? { ...m, status: 'complete' } : m,
+                      ));
+                    }
+                    const lastThought = prev.findLast((m) => m.role === 'thought' && m.status === 'thinking');
+                    if (lastThought) {
+                      return markPlans(prev.map((m) =>
+                        m.id === lastThought.id ? { ...m, status: 'complete' } : m,
+                      ));
+                    }
+                    const lastStreaming = prev.findLast((m) => m.role === 'assistant' && m.status === 'streaming');
+                    if (lastStreaming) {
+                      return markPlans(prev.map((m) =>
+                        m.id === lastStreaming.id ? { ...m, status: 'complete' } : m,
+                      ));
+                    }
+                    const updated: ChatMessage[] = message
+                      ? [...prev, { id: generateUUID(), role: 'assistant', content: message, status: 'complete' as const, thinkingTraces: [] }]
+                      : prev.map((m) =>
+                          m.status === 'running' || m.status === 'thinking' || m.status === 'streaming'
+                            ? { ...m, status: 'complete' as const } : m,
+                        );
+                    return markPlans(updated);
+                  });
                   break;
+                }
                 case 'usage':
                   setUsage({
                     current: parsed.current ?? 0,
@@ -207,15 +422,11 @@ export function useAiChat(): UseAiChatReturn {
                     resetsAt: parsed.resetsAt ?? '',
                   });
                   break;
-                case 'error':
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantMsg.id
-                        ? { ...m, status: 'error', error: parsed.message || 'Request failed' }
-                        : m,
-                    ),
-                  );
+                case 'error': {
+                  currentThoughtIdRef.current = null;
+                  setMessages((prev) => [...prev, createErrorMessage(parsed.message || 'Request failed')]);
                   break;
+                }
               }
             } catch {
               // skip malformed events
@@ -227,29 +438,25 @@ export function useAiChat(): UseAiChatReturn {
         }
       }
 
-      // If we exited the loop without a 'complete' event, mark as complete
+      // Finalize any remaining streaming/thinking messages
       setMessages((prev) => {
-        const found = prev.find((m) => m.id === assistantMsg.id);
-        if (found && found.status === 'streaming') {
-          return prev.map((m) =>
-            m.id === assistantMsg.id ? { ...m, status: 'complete' } : m,
-          );
-        }
-        return prev;
+        currentThoughtIdRef.current = null;
+        return prev.map((m) =>
+          m.status === 'streaming' || m.status === 'thinking'
+            ? { ...m, status: 'complete' } : m,
+        );
       });
     } catch (error) {
       if (abortController.signal.aborted) {
         setIsStreaming(false);
         return;
       }
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantMsg.id
-            ? { ...m, status: 'error', error: error instanceof Error ? error.message : 'Network error' }
-            : m,
-        ),
-      );
+      currentThoughtIdRef.current = null;
+      setMessages((prev) => [...prev, createErrorMessage(
+        error instanceof Error ? error.message : 'Network error',
+      )]);
     } finally {
+      clearTimeout(fetchTimeout);
       setIsStreaming(false);
     }
   }, [messages]);
@@ -277,6 +484,10 @@ export function useAiChat(): UseAiChatReturn {
     setMessages([]);
     setUsage(null);
     setIsStreaming(false);
+    conversationIdRef.current = generateUUID();
+    fileSentRef.current = false;
+    toolStartTimesRef.current.clear();
+    currentThoughtIdRef.current = null;
   }, []);
 
   const abort = useCallback(() => {

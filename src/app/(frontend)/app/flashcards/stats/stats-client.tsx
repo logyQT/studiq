@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { BookOpen, Sparkles, Play, RotateCcw, AlertTriangle, ChevronDown, ChevronUp, ArrowUpDown, Filter } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -145,7 +145,6 @@ export default function StatsClient() {
 
   const [stateFilter, setStateFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('createdAt');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data: cardsData, isLoading: cardsLoading } = useApiQuery<CardStatsResponse>({
     queryKey: [...flashcardKeys.all, 'practice', 'cards-stats', { state: stateFilter, sortBy }],
@@ -157,12 +156,12 @@ export default function StatsClient() {
     url: '/api/v1/flashcards/practice/states',
   });
 
-  const { data: decks } = useApiQuery<Deck[]>({
+  const { data: _decks } = useApiQuery<Deck[]>({
     queryKey: flashcardKeys.decks.all,
     url: '/api/v1/flashcards/decks',
   });
 
-  const items = cardsData?.items ?? [];
+  const items = useMemo(() => cardsData?.items ?? [], [cardsData]);
 
   const summaryCards = useMemo(() => {
     const totalPracticed = items.filter((i) => i.totalAttempts > 0).length;
@@ -224,7 +223,7 @@ export default function StatsClient() {
             size="sm"
             onClick={() => setStateFilter(f)}
           >
-            {td(`state_${f === 'all' ? 'total' : f}` as any)}
+            {td(`state_${f === 'all' ? 'total' : f}`)}
           </Button>
         ))}
         <div className="ml-auto flex items-center gap-2">

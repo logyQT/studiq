@@ -11,11 +11,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Play, FolderOpen, Tags, BarChart3, BookOpen, Dumbbell, Sparkles } from 'lucide-react';
+import {
+  Play,
+  FolderOpen,
+  Tags,
+  BarChart3,
+  BookOpen as _BookOpen,
+  Dumbbell,
+  Sparkles,
+  Moon,
+} from 'lucide-react';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { Progress } from '@/components/ui/progress';
-import { GRADIENTS, getGradient } from '@/lib/color-utils';
+import { getGradient } from '@/lib/color-utils';
 
 interface Topic {
   id: string;
@@ -32,6 +41,7 @@ interface Deck {
 
 interface DueBreakdown {
   total: number;
+  nextReviewAt: string | null;
   byTopic: Record<string, number>;
   byDeck: Record<string, number>;
 }
@@ -115,6 +125,8 @@ export default function StudyClient() {
   const newCardsPerDay = settings?.newCardsPerDay ?? 20;
   const newProgress =
     newCardsPerDay > 0 ? ((newCardsPerDay - remainingNew) / newCardsPerDay) * 100 : 100;
+
+  const FLAT_LAYOUT = true;
 
   return (
     <Tabs defaultValue="review" className="space-y-6">
@@ -287,7 +299,23 @@ export default function StudyClient() {
                 <div className="flex items-center justify-between pt-2">
                   <div className="text-sm text-muted-foreground">
                     <span className="font-medium text-foreground">
-                      {displayedCount} {t('due_for_review')}
+                      {displayedCount > 0 ? (
+                        <>
+                          {displayedCount} {t('due_for_review')}
+                        </>
+                      ) : dueBreakdown?.nextReviewAt ? (
+                        <>
+                          {t('next_review_at')}{' '}
+                          {new Date(dueBreakdown.nextReviewAt).toLocaleString('pl-PL', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </>
+                      ) : (
+                        <>{t('due_for_review')}</>
+                      )}
                     </span>
                     {isFiltered && <span className="ml-2">({t('filtered')})</span>}
                   </div>
@@ -312,6 +340,37 @@ export default function StudyClient() {
               <Skeleton className="h-10 w-36" />
             </div>
           </Card>
+        ) : FLAT_LAYOUT ? (
+          <section className="space-y-3">
+            <h2 className="flex items-center gap-2 text-lg font-semibold">
+              <Sparkles className="h-5 w-5" /> {t('remaining_title')}
+            </h2>
+            <p className="text-sm text-muted-foreground">{t('remaining_desc')}</p>
+            {remainingNew > 0 ? (
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      {t('remaining_label', { remaining: remainingNew, total: newCardsPerDay })}
+                    </span>
+                    <span className="font-medium">{Math.round(newProgress)}%</span>
+                  </div>
+                  <Progress value={newProgress} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">{t('remaining_desc')}</p>
+                  <Button onClick={startLearning}>
+                    <Play className="mr-2 h-4 w-4" /> {t('start_learning')}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <Moon className="mx-auto h-12 w-12 text-muted-foreground/40 mb-4" />
+                <p className="text-muted-foreground">{t('limit_reached')}</p>
+              </div>
+            )}
+          </section>
         ) : (
           <Card>
             <CardHeader>

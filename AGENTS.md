@@ -26,6 +26,12 @@
 | `bun test:coverage` | `vitest run --coverage` |
 | `bun run test:e2e` | Playwright (starts its own server via `bunx supabase db reset && bun run build && bun run start`) |
 
+### Custom Commands
+
+| If you say | What I do |
+|-----------|-----------|
+| `commit propose` | Run `git diff --staged`, read the output, and propose a commit message in the repo's conventional commit style (e.g. `fix(scope):`, `feat(scope):`) |
+
 ### Running a single test
 
 ```bash

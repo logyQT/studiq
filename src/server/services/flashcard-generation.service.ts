@@ -1,9 +1,8 @@
+import { log } from '@/lib/logger';
 import { getModelsConfig } from '@/server/config/models.config';
 import { getProvider } from '@/server/providers/providerRegistry';
 import type { GeneratedFlashcard } from '@/server/providers/LLMProvider';
 import { pdfService } from './pdf.service';
-
-const LOG_PREFIX = '[FlashcardGenerationService]';
 
 export interface GenerationCallbacks {
   onFlashcards: (flashcards: GeneratedFlashcard[]) => void;
@@ -26,15 +25,15 @@ export class FlashcardGenerationService {
     language: string,
     callbacks: GenerationCallbacks,
   ): Promise<void> {
-    console.warn('[DEPRECATED] FlashcardGenerationService.generateStreaming is deprecated. Use AiCommandService.generateFlashcards() instead.');
+    log.ai.warn('[DEPRECATED] FlashcardGenerationService.generateStreaming is deprecated. Use AiCommandService.generateFlashcards() instead.');
     const config = getModelsConfig();
-    console.log(`${LOG_PREFIX} Config: provider=${config.provider}, model=${config.modelName}, baseUrl=${config.baseUrl}`);
+    log.ai.info('Config', { metadata: { provider: config.provider, model: config.modelName, baseUrl: config.baseUrl } });
 
     let provider;
     try {
       provider = getProvider(config);
     } catch (error) {
-      console.error(`${LOG_PREFIX} Failed to initialize provider:`, error);
+      log.ai.error('Failed to initialize provider', { metadata: { error } });
       callbacks.onError(error instanceof Error ? error.message : 'Failed to initialize LLM provider');
       return;
     }
@@ -43,7 +42,7 @@ export class FlashcardGenerationService {
     try {
       text = await pdfService.extractText(fileBuffer);
     } catch (error) {
-      console.error(`${LOG_PREFIX} PDF extraction failed:`, error);
+      log.pdf.error('PDF extraction failed', { metadata: { error } });
       callbacks.onError('Failed to extract text from PDF');
       return;
     }
@@ -75,7 +74,7 @@ export class FlashcardGenerationService {
         callbacks.onFlashcards(chunkCards);
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`${LOG_PREFIX} Chunk ${i + 1}/${totalChunks} failed:`, error);
+        log.ai.error(`Chunk ${i + 1}/${totalChunks} failed`, { metadata: { error } });
         callbacks.onError(`Chunk ${i + 1}/${totalChunks} failed: ${msg}`);
         return;
       }

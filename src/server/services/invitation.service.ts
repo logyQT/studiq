@@ -1,3 +1,4 @@
+import { log } from '@/lib/logger';
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
 import { CreateInviteInput } from '@/server/models';
@@ -46,7 +47,7 @@ export class InvitationService {
     }
     const inviteLink = `${baseUrl}/join?token=${invitation.token}`;
 
-    console.warn(`[DEV] Generated invite link for ${data.email}: ${inviteLink}`);
+    log.auth.warn(`[DEV] Generated invite link for ${data.email}: ${inviteLink}`);
 
     return {
       success: true,

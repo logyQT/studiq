@@ -1,8 +1,7 @@
+import { log } from '@/lib/logger';
 import { LLMProvider, GeneratedFlashcard, FLASHCARD_PROMPT, parseJsonResponse, type StreamCallbacks, type GenerateChatResult } from './LLMProvider';
 import type { ModelsConfig } from '@/server/config/models.config';
-import type { ToolDefinition } from '@/server/ai/ai.types';
-
-const LOG_PREFIX = '[OllamaProvider]';
+import type { ToolDefinition, ToolCall } from '@/server/ai/ai.types';
 
 export class OllamaProvider implements LLMProvider {
   private baseUrl: string;
@@ -11,7 +10,7 @@ export class OllamaProvider implements LLMProvider {
   constructor(config: ModelsConfig) {
     this.baseUrl = config.baseUrl || 'http://localhost:11434';
     this.modelName = config.modelName || 'phi3:mini';
-    console.log(`${LOG_PREFIX} Initialized: baseUrl=${this.baseUrl}, model=${this.modelName}`);
+    log.providers.info(`Initialized: baseUrl=${this.baseUrl}, model=${this.modelName}`);
   }
 
   async generateFlashcardsFromChunk(
@@ -21,10 +20,10 @@ export class OllamaProvider implements LLMProvider {
     const prompt = FLASHCARD_PROMPT.replace('{language}', language).replace('{chunk}', chunk);
     const chunkPreview = chunk.slice(0, 100).replace(/\n/g, ' ');
 
-    console.log(`${LOG_PREFIX} Generating flashcards: language=${language}, chunkLength=${chunk.length}, preview="${chunkPreview}..."`);
+    log.providers.info('Generating flashcards', { metadata: { language, chunkLength: chunk.length, preview: chunkPreview } });
 
     const url = `${this.baseUrl}/api/generate`;
-    console.log(`${LOG_PREFIX} POST ${url} model=${this.modelName}`);
+    log.providers.info(`POST ${url} model=${this.modelName}`);
 
     const res = await fetch(url, {
       method: 'POST',
@@ -38,13 +37,13 @@ export class OllamaProvider implements LLMProvider {
 
     if (!res.ok) {
       const body = await res.text().catch(() => '(no body)');
-      console.error(`${LOG_PREFIX} Request failed: status=${res.status}, body=${body}`);
+      log.providers.error('Request failed', { metadata: { status: res.status, body } });
       throw new Error(`Ollama request failed: ${res.status} ${res.statusText} — ${body}`);
     }
 
     const data = await res.json();
     const text = (data.response || '').trim();
-    console.log(`${LOG_PREFIX} Raw response length=${text.length}, start="${text.slice(0, 150)}...", end="...${text.slice(-200)}"`);
+    log.providers.info('Raw response', { metadata: { length: text.length, start: text.slice(0, 150), end: text.slice(-200) } });
 
     return parseJsonResponse(text);
   }
@@ -53,6 +52,8 @@ export class OllamaProvider implements LLMProvider {
     prompt: string,
     systemPrompt?: string,
     _tools?: ToolDefinition[],
+    _toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } },
+    _maxTokens?: number,
   ): Promise<GenerateChatResult | string> {
     const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
 
@@ -75,7 +76,7 @@ export class OllamaProvider implements LLMProvider {
     return (data.response || '').trim();
   }
 
-  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks): Promise<string> {
+  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks, _tools?: ToolDefinition[], _toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, _maxTokens?: number, _reasoningEffort?: 'low' | 'medium' | 'high'): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
     const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
 
     const res = await fetch(`${this.baseUrl}/api/generate`, {
@@ -125,6 +126,6 @@ export class OllamaProvider implements LLMProvider {
       }
     }
 
-    return fullContent;
+    return { content: fullContent };
   }
 }

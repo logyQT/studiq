@@ -42,7 +42,7 @@ interface CardStateInfo {
 
 function getCardStateInfo(
   card: Flashcard | null,
-  t: (key: string, params?: any) => string,
+  t: (key: string, params?: Record<string, string | number | Date>) => string,
 ): CardStateInfo {
   if (!card) return { label: '', labelKey: '', isLeech: false };
 
@@ -105,6 +105,8 @@ interface SessionClientProps {
   targetCount: number;
   hasMore: boolean;
   deckIds?: string[];
+  topicIds?: string[];
+  newOnly?: boolean;
 }
 
 export default function SessionClient({
@@ -114,6 +116,8 @@ export default function SessionClient({
   targetCount,
   hasMore: initialHasMore,
   deckIds,
+  topicIds,
+  newOnly,
 }: SessionClientProps) {
   const t = useTranslations('AppFlashcardSessionPage');
   const router = useRouter();
@@ -131,7 +135,7 @@ export default function SessionClient({
   >([]);
   const hasFinalisedRef = useRef(false);
   const leechedCardIdsRef = useRef<Set<string>>(new Set());
-  const suspendedIdsRef = useRef<Set<string>>(new Set());
+  const [suspendedIds, setSuspendedIds] = useState<Set<string>>(new Set());
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -157,8 +161,8 @@ export default function SessionClient({
   });
 
   const visibleCards = useMemo(
-    () => cards.filter((c) => !suspendedIdsRef.current.has(c.id)),
-    [cards],
+    () => cards.filter((c) => !suspendedIds.has(c.id)),
+    [cards, suspendedIds],
   );
 
   const currentCard = visibleCards[currentIndex] ?? null;
@@ -166,7 +170,12 @@ export default function SessionClient({
 
   const fetchDueCards = useCallback(async (): Promise<Flashcard[]> => {
     try {
-      const res = await fetch(`/api/v1/flashcards/practice/due?limit=${BATCH_SIZE}`);
+      const params = new URLSearchParams();
+      params.set('limit', String(BATCH_SIZE));
+      if (deckIds && deckIds.length > 0) params.set('deckIds', deckIds.join(','));
+      if (topicIds && topicIds.length > 0) params.set('topicIds', topicIds.join(','));
+      if (newOnly) params.set('newOnly', 'true');
+      const res = await fetch(`/api/v1/flashcards/practice/due?${params.toString()}`);
       if (!res.ok) return [];
       const body = await res.json();
       return (body.data ?? []).map(
@@ -191,7 +200,7 @@ export default function SessionClient({
     } catch {
       return [];
     }
-  }, []);
+  }, [deckIds, topicIds, newOnly]);
 
   const sendBatchUpdate = useCallback(async () => {
     if (pendingUpdatesRef.current.length === 0) return;
@@ -214,6 +223,9 @@ export default function SessionClient({
             }
           }
         }
+      } else {
+        console.error('[sendBatchUpdate] server returned', res.status);
+        pendingUpdatesRef.current.unshift(...batch);
       }
     } catch {
       pendingUpdatesRef.current.unshift(...batch);
@@ -225,7 +237,7 @@ export default function SessionClient({
       setLeechDialogCardId(cardId);
       setLeechDialogResolve(() => resolve);
     });
-  }, []);
+  }, [setLeechDialogCardId, setLeechDialogResolve]);
 
   const handleLeechAction = useCallback(
     (action: 'suspend' | 'keep') => {
@@ -233,7 +245,7 @@ export default function SessionClient({
       setLeechDialogCardId(null);
       setLeechDialogResolve(null);
     },
-    [leechDialogResolve],
+    [leechDialogResolve, setLeechDialogCardId, setLeechDialogResolve],
   );
 
   useEffect(() => {
@@ -286,6 +298,7 @@ export default function SessionClient({
     allCaughtUp,
     totalAnswered,
     correctCount,
+    startedAt,
     isCram,
     isReview,
     deckIds,
@@ -311,7 +324,7 @@ export default function SessionClient({
 
   const advanceCard = useCallback(async () => {
     const nextRaw = visibleCards.findIndex(
-      (c, i) => i > currentIndex && !suspendedIdsRef.current.has(c.id),
+      (c, i) => i > currentIndex && !suspendedIds.has(c.id),
     );
     if (nextRaw !== -1) {
       setCurrentIndex(nextRaw);
@@ -320,7 +333,7 @@ export default function SessionClient({
     }
 
     if (isCram) {
-      const anyUnsuspended = visibleCards.some((c) => !suspendedIdsRef.current.has(c.id));
+      const anyUnsuspended = visibleCards.some((c) => !suspendedIds.has(c.id));
       if (anyUnsuspended) {
         setCurrentIndex(0);
         setFlipped(false);
@@ -344,7 +357,7 @@ export default function SessionClient({
     } else {
       setAllCaughtUp(true);
     }
-  }, [visibleCards, currentIndex, isCram, hasMore, fetchDueCards]);
+  }, [visibleCards, currentIndex, isCram, hasMore, fetchDueCards, suspendedIds]);
 
   const handleAnswer = useCallback(
     async (wasCorrect: boolean, confidenceLevel: number) => {
@@ -375,7 +388,7 @@ export default function SessionClient({
         await advanceCard();
 
         if (!isCram) {
-          const remaining = visibleCards.filter((c) => !suspendedIdsRef.current.has(c.id)).length;
+          const remaining = visibleCards.filter((c) => !suspendedIds.has(c.id)).length;
           if (remaining <= REFILL_THRESHOLD) {
             refillQueue();
           }
@@ -394,6 +407,7 @@ export default function SessionClient({
       advanceCard,
       refillQueue,
       visibleCards,
+      suspendedIds,
     ],
   );
 
@@ -403,13 +417,12 @@ export default function SessionClient({
     if (leechedCardIdsRef.current.has(id) || cardState.isLeech) {
       showLeechDialog(id).then((action) => {
         if (action === 'suspend') {
-          suspendedIdsRef.current.add(id);
-          setCards((prev) => [...prev]);
+          setSuspendedIds(prev => new Set(prev).add(id));
           advanceCard();
         }
       });
     }
-  }, [currentCard?.id, cardState.isLeech, leechDialogCardId, showLeechDialog, advanceCard]);
+  }, [currentCard?.id, currentCard, cardState.isLeech, leechDialogCardId, showLeechDialog, advanceCard]);
 
   const backUrl = mode === 'quick' ? '/app' : '/app/flashcards/study';
 
@@ -460,7 +473,7 @@ export default function SessionClient({
       if (e.key === 'p') {
         const audio = document.querySelector('audio') as HTMLAudioElement | null;
         if (audio) {
-          audio.paused ? audio.play() : audio.pause();
+          if (audio.paused) { audio.play(); } else { audio.pause(); }
         }
         return;
       }
