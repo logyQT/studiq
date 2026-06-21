@@ -28,7 +28,7 @@ export class OpenCodeProvider implements LLMProvider {
     log.providers.info(`POST ${this.baseUrl} model=${this.modelName}`);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120_000);
+    const timeout = setTimeout(() => controller.abort(), 180_000);
 
     try {
       const res = await fetch(this.baseUrl, {
@@ -49,13 +49,13 @@ export class OpenCodeProvider implements LLMProvider {
 
       if (!res.ok) {
         const text = await res.text().catch(() => '(no body)');
-        log.providers.error('Request failed', { metadata: { status: res.status, body: text } });
+        log.providers.error(`Request failed: status=${res.status}, body=${text}`, { metadata: { body: text } });
         throw new Error(`OpenCode request failed: ${res.status} ${text}`);
       }
 
       const data = await res.json();
       const content = data.choices?.[0]?.message?.content || '';
-      log.providers.info('Raw response', { metadata: { length: content.length, preview: content.slice(0, 200) } });
+      log.providers.info(`Raw response length=${content.length}`, { metadata: { preview: content.slice(0, 200) } });
 
       return parseJsonResponse(content);
     } finally {
@@ -87,7 +87,7 @@ export class OpenCodeProvider implements LLMProvider {
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120_000);
+    const timeout = setTimeout(() => controller.abort(), 180_000);
 
     let data: Record<string, unknown>;
     try {
@@ -157,7 +157,7 @@ export class OpenCodeProvider implements LLMProvider {
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120_000);
+    const timeout = setTimeout(() => controller.abort(), 180_000);
 
     let res: Response;
     try {

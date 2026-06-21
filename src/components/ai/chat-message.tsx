@@ -146,7 +146,7 @@ function ThoughtMessage({ message }: { message: ChatMessageType }) {
             </span>
           )}
         </button>
-        {(open || isThinking) && message.content && (
+        {open && message.content && (
           <div className="whitespace-pre-wrap px-3 pb-2 text-muted-foreground/80">
             {message.content}
             {isThinking && <span className="animate-pulse">▌</span>}
