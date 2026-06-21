@@ -50,6 +50,18 @@ export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      let closed = false;
+      const safeClose = () => {
+        if (closed) return;
+        closed = true;
+        clearTimeout(streamTimeout);
+        try { controller.close(); } catch { /* already closed */ }
+      };
+      const streamTimeout = setTimeout(() => {
+        console.error(`${LOG_PREFIX} Stream timeout — closing after 5min`);
+        safeClose();
+      }, 300_000);
+
       const send = (event: string, data: unknown) => {
         console.log(`${LOG_PREFIX} SSE → event=${event}, data=${JSON.stringify(data).slice(0, 200)}`);
         controller.enqueue(encoder.encode(sseEvent(event, data)));
@@ -64,20 +76,20 @@ export async function POST(req: NextRequest) {
         console.log(`${LOG_PREFIX} Routing: agent pipeline (FEATURE_FLAG_AGENTIC=true), conversationId=${conversationId ?? 'none'}`);
 
         await aiAgentController.process(text, file, conversationId, ctx, {
-          onThought: (data) => send('thought', data),
-          onThinking: (text) => send('thinking', { text }),
-          onToken: (token) => send('token', { text: token }),
-          onToolCall: (data) => send('tool_call', data),
-          onToolResult: (data) => send('tool_result', data),
-          onFlashcards: (data) => send('flashcards', data),
-          onQuestion: (data) => send('question', data),
-          onComplete: (summary) => {
+          onThought: (data: unknown) => send('thought', data),
+          onThinking: (text: string) => send('thinking', { text }),
+          onToken: (token: string) => send('token', { text: token }),
+          onToolCall: (data: unknown) => send('tool_call', data),
+          onToolResult: (data: unknown) => send('tool_result', data),
+          onFlashcards: (data: unknown) => send('flashcards', data),
+          onQuestion: (data: unknown) => send('question', data),
+          onComplete: (summary: unknown) => {
             send('complete', { message: summary });
-            controller.close();
+            safeClose();
           },
-          onError: (message) => {
+          onError: (message: string) => {
             send('error', { message });
-            controller.close();
+            safeClose();
           },
         });
       } else {
@@ -86,30 +98,30 @@ export async function POST(req: NextRequest) {
 
         if (isFlashcard) {
           await aiCommandController.chat(text, file, conversationId, ctx, {
-            onThink: (trace) => send('thinking', { text: trace }),
+            onThink: (trace: string) => send('thinking', { text: trace }),
             onToken: () => {},
-            onFlashcards: (data) => send('flashcards', data),
-            onComplete: (summary) => {
+            onFlashcards: (data: unknown) => send('flashcards', data),
+            onComplete: (summary: unknown) => {
               send('complete', { message: summary });
-              controller.close();
+              safeClose();
             },
-            onError: (message) => {
+            onError: (message: string) => {
               send('error', { message });
-              controller.close();
+              safeClose();
             },
           });
         } else {
           await chatController.chat(body, ctx, {
-            onToken: (token) => send('token', { text: token }),
-            onResult: (type, data) => send('result', { type, data }),
-            onComplete: (summary) => {
+            onToken: (token: string) => send('token', { text: token }),
+            onResult: (type: string, data: unknown) => send('result', { type, data }),
+            onComplete: (summary: unknown) => {
               send('complete', { message: summary });
-              controller.close();
+              safeClose();
             },
-            onUsage: (usage) => send('usage', usage),
-            onError: (message) => {
+            onUsage: (usage: unknown) => send('usage', usage),
+            onError: (message: string) => {
               send('error', { message });
-              controller.close();
+              safeClose();
             },
           });
         }

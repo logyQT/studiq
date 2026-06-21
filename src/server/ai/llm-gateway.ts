@@ -46,7 +46,7 @@ async function generateStreamingWithRetry(
       const result = await provider.generateChatStreaming(req.prompt, req.systemPrompt, {
         onToken: () => {},
         onReasoning: req.onReasoningToken ? (token: string) => req.onReasoningToken!(token) : () => {},
-      }, req.tools, req.toolChoice, req.reasoningEffort);
+      }, req.tools, req.toolChoice, req.maxTokens, req.reasoningEffort);
       return result;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -126,7 +126,7 @@ export async function callLLMStreaming(
   }
 
   try {
-    const result = await provider.generateChatStreaming(req.prompt, req.systemPrompt, callbacks, req.tools, req.toolChoice, req.reasoningEffort);
+    const result = await provider.generateChatStreaming(req.prompt, req.systemPrompt, callbacks, req.tools, req.toolChoice, req.maxTokens, req.reasoningEffort);
 
     return {
       content: result.content,

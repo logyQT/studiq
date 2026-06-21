@@ -101,6 +101,10 @@ export function useAiChat(): UseAiChatReturn {
     setMessages((prev) => [...prev, userMsg, initialThought]);
     setIsStreaming(true);
 
+    const fetchTimeout = setTimeout(() => {
+      abortController.abort();
+    }, 300_000);
+
     try {
       const history = messages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -391,6 +395,7 @@ export function useAiChat(): UseAiChatReturn {
         error instanceof Error ? error.message : 'Network error',
       )]);
     } finally {
+      clearTimeout(fetchTimeout);
       setIsStreaming(false);
     }
   }, [messages]);

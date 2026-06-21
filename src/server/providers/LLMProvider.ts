@@ -20,7 +20,7 @@ export type GenerateChatResult = {
 export interface LLMProvider {
   generateFlashcardsFromChunk(chunk: string, language: string): Promise<GeneratedFlashcard[]>;
   generateChat(prompt: string, systemPrompt?: string, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, maxTokens?: number): Promise<GenerateChatResult | string>;
-  generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, reasoningEffort?: 'low' | 'medium' | 'high'): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }>;
+  generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, maxTokens?: number, reasoningEffort?: 'low' | 'medium' | 'high'): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }>;
 }
 
 function tryParse(raw: string): unknown {

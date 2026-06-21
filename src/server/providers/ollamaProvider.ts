@@ -77,7 +77,7 @@ export class OllamaProvider implements LLMProvider {
     return (data.response || '').trim();
   }
 
-  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks, _tools?: ToolDefinition[], _toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, _reasoningEffort?: 'low' | 'medium' | 'high'): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
+  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks, _tools?: ToolDefinition[], _toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, _maxTokens?: number, _reasoningEffort?: 'low' | 'medium' | 'high'): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
     const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
 
     const res = await fetch(`${this.baseUrl}/api/generate`, {
