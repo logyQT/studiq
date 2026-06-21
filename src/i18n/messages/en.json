@@ -701,7 +701,8 @@
     "state_learning": "Learning",
     "state_review": "Review",
     "state_relearning": "Relearning",
-    "state_leech": "Leech"
+    "state_leech": "Leech",
+    "next_review_at": "Next review:"
   },
   "AppFlashcardStatsPage": {
     "title": "Card Statistics",

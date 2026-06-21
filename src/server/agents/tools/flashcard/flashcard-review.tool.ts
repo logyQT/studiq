@@ -46,7 +46,7 @@ export const flashcardReviewTool: Tool = {
     const kept = reviewResult.kept?.map((i: number) => parsed.cards[i]).filter(Boolean) || [];
     const dropped = parsed.cards.filter((_: { front: string; back: string; topic?: string }, i: number) => !reviewResult.kept?.includes(i));
 
-    const deckName = (ctx.state.results['deckName'] as string) || 'AI Generated Flashcards';
+    const _deckName = (ctx.state.results['deckName'] as string) || 'AI Generated Flashcards';
 
     ctx.state.results['flashcards'] = kept;
     if (dropped.length > 0) {

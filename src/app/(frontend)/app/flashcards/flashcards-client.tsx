@@ -46,9 +46,10 @@ export default function FlashcardsClient() {
   const deckCount = decks?.length ?? 0;
   const topicCount = topics?.length ?? 0;
   const dueCount = dueBreakdown?.total ?? 0;
-  const nextReviewLabel = dueCount === 0 && dueBreakdown?.nextReviewAt
-    ? `Next: ${new Date(dueBreakdown.nextReviewAt).toLocaleString('pl-PL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
-    : '';
+  const nextReviewLabel =
+    dueCount === 0 && dueBreakdown?.nextReviewAt
+      ? `${t('next_review_at')} ${new Date(dueBreakdown.nextReviewAt).toLocaleString('pl-PL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+      : '';
 
   const panels = [
     {

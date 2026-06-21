@@ -1,6 +1,7 @@
 import { getProvider } from '@/server/providers/providerRegistry';
 import { getModelsConfig } from '@/server/config/models.config';
 import { AppError } from '@/lib/errors';
+import type { LLMProvider } from '@/server/providers/LLMProvider';
 import type { RequestContext } from '@/lib/request-context';
 import type { LLMGatewayRequest, LLMGatewayResponse, GatewayStreamCallbacks } from './ai.types';
 
@@ -35,7 +36,7 @@ function resolveProviderConfig(req: LLMGatewayRequest) {
 }
 
 async function generateStreamingWithRetry(
-  provider: { generateChatStreaming: Function },
+  provider: LLMProvider,
   req: LLMGatewayRequest,
 ): Promise<{ content: string; reasoning?: string; toolCalls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> }> {
   let lastError: Error | null = null;

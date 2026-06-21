@@ -1,6 +1,7 @@
 'use client';
 
 import { type ReactNode, memo } from 'react';
+import Image from 'next/image';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -89,7 +90,11 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, classN
           ),
           del: ({ children }) => <del className="line-through">{children}</del>,
           img: ({ src, alt }) =>
-            src ? <img src={src} alt={alt ?? ''} className="block max-w-full max-h-48 h-auto rounded-lg mx-auto" /> : null,
+            src ? (
+              <div className="relative max-w-full h-48 mx-auto">
+                <Image src={src as string} alt={alt ?? ''} fill className="object-contain rounded-lg" sizes="(max-width: 768px) 100vw, 768px" />
+              </div>
+            ) : null,
           hr: () => <hr className="my-2 border-border" />,
           audio: ({ src }) =>
             typeof src === 'string' ? <audio controls src={src} className="w-full min-w-96 h-9 my-2 rounded-lg" /> : null,

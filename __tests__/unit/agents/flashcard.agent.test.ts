@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('@/lib/zod', () => {
-  const zod = require('zod');
-  return { z: zod, registry: { register: vi.fn() } };
+vi.mock('@/lib/zod', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/zod')>();
+  return { ...actual, registry: { register: vi.fn() } };
 });
 
 import { FlashcardAgent } from '@/server/agents/flashcard.agent';

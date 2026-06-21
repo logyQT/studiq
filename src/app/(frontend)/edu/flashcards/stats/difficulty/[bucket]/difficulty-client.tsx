@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useCallback, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -25,7 +25,6 @@ export default function DifficultyBucketClient() {
   const bucket = params.bucket as string;
   const t = useTranslations('DifficultyPage');
   const queryClient = useQueryClient();
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [deckIds, setDeckIds] = useState<string[]>([]);
   const [topicIds, setTopicIds] = useState<string[]>([]);
 
@@ -53,17 +52,10 @@ export default function DifficultyBucketClient() {
     });
   }, [data, deckIds, topicIds]);
 
-  const invalidateWithDebounce = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.difficultyBucket(bucket) });
-    }, 10000);
-  }, [queryClient, bucket]);
-
   useRealtimeChannel(
     channel(`difficulty-${bucket}`)
-      .listen('flashcard_practice', invalidateWithDebounce)
-      .listen('flashcard_review_state', invalidateWithDebounce),
+      .listen('flashcard_practice', () => { queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.difficultyBucket(bucket) }); })
+      .listen('flashcard_review_state', () => { queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.difficultyBucket(bucket) }); }),
   );
 
   const titleKey = `title_${bucket}` as 'title_easy' | 'title_medium' | 'title_hard' | 'title_new';

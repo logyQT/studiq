@@ -16,7 +16,7 @@ import {
   FolderOpen,
   Tags,
   BarChart3,
-  BookOpen,
+  BookOpen as _BookOpen,
   Dumbbell,
   Sparkles,
   Moon,
@@ -24,7 +24,7 @@ import {
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { Progress } from '@/components/ui/progress';
-import { GRADIENTS, getGradient } from '@/lib/color-utils';
+import { getGradient } from '@/lib/color-utils';
 
 interface Topic {
   id: string;

@@ -63,7 +63,7 @@ export class AgentService {
         const promptPreview = req.prompt.slice(0, 500);
         const toolNames = ((req.tools as LLMGatewayRequest['tools']) || []).map((t) => t.function.name);
 
-        agentTraceService.log({
+        await agentTraceService.log({
           conversationId,
           agentName: 'general',
           eventType: 'llm_request',
@@ -79,10 +79,10 @@ export class AgentService {
           maxTokens: req.maxTokens,
           onReasoningToken: req.onReasoning,
           ...modelConfig,
-          onRetry: (attempt, maxRetries, delayMs) => {
+          onRetry: async (attempt, maxRetries, delayMs) => {
             const msg = `LLM temporarily unavailable, retrying in ${delayMs / 1000}s (${attempt}/${maxRetries})...`;
             callbacks.onThinking?.(msg);
-            agentTraceService.log({
+            await agentTraceService.log({
               conversationId,
               agentName: 'general',
               eventType: 'retry',
@@ -94,7 +94,7 @@ export class AgentService {
 
         const toolCallsInfo = resp.toolCalls?.map((tc) => ({ name: tc.function.name, args: tc.function.arguments }));
 
-        agentTraceService.log({
+        await agentTraceService.log({
           conversationId,
           agentName: 'general',
           eventType: 'llm_response',

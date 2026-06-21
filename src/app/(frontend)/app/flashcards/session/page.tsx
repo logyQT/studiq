@@ -123,7 +123,7 @@ export default async function SessionPage({ searchParams }: SessionPageProps) {
       mode={mode}
       studyMode={studyMode}
       targetCount={targetCount}
-      hasMore={!isCram && initialCards.length >= batchSize}
+      hasMore={!isCram && initialCards.length > 0}
       deckIds={deckIds}
       topicIds={topicIds}
       newOnly={newOnly}

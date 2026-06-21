@@ -62,7 +62,8 @@ export class FlashcardPracticeService {
       try {
         const reviewState = await this.upsertReviewState(item.flashcardId, item.wasCorrect, item.confidenceLevel, ctx);
         results.push({ flashcardId: item.flashcardId, isLeech: reviewState.is_leech });
-      } catch {
+      } catch (err) {
+        console.error(`[batch] upsertReviewState failed for card ${item.flashcardId}:`, err);
         results.push({ flashcardId: item.flashcardId, isLeech: false });
       }
     }
@@ -348,6 +349,7 @@ export class FlashcardPracticeService {
     });
 
     if (error) {
+      console.error('[getStateBreakdown] RPC failed:', JSON.stringify(error));
       return { totalCards: 0, neverPracticed: 0, learning: 0, review: 0, relearning: 0, leeched: 0 };
     }
 
@@ -392,6 +394,13 @@ export class FlashcardPracticeService {
     filters?: { deckIds?: string[]; topicIds?: string[]; state?: string; sortBy?: string; order?: string; limit?: number; cursor?: string },
   ) {
     const supabase = await createClient();
+
+    interface CardStatsItem {
+      id: string; front: string; back: string; createdAt: string; state: string;
+      totalAttempts: number; correctRate: number; lastPracticedAt: string | null;
+      easinessFactor: number | null; intervalDays: number | null; nextReviewAt: string | null;
+      repetitions: number | null; isLeech: boolean; learningStep: number | null; lapseCount: number | null;
+    }
 
     const cardFilter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     let query = supabase
@@ -480,9 +489,9 @@ export class FlashcardPracticeService {
       items = items.filter((i) => i.state === filters.state);
     }
 
-    const sortField = filters?.sortBy ?? 'createdAt';
+    const sortField = (filters?.sortBy ?? 'createdAt') as keyof CardStatsItem;
     const sortOrder = filters?.order === 'asc' ? 1 : -1;
-    items.sort((a: any, b: any) => {
+    items.sort((a: CardStatsItem, b: CardStatsItem) => {
       const av = a[sortField] ?? '';
       const bv = b[sortField] ?? '';
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * sortOrder;
@@ -586,15 +595,21 @@ export class FlashcardPracticeService {
       .in('id', matchingIds);
     if (error) throw mapSupabaseError(error);
 
-    return (flashcards ?? []).map((fc: any) => {
+    interface FlashcardRow {
+      id: string; front: string; back: string; created_at: string;
+      flashcard_deck_assignments?: Array<{ deck_id: string; flashcard_decks?: Array<{ name: string }> }>;
+      flashcard_topic_assignments?: Array<{ topic_id: string; flashcard_topics?: Array<{ name: string }> }>;
+    }
+
+    return (flashcards ?? []).map((fc: FlashcardRow) => {
       const state = stateByCard.get(fc.id);
       return {
         id: fc.id,
         front: fc.front,
         back: fc.back,
-        createdAt: fc.created_at,
-        deckName: fc.flashcard_deck_assignments?.[0]?.flashcard_decks?.name ?? null,
-        topicNames: fc.flashcard_topic_assignments?.map((a: any) => a.flashcard_topics?.name).filter(Boolean) ?? [],
+        createdAt: fc.created_at ?? null,
+        deckName: fc.flashcard_deck_assignments?.[0]?.flashcard_decks?.[0]?.name ?? null,
+        topicNames: fc.flashcard_topic_assignments?.flatMap((a) => a.flashcard_topics?.map((t) => t.name) ?? []) ?? [],
         reviewState: state
           ? {
               easinessFactor: state.easiness_factor,

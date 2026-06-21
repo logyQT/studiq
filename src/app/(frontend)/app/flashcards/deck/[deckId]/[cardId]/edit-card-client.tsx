@@ -39,14 +39,12 @@ export default function EditCardClient({ deckId, cardId }: EditCardClientProps) 
     url: `/api/v1/flashcards/${cardId}`,
   });
 
-  useEffect(() => {
-    if (flashcard && !initialized) {
-      setFront(flashcard.front);
-      setBack(flashcard.back);
-      setTopicIds(flashcard.flashcard_topic_assignments?.map((a) => a.topic_id) ?? []);
-      setInitialized(true);
-    }
-  }, [flashcard, initialized]);
+  if (flashcard && !initialized) {
+    setInitialized(true);
+    setFront(flashcard.front);
+    setBack(flashcard.back);
+    setTopicIds(flashcard.flashcard_topic_assignments?.map((a) => a.topic_id) ?? []);
+  }
 
   const truncatedLabel = front.length > 30 ? front.substring(0, 30) + '...' : front;
 

@@ -17,7 +17,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
-import { LogOut, Globe, Sun, Moon, Check, ChevronRight } from 'lucide-react';
+import { LogOut, Globe, Sun, Moon, Check } from 'lucide-react';
 import { UserRole } from '@/types';
 import { cn } from '@/lib/utils';
 

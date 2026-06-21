@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Check, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 interface ToolCallBlockProps {
   toolName: string;
@@ -13,7 +12,7 @@ interface ToolCallBlockProps {
   durationMs?: number;
 }
 
-export function ToolCallBlock({ toolName, label, status, args, result, durationMs }: ToolCallBlockProps) {
+export function ToolCallBlock({ toolName: _toolName, label, status, args, result, durationMs }: ToolCallBlockProps) {
   const [expanded, setExpanded] = useState(false);
   const isRunning = status === 'running';
 

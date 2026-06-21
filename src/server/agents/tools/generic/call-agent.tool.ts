@@ -1,5 +1,5 @@
 import { z } from '@/lib/zod';
-import type { Tool, AgentResult } from '../types';
+import type { Tool, AgentResult, ToolContext } from '../types';
 
 const params = z.object({
   agent: z.string(),
@@ -47,7 +47,7 @@ export const callAgentTool: Tool = {
     };
 
     const agentExecute = agent as {
-      execute(task: string, ctx: any): Promise<AgentResult>;
+      execute(task: string, ctx: ToolContext): Promise<AgentResult>;
     };
 
     const result = await agentExecute.execute(parsed.task, { ...ctx, state: subState });

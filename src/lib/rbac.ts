@@ -44,6 +44,7 @@ async function ensureRolePermissionsLoaded(): Promise<RolePermissionMap> {
       .select('role, scope, permissions!inner(name)');
 
     if (error || !data) {
+      console.error('[ensureRolePermissionsLoaded] query failed:', JSON.stringify(error), 'data:', !!data);
       cachedRolePermissions = new Map();
       return cachedRolePermissions;
     }

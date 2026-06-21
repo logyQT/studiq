@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('@/lib/zod', () => {
-  const zod = require('zod');
-  return { z: zod, registry: { register: vi.fn() } };
+vi.mock('@/lib/zod', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/zod')>();
+  return { ...actual, registry: { register: vi.fn() } };
 });
 
-const z = require('zod');
+import * as z from 'zod';
 import { BaseAgent, zodToJsonSchema } from '@/server/agents/core';
-import type { Tool, ToolContext, AgentResult, AgentCallbacks, ToolDefinition } from '@/server/agents/tools/types';
+import type { Tool, ToolContext, AgentCallbacks, ToolDefinition } from '@/server/agents/tools/types';
 
 class TestAgent extends BaseAgent {
   readonly name = 'test_agent';

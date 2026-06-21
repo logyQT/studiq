@@ -117,7 +117,7 @@ export class AiCommandService {
     // Step 3: Review — quality gate, drop bad cards
     console.log(`${LOG_PREFIX} === Step 3/3: Review ===`);
     callbacks?.onThink('Reviewing flashcards for quality...');
-    const { kept, reasons } = await this.reviewFlashcards(rawCards, ctx);
+    const { kept, reasons: _reasons } = await this.reviewFlashcards(rawCards, ctx);
     const reviewedCards = kept.map((i) => rawCards[i]).filter(Boolean);
     const elapsed = Date.now() - pipelineStart;
     const droppedCount = rawCards.length - reviewedCards.length;

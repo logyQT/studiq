@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Badge as _Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -112,7 +112,7 @@ export function DeckDetailDialogs({
   state,
   handlers,
   flashcards,
-  currentDeck,
+  currentDeck: _currentDeck,
   allDecks,
   topics,
   t,

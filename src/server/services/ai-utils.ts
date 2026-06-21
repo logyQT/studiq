@@ -111,13 +111,13 @@ export function parseToolCallArgs<T = Record<string, unknown>>(toolCalls: Array<
   console.log(`${LOG_PREFIX} parseToolCallArgs: parsing "${toolName}", args length=${toolCall.function.arguments.length}`);
   try {
     return JSON.parse(toolCall.function.arguments) as T;
-  } catch (parseError) {
+  } catch (_parseError) {
     console.log(`${LOG_PREFIX} parseToolCallArgs: JSON.parse failed for "${toolName}", attempting repair`);
     try {
       const repaired = repairJson(toolCall.function.arguments);
       console.log(`${LOG_PREFIX} parseToolCallArgs: repaired args (first 200): ${repaired.slice(0, 200)}`);
       return JSON.parse(repaired) as T;
-    } catch (repairError) {
+    } catch (_repairError) {
       console.error(`${LOG_PREFIX} parseToolCallArgs: repair also failed for "${toolName}"`);
       return null;
     }
