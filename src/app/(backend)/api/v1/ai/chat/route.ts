@@ -56,12 +56,17 @@ export async function POST(req: NextRequest) {
         clearTimeout(streamTimeout);
         try { controller.close(); } catch { /* already closed */ }
       };
-      const streamTimeout = setTimeout(() => {
+      let streamTimeout = setTimeout(() => {
         log.api.error('Stream timeout — closing after 5min');
         safeClose();
       }, 300_000);
 
       const send = (event: string, data: unknown) => {
+        clearTimeout(streamTimeout);
+        streamTimeout = setTimeout(() => {
+          log.api.error('Stream timeout — closing after 5min');
+          safeClose();
+        }, 300_000);
         log.api.info(`SSE → event=${event}, data=${JSON.stringify(data).slice(0, 200)}`);
         controller.enqueue(encoder.encode(sseEvent(event, data)));
       };

@@ -19,6 +19,7 @@ import {
   Download,
   Sparkles,
   Layers,
+  MoreVertical,
 } from 'lucide-react';
 import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { BreadcrumbUpdater } from '@/components/providers/BreadcrumbProvider';
@@ -30,8 +31,13 @@ import { flashcardKeys } from '@/lib/query-keys';
 import { DeckDetailSkeleton } from '@/components/flashcards/deck-detail-skeleton';
 import { FlashcardCard } from '@/components/flashcards/flashcard-card';
 import { FlashcardBulkActions } from '@/components/flashcards/flashcard-bulk-actions';
-import { TooltipProvider, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import * as TooltipPrimitive from '@radix-ui/react-tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 const DeckDetailDialogs = lazy(() =>
   import('@/components/flashcards/deck-detail-dialogs').then((mod) => ({
     default: mod.DeckDetailDialogs,
@@ -45,7 +51,7 @@ import type { Deck, Flashcard, Topic } from '@/types/flashcards';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
 import { UserRole } from '@/types';
-import { getGradient } from '@/lib/color-utils';
+import { getGradientHex } from '@/lib/color-utils';
 
 interface DeckDetailScreenProps {
   deckId: string;
@@ -66,7 +72,7 @@ export function DeckDetailScreen({
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const role = user?.app_metadata?.role as UserRole | undefined;
-  const gradient = getGradient(deckId);
+  const headerGrad = getGradientHex(deckId);
 
   const {
     data: flashcardsData,
@@ -477,108 +483,80 @@ export function DeckDetailScreen({
     <div className="space-y-6">
       <BreadcrumbUpdater label={currentDeck?.name ?? ''} href="#" />
 
-      <div className={`relative group rounded-xl bg-gradient-to-br ${gradient} p-8 text-white`}>
-        <div className="absolute inset-0 rounded-xl bg-black/10 pointer-events-none" />
-        <div className="absolute right-4 top-4 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <TooltipProvider delayDuration={500}>
-            {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
-              <TooltipPrimitive.Root>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20"
-                    onClick={() =>
-                      setD((prev) => ({
-                        ...prev,
-                        deckEditOpen: true,
-                        deckFormData: {
-                          name: currentDeck?.name ?? '',
-                          description: currentDeck?.description ?? '',
-                        },
-                      }))
-                    }
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t('menu_edit')}</TooltipContent>
-              </TooltipPrimitive.Root>
-            )}
-            {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
-              <TooltipPrimitive.Root>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20"
-                    onClick={() => setImportOpen(true)}
-                  >
-                    <Upload className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t('import_csv')}</TooltipContent>
-              </TooltipPrimitive.Root>
-            )}
-            <TooltipPrimitive.Root>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/20"
-                  onClick={() => {
-                    const params = deckId ? `?deckId=${deckId}` : '';
-                    window.open(`/api/v1/flashcards/export/csv${params}`, '_blank');
-                  }}
+      <div className="relative rounded-xl border bg-card p-6">
+        <div className="absolute right-4 top-4 z-10">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
+                <DropdownMenuItem
+                  onClick={() =>
+                    setD((prev) => ({
+                      ...prev,
+                      deckEditOpen: true,
+                      deckFormData: {
+                        name: currentDeck?.name ?? '',
+                        description: currentDeck?.description ?? '',
+                      },
+                    }))
+                  }
                 >
-                  <Download className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t('export_csv')}</TooltipContent>
-            </TooltipPrimitive.Root>
-            {can(role, 'deck.delete', currentDeck?.created_by, user?.id) && (
-              <TooltipPrimitive.Root>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-white/80 hover:text-red-200 hover:bg-white/20"
+                  <Pencil className="h-4 w-4 mr-2" /> {t('menu_edit')}
+                </DropdownMenuItem>
+              )}
+              {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
+                <DropdownMenuItem onClick={() => setImportOpen(true)}>
+                  <Upload className="h-4 w-4 mr-2" /> {t('import_csv')}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem
+                onClick={() => {
+                  const params = deckId ? `?deckId=${deckId}` : '';
+                  window.open(`/api/v1/flashcards/export/csv${params}`, '_blank');
+                }}
+              >
+                <Download className="h-4 w-4 mr-2" /> {t('export_csv')}
+              </DropdownMenuItem>
+              {can(role, 'deck.delete', currentDeck?.created_by, user?.id) && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
                     onClick={() => setD((prev) => ({ ...prev, deckDeleteOpen: true }))}
                   >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t('menu_delete')}</TooltipContent>
-              </TooltipPrimitive.Root>
-            )}
-          </TooltipProvider>
+                    <Trash2 className="h-4 w-4 mr-2" /> {t('menu_delete')}
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         <div className="flex items-start gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-white/20 text-2xl font-bold">
-            {currentDeck!.name.charAt(0).toUpperCase()}
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-muted-foreground/10">
+              <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none">
+                <defs>
+                  <linearGradient id="hdr-icon" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor={headerGrad.from} />
+                    <stop offset="100%" stopColor={headerGrad.to} />
+                  </linearGradient>
+                </defs>
+                <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" stroke="url(#hdr-icon)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <Badge variant="secondary">
+              {t('flashcards_count', { count: currentDeck!.flashcard_count })}
+            </Badge>
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0 pt-1">
             <h2 className="text-2xl font-bold">{currentDeck!.name}</h2>
             {currentDeck!.description && (
-              <p className="mt-1 text-white/80">{currentDeck!.description}</p>
+              <p className="mt-1 text-muted-foreground">{currentDeck!.description}</p>
             )}
-            <div className="mt-3 flex items-center gap-4">
-              <Badge variant="secondary" className="bg-white/20 text-white">
-                {t('flashcards_count', { count: flashcards.length })}
-              </Badge>
-              {practiceHref && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="bg-white/20 text-white hover:bg-white/30 gap-1"
-                  asChild
-                >
-                  <Link href={`${practiceHref}${currentDeck!.id}`}>
-                    <Play className="h-3 w-3" /> {t('practice_deck')}
-                  </Link>
-                </Button>
-              )}
-            </div>
           </div>
         </div>
       </div>
@@ -588,11 +566,20 @@ export function DeckDetailScreen({
           <h3 className="text-lg font-semibold">{t('flashcards_section')}</h3>
           <p className="text-sm text-muted-foreground">{t('flip_hint')}</p>
         </div>
-        {isSelecting && (
-          <Button variant="outline" size="sm" onClick={clearSelection}>
-            <Square className="mr-2 h-4 w-4" /> {t('cancel_selection')}
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {practiceHref && (
+            <Button variant="outline" size="sm" className="gap-1" asChild>
+              <Link href={`${practiceHref}${currentDeck!.id}`}>
+                <Play className="h-3 w-3" /> {t('practice_deck')}
+              </Link>
+            </Button>
+          )}
+          {isSelecting && (
+            <Button variant="outline" size="sm" onClick={clearSelection}>
+              <Square className="mr-2 h-4 w-4" /> {t('cancel_selection')}
+            </Button>
+          )}
+        </div>
       </div>
 
       <div
@@ -650,7 +637,6 @@ export function DeckDetailScreen({
               key={fc.id}
               fc={fc}
               isFlipped={flippedId === fc.id}
-              gradient={gradient}
               canUpdate={can(role, 'flashcard.update', fc.created_by, user?.id)}
               canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false}
               topics={topics}

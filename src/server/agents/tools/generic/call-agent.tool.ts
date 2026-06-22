@@ -45,6 +45,7 @@ export const callAgentTool: Tool = {
 
     const subState = {
       ...ctx.state,
+      results: { ...ctx.state.results },
       text: parsed.task,
       material: parsed.context?.material || ctx.state.material,
       concepts: concepts || ctx.state.concepts,

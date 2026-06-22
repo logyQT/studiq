@@ -6,12 +6,18 @@ const batchParams = z.object({
   batches: z.array(z.object({
     agent: z.string(),
     task: z.string(),
-    concepts: z.array(z.object({
+    concepts: z.preprocess((val) => {
+      if (typeof val === 'string') {
+        try { const p = JSON.parse(val); return Array.isArray(p) ? p : val; }
+        catch { return val; }
+      }
+      return val;
+    }, z.array(z.object({
       term: z.string(),
       definition: z.string(),
       context: z.string().optional(),
       category: z.string().optional(),
-    })).optional(),
+    }))).optional(),
     count: z.number().min(1).max(25).optional(),
   })).min(1).max(20),
   concurrency: z.number().min(1).max(10).optional().default(3),

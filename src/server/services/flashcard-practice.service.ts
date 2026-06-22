@@ -610,7 +610,10 @@ export class FlashcardPracticeService {
         back: fc.back,
         createdAt: fc.created_at ?? null,
         deckName: fc.flashcard_deck_assignments?.[0]?.flashcard_decks?.[0]?.name ?? null,
-        topicNames: fc.flashcard_topic_assignments?.flatMap((a) => a.flashcard_topics?.map((t) => t.name) ?? []) ?? [],
+        topicNames: fc.flashcard_topic_assignments?.flatMap((a) => {
+          const name = (a.flashcard_topics as unknown as { name: string } | undefined)?.name;
+          return name ? [name] : [];
+        }) ?? [],
         reviewState: state
           ? {
               easinessFactor: state.easiness_factor,

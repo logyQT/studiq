@@ -120,8 +120,8 @@ export function useAiChat(): UseAiChatReturn {
       const history = messages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .filter((m) => m.id !== userMsg.id)
-        .filter((m) => m.content.length > 0)
-        .map((m) => ({ role: m.role, content: m.content }));
+        .filter((m) => m.content.length > 0 || m.result?.type === 'flashcards')
+        .map((m) => ({ role: m.role, content: m.content || `[flashcards: ${(m.result as { deckName?: string; data?: unknown[] })?.deckName ?? 'deck'} (${((m.result as { data?: unknown[] })?.data?.length ?? 0)} cards)]` }));
 
       const body: Record<string, unknown> = { text };
       if (context) body.context = context;
@@ -304,7 +304,7 @@ export function useAiChat(): UseAiChatReturn {
                   const flashcardMsg: ChatMessage = {
                     id: generateUUID(),
                     role: 'assistant',
-                    content: '',
+                    content: `Generated deck: ${deckName} (${mappedCards.length} cards)`,
                     status: 'complete',
                     result: { type: 'flashcards', data: mappedCards, deckName },
                     thinkingTraces: [],
