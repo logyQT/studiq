@@ -27,12 +27,8 @@ function generateToolCallLabel(tool: string, args: unknown): string {
       return `🌐 Fetching content from ${(a.url as string)?.slice(0, 80)}...`;
     case 'extract_concepts': return '🔍 Extracting key concepts...';
     case 'evaluate_quality': return '✅ Evaluating quality...';
-    case 'call_agent':
-      return `🤖 Running ${a.agent as string}...`;
-    case 'batch_call_agent': {
-      const batches = a.batches as Array<unknown> | undefined;
-      return `🤖 Running ${batches?.length ?? 0} sub-agents in parallel...`;
-    }
+    case 'generate_flashcards':
+      return `📇 Generating flashcards${a.count ? ` (${a.count as number} cards)` : ''}...`;
     case 'finish': return '🏁 Finishing up...';
     case 'flashcard_create': return '📇 Creating flashcards...';
     case 'flashcard_review': return '🔎 Reviewing flashcards...';
@@ -59,13 +55,9 @@ function generateToolResultLabel(tool: string, result: unknown): string {
       return `🔍 Found ${terms?.length ?? 0} key concepts`;
     }
     case 'evaluate_quality': return r.passed ? '✅ Quality check passed' : '❌ Quality check failed';
-    case 'call_agent': {
-      const summary = (r.summary as string) || 'Sub-agent completed';
-      return `🤖 ${summary}`;
-    }
-    case 'batch_call_agent': {
-      const summary = (r.summary as string) || 'Batch completed';
-      return `🤖 ${summary}`;
+    case 'generate_flashcards': {
+      const cards = r.flashcards as Array<unknown> | undefined;
+      return `📇 Generated ${cards?.length ?? 0} flashcards`;
     }
     case 'finish': return '🏁 Task complete';
     case 'flashcard_create': {

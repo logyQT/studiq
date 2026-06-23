@@ -285,7 +285,7 @@ export function useAiChat(): UseAiChatReturn {
                             status: 'complete',
                             toolResult: parsed.result,
                             label: parsed.label,
-                            subToolCount: parsed.tool === 'call_agent' ? toolCount : undefined,
+                            subToolCount: undefined,
                             durationMs: duration,
                           }
                         : m,
@@ -354,22 +354,8 @@ export function useAiChat(): UseAiChatReturn {
                   }
                   break;
                 }
-                case 'subagent_task': {
-                  const taskText = parsed.text || '';
-                  setMessages((prev) => {
-                    const items = [...prev];
-                    const lastIdx = items.length - 1;
-                    for (let i = lastIdx; i >= 0; i--) {
-                      const m = items[i];
-                      if (m.role === 'tool_call' && m.toolName === 'call_agent' && m.status === 'running') {
-                        items[i] = { ...m, subTask: taskText };
-                        break;
-                      }
-                    }
-                    return items;
-                  });
+                case 'subagent_task':
                   break;
-                }
                 case 'paused': {
                   currentThoughtIdRef.current = null;
                   setMessages((prev) =>

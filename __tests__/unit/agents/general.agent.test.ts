@@ -72,7 +72,7 @@ describe('GeneralAgent', () => {
       const names = agent['tools'].map((t: Tool) => t.name).sort();
       expect(names).toEqual([
         'ask_user',
-        'call_agents',
+        'generate_flashcards',
         'create_plan',
         'evaluate_quality',
         'extract_concepts',
@@ -120,7 +120,7 @@ describe('GeneralAgent', () => {
         mockTool({ name: 'fetch_material', description: 'Fetch', execute: fetchExecute }),
         mockTool({ name: 'extract_concepts' }),
         mockTool({ name: 'evaluate_quality' }),
-        mockTool({ name: 'call_agents' }),
+        mockTool({ name: 'generate_flashcards' }),
         mockTool({ name: 'finish', description: 'Finish', execute: finishExecute }),
       ];
 
@@ -148,7 +148,7 @@ describe('GeneralAgent', () => {
       expect(result.type).toBe('chat');
     });
 
-    it('can delegate to a sub-agent via call_agents', async () => {
+    it('can delegate to generate_flashcards', async () => {
       const agent = new GeneralAgent();
       agent.maxIterations = 5;
 
@@ -158,7 +158,7 @@ describe('GeneralAgent', () => {
         needsClarification: false,
       });
 
-      const callAgentsExecute = vi.fn().mockResolvedValue({
+      const generateFlashcardsExecute = vi.fn().mockResolvedValue({
         type: 'flashcards' as const,
         deckName: 'History Deck',
         flashcards: [{ front: 'Q', back: 'A' }],
@@ -176,7 +176,7 @@ describe('GeneralAgent', () => {
         mockTool({ name: 'fetch_material' }),
         mockTool({ name: 'extract_concepts' }),
         mockTool({ name: 'evaluate_quality' }),
-        mockTool({ name: 'call_agents', description: 'Call agents', execute: callAgentsExecute }),
+        mockTool({ name: 'generate_flashcards', description: 'Call agents', execute: generateFlashcardsExecute }),
         mockTool({ name: 'finish', description: 'Finish', execute: finishExecute }),
       ];
 
@@ -187,7 +187,7 @@ describe('GeneralAgent', () => {
         })
         .mockResolvedValueOnce({
           content: 'Delegating to flashcard agent.',
-          toolCalls: [{ function: { name: 'call_agents', arguments: JSON.stringify({ agent: 'flashcard', task: 'Create 10 flashcards about history', count: 10 }) } }],
+          toolCalls: [{ function: { name: 'generate_flashcards', arguments: JSON.stringify({ agent: 'flashcard', task: 'Create 10 flashcards about history', count: 10 }) } }],
         })
         .mockResolvedValueOnce({
           content: 'Done.',
@@ -199,7 +199,7 @@ describe('GeneralAgent', () => {
       const result = await agent.execute('Create 10 flashcards about history', ctx);
 
       expect(planExecute).toHaveBeenCalled();
-      expect(callAgentsExecute).toHaveBeenCalled();
+      expect(generateFlashcardsExecute).toHaveBeenCalled();
       expect(finishExecute).toHaveBeenCalled();
       expect(result.type).toBe('flashcards');
     });
@@ -216,7 +216,7 @@ describe('GeneralAgent', () => {
         needsClarification: false,
       });
 
-      const callAgentsExecute = vi.fn().mockResolvedValue({
+      const generateFlashcardsExecute = vi.fn().mockResolvedValue({
         type: 'flashcards' as const,
         deckName: 'Science',
         flashcards: [{ front: 'Q1', back: 'A1' }, { front: 'Q2', back: 'A2' }],
@@ -234,7 +234,7 @@ describe('GeneralAgent', () => {
         mockTool({ name: 'fetch_material' }),
         mockTool({ name: 'extract_concepts' }),
         mockTool({ name: 'evaluate_quality' }),
-        mockTool({ name: 'call_agents', description: 'Call agents', execute: callAgentsExecute }),
+        mockTool({ name: 'generate_flashcards', description: 'Call agents', execute: generateFlashcardsExecute }),
         mockTool({ name: 'finish', description: 'Finish', execute: finishExecute }),
       ];
 
@@ -245,7 +245,7 @@ describe('GeneralAgent', () => {
         })
         .mockResolvedValueOnce({
           content: 'Calling flashcard agent.',
-          toolCalls: [{ function: { name: 'call_agents', arguments: JSON.stringify({ agent: 'flashcard', task: 'Create flashcards' }) } }],
+          toolCalls: [{ function: { name: 'generate_flashcards', arguments: JSON.stringify({ agent: 'flashcard', task: 'Create flashcards' }) } }],
         })
         .mockResolvedValueOnce({
           content: 'Done.',

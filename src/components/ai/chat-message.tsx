@@ -40,12 +40,12 @@ export function ChatMessage({ message, onAnswer }: ChatMessageProps) {
     );
   }
 
-  if (isToolCall && message.toolName === 'call_agent') {
+  if (isToolCall && message.toolName === 'generate_flashcards') {
     return (
       <div className="flex justify-start">
         <div className="max-w-[80%]">
           <AgentCallBlock
-            agentName={(message.args as Record<string, string> | undefined)?.agent || 'sub-agent'}
+            agentName="flashcard"
             status={message.status as 'running' | 'complete'}
             subTask={message.subTask}
             toolCount={message.subToolCount}
