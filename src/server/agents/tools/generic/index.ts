@@ -3,7 +3,6 @@ export { askUserTool } from './ask-user.tool';
 export { fetchMaterialTool } from './fetch-material.tool';
 export { extractConceptsTool } from './extract-concepts.tool';
 export { evaluateQualityTool } from './evaluate-quality.tool';
-export { callAgentTool } from './call-agent.tool';
+export { callAgentsTool } from './call-agents.tool';
 export { finishTool } from './finish.tool';
 export { webfetchTool } from './webfetch.tool';
-export { batchCallAgentTool } from './batch-call-agent.tool';

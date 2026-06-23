@@ -4,7 +4,7 @@ export const agentModels: Record<string, AgentLLMConfig> = {
   general: {
     provider: 'opencode',
     model: 'mimo-v2.5',
-    maxTokens: 8192,
+    maxTokens: 16384,
     reasoningEffort: 'medium',
     contextWindow: 128000,
   },

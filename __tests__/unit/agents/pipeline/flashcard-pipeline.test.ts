@@ -55,7 +55,7 @@ beforeEach(() => {
 });
 
 describe('Flashcard Pipeline', () => {
-  it('handles simple flashcard intent: plan → call_agent → evaluate → finish', async () => {
+  it('handles simple flashcard intent: plan → call_agents → evaluate → finish', async () => {
     const agent = new GeneralAgent();
     agent.maxIterations = 6;
 
@@ -65,7 +65,7 @@ describe('Flashcard Pipeline', () => {
       needsClarification: false,
     });
 
-    const callAgentExecute = vi.fn().mockResolvedValue({
+    const callAgentsExecute = vi.fn().mockResolvedValue({
       type: 'flashcards' as const,
       deckName: 'Photosynthesis',
       flashcards: [
@@ -102,7 +102,7 @@ describe('Flashcard Pipeline', () => {
       mockTool({ name: 'webfetch' }),
       mockTool({ name: 'extract_concepts' }),
       mockTool({ name: 'evaluate_quality', execute: evaluateExecute }),
-      mockTool({ name: 'call_agent', execute: callAgentExecute }),
+      mockTool({ name: 'call_agents', execute: callAgentsExecute }),
       mockTool({ name: 'finish', execute: finishExecute }),
     ];
 
@@ -113,7 +113,7 @@ describe('Flashcard Pipeline', () => {
       })
       .mockResolvedValueOnce({
         content: 'Delegating to flashcard agent.',
-        toolCalls: [{ function: { name: 'call_agent', arguments: JSON.stringify({ agent: 'flashcard', task: 'Create 5 flashcards about photosynthesis', context: { count: 5 } }) } }],
+        toolCalls: [{ function: { name: 'call_agents', arguments: JSON.stringify({ agent: 'flashcard', task: 'Create 5 flashcards about photosynthesis', count: 5 }) } }],
       })
       .mockResolvedValueOnce({
         content: 'Evaluating quality.',
@@ -129,7 +129,7 @@ describe('Flashcard Pipeline', () => {
     const result = await agent.execute('Create 5 flashcards about photosynthesis', ctx);
 
     expect(planExecute).toHaveBeenCalled();
-    expect(callAgentExecute).toHaveBeenCalled();
+    expect(callAgentsExecute).toHaveBeenCalled();
     expect(evaluateExecute).toHaveBeenCalled();
     expect(finishExecute).toHaveBeenCalled();
     expect(result.type).toBe('flashcards');
@@ -149,7 +149,7 @@ describe('Flashcard Pipeline', () => {
       needsClarification: false,
     });
 
-    const callAgentExecute = vi.fn().mockResolvedValue({
+    const callAgentsExecute = vi.fn().mockResolvedValue({
       type: 'flashcards' as const,
       deckName: 'Uploaded Doc',
       flashcards: [
@@ -176,7 +176,7 @@ describe('Flashcard Pipeline', () => {
       mockTool({ name: 'webfetch' }),
       mockTool({ name: 'extract_concepts' }),
       mockTool({ name: 'evaluate_quality', execute: evaluateExecute }),
-      mockTool({ name: 'call_agent', execute: callAgentExecute }),
+      mockTool({ name: 'call_agents', execute: callAgentsExecute }),
       mockTool({ name: 'finish', execute: finishExecute }),
     ];
 
@@ -187,7 +187,7 @@ describe('Flashcard Pipeline', () => {
       })
       .mockResolvedValueOnce({
         content: 'Calling flashcard agent.',
-        toolCalls: [{ function: { name: 'call_agent', arguments: JSON.stringify({ agent: 'flashcard', task: 'Create flashcards from uploaded file' }) } }],
+        toolCalls: [{ function: { name: 'call_agents', arguments: JSON.stringify({ agent: 'flashcard', task: 'Create flashcards from uploaded file' }) } }],
       })
       .mockResolvedValueOnce({
         content: 'Evaluating.',
@@ -237,7 +237,7 @@ describe('Flashcard Pipeline', () => {
       mockTool({ name: 'webfetch' }),
       mockTool({ name: 'extract_concepts' }),
       mockTool({ name: 'evaluate_quality' }),
-      mockTool({ name: 'call_agent' }),
+      mockTool({ name: 'call_agents' }),
       mockTool({ name: 'finish' }),
     ];
 
@@ -265,7 +265,7 @@ describe('Flashcard Pipeline', () => {
     }
   });
 
-  it('handles webbased content: plan → webfetch → call_agent → finish', async () => {
+  it('handles webbased content: plan → webfetch → call_agents → finish', async () => {
     const agent = new GeneralAgent();
     agent.maxIterations = 6;
 
@@ -284,7 +284,7 @@ describe('Flashcard Pipeline', () => {
       length: 78,
     });
 
-    const callAgentExecute = vi.fn().mockResolvedValue({
+    const callAgentsExecute = vi.fn().mockResolvedValue({
       type: 'flashcards' as const,
       deckName: 'Solar System',
       flashcards: [
@@ -311,7 +311,7 @@ describe('Flashcard Pipeline', () => {
       mockTool({ name: 'webfetch', execute: webfetchExecute }),
       mockTool({ name: 'extract_concepts' }),
       mockTool({ name: 'evaluate_quality', execute: evaluateExecute }),
-      mockTool({ name: 'call_agent', execute: callAgentExecute }),
+      mockTool({ name: 'call_agents', execute: callAgentsExecute }),
       mockTool({ name: 'finish', execute: finishExecute }),
     ];
 
@@ -326,7 +326,7 @@ describe('Flashcard Pipeline', () => {
       })
       .mockResolvedValueOnce({
         content: 'Calling flashcard agent.',
-        toolCalls: [{ function: { name: 'call_agent', arguments: JSON.stringify({ agent: 'flashcard', task: 'Create flashcards from fetched content' }) } }],
+        toolCalls: [{ function: { name: 'call_agents', arguments: JSON.stringify({ agent: 'flashcard', task: 'Create flashcards from fetched content' }) } }],
       })
       .mockResolvedValueOnce({
         content: 'Evaluating.',
@@ -343,7 +343,7 @@ describe('Flashcard Pipeline', () => {
 
     expect(planExecute).toHaveBeenCalled();
     expect(webfetchExecute).toHaveBeenCalled();
-    expect(callAgentExecute).toHaveBeenCalled();
+    expect(callAgentsExecute).toHaveBeenCalled();
     expect(evaluateExecute).toHaveBeenCalled();
     expect(finishExecute).toHaveBeenCalled();
     expect(result.type).toBe('flashcards');

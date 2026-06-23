@@ -6,8 +6,7 @@ import {
   webfetchTool,
   extractConceptsTool,
   evaluateQualityTool,
-  callAgentTool,
-  batchCallAgentTool,
+  callAgentsTool,
   finishTool,
 } from './tools/generic';
 
@@ -33,31 +32,20 @@ KEY PRINCIPLE: Prefer direct action over orchestration. If you can respond with 
 Available tools (use only what you need, ignore the rest):
 - ask_user — ask clarifying questions when the request is ambiguous.
 - create_plan — only for complex multi-step requests that genuinely need coordination.
-- fetch_material — generate educational content on a topic for flashcard/question creation.
-- webfetch — fetch content from a URL the user provides.
-- extract_concepts — identify key terms from educational material.
-- call_agent — delegate specialized work (e.g., flashcard creation) to a sub-agent. Only use this when the task genuinely needs the sub-agent's specialized tools. If you can handle it yourself, do that instead.
-- batch_call_agent — dispatch multiple sub-agents in parallel with controlled concurrency. Best for large flashcard generation (50+ cards).
-- evaluate_quality — review output before finishing. Optional — skip for simple responses.
+- fetch_material(topic, depth?, focusAreas?) — generate educational content on a topic when the user didn't provide material. Call this FIRST if you need content to work from.
+- webfetch(url) — fetch content from a URL the user provides.
+- extract_concepts(material?) — extract key terms + definitions from educational material in context. Call this AFTER you have material, BEFORE generating flashcards.
+- call_agents(agent, task, concepts?, count?, concurrency?) — dispatch sub-agents to generate content. For flashcards, pass the concepts and desired count — the tool auto-splits into balanced batches of ~25 each. You don't need to split manually.
+- evaluate_quality — review generated flashcards before finishing. Optional for small sets, recommended for 100+ cards.
 - finish — return results to the user.
 
 Rules:
 - When the user asks for a simple response (explanation, writing, design, prompt, advice), just respond with text directly. No plan, no tools, no sub-agents. Your response text will be delivered to the user as-is.
-- For large flashcard requests (50+ cards):
-  1. If no material exists, fetch_material first.
-  2. Call extract_concepts to get all key concepts.
-  3. Split concepts into groups of 20-25.
-  4. Construct a batch_call_agent call where each batch has:
-     - agent: "flashcard"
-     - task: "Generate N flashcards covering [specific scope]. Do NOT cover other periods — other agents handle those."
-     - concepts: the group's concepts
-     - count: group size
-  5. Call batch_call_agent with concurrency: 3.
-  6. Call finish with the combined flashcards.
-- For small flashcard requests (under 50), delegate to call_agent directly.
+- For flashcard requests: call fetch_material → extract_concepts → call_agents → finish.
+  Pass ALL concepts to a single call_agents call — it handles splitting into batches internally.
+- If the task requires 4+ tool calls across different tools, call create_plan first to outline the steps.
 - Only call finish when you have flashcards or structured educational content to deliver. For conversational responses, just output text directly without calling any tool.
-- Respond in the same language as the user.
-- Never mention tool names in your output — describe actions in natural terms instead. Your finish message is sent directly to the user: write it in their language and keep tool internals invisible.`;
+- Respond in the same language as the user. Never mention tool names in your output — describe actions in natural terms instead.`;
 
   constructor() {
     super();
@@ -68,10 +56,9 @@ Rules:
       webfetchTool,
       extractConceptsTool,
       evaluateQualityTool,
-      callAgentTool,
-      batchCallAgentTool,
+      callAgentsTool,
       finishTool,
     ];
-    this.maxIterations = 25;
+    this.maxIterations = 30;
   }
 }
