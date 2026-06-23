@@ -1,7 +1,10 @@
 import { z } from '@/lib/zod';
 import type { FlashcardItem, ExtractedTerm } from '@/server/services/ai-utils';
 import { parseFlashcards } from '@/server/services/ai-utils';
-import { GENERATE_FROM_TERMS_SYSTEM_PROMPT, GENERATE_FLASHCARDS_TOOL } from '@/server/services/ai-prompts';
+import {
+  GENERATE_FROM_TERMS_SYSTEM_PROMPT,
+  GENERATE_FLASHCARDS_TOOL,
+} from '@/server/services/ai-prompts';
 import type { Tool } from '../types';
 
 const BATCH_SIZE = 25;
@@ -15,13 +18,19 @@ const conceptSchema = z.object({
 
 const params = z.object({
   task: z.string(),
-  concepts: z.preprocess((val) => {
-    if (typeof val === 'string') {
-      try { const p = JSON.parse(val); return Array.isArray(p) ? p : val; }
-      catch { return val; }
-    }
-    return val;
-  }, z.array(conceptSchema)).optional(),
+  concepts: z
+    .preprocess((val) => {
+      if (typeof val === 'string') {
+        try {
+          const p = JSON.parse(val);
+          return Array.isArray(p) ? p : val;
+        } catch {
+          return val;
+        }
+      }
+      return val;
+    }, z.array(conceptSchema))
+    .optional(),
   count: z.number().min(1).max(1000).optional(),
   concurrency: z.number().min(1).max(10).optional().default(3),
 });
@@ -67,38 +76,66 @@ async function runWithConcurrency<T>(
 
 export const generateFlashcardsTool: Tool = {
   name: 'generate_flashcards',
-  description: 'Generate flashcards from extracted concepts. Pass ALL concepts and desired count — the tool splits into balanced batches of ~25 cards and generates cards per batch in parallel.',
+  description:
+    'Generate flashcards from extracted concepts, or from LLM knowledge if no concepts provided. Pass ALL concepts and desired count — the tool splits into balanced batches of ~25 cards and distributes proportionally. Can be called with just task + count (no concepts) for knowledge-based generation.',
   parameters: params,
   async execute(args, ctx) {
     const parsed = params.parse(args);
 
-    if (!parsed.concepts?.length) {
-      return { type: 'error' as const, error: 'No concepts provided — extract concepts first before calling generate_flashcards' };
-    }
+    let batchFns: (() => Promise<{ flashcards: FlashcardItem[]; deckName?: string }>)[];
 
-    const balanced = balanceBatches(parsed.concepts, parsed.count);
-    const batchFns = balanced.map((b) => async () => {
-      const countLine = b.count ? `\nDesired number of flashcards: ${b.count}` : '';
-      const prompt = `User request: ${parsed.task}${countLine}\n\nExtracted terms:\n${JSON.stringify(b.concepts, null, 2)}`;
-      const result = await ctx.callLLM({
-        prompt,
-        systemPrompt: GENERATE_FROM_TERMS_SYSTEM_PROMPT,
-        tools: [GENERATE_FLASHCARDS_TOOL],
-        toolChoice: { type: 'function', function: { name: 'generate_flashcards' } },
-        maxTokens: 16384,
+    if (!parsed.concepts?.length) {
+      const countLine = parsed.count ? `\nDesired number of flashcards: ${parsed.count}` : '';
+      batchFns = [
+        async () => {
+          const prompt = `User request: ${parsed.task}${countLine}\n\nGenerate flashcards directly based on your knowledge of this topic — no extracted terms provided.`;
+          const result = await ctx.callLLM({
+            prompt,
+            systemPrompt: GENERATE_FROM_TERMS_SYSTEM_PROMPT,
+            tools: [GENERATE_FLASHCARDS_TOOL],
+            toolChoice: { type: 'function', function: { name: 'generate_flashcards' } },
+            maxTokens: 32768,
+          });
+          const toolCall = result.toolCalls?.find(
+            (tc) => tc.function.name === 'generate_flashcards',
+          );
+          if (!toolCall) return { flashcards: [] };
+          try {
+            const llmResult = JSON.parse(toolCall.function.arguments);
+            return {
+              flashcards: parseFlashcards(llmResult.flashcards ?? []),
+              deckName: String(llmResult.deck_name ?? 'Generated Flashcards'),
+            };
+          } catch {
+            return { flashcards: [] };
+          }
+        },
+      ];
+    } else {
+      const balanced = balanceBatches(parsed.concepts, parsed.count);
+      batchFns = balanced.map((b) => async () => {
+        const countLine = b.count ? `\nDesired number of flashcards: ${b.count}` : '';
+        const prompt = `User request: ${parsed.task}${countLine}\n\nExtracted terms:\n${JSON.stringify(b.concepts, null, 2)}`;
+        const result = await ctx.callLLM({
+          prompt,
+          systemPrompt: GENERATE_FROM_TERMS_SYSTEM_PROMPT,
+          tools: [GENERATE_FLASHCARDS_TOOL],
+          toolChoice: { type: 'function', function: { name: 'generate_flashcards' } },
+          maxTokens: 16384,
+        });
+        const toolCall = result.toolCalls?.find((tc) => tc.function.name === 'generate_flashcards');
+        if (!toolCall) return { flashcards: [] as FlashcardItem[] };
+        try {
+          const llmResult = JSON.parse(toolCall.function.arguments);
+          return {
+            flashcards: parseFlashcards(llmResult.flashcards ?? []),
+            deckName: String(llmResult.deck_name ?? 'AI Generated Flashcards'),
+          };
+        } catch {
+          return { flashcards: [] as FlashcardItem[] };
+        }
       });
-      const toolCall = result.toolCalls?.find((tc) => tc.function.name === 'generate_flashcards');
-      if (!toolCall) return { flashcards: [] as FlashcardItem[] };
-      try {
-        const llmResult = JSON.parse(toolCall.function.arguments);
-        return {
-          flashcards: parseFlashcards(llmResult.flashcards ?? []),
-          deckName: String(llmResult.deck_name ?? 'AI Generated Flashcards'),
-        };
-      } catch {
-        return { flashcards: [] as FlashcardItem[] };
-      }
-    });
+    }
 
     const results = await runWithConcurrency(batchFns, parsed.concurrency);
     const allFlashcards = results.flatMap((r) => r.flashcards);

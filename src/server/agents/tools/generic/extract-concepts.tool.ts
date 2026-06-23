@@ -10,7 +10,8 @@ const params = z.object({
 
 export const extractConceptsTool: Tool = {
   name: 'extract_concepts',
-  description: 'Extract atomic, memorizable concepts from educational material. Returns a list of key terms with definitions.',
+  description:
+    'Extract atomic, memorizable concepts from educational material. Pass maxTerms to control how many terms to extract (default 50-200). Returns a list of key terms with definitions.',
   parameters: params,
   async execute(args, ctx) {
     const parsed = params.parse(args);
@@ -23,9 +24,10 @@ export const extractConceptsTool: Tool = {
       material = material.slice(0, 40000) + '\n\n[...content truncated for length]';
     }
 
+    const maxTermsNote = parsed.maxTerms ? `\n\nExtract up to ${parsed.maxTerms} terms.` : '';
     const result = await ctx.callLLM({
       prompt: material,
-      systemPrompt: ANALYZE_SYSTEM_PROMPT,
+      systemPrompt: ANALYZE_SYSTEM_PROMPT + maxTermsNote,
       tools: [EXTRACT_TERMS_TOOL],
       toolChoice: { type: 'function', function: { name: 'extract_terms' } },
       maxTokens: 32768,
