@@ -114,7 +114,7 @@ export function useAiChat(): UseAiChatReturn {
 
     const fetchTimeout = setTimeout(() => {
       abortController.abort();
-    }, 600_000);
+    }, 1_800_000);
 
     try {
       const history = messages
@@ -163,6 +163,7 @@ export function useAiChat(): UseAiChatReturn {
 
       const decoder = new TextDecoder();
       let sseBuffer = '';
+      let completedGracefully = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -380,6 +381,7 @@ export function useAiChat(): UseAiChatReturn {
                   break;
                 }
                 case 'complete': {
+                  completedGracefully = true;
                   const message = parsed.message || '';
                   setMessages((prev) => {
                     const markPlans = (items: ChatMessage[]): ChatMessage[] =>
@@ -423,6 +425,7 @@ export function useAiChat(): UseAiChatReturn {
                   });
                   break;
                 case 'error': {
+                  completedGracefully = true;
                   currentThoughtIdRef.current = null;
                   setMessages((prev) => [...prev, createErrorMessage(parsed.message || 'Request failed')]);
                   break;
@@ -438,16 +441,26 @@ export function useAiChat(): UseAiChatReturn {
         }
       }
 
-      // Finalize any remaining streaming/thinking messages
-      setMessages((prev) => {
+      if (!completedGracefully) {
         currentThoughtIdRef.current = null;
-        return prev.map((m) =>
-          m.status === 'streaming' || m.status === 'thinking'
-            ? { ...m, status: 'complete' } : m,
-        );
-      });
+        setMessages((prev) => {
+          const finalized = prev.map((m) =>
+            m.status === 'streaming' || m.status === 'thinking'
+              ? { ...m, status: 'complete' as const } : m,
+          );
+          return [...finalized, createErrorMessage('Response was interrupted — the connection was lost')];
+        });
+      }
     } catch (error) {
       if (abortController.signal.aborted) {
+        currentThoughtIdRef.current = null;
+        setMessages((prev) => {
+          const finalized = prev.map((m) =>
+            m.status === 'streaming' || m.status === 'thinking'
+              ? { ...m, status: 'complete' as const } : m,
+          );
+          return [...finalized, createErrorMessage('Request timed out — the server took too long to respond')];
+        });
         setIsStreaming(false);
         return;
       }

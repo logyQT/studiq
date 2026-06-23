@@ -105,7 +105,6 @@ export async function POST(req: NextRequest) {
           },
           onError: (message: string) => {
             send('error', { message });
-            safeClose();
           },
         });
       } else {

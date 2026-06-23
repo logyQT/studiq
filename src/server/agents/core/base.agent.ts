@@ -94,7 +94,7 @@ export abstract class BaseAgent {
         systemPrompt: systemMsg,
         tools: toolDefinitions,
         toolChoice: 'auto',
-        maxTokens: (ctx.state.metadata?.maxTokens as number) || 4096,
+        maxTokens: (ctx.state.metadata?.maxTokens as number) || 8192,
         model: ctx.state.metadata?.model as string | undefined,
         provider: ctx.state.metadata?.provider as string | undefined,
         onReasoning: ctx.callbacks?.onThinking,
@@ -173,7 +173,21 @@ export abstract class BaseAgent {
             data: { toolName: tool.name, args: args as Record<string, unknown> },
           });
 
-          const toolResult = await tool.execute(args, ctx);
+          let toolResult: unknown;
+          try {
+            toolResult = await tool.execute(args, ctx);
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            ctx.trace.log({
+              conversationId,
+              agentName: this.name,
+              iteration: stepNumber,
+              eventType: 'error',
+              label: `Tool ${tool.name} threw: ${errorMsg}`,
+              data: { toolName: tool.name, error: errorMsg },
+            });
+            toolResult = { error: errorMsg };
+          }
 
           ctx.callbacks?.onToolResult?.({ id: toolCallId, tool: tool.name, result: toolResult });
 

@@ -1,5 +1,5 @@
 import { log } from '@/lib/logger';
-import { LLMProvider, GeneratedFlashcard, FLASHCARD_PROMPT, parseJsonResponse, type StreamCallbacks, type GenerateChatResult } from './LLMProvider';
+import { LLMProvider, GeneratedFlashcard, FLASHCARD_PROMPT, parseJsonResponse, type StreamCallbacks, type GenerateChatResult, type ProviderUsage } from './LLMProvider';
 import type { ModelsConfig } from '@/server/config/models.config';
 import type { ToolDefinition, ToolCall } from '@/server/ai/ai.types';
 
@@ -134,7 +134,7 @@ export class OpenCodeProvider implements LLMProvider {
     return (msg?.content as string) || '';
   }
 
-  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, maxTokens?: number, reasoningEffort?: 'low' | 'medium' | 'high'): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
+  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, maxTokens?: number, reasoningEffort?: 'low' | 'medium' | 'high'): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[]; usage?: ProviderUsage }> {
     const messages: Array<{ role: string; content: string }> = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
     messages.push({ role: 'user', content: prompt });
@@ -143,6 +143,7 @@ export class OpenCodeProvider implements LLMProvider {
       model: this.modelName,
       messages,
       stream: true,
+      stream_options: { include_usage: true },
     };
 
     if (maxTokens) body.max_tokens = maxTokens;
@@ -184,6 +185,7 @@ export class OpenCodeProvider implements LLMProvider {
       let fullContent = '';
       let fullReasoning = '';
       const streamedToolCalls: ToolCall[] = [];
+      let capturedUsage: ProviderUsage | undefined;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -226,6 +228,13 @@ export class OpenCodeProvider implements LLMProvider {
                 }
               }
             }
+            if (parsed.usage && (!parsed.choices || parsed.choices.length === 0 || !parsed.choices[0].delta)) {
+              capturedUsage = {
+                prompt_tokens: parsed.usage.prompt_tokens,
+                completion_tokens: parsed.usage.completion_tokens,
+                total_tokens: parsed.usage.total_tokens,
+              };
+            }
           } catch {
             // skip malformed chunks
           }
@@ -236,6 +245,7 @@ export class OpenCodeProvider implements LLMProvider {
         content: fullContent,
         reasoning: fullReasoning || undefined,
         toolCalls: streamedToolCalls.length > 0 ? streamedToolCalls : undefined,
+        usage: capturedUsage,
       };
     } finally {
       clearTimeout(timeout);

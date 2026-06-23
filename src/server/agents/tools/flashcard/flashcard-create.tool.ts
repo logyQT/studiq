@@ -37,7 +37,7 @@ export const flashcardCreateTool: Tool = {
       systemPrompt: GENERATE_FROM_TERMS_SYSTEM_PROMPT,
       tools: [GENERATE_FLASHCARDS_TOOL],
       toolChoice: { type: 'function', function: { name: 'generate_flashcards' } },
-      maxTokens: (ctx.state.metadata['flashcardMaxTokens'] as number) || 8192,
+      maxTokens: (ctx.state.metadata['flashcardMaxTokens'] as number) || 16384,
     });
 
     const toolCall = result.toolCalls?.find((tc) => tc.function.name === 'generate_flashcards');

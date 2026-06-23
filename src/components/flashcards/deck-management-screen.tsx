@@ -503,11 +503,6 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
                 </div>
               </div>
             </Card>
-            <div className="mt-3">
-              <Badge variant="secondary">
-                {t('flashcards_count', { count: editing?.flashcard_count ?? 0 })}
-              </Badge>
-            </div>
           </div>
           <DialogFooter>
             <Button

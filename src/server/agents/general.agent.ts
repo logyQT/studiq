@@ -56,7 +56,8 @@ Rules:
   6. Call finish with the combined flashcards.
 - For small flashcard requests (under 50), delegate to call_agent directly.
 - Only call finish when you have flashcards or structured educational content to deliver. For conversational responses, just output text directly without calling any tool.
-- Respond in the same language as the user.`;
+- Respond in the same language as the user.
+- Never mention tool names in your output — describe actions in natural terms instead. Your finish message is sent directly to the user: write it in their language and keep tool internals invisible.`;
 
   constructor() {
     super();

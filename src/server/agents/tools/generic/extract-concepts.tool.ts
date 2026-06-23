@@ -19,8 +19,8 @@ export const extractConceptsTool: Tool = {
       return { terms: [], error: 'No material provided' };
     }
 
-    if (material.length > 20000) {
-      material = material.slice(0, 20000) + '\n\n[...content truncated for length]';
+    if (material.length > 40000) {
+      material = material.slice(0, 40000) + '\n\n[...content truncated for length]';
     }
 
     const result = await ctx.callLLM({
@@ -28,7 +28,7 @@ export const extractConceptsTool: Tool = {
       systemPrompt: ANALYZE_SYSTEM_PROMPT,
       tools: [EXTRACT_TERMS_TOOL],
       toolChoice: { type: 'function', function: { name: 'extract_terms' } },
-      maxTokens: 16384,
+      maxTokens: 32768,
     });
 
     const toolCall = result.toolCalls?.find((tc) => tc.function.name === 'extract_terms');

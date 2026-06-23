@@ -4,7 +4,7 @@ import { pdfService } from '@/server/services/pdf.service';
 import { pdfCacheService } from '@/server/services/pdf-cache.service';
 
 export const MAX_FILE_CHARS = parseInt(process.env.LLM_MAX_FILE_CHARS || '200000', 10);
-export const FLASHCARD_MAX_TOKENS = parseInt(process.env.LLM_FLASHCARD_MAX_TOKENS || '16384', 10);
+export const FLASHCARD_MAX_TOKENS = parseInt(process.env.LLM_FLASHCARD_MAX_TOKENS || '32768', 10);
 
 export const FLASHCARD_KEYWORDS = [
   // English
@@ -70,7 +70,12 @@ export function hasFlashcardKeyword(text: string): boolean {
 }
 
 export function parseFlashcards(raw: unknown): FlashcardItem[] {
-  const cards = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  let cards: unknown;
+  if (typeof raw === 'string') {
+    try { cards = JSON.parse(raw); } catch { cards = []; }
+  } else {
+    cards = raw;
+  }
   return (Array.isArray(cards) ? cards : []).map((c: Record<string, unknown>) => ({
     front: String(c.front ?? ''),
     back: String(c.back ?? ''),
@@ -79,8 +84,13 @@ export function parseFlashcards(raw: unknown): FlashcardItem[] {
 }
 
 export function parseExtractedTerms(raw: unknown): ExtractedTerm[] {
-  const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
-  const terms = data?.terms ?? (Array.isArray(data) ? data : []);
+  let data: unknown;
+  if (typeof raw === 'string') {
+    try { data = JSON.parse(raw); } catch { data = []; }
+  } else {
+    data = raw;
+  }
+  const terms = (data as Record<string, unknown>)?.terms ?? (Array.isArray(data) ? data : []);
   return (Array.isArray(terms) ? terms : []).map((t: Record<string, unknown>) => ({
     term: String(t.term ?? ''),
     definition: String(t.definition ?? ''),
@@ -90,10 +100,16 @@ export function parseExtractedTerms(raw: unknown): ExtractedTerm[] {
 }
 
 export function parseReviewResult(raw: unknown): { kept: number[]; reasons: Record<string, string> } {
-  const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  let data: unknown;
+  if (typeof raw === 'string') {
+    try { data = JSON.parse(raw); } catch { data = {}; }
+  } else {
+    data = raw;
+  }
+  const d = data as Record<string, unknown> | undefined;
   return {
-    kept: Array.isArray(data?.kept) ? data.kept.map(Number) : [],
-    reasons: data?.reasons && typeof data.reasons === 'object' ? data.reasons : {},
+    kept: Array.isArray(d?.kept) ? d.kept.map(Number) : [],
+    reasons: d?.reasons && typeof d.reasons === 'object' ? (d.reasons as Record<string, string>) : {},
   };
 }
 
