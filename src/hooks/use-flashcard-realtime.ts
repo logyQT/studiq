@@ -1,30 +1,30 @@
 'use client';
 
-import { useRef, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
 
 export function useFlashcardDomainRealtime() {
   const qc = useQueryClient();
-  const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-
   // DO NOT REMOVE DEBOUNCE — coalesces rapid Supabase events into a single
   // re-fetch. Without it, saving a deck via the agent triggers N events in <1s,
   // causing cascading invalidateQueries that never settle.
+  const [timers] = useState(() => new Map<string, ReturnType<typeof setTimeout>>());
+
   const debouncedInvalidate = useCallback(
     (prefix: string[]) => {
       const key = prefix.join('::');
-      const existing = timers.current.get(key);
+      const existing = timers.get(key);
       if (existing) clearTimeout(existing);
-      timers.current.set(
+      timers.set(
         key,
         setTimeout(() => {
-          timers.current.delete(key);
+          timers.delete(key);
           qc.invalidateQueries({ queryKey: prefix, exact: false });
         }, 1000),
       );
     },
-    [qc],
+    [qc, timers],
   );
 
   useRealtimeChannel(
