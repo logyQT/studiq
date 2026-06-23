@@ -1,27 +1,30 @@
+import { tool } from 'ai';
 import { z } from '@/lib/zod';
-import type { Tool } from '../types';
 
-const params = z.object({
-  steps: z.array(z.object({
-    action: z.string(),
-    rationale: z.string(),
-    dependsOn: z.array(z.string()).optional(),
-  })),
-  estimatedComplexity: z.enum(['simple', 'moderate', 'complex']),
-  needsClarification: z.boolean(),
-  clarificationQuestions: z.array(z.string()).optional(),
-});
-
-export const createPlanTool: Tool = {
-  name: 'create_plan',
-  description: 'Create an execution plan for generating educational content. Defines steps in order, dependencies, and whether clarification is needed.',
-  parameters: params,
-  async execute(args, ctx) {
-    const parsed = params.safeParse(args);
-    if (!parsed.success) {
-      return { error: 'Validation failed', issues: parsed.error.issues };
-    }
-    ctx.state.metadata['plan'] = parsed.data;
-    return parsed.data;
+export const createPlanTool = tool({
+  description:
+    'Create a plan for complex multi-step requests that genuinely need coordination. Outline the steps before executing them.',
+  inputSchema: z.object({
+    steps: z
+      .array(
+        z.object({
+          action: z.string().describe('What action to take'),
+          rationale: z.string().describe('Why this step is needed'),
+          dependsOn: z
+            .array(z.string())
+            .optional()
+            .describe('Step indices this depends on'),
+        }),
+      )
+      .describe('The ordered steps to execute'),
+    estimatedComplexity: z
+      .enum(['simple', 'moderate', 'complex'])
+      .describe('How complex this task is'),
+    needsClarification: z
+      .boolean()
+      .describe('Whether you need to ask the user for more information'),
+  }),
+  execute: async (args) => {
+    return args;
   },
-};
+});

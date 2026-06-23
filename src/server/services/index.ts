@@ -23,4 +23,3 @@ export * from '@/server/services/search.service';
 export * from '@/server/services/flashcard-import.service';
 export * from '@/server/services/flashcard-export.service';
 export * from '@/server/services/storage.service';
-export * from '@/server/services/agent.service';

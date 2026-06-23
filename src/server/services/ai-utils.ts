@@ -1,5 +1,4 @@
 import { log } from '@/lib/logger';
-import { repairJson } from '@/server/providers/LLMProvider';
 import { pdfService } from '@/server/services/pdf.service';
 import { pdfCacheService } from '@/server/services/pdf-cache.service';
 
@@ -64,6 +63,12 @@ export interface ExtractedTerm {
   category?: string;
 }
 
+export interface GeneratedFlashcard {
+  question: string;
+  answer: string;
+  suggestedTopic: string;
+}
+
 export function hasFlashcardKeyword(text: string): boolean {
   const lower = text.toLowerCase();
   return FLASHCARD_KEYWORDS.some((kw) => lower.includes(kw));
@@ -97,6 +102,27 @@ export function parseExtractedTerms(raw: unknown): ExtractedTerm[] {
     context: t.context ? String(t.context) : undefined,
     category: t.category ? String(t.category) : undefined,
   }));
+}
+
+export function repairJson(raw: string): string {
+  let s = raw.trim();
+  if (!s.startsWith('[') || !s.endsWith(']')) {
+    const start = s.indexOf('[');
+    const end = s.lastIndexOf(']');
+    if (start !== -1 && end > start) s = s.slice(start, end + 1);
+  }
+  s = s.replace(/,(\s*[}\]])/g, '$1');
+  const openBrackets = (s.match(/\{/g) || []).length;
+  const closeBrackets = (s.match(/\}/g) || []).length;
+  const openSquares = (s.match(/\[/g) || []).length;
+  const closeSquares = (s.match(/\]/g) || []).length;
+  for (let i = 0; i < openBrackets - closeBrackets; i++) s += '}';
+  for (let i = 0; i < openSquares - closeSquares; i++) s += ']';
+  const lastClose = s.lastIndexOf('}');
+  if (lastClose !== -1 && lastClose < s.length - 1) s = s.slice(0, lastClose + 1);
+  const finalBracket = s.lastIndexOf(']');
+  if (finalBracket !== -1 && finalBracket < s.length - 1) s = s.slice(0, finalBracket + 1);
+  return s;
 }
 
 export function parseReviewResult(raw: unknown): { kept: number[]; reasons: Record<string, string> } {

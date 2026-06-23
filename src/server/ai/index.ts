@@ -1,2 +1,2 @@
-export * from './ai.types';
-export { callLLM, callLLMStreaming } from './llm-gateway';
+export { chatModel } from './model';
+export type { TokenUsage, LLMGatewayResponse } from './ai.types';

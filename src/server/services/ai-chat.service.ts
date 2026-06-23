@@ -1,10 +1,11 @@
 import { log } from '@/lib/logger';
-import { callLLMStreaming } from '@/server/ai';
+import { chatModel } from '@/server/ai/model';
 import { pdfService } from '@/server/services/pdf.service';
 import { pdfCacheService } from '@/server/services/pdf-cache.service';
 import type { RequestContext } from '@/lib/request-context';
 import type { TokenUsage } from '@/server/ai/ai.types';
 import type { ChatMessageInput } from '@/server/models/ai-chat.model';
+import { streamText } from 'ai';
 
 const MAX_FILE_CHARS = parseInt(process.env.LLM_MAX_FILE_CHARS || '200000', 10);
 
@@ -78,17 +79,31 @@ export class ChatService {
         systemPrompt = `${SYSTEM_PROMPT}\n\nThe user has attached a file with the following content:\n\n${extracted}\n\nUse the file content to answer the user's questions.`;
       }
 
-      const response = await callLLMStreaming(
-        {
-          prompt,
-          systemPrompt,
-          responseFormat: 'text',
+      const result = streamText({
+        model: chatModel,
+        system: systemPrompt,
+        prompt,
+        maxRetries: 3,
+        onChunk: ({ chunk }: { chunk: { type: string; textDelta?: string } }) => {
+          if (chunk.type === 'text-delta' && chunk.textDelta) {
+            callbacks.onToken(chunk.textDelta);
+          }
         },
-        ctx,
-        { onToken: (token) => callbacks.onToken(token) },
-      );
+      });
 
-      callbacks.onComplete(response.content, response.usage);
+      const content = await result.text;
+      const resolvedUsage = await result.usage;
+      const mappedUsage: TokenUsage | undefined = resolvedUsage
+        ? {
+            inputTokens: resolvedUsage.inputTokens ?? 0,
+            outputTokens: resolvedUsage.outputTokens ?? 0,
+            totalTokens: resolvedUsage.totalTokens ?? 0,
+            provider: 'opencode',
+            model: 'mimo-v2.5',
+          }
+        : undefined;
+
+      callbacks.onComplete(content, mappedUsage);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Internal server error';
       log.ai.error('Chat failed', { metadata: { error } });

@@ -1,7 +1,8 @@
 import { log } from '@/lib/logger';
+import { generateText } from 'ai';
 import { getModelsConfig } from '@/server/config/models.config';
-import { getProvider } from '@/server/providers/providerRegistry';
-import type { GeneratedFlashcard } from '@/server/providers/LLMProvider';
+import { chatModel } from '@/server/ai/model';
+import type { GeneratedFlashcard } from '@/server/services/ai-utils';
 import { pdfService } from './pdf.service';
 
 export interface GenerationCallbacks {
@@ -29,15 +30,6 @@ export class FlashcardGenerationService {
     const config = getModelsConfig();
     log.ai.info('Config', { metadata: { provider: config.provider, model: config.modelName, baseUrl: config.baseUrl } });
 
-    let provider;
-    try {
-      provider = getProvider(config);
-    } catch (error) {
-      log.ai.error('Failed to initialize provider', { metadata: { error } });
-      callbacks.onError(error instanceof Error ? error.message : 'Failed to initialize LLM provider');
-      return;
-    }
-
     let text: string;
     try {
       text = await pdfService.extractText(fileBuffer);
@@ -62,7 +54,20 @@ export class FlashcardGenerationService {
       callbacks.onProgress(i + 1, totalChunks);
 
       try {
-        const chunkCards = await provider.generateFlashcardsFromChunk(chunks[i], language);
+        const { text: flashcardText } = await generateText({
+          model: chatModel,
+          system: 'You are a bilingual flashcard generator. Always respond with valid JSON.',
+          prompt: `Generate flashcards from this text. Language: ${language}\n\nText:\n${chunks[i]}`,
+          maxRetries: 3,
+        });
+        let parsed: unknown;
+        try { parsed = JSON.parse(flashcardText); } catch { parsed = []; }
+        const chunkCards: GeneratedFlashcard[] = (Array.isArray(parsed) ? parsed : (parsed as any)?.flashcards || [])
+          .map((item: any) => ({
+            question: String(item.question ?? ''),
+            answer: String(item.answer ?? ''),
+            suggestedTopic: String(item.suggestedTopic ?? ''),
+          }));
         // TODO: retry chunk on parse failure (up to N times), emit SSE 'retry' event so frontend can show "LLM struggled with chunk X, retrying..." — see todowrite item
 
         for (const card of chunkCards) {

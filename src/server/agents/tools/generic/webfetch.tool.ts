@@ -1,33 +1,31 @@
+import { tool } from 'ai';
 import { z } from '@/lib/zod';
-import type { Tool } from '../types';
 
-const params = z.object({
-  url: z.string().url(),
-});
-
-export const webfetchTool: Tool = {
-  name: 'webfetch',
-  description: 'Fetch and extract text content from a URL. Use this when the user provides a webpage URL to create study material from its content.',
-  parameters: params,
-  async execute(args, ctx) {
-    const parsed = params.parse(args);
-
-
-    let text: string;
+export const webfetchTool = tool({
+  description: 'Fetch content from a URL the user provides.',
+  inputSchema: z.object({
+    url: z.string().url().describe('The URL to fetch content from'),
+  }),
+  execute: async ({ url }) => {
     try {
-      const res = await fetch(parsed.url);
+      const res = await fetch(url);
       if (!res.ok) {
-        return { content: '', error: `HTTP ${res.status}: ${res.statusText}`, url: parsed.url };
+        return {
+          content: '',
+          error: `HTTP ${res.status}: ${res.statusText}`,
+          url,
+          length: 0,
+        };
       }
-      text = await res.text();
-    } catch (err) {
-      return { content: '', error: `Fetch failed: ${err instanceof Error ? err.message : 'Unknown error'}`, url: parsed.url };
+      const content = await res.text();
+      return { content, url, length: content.length };
+    } catch (error) {
+      return {
+        content: '',
+        error: `Fetch failed: ${error instanceof Error ? error.message : String(error)}`,
+        url,
+        length: 0,
+      };
     }
-
-    ctx.state.material = text;
-    ctx.state.results['material'] = text;
-    ctx.state.results['sourceUrl'] = parsed.url;
-
-    return { content: text, url: parsed.url, length: text.length };
   },
-};
+});

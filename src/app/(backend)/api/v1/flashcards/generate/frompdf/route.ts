@@ -6,7 +6,7 @@ import { AppError } from '@/lib/errors';
 import { flashcardGenerationController } from '@/server/controllers';
 import type { RequestContext } from '@/lib/request-context';
 import type { UserRole } from '@/types';
-import type { GeneratedFlashcard } from '@/server/providers/LLMProvider';
+import type { GeneratedFlashcard } from '@/server/services/ai-utils';
 
 function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;

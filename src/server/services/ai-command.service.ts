@@ -1,5 +1,5 @@
 import { log } from '@/lib/logger';
-import { callLLM } from '@/server/ai';
+import { chatModel } from '@/server/ai/model';
 import type { RequestContext } from '@/lib/request-context';
 import {
   FLASHCARD_MAX_TOKENS,
@@ -15,7 +15,7 @@ import {
   withRetry,
   extractFileContent,
 } from './ai-utils';
-import { repairJson } from '@/server/providers/LLMProvider';
+import { repairJson } from '@/server/services/ai-utils';
 import {
   SYSTEM_PROMPT,
   GENERATE_MATERIAL_PROMPT,
@@ -142,7 +142,7 @@ export class AiCommandService {
 
     let response;
     try {
-      response = await callLLM(
+      response = await this.callLLM(
         {
           prompt: topic,
           systemPrompt: GENERATE_MATERIAL_PROMPT,
@@ -172,7 +172,7 @@ export class AiCommandService {
 
     let response;
     try {
-      response = await callLLM(
+      response = await this.callLLM(
         {
           prompt: material,
           systemPrompt: ANALYZE_SYSTEM_PROMPT,
@@ -220,7 +220,7 @@ export class AiCommandService {
 
     let response;
     try {
-      response = await callLLM(
+      response = await this.callLLM(
         {
           prompt,
           systemPrompt: GENERATE_FROM_TERMS_SYSTEM_PROMPT,
@@ -266,7 +266,7 @@ export class AiCommandService {
 
     let response;
     try {
-      response = await callLLM(
+      response = await this.callLLM(
         {
           prompt: cardsJson,
           systemPrompt: REVIEW_SYSTEM_PROMPT,
@@ -323,8 +323,8 @@ export class AiCommandService {
     }
 
     log.ai.info('Calling LLM with tool_choice=auto');
-    const response = await callLLM(
-      {
+    const response = await this.callLLM(
+        {
         prompt,
         systemPrompt: SYSTEM_PROMPT,
         tools: [GENERATE_FLASHCARDS_TOOL],
@@ -370,6 +370,20 @@ export class AiCommandService {
       type: 'chat',
       content: response.content,
     };
+  }
+
+  private async callLLM(req: { prompt: string; systemPrompt?: string; maxTokens?: number; tools?: any[]; toolChoice?: any }, _ctx: RequestContext): Promise<{ content: string; toolCalls?: any[]; usage?: any }> {
+    const { generateText } = await import('ai');
+    const { text, toolCalls, usage } = await generateText({
+      model: chatModel,
+      system: req.systemPrompt,
+      prompt: req.prompt,
+      maxOutputTokens: req.maxTokens,
+      tools: req.tools as any,
+      toolChoice: req.toolChoice as any,
+      maxRetries: 3,
+    });
+    return { content: text || '', toolCalls, usage };
   }
 }
 

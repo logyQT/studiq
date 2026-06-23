@@ -5,3 +5,8 @@ export * from './use-flashcard-generation';
 export * from './use-ai-chat';
 export * from './use-flashcard-realtime';
 export * from './use-realtime-channel';
+export * from './use-breadcrumbs';
+export * from './use-debounce';
+export * from './use-scroll-to-bottom';
+export * from './use-auto-resize';
+export * from './use-realtime-channel';

@@ -1,34 +1,36 @@
+import { tool, generateText } from 'ai';
 import { z } from '@/lib/zod';
+import { chatModel } from '@/server/ai/model';
 import { GENERATE_MATERIAL_PROMPT } from '@/server/services/ai-prompts';
-import type { Tool } from '../types';
 
-const params = z.object({
-  topic: z.string(),
-  depth: z.enum(['basic', 'detailed']).optional(),
-  focusAreas: z.array(z.string()).optional(),
-});
+export const fetchMaterialTool = tool({
+  description:
+    'Generate educational content on a topic when the user did not provide material. Call this FIRST if you need content to work from.',
+  inputSchema: z.object({
+    topic: z.string().describe('The topic to generate content about'),
+    depth: z
+      .enum(['basic', 'moderate', 'advanced'])
+      .optional()
+      .describe('How detailed the content should be'),
+    focusAreas: z
+      .array(z.string())
+      .optional()
+      .describe('Specific subtopics to focus on'),
+  }),
+  execute: async ({ topic, depth, focusAreas }) => {
+    const focusNote = focusAreas?.length
+      ? `\nFocus on: ${focusAreas.join(', ')}`
+      : '';
+    const depthNote = depth ? `\nDepth level: ${depth}` : '';
+    const prompt = `Topic: ${topic}${depthNote}${focusNote}`;
 
-export const fetchMaterialTool: Tool = {
-  name: 'fetch_material',
-  description: 'Generate educational content on a topic. Creates comprehensive material suitable for creating flashcards, questions, or notes.',
-  parameters: params,
-  async execute(args, ctx) {
-    const parsed = params.parse(args);
-
-    const prompt = parsed.focusAreas?.length
-      ? `Topic: ${parsed.topic}\nFocus areas: ${parsed.focusAreas.join(', ')}`
-      : parsed.topic;
-
-    const result = await ctx.callLLM({
+    const { text } = await generateText({
+      model: chatModel,
+      system: GENERATE_MATERIAL_PROMPT,
       prompt,
-      systemPrompt: GENERATE_MATERIAL_PROMPT,
-      model: ctx.state.metadata['model'] as string,
-      maxTokens: 8192,
+      maxRetries: 3,
     });
 
-    ctx.state.material = result.content;
-    ctx.state.results['material'] = result.content;
-
-    return { content: result.content, length: result.content.length };
+    return { content: text, length: text.length };
   },
-};
+});

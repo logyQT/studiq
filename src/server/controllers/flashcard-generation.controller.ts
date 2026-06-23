@@ -1,7 +1,7 @@
 import { log } from '@/lib/logger';
 import { flashcardGenerationService } from '@/server/services';
 import type { RequestContext } from '@/lib/request-context';
-import type { GeneratedFlashcard } from '@/server/providers/LLMProvider';
+import type { GeneratedFlashcard } from '@/server/services/ai-utils';
 
 export interface GenerationStreamCallbacks {
   onFlashcards: (flashcards: GeneratedFlashcard[]) => void;
