@@ -1,5 +1,7 @@
 import { z } from '@/lib/zod';
 import type { FlashcardItem, ExtractedTerm } from '@/server/services/ai-utils';
+import { parseFlashcards } from '@/server/services/ai-utils';
+import { GENERATE_FROM_TERMS_SYSTEM_PROMPT, GENERATE_FLASHCARDS_TOOL } from '@/server/services/ai-prompts';
 import type { Tool, AgentResult, ToolContext } from '../types';
 
 const BATCH_SIZE = 25;
@@ -70,11 +72,53 @@ export const callAgentsTool: Tool = {
   parameters: params,
   async execute(args, ctx) {
     const parsed = params.parse(args);
-    const balanced = balanceBatches(parsed.concepts!, parsed.count);
+
+    // PIPELINE mode: when concepts are provided, direct LLM call per batch,
+    // no sub-agent LLM orchestration. Deterministic, reliable.
+    if (parsed.concepts?.length) {
+      const balanced = balanceBatches(parsed.concepts, parsed.count);
+      const batchFns = balanced.map((b) => async () => {
+        const countLine = b.count ? `\nDesired number of flashcards: ${b.count}` : '';
+        const prompt = `User request: ${parsed.task}${countLine}\n\nExtracted terms:\n${JSON.stringify(b.concepts, null, 2)}`;
+        const result = await ctx.callLLM({
+          prompt,
+          systemPrompt: GENERATE_FROM_TERMS_SYSTEM_PROMPT,
+          tools: [GENERATE_FLASHCARDS_TOOL],
+          toolChoice: { type: 'function', function: { name: 'generate_flashcards' } },
+          maxTokens: 16384,
+        });
+        const toolCall = result.toolCalls?.find((tc) => tc.function.name === 'generate_flashcards');
+        if (!toolCall) return { flashcards: [] as FlashcardItem[] };
+        try {
+          const llmResult = JSON.parse(toolCall.function.arguments);
+          return {
+            flashcards: parseFlashcards(llmResult.flashcards ?? []),
+            deckName: String(llmResult.deck_name ?? 'AI Generated Flashcards'),
+          };
+        } catch {
+          return { flashcards: [] as FlashcardItem[] };
+        }
+      });
+      const results = await runWithConcurrency(batchFns, parsed.concurrency);
+      const allFlashcards = results.flatMap((r) => r.flashcards);
+      const deckName = results.find((r) => r.deckName)?.deckName || 'Generated Flashcards';
+      ctx.state.results['flashcards'] = allFlashcards;
+      ctx.state.results['deckName'] = deckName;
+      return {
+        type: 'flashcards' as const,
+        deckName,
+        flashcards: allFlashcards,
+        batchCount: results.length,
+        summary: `Generated ${allFlashcards.length} flashcards across ${results.length} batches`,
+      };
+    }
+
+    // LEGACY mode: sub-agent dispatch for task-only calls (no concepts)
+    const balanced = balanceBatches(parsed.concepts ?? [], parsed.count);
     const batches = balanced.length
       ? balanced.map((b, i) => ({
           agent: parsed.agent,
-          task: `${parsed.task} (Batch ${i + 1}/${balanced.length} — ${b.concepts.length} concepts, aim for ${b.count} cards)`,
+          task: `${parsed.task} (Batch ${i + 1}/${balanced.length} — ${b.concepts.length} concepts, aim for ${b.count} cards)\n\nConcepts:\n${JSON.stringify(b.concepts, null, 2)}`,
           concepts: b.concepts,
           count: b.count,
         }))
@@ -86,21 +130,18 @@ export const callAgentsTool: Tool = {
         return { agent: batch.agent, result: { type: 'error' as const, error: `Agent "${batch.agent}" not found` } };
       }
 
-      let subToolCount = 0;
-      const wrappedCallbacks = {
-        ...ctx.callbacks,
-        onToolCall: () => { subToolCount++; },
-        onToolResult: () => {},
-        onThinking: (text: string) => {
-          ctx.callbacks?.onThinking?.(`[${batch.agent}] ${text}`);
-        },
-      };
-
       const subState = {
         ...ctx.state,
         text: batch.task,
         concepts: batch.concepts,
         metadata: { ...(ctx.state.metadata || {}), count: batch.count },
+      };
+
+      const wrappedCallbacks = {
+        ...ctx.callbacks,
+        onToolCall: () => {},
+        onToolResult: () => {},
+        onThinking: () => {},
       };
 
       const result = await (agent as { execute(task: string, ctx: ToolContext): Promise<AgentResult> })
@@ -128,7 +169,7 @@ export const callAgentsTool: Tool = {
         deckName,
         flashcards: allFlashcards,
         batchCount: results.length,
-        summary: `Generated ${allFlashcards.length} flashcards across ${results.length} batches (concurrency: ${parsed.concurrency})`,
+        summary: `Generated ${allFlashcards.length} flashcards across ${results.length} batches`,
       };
     }
 

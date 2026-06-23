@@ -1,28 +1,43 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
 
 export function useFlashcardDomainRealtime() {
   const qc = useQueryClient();
+  const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  const invalidate = useCallback(
-    (key: string[]) => { qc.invalidateQueries({ queryKey: key, exact: false }); },
+  // DO NOT REMOVE DEBOUNCE — coalesces rapid Supabase events into a single
+  // re-fetch. Without it, saving a deck via the agent triggers N events in <1s,
+  // causing cascading invalidateQueries that never settle.
+  const debouncedInvalidate = useCallback(
+    (prefix: string[]) => {
+      const key = prefix.join('::');
+      const existing = timers.current.get(key);
+      if (existing) clearTimeout(existing);
+      timers.current.set(
+        key,
+        setTimeout(() => {
+          timers.current.delete(key);
+          qc.invalidateQueries({ queryKey: prefix, exact: false });
+        }, 1000),
+      );
+    },
     [qc],
   );
 
   useRealtimeChannel(
     channel('flashcards-domain')
-      .listen('flashcards', () => invalidate(['flashcards', 'list']))
-      .listen('flashcard_decks', () => invalidate(['flashcards', 'decks']))
+      .listen('flashcards', () => debouncedInvalidate(['flashcards', 'list']))
+      .listen('flashcard_decks', () => debouncedInvalidate(['flashcards', 'decks']))
       .listen('flashcard_deck_assignments', () => {
-        invalidate(['flashcards', 'decks']);
-        invalidate(['flashcards', 'list']);
+        debouncedInvalidate(['flashcards', 'decks']);
+        debouncedInvalidate(['flashcards', 'list']);
       })
-      .listen('flashcard_topics', () => invalidate(['flashcards', 'topics']))
-      .listen('flashcard_topic_assignments', () => invalidate(['flashcards', 'list']))
-      .listen('flashcard_practice', () => invalidate(['flashcards', 'practice']))
-      .listen('flashcard_review_state', () => invalidate(['flashcards', 'practice'])),
+      .listen('flashcard_topics', () => debouncedInvalidate(['flashcards', 'topics']))
+      .listen('flashcard_topic_assignments', () => debouncedInvalidate(['flashcards', 'list']))
+      .listen('flashcard_practice', () => debouncedInvalidate(['flashcards', 'practice']))
+      .listen('flashcard_review_state', () => debouncedInvalidate(['flashcards', 'practice'])),
   );
 }

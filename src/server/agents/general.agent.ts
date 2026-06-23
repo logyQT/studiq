@@ -35,14 +35,13 @@ Available tools (use only what you need, ignore the rest):
 - fetch_material(topic, depth?, focusAreas?) — generate educational content on a topic when the user didn't provide material. Call this FIRST if you need content to work from.
 - webfetch(url) — fetch content from a URL the user provides.
 - extract_concepts(material?) — extract key terms + definitions from educational material in context. Call this AFTER you have material, BEFORE generating flashcards.
-- call_agents(agent, task, concepts?, count?, concurrency?) — dispatch sub-agents to generate content. For flashcards, pass the concepts and desired count — the tool auto-splits into balanced batches of ~25 each. You don't need to split manually.
+- call_agents(agent, task, concepts?, count?, concurrency?) — generate flashcards from extracted concepts. Pass ALL concepts and desired count. Call this AFTER extract_concepts, never before.
 - evaluate_quality — review generated flashcards before finishing. Optional for small sets, recommended for 100+ cards.
 - finish — return results to the user.
 
 Rules:
 - When the user asks for a simple response (explanation, writing, design, prompt, advice), just respond with text directly. No plan, no tools, no sub-agents. Your response text will be delivered to the user as-is.
 - For flashcard requests: call fetch_material → extract_concepts → call_agents → finish.
-  Pass ALL concepts to a single call_agents call — it handles splitting into batches internally.
 - If the task requires 4+ tool calls across different tools, call create_plan first to outline the steps.
 - Only call finish when you have flashcards or structured educational content to deliver. For conversational responses, just output text directly without calling any tool.
 - Respond in the same language as the user. Never mention tool names in your output — describe actions in natural terms instead.`;
