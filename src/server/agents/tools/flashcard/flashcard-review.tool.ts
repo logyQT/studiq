@@ -27,7 +27,7 @@ export const flashcardReviewTool: Tool = {
       systemPrompt: REVIEW_SYSTEM_PROMPT,
       tools: [REVIEW_CARDS_TOOL],
       toolChoice: { type: 'function', function: { name: 'review_cards' } },
-      maxTokens: 2048,
+      maxTokens: 4096,
     });
 
     const toolCall = result.toolCalls?.find((tc) => tc.function.name === 'review_cards');

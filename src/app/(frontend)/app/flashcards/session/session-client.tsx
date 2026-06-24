@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Check, X, ArrowLeft, Minus, Zap, Brain } from 'lucide-react';
+import { Check, X, ArrowLeft, Minus, Zap, Brain, Loader2 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -98,33 +98,59 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
-interface SessionClientProps {
-  initialCards: Flashcard[];
-  mode: string;
-  studyMode: string;
-  targetCount: number;
-  hasMore: boolean;
-  deckIds?: string[];
-  topicIds?: string[];
-  newOnly?: boolean;
+function mapCards(data: unknown[]): Flashcard[] {
+  return (data ?? []).map((item) => {
+    const fc = item as {
+      id: string; front: string; back: string;
+      createdAt?: string | null;
+      deckName?: string | null;
+      topicNames?: string[];
+      reviewState?: Record<string, unknown> | null;
+    };
+    return {
+      id: fc.id,
+      front: fc.front,
+      back: fc.back,
+      createdAt: fc.createdAt ?? null,
+      deckName: fc.deckName ?? null,
+      topicNames: fc.topicNames ?? [],
+      reviewState: fc.reviewState ?? null,
+    };
+  });
 }
 
-export default function SessionClient({
-  initialCards,
-  mode,
-  studyMode,
-  targetCount,
-  hasMore: initialHasMore,
-  deckIds,
-  topicIds,
-  newOnly,
-}: SessionClientProps) {
+interface SessionClientProps {
+  mode?: string;
+  studyMode?: string;
+  deckId?: string;
+  topics?: string;
+  decks?: string;
+  target?: string;
+  limit?: string;
+  newOnly?: string;
+}
+
+export default function SessionClient(props: SessionClientProps) {
   const t = useTranslations('AppFlashcardSessionPage');
   const router = useRouter();
 
+  const mode = props.mode || 'review';
+  const studyMode = props.studyMode || 'endless';
   const isCram = mode === 'cram';
   const isReview = mode === 'review';
+  const isQuick = mode === 'quick';
   const isLimited = studyMode === 'limited';
+  const targetCount = parseInt(props.target || '10');
+  const batchSize = isQuick ? parseInt(props.limit || '5', 10) : 20;
+  const newOnly = props.newOnly === 'true';
+  const deckIds = useMemo(
+    () => props.deckId ? [props.deckId] : (props.decks?.split(',').filter(Boolean) ?? []),
+    [props.deckId, props.decks],
+  );
+  const topicIds = useMemo(
+    () => props.topics?.split(',').filter(Boolean) ?? [],
+    [props.topics],
+  );
 
   const sessionIdRef = useRef<string>(generateUUID());
   const [startedAt] = useState(() => Date.now());
@@ -136,6 +162,10 @@ export default function SessionClient({
   const hasFinalisedRef = useRef(false);
   const leechedCardIdsRef = useRef<Set<string>>(new Set());
   const [suspendedIds, setSuspendedIds] = useState<Set<string>>(new Set());
+  const [cards, setCards] = useState<Flashcard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -144,7 +174,7 @@ export default function SessionClient({
   const [totalAnswered, setTotalAnswered] = useState(0);
   const [sessionComplete, setSessionComplete] = useState(false);
   const [allCaughtUp, setAllCaughtUp] = useState(false);
-  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [hasMore, setHasMore] = useState(false);
   const [summaryData, setSummaryData] = useState<{
     cardsStudied: number;
     cardsCorrect: number;
@@ -156,9 +186,50 @@ export default function SessionClient({
     ((action: 'suspend' | 'keep') => void) | null
   >(null);
 
-  const [cards, setCards] = useState<Flashcard[]>(() => {
-    return shuffleArray(initialCards);
-  });
+  useEffect(() => {
+    let cancelled = false;
+    const fetchInitial = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        if (isCram && props.deckId) {
+          const res = await fetch(`/api/v1/flashcards/practice/prepare?deckIds=${props.deckId}`);
+          if (!res.ok) {
+            setError('FETCH_FAILED');
+            return;
+          }
+          const body = await res.json();
+          if (cancelled) return;
+          const mapped = mapCards(body.data);
+          setCards(shuffleArray(mapped));
+          setHasMore(false);
+        } else {
+          const params = new URLSearchParams();
+          params.set('limit', String(batchSize));
+          if (deckIds.length > 0) params.set('deckIds', deckIds.join(','));
+          if (topicIds.length > 0) params.set('topicIds', topicIds.join(','));
+          if (newOnly) params.set('newOnly', 'true');
+          const res = await fetch(`/api/v1/flashcards/practice/due?${params.toString()}`);
+          if (!res.ok) {
+            setError('FETCH_FAILED');
+            return;
+          }
+          const body = await res.json();
+          if (cancelled) return;
+          const mapped = mapCards(body.data);
+          setCards(shuffleArray(mapped));
+          setHasMore(mapped.length >= batchSize);
+        }
+        if (!cancelled) setLoaded(true);
+      } catch {
+        if (!cancelled) setError('FETCH_FAILED');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetchInitial();
+    return () => { cancelled = true };
+  }, [isCram, props.deckId, batchSize, deckIds, topicIds, newOnly]);
 
   const visibleCards = useMemo(
     () => cards.filter((c) => !suspendedIds.has(c.id)),
@@ -172,31 +243,13 @@ export default function SessionClient({
     try {
       const params = new URLSearchParams();
       params.set('limit', String(BATCH_SIZE));
-      if (deckIds && deckIds.length > 0) params.set('deckIds', deckIds.join(','));
-      if (topicIds && topicIds.length > 0) params.set('topicIds', topicIds.join(','));
+      if (deckIds.length > 0) params.set('deckIds', deckIds.join(','));
+      if (topicIds.length > 0) params.set('topicIds', topicIds.join(','));
       if (newOnly) params.set('newOnly', 'true');
       const res = await fetch(`/api/v1/flashcards/practice/due?${params.toString()}`);
       if (!res.ok) return [];
       const body = await res.json();
-      return (body.data ?? []).map(
-        (card: {
-          id: string;
-          front: string;
-          back: string;
-          createdAt?: string | null;
-          deckName?: string | null;
-          topicNames?: string[];
-          reviewState?: Record<string, unknown> | null;
-        }) => ({
-          id: card.id,
-          front: card.front,
-          back: card.back,
-          createdAt: card.createdAt ?? null,
-          deckName: card.deckName ?? null,
-          topicNames: card.topicNames ?? [],
-          reviewState: card.reviewState ?? null,
-        }),
-      );
+      return mapCards(body.data);
     } catch {
       return [];
     }
@@ -500,6 +553,26 @@ export default function SessionClient({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (error || (loaded && cards.length === 0)) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <p className="text-muted-foreground text-lg">{t('no_flashcards_available')}</p>
+          <Button variant="outline" onClick={() => router.push(backUrl)}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_to_setup')}
+        </Button>
+      </div>
+    );
+  }
+
   if (summaryData) {
     return (
       <div className="max-w-2xl mx-auto py-8">
@@ -632,14 +705,10 @@ export default function SessionClient({
                 front={
                   <>
                     <div className="absolute inset-0 overflow-hidden pointer-events-none z-0 flex items-center justify-center">
-                      {/* 1. Oversized container (200%) prevents the corners from being empty when rotated 
-      2. rotate-45 angles the entire brick structure 
-    */}
                       <div className="absolute w-[200%] h-[200%] flex flex-col items-center justify-center gap-y-16 rotate-[45deg] opacity-[0.02]">
                         {Array.from({ length: 24 }).map((_, rowIndex) => (
                           <div
                             key={rowIndex}
-                            // Shift every even row to the right by exactly half the gap (gap-x-16 = 4rem, translate-x-8 = 2rem) to create the brick stagger
                             className={`flex items-center gap-x-16 ${
                               rowIndex % 2 === 0 ? 'translate-x-8' : ''
                             }`}
@@ -647,7 +716,6 @@ export default function SessionClient({
                             {Array.from({ length: 24 }).map((_, colIndex) => (
                               <span
                                 key={colIndex}
-                                // -rotate-45 counter-rotates the question marks so they stay perfectly upright while the grid is angled
                                 className="text-5xl font-bold select-none -rotate-45"
                               >
                                 ?
@@ -665,14 +733,7 @@ export default function SessionClient({
                 }
                 back={
                   <>
-                    <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-                      {/* TODO: answer watermark — up to debate whether to add one */}
-                      {/* <div className="absolute -inset-20 grid grid-cols-6 gap-x-12 gap-y-16 opacity-[0.03]">
-                    {Array.from({ length: 48 }).map((_, i) => (
-                      <span key={i} className="text-5xl font-bold select-none">✓</span>
-                    ))}
-                  </div> */}
-                    </div>
+                    <div className="absolute inset-0 overflow-hidden pointer-events-none z-0" />
                     <div className="relative z-10 flex-1 flex items-center justify-center overflow-y-auto text-2xl font-medium w-full px-8 text-center">
                       <MarkdownRenderer content={currentCard.back} />
                     </div>
@@ -693,19 +754,39 @@ export default function SessionClient({
               flipped ? '' : 'pointer-events-none opacity-30'
             }`}
           >
-            <Button onClick={() => handleAnswer(false, 1)} aria-keyshortcuts="1">
+            <Button
+              variant="ghost"
+              onClick={() => handleAnswer(false, 1)}
+              aria-keyshortcuts="1"
+              style={{ boxShadow: '0 0 8px rgba(239,68,68,0.12)' }}
+            >
               <X className="mr-1.5 h-4 w-4 text-red-500" />{' '}
               {isLearningState ? t('rating_again_learning') : t('rating_again')}
             </Button>
-            <Button onClick={() => handleAnswer(false, 2)} aria-keyshortcuts="2">
-              <Minus className="mr-1.5 h-4 w-4 text-orange-500" />{' '}
-              {isLearningState ? t('rating_hard_learning') : t('rating_hard')}
-            </Button>
-            <Button onClick={() => handleAnswer(true, 3)} aria-keyshortcuts="3">
+            <Button
+              variant="ghost"
+              onClick={() => handleAnswer(true, 3)}
+              aria-keyshortcuts="3"
+              style={{ boxShadow: '0 0 8px rgba(217,119,6,0.12)' }}
+            >
               <Check className="mr-1.5 h-4 w-4 text-amber-500" />{' '}
               {isLearningState ? t('rating_good_learning') : t('rating_good')}
             </Button>
-            <Button onClick={() => handleAnswer(true, 4)} aria-keyshortcuts="4">
+            <Button
+              variant="ghost"
+              onClick={() => handleAnswer(false, 2)}
+              aria-keyshortcuts="2"
+              style={{ boxShadow: '0 0 8px rgba(249,115,22,0.12)' }}
+            >
+              <Minus className="mr-1.5 h-4 w-4 text-orange-500" />{' '}
+              {isLearningState ? t('rating_hard_learning') : t('rating_hard')}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => handleAnswer(true, 4)}
+              aria-keyshortcuts="4"
+              style={{ boxShadow: '0 0 8px rgba(34,197,94,0.12)' }}
+            >
               <Zap className="mr-1.5 h-4 w-4 text-green-500" />{' '}
               {isLearningState ? t('rating_easy_learning') : t('rating_easy')}
             </Button>

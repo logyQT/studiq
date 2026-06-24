@@ -23,7 +23,7 @@ export const fetchMaterialTool: Tool = {
       prompt,
       systemPrompt: GENERATE_MATERIAL_PROMPT,
       model: ctx.state.metadata['model'] as string,
-      maxTokens: 4096,
+      maxTokens: 8192,
     });
 
     ctx.state.material = result.content;

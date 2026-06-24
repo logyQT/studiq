@@ -146,7 +146,7 @@ export class AiCommandService {
         {
           prompt: topic,
           systemPrompt: GENERATE_MATERIAL_PROMPT,
-          maxTokens: 4096,
+          maxTokens: 8192,
         },
         ctx,
       );
@@ -178,7 +178,7 @@ export class AiCommandService {
           systemPrompt: ANALYZE_SYSTEM_PROMPT,
           tools: [EXTRACT_TERMS_TOOL],
           toolChoice: { type: 'function', function: { name: 'extract_terms' } },
-          maxTokens: 4096,
+          maxTokens: 8192,
         },
         ctx,
       );

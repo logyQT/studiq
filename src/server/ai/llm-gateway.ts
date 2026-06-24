@@ -2,9 +2,9 @@ import { log } from '@/lib/logger';
 import { getProvider } from '@/server/providers/providerRegistry';
 import { getModelsConfig } from '@/server/config/models.config';
 import { AppError } from '@/lib/errors';
-import type { LLMProvider } from '@/server/providers/LLMProvider';
+import type { LLMProvider, ProviderUsage } from '@/server/providers/LLMProvider';
 import type { RequestContext } from '@/lib/request-context';
-import type { LLMGatewayRequest, LLMGatewayResponse, GatewayStreamCallbacks } from './ai.types';
+import type { LLMGatewayRequest, LLMGatewayResponse, GatewayStreamCallbacks, TokenUsage } from './ai.types';
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -39,7 +39,7 @@ function resolveProviderConfig(req: LLMGatewayRequest) {
 async function generateStreamingWithRetry(
   provider: LLMProvider,
   req: LLMGatewayRequest,
-): Promise<{ content: string; reasoning?: string; toolCalls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> }> {
+): Promise<{ content: string; reasoning?: string; toolCalls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>; usage?: ProviderUsage }> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= MAX_5XX_RETRIES; attempt++) {
@@ -95,19 +95,29 @@ export async function callLLM(req: LLMGatewayRequest, _ctx: RequestContext): Pro
 
   const result = await generateStreamingWithRetry(provider, req);
 
-  log.ai.info('Streaming result', { metadata: { contentLength: result.content?.length ?? 0, reasoningLength: result.reasoning?.length ?? 0, toolCallCount: result.toolCalls?.length ?? 0, toolNames: result.toolCalls?.map((tc) => tc.function.name).join(', ') ?? '' } });
+  const usage: TokenUsage = result.usage
+    ? {
+        inputTokens: result.usage.prompt_tokens,
+        outputTokens: result.usage.completion_tokens,
+        totalTokens: result.usage.total_tokens,
+        provider: providerName,
+        model,
+      }
+    : {
+        inputTokens: estimateTokens((req.systemPrompt || '') + req.prompt),
+        outputTokens: estimateTokens(result.content),
+        totalTokens: estimateTokens((req.systemPrompt || '') + req.prompt + result.content),
+        provider: providerName,
+        model,
+      };
+
+  log.ai.info('Streaming result', { metadata: { contentLength: result.content?.length ?? 0, reasoningLength: result.reasoning?.length ?? 0, toolCallCount: result.toolCalls?.length ?? 0, toolNames: result.toolCalls?.map((tc) => tc.function.name).join(', ') ?? '', inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, totalTokens: usage.totalTokens } });
 
   return {
     content: result.content,
     reasoning: result.reasoning,
     toolCalls: result.toolCalls,
-    usage: {
-      inputTokens: estimateTokens((req.systemPrompt || '') + req.prompt),
-      outputTokens: estimateTokens(result.content),
-      totalTokens: estimateTokens((req.systemPrompt || '') + req.prompt + result.content),
-      provider: providerName,
-      model,
-    },
+    usage,
   };
 }
 
@@ -129,17 +139,27 @@ export async function callLLMStreaming(
   try {
     const result = await provider.generateChatStreaming(req.prompt, req.systemPrompt, callbacks, req.tools, req.toolChoice, req.maxTokens, req.reasoningEffort);
 
+    const usage: TokenUsage = result.usage
+      ? {
+          inputTokens: result.usage.prompt_tokens,
+          outputTokens: result.usage.completion_tokens,
+          totalTokens: result.usage.total_tokens,
+          provider: providerName,
+          model,
+        }
+      : {
+          inputTokens: estimateTokens((req.systemPrompt || '') + req.prompt),
+          outputTokens: estimateTokens(result.content),
+          totalTokens: estimateTokens((req.systemPrompt || '') + req.prompt + result.content),
+          provider: providerName,
+          model,
+        };
+
     return {
       content: result.content,
       reasoning: result.reasoning,
       toolCalls: result.toolCalls,
-      usage: {
-        inputTokens: estimateTokens((req.systemPrompt || '') + req.prompt),
-        outputTokens: estimateTokens(result.content),
-        totalTokens: estimateTokens((req.systemPrompt || '') + req.prompt + result.content),
-        provider: providerName,
-        model,
-      },
+      usage,
     };
   } catch (error) {
     const msg = error instanceof Error ? error.message : '';

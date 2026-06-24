@@ -26,7 +26,8 @@ Rules:
 - Generate the requested count (20-25 per call).
 - Each card tests ONE concept.
 - Self-review is mandatory — always call review after creation.
-- Do NOT loop flashcard_create — ONE call is enough.`;
+- Do NOT loop flashcard_create — ONE call is enough.
+- Never mention tool names in your output — describe actions in natural terms instead. Your finish message is sent directly to the user: write it in their language and keep tool internals invisible.`;
 
   constructor() {
     super();

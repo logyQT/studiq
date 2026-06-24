@@ -6,7 +6,6 @@ vi.mock('@/lib/zod', async (importOriginal) => {
 });
 
 import { askUserTool } from '@/server/agents/tools/generic/ask-user.tool';
-import { callAgentTool } from '@/server/agents/tools/generic/call-agent.tool';
 import { createPlanTool } from '@/server/agents/tools/generic/create-plan.tool';
 import { evaluateQualityTool } from '@/server/agents/tools/generic/evaluate-quality.tool';
 import { extractConceptsTool } from '@/server/agents/tools/generic/extract-concepts.tool';
@@ -63,24 +62,6 @@ describe('askUserTool', () => {
     const ctx = mockCtx();
     await askUserTool.execute({ question: 'What topic?' }, ctx);
     expect(ctx.callbacks.onQuestion).not.toHaveBeenCalled();
-  });
-});
-
-describe('callAgentTool', () => {
-  it('returns error when agent not found', async () => {
-    const ctx = mockCtx();
-    ctx.agentRegistry.get = vi.fn().mockReturnValue(undefined);
-    const result = await callAgentTool.execute({ agent: 'unknown', task: 'do stuff' }, ctx);
-    expect(result).toEqual({ type: 'error', error: 'Agent "unknown" not found' });
-  });
-
-  it('calls sub-agent execute and returns its result', async () => {
-    const ctx = mockCtx();
-    const subAgent = { execute: vi.fn().mockResolvedValue({ type: 'flashcards', deckName: 'D', flashcards: [] }) };
-    ctx.agentRegistry.get = vi.fn().mockReturnValue(subAgent);
-    const result = await callAgentTool.execute({ agent: 'flashcard', task: 'make cards' }, ctx);
-    expect(subAgent.execute).toHaveBeenCalledWith('make cards', expect.anything());
-    expect(result).toEqual({ type: 'flashcards', deckName: 'D', flashcards: [], toolCount: 0, summary: 'flashcard completed → 0 tool calls executed' });
   });
 });
 

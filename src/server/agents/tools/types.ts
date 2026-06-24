@@ -26,7 +26,7 @@ export interface ToolContext {
     maxTokens?: number;
     onToken?: (token: string) => void;
     onReasoning?: (token: string) => void;
-  } & AgentLLMConfig) => Promise<{ content: string; reasoning?: string; toolCalls?: Array<{ function: { name: string; arguments: string } }> }>;
+  } & AgentLLMConfig) => Promise<{ content: string; reasoning?: string; toolCalls?: Array<{ function: { name: string; arguments: string } }>; usage?: { inputTokens: number; outputTokens: number; totalTokens: number } }>;
 }
 
 export interface AgentState {

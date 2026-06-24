@@ -26,7 +26,7 @@ export const flashcardReviseTool: Tool = {
       systemPrompt: GENERATE_FROM_TERMS_SYSTEM_PROMPT + '\nFocus on fixing the issues mentioned in the feedback.',
       tools: [GENERATE_FLASHCARDS_TOOL],
       toolChoice: { type: 'function', function: { name: 'generate_flashcards' } },
-      maxTokens: 4096,
+      maxTokens: 8192,
     });
 
     const toolCall = result.toolCalls?.find((tc) => tc.function.name === 'generate_flashcards');

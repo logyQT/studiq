@@ -95,15 +95,25 @@ export class AgentService {
 
         const toolCallsInfo = resp.toolCalls?.map((tc) => ({ name: tc.function.name, args: tc.function.arguments }));
 
+        const usageLog = resp.usage ? {
+          inputTokens: resp.usage.inputTokens,
+          outputTokens: resp.usage.outputTokens,
+          totalTokens: resp.usage.totalTokens,
+          contextWindow: modelConfig.contextWindow,
+          contextWindowUtilization: modelConfig.contextWindow
+            ? Math.round((resp.usage.totalTokens / modelConfig.contextWindow) * 100)
+            : undefined,
+        } : {};
+
         await agentTraceService.log({
           conversationId,
           agentName: 'general',
           eventType: 'llm_response',
           label: `LLM response: ${resp.content.slice(0, 80)}${toolCallsInfo ? ` + ${toolCallsInfo.length} tool call(s)` : ''}`,
-          data: { content: resp.content.slice(0, 1000), toolCalls: toolCallsInfo },
+          data: { content: resp.content.slice(0, 1000), toolCalls: toolCallsInfo, ...usageLog },
         });
 
-        return { content: resp.content, reasoning: resp.reasoning, toolCalls: resp.toolCalls };
+        return { content: resp.content, reasoning: resp.reasoning, toolCalls: resp.toolCalls, usage: resp.usage };
       },
     };
 

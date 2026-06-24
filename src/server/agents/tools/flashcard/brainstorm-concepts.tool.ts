@@ -51,7 +51,7 @@ export const brainstormConceptsTool: Tool = {
         },
       }],
       toolChoice: { type: 'function', function: { name: 'brainstorm_output' } },
-      maxTokens: 16384,
+      maxTokens: 32768,
     });
 
     const toolCall = result.toolCalls?.find((tc) => tc.function.name === 'brainstorm_output');

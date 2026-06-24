@@ -5,12 +5,18 @@ import type { FlashcardItem } from '@/server/services/ai-utils';
 import type { Tool } from '../types';
 
 const params = z.object({
-  concepts: z.array(z.object({
+  concepts: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      try { const p = JSON.parse(val); return Array.isArray(p) ? p : val; }
+      catch { return val; }
+    }
+    return val;
+  }, z.array(z.object({
     term: z.string(),
     definition: z.string(),
     context: z.string().optional(),
     category: z.string().optional(),
-  })),
+  }))),
   deckName: z.string().optional(),
   style: z.enum(['basic', 'detailed']).optional(),
   count: z.number().min(1).max(200).optional(),
@@ -31,7 +37,7 @@ export const flashcardCreateTool: Tool = {
       systemPrompt: GENERATE_FROM_TERMS_SYSTEM_PROMPT,
       tools: [GENERATE_FLASHCARDS_TOOL],
       toolChoice: { type: 'function', function: { name: 'generate_flashcards' } },
-      maxTokens: (ctx.state.metadata['flashcardMaxTokens'] as number) || 8192,
+      maxTokens: (ctx.state.metadata['flashcardMaxTokens'] as number) || 16384,
     });
 
     const toolCall = result.toolCalls?.find((tc) => tc.function.name === 'generate_flashcards');

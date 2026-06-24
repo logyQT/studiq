@@ -23,6 +23,7 @@ export type AgentLLMConfig = {
   baseUrl?: string;
   maxTokens?: number;
   reasoningEffort?: 'low' | 'medium' | 'high';
+  contextWindow?: number;
 };
 
 export type LLMGatewayRequest = {

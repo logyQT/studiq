@@ -15,7 +15,7 @@ export function useScrollToBottom() {
     setIsAtBottom(atBottom);
   }, []);
 
-  // eslint-disable-next-line
+   
   useLayoutEffect(() => {
     if (isAtBottomRef.current) {
       const el = containerRef.current;
