@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import type { CreateTopicInput, UpdateTopicInput } from '@/server/models';
+import type { CreateTopicInput, UpdateTopicInput, BatchDeleteTopicInput } from '@/server/models';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
 import { checkPermission, shouldSetUniversityId, buildQueryFilter, Permission } from '@/lib/rbac';
@@ -113,6 +113,31 @@ export class FlashcardTopicService {
       .eq('id', id);
 
     if (error) throw mapSupabaseError(error);
+  }
+
+  async batchDelete(data: BatchDeleteTopicInput, ctx: RequestContext) {
+    const supabase = await createClient();
+
+    const { data: topics, error: fetchError } = await supabase
+      .from('flashcard_topics')
+      .select('*')
+      .in('id', data.ids);
+
+    if (fetchError) throw mapSupabaseError(fetchError);
+    if (!topics || topics.length === 0) throw new AppError('NOT_FOUND');
+
+    for (const topic of topics) {
+      await checkPermission(ctx, Permission.TOPIC_DELETE, topic);
+    }
+
+    const { error } = await supabase
+      .from('flashcard_topics')
+      .delete()
+      .in('id', data.ids);
+
+    if (error) throw mapSupabaseError(error);
+
+    return { deleted: data.ids.length };
   }
 }
 

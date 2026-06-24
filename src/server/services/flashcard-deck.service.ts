@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import type { CreateDeckInput, UpdateDeckInput, BatchDeleteDeckInput } from '@/server/models';
+import type { CreateDeckInput, UpdateDeckInput, BatchDeleteDeckInput, DeckListQuery } from '@/server/models';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
 import { checkPermission, shouldSetUniversityId, buildQueryFilter, Permission } from '@/lib/rbac';
@@ -35,21 +35,48 @@ export class FlashcardDeckService {
     return this.getById(deck.id, ctx);
   }
 
-  async list(ctx: RequestContext) {
+  async list(ctx: RequestContext, queryParams?: Partial<DeckListQuery>) {
     const supabase = await createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.DECK_READ, 'deck');
+    if (filter._impossible) return [];
+
     let query = supabase
       .from('flashcard_decks')
-      .select('*, flashcard_deck_assignments(flashcard_id)')
-      .order('created_at', { ascending: false });
+      .select('*, flashcard_deck_assignments(flashcard_id)');
 
-    if (filter._impossible) return [];
+    // Apply RBAC filter
     if (filter.or) {
       query = query.or(filter.or);
     } else if (filter.created_by) {
       query = query.eq('created_by', filter.created_by);
     }
+
+    // Apply owner filter on top of RBAC
+    if (queryParams?.owner && queryParams.owner !== 'all') {
+      if (queryParams.owner === 'mine') {
+        query = query.eq('created_by', ctx.userId);
+      } else if (queryParams.owner === 'org') {
+        const hasOrgScope = filter.or || !filter.created_by;
+        if (hasOrgScope && ctx.universityId) {
+          query = query.neq('created_by', ctx.userId).eq('university_id', ctx.universityId);
+        } else {
+          return [];
+        }
+      } else if (queryParams.owner === 'shared') {
+        return [];
+      }
+    }
+
+    // Apply search
+    if (queryParams?.q) {
+      query = query.or(`name.ilike.%${queryParams.q}%,description.ilike.%${queryParams.q}%`);
+    }
+
+    // Apply sorting
+    const sortBy = queryParams?.sortBy ?? 'created_at';
+    const sortOrder = queryParams?.sortOrder ?? 'desc';
+    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
 
     const { data, error } = await query;
     if (error) throw mapSupabaseError(error);

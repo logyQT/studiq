@@ -1,5 +1,5 @@
 import { flashcardTopicService } from '@/server/services';
-import { CreateTopicSchema, UpdateTopicSchema } from '@/server/models';
+import { CreateTopicSchema, UpdateTopicSchema, BatchDeleteTopicSchema } from '@/server/models';
 import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
 import type { RequestContext } from '@/lib/request-context';
@@ -64,6 +64,25 @@ export class FlashcardTopicController {
       await flashcardTopicService.delete(id, ctx);
 
       return { success: true, statusCode: 200, data: { success: true } };
+    }, ctx);
+  }
+
+  async batchDelete(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = BatchDeleteTopicSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const result = await flashcardTopicService.batchDelete(parsed.data, ctx);
+
+      return { success: true, statusCode: 200, data: result };
     }, ctx);
   }
 }

@@ -24,5 +24,13 @@ export const UpdateTopicSchema = registry.register(
   }),
 );
 
+export const BatchDeleteTopicSchema = registry.register(
+  'BatchDeleteTopicRequest',
+  z.object({
+    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+  }),
+);
+
 export type CreateTopicInput = z.infer<typeof CreateTopicSchema>;
 export type UpdateTopicInput = z.infer<typeof UpdateTopicSchema>;
+export type BatchDeleteTopicInput = z.infer<typeof BatchDeleteTopicSchema>;

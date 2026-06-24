@@ -59,6 +59,13 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   return withAuth(req, async (ctx) => {
-    return toNextResponse(await flashcardDeckController.list(ctx));
+    const { searchParams } = req.nextUrl;
+    const query = {
+      q: searchParams.get('q') ?? undefined,
+      owner: searchParams.get('owner') ?? undefined,
+      sortBy: searchParams.get('sortBy') ?? undefined,
+      sortOrder: searchParams.get('sortOrder') ?? undefined,
+    };
+    return toNextResponse(await flashcardDeckController.list(query, ctx));
   });
 }

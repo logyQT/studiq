@@ -301,7 +301,18 @@
     "save_failed": "Nie udało się zapisać talii",
     "delete_failed": "Nie udało się usunąć talii",
     "name_required": "Nazwa talii jest wymagana",
-    "open_deck": "Otwórz"
+    "open_deck": "Otwórz",
+    "view_deck": "Podgląd",
+    "manage_deck": "Zarządzaj",
+    "search_placeholder": "Szukaj talii...",
+    "owner_all": "Wszystkie",
+    "owner_mine": "Moje",
+    "owner_org": "Organizacja",
+    "owner_shared": "Udostępnione",
+    "sort_newest": "Od najnowszych",
+    "sort_oldest": "Od najstarszych",
+    "sort_name_asc": "Nazwa (A-Z)",
+    "sort_name_desc": "Nazwa (Z-A)"
   },
   "EduDeckViewPage": {
     "back": "Powrót",
@@ -487,7 +498,12 @@
     "view_flashcards_count": "{count, plural, one {# fiszka} few {# fiszki} other {# fiszek}} w tym temacie",
     "no_flashcards_for_topic": "Brak fiszek przypisanych do tego tematu",
     "question_label": "Pytanie",
-    "answer_label": "Odpowiedź"
+    "answer_label": "Odpowiedź",
+    "select_topics": "Wybierz Tematy",
+    "cancel_selection": "Anuluj Zaznaczenie",
+    "select_all": "Zaznacz Wszystkie",
+    "deselect_all": "Odznacz Wszystkie",
+    "n_selected": "{count} wybranych"
   },
   "EduStatsPage": {
     "title": "Statystyki",
@@ -861,7 +877,12 @@
     "topic_deleted": "Temat usunięty",
     "save_failed": "Nie udało się zapisać tematu",
     "delete_failed": "Nie udało się usunąć tematu",
-    "name_required": "Nazwa tematu jest wymagana"
+    "name_required": "Nazwa tematu jest wymagana",
+    "select_topics": "Wybierz Tematy",
+    "cancel_selection": "Anuluj Zaznaczenie",
+    "select_all": "Zaznacz Wszystkie",
+    "deselect_all": "Odznacz Wszystkie",
+    "n_selected": "{count} wybranych"
   },
   "AppFlashcardStudyPage": {
     "tab_review_due": "Przegląd",
@@ -1372,7 +1393,18 @@
     "import_errors": "{count} błędów",
     "import_failed": "Import nie powiódł się",
     "csv_row": "Wiersz",
-    "csv_error": "Błąd"
+    "csv_error": "Błąd",
+    "view_deck": "Podgląd",
+    "manage_deck": "Zarządzaj",
+    "search_placeholder": "Szukaj talii...",
+    "owner_all": "Wszystkie",
+    "owner_mine": "Moje",
+    "owner_org": "Organizacja",
+    "owner_shared": "Udostępnione",
+    "sort_newest": "Od najnowszych",
+    "sort_oldest": "Od najstarszych",
+    "sort_name_asc": "Nazwa (A-Z)",
+    "sort_name_desc": "Nazwa (Z-A)"
   },
   "AiChatPage": {
     "title": "Asystent AI",

@@ -2,6 +2,8 @@ export const flashcardKeys = {
   all: ['flashcards'] as const,
   decks: {
     all: ['flashcards', 'decks'] as const,
+    list: (filters?: Record<string, string | undefined>) =>
+      ['flashcards', 'decks', 'list', filters] as const,
     detail: (id: string) => ['flashcards', 'decks', id] as const,
   },
   list: (filters?: Record<string, string[]>) =>

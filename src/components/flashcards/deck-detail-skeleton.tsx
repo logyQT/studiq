@@ -14,7 +14,7 @@ function FlashcardSkeleton() {
           <Skeleton className="h-4 w-16 rounded-full" />
         </div>
       </div>
-      <div className="min-h-48 rounded-xl border bg-card p-6 flex flex-col items-center justify-center space-y-3 hidden sm:flex">
+      <div className="min-h-48 rounded-xl border bg-card p-6 flex-col items-center justify-center space-y-3 hidden sm:flex">
         <Skeleton className="h-3 w-16" />
         <Skeleton className="h-6 w-3/4" />
         <div className="mt-auto pt-4 w-full flex gap-1">

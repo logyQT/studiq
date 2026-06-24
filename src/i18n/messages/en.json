@@ -319,7 +319,18 @@
     "save_failed": "Failed to save deck",
     "delete_failed": "Failed to delete deck",
     "name_required": "Deck name is required",
-    "open_deck": "Open"
+    "open_deck": "Open",
+    "view_deck": "View",
+    "manage_deck": "Manage",
+    "search_placeholder": "Search decks...",
+    "owner_all": "All Decks",
+    "owner_mine": "My Decks",
+    "owner_org": "Organization",
+    "owner_shared": "Shared",
+    "sort_newest": "Newest First",
+    "sort_oldest": "Oldest First",
+    "sort_name_asc": "Name (A-Z)",
+    "sort_name_desc": "Name (Z-A)"
   },
   "EduDeckViewPage": {
     "back": "Back to Decks",
@@ -505,7 +516,12 @@
     "view_flashcards_count": "{count, plural, one {# flashcard} other {# flashcards}} in this topic",
     "no_flashcards_for_topic": "No flashcards assigned to this topic yet",
     "question_label": "Question",
-    "answer_label": "Answer"
+    "answer_label": "Answer",
+    "select_topics": "Select Topics",
+    "cancel_selection": "Cancel Selection",
+    "select_all": "Select All",
+    "deselect_all": "Deselect All",
+    "n_selected": "{count} selected"
   },
   "EduStatsPage": {
     "title": "Statistics",
@@ -879,7 +895,12 @@
     "topic_deleted": "Topic deleted",
     "save_failed": "Failed to save topic",
     "delete_failed": "Failed to delete topic",
-    "name_required": "Topic name is required"
+    "name_required": "Topic name is required",
+    "select_topics": "Select Topics",
+    "cancel_selection": "Cancel Selection",
+    "select_all": "Select All",
+    "deselect_all": "Deselect All",
+    "n_selected": "{count} selected"
   },
   "AppFlashcardStudyPage": {
     "tab_review_due": "Review Due",
@@ -1390,7 +1411,18 @@
     "import_errors": "{count} errors",
     "import_failed": "Import failed",
     "csv_row": "Row",
-    "csv_error": "Error"
+    "csv_error": "Error",
+    "view_deck": "View",
+    "manage_deck": "Manage",
+    "search_placeholder": "Search decks...",
+    "owner_all": "All Decks",
+    "owner_mine": "My Decks",
+    "owner_org": "Organization",
+    "owner_shared": "Shared",
+    "sort_newest": "Newest First",
+    "sort_oldest": "Oldest First",
+    "sort_name_asc": "Name (A-Z)",
+    "sort_name_desc": "Name (Z-A)"
   },
   "AiChatPage": {
     "title": "AI Assistant",

@@ -35,6 +35,17 @@ export const BatchDeleteDeckSchema = registry.register(
   }),
 );
 
+export const DeckListQuerySchema = registry.register(
+  'DeckListQuery',
+  z.object({
+    q: z.string().optional(),
+    owner: z.enum(['all', 'mine', 'org', 'shared']).optional().default('all'),
+    sortBy: z.enum(['created_at', 'name']).optional().default('created_at'),
+    sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
+  }),
+);
+
 export type CreateDeckInput = z.infer<typeof CreateDeckSchema>;
 export type UpdateDeckInput = z.infer<typeof UpdateDeckSchema>;
 export type BatchDeleteDeckInput = z.infer<typeof BatchDeleteDeckSchema>;
+export type DeckListQuery = z.infer<typeof DeckListQuerySchema>;

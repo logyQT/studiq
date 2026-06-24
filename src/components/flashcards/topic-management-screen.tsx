@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -16,7 +17,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Trash2, Pencil, MoreVertical, Tags } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  MoreVertical,
+  Tags,
+  CheckCheck,
+  CheckSquare,
+  SquarePen,
+} from 'lucide-react';
 import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -33,6 +43,8 @@ import { apiPost, apiPut, apiDelete } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { Topic, Flashcard } from '@/types/flashcards';
 import { getTopicColor } from '@/lib/color-utils';
+import { SpeedDial } from '@/components/shared/speed-dial';
+import { TopicBulkActions } from '@/components/flashcards/topic-bulk-actions';
 
 interface TopicManagementScreenProps {
   apiBase: string;
@@ -85,12 +97,30 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
       queryClient.setQueryData(flashcardKeys.topics.all, ctx?.previous);
     },
   });
+  const batchDeleteTopics = useApiMutation({
+    mutationFn: (data: { ids: string[] }) => apiPost('/api/v1/flashcards/topics/batch/delete', data),
+    invalidateKeys: [flashcardKeys.topics.all],
+  });
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Topic | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [viewTopicId, setViewTopicId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: '' });
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!isSelecting) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleClearSelection();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isSelecting]);
 
   function resetForm() {
     setFormData({ name: '' });
@@ -138,6 +168,41 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     setDeleteId(null);
   }
 
+  function handleToggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleSelectAll() {
+    if (!topics) return;
+    setSelectedIds(new Set(topics.map((t) => t.id)));
+  }
+
+  function handleDeselectAll() {
+    setSelectedIds(new Set());
+  }
+
+  function handleClearSelection() {
+    setSelectedIds(new Set());
+    setIsSelecting(false);
+  }
+
+  async function handleBatchDeleteSelection() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    try {
+      await batchDeleteTopics.mutateAsync({ ids });
+      toast.success(t('topic_deleted'));
+      handleClearSelection();
+    } catch {
+      toast.error(t('delete_failed'));
+    }
+  }
+
   const viewFlashcards = viewTopicId
     ? flashcards.filter((fc) =>
         fc.flashcard_topic_assignments?.some((a) => a.topic_id === viewTopicId),
@@ -148,11 +213,21 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end">
-        <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" /> {t('new_topic')}
-        </Button>
-      </div>
+      {isSelecting && topics && topics.length > 0 && (
+        <div className="flex items-center gap-2 py-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={selectedIds.size === topics.length ? handleDeselectAll : handleSelectAll}
+          >
+            <CheckCheck className="mr-1.5 h-4 w-4" />
+            {selectedIds.size === topics.length ? t('deselect_all') : t('select_all')}
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            {t('n_selected', { count: selectedIds.size })}
+          </span>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -179,54 +254,79 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
           {topics?.map((topic) => {
             const color = getTopicColor(topic.name);
             return (
-              <Card key={topic.id} className="group cursor-pointer" onClick={() => setViewTopicId(topic.id)}>
+              <Card
+                key={topic.id}
+                className={`group cursor-pointer transition-all duration-200 ${selectedIds.has(topic.id) ? 'ring-2 ring-primary' : ''}`}
+                onClick={() => {
+                  if (isSelecting) {
+                    handleToggleSelect(topic.id);
+                  } else {
+                    setViewTopicId(topic.id);
+                  }
+                }}
+              >
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between">
-                    <div
-                      className={`h-10 w-10 rounded-lg ${color} flex items-center justify-center`}
-                    >
-                      <span className="text-sm font-bold text-white">
-                        {topic.name.charAt(0).toUpperCase()}
-                      </span>
+                    <div className="relative">
+                      <div
+                        className={`h-10 w-10 rounded-lg ${color} flex items-center justify-center`}
+                      >
+                        <span className="text-sm font-bold text-white">
+                          {topic.name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      {isSelecting && (
+                        <div className="absolute -top-2 -left-2 z-10">
+                          <Checkbox
+                            checked={selectedIds.has(topic.id)}
+                            onCheckedChange={() => handleToggleSelect(topic.id)}
+                            className="h-4 w-4 bg-background/80"
+                          />
+                        </div>
+                      )}
                     </div>
-                    <div className="md:hidden">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" className="h-7 w-7">
-                            <MoreVertical className="h-3 w-3" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEdit(topic)}>
-                            <Pencil className="mr-2 h-3 w-3" /> {t('common_edit')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setDeleteId(topic.id)} className="text-destructive">
-                            <Trash2 className="mr-2 h-3 w-3" /> {t('common_delete')}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                    <div className="hidden md:block">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <MoreVertical className="h-3 w-3" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEdit(topic)}>
-                            <Pencil className="mr-2 h-3 w-3" /> {t('common_edit')}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setDeleteId(topic.id)} className="text-destructive">
-                            <Trash2 className="mr-2 h-3 w-3" /> {t('common_delete')}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                    {!isSelecting && (
+                      <>
+                        <div className="md:hidden">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                                <MoreVertical className="h-3 w-3" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEdit(topic); }}>
+                                <Pencil className="mr-2 h-3 w-3" /> {t('common_edit')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDeleteId(topic.id); }} className="text-destructive">
+                                <Trash2 className="mr-2 h-3 w-3" /> {t('common_delete')}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                        <div className="hidden md:block">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <MoreVertical className="h-3 w-3" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEdit(topic); }}>
+                                <Pencil className="mr-2 h-3 w-3" /> {t('common_edit')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDeleteId(topic.id); }} className="text-destructive">
+                                <Trash2 className="mr-2 h-3 w-3" /> {t('common_delete')}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </>
+                    )}
                   </div>
                   <h3 className="mt-3 font-semibold truncate">{topic.name}</h3>
                   <Badge variant="secondary" className="mt-2">
@@ -340,6 +440,22 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         cancelText={t('common_cancel')}
         confirmText={t('common_delete')}
       />
+
+      <TopicBulkActions
+        selectedCount={selectedIds.size}
+        onDelete={handleBatchDeleteSelection}
+        onClearSelection={handleClearSelection}
+        t={t}
+      />
+
+      {!isSelecting && (
+        <SpeedDial
+          items={[
+            { icon: SquarePen, label: t('new_topic'), onClick: openCreate },
+            { icon: CheckSquare, label: t('select_topics'), onClick: () => setIsSelecting(true) },
+          ]}
+        />
+      )}
     </div>
   );
 }
