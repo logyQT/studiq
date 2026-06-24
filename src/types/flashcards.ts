@@ -10,6 +10,7 @@ export interface Topic {
   id: string;
   name: string;
   flashcard_count: number;
+  created_by: string;
 }
 
 export interface Flashcard {

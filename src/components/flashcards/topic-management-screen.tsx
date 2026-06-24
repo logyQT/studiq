@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -233,7 +233,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <Card key={i}>
-              <CardContent className="p-5">
+              <div className="p-5">
                 <div className="flex items-start justify-between">
                   <Skeleton className="h-10 w-10 rounded-lg" />
                   <div className="flex gap-1">
@@ -245,7 +245,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
                   <Skeleton className="h-5 w-20" />
                   <Skeleton className="h-9 w-full" />
                 </div>
-              </CardContent>
+              </div>
             </Card>
           ))}
         </div>
@@ -265,7 +265,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
                   }
                 }}
               >
-                <CardContent className="p-5">
+                <div className="p-5">
                   <div className="flex items-start justify-between">
                     <div className="relative">
                       <div
@@ -332,7 +332,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
                   <Badge variant="secondary" className="mt-2">
                     {t('flashcards_count', { count: topic.flashcard_count })}
                   </Badge>
-                </CardContent>
+                </div>
               </Card>
             );
           })}
