@@ -20,6 +20,7 @@ import {
   Sparkles,
   Layers,
   MoreVertical,
+  ArrowUp,
 } from 'lucide-react';
 import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { BreadcrumbUpdater } from '@/components/providers/BreadcrumbProvider';
@@ -198,6 +199,7 @@ export function DeckDetailScreen({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelecting, setIsSelecting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [showBackToTop, setShowBackToTop] = useState(false);
 
   const [d, setD] = useState<DialogsState>({
     deleteId: null,
@@ -227,9 +229,52 @@ export function DeckDetailScreen({
     bulkTopicIds: [],
   });
 
-  function openEdit(fc: Flashcard) {
+  const handleCardDelete = useCallback((id: string) => {
+    setD((prev) => ({ ...prev, deleteId: id }));
+  }, [setD]);
+
+  const handleCardLink = useCallback((fc: Flashcard) => {
+    setD((prev) => ({
+      ...prev,
+      activeFlashcardId: fc.id,
+      linkDeckIds: [],
+      linkOpen: true,
+    }));
+  }, [setD]);
+
+  const handleCardCopy = useCallback((fc: Flashcard) => {
+    setD((prev) => ({
+      ...prev,
+      activeFlashcardId: fc.id,
+      copyTargetDeckId: null,
+      copyOpen: true,
+    }));
+  }, [setD]);
+
+  const handleCardAddTopic = useCallback((fc: Flashcard) => {
+    setD((prev) => ({
+      ...prev,
+      activeFlashcardId: fc.id,
+      topicActionIds: [],
+      addTopicOpen: true,
+    }));
+  }, [setD]);
+
+  const handleCardManageTopics = useCallback((fc: Flashcard) => {
+    setD((prev) => ({ ...prev, activeFlashcardId: fc.id, manageTopicOpen: true }));
+  }, [setD]);
+
+  const handleCardViewByTopic = useCallback((_fc: Flashcard, topicId: string) => {
+    setD((prev) => ({ ...prev, viewTopicId: topicId }));
+  }, [setD]);
+
+  const handleFlip = useCallback((id: string | null) => {
+    setFlippedId(id || null);
+  }, [setFlippedId]);
+
+  const openEdit = useCallback((fc: Flashcard) => {
     router.push(`${basePath}/deck/${deckId}/${fc.id}`);
-  }
+  }, [router, basePath, deckId]);
 
   async function handleDelete() {
     if (!d.deleteId) return;
@@ -327,14 +372,14 @@ export function DeckDetailScreen({
     setD((prev) => ({ ...prev, addTopicOpen: false, topicActionIds: [] }));
   }
 
-  function toggleSelect(id: string) {
+  const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
 
   function clearSelection() {
     setSelectedIds(new Set());
@@ -453,6 +498,12 @@ export function DeckDetailScreen({
     onBulkCopyOpenChange: (open) => setD((prev) => ({ ...prev, bulkCopyOpen: open })),
     onBulkTopicsOpenChange: (open) => setD((prev) => ({ ...prev, bulkTopicsOpen: open })),
   };
+
+  useEffect(() => {
+    const onScroll = () => setShowBackToTop(window.scrollY > 400);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -644,37 +695,14 @@ export function DeckDetailScreen({
               selected={selectedIds.has(fc.id)}
               selectable={isSelecting}
               onToggleSelect={toggleSelect}
-              onFlip={isSelecting ? () => {} : (id) => setFlippedId(id || null)}
+              onFlip={handleFlip}
               onEdit={openEdit}
-              onDelete={(id) => setD((prev) => ({ ...prev, deleteId: id }))}
-              onLink={(fc) =>
-                setD((prev) => ({
-                  ...prev,
-                  activeFlashcardId: fc.id,
-                  linkDeckIds: [],
-                  linkOpen: true,
-                }))
-              }
-              onCopy={(fc) =>
-                setD((prev) => ({
-                  ...prev,
-                  activeFlashcardId: fc.id,
-                  copyTargetDeckId: null,
-                  copyOpen: true,
-                }))
-              }
-              onAddTopic={(fc) =>
-                setD((prev) => ({
-                  ...prev,
-                  activeFlashcardId: fc.id,
-                  topicActionIds: [],
-                  addTopicOpen: true,
-                }))
-              }
-              onManageTopics={(fc) =>
-                setD((prev) => ({ ...prev, activeFlashcardId: fc.id, manageTopicOpen: true }))
-              }
-              onViewByTopic={(_fc, topicId) => setD((prev) => ({ ...prev, viewTopicId: topicId }))}
+              onDelete={handleCardDelete}
+              onLink={handleCardLink}
+              onCopy={handleCardCopy}
+              onAddTopic={handleCardAddTopic}
+              onManageTopics={handleCardManageTopics}
+              onViewByTopic={handleCardViewByTopic}
             />
           ))}
           <div ref={loadMoreRef} className="col-span-full h-4" />
@@ -787,6 +815,17 @@ export function DeckDetailScreen({
             { icon: CheckSquare, label: t('select_cards'), onClick: () => setIsSelecting(true) },
           ]}
         />
+      )}
+
+      {showBackToTop && (
+        <Button
+          variant="secondary"
+          size="icon"
+          className="fixed bottom-24 right-6 z-50 h-10 w-10 rounded-full shadow-lg"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        >
+          <ArrowUp className="h-5 w-5" />
+        </Button>
       )}
     </div>
   );

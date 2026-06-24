@@ -70,7 +70,11 @@ export const TOPIC_COLORS = [
 ] as const;
 
 export function getTopicColor(name: string) {
-  return TOPIC_COLORS[name.length % TOPIC_COLORS.length];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return TOPIC_COLORS[Math.abs(hash) % TOPIC_COLORS.length];
 }
 
 export function getTopicColorHex(name: string): string {

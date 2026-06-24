@@ -189,25 +189,44 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
                         {topic.name.charAt(0).toUpperCase()}
                       </span>
                     </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <MoreVertical className="h-3 w-3" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEdit(topic)}>
-                          <Pencil className="mr-2 h-3 w-3" /> {t('common_edit')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setDeleteId(topic.id)} className="text-destructive">
-                          <Trash2 className="mr-2 h-3 w-3" /> {t('common_delete')}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="md:hidden">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7">
+                            <MoreVertical className="h-3 w-3" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(topic)}>
+                            <Pencil className="mr-2 h-3 w-3" /> {t('common_edit')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setDeleteId(topic.id)} className="text-destructive">
+                            <Trash2 className="mr-2 h-3 w-3" /> {t('common_delete')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <div className="hidden md:block">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <MoreVertical className="h-3 w-3" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(topic)}>
+                            <Pencil className="mr-2 h-3 w-3" /> {t('common_edit')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setDeleteId(topic.id)} className="text-destructive">
+                            <Trash2 className="mr-2 h-3 w-3" /> {t('common_delete')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                   <h3 className="mt-3 font-semibold truncate">{topic.name}</h3>
                   <Badge variant="secondary" className="mt-2">
