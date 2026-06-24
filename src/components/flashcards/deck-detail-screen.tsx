@@ -15,12 +15,12 @@ import {
   CheckSquare,
   Square,
   CheckCheck,
-  Upload,
-  Download,
   Sparkles,
   Layers,
   MoreVertical,
   ArrowUp,
+  FileUp,
+  FileDown,
 } from 'lucide-react';
 import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { BreadcrumbUpdater } from '@/components/providers/BreadcrumbProvider';
@@ -229,52 +229,76 @@ export function DeckDetailScreen({
     bulkTopicIds: [],
   });
 
-  const handleCardDelete = useCallback((id: string) => {
-    setD((prev) => ({ ...prev, deleteId: id }));
-  }, [setD]);
+  const handleCardDelete = useCallback(
+    (id: string) => {
+      setD((prev) => ({ ...prev, deleteId: id }));
+    },
+    [setD],
+  );
 
-  const handleCardLink = useCallback((fc: Flashcard) => {
-    setD((prev) => ({
-      ...prev,
-      activeFlashcardId: fc.id,
-      linkDeckIds: [],
-      linkOpen: true,
-    }));
-  }, [setD]);
+  const handleCardLink = useCallback(
+    (fc: Flashcard) => {
+      setD((prev) => ({
+        ...prev,
+        activeFlashcardId: fc.id,
+        linkDeckIds: [],
+        linkOpen: true,
+      }));
+    },
+    [setD],
+  );
 
-  const handleCardCopy = useCallback((fc: Flashcard) => {
-    setD((prev) => ({
-      ...prev,
-      activeFlashcardId: fc.id,
-      copyTargetDeckId: null,
-      copyOpen: true,
-    }));
-  }, [setD]);
+  const handleCardCopy = useCallback(
+    (fc: Flashcard) => {
+      setD((prev) => ({
+        ...prev,
+        activeFlashcardId: fc.id,
+        copyTargetDeckId: null,
+        copyOpen: true,
+      }));
+    },
+    [setD],
+  );
 
-  const handleCardAddTopic = useCallback((fc: Flashcard) => {
-    setD((prev) => ({
-      ...prev,
-      activeFlashcardId: fc.id,
-      topicActionIds: [],
-      addTopicOpen: true,
-    }));
-  }, [setD]);
+  const handleCardAddTopic = useCallback(
+    (fc: Flashcard) => {
+      setD((prev) => ({
+        ...prev,
+        activeFlashcardId: fc.id,
+        topicActionIds: [],
+        addTopicOpen: true,
+      }));
+    },
+    [setD],
+  );
 
-  const handleCardManageTopics = useCallback((fc: Flashcard) => {
-    setD((prev) => ({ ...prev, activeFlashcardId: fc.id, manageTopicOpen: true }));
-  }, [setD]);
+  const handleCardManageTopics = useCallback(
+    (fc: Flashcard) => {
+      setD((prev) => ({ ...prev, activeFlashcardId: fc.id, manageTopicOpen: true }));
+    },
+    [setD],
+  );
 
-  const handleCardViewByTopic = useCallback((_fc: Flashcard, topicId: string) => {
-    setD((prev) => ({ ...prev, viewTopicId: topicId }));
-  }, [setD]);
+  const handleCardViewByTopic = useCallback(
+    (_fc: Flashcard, topicId: string) => {
+      setD((prev) => ({ ...prev, viewTopicId: topicId }));
+    },
+    [setD],
+  );
 
-  const handleFlip = useCallback((id: string | null) => {
-    setFlippedId(id || null);
-  }, [setFlippedId]);
+  const handleFlip = useCallback(
+    (id: string | null) => {
+      setFlippedId(id || null);
+    },
+    [setFlippedId],
+  );
 
-  const openEdit = useCallback((fc: Flashcard) => {
-    router.push(`${basePath}/deck/${deckId}/${fc.id}`);
-  }, [router, basePath, deckId]);
+  const openEdit = useCallback(
+    (fc: Flashcard) => {
+      router.push(`${basePath}/deck/${deckId}/${fc.id}`);
+    },
+    [router, basePath, deckId],
+  );
 
   async function handleDelete() {
     if (!d.deleteId) return;
@@ -561,7 +585,7 @@ export function DeckDetailScreen({
               )}
               {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
                 <DropdownMenuItem onClick={() => setImportOpen(true)}>
-                  <Upload className="h-4 w-4 mr-2" /> {t('import_csv')}
+                  <FileUp className="h-4 w-4 mr-2" /> {t('common_import')}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem
@@ -570,7 +594,7 @@ export function DeckDetailScreen({
                   window.open(`/api/v1/flashcards/export/csv${params}`, '_blank');
                 }}
               >
-                <Download className="h-4 w-4 mr-2" /> {t('export_csv')}
+                <FileDown className="h-4 w-4 mr-2" /> {t('common_export')}
               </DropdownMenuItem>
               {can(role, 'deck.delete', currentDeck?.created_by, user?.id) && (
                 <>
@@ -596,7 +620,13 @@ export function DeckDetailScreen({
                     <stop offset="100%" stopColor={headerGrad.to} />
                   </linearGradient>
                 </defs>
-                <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" stroke="url(#hdr-icon)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path
+                  d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"
+                  stroke="url(#hdr-icon)"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
             </div>
             <Badge variant="secondary">

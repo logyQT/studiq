@@ -22,12 +22,12 @@ import {
   Eye,
   Upload,
   CheckSquare,
-  CheckCheck,
   Plus,
   FolderOpen,
   MoreVertical,
   Search,
   X,
+  FileUp,
 } from 'lucide-react';
 import {
   Select,
@@ -69,11 +69,14 @@ interface DeckManagementScreenProps {
 const STORAGE_KEY = 'flashcard_decks_filters';
 
 function loadPersistedFilters() {
-  if (typeof window === 'undefined') return { owner: 'all', sortBy: 'created_at', sortOrder: 'desc' };
+  if (typeof window === 'undefined')
+    return { owner: 'all', sortBy: 'created_at', sortOrder: 'desc' };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return { owner: 'all', sortBy: 'created_at', sortOrder: 'desc' };
 }
 
@@ -107,7 +110,11 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   });
 
   function persistFilters(o: string, sb: string, so: string) {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ owner: o, sortBy: sb, sortOrder: so })); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ owner: o, sortBy: sb, sortOrder: so }));
+    } catch {
+      /* ignore */
+    }
   }
 
   const createDeck = useApiMutation({
@@ -203,15 +210,6 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     });
   }
 
-  function handleSelectAll() {
-    if (!decks) return;
-    setSelectedIds(new Set(decks.map((d) => d.id)));
-  }
-
-  function handleDeselectAll() {
-    setSelectedIds(new Set());
-  }
-
   function handleClearSelection() {
     setSelectedIds(new Set());
     setIsSelecting(false);
@@ -246,12 +244,13 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     setDeleteId(null);
   }
 
-  const canSeeOrg = role === UserRole.TEACHER || role === UserRole.UNIVERSITY_ADMIN || role === UserRole.SYS_ADMIN;
+  const canSeeOrg =
+    role === UserRole.TEACHER || role === UserRole.UNIVERSITY_ADMIN || role === UserRole.SYS_ADMIN;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative flex-1 max-w-md">
+      <div className="flex flex-wrap items-center gap-3 max-sm:hidden">
+        <div className="relative flex-1 basis-full lg:basis-auto lg:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             value={searchInput}
@@ -268,62 +267,54 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <Select
-            value={owner}
-            onValueChange={(v) => {
-              setOwner(v);
-              persistFilters(v, sortBy, sortOrder);
-            }}
-          >
-            <SelectTrigger className="w-35">
-              <SelectValue placeholder={t('owner_all')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('owner_all')}</SelectItem>
-              <SelectItem value="mine">{t('owner_mine')}</SelectItem>
-              {canSeeOrg && <SelectItem value="org">{t('owner_org')}</SelectItem>}
-              <SelectItem value="shared">{t('owner_shared')}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select
-            value={`${sortBy}:${sortOrder}`}
-            onValueChange={(v) => {
-              const [sb, so] = v.split(':');
-              setSortBy(sb);
-              setSortOrder(so);
-              persistFilters(owner, sb, so);
-            }}
-          >
-            <SelectTrigger className="w-37.5">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="created_at:desc">{t('sort_newest')}</SelectItem>
-              <SelectItem value="updated_at:desc">{t('sort_recent')}</SelectItem>
-              <SelectItem value="created_at:asc">{t('sort_oldest')}</SelectItem>
-              <SelectItem value="name:asc">{t('sort_name_asc')}</SelectItem>
-              <SelectItem value="name:desc">{t('sort_name_desc')}</SelectItem>
-            </SelectContent>
-          </Select>
+        <Select
+          value={owner}
+          onValueChange={(v) => {
+            setOwner(v);
+            persistFilters(v, sortBy, sortOrder);
+          }}
+        >
+          <SelectTrigger className="w-35 truncate">
+            <SelectValue placeholder={t('owner_all')} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t('owner_all')}</SelectItem>
+            <SelectItem value="mine">{t('owner_mine')}</SelectItem>
+            {canSeeOrg && <SelectItem value="org">{t('owner_org')}</SelectItem>}
+            <SelectItem value="shared">{t('owner_shared')}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={`${sortBy}:${sortOrder}`}
+          onValueChange={(v) => {
+            const [sb, so] = v.split(':');
+            setSortBy(sb);
+            setSortOrder(so);
+            persistFilters(owner, sb, so);
+          }}
+        >
+          <SelectTrigger className="w-37.5 truncate">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="created_at:desc">{t('sort_newest')}</SelectItem>
+            <SelectItem value="updated_at:desc">{t('sort_recent')}</SelectItem>
+            <SelectItem value="created_at:asc">{t('sort_oldest')}</SelectItem>
+            <SelectItem value="name:asc">{t('sort_name_asc')}</SelectItem>
+            <SelectItem value="name:desc">{t('sort_name_desc')}</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-2 sm:ml-auto">
+          <Button variant="outline" className="justify-start" onClick={() => setImportOpen(true)}>
+            <FileUp className="h-4 w-4" /> {t('common_import')}
+          </Button>
+          <Button className="justify-start" onClick={openCreate}>
+            <Plus className="h-4 w-4" /> {t('new_deck')}
+          </Button>
         </div>
       </div>
 
-      {isSelecting && decks && decks.length > 0 && (
-        <div className="flex items-center gap-2 py-1">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={selectedIds.size === decks.length ? handleDeselectAll : handleSelectAll}
-          >
-            <CheckCheck className="mr-1.5 h-4 w-4" />
-            {selectedIds.size === decks.length ? t('deselect_all') : t('select_all')}
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            {t('n_selected', { count: selectedIds.size })}
-          </span>
-        </div>
-      )}
+
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -625,7 +616,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
           <div className="py-4">
             <Card className="p-5 pb-3">
               <div className="flex items-start gap-3">
-                <div className="h-10 w-10 rounded-lg bg-muted-foreground/10 flex items-center justify-center shrink-0">
+                <div className="h-10 w-10 rounded-xl bg-muted/40 border border-border/50 shadow-sm flex items-center justify-center shrink-0">
                   <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none">
                     <defs>
                       <linearGradient id="dialog-grad" x1="0" y1="0" x2="1" y2="1">
@@ -653,7 +644,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder={t('name_placeholder')}
-                    className="text-lg font-semibold h-auto py-0 px-0 border-0 border-b rounded-none focus-visible:ring-0 focus-visible:border-primary"
+                    className="text-lg font-bold tracking-tight h-auto py-0 px-0 border-0 border-b rounded-none focus-visible:ring-0 focus-visible:border-primary"
                   />
                   <Textarea
                     value={formData.description}
@@ -704,13 +695,15 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
       <ImportDialog open={importOpen} onOpenChange={setImportOpen} t={t} />
 
       {!isSelecting && (
-        <SpeedDial
-          items={[
-            { icon: SquarePen, label: t('new_deck'), onClick: openCreate },
-            { icon: Upload, label: t('import_csv'), onClick: () => setImportOpen(true) },
-            { icon: CheckSquare, label: t('select_cards'), onClick: () => setIsSelecting(true) },
-          ]}
-        />
+        <div className="sm:hidden">
+          <SpeedDial
+            items={[
+              { icon: SquarePen, label: t('new_deck'), onClick: openCreate },
+              { icon: Upload, label: t('common_import'), onClick: () => setImportOpen(true) },
+              { icon: CheckSquare, label: t('select_cards'), onClick: () => setIsSelecting(true) },
+            ]}
+          />
+        </div>
       )}
     </div>
   );

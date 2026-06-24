@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { CheckSquare, Pencil, Trash2, FileUp, FileDown } from 'lucide-react';
+import { CheckSquare, Pencil, Trash2, FileDown } from 'lucide-react';
 
 interface DeckContextMenuProps {
   t: ReturnType<typeof useTranslations>;
@@ -22,7 +22,6 @@ export function DeckContextMenu({
   onSelect,
   onEdit,
   onDelete,
-  onImport,
   onExport,
 }: DeckContextMenuProps) {
   return (
@@ -52,7 +51,7 @@ export function DeckContextMenu({
           onImport();
         }}
       >
-        <FileUp className="mr-2 h-4 w-4" /> {t('import_csv')}
+        <FileUp className="mr-2 h-4 w-4" /> {t('common_import')}
       </DropdownMenuItem> */}
       <DropdownMenuItem
         onClick={(e) => {
@@ -60,7 +59,7 @@ export function DeckContextMenu({
           onExport();
         }}
       >
-        <FileDown className="mr-2 h-4 w-4" /> {t('export_csv')}
+        <FileDown className="mr-2 h-4 w-4" /> {t('common_export')}
       </DropdownMenuItem>
       {canDelete && (
         <>
