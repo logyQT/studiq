@@ -18,5 +18,4 @@ export * from '@/server/models/flashcard-stats.model';
 export * from '@/server/models/flashcard-import.model';
 export * from '@/server/models/flashcard-export.model';
 export * from '@/server/models/ai-chat.model';
-export * from '@/server/models/ai-command.model';
 export * from '@/server/models/study-settings.model';

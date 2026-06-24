@@ -31,8 +31,8 @@ export const createPlanTool = tool({
       eventType: 'tool_call',
       label: 'create_plan',
       data: {
-        steps: (args as any)?.steps?.length,
-        estimatedComplexity: (args as any)?.estimatedComplexity,
+        steps: args.steps.length,
+        estimatedComplexity: args.estimatedComplexity,
       },
     });
     return args;

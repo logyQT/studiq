@@ -31,7 +31,7 @@ export const ChatMessage = memo(
       return (
         <div className="flex justify-start">
           <div className="max-w-[80%] w-full">
-            <PlanBlock steps={message.plan || []} isComplete={message.planCompleted ?? false} />
+            <PlanBlock steps={message.plan || []} isComplete={message.planCompleted ?? false} completedSteps={message.completedSteps} />
           </div>
         </div>
       );
@@ -110,26 +110,21 @@ export const ChatMessage = memo(
             <ThinkingBlock traces={message.thinkingTraces} isComplete={isComplete || isError} />
           )}
 
-          {isFlashcardResult &&
-            Array.isArray(message.result!.data) &&
-            (console.log('[TRACE] render flashcard', {
-              id: message.id,
-              status: message.status,
-              dataLength: (message.result!.data as any[]).length,
-              ts: Date.now(),
-            }),
-            (message.result!.data as any[]).length === 0 ? (
+          {isFlashcardResult && Array.isArray(message.result!.data) &&
+            (message.result!.data.length === 0 ? (
               <FlashcardBlock
                 loading
                 count={message.result!.count}
-                deckName={message.result!.deckName as string | undefined}
+                deckName={typeof message.result!.deckName === 'string' ? message.result!.deckName : undefined}
+                readOnly={message.result!.readOnly}
               />
             ) : (
               <FlashcardBlock
                 flashcards={
                   message.result!.data as Array<{ front: string; back: string; topic?: string }>
                 }
-                deckName={message.result!.deckName as string | undefined}
+                deckName={typeof message.result!.deckName === 'string' ? message.result!.deckName : undefined}
+                readOnly={message.result!.readOnly}
               />
             ))}
 

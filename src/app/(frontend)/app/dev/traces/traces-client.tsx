@@ -48,7 +48,7 @@ export default function TracesClient() {
     limit: 100,
     offset: 0,
   });
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [autoRefresh, setAutoRefresh] = useState(false);
   const [loading, setLoading] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -77,6 +77,7 @@ export default function TracesClient() {
   }, [filters]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchTraces();
   }, [fetchTraces]);
 

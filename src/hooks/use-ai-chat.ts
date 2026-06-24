@@ -1,8 +1,32 @@
 'use client';
 
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
+import { log } from '@/lib/logger';
+
+interface ChatPart {
+  type: string;
+  text?: string;
+  toolCallId?: string;
+  state?: string;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+}
+
+interface UiMessageRaw {
+  id: string;
+  role: string;
+  content?: string;
+  parts?: ChatPart[];
+}
+
+interface UseChatResultRaw {
+  messages: UiMessageRaw[];
+  sendMessage: (data: { text: string }) => Promise<void>;
+  stop: () => void;
+  status: string;
+}
 
 export interface QuestionData {
   id: string;
@@ -22,7 +46,7 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'thought' | 'tool_call' | 'plan';
   content: string;
-  result?: { type: string; data: unknown; deckName?: string; count?: number };
+  result?: { type: string; data: unknown; deckName?: string; count?: number; readOnly?: boolean };
   status: 'sending' | 'streaming' | 'thinking' | 'complete' | 'error' | 'running';
   error?: string;
   file?: { name: string; mimeType: string; data: string };
@@ -30,6 +54,7 @@ export interface ChatMessage {
   question?: QuestionData;
   plan?: PlanStep[];
   planCompleted?: boolean;
+  completedSteps?: number[];
   step?: number;
   reasoning?: string;
   agent?: string;
@@ -100,23 +125,26 @@ function toolStateToStatus(state: string): 'thinking' | 'running' | 'complete' {
 }
 
 export function useAiChat(): UseAiChatReturn {
-  const chatResult = (useChat as any)({
+  const chatResult = useChat({
     transport: new DefaultChatTransport({ api: '/api/v1/ai/chat' }),
-  });
+  }) as unknown as UseChatResultRaw;
   const { messages: uiMessages = [], sendMessage: sendChatMessage, stop, status } = chatResult;
-
-  const messagesRef = useRef<ChatMessage[]>([]);
 
   const messages: ChatMessage[] = useMemo(() => {
     const mapped: ChatMessage[] = [];
     const isStreaming = status === 'streaming';
+    const lastMsg = uiMessages[uiMessages.length - 1];
+    const isLastAssistant = lastMsg?.role === 'assistant';
+    let planMsgRef: ChatMessage | null = null;
+    let totalPlanSteps = 0;
+    const completedStepSet = new Set<number>();
 
     for (const m of uiMessages) {
       if (m.role === 'user') {
         mapped.push({
           id: m.id,
           role: 'user',
-          content: m.parts?.find((p: any) => p.type === 'text')?.text || '',
+          content: m.parts?.find((p) => p.type === 'text')?.text || '',
           status: 'complete',
           thinkingTraces: [],
         });
@@ -129,11 +157,12 @@ export function useAiChat(): UseAiChatReturn {
 
         if (part.type === 'text') {
           const isLast = i === parts.length - 1;
+          const isActiveStream = isStreaming && isLastAssistant && m === lastMsg && isLast;
           mapped.push({
             id: `${m.id}-text-${i}`,
             role: 'assistant',
             content: part.text || '',
-            status: isLast && isStreaming ? 'streaming' : 'complete',
+            status: isActiveStream ? 'streaming' : 'complete',
             thinkingTraces: [],
           });
           continue;
@@ -151,22 +180,23 @@ export function useAiChat(): UseAiChatReturn {
         }
 
         if (part.type?.startsWith?.('tool-')) {
+          const tp = part;
           const toolName = part.type.slice(5);
-          const state = part.state || 'output-available';
+          const state = tp.state || 'output-available';
           const toolStatus = toolStateToStatus(state);
-          const input = part.input;
+          const input = tp.input;
 
           mapped.push({
-            id: part.toolCallId || `${m.id}-tool-${toolName}-${i}`,
+            id: tp.toolCallId || `${m.id}-tool-${toolName}-${i}`,
             role: 'tool_call',
             content: '',
             toolName,
             label:
               toolStateToStatus(state) !== 'complete'
                 ? toolLabel(toolName)
-                : toolResultLabel(toolName, part.output),
+                : toolResultLabel(toolName, tp.output),
             args: input,
-            toolResult: state === 'output-available' ? part.output : undefined,
+            toolResult: state === 'output-available' ? tp.output : undefined,
             status: toolStatus,
             thinkingTraces: [],
           });
@@ -174,7 +204,7 @@ export function useAiChat(): UseAiChatReturn {
           if (toolName === 'generate_flashcards') {
             if (state === 'output-error') {
               mapped.push({
-                id: `${part.toolCallId || `${m.id}-tool-${toolName}-${i}`}-error`,
+                id: `${tp.toolCallId || `${m.id}-tool-${toolName}-${i}`}-error`,
                 role: 'tool_call',
                 content: '',
                 toolName,
@@ -185,19 +215,16 @@ export function useAiChat(): UseAiChatReturn {
               continue;
             }
 
-            const output = part.output as any;
-            const inputData = input as any;
-            const flashcards = output?.flashcards;
+            const outputMap: Record<string, unknown> | undefined = tp.output;
+            const inputMap: Record<string, unknown> | undefined = tp.input;
+            const flashcardArray = Array.isArray(outputMap?.flashcards) ? outputMap.flashcards as Array<Record<string, unknown>> : [];
             const isComplete = state === 'output-available';
 
-            console.log('[TRACE] tool-generate-flashcards', {
-              state,
-              hasOutput: !!output,
-              hasInput: !!input,
-              outputCards: flashcards?.length ?? -1,
-              inputCount: inputData?.count,
-              ts: Date.now(),
-            });
+            if (process.env.NODE_ENV !== 'production') {
+              log.trace.debug('tool-generate-flashcards', {
+                metadata: { state, hasOutput: !!outputMap, hasInput: !!inputMap, outputCards: flashcardArray.length, inputCount: inputMap?.count },
+              });
+            }
 
             mapped.push({
               id: `${m.id}-result-${i}`,
@@ -207,48 +234,94 @@ export function useAiChat(): UseAiChatReturn {
               thinkingTraces: [],
               result: {
                 type: 'flashcards',
-                data: isComplete && flashcards?.length ? flashcards : [],
+                data: isComplete ? flashcardArray : [],
                 deckName: isComplete
-                  ? output?.deckName || 'Generated Flashcards'
-                  : inputData?.deck_name || undefined,
-                count: inputData?.count || 6,
+                  ? String(outputMap?.deckName ?? 'Generated Flashcards')
+                  : typeof inputMap?.deck_name === 'string' ? inputMap.deck_name : undefined,
+                count: isComplete ? Number(outputMap?.count) || 6 : Number(inputMap?.count) || 6,
+                readOnly: isComplete,
               },
             });
           }
 
           if (state === 'output-available' && toolName === 'ask_user') {
-            const output = part.output as any;
-            if (output?.type === 'question' && output?.question) {
+            const outputMap: Record<string, unknown> | undefined = tp.output;
+            if (outputMap?.type === 'question' && outputMap?.question) {
               const existing = mapped[mapped.length - 1];
               if (existing) {
-                existing.question = output.question;
+                existing.question = outputMap.question as QuestionData;
               }
             }
           }
 
           if (state === 'output-available' && toolName === 'create_plan') {
-            const output = part.output as any;
-            if (output?.steps) {
-              mapped.push({
+            const outputMap: Record<string, unknown> | undefined = tp.output;
+            if (outputMap?.steps) {
+              const steps = outputMap.steps as Array<Record<string, unknown>>;
+              const planMsg: ChatMessage = {
                 id: `${m.id}-plan-${i}`,
                 role: 'plan',
                 content: '',
                 status: 'complete',
                 thinkingTraces: [],
-                plan: output.steps.map((s: any, idx: number) => ({
+                plan: steps.map((s: Record<string, unknown>, idx: number) => ({
                   index: idx,
-                  action: s.action || '',
-                  rationale: s.rationale || '',
-                  dependsOn: s.dependsOn,
+                  action: String(s.action ?? ''),
+                  rationale: String(s.rationale ?? ''),
+                  dependsOn: s.dependsOn as string[] | undefined,
                 })),
-                planCompleted: true,
-              });
+                planCompleted: false,
+                completedSteps: [],
+              };
+              planMsgRef = planMsg;
+              totalPlanSteps = steps.length;
+              completedStepSet.clear();
+              mapped.push(planMsg);
             }
           }
 
+          if (planMsgRef && state === 'output-available' && !['create_plan', 'finish', 'ask_user'].includes(toolName)) {
+            const stepAction = planMsgRef.plan?.find(s => s.action === toolName);
+            if (stepAction !== undefined) {
+              completedStepSet.add(stepAction.index);
+            } else {
+              const nextPending = [...Array(totalPlanSteps).keys()].find(i => !completedStepSet.has(i));
+              if (nextPending !== undefined) {
+                completedStepSet.add(nextPending);
+              }
+            }
+            planMsgRef.completedSteps = [...completedStepSet];
+            planMsgRef.planCompleted = completedStepSet.size >= totalPlanSteps;
+          }
+
           if (state === 'output-available' && toolName === 'finish') {
-            const output = part.output as any;
-            const text = output?.type === 'chat' ? output?.content : '';
+            if (planMsgRef) {
+              for (let si = 0; si < totalPlanSteps; si++) {
+                completedStepSet.add(si);
+              }
+              planMsgRef.completedSteps = [...completedStepSet];
+              planMsgRef.planCompleted = true;
+            }
+
+            const outputMap: Record<string, unknown> | undefined = tp.output;
+            if (outputMap?.type === 'flashcards') {
+              const flashcardArray = Array.isArray(outputMap?.flashcards) ? outputMap.flashcards as Array<Record<string, unknown>> : [];
+              mapped.push({
+                id: `${m.id}-finish-cards-${i}`,
+                role: 'assistant',
+                content: '',
+                status: 'complete',
+                thinkingTraces: [],
+                result: {
+                  type: 'flashcards',
+                  data: flashcardArray,
+                  deckName: String(outputMap?.deckName ?? 'Consolidated Flashcards'),
+                  count: flashcardArray.length,
+                  readOnly: false,
+                },
+              });
+            }
+            const text = outputMap?.type === 'chat' ? String(outputMap?.content ?? '') : '';
             if (text) {
               mapped.push({
                 id: `${m.id}-finish-${i}`,
@@ -263,31 +336,7 @@ export function useAiChat(): UseAiChatReturn {
       }
     }
 
-    // Stabilize: reuse previous objects for unchanged messages (content-based matching)
-    const prev = messagesRef.current;
-    const used = new Set<number>();
-    const result = mapped.map((msg) => {
-      const idx = prev.findIndex(
-        (p, i) =>
-          !used.has(i) &&
-          p.role === msg.role &&
-          p.content === msg.content &&
-          p.status === msg.status &&
-          p.toolName === msg.toolName &&
-          p.label === msg.label,
-      );
-      if (idx !== -1) {
-        used.add(idx);
-        return prev[idx];
-      }
-      return msg;
-    });
-    const hasChanges = result.some((r, i) => r !== prev[i]);
-    if (!hasChanges && result.length === prev.length) {
-      return prev;
-    }
-    messagesRef.current = result;
-    return result;
+    return mapped;
   }, [uiMessages, status]);
 
   const handleSend = useCallback(

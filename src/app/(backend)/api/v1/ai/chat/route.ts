@@ -1,9 +1,10 @@
-import { streamText, hasToolCall, stepCountIs, convertToModelMessages } from 'ai';
+import { streamText, convertToModelMessages, hasToolCall, stepCountIs } from 'ai';
+import type { UIMessage } from 'ai';
 import { NextRequest } from 'next/server';
 import { log } from '@/lib/logger';
 import { createClient } from '@/lib/supabase/server';
 import { toNextResponse } from '@/lib/http-utils';
-import { chatModel } from '@/server/ai/model';
+import { chatModel, providerName } from '@/server/ai/model';
 import { systemPrompt } from '@/server/agents/system';
 import {
   createPlanTool,
@@ -43,6 +44,8 @@ export async function POST(req: NextRequest) {
   const conversationId =
     ((messages[0] as Record<string, unknown>)?.id as string) || crypto.randomUUID();
 
+  const reasoningEffort = process.env.LL_REASONING_EFFORT;
+
   log.api.info('streamText start', {
     metadata: {
       conversationId,
@@ -51,6 +54,7 @@ export async function POST(req: NextRequest) {
       tools:
         'create_plan,ask_user,fetch_material,webfetch,extract_concepts,evaluate_quality,generate_flashcards,finish',
       stopWhen: 'finish,ask_user,generate_flashcards,stepCountIs(30)',
+      reasoningEffort: reasoningEffort ?? 'default',
     },
   });
 
@@ -66,7 +70,9 @@ export async function POST(req: NextRequest) {
     const result = streamText({
       model: chatModel,
       system: systemPrompt,
-      messages: await convertToModelMessages(messages as any),
+      messages: await convertToModelMessages(
+        messages as unknown as Array<Omit<UIMessage, 'id'>>,
+      ),
       tools: {
         create_plan: createPlanTool,
         ask_user: askUserTool,
@@ -83,15 +89,12 @@ export async function POST(req: NextRequest) {
         hasToolCall('generate_flashcards'),
         stepCountIs(30),
       ],
+      ...(reasoningEffort
+        ? { providerOptions: { [providerName]: { reasoningEffort } } }
+        : {}),
 
-      experimental_onStepStart: ({
-        stepNumber,
-        messages,
-      }: {
-        stepNumber: number;
-        messages: Array<Record<string, unknown>>;
-      }) => {
-        const lastMsg = messages[messages.length - 1];
+      experimental_onStepStart: ({ stepNumber, messages: stepMessages }) => {
+        const lastMsg = stepMessages[stepMessages.length - 1];
         const raw = lastMsg?.content;
         const preview =
           typeof raw === 'string' ? raw : Array.isArray(raw) ? JSON.stringify(raw[0]) : '';
@@ -102,14 +105,14 @@ export async function POST(req: NextRequest) {
           label: `step ${stepNumber} start`,
           data: {
             stepNumber,
-            messageCount: messages.length,
+            messageCount: stepMessages.length,
             lastRole: lastMsg?.role,
             promptPreview: String(preview ?? '').slice(-300),
           },
         });
       },
 
-      onStepFinish: (step: any) => {
+      onStepFinish: (step) => {
         if (step.toolCalls?.length) {
           for (const tc of step.toolCalls) {
             enqueueTrace({
@@ -120,7 +123,7 @@ export async function POST(req: NextRequest) {
               data: {
                 stepNumber: step.stepNumber,
                 toolName: tc.toolName,
-                toolInput: JSON.stringify(tc.args).slice(0, 500),
+                toolInput: JSON.stringify(tc.input).slice(0, 500),
                 inputTokens: step.usage?.inputTokens,
                 outputTokens: step.usage?.outputTokens,
                 totalTokens: step.usage?.totalTokens,
@@ -147,7 +150,7 @@ export async function POST(req: NextRequest) {
         }
       },
 
-      onFinish: (result: any) => {
+      onFinish: (result) => {
         enqueueTrace({
           conversationId,
           agentName: 'general',

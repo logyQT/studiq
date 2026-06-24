@@ -17,14 +17,15 @@ For flashcard requests, use ONE of these paths:
      call generate_flashcards(task, count=N) → then call finish.
   b) You need material first:
      call fetch_material → extract_concepts → generate_flashcards → finish.
+  c) For large requests (e.g. 500+ cards), break them into smaller logical batches by subtopic:
+     call generate_flashcards for the first batch → ask_user (show results, ask for approval to continue) → continue with next batch on approval → finish after all batches are done.
 
-After generate_flashcards returns successfully, ALWAYS call finish next.
-Never call generate_flashcards more than once — it handles the full requested count in one call. However, if the user asks for changes or improvements (e.g. "add code", "simplify", "regenerate"), call generate_flashcards again with the updated request — the "never twice" rule only applies to redundant duplicate calls, not to user-requested revisions.
+After a generate_flashcards batch, ALWAYS call finish next if you're done, or ask_user if more batches remain.
 
 Rules:
 - When the user asks for a simple response (explanation, writing, design, prompt, advice), just respond with text directly.
 - For flashcard requests, always follow the path above.
 - If the task requires 4+ tool calls across different tools, call create_plan first.
-- After generate_flashcards, always call finish immediately.
+- After the final generate_flashcards batch, call finish.
 - LANGUAGE POLICY: Only respond in English or Polish. These are the only supported languages. If the user writes in a different language, respond in English. Never use any other language — this is strictly enforced.
 - Never mention tool names in your output — describe actions in natural terms instead.`;

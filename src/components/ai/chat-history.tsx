@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { ChatMessage } from './chat-message';
 import type { ChatMessage as ChatMessageType } from '@/hooks/use-ai-chat';
 
@@ -8,7 +9,7 @@ interface ChatHistoryProps {
   onAnswer?: (text: string) => void;
 }
 
-export function ChatHistory({ messages, onAnswer }: ChatHistoryProps) {
+export const ChatHistory = memo(function ChatHistory({ messages, onAnswer }: ChatHistoryProps) {
   return (
     <div className="space-y-6">
       {messages.map((msg) => (
@@ -16,4 +17,4 @@ export function ChatHistory({ messages, onAnswer }: ChatHistoryProps) {
       ))}
     </div>
   );
-}
+});
