@@ -310,6 +310,7 @@
     "owner_org": "Organizacja",
     "owner_shared": "Udostępnione",
     "sort_newest": "Od najnowszych",
+    "sort_recent": "Ostatnio edytowane",
     "sort_oldest": "Od najstarszych",
     "sort_name_asc": "Nazwa (A-Z)",
     "sort_name_desc": "Nazwa (Z-A)"
@@ -1402,6 +1403,7 @@
     "owner_org": "Organizacja",
     "owner_shared": "Udostępnione",
     "sort_newest": "Od najnowszych",
+    "sort_recent": "Ostatnio edytowane",
     "sort_oldest": "Od najstarszych",
     "sort_name_asc": "Nazwa (A-Z)",
     "sort_name_desc": "Nazwa (Z-A)"

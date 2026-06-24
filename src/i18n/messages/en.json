@@ -328,6 +328,7 @@
     "owner_org": "Organization",
     "owner_shared": "Shared",
     "sort_newest": "Newest First",
+    "sort_recent": "Recently Edited",
     "sort_oldest": "Oldest First",
     "sort_name_asc": "Name (A-Z)",
     "sort_name_desc": "Name (Z-A)"
@@ -1420,6 +1421,7 @@
     "owner_org": "Organization",
     "owner_shared": "Shared",
     "sort_newest": "Newest First",
+    "sort_recent": "Recently Edited",
     "sort_oldest": "Oldest First",
     "sort_name_asc": "Name (A-Z)",
     "sort_name_desc": "Name (Z-A)"

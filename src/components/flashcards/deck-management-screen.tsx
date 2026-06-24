@@ -300,6 +300,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="created_at:desc">{t('sort_newest')}</SelectItem>
+              <SelectItem value="updated_at:desc">{t('sort_recent')}</SelectItem>
               <SelectItem value="created_at:asc">{t('sort_oldest')}</SelectItem>
               <SelectItem value="name:asc">{t('sort_name_asc')}</SelectItem>
               <SelectItem value="name:desc">{t('sort_name_desc')}</SelectItem>

@@ -4,6 +4,7 @@ export interface Deck {
   description: string | null;
   flashcard_count: number;
   created_by: string;
+  updated_at?: string;
 }
 
 export interface Topic {

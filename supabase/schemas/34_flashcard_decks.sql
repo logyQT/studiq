@@ -10,7 +10,8 @@ CREATE TABLE public.flashcard_decks (
   created_by  uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
   name        text NOT NULL,
   description text,
-  created_at  timestamptz DEFAULT now()
+  created_at  timestamptz DEFAULT now(),
+  updated_at  timestamptz DEFAULT now()
 );
 
 CREATE INDEX idx_flashcard_decks_created_by ON public.flashcard_decks(created_by);

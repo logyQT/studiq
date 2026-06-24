@@ -15,7 +15,6 @@ export function useApiQuery<T>(opts: {
     staleTime: opts.staleTime ?? Infinity,
     gcTime: opts.gcTime ?? 30 * 60 * 1000,
     enabled: opts.enabled,
-    refetchOnMount: false,
   });
 }
 
