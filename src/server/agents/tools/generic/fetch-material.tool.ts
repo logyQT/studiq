@@ -2,6 +2,8 @@ import { tool, generateText } from 'ai';
 import { z } from '@/lib/zod';
 import { chatModel } from '@/server/ai/model';
 import { GENERATE_MATERIAL_PROMPT } from '@/server/services/ai-prompts';
+import { conversationStorage } from '@/lib/conversation-context';
+import { enqueueTrace } from '@/lib/trace-queue';
 
 export const fetchMaterialTool = tool({
   description:
@@ -12,15 +14,19 @@ export const fetchMaterialTool = tool({
       .enum(['basic', 'moderate', 'advanced'])
       .optional()
       .describe('How detailed the content should be'),
-    focusAreas: z
-      .array(z.string())
-      .optional()
-      .describe('Specific subtopics to focus on'),
+    focusAreas: z.array(z.string()).optional().describe('Specific subtopics to focus on'),
   }),
   execute: async ({ topic, depth, focusAreas }) => {
-    const focusNote = focusAreas?.length
-      ? `\nFocus on: ${focusAreas.join(', ')}`
-      : '';
+    const cid = conversationStorage.getStore()?.conversationId;
+    enqueueTrace({
+      conversationId: cid,
+      agentName: 'general',
+      eventType: 'tool_call',
+      label: 'fetch_material',
+      data: { topic, depth, focusAreas },
+    });
+
+    const focusNote = focusAreas?.length ? `\nFocus on: ${focusAreas.join(', ')}` : '';
     const depthNote = depth ? `\nDepth level: ${depth}` : '';
     const prompt = `Topic: ${topic}${depthNote}${focusNote}`;
 

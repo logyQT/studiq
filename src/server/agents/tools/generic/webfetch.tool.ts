@@ -1,5 +1,7 @@
 import { tool } from 'ai';
 import { z } from '@/lib/zod';
+import { conversationStorage } from '@/lib/conversation-context';
+import { enqueueTrace } from '@/lib/trace-queue';
 
 export const webfetchTool = tool({
   description: 'Fetch content from a URL the user provides.',
@@ -7,6 +9,14 @@ export const webfetchTool = tool({
     url: z.string().url().describe('The URL to fetch content from'),
   }),
   execute: async ({ url }) => {
+    const cid = conversationStorage.getStore()?.conversationId;
+    enqueueTrace({
+      conversationId: cid,
+      agentName: 'general',
+      eventType: 'tool_call',
+      label: 'webfetch',
+      data: { url },
+    });
     try {
       const res = await fetch(url);
       if (!res.ok) {

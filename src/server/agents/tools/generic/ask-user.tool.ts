@@ -1,9 +1,10 @@
 import { tool } from 'ai';
 import { z } from '@/lib/zod';
+import { conversationStorage } from '@/lib/conversation-context';
+import { enqueueTrace } from '@/lib/trace-queue';
 
 export const askUserTool = tool({
-  description:
-    'Ask the user a clarifying question when the request is ambiguous.',
+  description: 'Ask the user a clarifying question when the request is ambiguous.',
   inputSchema: z.object({
     question: z.string().describe('The question to ask the user'),
     options: z
@@ -17,6 +18,14 @@ export const askUserTool = tool({
       .describe('Available options for the user to choose from'),
   }),
   execute: async ({ question, options }) => {
+    const cid = conversationStorage.getStore()?.conversationId;
+    enqueueTrace({
+      conversationId: cid,
+      agentName: 'general',
+      eventType: 'tool_call',
+      label: 'ask_user',
+      data: { question: question?.slice(0, 100), hasOptions: !!options?.length },
+    });
     return {
       type: 'question' as const,
       question: {

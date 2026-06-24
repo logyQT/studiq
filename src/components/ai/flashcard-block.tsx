@@ -16,11 +16,18 @@ interface FlashcardData {
 }
 
 interface FlashcardBlockProps {
-  flashcards: FlashcardData[];
+  flashcards?: FlashcardData[];
   deckName?: string;
+  loading?: boolean;
+  count?: number;
 }
 
-export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
+export function FlashcardBlock({
+  flashcards = [],
+  deckName,
+  loading = false,
+  count,
+}: FlashcardBlockProps) {
   const t = useTranslations('AiChatPage');
   const [saving, setSaving] = useState(false);
   const [savedDeckId, setSavedDeckId] = useState<string | null>(null);
@@ -76,6 +83,25 @@ export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
   };
 
   if (savedDeckId) {
+    if (loading) {
+      const skeletonCount = count || 6;
+      return (
+        <div className="space-y-3 mt-2 animate-pulse">
+          <div className="h-4 w-48 bg-muted rounded" />
+          <div className="grid grid-cols-2 gap-2">
+            {Array.from({ length: skeletonCount }).map((_, i) => (
+              <div key={i} className="rounded-lg border bg-background/60 p-2.5 space-y-2">
+                <div className="h-3 w-3/4 bg-muted rounded" />
+                <div className="h-3 w-1/2 bg-muted rounded" />
+                <div className="h-2 w-1/3 bg-muted rounded" />
+              </div>
+            ))}
+          </div>
+          <div className="h-8 w-full bg-muted rounded-md" />
+        </div>
+      );
+    }
+
     return (
       <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 mt-2 space-y-2">
         <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400">
@@ -105,9 +131,7 @@ export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
             {t('flashcards_generated', { count: flashcards.length })}
           </span>
           {removedCount > 0 && (
-            <span className="text-xs text-muted-foreground/60">
-              ({removedCount} removed)
-            </span>
+            <span className="text-xs text-muted-foreground/60">({removedCount} removed)</span>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -129,7 +153,7 @@ export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
               key={i}
               className={cn(
                 'group relative rounded-lg border bg-background/60 p-2.5 text-xs transition-opacity',
-                removedIndices.has(i) && 'opacity-30'
+                removedIndices.has(i) && 'opacity-30',
               )}
             >
               {/* Delete toggle */}
@@ -139,7 +163,7 @@ export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
                   'absolute top-1.5 right-1.5 rounded-md p-1 transition-colors',
                   removedIndices.has(i)
                     ? 'text-green-500 hover:text-green-600 bg-green-500/10'
-                    : 'text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100'
+                    : 'text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100',
                 )}
                 title={removedIndices.has(i) ? t('keep_card') : t('remove_card')}
               >

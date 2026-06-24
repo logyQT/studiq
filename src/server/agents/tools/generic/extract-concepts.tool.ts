@@ -1,7 +1,8 @@
-import { tool, Output, generateText } from 'ai';
+import { tool } from 'ai';
 import { z } from '@/lib/zod';
-import { chatModel } from '@/server/ai/model';
-import { ANALYZE_SYSTEM_PROMPT } from '@/server/services/ai-prompts';
+import { log } from '@/lib/logger';
+import { conversationStorage } from '@/lib/conversation-context';
+import { enqueueTrace } from '@/lib/trace-queue';
 
 const termSchema = z.object({
   term: z.string(),
@@ -12,44 +13,24 @@ const termSchema = z.object({
 
 export const extractConceptsTool = tool({
   description:
-    'Extract atomic, memorizable concepts from educational material. Returns a list of key terms with definitions.',
+    'Extract key terms and definitions from educational material. Pass the material and the model returns structured terms with definitions.',
   inputSchema: z.object({
-    material: z
-      .string()
-      .optional()
-      .describe(
-        'The educational material to extract concepts from. If not provided, uses material from previous steps.',
-      ),
-    maxTerms: z
-      .number()
-      .optional()
-      .describe('Maximum number of terms to extract'),
+    material: z.string().describe('The educational material to analyze'),
+    maxTerms: z.number().optional().describe('Maximum number of terms to extract'),
+    terms: z.array(termSchema).describe('The extracted terms with definitions'),
   }),
-  execute: async ({ material, maxTerms }) => {
-    if (!material) {
-      return { terms: [], error: 'No material provided' };
-    }
-
-    const truncated =
-      material.length > 40000
-        ? material.slice(0, 40000) + '\n\n[...content truncated for length]'
-        : material;
-
-    const maxNote = maxTerms ? ` Extract up to ${maxTerms} terms.` : '';
-
-    const result = await generateText({
-      model: chatModel,
-      system: ANALYZE_SYSTEM_PROMPT + maxNote,
-      prompt: truncated,
-      output: Output.object({
-        schema: z.object({
-          terms: z.array(termSchema),
-        }),
-      }),
-      maxOutputTokens: 32768,
-      maxRetries: 3,
+  execute: async ({ terms }) => {
+    const cid = conversationStorage.getStore()?.conversationId;
+    enqueueTrace({
+      conversationId: cid,
+      agentName: 'general',
+      eventType: 'tool_call',
+      label: 'extract_concepts',
+      data: { termCount: terms?.length },
     });
-
-    return { terms: result.output?.terms ?? [] };
+    log.ai.info('extract_concepts called', {
+      metadata: { termCount: terms?.length },
+    });
+    return { terms };
   },
 });
