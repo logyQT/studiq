@@ -7,7 +7,7 @@ import { StatCard } from '@/components/ui/stat-card';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { Deck, Topic } from '@/types/flashcards';
-import { GRADIENTS } from '@/lib/color-utils';
+import { PANEL_GRADIENTS } from '@/lib/color-utils';
 
 interface StateBreakdown {
   totalCards: number;
@@ -60,7 +60,7 @@ export default function FlashcardsClient() {
       href: '/app/flashcards/decks',
       count: deckCount,
       countLabel: t('decks_count', { count: deckCount }),
-      gradient: GRADIENTS[0],
+      gradient: PANEL_GRADIENTS['decks'],
     },
     {
       id: 'topics',
@@ -70,7 +70,7 @@ export default function FlashcardsClient() {
       href: '/app/flashcards/topics',
       count: topicCount,
       countLabel: t('topics_count', { count: topicCount }),
-      gradient: GRADIENTS[4],
+      gradient: PANEL_GRADIENTS['topics'],
     },
     {
       id: 'study',
@@ -80,7 +80,7 @@ export default function FlashcardsClient() {
       href: '/app/flashcards/study',
       count: dueCount,
       countLabel: dueCount > 0 ? t('review_count', { count: dueCount }) : nextReviewLabel,
-      gradient: GRADIENTS[8],
+      gradient: PANEL_GRADIENTS['study'],
     },
   ];
 

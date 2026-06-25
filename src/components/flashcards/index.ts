@@ -6,3 +6,4 @@ export { FlashcardEditor } from './editor/flashcard-editor';
 export { FlashcardFlip } from './flashcard-flip';
 export { SessionSummaryDialog } from './session-summary-dialog';
 export { TopicManagementScreen } from './screens/topic-management-screen';
+export { CramDeckCard } from './cards/cram-deck-card';

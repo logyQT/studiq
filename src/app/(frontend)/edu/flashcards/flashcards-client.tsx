@@ -6,7 +6,7 @@ import { DashboardPanel } from '@/components/flashcards';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { Deck, Topic } from '@/types/flashcards';
-import { GRADIENTS } from '@/lib/color-utils';
+import { PANEL_GRADIENTS } from '@/lib/color-utils';
 
 export default function EduFlashcardsClient() {
   const t = useTranslations('EduFlashcardsPage');
@@ -25,7 +25,7 @@ export default function EduFlashcardsClient() {
       href: '/edu/flashcards/decks',
       count: deckCount,
       countLabel: t('decks_count', { count: deckCount }),
-      gradient: GRADIENTS[0],
+      gradient: PANEL_GRADIENTS['decks'],
     },
     {
       id: 'topics',
@@ -35,7 +35,7 @@ export default function EduFlashcardsClient() {
       href: '/edu/flashcards/topics',
       count: topicCount,
       countLabel: t('topics_count', { count: topicCount }),
-      gradient: GRADIENTS[4],
+      gradient: PANEL_GRADIENTS['topics'],
     },
     {
       id: 'stats',
@@ -43,7 +43,7 @@ export default function EduFlashcardsClient() {
       title: t('stats_title'),
       description: t('stats_desc'),
       href: '/edu/flashcards/stats',
-      gradient: GRADIENTS[8],
+      gradient: PANEL_GRADIENTS['stats'],
     },
   ];
 

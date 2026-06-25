@@ -5,13 +5,22 @@ import { useTranslations } from 'next-intl';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { CheckCheck, Tags, CheckSquare, SquarePen, Plus } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { CheckCheck, Tags, CheckSquare, SquarePen, Plus, Search, X } from 'lucide-react';
 import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { apiPost, apiPut, apiDelete } from '@/lib/api';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { Topic, Flashcard } from '@/types/flashcards';
 import { SpeedDial } from '@/components/shared/speed-dial';
@@ -20,6 +29,7 @@ import { TopicCard } from '@/components/flashcards/cards/topic-card';
 import { TopicFormDialog } from '@/components/flashcards/shared/topic-form-dialog';
 import { TopicViewDialog } from '@/components/flashcards/shared/topic-view-dialog';
 import { useSelection } from '@/hooks/use-selection';
+import { useDebounce } from '@/hooks/use-debounce';
 
 interface TopicManagementScreenProps {
   apiBase: string;
@@ -28,6 +38,7 @@ interface TopicManagementScreenProps {
 
 export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { data: topics, isLoading } = useApiQuery<Topic[]>({
     queryKey: flashcardKeys.topics.all,
     url: '/api/v1/flashcards/topics',
@@ -81,6 +92,25 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
       apiPost('/api/v1/flashcards/topics/batch/delete', data),
     invalidateKeys: [flashcardKeys.topics.all],
   });
+
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebounce(searchInput, 300);
+  const [owner, setOwner] = useState('all');
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const filteredTopics = topics
+    ?.filter((t) => {
+      if (owner === 'mine' && t.created_by !== user?.id) return false;
+      if (owner === 'shared' && t.created_by === user?.id) return false;
+      return t.name.toLowerCase().includes(debouncedSearch.toLowerCase());
+    })
+    .sort((a, b) => {
+      const dir = sortOrder === 'desc' ? -1 : 1;
+      if (sortBy === 'name') return dir * a.name.localeCompare(b.name);
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dir * (dateA - dateB);
+    });
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Topic | null>(null);
@@ -153,8 +183,8 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   }
 
   function handleSelectAll() {
-    if (!topics) return;
-    selection.handleSelectAll(topics.map((t) => t.id));
+    if (!filteredTopics) return;
+    selection.handleSelectAll(filteredTopics.map((t) => t.id));
   }
 
   function handleDeselectAll() {
@@ -187,15 +217,15 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
 
   return (
     <div className="space-y-6">
-      {selection.isSelecting && topics && topics.length > 0 && (
+      {selection.isSelecting && filteredTopics && filteredTopics.length > 0 && (
         <div className="flex items-center gap-2 py-1">
           <Button
             variant="outline"
             size="sm"
-            onClick={selection.selectedIds.size === topics.length ? handleDeselectAll : handleSelectAll}
+            onClick={selection.selectedIds.size === filteredTopics.length ? handleDeselectAll : handleSelectAll}
           >
             <CheckCheck className="mr-1.5 h-4 w-4" />
-            {selection.selectedIds.size === topics.length ? t('deselect_all') : t('select_all')}
+            {selection.selectedIds.size === filteredTopics.length ? t('deselect_all') : t('select_all')}
           </Button>
           <span className="text-sm text-muted-foreground">
             {t('n_selected', { count: selection.selectedIds.size })}
@@ -203,21 +233,84 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         </div>
       )}
 
+      {!selection.isSelecting && (
+        <div className="flex flex-wrap items-center gap-3 max-sm:hidden">
+          <div className="relative flex-1 basis-full lg:basis-auto lg:max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder={t('search_topics')}
+              className="pl-9 pr-9"
+            />
+            {searchInput && (
+              <button
+                onClick={() => setSearchInput('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          <Select value={owner} onValueChange={setOwner}>
+            <SelectTrigger className="w-35 truncate">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('owner_all')}</SelectItem>
+              <SelectItem value="mine">{t('owner_mine')}</SelectItem>
+              <SelectItem value="shared">{t('owner_shared')}</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={`${sortBy}:${sortOrder}`} onValueChange={(v) => {
+            const [sb, so] = v.split(':');
+            setSortBy(sb);
+            setSortOrder(so);
+          }}>
+            <SelectTrigger className="w-37.5 truncate">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="created_at:desc">{t('sort_newest')}</SelectItem>
+              <SelectItem value="created_at:asc">{t('sort_oldest')}</SelectItem>
+              <SelectItem value="name:asc">{t('sort_name_asc')}</SelectItem>
+              <SelectItem value="name:desc">{t('sort_name_desc')}</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="sm:ml-auto">
+            <Button onClick={openCreate}>
+              <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <Card key={i}>
-              <div className="p-5">
-                <div className="flex items-start justify-between">
-                  <Skeleton className="h-10 w-10 rounded-lg" />
-                  <div className="flex gap-1">
-                    <Skeleton className="h-7 w-7" />
-                  </div>
+            <Card key={i} className="flex flex-col h-full max-sm:py-0 min-w-0">
+              {/* Mobile Skeleton */}
+              <div className="flex items-center gap-3 p-4 sm:hidden">
+                <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-3 w-1/4" />
                 </div>
-                <div className="mt-3 space-y-2">
-                  <Skeleton className="h-5 w-3/4" />
-                  <Skeleton className="h-5 w-20" />
-                  <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-7 w-7 rounded-md shrink-0" />
+              </div>
+              {/* Desktop Skeleton */}
+              <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-10 w-10 rounded-xl" />
+                  <Skeleton className="h-6 w-3/4" />
+                </div>
+                <div className="flex-1" />
+                <div className="flex items-center justify-between pt-4 mt-auto">
+                  <Skeleton className="h-6 w-16 rounded-full" />
+                  <Skeleton className="h-8 w-24 rounded-md" />
                 </div>
               </div>
             </Card>
@@ -225,7 +318,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {topics?.map((topic) => (
+          {filteredTopics?.map((topic) => (
             <TopicCard
               key={topic.id}
               topic={topic}
@@ -238,7 +331,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
               t={t}
             />
           ))}
-          {(!topics || topics.length === 0) && (
+          {(!filteredTopics || filteredTopics.length === 0) && (
             <Empty className="col-span-full">
               <EmptyMedia>
                 <Tags className="h-10 w-10 text-muted-foreground" />
@@ -294,12 +387,14 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
       />
 
       {!selection.isSelecting && (
-        <SpeedDial
-          items={[
-            { icon: SquarePen, label: t('new_topic'), onClick: openCreate },
-            { icon: CheckSquare, label: t('select_topics'), onClick: () => selection.setIsSelecting(true) },
-          ]}
-        />
+        <div className="sm:hidden">
+          <SpeedDial
+            items={[
+              { icon: SquarePen, label: t('new_topic'), onClick: openCreate },
+              { icon: CheckSquare, label: t('select_topics'), onClick: () => selection.setIsSelecting(true) },
+            ]}
+          />
+        </div>
       )}
     </div>
   );

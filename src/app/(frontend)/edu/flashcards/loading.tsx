@@ -1,6 +1,6 @@
 
 
-import { GRADIENTS } from '@/lib/color-utils';
+import { PANEL_GRADIENTS } from '@/lib/color-utils';
 
 function SkeletonPanel({ gradient }: { gradient: string }) {
   return (
@@ -25,9 +25,9 @@ export default function EduFlashcardsLoading() {
         <div className="h-4 w-64 rounded bg-muted mt-2 animate-pulse" />
       </div>
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        <SkeletonPanel gradient={GRADIENTS[0]} />
-        <SkeletonPanel gradient={GRADIENTS[4]} />
-        <SkeletonPanel gradient={GRADIENTS[8]} />
+        <SkeletonPanel gradient={PANEL_GRADIENTS['decks']} />
+        <SkeletonPanel gradient={PANEL_GRADIENTS['topics']} />
+        <SkeletonPanel gradient={PANEL_GRADIENTS['stats']} />
       </div>
     </div>
   );

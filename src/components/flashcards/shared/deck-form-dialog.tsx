@@ -12,7 +12,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { getGradientHex } from '@/lib/color-utils';
+import { DIALOG_GRADIENT_HEX } from '@/lib/color-utils';
 
 interface DeckFormDialogProps {
   open: boolean;
@@ -45,7 +45,7 @@ export function DeckFormDialog({
   cancelLabel,
   submitLabel,
 }: DeckFormDialogProps) {
-  const gradient = getGradientHex('dialog');
+  const gradient = DIALOG_GRADIENT_HEX;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

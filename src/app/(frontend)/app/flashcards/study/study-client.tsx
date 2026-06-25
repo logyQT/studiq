@@ -9,7 +9,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Play,
@@ -24,20 +23,8 @@ import {
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { Progress } from '@/components/ui/progress';
-import { getGradient } from '@/lib/color-utils';
-
-interface Topic {
-  id: string;
-  name: string;
-  flashcard_count: number;
-}
-
-interface Deck {
-  id: string;
-  name: string;
-  description: string | null;
-  flashcard_count: number;
-}
+import { CramDeckCard } from '@/components/flashcards/cards/cram-deck-card';
+import type { Topic, Deck } from '@/types/flashcards';
 
 interface DueBreakdown {
   total: number;
@@ -414,14 +401,29 @@ export default function StudyClient() {
         {isLoading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 6 }).map((_, i) => (
-              <Card key={i} className="overflow-hidden p-0">
-                <Skeleton className="h-20 w-full rounded-none" />
-                <div className="p-5 space-y-3">
-                  <Skeleton className="h-5 w-3/4" />
-                  <Skeleton className="h-4 w-1/2" />
-                  <div className="flex items-center justify-between pt-2">
-                    <Skeleton className="h-5 w-20" />
-                    <Skeleton className="h-9 w-24" />
+              <Card key={i} className="flex flex-col h-full max-sm:py-0 min-w-0">
+                {/* Mobile skeleton */}
+                <div className="flex items-center gap-3 p-4 sm:hidden">
+                  <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-3 w-1/4" />
+                  </div>
+                  <Skeleton className="h-7 w-7 rounded-md shrink-0" />
+                </div>
+                {/* Desktop skeleton */}
+                <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-10 w-10 rounded-xl" />
+                    <Skeleton className="h-6 w-3/4" />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-4/5" />
+                  </div>
+                  <div className="flex items-center justify-between pt-4 mt-auto">
+                    <Skeleton className="h-6 w-16 rounded-full" />
+                    <Skeleton className="h-8 w-24 rounded-md" />
                   </div>
                 </div>
               </Card>
@@ -429,50 +431,14 @@ export default function StudyClient() {
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {decks?.map((deck) => {
-              const gradient = getGradient(deck.id);
-              return (
-                <Card
-                  key={deck.id}
-                  className="group cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:border-primary/50"
-                  onClick={() => startCram(deck.id)}
-                >
-                  <div className="p-5 pb-3">
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={`h-10 w-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center shrink-0`}
-                      >
-                        <FolderOpen className="h-5 w-5 text-white" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="text-lg font-semibold truncate">{deck.name}</h3>
-                        {deck.description && (
-                          <p className="text-sm text-muted-foreground line-clamp-2 mt-0.5">
-                            {deck.description}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="px-5 pb-5 flex items-center justify-between">
-                    <Badge variant="secondary">
-                      {t('flashcards_count', { count: deck.flashcard_count })}
-                    </Badge>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="gap-1"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        startCram(deck.id);
-                      }}
-                    >
-                      <Play className="h-3 w-3" /> {t('start_cram')}
-                    </Button>
-                  </div>
-                </Card>
-              );
-            })}
+            {decks?.map((deck) => (
+              <CramDeckCard
+                key={deck.id}
+                deck={deck}
+                onStart={() => startCram(deck.id)}
+                t={t}
+              />
+            ))}
             {(!decks || decks.length === 0) && (
               <div className="col-span-full text-center py-12 text-muted-foreground">
                 {t('no_decks_picker')}

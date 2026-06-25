@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
-import { getTopicColor } from '@/lib/color-utils';
+import { getGradientHex } from '@/lib/color-utils';
 import type { Topic, Flashcard } from '@/types/flashcards';
 
 interface TopicViewDialogProps {
@@ -41,7 +41,24 @@ export function TopicViewDialog({
           <DialogTitle>
             {viewTopic && (
               <span className="flex items-center gap-2">
-                <div className={`h-5 w-5 rounded ${getTopicColor(viewTopic.name)}`} />
+                <div className="h-5 w-5 rounded-xl bg-muted/40 border border-border/50 shadow-sm flex items-center justify-center">
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                    <defs>
+                      <linearGradient id="view-tag-grad" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stopColor={getGradientHex(viewTopic.name).from} />
+                        <stop offset="100%" stopColor={getGradientHex(viewTopic.name).to} />
+                      </linearGradient>
+                    </defs>
+                    <path
+                      d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2z"
+                      stroke="url(#view-tag-grad)"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <circle cx="7" cy="7" r="1.5" fill="url(#view-tag-grad)" />
+                  </svg>
+                </div>
                 {viewTopic.name}
               </span>
             )}
