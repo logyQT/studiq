@@ -55,7 +55,7 @@ export class SearchService {
           existing.decks.push({
             id: row.deck_id,
             name: row.deck_name ?? '',
-            href: `${basePath}/flashcards/deck/${row.deck_id}/${row.id}`,
+            href: `${basePath}/flashcards/decks/${row.deck_id}/${row.id}`,
           });
         }
       } else {
@@ -66,11 +66,13 @@ export class SearchService {
           subtitle: row.back,
           rank: row.rank,
           decks: row.deck_id
-            ? [{
-                id: row.deck_id,
-                name: row.deck_name ?? '',
-                href: `${basePath}/flashcards/deck/${row.deck_id}/${row.id}`,
-              }]
+            ? [
+                {
+                  id: row.deck_id,
+                  name: row.deck_name ?? '',
+                  href: `${basePath}/flashcards/decks/${row.deck_id}/${row.id}`,
+                },
+              ]
             : [],
         });
       }

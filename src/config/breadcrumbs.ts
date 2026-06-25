@@ -8,7 +8,7 @@ export const BREADCRUMB_ROUTES: Record<string, BreadcrumbRouteEntry> = {
   '/app': { labelKey: 'student_dashboard', namespace: 'DashboardLayout' },
   '/app/flashcards': { labelKey: 'app_flashcards', namespace: 'DashboardLayout' },
   '/app/flashcards/decks': { labelKey: 'decks_title', namespace: 'AppFlashcardsPage' },
-  '/app/flashcards/deck/[deckId]': {
+  '/app/flashcards/decks/[deckId]': {
     labelKey: 'decks_title',
     namespace: 'AppFlashcardsPage',
     href: '/app/flashcards/decks',
@@ -37,7 +37,7 @@ export const BREADCRUMB_ROUTES: Record<string, BreadcrumbRouteEntry> = {
   '/edu': { labelKey: 'teacher_dashboard', namespace: 'DashboardLayout' },
   '/edu/flashcards': { labelKey: 'edu_flashcards', namespace: 'DashboardLayout' },
   '/edu/flashcards/decks': { labelKey: 'decks_title', namespace: 'EduFlashcardsPage' },
-  '/edu/flashcards/deck/[deckId]': {
+  '/edu/flashcards/decks/[deckId]': {
     labelKey: 'decks_title',
     namespace: 'EduFlashcardsPage',
     href: '/edu/flashcards/decks',

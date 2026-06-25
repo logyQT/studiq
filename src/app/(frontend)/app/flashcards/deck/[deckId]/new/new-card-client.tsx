@@ -28,11 +28,13 @@ export default function NewCardClient({ deckId }: NewCardClientProps) {
   const [back, setBack] = useState('');
   const [topicIds, setTopicIds] = useState<string[]>([]);
 
-  const deck = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all)?.find(d => d.id === deckId);
+  const deck = queryClient
+    .getQueryData<Deck[]>(flashcardKeys.decks.all)
+    ?.find((d) => d.id === deckId);
 
   useEffect(() => {
     setDynamicSegments([
-      { label: deck?.name ?? '', href: `/app/flashcards/deck/${deckId}` },
+      { label: deck?.name ?? '', href: `/app/flashcards/decks/${deckId}` },
       { label: t('create_title'), href: '#' },
     ]);
     return () => setDynamicSegments([]);
@@ -50,7 +52,7 @@ export default function NewCardClient({ deckId }: NewCardClientProps) {
       queryClient.removeQueries({ queryKey: flashcardKeys.list({ deckIds: [deckId] }) });
       queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
       toast.success(t('flashcard_created'));
-      router.push(`/app/flashcards/deck/${deckId}`);
+      router.push(`/app/flashcards/decks/${deckId}`);
     },
     onError: () => {
       toast.error(t('save_failed'));

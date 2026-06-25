@@ -314,7 +314,8 @@
     "sort_recent": "Ostatnio edytowane",
     "sort_oldest": "Od najstarszych",
     "sort_name_asc": "Nazwa (A-Z)",
-    "sort_name_desc": "Nazwa (Z-A)"
+    "sort_name_desc": "Nazwa (Z-A)",
+    "select_cards": "Wybierz talie"
   },
   "EduDeckViewPage": {
     "back": "Powrót",

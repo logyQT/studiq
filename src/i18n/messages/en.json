@@ -332,7 +332,8 @@
     "sort_recent": "Recently Edited",
     "sort_oldest": "Oldest First",
     "sort_name_asc": "Name (A-Z)",
-    "sort_name_desc": "Name (Z-A)"
+    "sort_name_desc": "Name (Z-A)",
+    "select_cards": "Select Cards"
   },
   "EduDeckViewPage": {
     "back": "Back to Decks",

@@ -32,9 +32,15 @@ export default function EditCardClient({ deckId, cardId }: EditCardClientProps) 
   const [topicIds, setTopicIds] = useState<string[]>([]);
   const [initialized, setInitialized] = useState(false);
 
-  const deck = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all)?.find(d => d.id === deckId);
+  const deck = queryClient
+    .getQueryData<Deck[]>(flashcardKeys.decks.all)
+    ?.find((d) => d.id === deckId);
 
-  const { data: flashcard, isLoading: flashcardLoading, error: flashcardError } = useApiQuery<Flashcard>({
+  const {
+    data: flashcard,
+    isLoading: flashcardLoading,
+    error: flashcardError,
+  } = useApiQuery<Flashcard>({
     queryKey: [...flashcardKeys.all, cardId],
     url: `/api/v1/flashcards/${cardId}`,
   });
@@ -50,7 +56,7 @@ export default function EditCardClient({ deckId, cardId }: EditCardClientProps) 
 
   useEffect(() => {
     setDynamicSegments([
-      { label: deck?.name ?? '', href: `/app/flashcards/deck/${deckId}` },
+      { label: deck?.name ?? '', href: `/app/flashcards/decks/${deckId}` },
       { label: truncatedLabel || t('edit_title'), href: '#' },
     ]);
     return () => setDynamicSegments([]);
@@ -63,12 +69,16 @@ export default function EditCardClient({ deckId, cardId }: EditCardClientProps) 
 
   const updateFlashcard = useMutation({
     mutationFn: (data: { id: string; front: string; back: string; topicIds: string[] }) =>
-      apiPut(`/api/v1/flashcards/${data.id}`, { front: data.front, back: data.back, topicIds: data.topicIds }),
+      apiPut(`/api/v1/flashcards/${data.id}`, {
+        front: data.front,
+        back: data.back,
+        topicIds: data.topicIds,
+      }),
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: flashcardKeys.list({ deckIds: [deckId] }) });
       queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
       toast.success(t('flashcard_updated'));
-      router.push(`/app/flashcards/deck/${deckId}`);
+      router.push(`/app/flashcards/decks/${deckId}`);
     },
     onError: () => {
       toast.error(t('save_failed'));

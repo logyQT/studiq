@@ -26,7 +26,8 @@ type CardState = GeneratedFlashcard & { kept: boolean };
 export default function AiFlashcardPage() {
   const t = useTranslations('FlashcardAiPage');
   const router = useRouter();
-  const { flashcards, suggestedDeckName, progress, status, errorMessage, generate, reset } = useGenerateFlashcards();
+  const { flashcards, suggestedDeckName, progress, status, errorMessage, generate, reset } =
+    useGenerateFlashcards();
 
   const [file, setFile] = useState<File | null>(null);
   const [language, setLanguage] = useState('en');
@@ -59,15 +60,18 @@ export default function AiFlashcardPage() {
     }
   }, [status, errorMessage]);
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] ?? null;
-    if (f && !f.name.toLowerCase().endsWith('.pdf')) {
-      toast.error(t('pdf_only'));
-      e.target.value = '';
-      return;
-    }
-    setFile(f);
-  }, [t]);
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const f = e.target.files?.[0] ?? null;
+      if (f && !f.name.toLowerCase().endsWith('.pdf')) {
+        toast.error(t('pdf_only'));
+        e.target.value = '';
+        return;
+      }
+      setFile(f);
+    },
+    [t],
+  );
 
   const handleGenerate = useCallback(async () => {
     if (!file) return;
@@ -77,9 +81,12 @@ export default function AiFlashcardPage() {
     await generate(file, language);
   }, [file, language, generate]);
 
-  const handleCardChange = useCallback((index: number, field: keyof GeneratedFlashcard, value: string) => {
-    setCardStates((prev) => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
-  }, []);
+  const handleCardChange = useCallback(
+    (index: number, field: keyof GeneratedFlashcard, value: string) => {
+      setCardStates((prev) => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
+    },
+    [],
+  );
 
   const toggleKeep = useCallback((index: number) => {
     setCardStates((prev) => prev.map((c, i) => (i === index ? { ...c, kept: !c.kept } : c)));
@@ -120,7 +127,7 @@ export default function AiFlashcardPage() {
       }
 
       toast.success(t('deck_created', { count: kept.length }));
-      router.push(`/app/flashcards/deck/${deckId}`);
+      router.push(`/app/flashcards/decks/${deckId}`);
     } catch {
       toast.error(t('save_failed'));
     } finally {
@@ -275,9 +282,7 @@ export default function AiFlashcardPage() {
               </div>
             </div>
             <div className="flex gap-3">
-              <Button onClick={handleGenerate}>
-                {t('retry')}
-              </Button>
+              <Button onClick={handleGenerate}>{t('retry')}</Button>
               <Button variant="outline" onClick={handleReset}>
                 {t('start_over')}
               </Button>
@@ -330,9 +335,13 @@ export default function AiFlashcardPage() {
                   onClick={() => toggleKeep(i)}
                 >
                   {card.kept ? (
-                    <><Trash2 className="mr-1 h-3 w-3" /> {t('trash')}</>
+                    <>
+                      <Trash2 className="mr-1 h-3 w-3" /> {t('trash')}
+                    </>
                   ) : (
-                    <><Check className="mr-1 h-3 w-3" /> {t('keep')}</>
+                    <>
+                      <Check className="mr-1 h-3 w-3" /> {t('keep')}
+                    </>
                   )}
                 </Button>
               </div>

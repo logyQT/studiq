@@ -83,7 +83,7 @@ export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
           <span>{t('flashcard_saved', { count: visibleCards.length })}</span>
         </div>
         <a
-          href={`/app/flashcards/deck/${savedDeckId}`}
+          href={`/app/flashcards/decks/${savedDeckId}`}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
@@ -105,9 +105,7 @@ export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
             {t('flashcards_generated', { count: flashcards.length })}
           </span>
           {removedCount > 0 && (
-            <span className="text-xs text-muted-foreground/60">
-              ({removedCount} removed)
-            </span>
+            <span className="text-xs text-muted-foreground/60">({removedCount} removed)</span>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -122,14 +120,14 @@ export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
       </div>
 
       {/* Scrollable card grid */}
-      <div className="max-h-[28rem] overflow-y-auto -mx-1 px-1">
+      <div className="max-h-112 overflow-y-auto -mx-1 px-1">
         <div className="grid grid-cols-2 gap-2">
           {flashcards.map((card, i) => (
             <div
               key={i}
               className={cn(
                 'group relative rounded-lg border bg-background/60 p-2.5 text-xs transition-opacity',
-                removedIndices.has(i) && 'opacity-30'
+                removedIndices.has(i) && 'opacity-30',
               )}
             >
               {/* Delete toggle */}
@@ -139,7 +137,7 @@ export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
                   'absolute top-1.5 right-1.5 rounded-md p-1 transition-colors',
                   removedIndices.has(i)
                     ? 'text-green-500 hover:text-green-600 bg-green-500/10'
-                    : 'text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100'
+                    : 'text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100',
                 )}
                 title={removedIndices.has(i) ? t('keep_card') : t('remove_card')}
               >
