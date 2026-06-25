@@ -120,7 +120,7 @@ export function FlashcardContextMenu({
         <>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            className="text-destructive"
+            variant="destructive"
             onClick={(e) => {
               e.stopPropagation();
               onDelete();

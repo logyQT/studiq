@@ -59,7 +59,7 @@ export const FlashcardCard = memo(function FlashcardCard({
   return (
     <Card
       id={`fc-${fc.id}`}
-      className="group relative cursor-pointer transition-shadow duration-300 sm:min-h-32 sm:hover:shadow-lg max-sm:py-0"
+      className="group relative cursor-pointer transition-shadow duration-300 sm:min-h-28 sm:hover:shadow-lg max-sm:py-0"
       onClick={() => {
         if (selectable) {
           onToggleSelect?.(fc.id);
@@ -67,7 +67,7 @@ export const FlashcardCard = memo(function FlashcardCard({
       }}
     >
       {/* Mobile: compact list row */}
-      <div className="sm:hidden p-3">
+      <div className="sm:hidden px-3 py-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             {selectable && (
@@ -78,8 +78,9 @@ export const FlashcardCard = memo(function FlashcardCard({
                 onClick={(e) => e.stopPropagation()}
               />
             )}
-            <span className="text-xs uppercase text-muted-foreground font-normal">Q: </span>
-            <span className="text-sm font-medium truncate min-w-0">{fc.front}</span>
+            <span className="text-sm font-semibold text-foreground truncate min-w-0 inline-block align-middle">
+              {fc.front}
+            </span>
           </div>
           {!selectable && (
             <DropdownMenu>
@@ -87,7 +88,7 @@ export const FlashcardCard = memo(function FlashcardCard({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 shrink-0"
+                  className="h-7 w-7 shrink-0 text-muted-foreground/80 hover:text-foreground"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MoreVertical className="h-3 w-3" />
@@ -101,12 +102,16 @@ export const FlashcardCard = memo(function FlashcardCard({
                   onEdit={canUpdate ? () => onEdit(fc) : undefined}
                   onAddTopic={canUpdate ? () => onAddTopic(fc) : undefined}
                   onManageTopics={canUpdate ? () => onManageTopics(fc) : undefined}
-                  onViewByTopic={canUpdate ? () => {
-                    const firstAssigned = topics.find((topic) =>
-                      fc.flashcard_topic_assignments?.some((a) => a.topic_id === topic.id),
-                    );
-                    if (firstAssigned) onViewByTopic(fc, firstAssigned.id);
-                  } : undefined}
+                  onViewByTopic={
+                    canUpdate
+                      ? () => {
+                          const firstAssigned = topics.find((topic) =>
+                            fc.flashcard_topic_assignments?.some((a) => a.topic_id === topic.id),
+                          );
+                          if (firstAssigned) onViewByTopic(fc, firstAssigned.id);
+                        }
+                      : undefined
+                  }
                   onLink={() => onLink(fc)}
                   onCopy={() => onCopy(fc)}
                   onDelete={canDelete ? () => onDelete(fc.id) : null}
@@ -115,17 +120,22 @@ export const FlashcardCard = memo(function FlashcardCard({
             </DropdownMenu>
           )}
         </div>
-        <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
-          <span className="text-xs uppercase font-normal">A: </span>
-          {fc.back}
-        </p>
+
+        {/* Clean Separator line */}
+        <div className="my-1.5 border-t border-border/50" />
+
+        <p className="text-sm text-muted-foreground/90 line-clamp-2">{fc.back}</p>
+
         {fcTopics.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-1">
+          <div className="flex flex-wrap gap-1 mt-2">
             {fcTopics.map((topic) => (
               <span
                 key={topic.id}
-                className="rounded-full px-2 py-0.5 text-xs"
-                style={{ backgroundColor: `${getTopicColorHex(topic.name)}80` }}
+                className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+                style={{
+                  backgroundColor: `${getTopicColorHex(topic.name)}30`,
+                  color: getTopicColorHex(topic.name),
+                }}
               >
                 {topic.name}
               </span>
@@ -135,9 +145,9 @@ export const FlashcardCard = memo(function FlashcardCard({
       </div>
 
       {/* Desktop: two-row Q&A */}
-      <div className="hidden sm:flex sm:flex-col sm:flex-1 sm:p-5">
+      <div className="hidden sm:flex sm:flex-col sm:flex-1 sm:px-4 sm:py-3.5">
         {selectable && (
-          <div className="absolute left-2 top-2 z-10" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute top-4 right-4 z-10" onClick={(e) => e.stopPropagation()}>
             <Checkbox
               checked={selected}
               onCheckedChange={() => onToggleSelect?.(fc.id)}
@@ -145,56 +155,67 @@ export const FlashcardCard = memo(function FlashcardCard({
             />
           </div>
         )}
-        <div className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="secondary"
-                size="icon"
-                className="h-7 w-7"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MoreVertical className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <FlashcardContextMenu
-                t={t}
-                mode={canUpdate ? 'owned' : 'view-only'}
-                onSelect={() => onEnterSelectionMode?.(fc.id)}
-                onEdit={canUpdate ? () => onEdit(fc) : undefined}
-                onAddTopic={canUpdate ? () => onAddTopic(fc) : undefined}
-                onManageTopics={canUpdate ? () => onManageTopics(fc) : undefined}
-                onViewByTopic={canUpdate ? () => {
-                  const firstAssigned = topics.find((topic) =>
-                    fc.flashcard_topic_assignments?.some((a) => a.topic_id === topic.id),
-                  );
-                  if (firstAssigned) onViewByTopic(fc, firstAssigned.id);
-                } : undefined}
-                onLink={() => onLink(fc)}
-                onCopy={() => onCopy(fc)}
-                onDelete={canDelete ? () => onDelete(fc.id) : null}
-              />
-            </DropdownMenuContent>
-          </DropdownMenu>
+        {!selectable && (
+          <div className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MoreVertical className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <FlashcardContextMenu
+                  t={t}
+                  mode={canUpdate ? 'owned' : 'view-only'}
+                  onSelect={() => onEnterSelectionMode?.(fc.id)}
+                  onEdit={canUpdate ? () => onEdit(fc) : undefined}
+                  onAddTopic={canUpdate ? () => onAddTopic(fc) : undefined}
+                  onManageTopics={canUpdate ? () => onManageTopics(fc) : undefined}
+                  onViewByTopic={
+                    canUpdate
+                      ? () => {
+                          const firstAssigned = topics.find((topic) =>
+                            fc.flashcard_topic_assignments?.some((a) => a.topic_id === topic.id),
+                          );
+                          if (firstAssigned) onViewByTopic(fc, firstAssigned.id);
+                        }
+                      : undefined
+                  }
+                  onLink={() => onLink(fc)}
+                  onCopy={() => onCopy(fc)}
+                  onDelete={canDelete ? () => onDelete(fc.id) : null}
+                />
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
+
+        <div className="min-w-0 pr-6">
+          <p className="text-base font-semibold text-foreground truncate">{fc.front}</p>
         </div>
 
+        {/* Clean Separator line */}
+        <div className="my-2 border-t border-border/50" />
+
         <div className="flex-1 min-w-0">
-          <p className="text-xs uppercase text-muted-foreground font-normal">Q:</p>
-          <p className="text-base font-semibold truncate">{fc.front}</p>
-        </div>
-        <div className="mt-2 flex-1 min-w-0">
-          <p className="text-xs uppercase text-muted-foreground font-normal">A:</p>
-          <p className="text-sm text-muted-foreground line-clamp-3">{fc.back}</p>
+          <p className="text-sm text-muted-foreground/90 line-clamp-3">{fc.back}</p>
         </div>
 
         {fcTopics.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2">
+          <div className="flex flex-wrap gap-1.5 mt-2.5">
             {fcTopics.map((topic) => (
               <span
                 key={topic.id}
-                className="rounded-full px-2.5 py-0.5 text-xs"
-                style={{ backgroundColor: `${getTopicColorHex(topic.name)}80` }}
+                className="rounded-full px-2.5 py-0.5 text-xs font-medium"
+                style={{
+                  backgroundColor: `${getTopicColorHex(topic.name)}30`,
+                  color: getTopicColorHex(topic.name),
+                }}
               >
                 {topic.name}
               </span>

@@ -747,35 +747,6 @@ export function DeckDetailScreen({
 
       <h3 className="text-lg font-semibold max-sm:block hidden">{t('flashcards_section')}</h3>
 
-      <div
-        className={`flex items-center gap-2 py-1 ${selection.isSelecting && flashcards.length > 0 ? '' : 'invisible'}`}
-      >
-        {selection.isSelecting && flashcards.length > 0 && (
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const allSelected = flashcards.every((fc) => selection.selectedIds.has(fc.id));
-                if (allSelected) {
-                  selection.handleDeselectAll();
-                } else {
-                  selection.setSelectedIds(new Set(flashcards.map((fc) => fc.id)));
-                }
-              }}
-            >
-              <CheckCheck className="mr-1.5 h-4 w-4" />
-              {flashcards.every((fc) => selection.selectedIds.has(fc.id))
-                ? t('deselect_all')
-                : t('select_all')}
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              {t('n_selected', { count: selection.selectedIds.size })}
-            </span>
-          </>
-        )}
-      </div>
-
       {flashcards.length === 0 ? (
         <Empty>
           <EmptyMedia>

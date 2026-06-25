@@ -8,7 +8,7 @@ export const CreateDeckSchema = registry.register(
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(64, { error: ValidationErrorCode.TOO_LONG }),
+      .max(128, { error: ValidationErrorCode.TOO_LONG }),
     description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
     flashcardIds: z.array(z.uuid()).optional(),
   }),
@@ -21,7 +21,7 @@ export const UpdateDeckSchema = registry.register(
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(64, { error: ValidationErrorCode.TOO_LONG })
+      .max(128, { error: ValidationErrorCode.TOO_LONG })
       .optional(),
     description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
     flashcardIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
@@ -31,7 +31,9 @@ export const UpdateDeckSchema = registry.register(
 export const BatchDeleteDeckSchema = registry.register(
   'BatchDeleteDeckRequest',
   z.object({
-    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    ids: z
+      .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
+      .min(1, { error: ValidationErrorCode.TOO_FEW }),
   }),
 );
 
