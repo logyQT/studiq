@@ -1,5 +1,13 @@
 import { log } from '@/lib/logger';
-import { LLMProvider, GeneratedFlashcard, FLASHCARD_PROMPT, parseJsonResponse, type StreamCallbacks, type GenerateChatResult, type ProviderUsage } from './LLMProvider';
+import {
+  LLMProvider,
+  GeneratedFlashcard,
+  FLASHCARD_PROMPT,
+  parseJsonResponse,
+  type StreamCallbacks,
+  type GenerateChatResult,
+  type ProviderUsage,
+} from './LLMProvider';
 import type { ModelsConfig } from '@/server/config/models.config';
 import type { ToolDefinition, ToolCall } from '@/server/ai/ai.types';
 
@@ -14,17 +22,20 @@ export class OpenCodeProvider implements LLMProvider {
     }
     this.apiKey = config.apiKey;
     this.baseUrl = config.baseUrl || 'https://opencode.ai/zen/go/v1/chat/completions';
-    this.modelName = config.modelName || 'mimo-v2.5';
+    this.modelName = config.modelName || 'deepseek-v4-flash';
     log.providers.info(`Initialized: baseUrl=${this.baseUrl}, model=${this.modelName}`);
   }
 
-  async generateFlashcardsFromChunk(chunk: string, language: string): Promise<GeneratedFlashcard[]> {
-    const prompt = FLASHCARD_PROMPT
-      .replace('{language}', language)
-      .replace('{chunk}', chunk);
+  async generateFlashcardsFromChunk(
+    chunk: string,
+    language: string,
+  ): Promise<GeneratedFlashcard[]> {
+    const prompt = FLASHCARD_PROMPT.replace('{language}', language).replace('{chunk}', chunk);
     const chunkPreview = chunk.slice(0, 100).replace(/\n/g, ' ');
 
-    log.providers.info('Generating flashcards', { metadata: { language, chunkLength: chunk.length, preview: chunkPreview } });
+    log.providers.info('Generating flashcards', {
+      metadata: { language, chunkLength: chunk.length, preview: chunkPreview },
+    });
     log.providers.info(`POST ${this.baseUrl} model=${this.modelName}`);
 
     const controller = new AbortController();
@@ -35,12 +46,15 @@ export class OpenCodeProvider implements LLMProvider {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify({
           model: this.modelName,
           messages: [
-            { role: 'system', content: 'You are a flashcard generator. Always respond with valid JSON.' },
+            {
+              role: 'system',
+              content: 'You are a flashcard generator. Always respond with valid JSON.',
+            },
             { role: 'user', content: prompt },
           ],
         }),
@@ -49,13 +63,17 @@ export class OpenCodeProvider implements LLMProvider {
 
       if (!res.ok) {
         const text = await res.text().catch(() => '(no body)');
-        log.providers.error(`Request failed: status=${res.status}, body=${text}`, { metadata: { body: text } });
+        log.providers.error(`Request failed: status=${res.status}, body=${text}`, {
+          metadata: { body: text },
+        });
         throw new Error(`OpenCode request failed: ${res.status} ${text}`);
       }
 
       const data = await res.json();
       const content = data.choices?.[0]?.message?.content || '';
-      log.providers.info(`Raw response length=${content.length}`, { metadata: { preview: content.slice(0, 200) } });
+      log.providers.info(`Raw response length=${content.length}`, {
+        metadata: { preview: content.slice(0, 200) },
+      });
 
       return parseJsonResponse(content);
     } finally {
@@ -95,7 +113,7 @@ export class OpenCodeProvider implements LLMProvider {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify(body),
         signal: controller.signal,
@@ -110,7 +128,8 @@ export class OpenCodeProvider implements LLMProvider {
     } finally {
       clearTimeout(timeout);
     }
-    const msg = (data as { choices?: Array<{ message: Record<string, unknown> }> }).choices?.[0]?.message as Record<string, unknown> | undefined;
+    const msg = (data as { choices?: Array<{ message: Record<string, unknown> }> }).choices?.[0]
+      ?.message as Record<string, unknown> | undefined;
 
     const reasoning = (msg?.reasoning as string | undefined) || undefined;
 
@@ -134,7 +153,20 @@ export class OpenCodeProvider implements LLMProvider {
     return (msg?.content as string) || '';
   }
 
-  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, maxTokens?: number, reasoningEffort?: 'low' | 'medium' | 'high'): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[]; usage?: ProviderUsage }> {
+  async generateChatStreaming(
+    prompt: string,
+    systemPrompt: string | undefined,
+    callbacks: StreamCallbacks,
+    tools?: ToolDefinition[],
+    toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } },
+    maxTokens?: number,
+    reasoningEffort?: 'low' | 'medium' | 'high',
+  ): Promise<{
+    content: string;
+    reasoning?: string;
+    toolCalls?: ToolCall[];
+    usage?: ProviderUsage;
+  }> {
     const messages: Array<{ role: string; content: string }> = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
     messages.push({ role: 'user', content: prompt });
@@ -166,7 +198,7 @@ export class OpenCodeProvider implements LLMProvider {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify(body),
         signal: controller.signal,
@@ -228,7 +260,10 @@ export class OpenCodeProvider implements LLMProvider {
                 }
               }
             }
-            if (parsed.usage && (!parsed.choices || parsed.choices.length === 0 || !parsed.choices[0].delta)) {
+            if (
+              parsed.usage &&
+              (!parsed.choices || parsed.choices.length === 0 || !parsed.choices[0].delta)
+            ) {
               capturedUsage = {
                 prompt_tokens: parsed.usage.prompt_tokens,
                 completion_tokens: parsed.usage.completion_tokens,

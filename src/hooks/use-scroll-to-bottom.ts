@@ -30,7 +30,6 @@ export function useScrollToBottom() {
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'instant' });
     isAtBottomRef.current = true;
-    setIsAtBottom(true);
   }, []);
 
   return { containerRef, handleScroll, isAtBottom, scrollToBottom };

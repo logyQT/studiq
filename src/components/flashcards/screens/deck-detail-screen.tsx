@@ -16,7 +16,6 @@ import {
   Sparkles,
   Layers,
   MoreVertical,
-  ArrowUp,
   FileUp,
   FileDown,
 } from 'lucide-react';
@@ -44,9 +43,11 @@ const DeckDetailDialogs = lazy(() =>
   })),
 );
 type DialogsState = import('@/components/flashcards/dialogs/deck-detail-dialogs').DialogsState;
-type DialogsHandlers = import('@/components/flashcards/dialogs/deck-detail-dialogs').DialogsHandlers;
+type DialogsHandlers =
+  import('@/components/flashcards/dialogs/deck-detail-dialogs').DialogsHandlers;
 import { ImportDialog } from '@/components/flashcards/shared/import-dialog';
 import { SpeedDial } from '@/components/shared/speed-dial';
+import { ScrollBackToBar } from '@/components/shared/scroll-back-to-bar';
 import type { Deck, Flashcard, Topic } from '@/types/flashcards';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
@@ -63,6 +64,22 @@ interface DeckDetailScreenProps {
   practiceHref?: string;
 }
 
+function getStorageKey(deckId: string) {
+  return `flashcard_deck_detail_filters_${deckId}`;
+}
+
+function loadPersistedFilters(deckId: string) {
+  if (typeof window === 'undefined')
+    return { topicFilter: 'all', sortBy: 'created_at', sortOrder: 'desc' };
+  try {
+    const raw = localStorage.getItem(getStorageKey(deckId));
+    if (raw) return JSON.parse(raw);
+  } catch {
+    /* ignore */
+  }
+  return { topicFilter: 'all', sortBy: 'created_at', sortOrder: 'desc' };
+}
+
 export function DeckDetailScreen({
   deckId,
   basePath,
@@ -76,11 +93,24 @@ export function DeckDetailScreen({
   const role = user?.app_metadata?.role as UserRole | undefined;
   const headerGrad = getGradientHex(deckId);
 
+  const persisted = loadPersistedFilters(deckId);
+
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebounce(searchInput, 300);
-  const [topicFilter, setTopicFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('created_at');
-  const [sortOrder, setSortOrder] = useState('desc');
+  const [topicFilter, setTopicFilter] = useState(persisted.topicFilter);
+  const [sortBy, setSortBy] = useState(persisted.sortBy);
+  const [sortOrder, setSortOrder] = useState(persisted.sortOrder);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        getStorageKey(deckId),
+        JSON.stringify({ topicFilter, sortBy, sortOrder }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [deckId, topicFilter, sortBy, sortOrder]);
 
   const filters = {
     q: debouncedSearch || undefined,
@@ -221,6 +251,7 @@ export function DeckDetailScreen({
   const selection = useSelection();
   const [importOpen, setImportOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const [barStyle, setBarStyle] = useState<React.CSSProperties>({});
 
   const [d, setD] = useState<DialogsState>({
     deleteId: null,
@@ -522,9 +553,23 @@ export function DeckDetailScreen({
   };
 
   useEffect(() => {
-    const onScroll = () => setShowBackToTop(window.scrollY > 400);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    const el = document.querySelector('main');
+    if (!el) return;
+    const onScroll = () => setShowBackToTop(el.scrollTop > 400);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    const main = document.querySelector('main');
+    if (!main) return;
+    const update = () => {
+      const rect = main.getBoundingClientRect();
+      setBarStyle({ left: rect.left, width: rect.width });
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
   }, []);
 
   useEffect(() => {
@@ -648,7 +693,7 @@ export function DeckDetailScreen({
                     </div>
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">{t('practice_deck')}</TooltipContent>
+                <TooltipContent side="top">{t('practice_deck')}</TooltipContent>
               </Tooltip>
             ) : (
               <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-muted-foreground/10">
@@ -885,16 +930,14 @@ export function DeckDetailScreen({
         </div>
       )}
 
-      {showBackToTop && (
-        <Button
-          variant="secondary"
-          size="icon"
-          className="fixed bottom-24 right-6 z-50 h-10 w-10 rounded-full shadow-lg"
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-        >
-          <ArrowUp className="h-5 w-5" />
-        </Button>
-      )}
+      <ScrollBackToBar
+        chevronDirection="up"
+        barPosition="bottom"
+        visible={showBackToTop}
+        onClick={() => document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' })}
+        style={barStyle}
+        className="fixed bottom-0 z-50"
+      />
     </div>
   );
 }
