@@ -1,7 +1,7 @@
 'use client';
 
 import { memo } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
@@ -12,14 +12,12 @@ import { Button } from '@/components/ui/button';
 import { MoreVertical } from 'lucide-react';
 import { OwnedFlashcardContextMenu } from '@/components/flashcards/owned-flashcard-context-menu';
 import { ViewOnlyFlashcardContextMenu } from '@/components/flashcards/view-only-flashcard-context-menu';
-import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import type { Flashcard, Topic } from '@/types/flashcards';
 import { useTranslations } from 'next-intl';
 import { getTopicColorHex } from '@/lib/color-utils';
 
 interface FlashcardCardProps {
   fc: Flashcard;
-  isFlipped: boolean;
   canUpdate: boolean;
   canDelete: boolean;
   topics: Topic[];
@@ -27,7 +25,6 @@ interface FlashcardCardProps {
   selected?: boolean;
   selectable?: boolean;
   onToggleSelect?: (id: string) => void;
-  onFlip: (id: string) => void;
   onEdit: (fc: Flashcard) => void;
   onDelete: (id: string) => void;
   onLink: (fc: Flashcard) => void;
@@ -39,7 +36,6 @@ interface FlashcardCardProps {
 
 export const FlashcardCard = memo(function FlashcardCard({
   fc,
-  isFlipped,
   canUpdate,
   canDelete,
   topics,
@@ -47,7 +43,6 @@ export const FlashcardCard = memo(function FlashcardCard({
   selected,
   selectable,
   onToggleSelect,
-  onFlip,
   onEdit,
   onDelete,
   onLink,
@@ -63,13 +58,10 @@ export const FlashcardCard = memo(function FlashcardCard({
   return (
     <Card
       id={`fc-${fc.id}`}
-      className="group relative cursor-pointer transition-shadow duration-300 sm:min-h-48 sm:max-h-96 sm:overflow-hidden sm:hover:shadow-lg max-sm:py-0"
-      data-flipped={isFlipped ? '' : undefined}
+      className="group relative cursor-pointer transition-shadow duration-300 sm:min-h-32 sm:hover:shadow-lg max-sm:py-0"
       onClick={() => {
         if (selectable) {
           onToggleSelect?.(fc.id);
-        } else {
-          onFlip(isFlipped ? '' : fc.id);
         }
       }}
     >
@@ -143,8 +135,8 @@ export const FlashcardCard = memo(function FlashcardCard({
         )}
       </div>
 
-      {/* Desktop: flip card */}
-      <div className="hidden sm:flex sm:flex-col sm:flex-1">
+      {/* Desktop: two-row Q&A */}
+      <div className="hidden sm:flex sm:flex-col sm:flex-1 sm:p-5">
         {selectable && (
           <div className="absolute left-2 top-2 z-10" onClick={(e) => e.stopPropagation()}>
             <Checkbox
@@ -195,30 +187,21 @@ export const FlashcardCard = memo(function FlashcardCard({
           </DropdownMenu>
         </div>
 
-        <CardContent className="flex-1 flex flex-col items-center p-4 pt-6">
-          <p
-            className="mb-2 text-xs uppercase text-muted-foreground"
-          >
-            {isFlipped ? t('answer_label') : t('question_label')}
-          </p>
-          <div className="w-full text-center flex-1 flex items-center justify-center overflow-hidden">
-              <div className="text-lg font-medium grid w-full">
-              <div className={`[grid-area:1/1] min-w-0 ${isFlipped ? 'invisible' : ''}`}>
-                <MarkdownRenderer content={fc.front} />
-              </div>
-              <div className={`[grid-area:1/1] min-w-0 ${isFlipped ? '' : 'invisible'}`}>
-                <MarkdownRenderer content={fc.back} />
-              </div>
-            </div>
-          </div>
-        </CardContent>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs uppercase text-muted-foreground font-normal">Q:</p>
+          <p className="text-base font-semibold truncate">{fc.front}</p>
+        </div>
+        <div className="mt-2 flex-1 min-w-0">
+          <p className="text-xs uppercase text-muted-foreground font-normal">A:</p>
+          <p className="text-sm text-muted-foreground line-clamp-3">{fc.back}</p>
+        </div>
 
         {fcTopics.length > 0 && (
-          <div className="absolute bottom-3 left-3 z-10 flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1.5 mt-2">
             {fcTopics.map((topic) => (
               <span
                 key={topic.id}
-                className="rounded-full px-2 py-0.5 text-xs"
+                className="rounded-full px-2.5 py-0.5 text-xs"
                 style={{ backgroundColor: `${getTopicColorHex(topic.name)}80` }}
               >
                 {topic.name}

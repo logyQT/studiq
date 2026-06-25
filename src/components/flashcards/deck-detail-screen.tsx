@@ -195,7 +195,6 @@ export function DeckDetailScreen({
     invalidateKeys: [flashcardQueryKey, flashcardKeys.decks.all],
   });
 
-  const [flippedId, setFlippedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelecting, setIsSelecting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -284,13 +283,6 @@ export function DeckDetailScreen({
       setD((prev) => ({ ...prev, viewTopicId: topicId }));
     },
     [setD],
-  );
-
-  const handleFlip = useCallback(
-    (id: string | null) => {
-      setFlippedId(id || null);
-    },
-    [setFlippedId],
   );
 
   const openEdit = useCallback(
@@ -645,7 +637,7 @@ export function DeckDetailScreen({
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">{t('flashcards_section')}</h3>
-          <p className="text-sm text-muted-foreground">{t('flip_hint')}</p>
+
         </div>
         <div className="flex items-center gap-2">
           {practiceHref && (
@@ -717,7 +709,6 @@ export function DeckDetailScreen({
             <FlashcardCard
               key={fc.id}
               fc={fc}
-              isFlipped={flippedId === fc.id}
               canUpdate={can(role, 'flashcard.update', fc.created_by, user?.id)}
               canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false}
               topics={topics}
@@ -725,7 +716,6 @@ export function DeckDetailScreen({
               selected={selectedIds.has(fc.id)}
               selectable={isSelecting}
               onToggleSelect={toggleSelect}
-              onFlip={handleFlip}
               onEdit={openEdit}
               onDelete={handleCardDelete}
               onLink={handleCardLink}
