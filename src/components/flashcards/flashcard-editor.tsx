@@ -93,27 +93,41 @@ export function FlashcardEditor({
     [activeTextarea, activeValue, activeOnChange],
   );
 
-  const handleUpload = useCallback(async (file: File) => {
-    setUploading(true);
-    try {
-      const result = await apiUploadFile<{ url: string }>('/api/v1/flashcards/media/upload', file);
-      const isAudio = file.type.startsWith('audio/');
-      if (isAudio) {
-        insertAtCursor(activeTextarea, activeValue, activeOnChange, `<audio controls src="${result.url}"></audio>`);
-      } else {
-        const name = file.name.replace(/\.[^.]+$/, '');
-        insertAtCursor(activeTextarea, activeValue, activeOnChange, `![${name}](${result.url})`);
+  const handleUpload = useCallback(
+    async (file: File) => {
+      setUploading(true);
+      try {
+        const result = await apiUploadFile<{ url: string }>(
+          '/api/v1/flashcards/media/upload',
+          file,
+        );
+        const isAudio = file.type.startsWith('audio/');
+        if (isAudio) {
+          insertAtCursor(
+            activeTextarea,
+            activeValue,
+            activeOnChange,
+            `<audio controls src="${result.url}"></audio>`,
+          );
+        } else {
+          const name = file.name.replace(/\.[^.]+$/, '');
+          insertAtCursor(activeTextarea, activeValue, activeOnChange, `![${name}](${result.url})`);
+        }
+      } finally {
+        setUploading(false);
       }
-    } finally {
-      setUploading(false);
-    }
-  }, [activeTextarea, activeValue, activeOnChange]);
+    },
+    [activeTextarea, activeValue, activeOnChange],
+  );
 
-  const handlePickFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleUpload(file);
-    e.target.value = '';
-  }, [handleUpload]);
+  const handlePickFile = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) handleUpload(file);
+      e.target.value = '';
+    },
+    [handleUpload],
+  );
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -131,13 +145,16 @@ export function FlashcardEditor({
     }
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    dragCounter.current = 0;
-    const file = e.dataTransfer.files[0];
-    if (file) handleUpload(file);
-  }, [handleUpload]);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragOver(false);
+      dragCounter.current = 0;
+      const file = e.dataTransfer.files[0];
+      if (file) handleUpload(file);
+    },
+    [handleUpload],
+  );
 
   return (
     <div
@@ -151,27 +168,69 @@ export function FlashcardEditor({
     >
       <div className="flex items-center justify-between gap-2 shrink-0">
         <div className="flex flex-wrap items-center gap-0.5 rounded-lg border bg-muted/50 p-1">
-          <Button variant="ghost" size="sm" onClick={() => wrap('**', '**', 'bold')} aria-label={t('toolbar_bold')} title={t('toolbar_bold')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => wrap('**', '**', 'bold')}
+            aria-label={t('toolbar_bold')}
+            title={t('toolbar_bold')}
+          >
             <Bold className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => wrap('*', '*', 'italic')} aria-label={t('toolbar_italic')} title={t('toolbar_italic')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => wrap('*', '*', 'italic')}
+            aria-label={t('toolbar_italic')}
+            title={t('toolbar_italic')}
+          >
             <Italic className="h-4 w-4" />
           </Button>
           <Separator orientation="vertical" className="mx-1 h-6" />
-          <Button variant="ghost" size="sm" onClick={() => wrap('# ', '')} aria-label={t('toolbar_heading1')} title={t('toolbar_heading1')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => wrap('# ', '')}
+            aria-label={t('toolbar_heading1')}
+            title={t('toolbar_heading1')}
+          >
             <Heading1 className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => wrap('## ', '')} aria-label={t('toolbar_heading2')} title={t('toolbar_heading2')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => wrap('## ', '')}
+            aria-label={t('toolbar_heading2')}
+            title={t('toolbar_heading2')}
+          >
             <Heading2 className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => wrap('### ', '')} aria-label={t('toolbar_heading3')} title={t('toolbar_heading3')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => wrap('### ', '')}
+            aria-label={t('toolbar_heading3')}
+            title={t('toolbar_heading3')}
+          >
             <Heading3 className="h-4 w-4" />
           </Button>
           <Separator orientation="vertical" className="mx-1 h-6" />
-          <Button variant="ghost" size="sm" onClick={() => wrap('- ', '')} aria-label={t('toolbar_bullet_list')} title={t('toolbar_bullet_list')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => wrap('- ', '')}
+            aria-label={t('toolbar_bullet_list')}
+            title={t('toolbar_bullet_list')}
+          >
             <List className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => wrap('1. ', '')} aria-label={t('toolbar_ordered_list')} title={t('toolbar_ordered_list')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => wrap('1. ', '')}
+            aria-label={t('toolbar_ordered_list')}
+            title={t('toolbar_ordered_list')}
+          >
             <ListOrdered className="h-4 w-4" />
           </Button>
           <Separator orientation="vertical" className="mx-1 h-6" />
@@ -190,7 +249,11 @@ export function FlashcardEditor({
             aria-label={t('toolbar_upload_media')}
             title={t('toolbar_upload_media')}
           >
-            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Image className="h-4 w-4" />}
+            {uploading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Image className="h-4 w-4" />
+            )}
           </Button>
         </div>
         <Toggle
@@ -221,7 +284,7 @@ export function FlashcardEditor({
               value={front}
               onChange={(e) => onFrontChange(e.target.value)}
               onFocus={() => setActiveSide('front')}
-              className="flex-1 min-h-[120px] w-full resize-none rounded-lg border bg-background p-4 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
+              className="flex-1 min-h-30 w-full resize-none rounded-lg border bg-background p-4 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
               placeholder={t('front_placeholder')}
             />
           )}
@@ -241,7 +304,7 @@ export function FlashcardEditor({
               value={back}
               onChange={(e) => onBackChange(e.target.value)}
               onFocus={() => setActiveSide('back')}
-              className="flex-1 min-h-[120px] w-full resize-none rounded-lg border bg-background p-4 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
+              className="flex-1 min-h-30 w-full resize-none rounded-lg border bg-background p-4 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
               placeholder={t('back_placeholder')}
             />
           )}

@@ -11,7 +11,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { toast } from 'sonner';
 import { Upload, FileText, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -31,14 +38,23 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<'upload' | 'preview' | 'importing' | 'done'>('upload');
   const [parsedRows, setParsedRows] = useState<CsvPreviewRow[]>([]);
-  const [columnMap, setColumnMap] = useState<{ front: string; back: string; topic: string | null; deck: string | null }>({
+  const [columnMap, setColumnMap] = useState<{
+    front: string;
+    back: string;
+    topic: string | null;
+    deck: string | null;
+  }>({
     front: '',
     back: '',
     topic: null,
     deck: null,
   });
   const [columns, setColumns] = useState<string[]>([]);
-  const [importResult, setImportResult] = useState<{ total: number; imported: number; errors: Array<{ row: number; error: string }> } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    total: number;
+    imported: number;
+    errors: Array<{ row: number; error: string }>;
+  } | null>(null);
 
   const reset = useCallback(() => {
     setStep('upload');
@@ -48,47 +64,66 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
     setImportResult(null);
   }, []);
 
-  const handleFile = useCallback(async (file: File) => {
-    const text = await file.text();
-    const Papa = (await import('papaparse')).default;
-    const result = Papa.parse<CsvPreviewRow>(text, {
-      header: true,
-      skipEmptyLines: true,
-      transformHeader: (h) => h.trim(),
-    });
+  const handleFile = useCallback(
+    async (file: File) => {
+      const text = await file.text();
+      const Papa = (await import('papaparse')).default;
+      const result = Papa.parse<CsvPreviewRow>(text, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (h) => h.trim(),
+      });
 
-    if (result.errors.length > 0 && result.data.length === 0) {
-      toast.error(t('csv_parse_error'));
-      return;
-    }
+      if (result.errors.length > 0 && result.data.length === 0) {
+        toast.error(t('csv_parse_error'));
+        return;
+      }
 
-    const cols = result.meta.fields ?? [];
-    setColumns(cols);
-    setParsedRows(result.data.slice(0, 50));
+      const cols = result.meta.fields ?? [];
+      setColumns(cols);
+      setParsedRows(result.data.slice(0, 50));
 
-    const lower = cols.map((c) => c.toLowerCase());
-    const autoMap = {
-      front: cols[lower.findIndex((c) => c === 'front' || c === 'question' || c === 'q')] ?? cols[0] ?? '',
-      back: cols[lower.findIndex((c) => c === 'back' || c === 'answer' || c === 'a')] ?? cols[1] ?? '',
-      topic: cols[lower.findIndex((c) => c === 'topic' || c === 'topics' || c === 'tag' || c === 'tags')] ?? null,
-      deck: cols[lower.findIndex((c) => c === 'deck' || c === 'decks' || c === 'deck_name')] ?? null,
-    };
-    setColumnMap(autoMap);
-    setStep('preview');
-  }, [t]);
+      const lower = cols.map((c) => c.toLowerCase());
+      const autoMap = {
+        front:
+          cols[lower.findIndex((c) => c === 'front' || c === 'question' || c === 'q')] ??
+          cols[0] ??
+          '',
+        back:
+          cols[lower.findIndex((c) => c === 'back' || c === 'answer' || c === 'a')] ??
+          cols[1] ??
+          '',
+        topic:
+          cols[
+            lower.findIndex((c) => c === 'topic' || c === 'topics' || c === 'tag' || c === 'tags')
+          ] ?? null,
+        deck:
+          cols[lower.findIndex((c) => c === 'deck' || c === 'decks' || c === 'deck_name')] ?? null,
+      };
+      setColumnMap(autoMap);
+      setStep('preview');
+    },
+    [t],
+  );
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files?.[0];
-    if (file && (file.name.endsWith('.csv') || file.type === 'text/csv')) {
-      handleFile(file);
-    }
-  }, [handleFile]);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files?.[0];
+      if (file && (file.name.endsWith('.csv') || file.type === 'text/csv')) {
+        handleFile(file);
+      }
+    },
+    [handleFile],
+  );
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleFile(file);
-  }, [handleFile]);
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) handleFile(file);
+    },
+    [handleFile],
+  );
 
   const handleImport = useCallback(async () => {
     if (!columnMap.front || !columnMap.back) {
@@ -101,8 +136,8 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
     const cards = parsedRows.map((row) => ({
       front: row[columnMap.front] ?? '',
       back: row[columnMap.back] ?? '',
-      topic: columnMap.topic ? (row[columnMap.topic] || undefined) : undefined,
-      deck: columnMap.deck ? (row[columnMap.deck] || undefined) : undefined,
+      topic: columnMap.topic ? row[columnMap.topic] || undefined : undefined,
+      deck: columnMap.deck ? row[columnMap.deck] || undefined : undefined,
     }));
 
     try {
@@ -145,7 +180,12 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
   }, [reset, onOpenChange]);
 
   return (
-    <Dialog open={open} onOpenChange={(open) => { if (!open) handleClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) handleClose();
+      }}
+    >
       <DialogContent className="sm:max-w-3xl max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{t('import_title')}</DialogTitle>
@@ -188,7 +228,11 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
                     value={columnMap.front}
                     onChange={(e) => setColumnMap((prev) => ({ ...prev, front: e.target.value }))}
                   >
-                    {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {columns.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -198,29 +242,51 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
                     value={columnMap.back}
                     onChange={(e) => setColumnMap((prev) => ({ ...prev, back: e.target.value }))}
                   >
-                    {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {columns.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
-                  <label className="font-medium">{t('csv_column_topic')} <span className="text-muted-foreground">({t('optional')})</span></label>
+                  <label className="font-medium">
+                    {t('csv_column_topic')}{' '}
+                    <span className="text-muted-foreground">({t('optional')})</span>
+                  </label>
                   <select
                     className="w-full mt-1 rounded-md border px-3 py-1.5 bg-background"
                     value={columnMap.topic ?? ''}
-                    onChange={(e) => setColumnMap((prev) => ({ ...prev, topic: e.target.value || null }))}
+                    onChange={(e) =>
+                      setColumnMap((prev) => ({ ...prev, topic: e.target.value || null }))
+                    }
                   >
                     <option value="">—</option>
-                    {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {columns.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
-                  <label className="font-medium">{t('csv_column_deck')} <span className="text-muted-foreground">({t('optional')})</span></label>
+                  <label className="font-medium">
+                    {t('csv_column_deck')}{' '}
+                    <span className="text-muted-foreground">({t('optional')})</span>
+                  </label>
                   <select
                     className="w-full mt-1 rounded-md border px-3 py-1.5 bg-background"
                     value={columnMap.deck ?? ''}
-                    onChange={(e) => setColumnMap((prev) => ({ ...prev, deck: e.target.value || null }))}
+                    onChange={(e) =>
+                      setColumnMap((prev) => ({ ...prev, deck: e.target.value || null }))
+                    }
                   >
                     <option value="">—</option>
-                    {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {columns.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -240,17 +306,27 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
                     {parsedRows.slice(0, 10).map((row, i) => (
                       <TableRow key={i}>
                         <TableCell className="text-muted-foreground">{i + 1}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">{row[columnMap.front]}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">{row[columnMap.back]}</TableCell>
-                        {columnMap.topic && <TableCell className="max-w-[150px] truncate">{row[columnMap.topic]}</TableCell>}
-                        {columnMap.deck && <TableCell className="max-w-[150px] truncate">{row[columnMap.deck]}</TableCell>}
+                        <TableCell className="max-w-50 truncate">{row[columnMap.front]}</TableCell>
+                        <TableCell className="max-w-50 truncate">{row[columnMap.back]}</TableCell>
+                        {columnMap.topic && (
+                          <TableCell className="max-w-37.5 truncate">
+                            {row[columnMap.topic]}
+                          </TableCell>
+                        )}
+                        {columnMap.deck && (
+                          <TableCell className="max-w-37.5 truncate">
+                            {row[columnMap.deck]}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </div>
               {parsedRows.length > 10 && (
-                <p className="text-xs text-muted-foreground">{t('showing_n_of', { n: 10, total: parsedRows.length })}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t('showing_n_of', { n: 10, total: parsedRows.length })}
+                </p>
               )}
             </div>
           )}
@@ -269,14 +345,18 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
                 <div>
                   <p className="font-medium">{t('import_complete')}</p>
                   <p className="text-sm text-muted-foreground">
-                    {t('import_summary', { imported: importResult.imported, total: importResult.total })}
+                    {t('import_summary', {
+                      imported: importResult.imported,
+                      total: importResult.total,
+                    })}
                   </p>
                 </div>
               </div>
               {importResult.errors.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-sm font-medium flex items-center gap-1 text-destructive">
-                    <AlertCircle className="h-4 w-4" /> {t('import_errors', { count: importResult.errors.length })}
+                    <AlertCircle className="h-4 w-4" />{' '}
+                    {t('import_errors', { count: importResult.errors.length })}
                   </p>
                   <div className="max-h-40 overflow-y-auto border rounded-lg">
                     <Table>
@@ -304,11 +384,19 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
 
         <DialogFooter className="mt-4">
           {step === 'upload' && (
-            <Button variant="outline" onClick={handleClose}>{t('common_cancel')}</Button>
+            <Button variant="outline" onClick={handleClose}>
+              {t('common_cancel')}
+            </Button>
           )}
           {step === 'preview' && (
             <>
-              <Button variant="outline" onClick={() => { reset(); setStep('upload'); }}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  reset();
+                  setStep('upload');
+                }}
+              >
                 {t('back')}
               </Button>
               <Button onClick={handleImport}>
@@ -316,9 +404,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
               </Button>
             </>
           )}
-          {step === 'done' && (
-            <Button onClick={handleClose}>{t('common_close')}</Button>
-          )}
+          {step === 'done' && <Button onClick={handleClose}>{t('common_close')}</Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>

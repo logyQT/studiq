@@ -123,12 +123,16 @@ export class FlashcardService {
     return flashcards;
   }
 
-  async list(ctx: RequestContext, filters?: { topicIds?: string[]; deckIds?: string[]; cursor?: string; limit?: number }) {
+  async list(ctx: RequestContext, filters?: { topicIds?: string[]; deckIds?: string[]; q?: string; sortBy?: string; sortOrder?: string; cursor?: string; limit?: number }) {
     const supabase = await createClient();
     const pageSize = Math.min(filters?.limit ?? 50, 100);
 
     const hasDeckFilter = !!(filters?.deckIds && filters.deckIds.length > 0);
     const hasTopicFilter = !!(filters?.topicIds && filters.topicIds.length > 0);
+    const hasSearch = !!filters?.q;
+
+    const sortCol = filters?.sortBy || 'created_at';
+    const sortAsc = (filters?.sortOrder || 'desc') === 'asc';
 
     const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     let query = supabase
@@ -162,10 +166,21 @@ export class FlashcardService {
       }
     }
 
-    query = query.order('id').limit(pageSize + 1);
+    if (hasSearch) {
+      const searchTerm = `%${filters!.q}%`;
+      query = query.or(`front.ilike.${searchTerm},back.ilike.${searchTerm}`);
+    }
+
+    query = query.order(sortCol, { ascending: sortAsc }).order('id');
+
+    query = query.limit(pageSize + 1);
 
     if (filters?.cursor) {
-      query = query.gt('id', filters.cursor);
+      const decoded = JSON.parse(Buffer.from(filters.cursor, 'base64').toString('utf-8'));
+      const cursorVal = decoded.v;
+      const cursorId = decoded.id;
+      const op = sortAsc ? 'gt' : 'lt';
+      query = query.or(`${sortCol}.${op}.${cursorVal},and(${sortCol}.eq.${cursorVal},id.gt.${cursorId})`);
     }
 
     const { data, error } = await query;
@@ -174,7 +189,9 @@ export class FlashcardService {
     const rows = data as unknown as Array<{ id: string; [key: string]: unknown }>;
     const hasMore = (rows?.length ?? 0) > pageSize;
     const items = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
-    const nextCursor = hasMore ? items[items.length - 1].id : null;
+    const nextCursor = hasMore
+      ? Buffer.from(JSON.stringify({ v: items[items.length - 1][sortCol], id: items[items.length - 1].id })).toString('base64')
+      : null;
 
     return { items, nextCursor, hasMore };
   }

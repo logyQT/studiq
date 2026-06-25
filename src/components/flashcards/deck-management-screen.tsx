@@ -314,8 +314,6 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         </div>
       </div>
 
-
-
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -361,7 +359,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
                   if (isSelecting) {
                     handleToggleSelect(deck.id);
                   } else {
-                    router.push(`${basePath}/deck/${deck.id}`);
+                    router.push(`${basePath}/decks/${deck.id}`);
                   }
                 }}
               >
@@ -562,7 +560,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
                         className="gap-1.5 text-primary hover:text-primary hover:bg-primary/10 font-semibold px-2 -mr-2 transition-colors"
                         onClick={(e) => {
                           e.stopPropagation();
-                          router.push(`${basePath}/deck/${deck.id}`);
+                          router.push(`${basePath}/decks/${deck.id}`);
                         }}
                       >
                         {t('manage_deck')} <ArrowRight className="h-4 w-4" />
@@ -574,7 +572,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
                         className="gap-1.5 text-primary hover:text-primary hover:bg-primary/10 font-semibold px-2 -mr-2 transition-colors"
                         onClick={(e) => {
                           e.stopPropagation();
-                          router.push(`${basePath}/deck/${deck.id}`);
+                          router.push(`${basePath}/decks/${deck.id}`);
                         }}
                       >
                         {t('view_deck')} <Eye className="h-4 w-4" />

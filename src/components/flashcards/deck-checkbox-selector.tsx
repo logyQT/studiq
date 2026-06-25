@@ -68,9 +68,7 @@ export function DeckCheckboxSelector({
             </div>
           ))}
           {decks.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              {emptyLabel}
-            </p>
+            <p className="text-sm text-muted-foreground text-center py-4">{emptyLabel}</p>
           )}
         </div>
         <DialogFooter>

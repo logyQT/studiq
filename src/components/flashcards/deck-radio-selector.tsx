@@ -70,17 +70,11 @@ export function DeckRadioSelector({
                   <p className="text-xs text-muted-foreground truncate">{d.description}</p>
                 )}
               </div>
-              {countLabel && (
-                <Badge variant="secondary">
-                  {countLabel(d.flashcard_count)}
-                </Badge>
-              )}
+              {countLabel && <Badge variant="secondary">{countLabel(d.flashcard_count)}</Badge>}
             </button>
           ))}
           {decks.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              {emptyLabel}
-            </p>
+            <p className="text-sm text-muted-foreground text-center py-4">{emptyLabel}</p>
           )}
         </div>
         <DialogFooter>

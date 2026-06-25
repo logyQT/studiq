@@ -68,17 +68,13 @@ export function useBreadcrumbs(pathname: string): Crumb[] {
     const translate = entry.namespace ? translators[entry.namespace] : null;
     const isDynamicRoute = routeKey.includes('[');
 
-    if (isDynamicRoute) {
-      crumbs.push({
-        label: translate ? translate(entry.labelKey) : entry.labelKey,
-        href: resolveHref(pathname, entry.href),
-      });
-    } else {
-      crumbs.push({
-        label: translate ? translate(entry.labelKey) : entry.labelKey,
-        href: routeKey,
-      });
-    }
+    const href = isDynamicRoute ? resolveHref(pathname, entry.href) : routeKey;
+    if (crumbs.length > 0 && crumbs[crumbs.length - 1].href === href) continue;
+
+    crumbs.push({
+      label: translate ? translate(entry.labelKey) : entry.labelKey,
+      href,
+    });
   }
 
   if (dynamicSegments.length > 0) {

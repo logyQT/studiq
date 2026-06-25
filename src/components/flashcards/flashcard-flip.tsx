@@ -15,7 +15,7 @@ interface FlashcardFlipProps {
 export function FlashcardFlip({ isFlipped, front, back, className, onClick }: FlashcardFlipProps) {
   return (
     <div
-      className={cn('relative w-full h-[22rem] cursor-pointer', className)}
+      className={cn('relative w-full h-88 cursor-pointer', className)}
       style={{ perspective: 1200 }}
       onClick={onClick}
     >

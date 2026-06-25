@@ -141,7 +141,9 @@ export function DeckDetailDialogs({
 
     setCreatingTopic(true);
     try {
-      const newTopic = await apiPost<{ id: string; name: string }>('/api/v1/flashcards/topics', { name });
+      const newTopic = await apiPost<{ id: string; name: string }>('/api/v1/flashcards/topics', {
+        name,
+      });
       const currentIds = getTopicIds(fc);
       const newIds = [...new Set([...currentIds, newTopic.id])];
       await apiPut<Flashcard>(`/api/v1/flashcards/${fc.id}`, {
@@ -181,7 +183,12 @@ export function DeckDetailDialogs({
     <>
       <DeckCheckboxSelector
         open={state.linkOpen}
-        onOpenChange={(open) => { if (!open) { handlers.onLinkOpenChange(false); handlers.onLinkDeckIdsChange([]); } }}
+        onOpenChange={(open) => {
+          if (!open) {
+            handlers.onLinkOpenChange(false);
+            handlers.onLinkDeckIdsChange([]);
+          }
+        }}
         decks={ownedDecks}
         selectedIds={state.linkDeckIds}
         onSelectionChange={handlers.onLinkDeckIdsChange}
@@ -195,7 +202,12 @@ export function DeckDetailDialogs({
 
       <DeckRadioSelector
         open={state.copyOpen}
-        onOpenChange={(open) => { if (!open) { handlers.onCopyOpenChange(false); handlers.onCopyTargetDeckIdChange(null); } }}
+        onOpenChange={(open) => {
+          if (!open) {
+            handlers.onCopyOpenChange(false);
+            handlers.onCopyTargetDeckIdChange(null);
+          }
+        }}
         decks={ownedDecks}
         selectedId={state.copyTargetDeckId}
         onSelectionChange={handlers.onCopyTargetDeckIdChange}
@@ -210,7 +222,9 @@ export function DeckDetailDialogs({
 
       <Dialog
         open={!!state.copyResult}
-        onOpenChange={(open) => { if (!open) handlers.onCopyResultClose(); }}
+        onOpenChange={(open) => {
+          if (!open) handlers.onCopyResultClose();
+        }}
       >
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -219,7 +233,7 @@ export function DeckDetailDialogs({
           <div className="flex flex-col gap-3 py-4">
             <Button
               onClick={() => {
-                router.push(`${basePath}/deck/${state.copyResult?.deckId}`);
+                router.push(`${basePath}/decks/${state.copyResult?.deckId}`);
                 handlers.onCopyResultClose();
               }}
             >
@@ -253,7 +267,9 @@ export function DeckDetailDialogs({
               <Label>{t('deck_name_label')}</Label>
               <Input
                 value={state.deckFormData.name}
-                onChange={(e) => handlers.onDeckFormDataChange({ ...state.deckFormData, name: e.target.value })}
+                onChange={(e) =>
+                  handlers.onDeckFormDataChange({ ...state.deckFormData, name: e.target.value })
+                }
                 placeholder={t('deck_name_placeholder')}
               />
             </div>
@@ -261,7 +277,12 @@ export function DeckDetailDialogs({
               <Label>{t('deck_description_label')}</Label>
               <Textarea
                 value={state.deckFormData.description}
-                onChange={(e) => handlers.onDeckFormDataChange({ ...state.deckFormData, description: e.target.value })}
+                onChange={(e) =>
+                  handlers.onDeckFormDataChange({
+                    ...state.deckFormData,
+                    description: e.target.value,
+                  })
+                }
                 placeholder={t('deck_description_placeholder')}
                 rows={2}
               />
@@ -288,7 +309,9 @@ export function DeckDetailDialogs({
 
       <Dialog
         open={!!state.viewTopicId}
-        onOpenChange={(open) => { if (!open) handlers.onViewTopicIdChange(null); }}
+        onOpenChange={(open) => {
+          if (!open) handlers.onViewTopicIdChange(null);
+        }}
       >
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
@@ -312,11 +335,9 @@ export function DeckDetailDialogs({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-4">
-            {(flashcards ?? [])
-              .filter((fc) =>
-                fc.flashcard_topic_assignments?.some((a) => a.topic_id === state.viewTopicId),
-              )
-              .length === 0 ? (
+            {(flashcards ?? []).filter((fc) =>
+              fc.flashcard_topic_assignments?.some((a) => a.topic_id === state.viewTopicId),
+            ).length === 0 ? (
               <p className="text-center text-muted-foreground py-8">
                 {t('no_flashcards_for_topic')}
               </p>
@@ -328,12 +349,18 @@ export function DeckDetailDialogs({
                 .map((fc) => (
                   <div key={fc.id} className="p-4 rounded-lg border space-y-2">
                     <div>
-                    <p className="text-xs text-muted-foreground uppercase">{t('question_label')}</p>
-                    <p className="text-sm font-medium"><MarkdownRenderer content={fc.front} /></p>
-                  </div>
-                  <div className="border-t pt-2">
-                    <p className="text-xs text-muted-foreground uppercase">{t('answer_label')}</p>
-                    <p className="text-sm"><MarkdownRenderer content={fc.back} /></p>
+                      <p className="text-xs text-muted-foreground uppercase">
+                        {t('question_label')}
+                      </p>
+                      <p className="text-sm font-medium">
+                        <MarkdownRenderer content={fc.front} />
+                      </p>
+                    </div>
+                    <div className="border-t pt-2">
+                      <p className="text-xs text-muted-foreground uppercase">{t('answer_label')}</p>
+                      <p className="text-sm">
+                        <MarkdownRenderer content={fc.back} />
+                      </p>
                     </div>
                   </div>
                 ))
@@ -345,10 +372,13 @@ export function DeckDetailDialogs({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={state.addTopicOpen} onOpenChange={(open) => {
-        if (!open) setNewTopicName('');
-        handlers.onAddTopicOpenChange(open);
-      }}>
+      <Dialog
+        open={state.addTopicOpen}
+        onOpenChange={(open) => {
+          if (!open) setNewTopicName('');
+          handlers.onAddTopicOpenChange(open);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t('add_topic_title')}</DialogTitle>
@@ -370,9 +400,10 @@ export function DeckDetailDialogs({
               {(() => {
                 const fc = flashcards.find((f) => f.id === state.activeFlashcardId);
                 const assignedIds = getTopicIds(fc);
-                const filtered = topics.filter((topic) =>
-                  !assignedIds.includes(topic.id) &&
-                  topic.name.toLowerCase().includes(newTopicName.toLowerCase()),
+                const filtered = topics.filter(
+                  (topic) =>
+                    !assignedIds.includes(topic.id) &&
+                    topic.name.toLowerCase().includes(newTopicName.toLowerCase()),
                 );
                 const exactMatch = topics.find(
                   (topic) => topic.name.toLowerCase() === newTopicName.trim().toLowerCase(),
@@ -386,21 +417,27 @@ export function DeckDetailDialogs({
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent transition-colors"
                       >
                         <Plus className="h-3.5 w-3.5" />
-                        <span className="text-muted-foreground">{t('add_topic_create_new', { name: newTopicName.trim() })}</span>
+                        <span className="text-muted-foreground">
+                          {t('add_topic_create_new', { name: newTopicName.trim() })}
+                        </span>
                       </button>
                     )}
                     {filtered.map((topic) => (
                       <button
                         key={topic.id}
                         onClick={() => {
-                          const currentIds = getTopicIds(flashcards.find((f) => f.id === state.activeFlashcardId));
+                          const currentIds = getTopicIds(
+                            flashcards.find((f) => f.id === state.activeFlashcardId),
+                          );
                           handlers.onTopicActionIdsChange([...new Set([...currentIds, topic.id])]);
                           handlers.onAddTopicConfirm();
                           setNewTopicName('');
                         }}
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent transition-colors"
                       >
-                        <div className={`h-2 w-2 rounded-full shrink-0 ${getTopicColor(topic.name)}`} />
+                        <div
+                          className={`h-2 w-2 rounded-full shrink-0 ${getTopicColor(topic.name)}`}
+                        />
                         {topic.name}
                       </button>
                     ))}
@@ -415,7 +452,13 @@ export function DeckDetailDialogs({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setNewTopicName(''); handlers.onAddTopicOpenChange(false); }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setNewTopicName('');
+                handlers.onAddTopicOpenChange(false);
+              }}
+            >
               {t('common_cancel')}
             </Button>
             <Button
@@ -453,9 +496,7 @@ export function DeckDetailDialogs({
             <Button variant="outline" onClick={() => handlers.onManageTopicOpenChange(false)}>
               {t('common_cancel')}
             </Button>
-            <Button onClick={handleManageTopicsConfirm}>
-              {t('common_save')}
-            </Button>
+            <Button onClick={handleManageTopicsConfirm}>{t('common_save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -472,7 +513,12 @@ export function DeckDetailDialogs({
 
       <DeckCheckboxSelector
         open={state.bulkLinkOpen}
-        onOpenChange={(open) => { if (!open) { handlers.onBulkLinkOpenChange(false); handlers.onBulkLinkDeckIdsChange([]); } }}
+        onOpenChange={(open) => {
+          if (!open) {
+            handlers.onBulkLinkOpenChange(false);
+            handlers.onBulkLinkDeckIdsChange([]);
+          }
+        }}
         decks={ownedDecks}
         selectedIds={state.bulkLinkDeckIds}
         onSelectionChange={handlers.onBulkLinkDeckIdsChange}
@@ -486,7 +532,12 @@ export function DeckDetailDialogs({
 
       <DeckRadioSelector
         open={state.bulkMoveOpen}
-        onOpenChange={(open) => { if (!open) { handlers.onBulkMoveOpenChange(false); handlers.onBulkMoveTargetDeckIdChange(null); } }}
+        onOpenChange={(open) => {
+          if (!open) {
+            handlers.onBulkMoveOpenChange(false);
+            handlers.onBulkMoveTargetDeckIdChange(null);
+          }
+        }}
         decks={ownedDecks}
         selectedId={state.bulkMoveTargetDeckId}
         onSelectionChange={handlers.onBulkMoveTargetDeckIdChange}
@@ -500,7 +551,12 @@ export function DeckDetailDialogs({
 
       <DeckRadioSelector
         open={state.bulkCopyOpen}
-        onOpenChange={(open) => { if (!open) { handlers.onBulkCopyOpenChange(false); handlers.onBulkCopyTargetDeckIdChange(null); } }}
+        onOpenChange={(open) => {
+          if (!open) {
+            handlers.onBulkCopyOpenChange(false);
+            handlers.onBulkCopyTargetDeckIdChange(null);
+          }
+        }}
         decks={ownedDecks}
         selectedId={state.bulkCopyTargetDeckId}
         onSelectionChange={handlers.onBulkCopyTargetDeckIdChange}
@@ -512,12 +568,15 @@ export function DeckDetailDialogs({
         emptyLabel={t('no_other_decks')}
       />
 
-      <Dialog open={state.bulkTopicsOpen} onOpenChange={(open) => {
-        if (!open) {
-          handlers.onBulkTopicsOpenChange(false);
-          handlers.onBulkTopicIdsChange([]);
-        }
-      }}>
+      <Dialog
+        open={state.bulkTopicsOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            handlers.onBulkTopicsOpenChange(false);
+            handlers.onBulkTopicIdsChange([]);
+          }
+        }}
+      >
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('bulk_topics')}</DialogTitle>
@@ -580,10 +639,13 @@ export function DeckDetailDialogs({
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              handlers.onBulkTopicsOpenChange(false);
-              handlers.onBulkTopicIdsChange([]);
-            }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                handlers.onBulkTopicsOpenChange(false);
+                handlers.onBulkTopicIdsChange([]);
+              }}
+            >
               {t('common_cancel')}
             </Button>
             <Button onClick={handlers.onBulkTopics} disabled={state.bulkTopicIds.length === 0}>

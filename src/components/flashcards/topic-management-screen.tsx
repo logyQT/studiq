@@ -57,7 +57,11 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     queryKey: flashcardKeys.topics.all,
     url: '/api/v1/flashcards/topics',
   });
-  const { data: allFlashcardsData } = useApiQuery<{ items: Flashcard[]; nextCursor: string | null; hasMore: boolean }>({
+  const { data: allFlashcardsData } = useApiQuery<{
+    items: Flashcard[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  }>({
     queryKey: flashcardKeys.list({}),
     url: '/api/v1/flashcards',
   });
@@ -98,7 +102,8 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     },
   });
   const batchDeleteTopics = useApiMutation({
-    mutationFn: (data: { ids: string[] }) => apiPost('/api/v1/flashcards/topics/batch/delete', data),
+    mutationFn: (data: { ids: string[] }) =>
+      apiPost('/api/v1/flashcards/topics/batch/delete', data),
     invalidateKeys: [flashcardKeys.topics.all],
   });
 
@@ -295,10 +300,21 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEdit(topic); }}>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEdit(topic);
+                                }}
+                              >
                                 <Pencil className="mr-2 h-3 w-3" /> {t('common_edit')}
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDeleteId(topic.id); }} className="text-destructive">
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteId(topic.id);
+                                }}
+                                className="text-destructive"
+                              >
                                 <Trash2 className="mr-2 h-3 w-3" /> {t('common_delete')}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -316,10 +332,21 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEdit(topic); }}>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEdit(topic);
+                                }}
+                              >
                                 <Pencil className="mr-2 h-3 w-3" /> {t('common_edit')}
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDeleteId(topic.id); }} className="text-destructive">
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteId(topic.id);
+                                }}
+                                className="text-destructive"
+                              >
                                 <Trash2 className="mr-2 h-3 w-3" /> {t('common_delete')}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -415,11 +442,15 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
                 <div key={fc.id} className="p-4 rounded-lg border space-y-2">
                   <div>
                     <p className="text-xs text-muted-foreground uppercase">{t('question_label')}</p>
-                    <p className="text-sm font-medium"><MarkdownRenderer content={fc.front} /></p>
+                    <p className="text-sm font-medium">
+                      <MarkdownRenderer content={fc.front} />
+                    </p>
                   </div>
                   <div className="border-t pt-2">
                     <p className="text-xs text-muted-foreground uppercase">{t('answer_label')}</p>
-                    <p className="text-sm"><MarkdownRenderer content={fc.back} /></p>
+                    <p className="text-sm">
+                      <MarkdownRenderer content={fc.back} />
+                    </p>
                   </div>
                 </div>
               ))

@@ -25,6 +25,7 @@ interface FlashcardCardProps {
   selected?: boolean;
   selectable?: boolean;
   onToggleSelect?: (id: string) => void;
+  onEnterSelectionMode?: (id: string) => void;
   onEdit: (fc: Flashcard) => void;
   onDelete: (id: string) => void;
   onLink: (fc: Flashcard) => void;
@@ -43,6 +44,7 @@ export const FlashcardCard = memo(function FlashcardCard({
   selected,
   selectable,
   onToggleSelect,
+  onEnterSelectionMode,
   onEdit,
   onDelete,
   onLink,
@@ -83,7 +85,12 @@ export const FlashcardCard = memo(function FlashcardCard({
           {!selectable && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <MoreVertical className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
@@ -91,6 +98,7 @@ export const FlashcardCard = memo(function FlashcardCard({
                 {canUpdate ? (
                   <OwnedFlashcardContextMenu
                     t={t}
+                    onSelect={() => onEnterSelectionMode?.(fc.id)}
                     onEdit={() => onEdit(fc)}
                     onAddTopic={() => onAddTopic(fc)}
                     onManageTopics={() => onManageTopics(fc)}
@@ -107,6 +115,7 @@ export const FlashcardCard = memo(function FlashcardCard({
                 ) : (
                   <ViewOnlyFlashcardContextMenu
                     t={t}
+                    onSelect={() => onEnterSelectionMode?.(fc.id)}
                     onLink={() => onLink(fc)}
                     onCopy={() => onCopy(fc)}
                     onDelete={canDelete ? () => onDelete(fc.id) : null}
@@ -162,6 +171,7 @@ export const FlashcardCard = memo(function FlashcardCard({
               {canUpdate ? (
                 <OwnedFlashcardContextMenu
                   t={t}
+                  onSelect={() => onEnterSelectionMode?.(fc.id)}
                   onEdit={() => onEdit(fc)}
                   onAddTopic={() => onAddTopic(fc)}
                   onManageTopics={() => onManageTopics(fc)}
@@ -178,6 +188,7 @@ export const FlashcardCard = memo(function FlashcardCard({
               ) : (
                 <ViewOnlyFlashcardContextMenu
                   t={t}
+                  onSelect={() => onEnterSelectionMode?.(fc.id)}
                   onLink={() => onLink(fc)}
                   onCopy={() => onCopy(fc)}
                   onDelete={canDelete ? () => onDelete(fc.id) : null}

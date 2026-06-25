@@ -1,19 +1,25 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
 import {
   Plus,
   Pencil,
   Trash2,
   Play,
-  CheckSquare,
-  Square,
   CheckCheck,
   Sparkles,
   Layers,
@@ -21,6 +27,8 @@ import {
   ArrowUp,
   FileUp,
   FileDown,
+  Search,
+  X,
 } from 'lucide-react';
 import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { BreadcrumbUpdater } from '@/components/providers/BreadcrumbProvider';
@@ -53,6 +61,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
 import { UserRole } from '@/types';
 import { getGradientHex } from '@/lib/color-utils';
+import { useDebounce } from '@/hooks/use-debounce';
 
 interface DeckDetailScreenProps {
   deckId: string;
@@ -75,16 +84,38 @@ export function DeckDetailScreen({
   const role = user?.app_metadata?.role as UserRole | undefined;
   const headerGrad = getGradientHex(deckId);
 
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebounce(searchInput, 300);
+  const [topicFilter, setTopicFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState('desc');
+
+  const filters = {
+    q: debouncedSearch || undefined,
+    topicIds: topicFilter !== 'all' ? [topicFilter] : undefined,
+    sortBy,
+    sortOrder,
+  };
+
+  const params: Record<string, string> = {};
+  params.deckIds = deckId;
+  params.limit = '50';
+  if (filters.q) params.q = filters.q;
+  if (filters.sortBy) params.sortBy = filters.sortBy;
+  if (filters.sortOrder) params.sortOrder = filters.sortOrder;
+  if (filters.topicIds?.[0]) params.topicIds = filters.topicIds[0];
+  const queryString = new URLSearchParams(params).toString();
+
   const {
     data: flashcardsData,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: flashcardKeys.list({ deckIds: [deckId] }),
+    queryKey: [...flashcardKeys.list({ deckIds: [deckId] }), filters],
     queryFn: ({ pageParam }) =>
       apiGet<{ items: Flashcard[]; nextCursor: string | null; hasMore: boolean }>(
-        `/api/v1/flashcards?deckIds=${deckId}&limit=50${pageParam ? `&cursor=${pageParam}` : ''}`,
+        `/api/v1/flashcards?${queryString}${pageParam ? `&cursor=${pageParam}` : ''}`,
       ),
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: '',
@@ -287,7 +318,7 @@ export function DeckDetailScreen({
 
   const openEdit = useCallback(
     (fc: Flashcard) => {
-      router.push(`${basePath}/deck/${deckId}/${fc.id}`);
+      router.push(`${basePath}/decks/${deckId}/${fc.id}`);
     },
     [router, basePath, deckId],
   );
@@ -387,6 +418,11 @@ export function DeckDetailScreen({
     }
     setD((prev) => ({ ...prev, addTopicOpen: false, topicActionIds: [] }));
   }
+
+  const handleEnterSelectionMode = useCallback((id: string) => {
+    setIsSelecting(true);
+    setSelectedIds(new Set([id]));
+  }, []);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -527,7 +563,7 @@ export function DeckDetailScreen({
       if (e.key !== 'n') return;
       if (!can(role, 'deck.update', currentDeck?.created_by, user?.id)) return;
       e.preventDefault();
-      router.push(`${basePath}/deck/${deckId}/new`);
+      router.push(`${basePath}/decks/${deckId}/new`);
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -576,9 +612,12 @@ export function DeckDetailScreen({
                 </DropdownMenuItem>
               )}
               {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
-                <DropdownMenuItem onClick={() => setImportOpen(true)}>
-                  <FileUp className="h-4 w-4 mr-2" /> {t('common_import')}
-                </DropdownMenuItem>
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setImportOpen(true)}>
+                    <FileUp className="h-4 w-4 mr-2" /> {t('common_import')}
+                  </DropdownMenuItem>
+                </>
               )}
               <DropdownMenuItem
                 onClick={() => {
@@ -592,7 +631,7 @@ export function DeckDetailScreen({
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
+                    variant="destructive"
                     onClick={() => setD((prev) => ({ ...prev, deckDeleteOpen: true }))}
                   >
                     <Trash2 className="h-4 w-4 mr-2" /> {t('menu_delete')}
@@ -604,23 +643,62 @@ export function DeckDetailScreen({
         </div>
         <div className="flex items-start gap-4">
           <div className="flex flex-col items-center gap-2">
-            <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-muted-foreground/10">
-              <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none">
-                <defs>
-                  <linearGradient id="hdr-icon" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor={headerGrad.from} />
-                    <stop offset="100%" stopColor={headerGrad.to} />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"
-                  stroke="url(#hdr-icon)"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </div>
+            {practiceHref ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="group flex h-14 w-14 items-center justify-center rounded-lg bg-muted-foreground/10 hover:bg-muted-foreground/20 transition-colors cursor-pointer"
+                    onClick={() => router.push(`${practiceHref}${currentDeck!.id}`)}
+                  >
+                    <div className="relative h-7 w-7">
+                      <Play
+                        className="absolute inset-0 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                        stroke={`url(#hdr-icon)`}
+                        strokeWidth="2"
+                      />
+                      <svg
+                        className="absolute inset-0 h-7 w-7 opacity-100 group-hover:opacity-0 transition-opacity duration-200"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <defs>
+                          <linearGradient id="hdr-icon" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stopColor={headerGrad.from} />
+                            <stop offset="100%" stopColor={headerGrad.to} />
+                          </linearGradient>
+                        </defs>
+                        <path
+                          d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"
+                          stroke="url(#hdr-icon)"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </div>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{t('practice_deck')}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-muted-foreground/10">
+                <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none">
+                  <defs>
+                    <linearGradient id="hdr-icon" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor={headerGrad.from} />
+                      <stop offset="100%" stopColor={headerGrad.to} />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"
+                    stroke="url(#hdr-icon)"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+            )}
             <Badge variant="secondary">
               {t('flashcards_count', { count: currentDeck!.flashcard_count })}
             </Badge>
@@ -634,26 +712,79 @@ export function DeckDetailScreen({
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold">{t('flashcards_section')}</h3>
-
+      <div className="flex flex-wrap items-center gap-3 max-sm:hidden">
+        <div className="relative flex-1 basis-full lg:basis-auto lg:max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder={t('search_placeholder')}
+            className="pl-9 pr-9"
+          />
+          {searchInput && (
+            <button
+              onClick={() => setSearchInput('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          {practiceHref && (
-            <Button variant="outline" size="sm" className="gap-1" asChild>
-              <Link href={`${practiceHref}${currentDeck!.id}`}>
-                <Play className="h-3 w-3" /> {t('practice_deck')}
-              </Link>
+        {topics.length > 0 && (
+          <Select value={topicFilter} onValueChange={setTopicFilter}>
+            <SelectTrigger className="w-40 truncate">
+              <SelectValue placeholder={t('topic_all')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('topic_all')}</SelectItem>
+              {topics.map((topic) => (
+                <SelectItem key={topic.id} value={topic.id}>
+                  {topic.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <Select
+          value={`${sortBy}:${sortOrder}`}
+          onValueChange={(v) => {
+            const [sb, so] = v.split(':');
+            setSortBy(sb);
+            setSortOrder(so);
+          }}
+        >
+          <SelectTrigger className="w-40 truncate">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="created_at:desc">{t('sort_newest')}</SelectItem>
+            <SelectItem value="created_at:asc">{t('sort_oldest')}</SelectItem>
+            <SelectItem value="front:asc">{t('sort_name_asc')}</SelectItem>
+            <SelectItem value="front:desc">{t('sort_name_desc')}</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-2 sm:ml-auto">
+          {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => router.push(`/app/ai?deckId=${deckId}`)}
+            >
+              <Sparkles className="h-4 w-4" /> {t('generate')}
             </Button>
           )}
-          {isSelecting && (
-            <Button variant="outline" size="sm" onClick={clearSelection}>
-              <Square className="mr-2 h-4 w-4" /> {t('cancel_selection')}
-            </Button>
-          )}
+          <Button
+            size="sm"
+            className="gap-1.5"
+            onClick={() => router.push(`${basePath}/decks/${deckId}/new`)}
+          >
+            <Plus className="h-4 w-4" /> {t('new_flashcard')}
+          </Button>
         </div>
       </div>
+
+      <h3 className="text-lg font-semibold max-sm:block hidden">{t('flashcards_section')}</h3>
 
       <div
         className={`flex items-center gap-2 py-1 ${isSelecting && flashcards.length > 0 ? '' : 'invisible'}`}
@@ -695,7 +826,7 @@ export function DeckDetailScreen({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => router.push(`${basePath}/deck/${deckId}/new`)}
+                onClick={() => router.push(`${basePath}/decks/${deckId}/new`)}
                 aria-keyshortcuts="n"
               >
                 <Plus className="mr-1.5 h-4 w-4" /> {t('create_first')}
@@ -716,6 +847,7 @@ export function DeckDetailScreen({
               selected={selectedIds.has(fc.id)}
               selectable={isSelecting}
               onToggleSelect={toggleSelect}
+              onEnterSelectionMode={handleEnterSelectionMode}
               onEdit={openEdit}
               onDelete={handleCardDelete}
               onLink={handleCardLink}
@@ -815,26 +947,26 @@ export function DeckDetailScreen({
       <ImportDialog open={importOpen} onOpenChange={setImportOpen} deckId={deckId} t={t} />
 
       {!isSelecting && (
-        <SpeedDial
-          items={[
-            ...(can(role, 'deck.update', currentDeck?.created_by, user?.id)
-              ? [
-                  {
-                    icon: Plus,
-                    label: t('new_flashcard'),
-                    onClick: () => router.push(`${basePath}/deck/${deckId}/new`),
-                  },
-                ]
-              : []),
-
-            {
-              icon: Sparkles,
-              label: t('generate'),
-              onClick: () => router.push(`/app/ai?deckId=${deckId}`),
-            },
-            { icon: CheckSquare, label: t('select_cards'), onClick: () => setIsSelecting(true) },
-          ]}
-        />
+        <div className="sm:hidden">
+          <SpeedDial
+            items={[
+              ...(can(role, 'deck.update', currentDeck?.created_by, user?.id)
+                ? [
+                    {
+                      icon: Plus,
+                      label: t('new_flashcard'),
+                      onClick: () => router.push(`${basePath}/decks/${deckId}/new`),
+                    },
+                  ]
+                : []),
+              {
+                icon: Sparkles,
+                label: t('generate'),
+                onClick: () => router.push(`/app/ai?deckId=${deckId}`),
+              },
+            ]}
+          />
+        </div>
       )}
 
       {showBackToTop && (

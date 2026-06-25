@@ -8,10 +8,21 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Pencil, Tags, Plus, Settings, ExternalLink, Link2, Copy, Trash2 } from 'lucide-react';
+import {
+  CheckSquare,
+  Pencil,
+  Tags,
+  Plus,
+  Settings,
+  ExternalLink,
+  Link2,
+  Copy,
+  Trash2,
+} from 'lucide-react';
 
 interface OwnedFlashcardContextMenuProps {
   t: ReturnType<typeof useTranslations>;
+  onSelect: () => void;
   onEdit: () => void;
   onAddTopic: () => void;
   onManageTopics: () => void;
@@ -23,6 +34,7 @@ interface OwnedFlashcardContextMenuProps {
 
 export function OwnedFlashcardContextMenu({
   t,
+  onSelect,
   onEdit,
   onAddTopic,
   onManageTopics,
@@ -33,7 +45,21 @@ export function OwnedFlashcardContextMenu({
 }: OwnedFlashcardContextMenuProps) {
   return (
     <>
-      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+      <DropdownMenuItem
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+      >
+        <CheckSquare className="mr-2 h-4 w-4" /> {t('select_cards')}
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        onClick={(e) => {
+          e.stopPropagation();
+          onEdit();
+        }}
+      >
         <Pencil className="mr-2 h-4 w-4" /> {t('menu_edit')}
       </DropdownMenuItem>
       <DropdownMenuSub>
@@ -41,22 +67,47 @@ export function OwnedFlashcardContextMenu({
           <Tags className="mr-2 h-4 w-4" /> {t('menu_topics')}
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent>
-          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onAddTopic(); }}>
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddTopic();
+            }}
+          >
             <Plus className="mr-2 h-4 w-4" /> {t('menu_add_topic')}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onManageTopics(); }}>
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.stopPropagation();
+              onManageTopics();
+            }}
+          >
             <Settings className="mr-2 h-4 w-4" /> {t('menu_manage_topics')}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onViewByTopic(); }}>
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewByTopic();
+            }}
+          >
             <ExternalLink className="mr-2 h-4 w-4" /> {t('menu_view_by_topic')}
           </DropdownMenuItem>
         </DropdownMenuSubContent>
       </DropdownMenuSub>
       <DropdownMenuSeparator />
-      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onLink(); }}>
+      <DropdownMenuItem
+        onClick={(e) => {
+          e.stopPropagation();
+          onLink();
+        }}
+      >
         <Link2 className="mr-2 h-4 w-4" /> {t('menu_link')}
       </DropdownMenuItem>
-      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onCopy(); }}>
+      <DropdownMenuItem
+        onClick={(e) => {
+          e.stopPropagation();
+          onCopy();
+        }}
+      >
         <Copy className="mr-2 h-4 w-4" /> {t('menu_copy')}
       </DropdownMenuItem>
       {onDelete && (
@@ -64,7 +115,10 @@ export function OwnedFlashcardContextMenu({
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="text-destructive"
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
           >
             <Trash2 className="mr-2 h-4 w-4" /> {t('menu_delete')}
           </DropdownMenuItem>
