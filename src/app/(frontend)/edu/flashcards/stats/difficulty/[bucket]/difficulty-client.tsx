@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Empty, EmptyHeader, EmptyTitle, EmptyMedia } from '@/components/ui/empty';
-import { DeckDetailSkeleton } from '@/components/flashcards/deck-detail-skeleton';
+import { DeckDetailSkeleton } from '@/components/flashcards';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';

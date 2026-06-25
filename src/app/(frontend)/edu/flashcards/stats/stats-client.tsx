@@ -33,7 +33,7 @@ import {
   EmptyMedia,
 } from '@/components/ui/empty';
 import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
-import { DeckDetailSkeleton } from '@/components/flashcards/deck-detail-skeleton';
+import { DeckDetailSkeleton } from '@/components/flashcards';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { TeacherFlashcardStatsResponse } from '@/server/models';

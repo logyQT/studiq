@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { DeckManagementScreen } from '@/components/flashcards/deck-management-screen';
+import { DeckManagementScreen } from '@/components/flashcards';
 
 export default function EduDecksClient() {
   const t = useTranslations('EduFlashcardDecksPage');

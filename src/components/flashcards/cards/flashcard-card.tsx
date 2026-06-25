@@ -10,8 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { MoreVertical } from 'lucide-react';
-import { OwnedFlashcardContextMenu } from '@/components/flashcards/owned-flashcard-context-menu';
-import { ViewOnlyFlashcardContextMenu } from '@/components/flashcards/view-only-flashcard-context-menu';
+import { FlashcardContextMenu } from '@/components/flashcards/context-menus/flashcard-context-menu';
 import type { Flashcard, Topic } from '@/types/flashcards';
 import { useTranslations } from 'next-intl';
 import { getTopicColorHex } from '@/lib/color-utils';
@@ -95,32 +94,23 @@ export const FlashcardCard = memo(function FlashcardCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {canUpdate ? (
-                  <OwnedFlashcardContextMenu
-                    t={t}
-                    onSelect={() => onEnterSelectionMode?.(fc.id)}
-                    onEdit={() => onEdit(fc)}
-                    onAddTopic={() => onAddTopic(fc)}
-                    onManageTopics={() => onManageTopics(fc)}
-                    onViewByTopic={() => {
-                      const firstAssigned = topics.find((topic) =>
-                        fc.flashcard_topic_assignments?.some((a) => a.topic_id === topic.id),
-                      );
-                      if (firstAssigned) onViewByTopic(fc, firstAssigned.id);
-                    }}
-                    onLink={() => onLink(fc)}
-                    onCopy={() => onCopy(fc)}
-                    onDelete={canDelete ? () => onDelete(fc.id) : null}
-                  />
-                ) : (
-                  <ViewOnlyFlashcardContextMenu
-                    t={t}
-                    onSelect={() => onEnterSelectionMode?.(fc.id)}
-                    onLink={() => onLink(fc)}
-                    onCopy={() => onCopy(fc)}
-                    onDelete={canDelete ? () => onDelete(fc.id) : null}
-                  />
-                )}
+                <FlashcardContextMenu
+                  t={t}
+                  mode={canUpdate ? 'owned' : 'view-only'}
+                  onSelect={() => onEnterSelectionMode?.(fc.id)}
+                  onEdit={canUpdate ? () => onEdit(fc) : undefined}
+                  onAddTopic={canUpdate ? () => onAddTopic(fc) : undefined}
+                  onManageTopics={canUpdate ? () => onManageTopics(fc) : undefined}
+                  onViewByTopic={canUpdate ? () => {
+                    const firstAssigned = topics.find((topic) =>
+                      fc.flashcard_topic_assignments?.some((a) => a.topic_id === topic.id),
+                    );
+                    if (firstAssigned) onViewByTopic(fc, firstAssigned.id);
+                  } : undefined}
+                  onLink={() => onLink(fc)}
+                  onCopy={() => onCopy(fc)}
+                  onDelete={canDelete ? () => onDelete(fc.id) : null}
+                />
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -168,32 +158,23 @@ export const FlashcardCard = memo(function FlashcardCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {canUpdate ? (
-                <OwnedFlashcardContextMenu
-                  t={t}
-                  onSelect={() => onEnterSelectionMode?.(fc.id)}
-                  onEdit={() => onEdit(fc)}
-                  onAddTopic={() => onAddTopic(fc)}
-                  onManageTopics={() => onManageTopics(fc)}
-                  onViewByTopic={() => {
-                    const firstAssigned = topics.find((topic) =>
-                      fc.flashcard_topic_assignments?.some((a) => a.topic_id === topic.id),
-                    );
-                    if (firstAssigned) onViewByTopic(fc, firstAssigned.id);
-                  }}
-                  onLink={() => onLink(fc)}
-                  onCopy={() => onCopy(fc)}
-                  onDelete={canDelete ? () => onDelete(fc.id) : null}
-                />
-              ) : (
-                <ViewOnlyFlashcardContextMenu
-                  t={t}
-                  onSelect={() => onEnterSelectionMode?.(fc.id)}
-                  onLink={() => onLink(fc)}
-                  onCopy={() => onCopy(fc)}
-                  onDelete={canDelete ? () => onDelete(fc.id) : null}
-                />
-              )}
+              <FlashcardContextMenu
+                t={t}
+                mode={canUpdate ? 'owned' : 'view-only'}
+                onSelect={() => onEnterSelectionMode?.(fc.id)}
+                onEdit={canUpdate ? () => onEdit(fc) : undefined}
+                onAddTopic={canUpdate ? () => onAddTopic(fc) : undefined}
+                onManageTopics={canUpdate ? () => onManageTopics(fc) : undefined}
+                onViewByTopic={canUpdate ? () => {
+                  const firstAssigned = topics.find((topic) =>
+                    fc.flashcard_topic_assignments?.some((a) => a.topic_id === topic.id),
+                  );
+                  if (firstAssigned) onViewByTopic(fc, firstAssigned.id);
+                } : undefined}
+                onLink={() => onLink(fc)}
+                onCopy={() => onCopy(fc)}
+                onDelete={canDelete ? () => onDelete(fc.id) : null}
+              />
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

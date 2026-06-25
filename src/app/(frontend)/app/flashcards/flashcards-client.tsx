@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { FolderOpen, Tags, Play, Sparkles, BookOpen, RotateCcw, AlertTriangle } from 'lucide-react';
-import { DashboardPanel } from '@/components/flashcards/dashboard-panel';
+import { DashboardPanel } from '@/components/flashcards';
 import { StatCard } from '@/components/ui/stat-card';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { TopicManagementScreen } from '@/components/flashcards/topic-management-screen';
+import { TopicManagementScreen } from '@/components/flashcards';
 
 export default function TopicsClient() {
   const t = useTranslations('AppFlashcardTopicsPage');

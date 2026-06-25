@@ -1,0 +1,357 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import {
+  SquarePen,
+  Upload,
+  CheckSquare,
+  Plus,
+  FolderOpen,
+} from 'lucide-react';
+import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
+import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import { useApiQuery, useApiMutation } from '@/hooks/use-api';
+import { apiPost, apiPut, apiDelete } from '@/lib/api';
+import { flashcardKeys } from '@/lib/query-keys';
+import type { Deck } from '@/types/flashcards';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { can } from '@/lib/frontend-rbac';
+import { UserRole } from '@/types';
+import { ImportDialog } from '@/components/flashcards/shared/import-dialog';
+import { DeckCard } from '@/components/flashcards/cards/deck-card';
+import { DeckFilters } from '@/components/flashcards/shared/deck-filters';
+import { DeckBulkActions } from '@/components/flashcards/shared/deck-bulk-actions';
+import { DeckFormDialog } from '@/components/flashcards/shared/deck-form-dialog';
+import { SpeedDial } from '@/components/shared/speed-dial';
+import { useDebounce } from '@/hooks/use-debounce';
+import { useSelection } from '@/hooks/use-selection';
+
+interface DeckManagementScreenProps {
+  apiBase: string;
+  basePath: string;
+  t: ReturnType<typeof useTranslations>;
+}
+
+const STORAGE_KEY = 'flashcard_decks_filters';
+
+function loadPersistedFilters() {
+  if (typeof window === 'undefined')
+    return { owner: 'all', sortBy: 'created_at', sortOrder: 'desc' };
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    /* ignore */
+  }
+  return { owner: 'all', sortBy: 'created_at', sortOrder: 'desc' };
+}
+
+export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps) {
+  const { user } = useAuth();
+  const role = user?.app_metadata?.role as UserRole | undefined;
+
+  const persisted = loadPersistedFilters();
+
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebounce(searchInput, 300);
+  const [owner, setOwner] = useState(persisted.owner);
+  const [sortBy, setSortBy] = useState(persisted.sortBy);
+  const [sortOrder, setSortOrder] = useState(persisted.sortOrder);
+
+  const filters = {
+    q: debouncedSearch || undefined,
+    owner: owner !== 'all' ? owner : undefined,
+    sortBy,
+    sortOrder,
+  };
+
+  const queryString = new URLSearchParams(
+    Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined)),
+  ).toString();
+
+  const { data: decks, isLoading } = useApiQuery<Deck[]>({
+    queryKey: flashcardKeys.decks.list(filters),
+    url: `/api/v1/flashcards/decks${queryString ? `?${queryString}` : ''}`,
+  });
+
+  function persistFilters(o: string, sb: string, so: string) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ owner: o, sortBy: sb, sortOrder: so }));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const createDeck = useApiMutation({
+    mutationFn: (data: { name: string; description?: string }) =>
+      apiPost<Deck>('/api/v1/flashcards/decks', data),
+    invalidateKeys: [flashcardKeys.decks.all],
+  });
+  const updateDeck = useApiMutation({
+    mutationFn: ({ id, ...data }: { id: string; name: string; description?: string }) =>
+      apiPut<Deck>(`/api/v1/flashcards/decks/${id}`, data),
+    invalidateKeys: [flashcardKeys.decks.all],
+  });
+  const deleteDeck = useApiMutation({
+    mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/decks/${id}`),
+    invalidateKeys: [flashcardKeys.decks.all],
+  });
+  const batchDeleteDecks = useApiMutation({
+    mutationFn: (data: { ids: string[] }) => apiPost('/api/v1/flashcards/decks/batch/delete', data),
+    invalidateKeys: [flashcardKeys.decks.all],
+  });
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<Deck | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const selection = useSelection();
+  const { isSelecting: selectionIsActive, handleClearSelection: selectionClear } = selection;
+  const [formData, setFormData] = useState({ name: '', description: '' });
+
+  useEffect(() => {
+    if (!selectionIsActive) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        selectionClear();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectionIsActive, selectionClear]);
+
+  function resetForm() {
+    setFormData({ name: '', description: '' });
+    setEditing(null);
+  }
+
+  function openCreate() {
+    resetForm();
+    setDialogOpen(true);
+  }
+
+  function openEdit(deck: Deck) {
+    setEditing(deck);
+    setFormData({
+      name: deck.name,
+      description: deck.description || '',
+    });
+    setDialogOpen(true);
+  }
+
+  async function handleSubmit() {
+    if (!formData.name.trim()) {
+      toast.error(t('name_required'));
+      return;
+    }
+    try {
+      if (editing) {
+        await updateDeck.mutateAsync({
+          id: editing.id,
+          name: formData.name,
+          description: formData.description || undefined,
+        });
+      } else {
+        await createDeck.mutateAsync({
+          name: formData.name,
+          description: formData.description || undefined,
+        });
+      }
+      setDialogOpen(false);
+      resetForm();
+      toast.success(editing ? t('deck_updated') : t('deck_created'));
+    } catch {
+      toast.error(t('save_failed'));
+    }
+  }
+
+  function handleToggleSelect(id: string) {
+    selection.toggleSelect(id);
+  }
+
+  function handleClearSelection() {
+    selection.handleClearSelection();
+  }
+
+  function handleBatchExportSelection() {
+    const ids = Array.from(selection.selectedIds);
+    if (ids.length === 0) return;
+    window.open(`/api/v1/flashcards/export/csv?deckIds=${ids.join(',')}`, '_blank');
+  }
+
+  async function handleBatchDeleteSelection() {
+    const ids = Array.from(selection.selectedIds);
+    if (ids.length === 0) return;
+    try {
+      await batchDeleteDecks.mutateAsync({ ids });
+      toast.success(t('deck_deleted'));
+      handleClearSelection();
+    } catch {
+      toast.error(t('delete_failed'));
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteId) return;
+    try {
+      await deleteDeck.mutateAsync(deleteId);
+      toast.success(t('deck_deleted'));
+    } catch {
+      toast.error(t('delete_failed'));
+    }
+    setDeleteId(null);
+  }
+
+  const canSeeOrg =
+    role === UserRole.TEACHER || role === UserRole.UNIVERSITY_ADMIN || role === UserRole.SYS_ADMIN;
+
+  return (
+    <div className="space-y-6">
+      <DeckFilters
+        searchInput={searchInput}
+        onSearchChange={setSearchInput}
+        owner={owner}
+        onOwnerChange={(v) => {
+          setOwner(v);
+          persistFilters(v, sortBy, sortOrder);
+        }}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSortChange={(sb, so) => {
+          setSortBy(sb);
+          setSortOrder(so);
+          persistFilters(owner, sb, so);
+        }}
+        canSeeOrg={canSeeOrg}
+        onImport={() => setImportOpen(true)}
+        onCreateNew={openCreate}
+        t={t}
+      />
+
+      {isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Card key={i} className="flex flex-col h-full max-sm:py-0 min-w-0">
+              {/* Mobile Skeleton */}
+              <div className="flex items-center gap-3 p-4 sm:hidden">
+                <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-3 w-1/4" />
+                </div>
+                <Skeleton className="h-7 w-7 rounded-md shrink-0" />
+              </div>
+              {/* Desktop Skeleton */}
+              <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-10 w-10 rounded-xl" />
+                  <Skeleton className="h-6 w-3/4" />
+                </div>
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-4/5" />
+                </div>
+                <div className="flex items-center justify-between pt-4 mt-auto">
+                  <Skeleton className="h-6 w-16 rounded-full" />
+                  <Skeleton className="h-8 w-24 rounded-md" />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {decks?.map((deck) => (
+            <DeckCard
+              key={deck.id}
+              deck={deck}
+              isSelecting={selection.isSelecting}
+              isSelected={selection.selectedIds.has(deck.id)}
+              onToggleSelect={() => handleToggleSelect(deck.id)}
+              basePath={basePath}
+              t={t}
+              canUpdate={can(role, 'deck.update', deck.created_by, user?.id)}
+              canDelete={can(role, 'deck.delete', deck.created_by, user?.id)}
+              onEdit={() => openEdit(deck)}
+              onDelete={() => setDeleteId(deck.id)}
+              onExport={() =>
+                window.open(`/api/v1/flashcards/export/csv?deckIds=${deck.id}`, '_blank')
+              }
+              onSelect={() => selection.setIsSelecting(true)}
+            />
+          ))}
+          {(!decks || decks.length === 0) && (
+            <Empty className="col-span-full">
+              <EmptyMedia>
+                <FolderOpen className="h-10 w-10 text-muted-foreground" />
+              </EmptyMedia>
+              <EmptyTitle>{t('no_decks')}</EmptyTitle>
+              <EmptyDescription>
+                <Button variant="outline" size="sm" onClick={openCreate}>
+                  <Plus className="mr-1.5 h-4 w-4" /> {t('new_deck')}
+                </Button>
+              </EmptyDescription>
+            </Empty>
+          )}
+        </div>
+      )}
+
+      <DeckFormDialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setTimeout(resetForm, 200);
+        }}
+        formData={formData}
+        onFormDataChange={setFormData}
+        onSubmit={handleSubmit}
+        title={editing ? t('edit_title') : t('new_deck_title')}
+        description={editing ? t('edit_desc') : t('new_deck_desc')}
+        nameLabel={t('name_label')}
+        namePlaceholder={t('name_placeholder')}
+        descriptionLabel={t('description_label')}
+        descriptionPlaceholder={t('description_placeholder')}
+        cancelLabel={t('common_cancel')}
+        submitLabel={editing ? t('common_update') : t('common_create')}
+      />
+
+      <DeleteConfirmDialog
+        open={!!deleteId}
+        onOpenChange={() => setDeleteId(null)}
+        onConfirm={handleDelete}
+        title={t('delete_dialog_title')}
+        description={t('delete_dialog_desc')}
+        cancelText={t('common_cancel')}
+        confirmText={t('common_delete')}
+      />
+
+      <DeckBulkActions
+        selectedCount={selection.selectedIds.size}
+        onExport={handleBatchExportSelection}
+        onDelete={handleBatchDeleteSelection}
+        onClearSelection={handleClearSelection}
+        t={t}
+      />
+
+      <ImportDialog open={importOpen} onOpenChange={setImportOpen} t={t} />
+
+      {!selection.isSelecting && (
+        <div className="sm:hidden">
+          <SpeedDial
+            items={[
+              { icon: SquarePen, label: t('new_deck'), onClick: openCreate },
+              { icon: Upload, label: t('common_import'), onClick: () => setImportOpen(true) },
+              { icon: CheckSquare, label: t('select_cards'), onClick: () => selection.setIsSelecting(true) },
+            ]}
+          />
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { DeckDetailScreen } from '@/components/flashcards/deck-detail-screen';
+import { DeckDetailScreen } from '@/components/flashcards';
 
 interface DeckClientProps {
   deckId: string;

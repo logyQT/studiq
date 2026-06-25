@@ -8,7 +8,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
-import { FlashcardEditor } from '@/components/flashcards/flashcard-editor';
+import { FlashcardEditor } from '@/components/flashcards';
 import { useBreadcrumbContext } from '@/components/providers/BreadcrumbProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { apiPut } from '@/lib/api';

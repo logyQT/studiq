@@ -1,0 +1,83 @@
+'use client';
+
+import { useTranslations } from 'next-intl';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
+import { getTopicColor } from '@/lib/color-utils';
+import type { Topic, Flashcard } from '@/types/flashcards';
+
+interface TopicViewDialogProps {
+  viewTopic: Topic | undefined;
+  viewFlashcards: Flashcard[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  t: ReturnType<typeof useTranslations>;
+}
+
+export function TopicViewDialog({
+  viewTopic,
+  viewFlashcards,
+  open,
+  onOpenChange,
+  t,
+}: TopicViewDialogProps) {
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) onOpenChange(false);
+      }}
+    >
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {viewTopic && (
+              <span className="flex items-center gap-2">
+                <div className={`h-5 w-5 rounded ${getTopicColor(viewTopic.name)}`} />
+                {viewTopic.name}
+              </span>
+            )}
+          </DialogTitle>
+          <DialogDescription>
+            {t('view_flashcards_count', { count: viewFlashcards.length })}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-4">
+          {viewFlashcards.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">
+              {t('no_flashcards_for_topic')}
+            </p>
+          ) : (
+            viewFlashcards.map((fc) => (
+              <div key={fc.id} className="p-4 rounded-lg border space-y-2">
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">{t('question_label')}</p>
+                  <p className="text-sm font-medium">
+                    <MarkdownRenderer content={fc.front} />
+                  </p>
+                </div>
+                <div className="border-t pt-2">
+                  <p className="text-xs text-muted-foreground uppercase">{t('answer_label')}</p>
+                  <p className="text-sm">
+                    <MarkdownRenderer content={fc.back} />
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <DialogFooter>
+          <Button onClick={() => onOpenChange(false)}>{t('common_close')}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

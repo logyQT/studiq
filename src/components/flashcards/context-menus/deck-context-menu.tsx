@@ -2,23 +2,27 @@
 
 import { useTranslations } from 'next-intl';
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { CheckSquare, Link2, Copy, Trash2 } from 'lucide-react';
+import { CheckSquare, Pencil, Trash2, FileDown } from 'lucide-react';
 
-interface ViewOnlyFlashcardContextMenuProps {
+interface DeckContextMenuProps {
   t: ReturnType<typeof useTranslations>;
+  canUpdate: boolean;
+  canDelete: boolean;
   onSelect: () => void;
-  onLink: () => void;
-  onCopy: () => void;
-  onDelete?: (() => void) | null;
+  onEdit: () => void;
+  onDelete: () => void;
+  onExport: () => void;
 }
 
-export function ViewOnlyFlashcardContextMenu({
+export function DeckContextMenu({
   t,
+  canUpdate,
+  canDelete,
   onSelect,
-  onLink,
-  onCopy,
+  onEdit,
   onDelete,
-}: ViewOnlyFlashcardContextMenuProps) {
+  onExport,
+}: DeckContextMenuProps) {
   return (
     <>
       <DropdownMenuItem
@@ -29,34 +33,36 @@ export function ViewOnlyFlashcardContextMenu({
       >
         <CheckSquare className="mr-2 h-4 w-4" /> {t('select_cards')}
       </DropdownMenuItem>
+      {canUpdate && (
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+        >
+          <Pencil className="mr-2 h-4 w-4" /> {t('common_edit')}
+        </DropdownMenuItem>
+      )}
       <DropdownMenuSeparator />
       <DropdownMenuItem
         onClick={(e) => {
           e.stopPropagation();
-          onLink();
+          onExport();
         }}
       >
-        <Link2 className="mr-2 h-4 w-4" /> {t('menu_link')}
+        <FileDown className="mr-2 h-4 w-4" /> {t('common_export')}
       </DropdownMenuItem>
-      <DropdownMenuItem
-        onClick={(e) => {
-          e.stopPropagation();
-          onCopy();
-        }}
-      >
-        <Copy className="mr-2 h-4 w-4" /> {t('menu_copy')}
-      </DropdownMenuItem>
-      {onDelete && (
+      {canDelete && (
         <>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            className="text-destructive"
+            variant="destructive"
             onClick={(e) => {
               e.stopPropagation();
               onDelete();
             }}
           >
-            <Trash2 className="mr-2 h-4 w-4" /> {t('menu_delete')}
+            <Trash2 className="mr-2 h-4 w-4" /> {t('common_delete')}
           </DropdownMenuItem>
         </>
       )}

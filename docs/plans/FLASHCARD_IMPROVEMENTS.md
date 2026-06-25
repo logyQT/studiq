@@ -394,7 +394,7 @@ front,back,topic,deck
 | ----- | ---------------------------- | --------------------------------------------------------------------------------------------- |
 | 1st   | **3.3 CSV Import/Export** ✅ | No migration, no external deps (just `papaparse`), immediate user value, quickest win         |
 | 2nd   | **3.1 Media in Cards** ✅    | Foundational — sets up Supabase Storage bucket/service that 3.4 also needs. Installs `katex`. |
-| 3rd   | **3.4 APKG Import/Export**   | Hardest — needs `jszip` + SQLite parsing + media handling from 3.1 storage                    |
+| 3rd   | **3.4 APKG Import/Export**⏳ | Hardest — needs `jszip` + SQLite parsing + media handling from 3.1 storage                    |
 | —     | **3.2 Cloze Deletion** ⏳    | Deferred — likely implemented as a `'cloze'` question type instead                            |
 
 ### Infrastructure Inventory
@@ -411,7 +411,7 @@ front,back,topic,deck
 
 ---
 
-## Phase 4 — Teacher Analytics & Data
+## Phase 4 — Teacher Analytics & Data ⏳
 
 _What teachers need for their job._
 
@@ -488,14 +488,14 @@ Phase 2 — 4/5 complete ✅
 Phase 3 — build order: 3.3 → 3.1 → 3.4 (3.2 deferred)
 ├── 3.3 CSV Import/Export ✅ (independent, no deps, quickest win)
 ├── 3.2 Cloze Deletion ⏳ (deferred — likely `'cloze'` question type instead)
-├── 3.1 Media in Cards (needs migration + storage bucket + katex) ───► 3.4 needs storage
-└── 3.4 APKG Import/Export (needs jszip + bun:sqlite + 3.1 storage for media)
+├── 3.1 Media in Cards (needs migration + storage bucket + katex) ───► 3.4 needs storage ✅
+└── 3.4 APKG Import/Export (needs jszip + bun:sqlite + 3.1 storage for media) ⏳
 
 Phase 4 — not started
-├── 4.1 Per-Student Insights (needs 1.3 foundation)
-├── 4.2 Period Comparison (needs stats service)
-├── 4.3 Card Versioning (needs migration + trigger)
-└── 4.4 Data Export (independent)
+├── 4.1 Per-Student Insights (needs 1.3 foundation) ⏳
+├── 4.2 Period Comparison (needs stats service) ⏳
+├── 4.3 Card Versioning (needs migration + trigger) ⏳
+└── 4.4 Data Export (independent) ⏳
 ```
 
 All phases are independent at the PR level — you can start Phase 3 items before finishing Phase 1.

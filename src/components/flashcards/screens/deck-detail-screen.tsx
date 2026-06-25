@@ -5,14 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
 import {
@@ -27,8 +19,6 @@ import {
   ArrowUp,
   FileUp,
   FileDown,
-  Search,
-  X,
 } from 'lucide-react';
 import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { BreadcrumbUpdater } from '@/components/providers/BreadcrumbProvider';
@@ -37,9 +27,10 @@ import { useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
-import { DeckDetailSkeleton } from '@/components/flashcards/deck-detail-skeleton';
-import { FlashcardCard } from '@/components/flashcards/flashcard-card';
-import { FlashcardBulkActions } from '@/components/flashcards/flashcard-bulk-actions';
+import { DeckDetailSkeleton } from '@/components/flashcards/shared/deck-detail-skeleton';
+import { FlashcardCard } from '@/components/flashcards/cards/flashcard-card';
+import { FlashcardBulkActions } from '@/components/flashcards/shared/flashcard-bulk-actions';
+import { FlashcardToolbar } from '@/components/flashcards/shared/flashcard-toolbar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,13 +39,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 const DeckDetailDialogs = lazy(() =>
-  import('@/components/flashcards/deck-detail-dialogs').then((mod) => ({
+  import('@/components/flashcards/dialogs/deck-detail-dialogs').then((mod) => ({
     default: mod.DeckDetailDialogs,
   })),
 );
-type DialogsState = import('@/components/flashcards/deck-detail-dialogs').DialogsState;
-type DialogsHandlers = import('@/components/flashcards/deck-detail-dialogs').DialogsHandlers;
-import { ImportDialog } from '@/components/flashcards/import-dialog';
+type DialogsState = import('@/components/flashcards/dialogs/deck-detail-dialogs').DialogsState;
+type DialogsHandlers = import('@/components/flashcards/dialogs/deck-detail-dialogs').DialogsHandlers;
+import { ImportDialog } from '@/components/flashcards/shared/import-dialog';
 import { SpeedDial } from '@/components/shared/speed-dial';
 import type { Deck, Flashcard, Topic } from '@/types/flashcards';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -62,6 +53,7 @@ import { can } from '@/lib/frontend-rbac';
 import { UserRole } from '@/types';
 import { getGradientHex } from '@/lib/color-utils';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useSelection } from '@/hooks/use-selection';
 
 interface DeckDetailScreenProps {
   deckId: string;
@@ -226,8 +218,7 @@ export function DeckDetailScreen({
     invalidateKeys: [flashcardQueryKey, flashcardKeys.decks.all],
   });
 
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [isSelecting, setIsSelecting] = useState(false);
+  const selection = useSelection();
   const [importOpen, setImportOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
 
@@ -419,35 +410,14 @@ export function DeckDetailScreen({
     setD((prev) => ({ ...prev, addTopicOpen: false, topicActionIds: [] }));
   }
 
-  const handleEnterSelectionMode = useCallback((id: string) => {
-    setIsSelecting(true);
-    setSelectedIds(new Set([id]));
-  }, []);
-
-  const toggleSelect = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  function clearSelection() {
-    setSelectedIds(new Set());
-    setIsSelecting(false);
-  }
-
-  function handleDeselectAll() {
-    setSelectedIds(new Set());
-  }
+  const handleEnterSelectionMode = selection.handleEnterSelectionMode;
 
   async function handleBulkDelete() {
     const ids = d.selectedIds;
     if (ids.length === 0) return;
     try {
       await batchUnlinkCards.mutateAsync({ ids, deckId });
-      clearSelection();
+      selection.handleClearSelection();
       setD((prev) => ({ ...prev, bulkDeleteOpen: false }));
       toast.success(t('flashcard_deleted'));
     } catch {
@@ -461,7 +431,7 @@ export function DeckDetailScreen({
     if (ids.length === 0 || deckIds.length === 0) return;
     try {
       await batchLinkCards.mutateAsync({ ids, deckIds });
-      clearSelection();
+      selection.handleClearSelection();
       setD((prev) => ({ ...prev, bulkLinkOpen: false, bulkLinkDeckIds: [] }));
       toast.success(t('bulk_linked'));
     } catch {
@@ -476,7 +446,7 @@ export function DeckDetailScreen({
     if (ids.length === 0) return;
     try {
       await batchTopicCards.mutateAsync({ ids, topicIds, operation });
-      clearSelection();
+      selection.handleClearSelection();
       setD((prev) => ({ ...prev, bulkTopicsOpen: false, bulkTopicIds: [] }));
       toast.success(t('bulk_topics_updated', { count: ids.length }));
     } catch {
@@ -490,7 +460,7 @@ export function DeckDetailScreen({
     if (ids.length === 0 || !targetDeckId) return;
     try {
       await batchMoveCards.mutateAsync({ ids, sourceDeckId: deckId, targetDeckId });
-      clearSelection();
+      selection.handleClearSelection();
       setD((prev) => ({ ...prev, bulkMoveOpen: false, bulkMoveTargetDeckId: null }));
       toast.success(t('bulk_moved'));
     } catch {
@@ -504,7 +474,7 @@ export function DeckDetailScreen({
     if (ids.length === 0 || !targetDeckId) return;
     try {
       await batchCopyCards.mutateAsync({ ids, targetDeckId });
-      clearSelection();
+      selection.handleClearSelection();
       setD((prev) => ({ ...prev, bulkCopyOpen: false, bulkCopyTargetDeckId: null }));
       toast.success(t('flashcard_copied'));
     } catch {
@@ -712,104 +682,50 @@ export function DeckDetailScreen({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 max-sm:hidden">
-        <div className="relative flex-1 basis-full lg:basis-auto lg:max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder={t('search_placeholder')}
-            className="pl-9 pr-9"
-          />
-          {searchInput && (
-            <button
-              onClick={() => setSearchInput('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-        {topics.length > 0 && (
-          <Select value={topicFilter} onValueChange={setTopicFilter}>
-            <SelectTrigger className="w-40 truncate">
-              <SelectValue placeholder={t('topic_all')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('topic_all')}</SelectItem>
-              {topics.map((topic) => (
-                <SelectItem key={topic.id} value={topic.id}>
-                  {topic.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <Select
-          value={`${sortBy}:${sortOrder}`}
-          onValueChange={(v) => {
-            const [sb, so] = v.split(':');
-            setSortBy(sb);
-            setSortOrder(so);
-          }}
-        >
-          <SelectTrigger className="w-40 truncate">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="created_at:desc">{t('sort_newest')}</SelectItem>
-            <SelectItem value="created_at:asc">{t('sort_oldest')}</SelectItem>
-            <SelectItem value="front:asc">{t('sort_name_asc')}</SelectItem>
-            <SelectItem value="front:desc">{t('sort_name_desc')}</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="flex items-center gap-2 sm:ml-auto">
-          {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={() => router.push(`/app/ai?deckId=${deckId}`)}
-            >
-              <Sparkles className="h-4 w-4" /> {t('generate')}
-            </Button>
-          )}
-          <Button
-            size="sm"
-            className="gap-1.5"
-            onClick={() => router.push(`${basePath}/decks/${deckId}/new`)}
-          >
-            <Plus className="h-4 w-4" /> {t('new_flashcard')}
-          </Button>
-        </div>
-      </div>
+      <FlashcardToolbar
+        searchInput={searchInput}
+        onSearchChange={setSearchInput}
+        topicFilter={topicFilter}
+        onTopicFilterChange={setTopicFilter}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSortChange={(sb, so) => {
+          setSortBy(sb);
+          setSortOrder(so);
+        }}
+        topics={topics}
+        canGenerate={can(role, 'deck.update', currentDeck?.created_by, user?.id)}
+        onGenerate={() => router.push(`/app/ai?deckId=${deckId}`)}
+        onCreateNew={() => router.push(`${basePath}/decks/${deckId}/new`)}
+        t={t}
+      />
 
       <h3 className="text-lg font-semibold max-sm:block hidden">{t('flashcards_section')}</h3>
 
       <div
-        className={`flex items-center gap-2 py-1 ${isSelecting && flashcards.length > 0 ? '' : 'invisible'}`}
+        className={`flex items-center gap-2 py-1 ${selection.isSelecting && flashcards.length > 0 ? '' : 'invisible'}`}
       >
-        {isSelecting && flashcards.length > 0 && (
+        {selection.isSelecting && flashcards.length > 0 && (
           <>
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
-                const allSelected = flashcards.every((fc) => selectedIds.has(fc.id));
+                const allSelected = flashcards.every((fc) => selection.selectedIds.has(fc.id));
                 if (allSelected) {
-                  handleDeselectAll();
+                  selection.handleDeselectAll();
                 } else {
-                  setSelectedIds(new Set(flashcards.map((fc) => fc.id)));
+                  selection.setSelectedIds(new Set(flashcards.map((fc) => fc.id)));
                 }
               }}
             >
               <CheckCheck className="mr-1.5 h-4 w-4" />
-              {flashcards.every((fc) => selectedIds.has(fc.id))
+              {flashcards.every((fc) => selection.selectedIds.has(fc.id))
                 ? t('deselect_all')
                 : t('select_all')}
             </Button>
             <span className="text-sm text-muted-foreground">
-              {t('n_selected', { count: selectedIds.size })}
+              {t('n_selected', { count: selection.selectedIds.size })}
             </span>
           </>
         )}
@@ -844,9 +760,9 @@ export function DeckDetailScreen({
               canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false}
               topics={topics}
               t={t}
-              selected={selectedIds.has(fc.id)}
-              selectable={isSelecting}
-              onToggleSelect={toggleSelect}
+              selected={selection.selectedIds.has(fc.id)}
+              selectable={selection.isSelecting}
+              onToggleSelect={selection.toggleSelect}
               onEnterSelectionMode={handleEnterSelectionMode}
               onEdit={openEdit}
               onDelete={handleCardDelete}
@@ -867,7 +783,7 @@ export function DeckDetailScreen({
       )}
 
       {(() => {
-        const selectedFlashcards = flashcards.filter((fc) => selectedIds.has(fc.id));
+        const selectedFlashcards = flashcards.filter((fc) => selection.selectedIds.has(fc.id));
         const canBulkTopics =
           selectedFlashcards.length > 0 &&
           selectedFlashcards.every((fc) => can(role, 'flashcard.update', fc.created_by, user?.id));
@@ -876,16 +792,16 @@ export function DeckDetailScreen({
           selectedFlashcards.every((fc) => can(role, 'flashcard.update', fc.created_by, user?.id));
         return (
           <FlashcardBulkActions
-            selectedCount={selectedIds.size}
+            selectedCount={selection.selectedIds.size}
             canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false}
             canTopics={canBulkTopics}
             canMove={canBulkMove}
-            canExport={selectedIds.size > 0}
+            canExport={selection.selectedIds.size > 0}
             onDelete={() =>
               setD((prev) => ({
                 ...prev,
                 bulkDeleteOpen: true,
-                selectedIds: Array.from(selectedIds),
+                selectedIds: Array.from(selection.selectedIds),
               }))
             }
             onLink={() =>
@@ -893,7 +809,7 @@ export function DeckDetailScreen({
                 ...prev,
                 bulkLinkOpen: true,
                 bulkLinkDeckIds: [],
-                selectedIds: Array.from(selectedIds),
+                selectedIds: Array.from(selection.selectedIds),
               }))
             }
             onTopics={() =>
@@ -902,7 +818,7 @@ export function DeckDetailScreen({
                 bulkTopicsOpen: true,
                 bulkTopicIds: [],
                 bulkTopicsOperation: 'set',
-                selectedIds: Array.from(selectedIds),
+                selectedIds: Array.from(selection.selectedIds),
               }))
             }
             onCopy={() =>
@@ -910,7 +826,7 @@ export function DeckDetailScreen({
                 ...prev,
                 bulkCopyOpen: true,
                 bulkCopyTargetDeckId: null,
-                selectedIds: Array.from(selectedIds),
+                selectedIds: Array.from(selection.selectedIds),
               }))
             }
             onMove={() =>
@@ -918,14 +834,14 @@ export function DeckDetailScreen({
                 ...prev,
                 bulkMoveOpen: true,
                 bulkMoveTargetDeckId: null,
-                selectedIds: Array.from(selectedIds),
+                selectedIds: Array.from(selection.selectedIds),
               }))
             }
             onExport={() => {
-              const ids = Array.from(selectedIds).join(',');
+              const ids = Array.from(selection.selectedIds).join(',');
               window.open(`/api/v1/flashcards/export/csv?ids=${ids}`, '_blank');
             }}
-            onClearSelection={clearSelection}
+            onClearSelection={selection.handleClearSelection}
             t={t}
           />
         );
@@ -946,7 +862,7 @@ export function DeckDetailScreen({
 
       <ImportDialog open={importOpen} onOpenChange={setImportOpen} deckId={deckId} t={t} />
 
-      {!isSelecting && (
+      {!selection.isSelecting && (
         <div className="sm:hidden">
           <SpeedDial
             items={[

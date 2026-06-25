@@ -17,8 +17,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { SessionSummaryDialog } from '@/components/flashcards/session-summary-dialog';
-import { FlashcardFlip } from '@/components/flashcards/flashcard-flip';
+import { SessionSummaryDialog } from '@/components/flashcards';
+import { FlashcardFlip } from '@/components/flashcards';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { KeyboardShortcutsPanel } from '@/components/shared/keyboard-shortcuts-panel';
 import { AnimatePresence, motion } from 'motion/react';

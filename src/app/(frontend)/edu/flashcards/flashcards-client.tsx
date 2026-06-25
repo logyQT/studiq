@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { FolderOpen, Tags, BarChart3 } from 'lucide-react';
-import { DashboardPanel } from '@/components/flashcards/dashboard-panel';
+import { DashboardPanel } from '@/components/flashcards';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { Deck, Topic } from '@/types/flashcards';

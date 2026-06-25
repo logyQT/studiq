@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { MultiSelect } from '@/components/ui/multi-select';
-import { FlashcardEditor } from '@/components/flashcards/flashcard-editor';
+import { FlashcardEditor } from '@/components/flashcards';
 import { useBreadcrumbContext } from '@/components/providers/BreadcrumbProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { apiPost } from '@/lib/api';

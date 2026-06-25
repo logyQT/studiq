@@ -276,7 +276,7 @@ export function useAiChat(): UseAiChatReturn {
                   const duration = startTime ? Date.now() - startTime : undefined;
                   toolStartTimesRef.current.delete(parsed.id);
                   const resultData = parsed.result as Record<string, unknown> | undefined;
-                  const toolCount = resultData?.toolCount as number | undefined;
+                  const _toolCount = resultData?.toolCount as number | undefined;
                   setMessages((prev) =>
                     prev.map((m) =>
                       m.role === 'tool_call' && m.toolName === parsed.tool && m.status === 'running'

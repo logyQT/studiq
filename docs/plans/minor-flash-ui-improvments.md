@@ -2,8 +2,8 @@
 
 ## 1. Flashcard Card (`flashcard-card.tsx`)
 
-- [ ] Show three-dot menu on touch devices — currently `opacity-0 group-hover:opacity-100`, invisible and unreachable on mobile
-- [ ] Show topic dots on touch devices — same hover-only issue, users never see which topics a card belongs to
+- [x] Show three-dot menu on touch devices — currently `opacity-0 group-hover:opacity-100`, invisible and unreachable on mobile
+- [x] Show topic dots on touch devices — same hover-only issue, users never see which topics a card belongs to
 
 ## 2. Deck List (`deck-management-screen.tsx`)
 
@@ -24,18 +24,18 @@
 
 ## 4. Topics (`topic-management-screen.tsx`)
 
-- [ ] Add context menu for edit/delete on both platforms (currently hover-only buttons)
+- [x] Add context menu for edit/delete on both platforms (currently hover-only buttons)
 - [x] Improve empty state — currently bare text, needs icon + "Create your first topic" CTA button
-- [ ] Fix color distribution — currently `name.length % 10`, should use a proper hash function
+- [x] Fix color distribution — currently `name.length % 10`, should use a proper hash function
 - [x] Extract `TOPIC_COLORS` / `getTopicColor` to shared utility (duplicated in flashcard-card.tsx)
 
 ## 5. Flashcard Editor (`flashcard-editor.tsx`)
 
-- [ ] Add `min-h-[120px]` to textareas — on short mobile viewports they shrink to 2-3 lines
-- [ ] Remove H4-H6 from toolbar — rarely used, adds clutter (3 fewer buttons)
-- [ ] Remove Link button from toolbar - it is likely never going to be used by anyone.s
+- [x] Add `min-h-[120px]` to textareas — on short mobile viewports they shrink to 2-3 lines
+- [x] Remove H4-H6 from toolbar — rarely used, adds clutter (3 fewer buttons)
+- [x] Remove Link button from toolbar - it is likely never going to be used by anyone.s
 - [ ] Add drag-and-drop visual feedback — currently no indicator when dragging files over editor
-- [ ] Use `Button variant="ghost"` instead of `Toggle` for insert actions (bold, italic, headings, etc.) — Toggle is semantically wrong for one-shot actions
+- [x] Use `Button variant="ghost"` instead of `Toggle` for insert actions (bold, italic, headings, etc.) — Toggle is semantically wrong for one-shot actions
 
 ## 6. Study Session (`session-client.tsx`)
 

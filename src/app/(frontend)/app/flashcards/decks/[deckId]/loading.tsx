@@ -1,4 +1,4 @@
-import { DeckDetailSkeleton } from '@/components/flashcards/deck-detail-skeleton';
+import { DeckDetailSkeleton } from '@/components/flashcards';
 
 export default function DeckViewLoading() {
   return <DeckDetailSkeleton />;
