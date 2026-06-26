@@ -49,7 +49,24 @@ export const DeckListQuerySchema = registry.register(
   }),
 );
 
+export const BulkCreateDeckSchema = registry.register(
+  'BulkCreateDeckRequest',
+  z.object({
+    decks: z.array(
+      z.object({
+        name: z
+          .string({ error: ValidationErrorCode.REQUIRED })
+          .nonempty({ error: ValidationErrorCode.REQUIRED })
+          .min(1, { error: ValidationErrorCode.TOO_SHORT })
+          .max(128, { error: ValidationErrorCode.TOO_LONG }),
+        description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
+      }),
+    ).min(1, { error: ValidationErrorCode.TOO_FEW }),
+  }),
+);
+
 export type CreateDeckInput = z.infer<typeof CreateDeckSchema>;
 export type UpdateDeckInput = z.infer<typeof UpdateDeckSchema>;
 export type BatchDeleteDeckInput = z.infer<typeof BatchDeleteDeckSchema>;
+export type BulkCreateDeckInput = z.infer<typeof BulkCreateDeckSchema>;
 export type DeckListQuery = z.infer<typeof DeckListQuerySchema>;

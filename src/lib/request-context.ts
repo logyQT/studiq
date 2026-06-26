@@ -2,6 +2,7 @@ import type { Nullable } from '@/types';
 import { UserRole } from '@/types';
 
 export interface RequestContext {
+  traceId: string;
   userId: string;
   universityId: Nullable<string>;
   role: UserRole;

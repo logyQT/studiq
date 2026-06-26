@@ -9,6 +9,7 @@ type ActionHandler = (body: unknown, ctx: RequestContext) => Promise<ControllerR
 
 const actionHandlers: Record<string, ActionHandler> = {
   delete: (body, ctx) => flashcardDeckController.batchDelete(body, ctx),
+  create: (body, ctx) => flashcardDeckController.bulkCreate(body, ctx),
 };
 
 export async function POST(

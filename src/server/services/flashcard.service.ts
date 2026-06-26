@@ -13,10 +13,13 @@ import type {
   BatchCopyInput,
   UnlinkFlashcardInput,
   BatchUnlinkInput,
+  Flashcard,
 } from '@/server/models';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
 import { checkPermission, shouldSetUniversityId, buildQueryFilter, Permission } from '@/lib/rbac';
+import { log } from '@/lib/logger';
+
 
 export class FlashcardService {
   async create(data: CreateFlashcardInput, ctx: RequestContext) {
@@ -67,7 +70,13 @@ export class FlashcardService {
   }
 
   async bulkCreate(data: BulkCreateFlashcardsInput, ctx: RequestContext) {
+    const t0 = performance.now();
     const supabase = await createClient();
+    const cardCount = data.cards.length;
+
+    log.trace.info('bulkCreate:service:start', {
+      metadata: { traceId: ctx.traceId, cardCount, deckIds: data.deckIds?.length ?? 0, topicIds: data.topicIds?.length ?? 0 },
+    });
 
     if (data.deckIds && data.deckIds.length > 0) {
       const { data: decks } = await supabase
@@ -84,43 +93,28 @@ export class FlashcardService {
 
     const universityId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.universityId : null;
 
-    const cardsToInsert = data.cards.map((c) => ({
-      front: c.front,
-      back: c.back,
-      created_by: ctx.userId,
-      university_id: universityId,
-    }));
+    const { data: flashcards, error } = await supabase.rpc('bulk_create_flashcards', {
+      p_cards: data.cards.map((c) => ({ front: c.front, back: c.back })),
+      p_user_id: ctx.userId,
+      p_university_id: universityId ?? null,
+      p_deck_ids: data.deckIds ?? [],
+      p_topic_ids: data.topicIds ?? [],
+    });
 
-    const { data: flashcards, error } = await supabase
-      .from('flashcards')
-      .insert(cardsToInsert)
-      .select();
-
-    if (error) throw mapSupabaseError(error);
-
-    if (flashcards && flashcards.length > 0) {
-      if (data.topicIds && data.topicIds.length > 0) {
-        const assignments = flashcards.flatMap((fc) =>
-          data.topicIds!.map((topicId) => ({
-            flashcard_id: fc.id,
-            topic_id: topicId,
-          })),
-        );
-        await supabase.from('flashcard_topic_assignments').insert(assignments);
-      }
-
-      if (data.deckIds && data.deckIds.length > 0) {
-        const deckAssignments = flashcards.flatMap((fc) =>
-          data.deckIds!.map((deckId) => ({
-            flashcard_id: fc.id,
-            deck_id: deckId,
-          })),
-        );
-        await supabase.from('flashcard_deck_assignments').insert(deckAssignments);
-      }
+    if (error) {
+      log.trace.error('bulkCreate:service:rpc_error', {
+        metadata: { traceId: ctx.traceId, code: error.code, message: error.message, details: error.details, hint: error.hint },
+        durationMs: performance.now() - t0,
+      });
+      throw mapSupabaseError(error);
     }
 
-    return flashcards;
+    log.trace.info('bulkCreate:service:success', {
+      metadata: { traceId: ctx.traceId, created: flashcards?.length },
+      durationMs: performance.now() - t0,
+    });
+
+    return flashcards as unknown as Flashcard[];
   }
 
   async list(ctx: RequestContext, filters?: { topicIds?: string[]; deckIds?: string[]; q?: string; sortBy?: string; sortOrder?: string; cursor?: string; limit?: number }) {

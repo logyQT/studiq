@@ -5,17 +5,12 @@ import { useTranslations } from 'next-intl';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import {
-  SquarePen,
-  Upload,
-  CheckSquare,
-  Plus,
-  FolderOpen,
-} from 'lucide-react';
+import { SquarePen, Upload, CheckSquare, Plus, FolderOpen } from 'lucide-react';
 import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import dynamic from 'next/dynamic';
 import { useApiMutation } from '@/hooks/use-api';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
@@ -23,12 +18,13 @@ import type { Deck } from '@/types/flashcards';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
 import { UserRole } from '@/types';
-import { ImportDialog } from '@/components/flashcards/shared/import-dialog';
 import { DeckCard } from '@/components/flashcards/cards/deck-card';
 import { DeckFilters } from '@/components/flashcards/shared/deck-filters';
-import { DeckBulkActions } from '@/components/flashcards/shared/deck-bulk-actions';
-import { DeckFormDialog } from '@/components/flashcards/shared/deck-form-dialog';
 import { SpeedDial } from '@/components/shared/speed-dial';
+
+const ImportDialog = dynamic(() => import('@/components/flashcards/shared/import-dialog').then(m => ({ default: m.ImportDialog })), { ssr: false });
+const DeckFormDialog = dynamic(() => import('@/components/flashcards/shared/deck-form-dialog').then(m => ({ default: m.DeckFormDialog })));
+const DeckBulkActions = dynamic(() => import('@/components/flashcards/shared/deck-bulk-actions').then(m => ({ default: m.DeckBulkActions })));
 import { useDebounce } from '@/hooks/use-debounce';
 import { useSelection } from '@/hooks/use-selection';
 
@@ -147,7 +143,6 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   const [importOpen, setImportOpen] = useState(false);
   const selection = useSelection();
   const { isSelecting: selectionIsActive, handleClearSelection: selectionClear } = selection;
-  const [formData, setFormData] = useState({ name: '', description: '' });
 
   useEffect(() => {
     if (!selectionIsActive) return;
@@ -161,27 +156,18 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [selectionIsActive, selectionClear]);
 
-  function resetForm() {
-    setFormData({ name: '', description: '' });
-    setEditing(null);
-  }
-
   function openCreate() {
-    resetForm();
+    setEditing(null);
     setDialogOpen(true);
   }
 
   function openEdit(deck: Deck) {
     setEditing(deck);
-    setFormData({
-      name: deck.name,
-      description: deck.description || '',
-    });
     setDialogOpen(true);
   }
 
-  async function handleSubmit() {
-    if (!formData.name.trim()) {
+  async function handleSubmit(data: { name: string; description: string }) {
+    if (!data.name.trim()) {
       toast.error(t('name_required'));
       return;
     }
@@ -189,17 +175,17 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
       if (editing) {
         await updateDeck.mutateAsync({
           id: editing.id,
-          name: formData.name,
-          description: formData.description || undefined,
+          name: data.name,
+          description: data.description || undefined,
         });
       } else {
         await createDeck.mutateAsync({
-          name: formData.name,
-          description: formData.description || undefined,
+          name: data.name,
+          description: data.description || undefined,
         });
       }
       setDialogOpen(false);
-      resetForm();
+      setEditing(null);
       toast.success(editing ? t('deck_updated') : t('deck_created'));
     } catch {
       toast.error(t('save_failed'));
@@ -271,8 +257,8 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Card key={i} className="flex flex-col h-full max-sm:py-0 min-w-0">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <Card key={i} className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">
               <div className="flex items-center gap-3 p-4 sm:hidden">
                 <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
                 <div className="flex-1 space-y-2">
@@ -319,13 +305,35 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
               onSelect={() => selection.setIsSelecting(true)}
             />
           ))}
-          <div ref={loadMoreRef} className="col-span-full h-4" />
-          {isFetchingNextPage && (
-            <div className="col-span-full flex justify-center py-4">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            </div>
-          )}
-          {decks.length === 0 && (
+          {hasNextPage &&
+            Array.from({ length: 8 }).map((_, i) => (
+              <Card key={`skel-${i}`} className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">
+                <div className="flex items-center gap-3 p-4 sm:hidden">
+                  <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-3 w-1/4" />
+                  </div>
+                  <Skeleton className="h-7 w-7 rounded-md shrink-0" />
+                </div>
+                <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-10 w-10 rounded-xl" />
+                    <Skeleton className="h-6 w-3/4" />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-4/5" />
+                  </div>
+                  <div className="flex items-center justify-between pt-4 mt-auto">
+                    <Skeleton className="h-6 w-16 rounded-full" />
+                    <Skeleton className="h-8 w-24 rounded-md" />
+                  </div>
+                </div>
+              </Card>
+            ))}
+          {/* TODO: sentinel doesn't reliably trigger fetch — likely h-0 has no bounding box for IntersectionObserver. Try min-h-[1px] or use callback ref. */}
+          {decks.length === 0 && !isFetchingNextPage && (
             <Empty className="col-span-full">
               <EmptyMedia>
                 <FolderOpen className="h-10 w-10 text-muted-foreground" />
@@ -345,10 +353,9 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         open={dialogOpen}
         onOpenChange={(open) => {
           setDialogOpen(open);
-          if (!open) setTimeout(resetForm, 200);
+          if (!open) setTimeout(() => setEditing(null), 200);
         }}
-        formData={formData}
-        onFormDataChange={setFormData}
+        initialValues={editing ? { name: editing.name, description: editing.description ?? '' } : null}
         onSubmit={handleSubmit}
         title={editing ? t('edit_title') : t('new_deck_title')}
         description={editing ? t('edit_desc') : t('new_deck_desc')}
@@ -386,7 +393,11 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
             items={[
               { icon: SquarePen, label: t('new_deck'), onClick: openCreate },
               { icon: Upload, label: t('common_import'), onClick: () => setImportOpen(true) },
-              { icon: CheckSquare, label: t('select_cards'), onClick: () => selection.setIsSelecting(true) },
+              {
+                icon: CheckSquare,
+                label: t('select_cards'),
+                onClick: () => selection.setIsSelecting(true),
+              },
             ]}
           />
         </div>

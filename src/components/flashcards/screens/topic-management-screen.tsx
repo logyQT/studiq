@@ -362,13 +362,31 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
               t={t}
             />
           ))}
-          <div ref={loadMoreRef} className="col-span-full h-4" />
-          {isFetchingNextPage && (
-            <div className="col-span-full flex justify-center py-4">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            </div>
-          )}
-          {topics.length === 0 && (
+          {hasNextPage && Array.from({ length: 8 }).map((_, i) => (
+            <Card key={`skel-${i}`} className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">
+              <div className="flex items-center gap-3 p-4 sm:hidden">
+                <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-3 w-1/4" />
+                </div>
+                <Skeleton className="h-7 w-7 rounded-md shrink-0" />
+              </div>
+              <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-10 w-10 rounded-xl" />
+                  <Skeleton className="h-6 w-3/4" />
+                </div>
+                <div className="flex-1" />
+                  <div className="flex items-center justify-between pt-4 mt-auto">
+                    <Skeleton className="h-6 w-16 rounded-full" />
+                    <Skeleton className="h-8 w-24 rounded-md" />
+                  </div>
+                </div>
+              </Card>
+            ))}
+          {/* TODO: sentinel doesn't reliably trigger fetch — likely h-0 has no bounding box for IntersectionObserver. Try min-h-[1px] or use callback ref. */}
+          {topics.length === 0 && !isFetchingNextPage && (
             <Empty className="col-span-full">
               <EmptyMedia>
                 <Tags className="h-10 w-10 text-muted-foreground" />

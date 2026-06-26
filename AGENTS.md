@@ -147,6 +147,78 @@ Helper exists at `src/lib/controller-response.ts` (`controllerResponse.success/c
 
 ---
 
+## Logging & Tracing
+
+### Logger (defined in `src/lib/logger.ts`)
+
+All logging uses the `log` singleton from `@/lib/logger`. Provides named loggers with `info`, `warn`, `error`, `debug` methods:
+
+```typescript
+import { log } from '@/lib/logger';
+
+log.api.info('request started', { metadata: { traceId } });
+log.trace.warn('slow query', { metadata: { table: 'flashcards' }, durationMs: 1500 });
+log.api.error('rpc failed', { metadata: { traceId, code: error.code } });
+```
+
+### Named loggers
+
+| Name | Purpose | Enabled in production |
+|------|---------|----------------------|
+| `api` | Route-level request/response logging | Always |
+| `trace` | Detailed per-layer traces (Route → Controller → Service) | Dev only (noop in prod) |
+| `auth` | Authentication events | Always |
+| `ai` / `providers` | AI/LLM related | Always |
+| `system` | System-level events | Always |
+| `pdf` / `cache` | PDF processing | Always |
+
+### Trace logger (zero-cost in production)
+
+`log.trace.*` is a **noop logger** in `production` — `createNoopLogger()` returns stubs with empty function bodies. V8 inlines and eliminates them. No string building, no object allocation.
+
+The gate is set at module init time:
+
+```typescript
+const isTraceEnabled = process.env.NODE_ENV !== 'production' || process.env.TRACE_ENABLED === 'true';
+```
+
+To enable traces in production-like environments: `TRACE_ENABLED=true bun run dev`
+
+### `.enabled` property for expensive metadata
+
+If a trace call requires expensive data preparation (`.map()`, `JSON.stringify`), guard it:
+
+```typescript
+// BAD — allocates even in prod:
+log.trace.info('result', { metadata: { processed: bigArray.map(...) } });
+
+// GOOD — skips allocation entirely in prod:
+if (log.trace.enabled) {
+  log.trace.info('result', { metadata: { processed: bigArray.map(...) } });
+}
+```
+
+`.enabled` is `false` only for `trace` in production. All other loggers always have it `true`.
+
+### Tracing via `RequestContext.traceId`
+
+Every authenticated request gets a `traceId` (UUID) generated in `withAuth()` and passed through all layers via `RequestContext.traceId`. Log every layer entry/exit with this id:
+
+```typescript
+// Route
+log.trace.info('batch/create', { metadata: { traceId: ctx.traceId } });
+
+// Controller
+log.trace.info('validation_ok', { metadata: { traceId, cardCount: 5 }, durationMs: 30 });
+
+// Service
+log.trace.info('rpc_error', { metadata: { traceId, code: error.code, message: error.message }, durationMs: 150 });
+```
+
+The `durationMs` field is displayed next to the message in the console: `(150ms)`.
+
+---
+
 ## Guards
 
 - `authGuard(user: User | null): boolean` — returns `true` if user exists

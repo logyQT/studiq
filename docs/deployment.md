@@ -24,6 +24,9 @@ LLM_PROVIDER=openai
 LLM_API_KEY=your-openai-api-key
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL_NAME=gpt-4o-mini
+
+# Tracing (dev/staging only — noop in production unless set)
+TRACE_ENABLED=true             # per-layer request tracing in console
 ```
 
 ### Vercel Configuration

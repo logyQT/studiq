@@ -86,6 +86,7 @@ NEXT_PUBLIC_SITE_URL=
 OPENAI_API_KEY=              # AI flashcard generation
 OLLAMA_BASE_URL=             # local LLM fallback
 NEXT_LOCALE=                 # en | pl (default)
+TRACE_ENABLED=               # enable per-layer trace logging (dev only, default off)
 ```
 
 ## Folder Structure

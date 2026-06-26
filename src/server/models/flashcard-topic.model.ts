@@ -43,7 +43,23 @@ export const TopicListQuerySchema = registry.register(
   }),
 );
 
+export const BulkCreateTopicSchema = registry.register(
+  'BulkCreateTopicRequest',
+  z.object({
+    topics: z.array(
+      z.object({
+        name: z
+          .string({ error: ValidationErrorCode.REQUIRED })
+          .nonempty({ error: ValidationErrorCode.REQUIRED })
+          .min(1, { error: ValidationErrorCode.TOO_SHORT })
+          .max(64, { error: ValidationErrorCode.TOO_LONG }),
+      }),
+    ).min(1, { error: ValidationErrorCode.TOO_FEW }),
+  }),
+);
+
 export type CreateTopicInput = z.infer<typeof CreateTopicSchema>;
 export type UpdateTopicInput = z.infer<typeof UpdateTopicSchema>;
 export type BatchDeleteTopicInput = z.infer<typeof BatchDeleteTopicSchema>;
+export type BulkCreateTopicInput = z.infer<typeof BulkCreateTopicSchema>;
 export type TopicListQuery = z.infer<typeof TopicListQuerySchema>;

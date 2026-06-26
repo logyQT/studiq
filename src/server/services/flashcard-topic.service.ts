@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import type { CreateTopicInput, UpdateTopicInput, BatchDeleteTopicInput, TopicListQuery } from '@/server/models';
+import type { CreateTopicInput, UpdateTopicInput, BatchDeleteTopicInput, BulkCreateTopicInput, TopicListQuery } from '@/server/models';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
 import { checkPermission, shouldSetUniversityId, buildQueryFilter, Permission } from '@/lib/rbac';
@@ -34,7 +34,7 @@ export class FlashcardTopicService {
 
     let query = supabase
       .from('flashcard_topics')
-      .select('*, flashcard_topic_assignments(flashcard_id)');
+      .select('*, flashcard_count:flashcard_topic_assignments(count)');
 
     if (filter.or) {
       query = query.or(filter.or);
@@ -77,18 +77,19 @@ export class FlashcardTopicService {
     const { data, error } = await query;
     if (error) throw mapSupabaseError(error);
 
-    const rows = data as unknown as Array<{ id: string; [key: string]: unknown }>;
+    const rows = data as Array<Record<string, unknown>> | null;
     const hasMore = (rows?.length ?? 0) > pageSize;
-    const items = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
+    const sliced = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
+    const items = sliced.map((item) => {
+      const countArr = item.flashcard_count as { count: number }[] | undefined;
+      return { ...item, flashcard_count: countArr?.[0]?.count ?? 0 };
+    });
     const nextCursor = hasMore
-      ? Buffer.from(JSON.stringify({ v: items[items.length - 1][sortBy], id: items[items.length - 1].id })).toString('base64')
+      ? Buffer.from(JSON.stringify({ v: sliced[sliced.length - 1][sortBy], id: sliced[sliced.length - 1].id })).toString('base64')
       : null;
 
     return {
-      items: items.map((topic: Record<string, unknown>) => ({
-        ...topic,
-        flashcard_count: (topic.flashcard_topic_assignments as Array<unknown>)?.length ?? 0,
-      })),
+      items: items as unknown as Topic[],
       nextCursor,
       hasMore,
     } as { items: Topic[]; nextCursor: string | null; hasMore: boolean };
@@ -157,6 +158,25 @@ export class FlashcardTopicService {
       .eq('id', id);
 
     if (error) throw mapSupabaseError(error);
+  }
+
+  async bulkCreate(data: BulkCreateTopicInput, ctx: RequestContext) {
+    const supabase = await createClient();
+    const universityId = await shouldSetUniversityId(ctx, Permission.TOPIC_CREATE) ? ctx.universityId : null;
+
+    const topics = data.topics.map((t) => ({
+      name: t.name,
+      created_by: ctx.userId,
+      university_id: universityId,
+    }));
+
+    const { data: created, error } = await supabase
+      .from('flashcard_topics')
+      .insert(topics)
+      .select('*');
+
+    if (error) throw mapSupabaseError(error);
+    return created;
   }
 
   async batchDelete(data: BatchDeleteTopicInput, ctx: RequestContext) {

@@ -1,7 +1,7 @@
 import { createConsola } from 'consola';
 
 const consola = createConsola({
-  level: process.env.NODE_ENV === 'production' ? 3 : 5,
+  level: process.env.NODE_ENV === 'production' ? 1 : 5,
 });
 
 function writeLog(
@@ -30,8 +30,15 @@ export function createLogger(namespace: string) {
       writeLog('error', namespace, message, opts),
     debug: (message: string, opts?: Parameters<typeof writeLog>[3]) =>
       writeLog('debug', namespace, message, opts),
+    enabled: true,
   };
 }
+
+function createNoopLogger() {
+  return { info: () => {}, warn: () => {}, error: () => {}, debug: () => {}, enabled: false };
+}
+
+const isTraceEnabled = process.env.NODE_ENV !== 'production' || process.env.TRACE_ENABLED === 'true';
 
 export const log = {
   ai: createLogger('ai'),
@@ -39,7 +46,7 @@ export const log = {
   pdf: createLogger('pdf'),
   cache: createLogger('cache'),
   auth: createLogger('auth'),
-  trace: createLogger('trace'),
+  trace: isTraceEnabled ? createLogger('trace') : createNoopLogger(),
   api: createLogger('api'),
   system: createLogger('system'),
 };

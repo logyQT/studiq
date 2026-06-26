@@ -20,7 +20,6 @@ export interface DialogsState {
   copyTargetDeckId: string | null;
   deckEditOpen: boolean;
   deckDeleteOpen: boolean;
-  deckFormData: { name: string; description: string };
   viewTopicId: string | null;
   addTopicOpen: boolean;
   manageTopicOpen: boolean;
@@ -50,12 +49,11 @@ export interface DialogsHandlers {
   onManageTopicOpenChange: (open: boolean) => void;
   onLinkDeckIdsChange: (ids: string[]) => void;
   onCopyTargetDeckIdChange: (id: string | null) => void;
-  onDeckFormDataChange: (data: { name: string; description: string }) => void;
   onTopicActionIdsChange: (ids: string[]) => void;
   onDelete: () => void;
   onLink: () => void;
   onCopy: () => void;
-  onDeckUpdate: () => void;
+  onDeckUpdate: (data: { name: string; description: string }) => void;
   onDeckDelete: () => void;
   onAddTopicConfirm: () => void;
   onBulkDelete: () => void;
@@ -128,10 +126,8 @@ export function DeckDetailDialogs({
         t={t}
         deckEditOpen={state.deckEditOpen}
         deckDeleteOpen={state.deckDeleteOpen}
-        deckFormData={state.deckFormData}
         onDeckEditOpenChange={handlers.onDeckEditOpenChange}
         onDeckDeleteOpenChange={handlers.onDeckDeleteOpenChange}
-        onDeckFormDataChange={handlers.onDeckFormDataChange}
         onDeckUpdate={handlers.onDeckUpdate}
         onDeckDelete={handlers.onDeckDelete}
       />

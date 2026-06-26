@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
@@ -271,7 +273,7 @@ export function DeckDetailScreen({
     copyTargetDeckId: null,
     deckEditOpen: false,
     deckDeleteOpen: false,
-    deckFormData: { name: '', description: '' },
+
     viewTopicId: null,
     addTopicOpen: false,
     manageTopicOpen: false,
@@ -401,8 +403,8 @@ export function DeckDetailScreen({
     }
   }
 
-  async function handleDeckUpdate() {
-    if (!d.deckFormData.name.trim()) {
+  async function handleDeckUpdate(data: { name: string; description: string }) {
+    if (!data.name.trim()) {
       toast.error(t('name_required'));
       return;
     }
@@ -410,8 +412,8 @@ export function DeckDetailScreen({
     try {
       await updateDeck.mutateAsync({
         id: deckId,
-        name: d.deckFormData.name,
-        description: d.deckFormData.description || undefined,
+        name: data.name,
+        description: data.description || undefined,
       });
       toast.success(t('deck_updated'));
     } catch {
@@ -533,7 +535,7 @@ export function DeckDetailScreen({
     onManageTopicOpenChange: (open) => setD((prev) => ({ ...prev, manageTopicOpen: open })),
     onLinkDeckIdsChange: (linkDeckIds) => setD((prev) => ({ ...prev, linkDeckIds })),
     onCopyTargetDeckIdChange: (copyTargetDeckId) => setD((prev) => ({ ...prev, copyTargetDeckId })),
-    onDeckFormDataChange: (deckFormData) => setD((prev) => ({ ...prev, deckFormData })),
+
     onTopicActionIdsChange: (topicActionIds) => setD((prev) => ({ ...prev, topicActionIds })),
     onDelete: handleDelete,
     onLink: handleLink,
@@ -624,10 +626,6 @@ export function DeckDetailScreen({
                     setD((prev) => ({
                       ...prev,
                       deckEditOpen: true,
-                      deckFormData: {
-                        name: currentDeck?.name ?? '',
-                        description: currentDeck?.description ?? '',
-                      },
                     }))
                   }
                 >
@@ -797,12 +795,40 @@ export function DeckDetailScreen({
               onViewByTopic={handleCardViewByTopic}
             />
           ))}
-          <div ref={loadMoreRef} className="col-span-full h-4" />
-          {isFetchingNextPage && (
-            <div className="col-span-full flex justify-center py-4">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            </div>
-          )}
+          {hasNextPage && Array.from({ length: 6 }).map((_, i) => (
+            <Card key={`skel-${i}`} className="group relative sm:min-h-28 max-sm:py-0">
+              <div className="sm:hidden px-3 py-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <Skeleton className="h-4 w-3/4 inline-block align-middle" />
+                  </div>
+                  <Skeleton className="h-7 w-7 rounded-md shrink-0" />
+                </div>
+                <div className="my-1.5 border-t border-border/50" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-2/3 mt-1" />
+              </div>
+              <div className="hidden sm:flex sm:flex-col sm:flex-1 sm:px-4 sm:py-3.5">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0 pr-6">
+                    <Skeleton className="h-5 w-3/4" />
+                  </div>
+                  <Skeleton className="h-7 w-7 rounded-md shrink-0" />
+                </div>
+                <div className="my-2 border-t border-border/50" />
+                <div className="flex-1 space-y-1.5 min-w-0">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-5/6" />
+                  <Skeleton className="h-4 w-2/3" />
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-2.5">
+                  <Skeleton className="h-5 w-16 rounded-full" />
+                  <Skeleton className="h-5 w-20 rounded-full" />
+                </div>
+              </div>
+            </Card>
+          ))}
+          {/* TODO: sentinel doesn't reliably trigger fetch — likely h-0 has no bounding box for IntersectionObserver. Try min-h-[1px] or use callback ref. */}
         </div>
       )}
 

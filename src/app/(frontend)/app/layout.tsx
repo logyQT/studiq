@@ -1,7 +1,6 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { AppRealtimeProvider } from '@/components/providers/AppRealtimeProvider';
 import { BreadcrumbProvider } from '@/components/providers/BreadcrumbProvider';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
@@ -12,10 +11,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const fullWidth = FULL_WIDTH_ROUTES.some((route) => pathname === route);
 
   return (
-    <AppRealtimeProvider>
-      <BreadcrumbProvider>
-        <DashboardLayout fullWidth={fullWidth}>{children}</DashboardLayout>
-      </BreadcrumbProvider>
-    </AppRealtimeProvider>
+    <BreadcrumbProvider>
+      <DashboardLayout fullWidth={fullWidth}>{children}</DashboardLayout>
+    </BreadcrumbProvider>
   );
 }

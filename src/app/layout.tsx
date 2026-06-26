@@ -69,8 +69,15 @@ export default async function RootLayout({
   const locale = await getLocale();
   const messages = await getMessages();
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+
   return (
     <html lang={locale} className="bg-background" suppressHydrationWarning>
+      <head>
+        {supabaseUrl && (
+          <link rel="preconnect" href={supabaseUrl} crossOrigin="anonymous" />
+        )}
+      </head>
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
         <ThemeProvider
           attribute="class"

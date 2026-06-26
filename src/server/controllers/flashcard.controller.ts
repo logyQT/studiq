@@ -16,6 +16,7 @@ import {
 import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
 import type { RequestContext } from '@/lib/request-context';
+import { log } from '@/lib/logger';
 
 export class FlashcardController {
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
@@ -51,8 +52,13 @@ export class FlashcardController {
   async bulkCreate(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
       const parsed = BulkCreateFlashcardsSchema.safeParse(body);
+      const t0 = performance.now();
 
       if (!parsed.success) {
+        log.trace.warn('bulkCreate:validation_failed', {
+          metadata: { traceId: ctx.traceId, issues: parsed.error.issues },
+          durationMs: performance.now() - t0,
+        });
         return {
           success: false,
           statusCode: 422,
@@ -61,7 +67,18 @@ export class FlashcardController {
         };
       }
 
+      const cardCount = parsed.data.cards.length;
+      log.trace.info('bulkCreate:validation_ok', {
+        metadata: { traceId: ctx.traceId, cardCount, deckIds: parsed.data.deckIds?.length ?? 0, topicIds: parsed.data.topicIds?.length ?? 0 },
+        durationMs: performance.now() - t0,
+      });
+
       const flashcards = await flashcardService.bulkCreate(parsed.data, ctx);
+
+      log.trace.info('bulkCreate:success', {
+        metadata: { traceId: ctx.traceId, created: flashcards?.length },
+        durationMs: performance.now() - t0,
+      });
 
       return { success: true, statusCode: 201, data: flashcards };
     }, ctx);

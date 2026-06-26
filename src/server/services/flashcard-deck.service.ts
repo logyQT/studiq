@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import type { CreateDeckInput, UpdateDeckInput, BatchDeleteDeckInput, DeckListQuery } from '@/server/models';
+import type { CreateDeckInput, UpdateDeckInput, BatchDeleteDeckInput, BulkCreateDeckInput, DeckListQuery } from '@/server/models';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
 import { checkPermission, shouldSetUniversityId, buildQueryFilter, Permission } from '@/lib/rbac';
@@ -44,7 +44,7 @@ export class FlashcardDeckService {
 
     let query = supabase
       .from('flashcard_decks')
-      .select('*, flashcard_deck_assignments(flashcard_id)');
+      .select('*, flashcard_count:flashcard_deck_assignments(count)');
 
     // Apply RBAC filter
     if (filter.or) {
@@ -95,18 +95,19 @@ export class FlashcardDeckService {
     const { data, error } = await query;
     if (error) throw mapSupabaseError(error);
 
-    const rows = data as unknown as Array<{ id: string; [key: string]: unknown }>;
+    const rows = data as Array<Record<string, unknown>> | null;
     const hasMore = (rows?.length ?? 0) > pageSize;
-    const items = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
+    const sliced = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
+    const items = sliced.map((item) => {
+      const countArr = item.flashcard_count as { count: number }[] | undefined;
+      return { ...item, flashcard_count: countArr?.[0]?.count ?? 0 };
+    });
     const nextCursor = hasMore
-      ? Buffer.from(JSON.stringify({ v: items[items.length - 1][sortBy], id: items[items.length - 1].id })).toString('base64')
+      ? Buffer.from(JSON.stringify({ v: sliced[sliced.length - 1][sortBy], id: sliced[sliced.length - 1].id })).toString('base64')
       : null;
 
     return {
-      items: items.map((deck: Record<string, unknown>) => ({
-        ...deck,
-        flashcard_count: (deck.flashcard_deck_assignments as Array<unknown>)?.length ?? 0,
-      })),
+      items: items as unknown as Deck[],
       nextCursor,
       hasMore,
     } as { items: Deck[]; nextCursor: string | null; hasMore: boolean };
@@ -118,7 +119,7 @@ export class FlashcardDeckService {
     const filter = await buildQueryFilter(ctx, Permission.DECK_READ, 'deck');
     let query = supabase
       .from('flashcard_decks')
-      .select('*, flashcard_deck_assignments(flashcard_id)')
+      .select('*, flashcard_count:flashcard_deck_assignments(count)')
       .eq('id', id);
 
     if (filter._impossible) throw new AppError('NOT_FOUND');
@@ -131,10 +132,8 @@ export class FlashcardDeckService {
     const { data: deck, error } = await query.single();
     if (error || !deck) throw new AppError('NOT_FOUND');
 
-    return {
-      ...deck,
-      flashcard_count: deck.flashcard_deck_assignments?.length ?? 0,
-    };
+    const countArr = (deck as Record<string, unknown>).flashcard_count as { count: number }[] | undefined;
+    return { ...deck, flashcard_count: countArr?.[0]?.count ?? 0 };
   }
 
   async update(id: string, data: UpdateDeckInput, ctx: RequestContext) {
@@ -195,6 +194,26 @@ export class FlashcardDeckService {
       .eq('id', id);
 
     if (error) throw mapSupabaseError(error);
+  }
+
+  async bulkCreate(data: BulkCreateDeckInput, ctx: RequestContext) {
+    const supabase = await createClient();
+    const universityId = await shouldSetUniversityId(ctx, Permission.DECK_CREATE) ? ctx.universityId : null;
+
+    const decks = data.decks.map((d) => ({
+      name: d.name,
+      description: d.description ?? null,
+      created_by: ctx.userId,
+      university_id: universityId,
+    }));
+
+    const { data: created, error } = await supabase
+      .from('flashcard_decks')
+      .insert(decks)
+      .select('*');
+
+    if (error) throw mapSupabaseError(error);
+    return created;
   }
 
   async batchDelete(data: BatchDeleteDeckInput, ctx: RequestContext) {

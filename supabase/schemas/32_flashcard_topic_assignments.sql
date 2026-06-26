@@ -11,3 +11,4 @@ CREATE TABLE public.flashcard_topic_assignments (
 );
 
 CREATE INDEX idx_flashcard_topic_assignments_topic ON public.flashcard_topic_assignments(topic_id);
+CREATE INDEX idx_fta_topic_flashcard ON public.flashcard_topic_assignments (topic_id, flashcard_id);

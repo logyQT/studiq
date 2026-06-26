@@ -137,6 +137,19 @@ export const BatchCopySchema = registry.register(
   }),
 );
 
+export const FlashcardSchema = registry.register(
+  'Flashcard',
+  z.object({
+    id: z.string().uuid(),
+    front: z.string(),
+    back: z.string(),
+    created_by: z.string().uuid(),
+    university_id: z.string().uuid().nullable().optional(),
+    created_at: z.string().optional(),
+  }),
+);
+
+export type Flashcard = z.infer<typeof FlashcardSchema>;
 export type LinkFlashcardInput = z.infer<typeof LinkFlashcardSchema>;
 export type CopyFlashcardInput = z.infer<typeof CopyFlashcardSchema>;
 export type BatchDeleteInput = z.infer<typeof BatchDeleteSchema>;

@@ -13,6 +13,11 @@ function preserveCookies(originalResponse: NextResponse, newResponse: NextRespon
 }
 
 export async function proxy(request: NextRequest) {
+  // API routes handle auth internally via withAuth() — skip middleware to avoid double getUser()
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+
   const { user, response: supabaseResponse } = await updateSession(request);
   const path = request.nextUrl.pathname;
 

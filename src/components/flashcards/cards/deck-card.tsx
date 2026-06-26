@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Card } from '@/components/ui/card';
@@ -31,7 +32,7 @@ interface DeckCardProps {
   onSelect: () => void;
 }
 
-export function DeckCard({
+export const DeckCard = memo(function DeckCard({
   deck,
   isSelecting,
   isSelected,
@@ -244,4 +245,11 @@ export function DeckCard({
       </div>
     </Card>
   );
-}
+}, (prev, next) => {
+  return prev.deck.id === next.deck.id
+    && prev.deck.flashcard_count === next.deck.flashcard_count
+    && prev.deck.name === next.deck.name
+    && prev.deck.description === next.deck.description
+    && prev.isSelecting === next.isSelecting
+    && prev.isSelected === next.isSelected;
+});

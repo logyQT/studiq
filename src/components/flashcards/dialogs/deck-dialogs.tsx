@@ -8,11 +8,9 @@ interface DeckDialogsProps {
   t: ReturnType<typeof useTranslations>;
   deckEditOpen: boolean;
   deckDeleteOpen: boolean;
-  deckFormData: { name: string; description: string };
   onDeckEditOpenChange: (open: boolean) => void;
   onDeckDeleteOpenChange: (open: boolean) => void;
-  onDeckFormDataChange: (data: { name: string; description: string }) => void;
-  onDeckUpdate: () => void;
+  onDeckUpdate: (data: { name: string; description: string }) => void;
   onDeckDelete: () => void;
 }
 
@@ -20,10 +18,8 @@ export function DeckDialogs({
   t,
   deckEditOpen,
   deckDeleteOpen,
-  deckFormData,
   onDeckEditOpenChange,
   onDeckDeleteOpenChange,
-  onDeckFormDataChange,
   onDeckUpdate,
   onDeckDelete,
 }: DeckDialogsProps) {
@@ -32,8 +28,6 @@ export function DeckDialogs({
       <DeckFormDialog
         open={deckEditOpen}
         onOpenChange={onDeckEditOpenChange}
-        formData={deckFormData}
-        onFormDataChange={onDeckFormDataChange}
         onSubmit={onDeckUpdate}
         title={t('deck_edit_title')}
         description={t('deck_edit_desc')}

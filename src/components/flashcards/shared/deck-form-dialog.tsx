@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -17,9 +18,8 @@ import { DIALOG_GRADIENT_HEX } from '@/lib/color-utils';
 interface DeckFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  formData: { name: string; description: string };
-  onFormDataChange: (data: { name: string; description: string }) => void;
-  onSubmit: () => void;
+  initialValues?: { name: string; description: string } | null;
+  onSubmit: (data: { name: string; description: string }) => void;
   title: string;
   description: string;
   nameLabel: string;
@@ -33,8 +33,7 @@ interface DeckFormDialogProps {
 export function DeckFormDialog({
   open,
   onOpenChange,
-  formData,
-  onFormDataChange,
+  initialValues,
   onSubmit,
   title,
   description,
@@ -46,6 +45,13 @@ export function DeckFormDialog({
   submitLabel,
 }: DeckFormDialogProps) {
   const gradient = DIALOG_GRADIENT_HEX;
+  const [formData, setFormData] = useState({ name: '', description: '' });
+
+  useEffect(() => {
+    if (open) {
+      setFormData(initialValues ?? { name: '', description: '' });
+    }
+  }, [open, initialValues]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -78,7 +84,7 @@ export function DeckFormDialog({
                 <label className="sr-only">{nameLabel}</label>
                 <Input
                   value={formData.name}
-                  onChange={(e) => onFormDataChange({ ...formData, name: e.target.value })}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                   placeholder={namePlaceholder}
                   className="text-lg font-bold tracking-tight h-auto py-0 px-0 border-0 border-b rounded-none focus-visible:ring-0 focus-visible:border-primary"
                 />
@@ -86,10 +92,10 @@ export function DeckFormDialog({
                 <Textarea
                   value={formData.description}
                   onChange={(e) =>
-                    onFormDataChange({
-                      ...formData,
+                    setFormData((prev) => ({
+                      ...prev,
                       description: e.target.value,
-                    })
+                    }))
                   }
                   placeholder={descriptionPlaceholder}
                   rows={2}
@@ -103,7 +109,7 @@ export function DeckFormDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {cancelLabel}
           </Button>
-          <Button onClick={onSubmit}>{submitLabel}</Button>
+          <Button onClick={() => onSubmit(formData)}>{submitLabel}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

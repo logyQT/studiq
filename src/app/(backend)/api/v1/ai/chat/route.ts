@@ -22,13 +22,16 @@ export async function POST(req: NextRequest) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
   }
 
-  const ctx: RequestContext = {
-    userId: user.id,
-    universityId: user.app_metadata?.university_id ?? null,
-    role: user.app_metadata?.role as UserRole,
-    url: req.url,
-    method: req.method,
-  };
+    const role = user.app_metadata?.role as UserRole;
+    const universityId = user.app_metadata?.university_id ?? null;
+    const ctx: RequestContext = {
+      traceId: crypto.randomUUID(),
+      userId: user.id,
+      universityId,
+      role,
+      url: req.url,
+      method: req.method,
+    };
 
   let body: unknown;
   try {

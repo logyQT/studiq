@@ -4,6 +4,7 @@ import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
 import type { RequestContext } from '@/lib/request-context';
 import type { ControllerResponse } from '@/lib/controller-response';
+import { log } from '@/lib/logger';
 
 type ActionHandler = (body: unknown, ctx: RequestContext) => Promise<ControllerResponse>;
 
@@ -24,6 +25,7 @@ export async function POST(
 ) {
   return withAuth(req, async (ctx) => {
     const { action } = await params;
+    log.trace.info(`batch/${action}`, { metadata: { traceId: ctx.traceId } });
     const handler = actionHandlers[action];
     if (!handler) {
       return toNextResponse({

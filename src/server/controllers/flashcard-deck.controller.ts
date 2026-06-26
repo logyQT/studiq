@@ -1,5 +1,5 @@
 import { flashcardDeckService } from '@/server/services';
-import { CreateDeckSchema, UpdateDeckSchema, BatchDeleteDeckSchema, DeckListQuerySchema } from '@/server/models';
+import { CreateDeckSchema, UpdateDeckSchema, BatchDeleteDeckSchema, BulkCreateDeckSchema, DeckListQuerySchema } from '@/server/models';
 import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
 import type { RequestContext } from '@/lib/request-context';
@@ -75,6 +75,25 @@ export class FlashcardDeckController {
       await flashcardDeckService.delete(id, ctx);
 
       return { success: true, statusCode: 200, data: { success: true } };
+    }, ctx);
+  }
+
+  async bulkCreate(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = BulkCreateDeckSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const decks = await flashcardDeckService.bulkCreate(parsed.data, ctx);
+
+      return { success: true, statusCode: 201, data: decks };
     }, ctx);
   }
 

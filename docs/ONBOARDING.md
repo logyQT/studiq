@@ -57,6 +57,9 @@ NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
+
+# Tracing / Debugging (optional)
+TRACE_ENABLED=true            # detailed request tracing in dev terminal
 ```
 
 ### 5. (Optional) Set up LLM / AI Provider
