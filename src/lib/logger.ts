@@ -15,7 +15,7 @@ function writeLog(
   },
 ) {
   const tag = `[${namespace.toUpperCase()}]`;
-  const dur = opts?.durationMs != null ? ` (${opts.durationMs}ms)` : '';
+  const dur = opts?.durationMs != null ? ` (${Math.trunc(opts.durationMs)}ms)` : '';
   const meta = opts?.metadata ? ` ${JSON.stringify(opts.metadata)}` : '';
   consola[level](tag, `${message}${dur}${meta}`);
 }

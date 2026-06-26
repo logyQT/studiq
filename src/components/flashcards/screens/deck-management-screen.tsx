@@ -332,7 +332,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
                 </div>
               </Card>
             ))}
-          {/* TODO: sentinel doesn't reliably trigger fetch — likely h-0 has no bounding box for IntersectionObserver. Try min-h-[1px] or use callback ref. */}
+          <div ref={loadMoreRef} className="min-h-[1px]" />
           {decks.length === 0 && !isFetchingNextPage && (
             <Empty className="col-span-full">
               <EmptyMedia>

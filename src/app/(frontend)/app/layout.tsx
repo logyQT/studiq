@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { BreadcrumbProvider } from '@/components/providers/BreadcrumbProvider';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
-const FULL_WIDTH_ROUTES = ['/app/ai'];
+const FULL_WIDTH_ROUTES = ['/app', '/app/ai'];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -12,7 +12,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <BreadcrumbProvider>
-      <DashboardLayout fullWidth={fullWidth}>{children}</DashboardLayout>
+      <DashboardLayout fullWidth={fullWidth} hideBreadcrumbs={pathname === '/app'}>
+        {children}
+      </DashboardLayout>
     </BreadcrumbProvider>
   );
 }

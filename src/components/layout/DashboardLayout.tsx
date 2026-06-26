@@ -101,9 +101,11 @@ function getActiveHref(pathname: string, navItems: NavItem[]): string | null {
 export function DashboardLayout({
   children,
   fullWidth = false,
+  hideBreadcrumbs = false,
 }: {
   children: React.ReactNode;
   fullWidth?: boolean;
+  hideBreadcrumbs?: boolean;
 }) {
   const pathname = usePathname();
   const t = useTranslations('DashboardLayout');
@@ -202,7 +204,7 @@ export function DashboardLayout({
 
         <div className="flex-1 flex flex-col min-w-0">
           <div className="md:pl-12 flex-1 flex flex-col min-w-0 min-h-0">
-            {crumbs.length > 0 && (
+            {crumbs.length > 0 && !hideBreadcrumbs && (
               <div className="shrink-0 px-3 py-3 border-b border-border/60 shadow-sm">
                 <Breadcrumbs items={crumbs} />
               </div>

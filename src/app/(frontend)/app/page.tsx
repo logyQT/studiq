@@ -1,207 +1,258 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo, useCallback, type ComponentType } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
-import { StatCard } from '@/components/ui/stat-card';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  BookOpen,
-  Brain,
-  ListPlus,
-  ArrowRight,
-  BookText,
-  Tags,
-  FolderOpen,
-  Layers,
-  Zap,
-  Sparkles,
-} from 'lucide-react';
+import { useTranslations, useLocale } from 'next-intl';
+import { Plus, BookOpen, Layers, Link as LinkIcon, RotateCcw } from 'lucide-react';
+import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 
-interface StudentStats {
-  totalQuizzes: number;
-  avgScore: number;
-  totalQuestionsCreated: number;
-  flashcardsPracticed: number;
-  flashcardAccuracy: number;
-}
+const chartData = [
+  { name: 'Mon', value: 12 },
+  { name: 'Tue', value: 28 },
+  { name: 'Wed', value: 18 },
+  { name: 'Thu', value: 36 },
+  { name: 'Fri', value: 22 },
+  { name: 'Sat', value: 43 },
+  { name: 'Sun', value: 31 },
+];
 
 export default function AppOverviewPage() {
   const t = useTranslations('AppOverviewPage');
-  const [stats, setStats] = useState<StudentStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const locale = useLocale();
+  const router = useRouter();
 
-  useEffect(() => {
-    fetch('/api/v1/stats/student')
-      .then((r) => r.json())
-      .then((res) => {
-        setStats(res.data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
+  const todayStr = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+      }).format(new Date()),
+    [locale],
+  );
+
+  const handleContinueReviewing = useCallback(
+    () => router.push('/app/flashcards/study'),
+    [router],
+  );
+
+  const handleCreateDeck = useCallback(
+    () => router.push('/app/flashcards/decks'),
+    [router],
+  );
 
   return (
-    <div className="space-y-8">
-      {/* Stat Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title={t('quizzes_taken')}
-          value={loading ? '...' : (stats?.totalQuizzes ?? 0)}
-          icon={BookOpen}
-          variant="blue"
-        />
-        <StatCard
-          title={t('questions_created')}
-          value={loading ? '...' : (stats?.totalQuestionsCreated ?? 0)}
-          icon={ListPlus}
-          variant="amber"
-        />
-        <StatCard
-          title={t('flashcards_practiced')}
-          value={loading ? '...' : (stats?.flashcardsPracticed ?? 0)}
-          icon={Layers}
-          variant="violet"
-        />
-        <StatCard
-          title={t('flashcard_accuracy')}
-          value={loading ? '...' : `${stats?.flashcardAccuracy ?? 0}%`}
-          icon={Brain}
-          variant="rose"
-        />
+    <>
+      {/* Hero */}
+      <div className="bg-muted/30 pt-12 pb-10 border-b border-border">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            {todayStr}
+          </p>
+          <h1 className="text-5xl font-semibold mb-4 tracking-tight text-foreground">
+            {t('hello_greeting', { name: 'Alex' })}
+          </h1>
+          <p className="text-lg text-muted-foreground mb-8">
+            {t.rich('due_today', {
+              count: 14,
+              strong: (chunks) => <span className="font-semibold text-foreground">{chunks}</span>,
+            })}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              onClick={handleContinueReviewing}
+              className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-5 py-2.5 rounded-xl font-medium transition-colors text-sm shadow-sm"
+            >
+              <RotateCcw className="w-4 h-4" />
+              {t('continue_reviewing')}
+            </button>
+            <button
+              onClick={handleCreateDeck}
+              className="flex items-center gap-2 bg-background hover:bg-muted/50 border border-border text-foreground px-5 py-2.5 rounded-xl font-medium transition-colors text-sm shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              {t('create_deck')}
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Quiz Actions */}
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <div className="rounded-lg bg-blue-500/10 p-1.5">
-                <BookOpen className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              </div>
-              {t('quiz_actions')}
-            </CardTitle>
-            <CardDescription>{t('quiz_actions_desc')}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 pb-6">
-            <Link href="/app/quiz" className="group block">
-              <div className="flex items-center gap-4 p-4 rounded-xl bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/10 hover:border-blue-500/25 transition-all duration-200 cursor-pointer">
-                <div className="rounded-xl bg-blue-500/15 p-3 shrink-0 group-hover:scale-110 transition-transform duration-200">
-                  <BookOpen className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-foreground">{t('take_quiz')}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{t('quiz_actions_desc')}</p>
-                </div>
-                <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-blue-500 group-hover:translate-x-1 transition-all duration-200 shrink-0" />
-              </div>
-            </Link>
+      {/* Content */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8 py-12 grid grid-cols-1 lg:grid-cols-12 gap-16">
+        {/* Left Column */}
+        <div className="lg:col-span-7 space-y-12">
+          {/* Stats Row */}
+          <div className="flex items-center justify-between gap-x-8">
+            <StatItem value="12" label={t('total_decks')} />
+            <div className="w-px h-10 bg-border hidden sm:block" />
+            <StatItem value="284" label={t('flashcards')} />
+            <div className="w-px h-10 bg-border hidden sm:block" />
+            <StatItem
+              value={
+                <>
+                  7 <span className="text-xl">🔥</span>
+                </>
+              }
+              label={t('day_streak')}
+            />
+            <div className="w-px h-10 bg-border hidden sm:block" />
+            <StatItem value="65%" label={t('accuracy')} />
+          </div>
 
-            <Link href="/app/my-questions" className="group block">
-              <div className="flex items-center gap-4 p-4 rounded-xl bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/10 hover:border-amber-500/25 transition-all duration-200 cursor-pointer">
-                <div className="rounded-xl bg-amber-500/15 p-3 shrink-0 group-hover:scale-110 transition-transform duration-200">
-                  <ListPlus className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-foreground">{t('create_question')}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{t('quiz_actions_desc')}</p>
-                </div>
-                <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-amber-500 group-hover:translate-x-1 transition-all duration-200 shrink-0" />
-              </div>
-            </Link>
+          {/* Quick Actions */}
+          <section>
+            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-4">
+              {t('quick_actions')}
+            </h3>
+            <div className="border border-border rounded-2xl bg-muted/30 overflow-hidden">
+              <QuickActionLink
+                href="/app/flashcards/decks"
+                icon={Plus}
+                title={t('create_deck')}
+                description={t('create_deck_desc')}
+              />
+              <QuickActionLink
+                href="/app/flashcards/decks"
+                icon={BookOpen}
+                title={t('create_flashcard')}
+                description={t('create_flashcard_desc')}
+              />
+              <QuickActionLink
+                href="/app/flashcards/topics"
+                icon={Layers}
+                title={t('create_topic')}
+                description={t('create_topic_desc')}
+              />
+              <QuickActionLink
+                href="/app/flashcards/topics"
+                icon={LinkIcon}
+                title={t('link_topics')}
+                description={t('link_topics_desc')}
+              />
+              <QuickActionLink
+                href="/app/flashcards/study"
+                icon={RotateCcw}
+                title={t('continue_reviewing')}
+                description={t('continue_reviewing_desc')}
+                noBorder
+              />
+            </div>
+          </section>
+        </div>
 
-            <Link href="/app/quiz" className="group block">
-              <div className="flex items-center gap-4 p-4 rounded-xl hover:bg-muted/60 border border-transparent hover:border-border/60 transition-all duration-200 cursor-pointer">
-                <div className="rounded-xl bg-muted p-3 shrink-0 group-hover:scale-110 transition-transform duration-200">
-                  <BookText className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-foreground">{t('view_subjects')}</p>
-                </div>
-                <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-all duration-200 shrink-0" />
-              </div>
-            </Link>
-          </CardContent>
-        </Card>
+        {/* Right Column */}
+        <div className="lg:col-span-5 space-y-12">
+          {/* Chart */}
+          <section>
+            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-6">
+              {t('reviews_this_week')}
+            </h3>
+            <div className="h-48 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="reviewsGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                  dy={10}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                  domain={[0, 40]}
+                  ticks={[0, 10, 20, 30, 40]}
+                />
+                <Tooltip />
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke="var(--primary)"
+                  strokeWidth={2}
+                  fillOpacity={1}
+                  fill="url(#reviewsGrad)"
+                />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
 
-        {/* Flashcard Actions */}
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <div className="rounded-lg bg-violet-500/10 p-1.5">
-                <Brain className="h-4 w-4 text-violet-600 dark:text-violet-400" />
-              </div>
-              {t('flashcard_actions')}
-            </CardTitle>
-            <CardDescription>{t('flashcard_actions_desc')}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 pb-6">
-            {/* Hero: Quick Review */}
-            <Link href="/app/flashcards/session?mode=quick&limit=5" className="group block">
-              <div className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-violet-500/10 to-primary/10 hover:from-violet-500/15 hover:to-primary/15 border border-violet-500/15 hover:border-violet-500/30 transition-all duration-200 cursor-pointer">
-                <div className="rounded-xl bg-gradient-to-br from-violet-500 to-primary p-3 shrink-0 shadow-sm group-hover:shadow-md group-hover:scale-110 transition-all duration-200">
-                  <Zap className="h-5 w-5 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm text-foreground">{t('quick_practice')}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {t('flashcard_actions_desc')}
-                  </p>
-                </div>
-                <ArrowRight className="h-4 w-4 text-primary group-hover:translate-x-1 transition-all duration-200 shrink-0" />
-              </div>
-            </Link>
-
-            <Link href="/app/flashcards" className="group block">
-              <div className="flex items-center gap-4 p-4 rounded-xl hover:bg-muted/60 border border-transparent hover:border-border/60 transition-all duration-200 cursor-pointer">
-                <div className="rounded-xl bg-muted p-3 shrink-0 group-hover:scale-110 transition-transform duration-200">
-                  <Tags className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-foreground">{t('manage_topics')}</p>
-                </div>
-                <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-all duration-200 shrink-0" />
-              </div>
-            </Link>
-
-            <Link href="/app/flashcards/decks" className="group block">
-              <div className="flex items-center gap-4 p-4 rounded-xl hover:bg-muted/60 border border-transparent hover:border-border/60 transition-all duration-200 cursor-pointer">
-                <div className="rounded-xl bg-muted p-3 shrink-0 group-hover:scale-110 transition-transform duration-200">
-                  <FolderOpen className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-foreground">{t('manage_decks')}</p>
-                </div>
-                <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-all duration-200 shrink-0" />
-              </div>
-            </Link>
-
-            <Link href="/app/flashcards" className="group block">
-              <div className="flex items-center gap-4 p-4 rounded-xl hover:bg-muted/60 border border-transparent hover:border-border/60 transition-all duration-200 cursor-pointer">
-                <div className="rounded-xl bg-muted p-3 shrink-0 group-hover:scale-110 transition-transform duration-200">
-                  <Layers className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-foreground">{t('manage_flashcards')}</p>
-                </div>
-                <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-all duration-200 shrink-0" />
-              </div>
-            </Link>
-
-            <Link href="/app/flashcards/ai" className="group block">
-              <div className="flex items-center gap-4 p-4 rounded-xl bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/10 hover:border-emerald-500/25 transition-all duration-200 cursor-pointer">
-                <div className="rounded-xl bg-emerald-500/15 p-3 shrink-0 group-hover:scale-110 transition-transform duration-200">
-                  <Sparkles className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-foreground">{t('new_flashcard')}</p>
-                </div>
-                <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-emerald-500 group-hover:translate-x-1 transition-all duration-200 shrink-0" />
-              </div>
-            </Link>
-          </CardContent>
-        </Card>
+          {/* Navigate */}
+          <section>
+            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-5">
+              {t('navigate')}
+            </h3>
+            <div className="space-y-4">
+              <NavLink href="/app/flashcards/decks" label={t('all_decks')} />
+              <NavLink href="/app/flashcards/topics" label={t('topics_label')} />
+              <NavLink href="/app/statistics" label={t('study_history')} />
+              <NavLink href="/app/settings" label={t('settings')} />
+            </div>
+          </section>
+        </div>
       </div>
+    </>
+  );
+}
+
+/* ── Sub-components ── */
+
+function StatItem({ value, label }: { value: React.ReactNode; label: string }) {
+  return (
+    <div className="shrink-0">
+      <div className="text-[32px] font-semibold leading-tight mb-1 text-foreground whitespace-nowrap">{value}</div>
+      <div className="text-[13px] text-muted-foreground whitespace-nowrap">{label}</div>
     </div>
+  );
+}
+
+function QuickActionLink({
+  href,
+  icon: Icon,
+  title,
+  description,
+  noBorder = false,
+}: {
+  href: string;
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
+  title: string;
+  description: string;
+  noBorder?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`flex items-center gap-4 p-4 hover:bg-accent transition-colors group ${
+        noBorder ? '' : 'border-b border-border'
+      }`}
+    >
+      <div className="bg-primary/10 text-primary p-2.5 rounded-full group-hover:scale-105 transition-transform">
+        <Icon className="w-4 h-4" strokeWidth={2.5} />
+      </div>
+      <div>
+        <div className="font-semibold text-sm text-foreground">{title}</div>
+        <div className="text-xs text-muted-foreground mt-0.5">{description}</div>
+      </div>
+    </Link>
+  );
+}
+
+function NavLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      className="block text-sm text-foreground/80 hover:text-foreground font-medium transition-colors"
+    >
+      {label}
+    </Link>
   );
 }
