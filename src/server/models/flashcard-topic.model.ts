@@ -31,6 +31,19 @@ export const BatchDeleteTopicSchema = registry.register(
   }),
 );
 
+export const TopicListQuerySchema = registry.register(
+  'TopicListQuery',
+  z.object({
+    q: z.string().optional(),
+    owner: z.enum(['all', 'mine', 'shared']).optional().default('all'),
+    sortBy: z.enum(['created_at', 'name']).optional().default('created_at'),
+    sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
+    cursor: z.string().optional(),
+    limit: z.coerce.number().int().min(1).max(500).optional().default(50),
+  }),
+);
+
 export type CreateTopicInput = z.infer<typeof CreateTopicSchema>;
 export type UpdateTopicInput = z.infer<typeof UpdateTopicSchema>;
 export type BatchDeleteTopicInput = z.infer<typeof BatchDeleteTopicSchema>;
+export type TopicListQuery = z.infer<typeof TopicListQuerySchema>;

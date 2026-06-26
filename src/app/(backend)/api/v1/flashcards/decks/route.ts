@@ -65,6 +65,8 @@ export async function GET(req: NextRequest) {
       owner: searchParams.get('owner') ?? undefined,
       sortBy: searchParams.get('sortBy') ?? undefined,
       sortOrder: searchParams.get('sortOrder') ?? undefined,
+      cursor: searchParams.get('cursor') ?? undefined,
+      limit: searchParams.get('limit') ? Number(searchParams.get('limit')) : undefined,
     };
     return toNextResponse(await flashcardDeckController.list(query, ctx));
   });

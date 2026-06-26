@@ -156,9 +156,9 @@ export default function StatsClient() {
     url: '/api/v1/flashcards/practice/states',
   });
 
-  const { data: _decks } = useApiQuery<Deck[]>({
+  const { data: _decks } = useApiQuery<{ items: Deck[]; nextCursor: string | null; hasMore: boolean }>({
     queryKey: flashcardKeys.decks.all,
-    url: '/api/v1/flashcards/decks',
+    url: '/api/v1/flashcards/decks?limit=200',
   });
 
   const items = useMemo(() => cardsData?.items ?? [], [cardsData]);

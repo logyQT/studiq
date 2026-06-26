@@ -12,7 +12,6 @@ import {
   Pencil,
   Trash2,
   Play,
-  CheckCheck,
   Sparkles,
   Layers,
   MoreVertical,
@@ -145,21 +144,30 @@ export function DeckDetailScreen({
     staleTime: Infinity,
     refetchOnMount: false,
   });
-  const { data: topicsData } = useApiQuery<Topic[]>({
-    queryKey: flashcardKeys.topics.all,
-    url: '/api/v1/flashcards/topics',
+  const { data: topicsData } = useApiQuery<{
+    items: Topic[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  }>({
+    queryKey: flashcardKeys.topics.paginated({}),
+    url: '/api/v1/flashcards/topics?limit=200',
   });
-  const { data: allDecksData, isLoading: decksLoading } = useApiQuery<Deck[]>({
+  const { data: currentDeck, isLoading: decksLoading } = useApiQuery<Deck>({
+    queryKey: flashcardKeys.decks.detail(deckId),
+    url: `/api/v1/flashcards/decks/${deckId}`,
+    enabled: !!deckId,
+  });
+
+  const { data: allDecksData } = useApiQuery<{ items: Deck[]; nextCursor: string | null; hasMore: boolean }>({
     queryKey: flashcardKeys.decks.all,
-    url: '/api/v1/flashcards/decks',
+    url: '/api/v1/flashcards/decks?limit=200',
   });
 
   const flashcards = flashcardsData?.pages.flatMap((page) => page.items) ?? [];
-  const currentDeck = allDecksData?.find((d) => d.id === deckId) ?? null;
   const deckLoading = decksLoading;
   const deckError = !decksLoading && !currentDeck;
-  const topics = topicsData ?? [];
-  const allDecks = (allDecksData ?? []).filter((d) => d.id !== deckId);
+  const topics = topicsData?.items ?? [];
+  const allDecks = (allDecksData?.items ?? []).filter((d) => d.id !== deckId);
   const flashcardQueryKey = flashcardKeys.list({ deckIds: [deckId] });
 
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -189,32 +197,32 @@ export function DeckDetailScreen({
   const updateDeck = useApiMutation({
     mutationFn: ({ id, ...data }: { id: string; name: string; description?: string }) =>
       apiPut<Deck>(`/api/v1/flashcards/decks/${id}`, data),
-    invalidateKeys: [flashcardKeys.decks.all],
-    onMutate: async ({ id, ...data }) => {
+    invalidateKeys: [flashcardKeys.decks.all, flashcardKeys.decks.detail(deckId)],
+    onMutate: async ({ id: _id, ...data }) => {
+      const detailKey = flashcardKeys.decks.detail(deckId);
       await queryClient.cancelQueries({ queryKey: flashcardKeys.decks.all });
-      const prev = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all);
-      queryClient.setQueryData<Deck[]>(flashcardKeys.decks.all, (old) =>
-        old?.map((d) => (d.id === id ? { ...d, ...data } : d)),
-      );
+      await queryClient.cancelQueries({ queryKey: detailKey });
+      const prev = queryClient.getQueryData<Deck>(detailKey);
+      queryClient.setQueryData<Deck>(detailKey, (old) => (old ? { ...old, ...data } : old));
       return { previous: prev };
     },
     onError: (_err, _vars, ctx) => {
-      queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous);
+      queryClient.setQueryData(flashcardKeys.decks.detail(deckId), ctx?.previous);
     },
   });
   const deleteDeck = useApiMutation({
     mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/decks/${id}`),
-    invalidateKeys: [flashcardKeys.decks.all],
+    invalidateKeys: [flashcardKeys.decks.all, flashcardKeys.decks.detail(deckId)],
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: flashcardKeys.decks.all });
-      const prev = queryClient.getQueryData<Deck[]>(flashcardKeys.decks.all);
-      queryClient.setQueryData<Deck[]>(flashcardKeys.decks.all, (old) =>
-        old?.filter((d) => d.id !== id),
-      );
+      await queryClient.cancelQueries({ queryKey: flashcardKeys.decks.detail(id) });
+      const prev = queryClient.getQueryData<Deck>(flashcardKeys.decks.detail(id));
       return { previous: prev };
     },
     onError: (_err, _id, ctx) => {
-      queryClient.setQueryData(flashcardKeys.decks.all, ctx?.previous);
+      if (ctx?.previous) {
+        queryClient.setQueryData(flashcardKeys.decks.detail(_id), ctx.previous);
+      }
     },
   });
 
@@ -868,7 +876,7 @@ export function DeckDetailScreen({
           state={d}
           handlers={h}
           flashcards={flashcards}
-          currentDeck={currentDeck}
+          currentDeck={currentDeck ?? null}
           allDecks={allDecks}
           topics={topics}
           t={t}

@@ -10,8 +10,10 @@ import { PANEL_GRADIENTS } from '@/lib/color-utils';
 
 export default function EduFlashcardsClient() {
   const t = useTranslations('EduFlashcardsPage');
-  const { data: decks } = useApiQuery<Deck[]>({ queryKey: flashcardKeys.decks.all, url: '/api/v1/flashcards/decks' });
-  const { data: topics } = useApiQuery<Topic[]>({ queryKey: flashcardKeys.topics.all, url: '/api/v1/flashcards/topics' });
+  const { data: decksData } = useApiQuery<{ items: Deck[]; nextCursor: string | null; hasMore: boolean }>({ queryKey: flashcardKeys.decks.all, url: '/api/v1/flashcards/decks?limit=200' });
+  const { data: topicsData } = useApiQuery<{ items: Topic[]; nextCursor: string | null; hasMore: boolean }>({ queryKey: flashcardKeys.topics.all, url: '/api/v1/flashcards/topics?limit=200' });
+  const decks = decksData?.items;
+  const topics = topicsData?.items;
 
   const deckCount = decks?.length ?? 0;
   const topicCount = topics?.length ?? 0;

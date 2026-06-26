@@ -44,6 +44,8 @@ export const DeckListQuerySchema = registry.register(
     owner: z.enum(['all', 'mine', 'org', 'shared']).optional().default('all'),
     sortBy: z.enum(['created_at', 'updated_at', 'name']).optional().default('created_at'),
     sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
+    cursor: z.string().optional(),
+    limit: z.coerce.number().int().min(1).max(500).optional().default(24),
   }),
 );
 

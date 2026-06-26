@@ -43,14 +43,16 @@ export default function StudyClient() {
   const t = useTranslations('AppFlashcardStudyPage');
   const router = useRouter();
 
-  const { data: topics, isLoading: topicsLoading } = useApiQuery<Topic[]>({
+  const { data: topicsData, isLoading: topicsLoading } = useApiQuery<{ items: Topic[]; nextCursor: string | null; hasMore: boolean }>({
     queryKey: flashcardKeys.topics.all,
-    url: '/api/v1/flashcards/topics',
+    url: '/api/v1/flashcards/topics?limit=200',
   });
-  const { data: decks, isLoading: decksLoading } = useApiQuery<Deck[]>({
+  const { data: decksData, isLoading: decksLoading } = useApiQuery<{ items: Deck[]; nextCursor: string | null; hasMore: boolean }>({
     queryKey: flashcardKeys.decks.all,
-    url: '/api/v1/flashcards/decks',
+    url: '/api/v1/flashcards/decks?limit=200',
   });
+  const topics = topicsData?.items;
+  const decks = decksData?.items;
   const { data: dueBreakdown, isLoading: breakdownLoading } = useApiQuery<DueBreakdown>({
     queryKey: flashcardKeys.practice.dueBreakdown,
     url: '/api/v1/flashcards/practice/due/breakdown',

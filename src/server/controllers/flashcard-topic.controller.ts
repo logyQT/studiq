@@ -1,5 +1,5 @@
 import { flashcardTopicService } from '@/server/services';
-import { CreateTopicSchema, UpdateTopicSchema, BatchDeleteTopicSchema } from '@/server/models';
+import { CreateTopicSchema, UpdateTopicSchema, BatchDeleteTopicSchema, TopicListQuerySchema } from '@/server/models';
 import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
 import type { RequestContext } from '@/lib/request-context';
@@ -24,11 +24,21 @@ export class FlashcardTopicController {
     }, ctx);
   }
 
-  async list(ctx: RequestContext): Promise<ControllerResponse> {
+  async list(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const topics = await flashcardTopicService.list(ctx);
+      const parsed = TopicListQuerySchema.safeParse(body ?? {});
 
-      return { success: true, statusCode: 200, data: topics };
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const result = await flashcardTopicService.list(ctx, parsed.data);
+      return { success: true, statusCode: 200, data: result };
     }, ctx);
   }
 

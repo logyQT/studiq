@@ -4,6 +4,7 @@ import type { CreateDeckInput, UpdateDeckInput, BatchDeleteDeckInput, DeckListQu
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
 import { checkPermission, shouldSetUniversityId, buildQueryFilter, Permission } from '@/lib/rbac';
+import type { Deck } from '@/types/flashcards';
 
 export class FlashcardDeckService {
   async create(data: CreateDeckInput, ctx: RequestContext) {
@@ -39,7 +40,7 @@ export class FlashcardDeckService {
     const supabase = await createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.DECK_READ, 'deck');
-    if (filter._impossible) return [];
+    if (filter._impossible) return { items: [], nextCursor: null, hasMore: false };
 
     let query = supabase
       .from('flashcard_decks')
@@ -61,10 +62,10 @@ export class FlashcardDeckService {
         if (hasOrgScope && ctx.universityId) {
           query = query.neq('created_by', ctx.userId).eq('university_id', ctx.universityId);
         } else {
-          return [];
+          return { items: [], nextCursor: null, hasMore: false };
         }
       } else if (queryParams.owner === 'shared') {
-        return [];
+        return { items: [], nextCursor: null, hasMore: false };
       }
     }
 
@@ -73,18 +74,42 @@ export class FlashcardDeckService {
       query = query.or(`name.ilike.%${queryParams.q}%,description.ilike.%${queryParams.q}%`);
     }
 
-    // Apply sorting
+    // Apply sorting with tie-breaker
     const sortBy = queryParams?.sortBy ?? 'created_at';
     const sortOrder = queryParams?.sortOrder ?? 'desc';
-    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+    const sortAsc = sortOrder === 'asc';
+    query = query.order(sortBy, { ascending: sortAsc }).order('id');
+
+    // Cursor-based pagination
+    const pageSize = Math.min(queryParams?.limit ?? 24, 100);
+    query = query.limit(pageSize + 1);
+
+    if (queryParams?.cursor) {
+      const decoded = JSON.parse(Buffer.from(queryParams.cursor, 'base64').toString('utf-8'));
+      const cursorVal = decoded.v;
+      const cursorId = decoded.id;
+      const op = sortAsc ? 'gt' : 'lt';
+      query = query.or(`${sortBy}.${op}.${cursorVal},and(${sortBy}.eq.${cursorVal},id.gt.${cursorId})`);
+    }
 
     const { data, error } = await query;
     if (error) throw mapSupabaseError(error);
 
-    return (data ?? []).map((deck) => ({
-      ...deck,
-      flashcard_count: deck.flashcard_deck_assignments?.length ?? 0,
-    }));
+    const rows = data as unknown as Array<{ id: string; [key: string]: unknown }>;
+    const hasMore = (rows?.length ?? 0) > pageSize;
+    const items = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
+    const nextCursor = hasMore
+      ? Buffer.from(JSON.stringify({ v: items[items.length - 1][sortBy], id: items[items.length - 1].id })).toString('base64')
+      : null;
+
+    return {
+      items: items.map((deck: Record<string, unknown>) => ({
+        ...deck,
+        flashcard_count: (deck.flashcard_deck_assignments as Array<unknown>)?.length ?? 0,
+      })),
+      nextCursor,
+      hasMore,
+    } as { items: Deck[]; nextCursor: string | null; hasMore: boolean };
   }
 
   async getById(id: string, ctx: RequestContext) {

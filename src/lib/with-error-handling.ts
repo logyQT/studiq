@@ -19,6 +19,10 @@ export async function withErrorHandling(
       return { success: false, statusCode: error.statusCode, error: error.code };
     }
 
+    if (error instanceof SyntaxError) {
+      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
+    }
+
     const errorId = await errorLogService.logError(error, 'INTERNAL_SERVER', ctx);
     console.error(`[Unhandled API Error] errorId=${errorId}:`, error);
 

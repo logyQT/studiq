@@ -25,14 +25,16 @@ interface DueBreakdown {
 
 export default function FlashcardsClient() {
   const t = useTranslations('AppFlashcardsPage');
-  const { data: decks } = useApiQuery<Deck[]>({
+  const { data: decksData } = useApiQuery<{ items: Deck[]; nextCursor: string | null; hasMore: boolean }>({
     queryKey: flashcardKeys.decks.all,
-    url: '/api/v1/flashcards/decks',
+    url: '/api/v1/flashcards/decks?limit=200',
   });
-  const { data: topics } = useApiQuery<Topic[]>({
+  const { data: topicsData } = useApiQuery<{ items: Topic[]; nextCursor: string | null; hasMore: boolean }>({
     queryKey: flashcardKeys.topics.all,
-    url: '/api/v1/flashcards/topics',
+    url: '/api/v1/flashcards/topics?limit=200',
   });
+  const decks = decksData?.items;
+  const topics = topicsData?.items;
   const { data: dueBreakdown } = useApiQuery<DueBreakdown>({
     queryKey: flashcardKeys.practice.dueBreakdown,
     url: '/api/v1/flashcards/practice/due/breakdown',

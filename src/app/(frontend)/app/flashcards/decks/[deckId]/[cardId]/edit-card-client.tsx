@@ -32,9 +32,11 @@ export default function EditCardClient({ deckId, cardId }: EditCardClientProps) 
   const [topicIds, setTopicIds] = useState<string[]>([]);
   const [initialized, setInitialized] = useState(false);
 
-  const deck = queryClient
-    .getQueryData<Deck[]>(flashcardKeys.decks.all)
-    ?.find((d) => d.id === deckId);
+  const { data: deck } = useApiQuery<Deck>({
+    queryKey: flashcardKeys.decks.detail(deckId),
+    url: `/api/v1/flashcards/decks/${deckId}`,
+    enabled: !!deckId,
+  });
 
   const {
     data: flashcard,
@@ -62,10 +64,11 @@ export default function EditCardClient({ deckId, cardId }: EditCardClientProps) 
     return () => setDynamicSegments([]);
   }, [deck, deckId, truncatedLabel, t, setDynamicSegments]);
 
-  const { data: topics = [] } = useApiQuery<Topic[]>({
+  const { data: topicsData } = useApiQuery<{ items: Topic[]; nextCursor: string | null; hasMore: boolean }>({
     queryKey: flashcardKeys.topics.all,
-    url: '/api/v1/flashcards/topics',
+    url: '/api/v1/flashcards/topics?limit=200',
   });
+  const topics = topicsData?.items ?? [];
 
   const updateFlashcard = useMutation({
     mutationFn: (data: { id: string; front: string; back: string; topicIds: string[] }) =>
@@ -77,6 +80,7 @@ export default function EditCardClient({ deckId, cardId }: EditCardClientProps) 
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: flashcardKeys.list({ deckIds: [deckId] }) });
       queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
+      queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.detail(deckId) });
       toast.success(t('flashcard_updated'));
       router.push(`/app/flashcards/decks/${deckId}`);
     },

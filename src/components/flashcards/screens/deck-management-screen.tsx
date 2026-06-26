@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
@@ -15,8 +16,8 @@ import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { apiPost, apiPut, apiDelete } from '@/lib/api';
+import { useApiMutation } from '@/hooks/use-api';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { Deck } from '@/types/flashcards';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -74,10 +75,44 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined)),
   ).toString();
 
-  const { data: decks, isLoading } = useApiQuery<Deck[]>({
-    queryKey: flashcardKeys.decks.list(filters),
-    url: `/api/v1/flashcards/decks${queryString ? `?${queryString}` : ''}`,
+  const {
+    data: decksData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+  } = useInfiniteQuery({
+    queryKey: flashcardKeys.decks.paginated(filters),
+    queryFn: ({ pageParam }) =>
+      apiGet<{ items: Deck[]; nextCursor: string | null; hasMore: boolean }>(
+        `/api/v1/flashcards/decks?limit=24${queryString ? `&${queryString}` : ''}${pageParam ? `&cursor=${pageParam}` : ''}`,
+      ),
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: '',
+    staleTime: Infinity,
+    refetchOnMount: false,
   });
+
+  const decks = decksData?.pages.flatMap((page) => page.items) ?? [];
+
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const handleObserver = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      const [entry] = entries;
+      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    },
+    [hasNextPage, isFetchingNextPage, fetchNextPage],
+  );
+
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(handleObserver, { rootMargin: '200px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [handleObserver]);
 
   function persistFilters(o: string, sb: string, so: string) {
     try {
@@ -238,7 +273,6 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <Card key={i} className="flex flex-col h-full max-sm:py-0 min-w-0">
-              {/* Mobile Skeleton */}
               <div className="flex items-center gap-3 p-4 sm:hidden">
                 <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
                 <div className="flex-1 space-y-2">
@@ -247,7 +281,6 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
                 </div>
                 <Skeleton className="h-7 w-7 rounded-md shrink-0" />
               </div>
-              {/* Desktop Skeleton */}
               <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
                 <div className="flex items-center gap-3">
                   <Skeleton className="h-10 w-10 rounded-xl" />
@@ -267,7 +300,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {decks?.map((deck) => (
+          {decks.map((deck) => (
             <DeckCard
               key={deck.id}
               deck={deck}
@@ -286,7 +319,13 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
               onSelect={() => selection.setIsSelecting(true)}
             />
           ))}
-          {(!decks || decks.length === 0) && (
+          <div ref={loadMoreRef} className="col-span-full h-4" />
+          {isFetchingNextPage && (
+            <div className="col-span-full flex justify-center py-4">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          )}
+          {decks.length === 0 && (
             <Empty className="col-span-full">
               <EmptyMedia>
                 <FolderOpen className="h-10 w-10 text-muted-foreground" />

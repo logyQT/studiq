@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Eye, MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import { CheckSquare, Eye, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import { getGradientHex, getTopicColor } from '@/lib/color-utils';
 import type { Topic } from '@/types/flashcards';
 
@@ -114,6 +114,14 @@ export function TopicCard({
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
+                  // onSelect();
+                }}
+              >
+                <CheckSquare className="mr-2 h-4 w-4" /> {t('select_cards')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
                   onEdit();
                 }}
               >
@@ -186,6 +194,14 @@ export function TopicCard({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // onSelect();
+                    }}
+                  >
+                    <CheckSquare className="mr-2 h-4 w-4" /> {t('select_cards')}
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={(e) => {
                       e.stopPropagation();

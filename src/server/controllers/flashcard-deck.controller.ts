@@ -37,9 +37,9 @@ export class FlashcardDeckController {
         };
       }
 
-      const decks = await flashcardDeckService.list(ctx, parsed.data);
+      const result = await flashcardDeckService.list(ctx, parsed.data);
 
-      return { success: true, statusCode: 200, data: decks };
+      return { success: true, statusCode: 200, data: result };
     }, ctx);
   }
 

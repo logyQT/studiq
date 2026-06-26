@@ -1,9 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import type { CreateTopicInput, UpdateTopicInput, BatchDeleteTopicInput } from '@/server/models';
+import type { CreateTopicInput, UpdateTopicInput, BatchDeleteTopicInput, TopicListQuery } from '@/server/models';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
 import { checkPermission, shouldSetUniversityId, buildQueryFilter, Permission } from '@/lib/rbac';
+import type { Topic } from '@/types/flashcards';
 
 export class FlashcardTopicService {
   async create(data: CreateTopicInput, ctx: RequestContext) {
@@ -25,29 +26,72 @@ export class FlashcardTopicService {
     return topic;
   }
 
-  async list(ctx: RequestContext) {
+  async list(ctx: RequestContext, queryParams?: Partial<TopicListQuery>) {
     const supabase = await createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.TOPIC_READ, 'topic');
+    if (filter._impossible) return { items: [], nextCursor: null, hasMore: false };
+
     let query = supabase
       .from('flashcard_topics')
-      .select('*, flashcard_topic_assignments(flashcard_id)')
-      .order('created_at', { ascending: false });
+      .select('*, flashcard_topic_assignments(flashcard_id)');
 
-    if (filter._impossible) return [];
     if (filter.or) {
       query = query.or(filter.or);
     } else if (filter.created_by) {
       query = query.eq('created_by', filter.created_by);
     }
 
+    // Apply owner filter on top of RBAC
+    if (queryParams?.owner && queryParams.owner !== 'all') {
+      if (queryParams.owner === 'mine') {
+        query = query.eq('created_by', ctx.userId);
+      } else if (queryParams.owner === 'shared') {
+        query = query.neq('created_by', ctx.userId);
+      }
+    }
+
+    // Apply search
+    if (queryParams?.q) {
+      query = query.or(`name.ilike.%${queryParams.q}%`);
+    }
+
+    // Apply sorting with tie-breaker
+    const sortBy = queryParams?.sortBy ?? 'created_at';
+    const sortOrder = queryParams?.sortOrder ?? 'desc';
+    const sortAsc = sortOrder === 'asc';
+    query = query.order(sortBy, { ascending: sortAsc }).order('id');
+
+    // Cursor-based pagination
+    const pageSize = Math.min(queryParams?.limit ?? 50, 100);
+    query = query.limit(pageSize + 1);
+
+    if (queryParams?.cursor) {
+      const decoded = JSON.parse(Buffer.from(queryParams.cursor, 'base64').toString('utf-8'));
+      const cursorVal = decoded.v;
+      const cursorId = decoded.id;
+      const op = sortAsc ? 'gt' : 'lt';
+      query = query.or(`${sortBy}.${op}.${cursorVal},and(${sortBy}.eq.${cursorVal},id.gt.${cursorId})`);
+    }
+
     const { data, error } = await query;
     if (error) throw mapSupabaseError(error);
 
-    return (data ?? []).map((topic) => ({
-      ...topic,
-      flashcard_count: topic.flashcard_topic_assignments?.length ?? 0,
-    }));
+    const rows = data as unknown as Array<{ id: string; [key: string]: unknown }>;
+    const hasMore = (rows?.length ?? 0) > pageSize;
+    const items = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
+    const nextCursor = hasMore
+      ? Buffer.from(JSON.stringify({ v: items[items.length - 1][sortBy], id: items[items.length - 1].id })).toString('base64')
+      : null;
+
+    return {
+      items: items.map((topic: Record<string, unknown>) => ({
+        ...topic,
+        flashcard_count: (topic.flashcard_topic_assignments as Array<unknown>)?.length ?? 0,
+      })),
+      nextCursor,
+      hasMore,
+    } as { items: Topic[]; nextCursor: string | null; hasMore: boolean };
   }
 
   async getById(id: string, ctx: RequestContext) {

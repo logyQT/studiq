@@ -59,6 +59,10 @@ export async function withAuth(
       });
     }
 
+    if (error instanceof SyntaxError) {
+      return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
+    }
+
     const errorId = await errorLogService.logError(error, 'INTERNAL_SERVER', ctx);
     console.error(`[Unhandled API Error] errorId=${errorId}:`, error);
 

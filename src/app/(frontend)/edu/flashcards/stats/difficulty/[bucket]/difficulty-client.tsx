@@ -28,14 +28,14 @@ export default function DifficultyBucketClient() {
   const [deckIds, setDeckIds] = useState<string[]>([]);
   const [topicIds, setTopicIds] = useState<string[]>([]);
 
-  const deckOpts = useApiQuery<NamedItem[]>({
+  const deckOpts = useApiQuery<{ items: NamedItem[]; nextCursor: string | null; hasMore: boolean }>({
     queryKey: ['flashcards', 'decks'],
-    url: '/api/v1/flashcards/decks',
+    url: '/api/v1/flashcards/decks?limit=200',
   });
 
-  const topicOpts = useApiQuery<NamedItem[]>({
+  const topicOpts = useApiQuery<{ items: NamedItem[]; nextCursor: string | null; hasMore: boolean }>({
     queryKey: ['flashcards', 'topics'],
-    url: '/api/v1/flashcards/topics',
+    url: '/api/v1/flashcards/topics?limit=200',
   });
 
   const { data, isLoading } = useApiQuery<DifficultyFlashcardDetail[]>({
@@ -79,14 +79,14 @@ export default function DifficultyBucketClient() {
       <div className="flex flex-wrap items-center gap-3">
         <Filter className="h-4 w-4 text-muted-foreground" />
         <MultiSelect
-          options={(deckOpts.data ?? []).map((d) => ({ label: d.name, value: d.id }))}
+          options={(deckOpts.data?.items ?? []).map((d) => ({ label: d.name, value: d.id }))}
           selected={deckIds}
           onChange={setDeckIds}
           placeholder={t('filterDecks')}
           className="max-w-xs"
         />
         <MultiSelect
-          options={(topicOpts.data ?? []).map((t) => ({ label: t.name, value: t.id }))}
+          options={(topicOpts.data?.items ?? []).map((t) => ({ label: t.name, value: t.id }))}
           selected={topicIds}
           onChange={setTopicIds}
           placeholder={t('filterTopics')}

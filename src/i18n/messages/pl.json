@@ -907,7 +907,8 @@
     "cancel_selection": "Anuluj Zaznaczenie",
     "select_all": "Zaznacz Wszystkie",
     "deselect_all": "Odznacz Wszystkie",
-    "n_selected": "{count} wybranych"
+    "n_selected": "{count} wybranych",
+    "select_cards": "Wybierz"
   },
   "AppFlashcardStudyPage": {
     "tab_review_due": "Przegląd",

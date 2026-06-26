@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
-import { useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -18,9 +18,9 @@ import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { apiPost, apiPut, apiDelete } from '@/lib/api';
-import { useAuth } from '@/components/providers/AuthProvider';
+import { useApiMutation } from '@/hooks/use-api';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { useQueryClient } from '@tanstack/react-query';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { Topic, Flashcard } from '@/types/flashcards';
 import { SpeedDial } from '@/components/shared/speed-dial';
@@ -38,20 +38,64 @@ interface TopicManagementScreenProps {
 
 export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const { data: topics, isLoading } = useApiQuery<Topic[]>({
-    queryKey: flashcardKeys.topics.all,
-    url: '/api/v1/flashcards/topics',
+
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebounce(searchInput, 300);
+  const [owner, setOwner] = useState('all');
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState('desc');
+
+  const filters = {
+    q: debouncedSearch || undefined,
+    owner: owner !== 'all' ? owner : undefined,
+    sortBy,
+    sortOrder,
+  };
+
+  const queryString = Object.entries(filters)
+    .filter(([, v]) => v !== undefined)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v!)}`)
+    .join('&');
+
+  const {
+    data: topicsData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+  } = useInfiniteQuery({
+    queryKey: flashcardKeys.topics.paginated(filters),
+    queryFn: ({ pageParam }) =>
+      apiGet<{ items: Topic[]; nextCursor: string | null; hasMore: boolean }>(
+        `/api/v1/flashcards/topics?limit=50${queryString ? `&${queryString}` : ''}${pageParam ? `&cursor=${pageParam}` : ''}`,
+      ),
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: '',
+    staleTime: Infinity,
+    refetchOnMount: false,
   });
-  const { data: allFlashcardsData } = useApiQuery<{
-    items: Flashcard[];
-    nextCursor: string | null;
-    hasMore: boolean;
-  }>({
-    queryKey: flashcardKeys.list({}),
-    url: '/api/v1/flashcards',
-  });
-  const flashcards = allFlashcardsData?.items ?? [];
+
+  const topics = topicsData?.pages.flatMap((page) => page.items) ?? [];
+
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const handleObserver = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      const [entry] = entries;
+      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    },
+    [hasNextPage, isFetchingNextPage, fetchNextPage],
+  );
+
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(handleObserver, { rootMargin: '200px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [handleObserver]);
+
   const createTopic = useApiMutation({
     mutationFn: (data: { name: string }) => apiPost<Topic>('/api/v1/flashcards/topics', data),
     invalidateKeys: [flashcardKeys.topics.all],
@@ -93,25 +137,6 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     invalidateKeys: [flashcardKeys.topics.all],
   });
 
-  const [searchInput, setSearchInput] = useState('');
-  const debouncedSearch = useDebounce(searchInput, 300);
-  const [owner, setOwner] = useState('all');
-  const [sortBy, setSortBy] = useState('created_at');
-  const [sortOrder, setSortOrder] = useState('desc');
-  const filteredTopics = topics
-    ?.filter((t) => {
-      if (owner === 'mine' && t.created_by !== user?.id) return false;
-      if (owner === 'shared' && t.created_by === user?.id) return false;
-      return t.name.toLowerCase().includes(debouncedSearch.toLowerCase());
-    })
-    .sort((a, b) => {
-      const dir = sortOrder === 'desc' ? -1 : 1;
-      if (sortBy === 'name') return dir * a.name.localeCompare(b.name);
-      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return dir * (dateA - dateB);
-    });
-
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Topic | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -119,6 +144,22 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   const [formData, setFormData] = useState({ name: '' });
   const selection = useSelection();
   const { isSelecting: selectionIsActive, handleClearSelection: selectionClear } = selection;
+
+  const { data: topicFlashcardsData } = useInfiniteQuery({
+    queryKey: [...flashcardKeys.list({ topicIds: viewTopicId ? [viewTopicId] : [] }), 'view', viewTopicId],
+    queryFn: ({ pageParam }) =>
+      apiGet<{ items: Flashcard[]; nextCursor: string | null; hasMore: boolean }>(
+        `/api/v1/flashcards?topicIds=${viewTopicId}&limit=50${pageParam ? `&cursor=${pageParam}` : ''}`,
+      ),
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: '',
+    enabled: !!viewTopicId,
+    staleTime: Infinity,
+  });
+
+  const viewFlashcards = topicFlashcardsData?.pages.flatMap((page) => page.items) ?? [];
+
+  const viewTopic = topics?.find((tp) => tp.id === viewTopicId);
 
   useEffect(() => {
     if (!selectionIsActive) return;
@@ -183,8 +224,8 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   }
 
   function handleSelectAll() {
-    if (!filteredTopics) return;
-    selection.handleSelectAll(filteredTopics.map((t) => t.id));
+    if (!topics) return;
+    selection.handleSelectAll(topics.map((t) => t.id));
   }
 
   function handleDeselectAll() {
@@ -207,25 +248,17 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     }
   }
 
-  const viewFlashcards = viewTopicId
-    ? flashcards.filter((fc) =>
-        fc.flashcard_topic_assignments?.some((a) => a.topic_id === viewTopicId),
-      )
-    : [];
-
-  const viewTopic = topics?.find((tp) => tp.id === viewTopicId);
-
   return (
     <div className="space-y-6">
-      {selection.isSelecting && filteredTopics && filteredTopics.length > 0 && (
+      {selection.isSelecting && topics && topics.length > 0 && (
         <div className="flex items-center gap-2 py-1">
           <Button
             variant="outline"
             size="sm"
-            onClick={selection.selectedIds.size === filteredTopics.length ? handleDeselectAll : handleSelectAll}
+            onClick={selection.selectedIds.size === topics.length ? handleDeselectAll : handleSelectAll}
           >
             <CheckCheck className="mr-1.5 h-4 w-4" />
-            {selection.selectedIds.size === filteredTopics.length ? t('deselect_all') : t('select_all')}
+            {selection.selectedIds.size === topics.length ? t('deselect_all') : t('select_all')}
           </Button>
           <span className="text-sm text-muted-foreground">
             {t('n_selected', { count: selection.selectedIds.size })}
@@ -292,7 +325,6 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <Card key={i} className="flex flex-col h-full max-sm:py-0 min-w-0">
-              {/* Mobile Skeleton */}
               <div className="flex items-center gap-3 p-4 sm:hidden">
                 <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
                 <div className="flex-1 space-y-2">
@@ -301,7 +333,6 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
                 </div>
                 <Skeleton className="h-7 w-7 rounded-md shrink-0" />
               </div>
-              {/* Desktop Skeleton */}
               <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
                 <div className="flex items-center gap-3">
                   <Skeleton className="h-10 w-10 rounded-xl" />
@@ -318,7 +349,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredTopics?.map((topic) => (
+          {topics.map((topic) => (
             <TopicCard
               key={topic.id}
               topic={topic}
@@ -331,7 +362,13 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
               t={t}
             />
           ))}
-          {(!filteredTopics || filteredTopics.length === 0) && (
+          <div ref={loadMoreRef} className="col-span-full h-4" />
+          {isFetchingNextPage && (
+            <div className="col-span-full flex justify-center py-4">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          )}
+          {topics.length === 0 && (
             <Empty className="col-span-full">
               <EmptyMedia>
                 <Tags className="h-10 w-10 text-muted-foreground" />
