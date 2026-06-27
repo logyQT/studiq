@@ -60,6 +60,28 @@ export class StatsService {
 
     if (questionsError) throw mapSupabaseError(questionsError);
 
+    const { count: decksCount, error: decksError } = await supabase
+      .from('flashcard_decks')
+      .select('*', { count: 'exact', head: true })
+      .eq('created_by', ctx.userId);
+
+    if (decksError) throw mapSupabaseError(decksError);
+
+    const { count: flashcardsCount, error: flashcardsCountError } = await supabase
+      .from('flashcards')
+      .select('*', { count: 'exact', head: true })
+      .eq('created_by', ctx.userId);
+
+    if (flashcardsCountError) throw mapSupabaseError(flashcardsCountError);
+
+    const { count: dueCount, error: dueError } = await supabase
+      .from('flashcard_review_state')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', ctx.userId)
+      .lte('next_review_at', new Date().toISOString());
+
+    if (dueError) throw mapSupabaseError(dueError);
+
     const totalQuizzes = attempts?.length ?? 0;
     const avgScore =
       attempts && attempts.length > 0
@@ -80,6 +102,9 @@ export class StatsService {
       flashcardsPracticed: flashcardTotal,
       flashcardAccuracy:
         flashcardTotal > 0 ? Math.round((flashcardCorrect / flashcardTotal) * 100) : 0,
+      totalDecks: decksCount ?? 0,
+      totalFlashcards: flashcardsCount ?? 0,
+      dueToday: dueCount ?? 0,
       attemptsOverTime:
         attempts?.map((a) => ({
           date: a.started_at,

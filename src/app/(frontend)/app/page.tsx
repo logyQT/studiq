@@ -1,11 +1,16 @@
 'use client';
 
-import { useMemo, useCallback, type ComponentType } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useTranslations, useLocale } from 'next-intl';
-import { Plus, BookOpen, Layers, Link as LinkIcon, RotateCcw } from 'lucide-react';
+import { Plus, BookOpen, Layers, Link2, RotateCcw, ArrowRight, BarChart3, Settings, Target } from 'lucide-react';
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
+import { cn } from '@/lib/utils';
+import { useAuth } from '@/components/providers';
+import { useApiQuery } from '@/hooks/use-api';
+import { Button } from '@/components/ui/button';
+import { StatCard } from '@/components/ui/stat-card';
 
 const chartData = [
   { name: 'Mon', value: 12 },
@@ -16,6 +21,37 @@ const chartData = [
   { name: 'Sat', value: 43 },
   { name: 'Sun', value: 31 },
 ];
+
+const actionConfig = [
+  { href: '/app/flashcards/decks', icon: Plus, titleKey: 'create_deck', descKey: 'create_deck_desc', color: 'blue' },
+  { href: '/app/flashcards/decks', icon: BookOpen, titleKey: 'create_flashcard', descKey: 'create_flashcard_desc', color: 'violet' },
+  { href: '/app/flashcards/topics', icon: Layers, titleKey: 'create_topic', descKey: 'create_topic_desc', color: 'amber' },
+  { href: '/app/flashcards/topics', icon: Link2, titleKey: 'link_topics', descKey: 'link_topics_desc', color: 'emerald' },
+  { href: '/app/flashcards/study', icon: RotateCcw, titleKey: 'continue_reviewing', descKey: 'continue_reviewing_desc', color: 'rose' },
+] as const;
+
+const navItems = [
+  { href: '/app/flashcards/decks', icon: BookOpen, labelKey: 'all_decks' },
+  { href: '/app/flashcards/topics', icon: Layers, labelKey: 'topics_label' },
+  { href: '/app/statistics', icon: BarChart3, labelKey: 'study_history' },
+  { href: '/app/settings', icon: Settings, labelKey: 'settings' },
+] as const;
+
+const actionRowVariants: Record<string, string> = {
+  blue: 'bg-blue-500/5 hover:bg-blue-500/10 border-blue-500/10 hover:border-blue-500/25',
+  violet: 'bg-violet-500/5 hover:bg-violet-500/10 border-violet-500/10 hover:border-violet-500/25',
+  amber: 'bg-amber-500/5 hover:bg-amber-500/10 border-amber-500/10 hover:border-amber-500/25',
+  emerald: 'bg-emerald-500/5 hover:bg-emerald-500/10 border-emerald-500/10 hover:border-emerald-500/25',
+  rose: 'bg-rose-500/5 hover:bg-rose-500/10 border-rose-500/10 hover:border-rose-500/25',
+};
+
+const actionIconVariants: Record<string, string> = {
+  blue: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
+  violet: 'bg-violet-500/15 text-violet-600 dark:text-violet-400',
+  amber: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+  emerald: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+  rose: 'bg-rose-500/15 text-rose-600 dark:text-rose-400',
+};
 
 export default function AppOverviewPage() {
   const t = useTranslations('AppOverviewPage');
@@ -32,49 +68,49 @@ export default function AppOverviewPage() {
     [locale],
   );
 
-  const handleContinueReviewing = useCallback(
-    () => router.push('/app/flashcards/study'),
-    [router],
-  );
+  const { user } = useAuth();
+  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Alex';
 
-  const handleCreateDeck = useCallback(
-    () => router.push('/app/flashcards/decks'),
-    [router],
-  );
+  const { data: stats, isLoading } = useApiQuery<{
+    totalDecks: number;
+    totalFlashcards: number;
+    flashcardAccuracy: number;
+    dueToday: number;
+  }>({
+    queryKey: ['stats', 'student'],
+    url: '/api/v1/stats/student',
+  });
+
+  const handleContinueReviewing = useCallback(() => router.push('/app/flashcards/study'), [router]);
+  const handleCreateDeck = useCallback(() => router.push('/app/flashcards/decks'), [router]);
 
   return (
     <>
       {/* Hero */}
-      <div className="bg-muted/30 pt-12 pb-10 border-b border-border">
+      <div className="bg-muted/30 pt-8 pb-6 border-b border-border">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
             {todayStr}
           </p>
           <h1 className="text-5xl font-semibold mb-4 tracking-tight text-foreground">
-            {t('hello_greeting', { name: 'Alex' })}
+            {t('hello_greeting', { name: userName })}
           </h1>
           <p className="text-lg text-muted-foreground mb-8">
             {t.rich('due_today', {
-              count: 14,
+              count: stats?.dueToday ?? 0,
               strong: (chunks) => <span className="font-semibold text-foreground">{chunks}</span>,
             })}
           </p>
 
           <div className="flex flex-wrap items-center gap-4">
-            <button
-              onClick={handleContinueReviewing}
-              className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-5 py-2.5 rounded-xl font-medium transition-colors text-sm shadow-sm"
-            >
-              <RotateCcw className="w-4 h-4" />
+            <Button variant="default" size="sm" onClick={handleContinueReviewing}>
+              <RotateCcw className="w-4 h-4 mr-1.5" />
               {t('continue_reviewing')}
-            </button>
-            <button
-              onClick={handleCreateDeck}
-              className="flex items-center gap-2 bg-background hover:bg-muted/50 border border-border text-foreground px-5 py-2.5 rounded-xl font-medium transition-colors text-sm shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleCreateDeck}>
+              <Plus className="w-4 h-4 mr-1.5" />
               {t('create_deck')}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -83,22 +119,11 @@ export default function AppOverviewPage() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8 py-12 grid grid-cols-1 lg:grid-cols-12 gap-16">
         {/* Left Column */}
         <div className="lg:col-span-7 space-y-12">
-          {/* Stats Row */}
-          <div className="flex items-center justify-between gap-x-8">
-            <StatItem value="12" label={t('total_decks')} />
-            <div className="w-px h-10 bg-border hidden sm:block" />
-            <StatItem value="284" label={t('flashcards')} />
-            <div className="w-px h-10 bg-border hidden sm:block" />
-            <StatItem
-              value={
-                <>
-                  7 <span className="text-xl">🔥</span>
-                </>
-              }
-              label={t('day_streak')}
-            />
-            <div className="w-px h-10 bg-border hidden sm:block" />
-            <StatItem value="65%" label={t('accuracy')} />
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-4">
+            <StatCard title={t('total_decks')} value={isLoading ? '...' : String(stats?.totalDecks ?? 0)} icon={BookOpen} variant="blue" />
+            <StatCard title={t('flashcards')} value={isLoading ? '...' : String(stats?.totalFlashcards ?? 0)} icon={Layers} variant="violet" />
+            <StatCard title={t('accuracy')} value={isLoading ? '...' : `${stats?.flashcardAccuracy ?? 0}%`} icon={Target} variant="emerald" />
           </div>
 
           {/* Quick Actions */}
@@ -106,38 +131,31 @@ export default function AppOverviewPage() {
             <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-4">
               {t('quick_actions')}
             </h3>
-            <div className="border border-border rounded-2xl bg-muted/30 overflow-hidden">
-              <QuickActionLink
-                href="/app/flashcards/decks"
-                icon={Plus}
-                title={t('create_deck')}
-                description={t('create_deck_desc')}
-              />
-              <QuickActionLink
-                href="/app/flashcards/decks"
-                icon={BookOpen}
-                title={t('create_flashcard')}
-                description={t('create_flashcard_desc')}
-              />
-              <QuickActionLink
-                href="/app/flashcards/topics"
-                icon={Layers}
-                title={t('create_topic')}
-                description={t('create_topic_desc')}
-              />
-              <QuickActionLink
-                href="/app/flashcards/topics"
-                icon={LinkIcon}
-                title={t('link_topics')}
-                description={t('link_topics_desc')}
-              />
-              <QuickActionLink
-                href="/app/flashcards/study"
-                icon={RotateCcw}
-                title={t('continue_reviewing')}
-                description={t('continue_reviewing_desc')}
-                noBorder
-              />
+            <div className="space-y-2">
+              {actionConfig.map(({ href, icon: Icon, titleKey, descKey, color }) => (
+                <Link key={titleKey} href={href} className="group block">
+                  <div
+                    className={cn(
+                      'flex items-center gap-4 p-4 rounded-xl border transition-all duration-200 cursor-pointer',
+                      actionRowVariants[color],
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        'rounded-xl p-3 shrink-0 group-hover:scale-110 transition-transform duration-200',
+                        actionIconVariants[color],
+                      )}
+                    >
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-foreground">{t(titleKey)}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{t(descKey)}</p>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-1 transition-all duration-200 shrink-0" />
+                  </div>
+                </Link>
+              ))}
             </div>
           </section>
         </div>
@@ -152,35 +170,35 @@ export default function AppOverviewPage() {
             <div className="h-48 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="reviewsGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
-                  dy={10}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
-                  domain={[0, 40]}
-                  ticks={[0, 10, 20, 30, 40]}
-                />
-                <Tooltip />
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke="var(--primary)"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#reviewsGrad)"
-                />
+                  <defs>
+                    <linearGradient id="reviewsGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis
+                    dataKey="name"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                    dy={10}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                    domain={[0, 40]}
+                    ticks={[0, 10, 20, 30, 40]}
+                  />
+                  <Tooltip />
+                  <Area
+                    type="monotone"
+                    dataKey="value"
+                    stroke="var(--primary)"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#reviewsGrad)"
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -191,68 +209,26 @@ export default function AppOverviewPage() {
             <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-5">
               {t('navigate')}
             </h3>
-            <div className="space-y-4">
-              <NavLink href="/app/flashcards/decks" label={t('all_decks')} />
-              <NavLink href="/app/flashcards/topics" label={t('topics_label')} />
-              <NavLink href="/app/statistics" label={t('study_history')} />
-              <NavLink href="/app/settings" label={t('settings')} />
+            <div className="space-y-2">
+              {navItems.map(({ href, icon: Icon, labelKey }) => (
+                <Link
+                  key={labelKey}
+                  href={href}
+                  className="group flex items-center gap-3 p-3 rounded-xl hover:bg-muted/60 border border-transparent hover:border-border/60 transition-all duration-150"
+                >
+                  <div className="rounded-lg bg-primary/10 p-2.5 shrink-0">
+                    <Icon className="h-4 w-4 text-primary" />
+                  </div>
+                  <span className="font-semibold text-sm text-foreground/80 group-hover:text-foreground transition-colors">
+                    {t(labelKey)}
+                  </span>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground ml-auto group-hover:translate-x-1 transition-transform duration-200" />
+                </Link>
+              ))}
             </div>
           </section>
         </div>
       </div>
     </>
-  );
-}
-
-/* ── Sub-components ── */
-
-function StatItem({ value, label }: { value: React.ReactNode; label: string }) {
-  return (
-    <div className="shrink-0">
-      <div className="text-[32px] font-semibold leading-tight mb-1 text-foreground whitespace-nowrap">{value}</div>
-      <div className="text-[13px] text-muted-foreground whitespace-nowrap">{label}</div>
-    </div>
-  );
-}
-
-function QuickActionLink({
-  href,
-  icon: Icon,
-  title,
-  description,
-  noBorder = false,
-}: {
-  href: string;
-  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
-  title: string;
-  description: string;
-  noBorder?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={`flex items-center gap-4 p-4 hover:bg-accent transition-colors group ${
-        noBorder ? '' : 'border-b border-border'
-      }`}
-    >
-      <div className="bg-primary/10 text-primary p-2.5 rounded-full group-hover:scale-105 transition-transform">
-        <Icon className="w-4 h-4" strokeWidth={2.5} />
-      </div>
-      <div>
-        <div className="font-semibold text-sm text-foreground">{title}</div>
-        <div className="text-xs text-muted-foreground mt-0.5">{description}</div>
-      </div>
-    </Link>
-  );
-}
-
-function NavLink({ href, label }: { href: string; label: string }) {
-  return (
-    <Link
-      href={href}
-      className="block text-sm text-foreground/80 hover:text-foreground font-medium transition-colors"
-    >
-      {label}
-    </Link>
   );
 }

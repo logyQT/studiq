@@ -22,9 +22,23 @@ import { DeckCard } from '@/components/flashcards/cards/deck-card';
 import { DeckFilters } from '@/components/flashcards/shared/deck-filters';
 import { SpeedDial } from '@/components/shared/speed-dial';
 
-const ImportDialog = dynamic(() => import('@/components/flashcards/shared/import-dialog').then(m => ({ default: m.ImportDialog })), { ssr: false });
-const DeckFormDialog = dynamic(() => import('@/components/flashcards/shared/deck-form-dialog').then(m => ({ default: m.DeckFormDialog })));
-const DeckBulkActions = dynamic(() => import('@/components/flashcards/shared/deck-bulk-actions').then(m => ({ default: m.DeckBulkActions })));
+const ImportDialog = dynamic(
+  () =>
+    import('@/components/flashcards/shared/import-dialog').then((m) => ({
+      default: m.ImportDialog,
+    })),
+  { ssr: false },
+);
+const DeckFormDialog = dynamic(() =>
+  import('@/components/flashcards/shared/deck-form-dialog').then((m) => ({
+    default: m.DeckFormDialog,
+  })),
+);
+const DeckBulkActions = dynamic(() =>
+  import('@/components/flashcards/shared/deck-bulk-actions').then((m) => ({
+    default: m.DeckBulkActions,
+  })),
+);
 import { useDebounce } from '@/hooks/use-debounce';
 import { useSelection } from '@/hooks/use-selection';
 
@@ -332,7 +346,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
                 </div>
               </Card>
             ))}
-          <div ref={loadMoreRef} className="min-h-[1px]" />
+          <div ref={loadMoreRef} className="min-h-px" />
           {decks.length === 0 && !isFetchingNextPage && (
             <Empty className="col-span-full">
               <EmptyMedia>
@@ -355,7 +369,9 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
           setDialogOpen(open);
           if (!open) setTimeout(() => setEditing(null), 200);
         }}
-        initialValues={editing ? { name: editing.name, description: editing.description ?? '' } : null}
+        initialValues={
+          editing ? { name: editing.name, description: editing.description ?? '' } : null
+        }
         onSubmit={handleSubmit}
         title={editing ? t('edit_title') : t('new_deck_title')}
         description={editing ? t('edit_desc') : t('new_deck_desc')}
