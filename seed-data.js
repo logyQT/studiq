@@ -1,5 +1,5 @@
 // seed-data.js — paste into browser console, type: seed()
-const cfg = { topics: 1000, decks: 1000, perDeck: 1000 };
+const cfg = { topics: 10000, decks: 10000, perDeck: 1000 };
 const api = (p, o) => fetch(p, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...o }).then(async (r) => { const j = await r.json(); if (!r.ok) throw Error(j.error); return j.data; });
 const SUBJECTS = ['Biology', 'Chemistry', 'Physics', 'Mathematics', 'Computer Science', 'Psychology', 'Economics', 'History', 'Philosophy', 'Sociology', 'Literature', 'Linguistics', 'Geography', 'Political Science', 'Art History', 'Anthropology', 'Neuroscience', 'Statistics', 'Engineering', 'Medicine'];
 const DECK_TEMPLATES = [(n) => `Chapter ${n}: Core Concepts`, (n) => `Topic ${n} — Key Definitions`, (n) => `Unit ${n} Review Questions`, (n) => `${n} Formulas & Equations`, (n) => `Exam Prep: ${n}`, (n) => `${n} — Case Studies`, (n) => `Fundamentals of ${n}`, (n) => `${n} — Important Figures`, (n) => `Week ${n % 15 + 1}: ${n} Lecture Notes`, (n) => `${n} Glossary Terms`];

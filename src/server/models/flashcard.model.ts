@@ -39,7 +39,8 @@ export const BulkCreateFlashcardsSchema = registry.register(
             .max(5000, { error: ValidationErrorCode.TOO_LONG }),
         }),
       )
-      .min(1, { error: ValidationErrorCode.TOO_FEW }),
+      .min(1, { error: ValidationErrorCode.TOO_FEW })
+      .max(500, { error: ValidationErrorCode.TOO_MANY }),
   }),
 );
 
