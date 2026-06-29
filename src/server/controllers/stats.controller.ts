@@ -19,6 +19,20 @@ export class StatsController {
       return { success: true, statusCode: 200, data: stats };
     }, ctx);
   }
+
+  async getActivity(ctx: RequestContext, range?: string, startDate?: string, endDate?: string): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const data = await statsService.getActivity(ctx, range, startDate, endDate);
+      return { success: true, statusCode: 200, data };
+    }, ctx);
+  }
+
+  async getWeakPoints(ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const data = await statsService.getWeakPoints(ctx);
+      return { success: true, statusCode: 200, data };
+    }, ctx);
+  }
 }
 
 export const statsController = new StatsController();

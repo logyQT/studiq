@@ -17,7 +17,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
-import { LogOut, Globe, Sun, Moon, Check } from 'lucide-react';
+import { LogOut, Globe, Sun, Moon, Check, ChevronUp } from 'lucide-react';
 import { UserRole } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -45,9 +45,10 @@ const ROLE_LABELS: Record<UserRole, string> = {
 
 interface UserMenuProps {
   className?: string;
+  compact?: boolean;
 }
 
-export function UserMenu({ className }: UserMenuProps) {
+export function UserMenu({ className, compact }: UserMenuProps) {
   const { user } = useAuth();
   const t = useTranslations('DashboardLayout');
   const { setTheme } = useTheme();
@@ -69,13 +70,28 @@ export function UserMenu({ className }: UserMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn('h-9 w-9 rounded-full', className)}
-        >
-          <DicebearAvatar seed={user?.email || userName} size={36} />
-        </Button>
+        {compact ? (
+          <button
+            className={cn(
+              'flex items-center gap-2 px-2 group-data-[collapsible=icon]:pl-2 group-data-[collapsible=icon]:pr-0 py-1.5 rounded-lg hover:bg-sidebar-accent transition-colors w-full',
+              className,
+            )}
+          >
+            <DicebearAvatar seed={user?.email || userName} size={36} />
+            <span className="truncate text-sm font-medium leading-none group-data-[collapsible=icon]:hidden">
+              {userName.split(' ')[0]}
+            </span>
+            <ChevronUp className="h-3 w-3 ml-auto shrink-0 group-data-[collapsible=icon]:hidden text-muted-foreground" />
+          </button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn('h-9 w-9 rounded-full', className)}
+          >
+            <DicebearAvatar seed={user?.email || userName} size={36} />
+          </Button>
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel className="font-normal">

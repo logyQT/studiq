@@ -1,5 +1,5 @@
-import EduFlashcardsClient from './flashcards-client';
+import { redirect } from 'next/navigation';
 
 export default function EduFlashcardsPage() {
-  return <EduFlashcardsClient />;
+  redirect('/edu/flashcards/decks');
 }

@@ -1,5 +1,5 @@
 import { flashcardDeckService } from '@/server/services';
-import { CreateDeckSchema, UpdateDeckSchema, BatchDeleteDeckSchema, BulkCreateDeckSchema, DeckListQuerySchema } from '@/server/models';
+import { CreateDeckSchema, UpdateDeckSchema, BatchDeleteDeckSchema, BulkCreateDeckSchema, DeckListQuerySchema, BatchToggleSuspendSchema } from '@/server/models';
 import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
 import type { RequestContext } from '@/lib/request-context';
@@ -111,6 +111,25 @@ export class FlashcardDeckController {
       }
 
       const result = await flashcardDeckService.batchDelete(parsed.data, ctx);
+
+      return { success: true, statusCode: 200, data: result };
+    }, ctx);
+  }
+
+  async batchToggleSuspend(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = BatchToggleSuspendSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const result = await flashcardDeckService.batchToggleSuspend(parsed.data, ctx);
 
       return { success: true, statusCode: 200, data: result };
     }, ctx);

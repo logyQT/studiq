@@ -17,8 +17,13 @@ BEGIN
   IF p_created_by IS NOT NULL AND p_university_id IS NOT NULL THEN
     -- "my cards OR from my university" (student scope)
     SELECT COUNT(*) INTO total
-    FROM public.flashcards
-    WHERE created_by = p_created_by OR university_id = p_university_id;
+    FROM public.flashcards f
+    WHERE (f.created_by = p_created_by OR f.university_id = p_university_id)
+      AND NOT EXISTS (
+        SELECT 1 FROM public.flashcard_deck_assignments fda
+        JOIN public.suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id
+        WHERE fda.flashcard_id = f.id
+      );
 
     SELECT
       COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
@@ -30,13 +35,23 @@ BEGIN
     FROM public.flashcards f
     LEFT JOIN public.flashcard_review_state rs
       ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
-    WHERE f.created_by = p_created_by OR f.university_id = p_university_id;
+    WHERE (f.created_by = p_created_by OR f.university_id = p_university_id)
+      AND NOT EXISTS (
+        SELECT 1 FROM public.flashcard_deck_assignments fda
+        JOIN public.suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id
+        WHERE fda.flashcard_id = f.id
+      );
 
   ELSIF p_created_by IS NOT NULL THEN
     -- Only creator filter (own scope)
     SELECT COUNT(*) INTO total
-    FROM public.flashcards
-    WHERE created_by = p_created_by;
+    FROM public.flashcards f
+    WHERE f.created_by = p_created_by
+      AND NOT EXISTS (
+        SELECT 1 FROM public.flashcard_deck_assignments fda
+        JOIN public.suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id
+        WHERE fda.flashcard_id = f.id
+      );
 
     SELECT
       COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
@@ -48,11 +63,22 @@ BEGIN
     FROM public.flashcards f
     LEFT JOIN public.flashcard_review_state rs
       ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
-    WHERE f.created_by = p_created_by;
+    WHERE f.created_by = p_created_by
+      AND NOT EXISTS (
+        SELECT 1 FROM public.flashcard_deck_assignments fda
+        JOIN public.suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id
+        WHERE fda.flashcard_id = f.id
+      );
 
   ELSE
     -- No filter (any scope)
-    SELECT COUNT(*) INTO total FROM public.flashcards;
+    SELECT COUNT(*) INTO total
+    FROM public.flashcards f
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.flashcard_deck_assignments fda
+      JOIN public.suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id
+      WHERE fda.flashcard_id = f.id
+    );
 
     SELECT
       COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
@@ -63,7 +89,12 @@ BEGIN
     INTO never_practiced, learning_count, review_count, relearning_count, leeched_count
     FROM public.flashcards f
     LEFT JOIN public.flashcard_review_state rs
-      ON rs.flashcard_id = f.id AND rs.user_id = p_user_id;
+      ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.flashcard_deck_assignments fda
+      JOIN public.suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id
+      WHERE fda.flashcard_id = f.id
+    );
   END IF;
 
   RETURN json_build_object(

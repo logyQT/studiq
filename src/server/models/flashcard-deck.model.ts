@@ -25,6 +25,7 @@ export const UpdateDeckSchema = registry.register(
       .optional(),
     description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
     flashcardIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+    suspended: z.boolean().optional(),
   }),
 );
 
@@ -46,6 +47,7 @@ export const DeckListQuerySchema = registry.register(
     sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
     cursor: z.string().optional(),
     limit: z.coerce.number().int().min(1).max(500).optional().default(24),
+    includeSuspended: z.coerce.boolean().optional().default(false),
   }),
 );
 
@@ -69,4 +71,15 @@ export type CreateDeckInput = z.infer<typeof CreateDeckSchema>;
 export type UpdateDeckInput = z.infer<typeof UpdateDeckSchema>;
 export type BatchDeleteDeckInput = z.infer<typeof BatchDeleteDeckSchema>;
 export type BulkCreateDeckInput = z.infer<typeof BulkCreateDeckSchema>;
+export const BatchToggleSuspendSchema = registry.register(
+  'BatchToggleSuspendRequest',
+  z.object({
+    deckIds: z
+      .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
+      .min(1, { error: ValidationErrorCode.TOO_FEW }),
+    suspended: z.boolean(),
+  }),
+);
+
+export type BatchToggleSuspendInput = z.infer<typeof BatchToggleSuspendSchema>;
 export type DeckListQuery = z.infer<typeof DeckListQuerySchema>;

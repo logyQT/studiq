@@ -67,6 +67,7 @@ export async function GET(req: NextRequest) {
       sortOrder: searchParams.get('sortOrder') ?? undefined,
       cursor: searchParams.get('cursor') ?? undefined,
       limit: searchParams.get('limit') ? Number(searchParams.get('limit')) : undefined,
+      includeSuspended: searchParams.get('includeSuspended') ?? undefined,
     };
     return toNextResponse(await flashcardDeckController.list(query, ctx));
   });

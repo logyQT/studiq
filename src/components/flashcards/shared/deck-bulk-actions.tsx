@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { Trash2, Download, X } from 'lucide-react';
+import { Trash2, Download, X, EyeOff } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 interface DeckBulkActionsProps {
@@ -9,6 +9,7 @@ interface DeckBulkActionsProps {
   onExport: () => void;
   onDelete: () => void;
   onClearSelection: () => void;
+  onToggleSuspend: (suspended: boolean) => void;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -17,6 +18,7 @@ export function DeckBulkActions({
   onExport,
   onDelete,
   onClearSelection,
+  onToggleSuspend,
   t,
 }: DeckBulkActionsProps) {
   if (selectedCount === 0) return null;
@@ -28,6 +30,12 @@ export function DeckBulkActions({
           <span className="text-sm font-medium">{t('n_selected', { count: selectedCount })}</span>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => onToggleSuspend(true)}>
+            <EyeOff className="mr-1.5 h-4 w-4" /> {t('suspend_deck')}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => onToggleSuspend(false)}>
+            <EyeOff className="mr-1.5 h-4 w-4" /> {t('unsuspend_deck')}
+          </Button>
           <Button variant="outline" size="sm" onClick={onExport}>
             <Download className="mr-1.5 h-4 w-4" /> {t('common_export')}
           </Button>

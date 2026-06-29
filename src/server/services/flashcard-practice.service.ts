@@ -135,6 +135,7 @@ export class FlashcardPracticeService {
       leechThreshold: settings.leech_threshold,
       dailyResetDate: settings.daily_reset_date,
       remainingNewCards: Math.max(0, settings.new_cards_per_day - settings.new_cards_introduced),
+      dailyReviewGoal: settings.daily_review_goal ?? 0,
     };
   }
 
@@ -303,33 +304,46 @@ export class FlashcardPracticeService {
 
   async getStatsAll(ctx: RequestContext) {
     const supabase = await createClient();
+    const suspendedCardIds = await this.getSuspendedCardIds(ctx);
 
-    const { count: totalPracticed, error: countError } = await supabase
+    let practiceQuery = supabase
       .from('flashcard_practice')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', ctx.userId);
 
+    if (suspendedCardIds.length > 0) {
+      practiceQuery = practiceQuery.filter('flashcard_id', 'not.in', `(${suspendedCardIds.join(',')})`);
+    }
+
+    const { count: totalPracticed, error: countError } = await practiceQuery;
     if (countError) throw mapSupabaseError(countError);
 
-    const { data: stateRows } = await supabase
+    let stateQuery = supabase
       .from('flashcard_review_state')
       .select('*')
       .eq('user_id', ctx.userId);
 
+    if (suspendedCardIds.length > 0) {
+      stateQuery = stateQuery.filter('flashcard_id', 'not.in', `(${suspendedCardIds.join(',')})`);
+    }
+
+    const { data: stateRows } = await stateQuery;
+    const filteredStates = stateRows ?? [];
+
     const now = new Date();
-    const totalDue = (stateRows ?? []).filter(
+    const totalDue = filteredStates.filter(
       (s) => new Date(s.next_review_at) <= now,
     ).length;
 
     const avgEF =
-      stateRows && stateRows.length > 0
-        ? stateRows.reduce((sum, s) => sum + s.easiness_factor, 0) / stateRows.length
+      filteredStates.length > 0
+        ? filteredStates.reduce((sum, s) => sum + s.easiness_factor, 0) / filteredStates.length
         : 0;
 
     return {
       totalPracticed: totalPracticed ?? 0,
       totalDue,
-      totalCardsReviewed: stateRows?.length ?? 0,
+      totalCardsReviewed: filteredStates.length,
       averageEasinessFactor: Math.round(avgEF * 100) / 100,
     };
   }
@@ -404,6 +418,8 @@ export class FlashcardPracticeService {
     }
 
     const cardFilter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    const suspendedCardIds = await this.getSuspendedCardIds(ctx);
+
     let query = supabase
       .from('flashcards')
       .select('id, front, back, created_at');
@@ -413,6 +429,10 @@ export class FlashcardPracticeService {
       query = query.or(cardFilter.or);
     } else if (cardFilter.created_by) {
       query = query.eq('created_by', cardFilter.created_by);
+    }
+
+    if (suspendedCardIds.length > 0) {
+      query = query.filter('id', 'not.in', `(${suspendedCardIds.join(',')})`);
     }
 
     const pageSize = Math.min(filters?.limit ?? 50, 100);
@@ -547,6 +567,25 @@ export class FlashcardPracticeService {
     const { data, error } = await query;
     if (error) throw mapSupabaseError(error);
     return (data ?? []).map((r) => r.id);
+  }
+
+  private async getSuspendedCardIds(ctx: RequestContext): Promise<string[]> {
+    const supabase = await createClient();
+
+    const { data: suspendedDecks } = await supabase
+      .from('suspended_decks')
+      .select('deck_id')
+      .eq('user_id', ctx.userId);
+
+    const deckIds = (suspendedDecks ?? []).map((s) => s.deck_id);
+    if (deckIds.length === 0) return [];
+
+    const { data: assignments } = await supabase
+      .from('flashcard_deck_assignments')
+      .select('flashcard_id')
+      .in('deck_id', deckIds);
+
+    return [...new Set((assignments ?? []).map((a) => a.flashcard_id))];
   }
 
   async completeSession(data: CompleteSessionInput, ctx: RequestContext) {

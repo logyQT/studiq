@@ -38,7 +38,7 @@ export default function DashboardNotFound() {
               {t('flashcards')}
             </Link>
             <Link
-              href="/app/quiz"
+              href="/app/study"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
             >
               <BookOpen className="h-3.5 w-3.5" />

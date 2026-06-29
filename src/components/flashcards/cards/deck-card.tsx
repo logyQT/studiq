@@ -30,6 +30,7 @@ interface DeckCardProps {
   onDelete: () => void;
   onExport: () => void;
   onSelect: () => void;
+  onToggleSuspend: () => void;
 }
 
 export const DeckCard = memo(function DeckCard({
@@ -45,6 +46,7 @@ export const DeckCard = memo(function DeckCard({
   onDelete,
   onExport,
   onSelect,
+  onToggleSuspend,
 }: DeckCardProps) {
   const router = useRouter();
   const gradientHex = getGradientHex(deck.id);
@@ -53,7 +55,7 @@ export const DeckCard = memo(function DeckCard({
     <Card
       className={`group cursor-pointer flex flex-col h-full overflow-hidden transition-all duration-300 ease-out sm:hover:-translate-y-1 sm:hover:shadow-lg sm:hover:border-primary/40 ${
         isSelected ? 'ring-2 ring-primary border-transparent' : ''
-      } max-sm:py-0 min-w-0 p-0`}
+      } ${deck.suspended ? 'opacity-60 saturate-50' : ''} max-sm:py-0 min-w-0 p-0`}
       onClick={() => {
         if (isSelecting) {
           onToggleSelect();
@@ -104,6 +106,14 @@ export const DeckCard = memo(function DeckCard({
               >
                 {t('flashcards_count', { count: deck.flashcard_count })}
               </Badge>
+              {deck.suspended && (
+                <Badge
+                  variant="outline"
+                  className="text-[11px] font-medium leading-none px-1.5 py-0.5 border-dashed text-muted-foreground"
+                >
+                  {t('suspended')}
+                </Badge>
+              )}
               {!canUpdate && (
                 <span className="flex items-center text-[11px] text-muted-foreground/60 gap-0.5 font-medium ml-0.5">
                   <Eye className="h-3 w-3" /> {t('view_deck')}
@@ -129,6 +139,7 @@ export const DeckCard = memo(function DeckCard({
                 t={t}
                 canUpdate={canUpdate}
                 canDelete={canDelete}
+                suspended={deck.suspended ?? false}
                 onSelect={() => {
                   onSelect();
                   onToggleSelect();
@@ -136,6 +147,7 @@ export const DeckCard = memo(function DeckCard({
                 onEdit={onEdit}
                 onDelete={onDelete}
                 onExport={onExport}
+                onToggleSuspend={onToggleSuspend}
               />
             </DropdownMenuContent>
           </DropdownMenu>
@@ -199,6 +211,7 @@ export const DeckCard = memo(function DeckCard({
                     t={t}
                     canUpdate={canUpdate}
                     canDelete={canDelete}
+                    suspended={deck.suspended ?? false}
                     onSelect={() => {
                       onSelect();
                       onToggleSelect();
@@ -206,6 +219,7 @@ export const DeckCard = memo(function DeckCard({
                     onEdit={onEdit}
                     onDelete={onDelete}
                     onExport={onExport}
+                    onToggleSuspend={onToggleSuspend}
                   />
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -222,12 +236,22 @@ export const DeckCard = memo(function DeckCard({
         </div>
 
         <div className="mt-auto flex items-center justify-between pt-1">
-          <Badge
-            variant="secondary"
-            className="bg-secondary/50 text-secondary-foreground hover:bg-secondary/70 border-transparent shadow-none font-medium px-2.5 py-0.5"
-          >
-            {t('flashcards_count', { count: deck.flashcard_count })}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge
+              variant="secondary"
+              className="bg-secondary/50 text-secondary-foreground hover:bg-secondary/70 border-transparent shadow-none font-medium px-2.5 py-0.5"
+            >
+              {t('flashcards_count', { count: deck.flashcard_count })}
+            </Badge>
+            {deck.suspended && (
+              <Badge
+                variant="outline"
+                className="font-medium px-2.5 py-0.5 border-dashed text-muted-foreground"
+              >
+                {t('suspended')}
+              </Badge>
+            )}
+          </div>
 
           <Button
             variant="ghost"
@@ -250,6 +274,7 @@ export const DeckCard = memo(function DeckCard({
     && prev.deck.flashcard_count === next.deck.flashcard_count
     && prev.deck.name === next.deck.name
     && prev.deck.description === next.deck.description
+    && prev.deck.suspended === next.deck.suspended
     && prev.isSelecting === next.isSelecting
     && prev.isSelected === next.isSelected;
 });

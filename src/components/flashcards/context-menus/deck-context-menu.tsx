@@ -2,26 +2,30 @@
 
 import { useTranslations } from 'next-intl';
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { CheckSquare, Pencil, Trash2, FileDown } from 'lucide-react';
+import { CheckSquare, Pencil, Trash2, FileDown, EyeOff, Eye } from 'lucide-react';
 
 interface DeckContextMenuProps {
   t: ReturnType<typeof useTranslations>;
   canUpdate: boolean;
   canDelete: boolean;
+  suspended: boolean;
   onSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onExport: () => void;
+  onToggleSuspend: () => void;
 }
 
 export function DeckContextMenu({
   t,
   canUpdate,
   canDelete,
+  suspended,
   onSelect,
   onEdit,
   onDelete,
   onExport,
+  onToggleSuspend,
 }: DeckContextMenuProps) {
   return (
     <>
@@ -44,6 +48,19 @@ export function DeckContextMenu({
         </DropdownMenuItem>
       )}
       <DropdownMenuSeparator />
+      <DropdownMenuItem
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleSuspend();
+        }}
+      >
+        {suspended ? (
+          <Eye className="mr-2 h-4 w-4" />
+        ) : (
+          <EyeOff className="mr-2 h-4 w-4" />
+        )}
+        {suspended ? t('unsuspend_deck') : t('suspend_deck')}
+      </DropdownMenuItem>
       <DropdownMenuItem
         onClick={(e) => {
           e.stopPropagation();

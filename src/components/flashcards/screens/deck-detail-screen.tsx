@@ -19,13 +19,15 @@ import {
   MoreVertical,
   FileUp,
   FileDown,
+  EyeOff,
+  Eye,
 } from 'lucide-react';
 import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
-import { BreadcrumbUpdater } from '@/components/providers/BreadcrumbProvider';
 import { toast } from 'sonner';
 import { useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { flashcardKeys } from '@/lib/query-keys';
 import { DeckDetailSkeleton } from '@/components/flashcards/shared/deck-detail-skeleton';
 import { FlashcardCard } from '@/components/flashcards/cards/flashcard-card';
@@ -212,6 +214,12 @@ export function DeckDetailScreen({
       queryClient.setQueryData(flashcardKeys.decks.detail(deckId), ctx?.previous);
     },
   });
+  const toggleSuspendMutation = useApiMutation({
+    mutationFn: (suspended: boolean) =>
+      apiPut<Deck>(`/api/v1/flashcards/decks/${deckId}`, { suspended }),
+    invalidateKeys: [flashcardKeys.decks.all, flashcardKeys.decks.detail(deckId)],
+  });
+
   const deleteDeck = useApiMutation({
     mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/decks/${id}`),
     invalidateKeys: [flashcardKeys.decks.all, flashcardKeys.decks.detail(deckId)],
@@ -609,7 +617,6 @@ export function DeckDetailScreen({
 
   return (
     <div className="space-y-6">
-      <BreadcrumbUpdater label={currentDeck?.name ?? ''} href="#" />
 
       <div className="relative rounded-xl border bg-card p-6">
         <div className="absolute right-4 top-4 z-10">
@@ -640,6 +647,15 @@ export function DeckDetailScreen({
                   </DropdownMenuItem>
                 </>
               )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => toggleSuspendMutation.mutate(!currentDeck?.suspended)}>
+                {currentDeck?.suspended ? (
+                  <Eye className="h-4 w-4 mr-2" />
+                ) : (
+                  <EyeOff className="h-4 w-4 mr-2" />
+                )}
+                {currentDeck?.suspended ? t('unsuspend_deck') : t('suspend_deck')}
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => {
                   const params = deckId ? `?deckId=${deckId}` : '';
@@ -732,6 +748,13 @@ export function DeckDetailScreen({
           </div>
         </div>
       </div>
+
+      {currentDeck?.suspended && (
+        <Alert variant="default" className="border-dashed text-muted-foreground">
+          <EyeOff className="h-4 w-4" />
+          <AlertDescription>{t('deck_suspended_notice')}</AlertDescription>
+        </Alert>
+      )}
 
       <FlashcardToolbar
         searchInput={searchInput}

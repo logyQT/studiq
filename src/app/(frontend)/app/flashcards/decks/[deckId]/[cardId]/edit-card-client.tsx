@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Loader2 } from 'lucide-react';
@@ -9,13 +9,12 @@ import { Button } from '@/components/ui/button';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
 import { FlashcardEditor } from '@/components/flashcards';
-import { useBreadcrumbContext } from '@/components/providers/BreadcrumbProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { apiPut } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { formatMarkdown } from '@/lib/markdown-utils';
 import { toast } from 'sonner';
-import type { Deck, Flashcard, Topic } from '@/types/flashcards';
+import type { Flashcard, Topic } from '@/types/flashcards';
 
 interface EditCardClientProps {
   deckId: string;
@@ -26,17 +25,10 @@ export default function EditCardClient({ deckId, cardId }: EditCardClientProps) 
   const router = useRouter();
   const queryClient = useQueryClient();
   const t = useTranslations('AppFlashcardDeckViewPage');
-  const { setDynamicSegments } = useBreadcrumbContext();
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
   const [topicIds, setTopicIds] = useState<string[]>([]);
   const [initialized, setInitialized] = useState(false);
-
-  const { data: deck } = useApiQuery<Deck>({
-    queryKey: flashcardKeys.decks.detail(deckId),
-    url: `/api/v1/flashcards/decks/${deckId}`,
-    enabled: !!deckId,
-  });
 
   const {
     data: flashcard,
@@ -53,16 +45,6 @@ export default function EditCardClient({ deckId, cardId }: EditCardClientProps) 
     setBack(flashcard.back);
     setTopicIds(flashcard.flashcard_topic_assignments?.map((a) => a.topic_id) ?? []);
   }
-
-  const truncatedLabel = front.length > 30 ? front.substring(0, 30) + '...' : front;
-
-  useEffect(() => {
-    setDynamicSegments([
-      { label: deck?.name ?? '', href: `/app/flashcards/decks/${deckId}` },
-      { label: truncatedLabel || t('edit_title'), href: '#' },
-    ]);
-    return () => setDynamicSegments([]);
-  }, [deck, deckId, truncatedLabel, t, setDynamicSegments]);
 
   const { data: topicsData } = useApiQuery<{ items: Topic[]; nextCursor: string | null; hasMore: boolean }>({
     queryKey: flashcardKeys.topics.all,

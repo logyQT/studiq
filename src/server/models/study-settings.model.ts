@@ -10,6 +10,7 @@ export const UserStudySettingsSchema = registry.register(
     leechThreshold: z.number().int().positive({ error: ValidationErrorCode.POSITIVE_NUMBER }),
     newCardsIntroduced: z.number().int().nonnegative({ error: ValidationErrorCode.TOO_SMALL }),
     dailyResetDate: z.string({ error: ValidationErrorCode.REQUIRED }),
+    dailyReviewGoal: z.number().int().nonnegative({ error: ValidationErrorCode.TOO_SMALL }).optional().default(0),
   }),
 );
 

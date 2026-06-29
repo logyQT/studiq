@@ -45,7 +45,7 @@ export default [
   },
 
   {
-    ignores: ['node_modules', '.next', 'out', 'dist', 'build', '.opencode'],
+    ignores: ['node_modules', '.next', 'out', 'dist', 'build', '.opencode', 'seed-data.js'],
   },
 
   prettierConfig,

@@ -5,6 +5,7 @@ export interface Deck {
   flashcard_count: number;
   created_by: string;
   updated_at?: string;
+  suspended?: boolean;
 }
 
 export interface Topic {

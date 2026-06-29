@@ -1,22 +1,27 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
   SidebarProvider,
   Sidebar,
   SidebarContent,
+  SidebarHeader,
+  SidebarFooter,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
   SidebarTrigger,
+  useSidebar,
 } from '@/components/ui/sidebar';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { UserMenu } from '@/components/layout/user-menu';
 import { AppSearch } from '@/components/layout/app-search';
-import { Breadcrumbs } from '@/components/layout/breadcrumbs';
-import { useBreadcrumbs } from '@/hooks/use-breadcrumbs';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
@@ -26,31 +31,40 @@ import {
   Users,
   Mail,
   Settings,
-  BookOpen,
   Brain,
   ListPlus,
-  TrendingUp,
   GraduationCap,
   Monitor,
-  Tags,
   AlertTriangle,
   ShieldCheck,
   Sparkles,
+  ChevronDown,
+  Folder,
+  Tag,
 } from 'lucide-react';
 
 export type NavItem = {
   titleKey: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+  children?: { titleKey: string; href: string }[];
 };
 
 const NAV_ITEMS: Record<string, NavItem[]> = {
   '/edu': [
     { titleKey: 'edu_overview', href: '/edu', icon: LayoutDashboard },
     { titleKey: 'ai_chat', href: '/edu/ai', icon: Sparkles },
+    {
+      titleKey: 'edu_flashcards',
+      href: '/edu/flashcards',
+      icon: Layers,
+      children: [
+        { titleKey: 'flashcard_decks', href: '/edu/flashcards/decks' },
+        { titleKey: 'flashcard_stats', href: '/edu/flashcards/stats' },
+        { titleKey: 'flashcard_topics', href: '/edu/flashcards/topics' },
+      ],
+    },
     { titleKey: 'edu_questions', href: '/edu/questions', icon: FileText },
-    { titleKey: 'edu_flashcards', href: '/edu/flashcards', icon: Layers },
-    { titleKey: 'edu_flashcard_topics', href: '/edu/flashcards/topics', icon: Tags },
     { titleKey: 'edu_statistics', href: '/edu/statistics', icon: BarChart3 },
   ],
   '/manage': [
@@ -62,11 +76,12 @@ const NAV_ITEMS: Record<string, NavItem[]> = {
   ],
   '/app': [
     { titleKey: 'app_overview', href: '/app', icon: LayoutDashboard },
-    { titleKey: 'ai_chat', href: '/app/ai', icon: Sparkles },
-    { titleKey: 'app_flashcards', href: '/app/flashcards', icon: Brain },
-    { titleKey: 'app_quiz', href: '/app/quiz', icon: BookOpen },
+    { titleKey: 'flashcard_study', href: '/app/study', icon: Brain },
+    { titleKey: 'flashcard_decks', href: '/app/flashcards/decks', icon: Folder },
+    { titleKey: 'flashcard_topics', href: '/app/flashcards/topics', icon: Tag },
     { titleKey: 'app_my_questions', href: '/app/my-questions', icon: ListPlus },
-    { titleKey: 'app_statistics', href: '/app/statistics', icon: TrendingUp },
+    { titleKey: 'app_stats', href: '/app/stats', icon: BarChart3 },
+    { titleKey: 'ai_chat', href: '/app/ai', icon: Sparkles },
   ],
   '/admin': [
     { titleKey: 'admin_overview', href: '/admin', icon: LayoutDashboard },
@@ -86,140 +101,181 @@ function getNavGroup(pathname: string): NavItem[] {
   return [];
 }
 
-function getActiveHref(pathname: string, navItems: NavItem[]): string | null {
-  let best: NavItem | null = null;
-  for (const item of navItems) {
-    const matches =
-      pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href + '/'));
-    if (matches && (!best || item.href.length > best.href.length)) {
-      best = item;
+function SidebarLogo() {
+  const { toggleSidebar } = useSidebar();
+
+  return (
+    <SidebarHeader>
+      <div className="flex items-center">
+        <button
+          onClick={toggleSidebar}
+          className="flex items-center w-full py-1.5 rounded-lg group-data-[collapsible=icon]:flex hidden"
+          aria-label="Expand sidebar"
+        >
+          <div className="rounded-xl bg-primary p-1.5 shadow-sm shrink-0">
+            <GraduationCap className="size-5 text-primary-foreground" />
+          </div>
+        </button>
+
+        <div className="flex items-center gap-2.5 py-1.5 w-full group-data-[collapsible=icon]:hidden">
+          <div className="rounded-xl bg-primary p-1.5 shadow-sm shrink-0">
+            <GraduationCap className="size-5 text-primary-foreground" />
+          </div>
+          <span className="text-lg font-bold tracking-tight truncate">
+            Studi<span className="text-primary">Q</span>
+          </span>
+          <SidebarTrigger className="ml-auto" />
+        </div>
+      </div>
+    </SidebarHeader>
+  );
+}
+
+function SidebarNav() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { state } = useSidebar();
+  const t = useTranslations('DashboardLayout');
+  const navItems = getNavGroup(pathname);
+
+  const longestMatchHref = (() => {
+    let best: string | null = null;
+    for (const item of navItems) {
+      const matches =
+        pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href + '/'));
+      if (matches && (!best || item.href.length > best.length)) {
+        best = item.href;
+      }
     }
-  }
-  return best?.href ?? null;
+    return best;
+  })();
+
+  return (
+    <SidebarMenu className="gap-0.5">
+      {navItems.map((item) => {
+        if (item.children) {
+          const isParentActive = pathname === item.href || pathname.startsWith(item.href + '/');
+          return (
+            <Collapsible
+              key={item.titleKey}
+              defaultOpen={pathname.startsWith(item.href)}
+              className="group/collapsible"
+            >
+              <SidebarMenuItem>
+                <CollapsibleTrigger asChild>
+                  <SidebarMenuButton
+                    isActive={isParentActive}
+                    tooltip={t(item.titleKey)}
+                    onClick={() => {
+                      if (state === 'collapsed' && item.children?.[0]) {
+                        router.push(item.children[0].href);
+                      }
+                    }}
+                    className={cn(
+                      'h-8 rounded-lg transition-all duration-150',
+                      isParentActive
+                        ? 'bg-primary/10 text-primary font-medium hover:bg-primary/15 data-[active=true]:bg-primary/10 data-[active=true]:text-primary'
+                        : 'text-sidebar-foreground/80 hover:bg-primary/8 hover:text-primary',
+                    )}
+                  >
+                    <item.icon
+                      className={cn(
+                        'h-4 w-4 shrink-0 transition-colors',
+                        isParentActive ? 'text-primary' : 'text-sidebar-foreground/60',
+                      )}
+                    />
+                    <span>{t(item.titleKey)}</span>
+                    <ChevronDown className="ml-auto h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
+                  </SidebarMenuButton>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <SidebarMenuSub>
+                    {item.children.map((child) => {
+                      const isChildActive =
+                        pathname === child.href || pathname.startsWith(child.href + '/');
+                      return (
+                        <SidebarMenuSubItem key={child.titleKey}>
+                          <SidebarMenuSubButton asChild isActive={isChildActive}>
+                            <Link href={child.href}>
+                              <span>{t(child.titleKey)}</span>
+                            </Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      );
+                    })}
+                  </SidebarMenuSub>
+                </CollapsibleContent>
+              </SidebarMenuItem>
+            </Collapsible>
+          );
+        }
+
+        const isActive = item.href === longestMatchHref;
+        return (
+          <SidebarMenuItem key={item.titleKey} className="relative">
+            {isActive && (
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-primary rounded-r-full z-10" />
+            )}
+            <SidebarMenuButton
+              asChild
+              isActive={isActive}
+              tooltip={t(item.titleKey)}
+              className={cn(
+                'h-8 rounded-lg transition-all duration-150',
+                isActive
+                  ? 'bg-primary/10 text-primary font-medium hover:bg-primary/15 data-[active=true]:bg-primary/10 data-[active=true]:text-primary'
+                  : 'text-sidebar-foreground/80 hover:bg-primary/8 hover:text-primary',
+              )}
+            >
+              <Link href={item.href}>
+                <item.icon
+                  className={cn(
+                    'h-4 w-4 shrink-0 transition-colors',
+                    isActive ? 'text-primary' : 'text-sidebar-foreground/60',
+                  )}
+                />
+                <span>{t(item.titleKey)}</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        );
+      })}
+    </SidebarMenu>
+  );
 }
 
 export function DashboardLayout({
   children,
   fullWidth = false,
-  hideBreadcrumbs = false,
 }: {
   children: React.ReactNode;
   fullWidth?: boolean;
-  hideBreadcrumbs?: boolean;
 }) {
-  const pathname = usePathname();
-  const t = useTranslations('DashboardLayout');
-  const navItems = getNavGroup(pathname);
-  const activeHref = getActiveHref(pathname, navItems);
-
-  const showSearch = pathname.startsWith('/app') || pathname.startsWith('/edu');
-  const crumbs = useBreadcrumbs(pathname);
-
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
   return (
-    <SidebarProvider
-      defaultOpen={false}
-      open={sidebarOpen}
-      onOpenChange={setSidebarOpen}
-      className="flex-col !h-svh"
-    >
-      {/* Full-width topbar */}
-      <header className="shrink-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm border-b border-border/60">
-        <div className="flex min-h-14 items-center gap-4 px-2">
-          <Link href="/" className="hidden md:flex items-center gap-2.5 group shrink-0">
-            <div className="rounded-xl bg-primary p-1.5 shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all duration-200">
-              <GraduationCap className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <span className="text-lg font-bold tracking-tight">
-              Studi<span className="text-primary">Q</span>
-            </span>
-          </Link>
-          {/* <SidebarTrigger className="hover:bg-primary/8 hover:text-primary transition-colors" /> */}
-          <div className="md:hidden">
-            <SidebarTrigger className="hover:bg-primary/8 hover:text-primary transition-colors" />
-          </div>
-          {showSearch && (
-            <div className="flex-1 flex justify-center min-w-0">
-              <AppSearch />
-            </div>
-          )}
-          <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-            <UserMenu />
-          </div>
-        </div>
-      </header>
-
-      {/* Sidebar + main content */}
+    <SidebarProvider defaultOpen={false} className="flex-col !h-svh">
       <div className="flex flex-1 min-h-0">
-        <div onMouseEnter={() => setSidebarOpen(true)} onMouseLeave={() => setSidebarOpen(false)}>
-          <Sidebar collapsible="icon" className="!top-14 !h-[calc(100svh-3.5rem)]">
-            <SidebarContent className="py-3 px-2">
-              <div className="md:hidden mb-2">
-                <Link href="/" className="flex items-center gap-2.5 group px-2 py-1.5">
-                  <div className="rounded-xl bg-primary p-1.5 shadow-sm group-hover:shadow-md group-hover:scale-105 transition-all duration-200">
-                    <GraduationCap className="h-5 w-5 text-primary-foreground" />
-                  </div>
-                  <span className="text-lg font-bold tracking-tight">
-                    Studi<span className="text-primary">Q</span>
-                  </span>
-                </Link>
-              </div>
-              <SidebarMenu className="gap-0.5">
-                {navItems.map((item) => {
-                  const isActive = item.href === activeHref;
-                  return (
-                    <SidebarMenuItem key={item.titleKey} className="relative">
-                      {isActive && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-primary rounded-r-full z-10" />
-                      )}
-                      <SidebarMenuButton
-                        asChild
-                        isActive={isActive}
-                        tooltip={t(item.titleKey)}
-                        className={cn(
-                          'h-8 rounded-lg transition-all duration-150',
-                          isActive
-                            ? 'bg-primary/10 text-primary font-medium hover:bg-primary/15 data-[active=true]:bg-primary/10 data-[active=true]:text-primary'
-                            : 'text-sidebar-foreground/80 hover:bg-primary/8 hover:text-primary',
-                        )}
-                      >
-                        <Link href={item.href}>
-                          <item.icon
-                            className={cn(
-                              'h-4 w-4 shrink-0 transition-colors',
-                              isActive ? 'text-primary' : 'text-sidebar-foreground/60',
-                            )}
-                          />
-                          <span>{t(item.titleKey)}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarContent>
-          </Sidebar>
-        </div>
+        <Sidebar collapsible="icon" className="!relative !inset-auto !h-full">
+          <SidebarLogo />
+          <SidebarContent className="py-3 px-2">
+            <SidebarNav />
+          </SidebarContent>
+          <SidebarFooter className="group-data-[collapsible=icon]:p-0">
+            <UserMenu compact />
+          </SidebarFooter>
+        </Sidebar>
 
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="md:pl-12 flex-1 flex flex-col min-w-0 min-h-0">
-            {crumbs.length > 0 && !hideBreadcrumbs && (
-              <div className="shrink-0 px-3 py-3 border-b border-border/60 shadow-sm">
-                <Breadcrumbs items={crumbs} />
-              </div>
+          <main
+            className={cn(
+              'flex-1 min-h-0 overflow-y-auto scrollbar-gutter-stable',
+              fullWidth ? 'flex flex-col' : 'p-content',
             )}
-            <main
-              className={cn(
-                'flex-1 min-h-0 overflow-y-auto scrollbar-gutter-stable',
-                fullWidth ? 'flex flex-col' : 'p-content',
-              )}
-            >
-              {children}
-            </main>
-          </div>
+          >
+            {children}
+          </main>
         </div>
       </div>
+      <AppSearch />
     </SidebarProvider>
   );
 }

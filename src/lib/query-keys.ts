@@ -17,10 +17,13 @@ export const flashcardKeys = {
   },
   practice: {
     dueBreakdown: ['flashcards', 'practice', 'dueBreakdown'] as const,
+    states: ['flashcards', 'practice', 'states'] as const,
   },
   stats: {
     teacher: ['flashcards', 'stats', 'teacher'] as const,
     difficultyBucket: (bucket: string) => ['flashcards', 'stats', 'difficulty', bucket] as const,
+    activity: (range: string) => ['stats', 'activity', range] as const,
+    weakPoints: ['stats', 'weak-points'] as const,
   },
 };
 

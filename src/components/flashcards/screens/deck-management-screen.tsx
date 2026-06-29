@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { SquarePen, Upload, CheckSquare, Plus, FolderOpen } from 'lucide-react';
@@ -65,6 +65,7 @@ function loadPersistedFilters() {
 export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps) {
   const { user } = useAuth();
   const role = user?.app_metadata?.role as UserRole | undefined;
+  const queryClient = useQueryClient();
 
   const persisted = loadPersistedFilters();
 
@@ -73,12 +74,14 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   const [owner, setOwner] = useState(persisted.owner);
   const [sortBy, setSortBy] = useState(persisted.sortBy);
   const [sortOrder, setSortOrder] = useState(persisted.sortOrder);
+  const [includeSuspended, setIncludeSuspended] = useState(false);
 
   const filters = {
     q: debouncedSearch || undefined,
     owner: owner !== 'all' ? owner : undefined,
     sortBy,
     sortOrder,
+    includeSuspended: includeSuspended ? 'true' : undefined,
   };
 
   const queryString = new URLSearchParams(
@@ -148,6 +151,12 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   });
   const batchDeleteDecks = useApiMutation({
     mutationFn: (data: { ids: string[] }) => apiPost('/api/v1/flashcards/decks/batch/delete', data),
+    invalidateKeys: [flashcardKeys.decks.all],
+  });
+
+  const batchToggleSuspend = useApiMutation({
+    mutationFn: (data: { deckIds: string[]; suspended: boolean }) =>
+      apiPost('/api/v1/flashcards/decks/batch/suspend', data),
     invalidateKeys: [flashcardKeys.decks.all],
   });
 
@@ -232,6 +241,28 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     }
   }
 
+  async function handleBatchToggleSuspend(suspended: boolean) {
+    const ids = Array.from(selection.selectedIds);
+    if (ids.length === 0) return;
+    try {
+      await batchToggleSuspend.mutateAsync({ deckIds: ids, suspended });
+      toast.success(suspended ? t('deck_suspended') : t('deck_unsuspended'));
+      handleClearSelection();
+    } catch {
+      toast.error(t('save_failed'));
+    }
+  }
+
+  async function handleToggleSuspend(deck: Deck) {
+    try {
+      await apiPut(`/api/v1/flashcards/decks/${deck.id}`, { suspended: !deck.suspended });
+      queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
+      toast.success(deck.suspended ? t('deck_unsuspended') : t('deck_suspended'));
+    } catch {
+      toast.error(t('save_failed'));
+    }
+  }
+
   async function handleDelete() {
     if (!deleteId) return;
     try {
@@ -264,6 +295,8 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
           persistFilters(owner, sb, so);
         }}
         canSeeOrg={canSeeOrg}
+        includeSuspended={includeSuspended}
+        onIncludeSuspendedChange={setIncludeSuspended}
         onImport={() => setImportOpen(true)}
         onCreateNew={openCreate}
         t={t}
@@ -317,6 +350,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
                 window.open(`/api/v1/flashcards/export/csv?deckIds=${deck.id}`, '_blank')
               }
               onSelect={() => selection.setIsSelecting(true)}
+              onToggleSuspend={() => handleToggleSuspend(deck)}
             />
           ))}
           {hasNextPage &&
@@ -398,6 +432,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         onExport={handleBatchExportSelection}
         onDelete={handleBatchDeleteSelection}
         onClearSelection={handleClearSelection}
+        onToggleSuspend={handleBatchToggleSuspend}
         t={t}
       />
 

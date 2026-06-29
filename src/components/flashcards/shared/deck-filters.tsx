@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, X, FileUp, Plus } from 'lucide-react';
+import { Search, X, FileUp, Plus, EyeOff } from 'lucide-react';
 
 interface DeckFiltersProps {
   searchInput: string;
@@ -21,6 +21,8 @@ interface DeckFiltersProps {
   sortOrder: string;
   onSortChange: (sortBy: string, sortOrder: string) => void;
   canSeeOrg: boolean;
+  includeSuspended: boolean;
+  onIncludeSuspendedChange: (value: boolean) => void;
   onImport: () => void;
   onCreateNew: () => void;
   t: ReturnType<typeof useTranslations>;
@@ -35,6 +37,8 @@ export function DeckFilters({
   sortOrder,
   onSortChange,
   canSeeOrg,
+  includeSuspended,
+  onIncludeSuspendedChange,
   onImport,
   onCreateNew,
   t,
@@ -92,6 +96,15 @@ export function DeckFilters({
           <SelectItem value="name:desc">{t('sort_name_desc')}</SelectItem>
         </SelectContent>
       </Select>
+      <Button
+        variant={includeSuspended ? 'default' : 'outline'}
+        size="sm"
+        onClick={() => onIncludeSuspendedChange(!includeSuspended)}
+        className="gap-1.5"
+      >
+        <EyeOff className="h-4 w-4" />
+        {includeSuspended && <span>{t('show_suspended')}</span>}
+      </Button>
       <div className="flex items-center gap-2 sm:ml-auto">
         <Button variant="outline" className="justify-start" onClick={onImport}>
           <FileUp className="h-4 w-4" /> {t('common_import')}

@@ -1,5 +1,5 @@
-import FlashcardsClient from './flashcards-client';
+import { redirect } from 'next/navigation';
 
 export default function FlashcardsPage() {
-  return <FlashcardsClient />;
+  redirect('/app/flashcards/decks');
 }

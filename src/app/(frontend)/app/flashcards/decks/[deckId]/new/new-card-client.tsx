@@ -1,19 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { FlashcardEditor } from '@/components/flashcards';
-import { useBreadcrumbContext } from '@/components/providers/BreadcrumbProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { apiPost } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { formatMarkdown } from '@/lib/markdown-utils';
 import { toast } from 'sonner';
-import type { Deck, Topic } from '@/types/flashcards';
+import type { Topic } from '@/types/flashcards';
 
 interface NewCardClientProps {
   deckId: string;
@@ -23,24 +22,9 @@ export default function NewCardClient({ deckId }: NewCardClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const t = useTranslations('AppFlashcardDeckViewPage');
-  const { setDynamicSegments } = useBreadcrumbContext();
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
   const [topicIds, setTopicIds] = useState<string[]>([]);
-
-  const { data: deck } = useApiQuery<Deck>({
-    queryKey: flashcardKeys.decks.detail(deckId),
-    url: `/api/v1/flashcards/decks/${deckId}`,
-    enabled: !!deckId,
-  });
-
-  useEffect(() => {
-    setDynamicSegments([
-      { label: deck?.name ?? '', href: `/app/flashcards/decks/${deckId}` },
-      { label: t('create_title'), href: '#' },
-    ]);
-    return () => setDynamicSegments([]);
-  }, [deck, deckId, t, setDynamicSegments]);
 
   const { data: topicsData } = useApiQuery<{ items: Topic[]; nextCursor: string | null; hasMore: boolean }>({
     queryKey: flashcardKeys.topics.all,
