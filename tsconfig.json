@@ -29,5 +29,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "__test__", "__tests__", "__tests__/e2e"]
+  "exclude": ["node_modules", ".next", "__test__", "__tests__", "__tests__/e2e"]
 }
