@@ -57,7 +57,7 @@ describe('SubjectService', () => {
       expect(result).toEqual(subjects);
     });
 
-    it('filters by universityId when provided', async () => {
+    it('filters by organizationId when provided', async () => {
       const subjects = [{ id: 'sub-1', name: 'Math 101' }];
       const eqResult = { data: subjects, error: null };
       const eqFn = vi.fn().mockResolvedValue(eqResult);

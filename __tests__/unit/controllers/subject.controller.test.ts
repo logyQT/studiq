@@ -102,7 +102,7 @@ describe('SubjectController', () => {
       });
     });
 
-    it('passes universityId filter to service', async () => {
+    it('passes organizationId filter to service', async () => {
       mockService.list.mockResolvedValueOnce([]);
 
       await subjectController.list('uni-123');

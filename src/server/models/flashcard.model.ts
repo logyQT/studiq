@@ -145,7 +145,7 @@ export const FlashcardSchema = registry.register(
     front: z.string(),
     back: z.string(),
     created_by: z.string().uuid(),
-    university_id: z.string().uuid().nullable().optional(),
+    organization_id: z.string().uuid().nullable().optional(),
     created_at: z.string().optional(),
   }),
 );

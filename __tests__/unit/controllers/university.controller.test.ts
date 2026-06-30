@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { universityController } from '@/server/controllers/university.controller';
-import { universityService } from '@/server/services';
+import { organizationController } from '@/server/controllers/organization.controller';
+import { organizationService } from '@/server/services';
 import { AppError } from '@/lib/errors';
 
 vi.mock('@/server/services', () => ({
-  universityService: {
+  organizationService: {
     create: vi.fn(),
     getAll: vi.fn(),
     getById: vi.fn(),
@@ -13,9 +13,9 @@ vi.mock('@/server/services', () => ({
   },
 }));
 
-const mockService = vi.mocked(universityService);
+const mockService = vi.mocked(organizationService);
 
-describe('UniversityController', () => {
+describe('OrganizationController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -25,7 +25,7 @@ describe('UniversityController', () => {
       const university = { id: 'uni-1', name: 'Test University', slug: 'test' };
       mockService.create.mockResolvedValueOnce(university);
 
-      const response = await universityController.create({ name: 'Test University', slug: 'test' });
+      const response = await organizationController.create({ name: 'Test University', slug: 'test' });
 
       expect(response).toEqual({
         success: true,
@@ -35,7 +35,7 @@ describe('UniversityController', () => {
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid input', async () => {
-      const response = await universityController.create({ name: 'AB', slug: 'bad slug!' });
+      const response = await organizationController.create({ name: 'AB', slug: 'bad slug!' });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
@@ -45,7 +45,7 @@ describe('UniversityController', () => {
     it('returns CONFLICT when slug already exists', async () => {
       mockService.create.mockRejectedValueOnce(new AppError('CONFLICT'));
 
-      const response = await universityController.create({ name: 'Test', slug: 'taken' });
+      const response = await organizationController.create({ name: 'Test', slug: 'taken' });
 
       expect(response).toEqual({
         success: false,
@@ -57,7 +57,7 @@ describe('UniversityController', () => {
     it('returns INTERNAL_SERVER when service throws generic error', async () => {
       mockService.create.mockRejectedValueOnce(new Error('unexpected'));
 
-      const response = await universityController.create({ name: 'Test', slug: 'test' });
+      const response = await organizationController.create({ name: 'Test', slug: 'test' });
 
       expect(response).toEqual({
         success: false,
@@ -75,7 +75,7 @@ describe('UniversityController', () => {
       ];
       mockService.getAll.mockResolvedValueOnce(universities);
 
-      const response = await universityController.getAll();
+      const response = await organizationController.getAll();
 
       expect(response).toEqual({
         success: true,
@@ -87,7 +87,7 @@ describe('UniversityController', () => {
     it('returns INTERNAL_SERVER when service throws', async () => {
       mockService.getAll.mockRejectedValueOnce(new Error('db error'));
 
-      const response = await universityController.getAll();
+      const response = await organizationController.getAll();
 
       expect(response).toEqual({
         success: false,
@@ -104,7 +104,7 @@ describe('UniversityController', () => {
       const university = { id: validId, name: 'Test University', slug: 'test' };
       mockService.getById.mockResolvedValueOnce(university);
 
-      const response = await universityController.getById(validId);
+      const response = await organizationController.getById(validId);
 
       expect(response).toEqual({
         success: true,
@@ -114,7 +114,7 @@ describe('UniversityController', () => {
     });
 
     it('returns BAD_REQUEST for invalid UUID', async () => {
-      const response = await universityController.getById('not-a-uuid');
+      const response = await organizationController.getById('not-a-uuid');
 
       expect(response).toEqual({
         success: false,
@@ -126,7 +126,7 @@ describe('UniversityController', () => {
     it('returns NOT_FOUND when university does not exist', async () => {
       mockService.getById.mockRejectedValueOnce(new AppError('NOT_FOUND'));
 
-      const response = await universityController.getById(validId);
+      const response = await organizationController.getById(validId);
 
       expect(response).toEqual({
         success: false,
@@ -138,7 +138,7 @@ describe('UniversityController', () => {
     it('returns INTERNAL_SERVER when service throws generic error', async () => {
       mockService.getById.mockRejectedValueOnce(new Error('unexpected'));
 
-      const response = await universityController.getById(validId);
+      const response = await organizationController.getById(validId);
 
       expect(response).toEqual({
         success: false,
@@ -155,7 +155,7 @@ describe('UniversityController', () => {
       const updated = { id: validId, name: 'Updated Name', slug: 'test' };
       mockService.update.mockResolvedValueOnce(updated);
 
-      const response = await universityController.update(validId, { name: 'Updated Name' });
+      const response = await organizationController.update(validId, { name: 'Updated Name' });
 
       expect(response).toEqual({
         success: true,
@@ -165,7 +165,7 @@ describe('UniversityController', () => {
     });
 
     it('returns BAD_REQUEST for invalid UUID', async () => {
-      const response = await universityController.update('not-a-uuid', { name: 'Updated' });
+      const response = await organizationController.update('not-a-uuid', { name: 'Updated' });
 
       expect(response).toEqual({
         success: false,
@@ -175,7 +175,7 @@ describe('UniversityController', () => {
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid body', async () => {
-      const response = await universityController.update(validId, {});
+      const response = await organizationController.update(validId, {});
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
@@ -185,7 +185,7 @@ describe('UniversityController', () => {
     it('returns CONFLICT when slug already exists', async () => {
       mockService.update.mockRejectedValueOnce(new AppError('CONFLICT'));
 
-      const response = await universityController.update(validId, { slug: 'taken' });
+      const response = await organizationController.update(validId, { slug: 'taken' });
 
       expect(response).toEqual({
         success: false,
@@ -197,7 +197,7 @@ describe('UniversityController', () => {
     it('returns NOT_FOUND when university does not exist', async () => {
       mockService.update.mockRejectedValueOnce(new AppError('NOT_FOUND'));
 
-      const response = await universityController.update(validId, { name: 'New' });
+      const response = await organizationController.update(validId, { name: 'New' });
 
       expect(response).toEqual({
         success: false,
@@ -209,7 +209,7 @@ describe('UniversityController', () => {
     it('returns INTERNAL_SERVER when service throws generic error', async () => {
       mockService.update.mockRejectedValueOnce(new Error('unexpected'));
 
-      const response = await universityController.update(validId, { name: 'New' });
+      const response = await organizationController.update(validId, { name: 'New' });
 
       expect(response).toEqual({
         success: false,
@@ -225,7 +225,7 @@ describe('UniversityController', () => {
     it('returns success when university is deleted', async () => {
       mockService.delete.mockResolvedValueOnce({ success: true });
 
-      const response = await universityController.delete(validId);
+      const response = await organizationController.delete(validId);
 
       expect(response).toEqual({
         success: true,
@@ -235,7 +235,7 @@ describe('UniversityController', () => {
     });
 
     it('returns BAD_REQUEST for invalid UUID', async () => {
-      const response = await universityController.delete('not-a-uuid');
+      const response = await organizationController.delete('not-a-uuid');
 
       expect(response).toEqual({
         success: false,
@@ -247,7 +247,7 @@ describe('UniversityController', () => {
     it('returns NOT_FOUND when university does not exist', async () => {
       mockService.delete.mockRejectedValueOnce(new AppError('NOT_FOUND'));
 
-      const response = await universityController.delete(validId);
+      const response = await organizationController.delete(validId);
 
       expect(response).toEqual({
         success: false,
@@ -259,7 +259,7 @@ describe('UniversityController', () => {
     it('returns INTERNAL_SERVER when service throws generic error', async () => {
       mockService.delete.mockRejectedValueOnce(new Error('unexpected'));
 
-      const response = await universityController.delete(validId);
+      const response = await organizationController.delete(validId);
 
       expect(response).toEqual({
         success: false,

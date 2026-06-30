@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { CreateUniversitySchema, UpdateUniversitySchema, UniversityIdParamsSchema } from '@/server/models/university.model';
+import { CreateOrganizationSchema, UpdateOrganizationSchema, OrganizationIdParamsSchema } from '@/server/models/organization.model';
 import { ValidationErrorCode } from '@/lib/validation-errors';
 
-describe('CreateUniversitySchema', () => {
+describe('CreateOrganizationSchema', () => {
   it('passes with valid input', () => {
-    const result = CreateUniversitySchema.safeParse({
+    const result = CreateOrganizationSchema.safeParse({
       name: 'Test University',
       slug: 'test-university',
     });
@@ -12,7 +12,7 @@ describe('CreateUniversitySchema', () => {
   });
 
   it('fails when name is too short', () => {
-    const result = CreateUniversitySchema.safeParse({
+    const result = CreateOrganizationSchema.safeParse({
       name: 'AB',
       slug: 'test-university',
     });
@@ -23,7 +23,7 @@ describe('CreateUniversitySchema', () => {
   });
 
   it('fails when name is missing', () => {
-    const result = CreateUniversitySchema.safeParse({ slug: 'test-university' });
+    const result = CreateOrganizationSchema.safeParse({ slug: 'test-university' });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0].message).toBe(ValidationErrorCode.NAME_REQUIRED);
@@ -31,7 +31,7 @@ describe('CreateUniversitySchema', () => {
   });
 
   it('fails when slug has invalid format', () => {
-    const result = CreateUniversitySchema.safeParse({
+    const result = CreateOrganizationSchema.safeParse({
       name: 'Test University',
       slug: 'Test_University',
     });
@@ -42,7 +42,7 @@ describe('CreateUniversitySchema', () => {
   });
 
   it('fails when slug is too short', () => {
-    const result = CreateUniversitySchema.safeParse({
+    const result = CreateOrganizationSchema.safeParse({
       name: 'Test University',
       slug: 'a',
     });
@@ -53,7 +53,7 @@ describe('CreateUniversitySchema', () => {
   });
 
   it('fails when slug is missing', () => {
-    const result = CreateUniversitySchema.safeParse({ name: 'Test University' });
+    const result = CreateOrganizationSchema.safeParse({ name: 'Test University' });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0].message).toBe(ValidationErrorCode.INVALID_INPUT);
@@ -61,19 +61,19 @@ describe('CreateUniversitySchema', () => {
   });
 });
 
-describe('UpdateUniversitySchema', () => {
+describe('UpdateOrganizationSchema', () => {
   it('passes with valid name update', () => {
-    const result = UpdateUniversitySchema.safeParse({ name: 'Updated University' });
+    const result = UpdateOrganizationSchema.safeParse({ name: 'Updated University' });
     expect(result.success).toBe(true);
   });
 
   it('passes with valid slug update', () => {
-    const result = UpdateUniversitySchema.safeParse({ slug: 'updated-slug' });
+    const result = UpdateOrganizationSchema.safeParse({ slug: 'updated-slug' });
     expect(result.success).toBe(true);
   });
 
   it('passes with both name and slug update', () => {
-    const result = UpdateUniversitySchema.safeParse({
+    const result = UpdateOrganizationSchema.safeParse({
       name: 'Updated University',
       slug: 'updated-slug',
     });
@@ -81,12 +81,12 @@ describe('UpdateUniversitySchema', () => {
   });
 
   it('fails when both name and slug are missing', () => {
-    const result = UpdateUniversitySchema.safeParse({});
+    const result = UpdateOrganizationSchema.safeParse({});
     expect(result.success).toBe(false);
   });
 
   it('fails when name is too short', () => {
-    const result = UpdateUniversitySchema.safeParse({ name: 'AB' });
+    const result = UpdateOrganizationSchema.safeParse({ name: 'AB' });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0].message).toBe(ValidationErrorCode.NAME_TOO_SHORT);
@@ -94,7 +94,7 @@ describe('UpdateUniversitySchema', () => {
   });
 
   it('fails when slug has invalid format', () => {
-    const result = UpdateUniversitySchema.safeParse({ slug: 'Invalid_Slug!' });
+    const result = UpdateOrganizationSchema.safeParse({ slug: 'Invalid_Slug!' });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0].message).toBe(ValidationErrorCode.NAME_INVALID_FORMAT);
@@ -102,7 +102,7 @@ describe('UpdateUniversitySchema', () => {
   });
 
   it('fails when slug is too short', () => {
-    const result = UpdateUniversitySchema.safeParse({ slug: 'a' });
+    const result = UpdateOrganizationSchema.safeParse({ slug: 'a' });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0].message).toBe(ValidationErrorCode.INVALID_INPUT);
@@ -110,26 +110,26 @@ describe('UpdateUniversitySchema', () => {
   });
 });
 
-describe('UniversityIdParamsSchema', () => {
+describe('OrganizationIdParamsSchema', () => {
   it('passes with valid UUID', () => {
-    const result = UniversityIdParamsSchema.safeParse({
+    const result = OrganizationIdParamsSchema.safeParse({
       id: '550e8400-e29b-41d4-a716-446655440000',
     });
     expect(result.success).toBe(true);
   });
 
   it('fails with invalid UUID format', () => {
-    const result = UniversityIdParamsSchema.safeParse({ id: 'not-a-uuid' });
+    const result = OrganizationIdParamsSchema.safeParse({ id: 'not-a-uuid' });
     expect(result.success).toBe(false);
   });
 
   it('fails when id is missing', () => {
-    const result = UniversityIdParamsSchema.safeParse({});
+    const result = OrganizationIdParamsSchema.safeParse({});
     expect(result.success).toBe(false);
   });
 
   it('fails when id is empty string', () => {
-    const result = UniversityIdParamsSchema.safeParse({ id: '' });
+    const result = OrganizationIdParamsSchema.safeParse({ id: '' });
     expect(result.success).toBe(false);
   });
 });

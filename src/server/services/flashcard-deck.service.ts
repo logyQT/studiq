@@ -10,7 +10,7 @@ import { log } from '@/lib/logger';
 export class FlashcardDeckService {
   async create(data: CreateDeckInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const universityId = await shouldSetUniversityId(ctx, Permission.DECK_CREATE) ? ctx.universityId : null;
+    const organizationId = await shouldSetUniversityId(ctx, Permission.DECK_CREATE) ? ctx.activeOrgId : null;
 
     const { data: deck, error } = await supabase
       .from('flashcard_decks')
@@ -18,7 +18,7 @@ export class FlashcardDeckService {
         name: data.name,
         description: data.description ?? null,
         created_by: ctx.userId,
-        university_id: universityId,
+        organization_id: organizationId,
       })
       .select()
       .single();
@@ -78,8 +78,8 @@ export class FlashcardDeckService {
         query = query.eq('created_by', ctx.userId);
       } else if (queryParams.owner === 'org') {
         const hasOrgScope = filter.or || !filter.created_by;
-        if (hasOrgScope && ctx.universityId) {
-          query = query.neq('created_by', ctx.userId).eq('university_id', ctx.universityId);
+        if (hasOrgScope && ctx.activeOrgId) {
+          query = query.neq('created_by', ctx.userId).eq('organization_id', ctx.activeOrgId);
         } else {
           return { items: [], nextCursor: null, hasMore: false };
         }
@@ -253,13 +253,13 @@ export class FlashcardDeckService {
 
   async bulkCreate(data: BulkCreateDeckInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const universityId = await shouldSetUniversityId(ctx, Permission.DECK_CREATE) ? ctx.universityId : null;
+    const organizationId = await shouldSetUniversityId(ctx, Permission.DECK_CREATE) ? ctx.activeOrgId : null;
 
     const decks = data.decks.map((d) => ({
       name: d.name,
       description: d.description ?? null,
       created_by: ctx.userId,
-      university_id: universityId,
+      organization_id: organizationId,
     }));
 
     const { data: created, error } = await supabase

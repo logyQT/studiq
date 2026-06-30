@@ -8,11 +8,11 @@
 -- ----------------------------------------------------------
 -- University
 -- ----------------------------------------------------------
-INSERT INTO "public"."universities" ("id", "name", "slug") VALUES
+INSERT INTO "public"."organizations" ("id", "name", "slug") VALUES
   ('00000000-0000-4000-8000-000000000007', 'E2E Test University', 'e2e-test-university')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO "public"."university_subscriptions" ("university_id", "plan_type", "status") VALUES
+INSERT INTO "public"."org_subscriptions" ("organization_id", "plan_type", "status") VALUES
   ('00000000-0000-4000-8000-000000000007', 'enterprise', 'active')
 ON CONFLICT DO NOTHING;
 
@@ -153,28 +153,39 @@ INSERT INTO "auth"."identities" (
 ON CONFLICT DO NOTHING;
 
 -- ----------------------------------------------------------
--- Profile roles + university links
+-- Profile roles + organization links
 -- ----------------------------------------------------------
-UPDATE public.profiles SET role = 'teacher', university_id = '00000000-0000-4000-8000-000000000007'
+UPDATE public.profiles SET role = 'teacher', organization_id = '00000000-0000-4000-8000-000000000007'
   WHERE id = '00000000-0000-4000-8001-000000000025';
 
-UPDATE public.profiles SET role = 'teacher', university_id = '00000000-0000-4000-8000-000000000007'
+UPDATE public.profiles SET role = 'teacher', organization_id = '00000000-0000-4000-8000-000000000007'
   WHERE id = '00000000-0000-4000-8001-000000000026';
 
-UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000-8000-000000000007'
+UPDATE public.profiles SET role = 'student', organization_id = '00000000-0000-4000-8000-000000000007'
   WHERE id = '00000000-0000-4000-8001-000000000027';
 
-UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000-8000-000000000007'
+UPDATE public.profiles SET role = 'student', organization_id = '00000000-0000-4000-8000-000000000007'
   WHERE id = '00000000-0000-4000-8001-000000000028';
 
-UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000-8000-000000000007'
+UPDATE public.profiles SET role = 'student', organization_id = '00000000-0000-4000-8000-000000000007'
   WHERE id = '00000000-0000-4000-8001-000000000029';
 
-UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000-8000-000000000007'
+UPDATE public.profiles SET role = 'student', organization_id = '00000000-0000-4000-8000-000000000007'
   WHERE id = '00000000-0000-4000-8001-000000000030';
 
-UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000-8000-000000000007'
+UPDATE public.profiles SET role = 'student', organization_id = '00000000-0000-4000-8000-000000000007'
   WHERE id = '00000000-0000-4000-8001-000000000031';
+
+-- Create org_members entries for all users in the E2E org
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000007', '00000000-0000-4000-8001-000000000025', 'teacher'),
+  ('00000000-0000-4000-8000-000000000007', '00000000-0000-4000-8001-000000000026', 'teacher'),
+  ('00000000-0000-4000-8000-000000000007', '00000000-0000-4000-8001-000000000027', 'student'),
+  ('00000000-0000-4000-8000-000000000007', '00000000-0000-4000-8001-000000000028', 'student'),
+  ('00000000-0000-4000-8000-000000000007', '00000000-0000-4000-8001-000000000029', 'student'),
+  ('00000000-0000-4000-8000-000000000007', '00000000-0000-4000-8001-000000000030', 'student'),
+  ('00000000-0000-4000-8000-000000000007', '00000000-0000-4000-8001-000000000031', 'student')
+ON CONFLICT DO NOTHING;
 
 -- ----------------------------------------------------------
 -- Flashcards (100 cards, 20 per deck)
@@ -184,7 +195,7 @@ UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000
 -- Deck 4: Geografia        (ids 161-180)
 -- Deck 5: Fizyka           (ids 181-200)
 -- ----------------------------------------------------------
-INSERT INTO "public"."flashcards" ("id", "university_id", "created_by", "front", "back", "created_at") VALUES
+INSERT INTO "public"."flashcards" ("id", "organization_id", "created_by", "front", "back", "created_at") VALUES
 
   -- Deck 1: Historia Polski (20 cards)
   ('00000000-0000-4000-8006-000000000101', '00000000-0000-4000-8000-000000000007', '00000000-0000-4000-8001-000000000025', 'Co to było Civitas Schinesghe?', 'Pierwsze państwo polskie (Polan) utworzone przez Mieszka I.', now()),
@@ -301,7 +312,7 @@ ON CONFLICT DO NOTHING;
 -- ----------------------------------------------------------
 -- Decks (5 decks owned by teacher 1)
 -- ----------------------------------------------------------
-INSERT INTO "public"."flashcard_decks" ("id", "university_id", "created_by", "name", "description", "created_at") VALUES
+INSERT INTO "public"."flashcard_decks" ("id", "organization_id", "created_by", "name", "description", "created_at") VALUES
   ('00000000-0000-4000-8012-000000000006', '00000000-0000-4000-8000-000000000007', '00000000-0000-4000-8001-000000000025', 'Historia Polski', 'Dzieje Polski od Mieszka I do współczesności', now()),
   ('00000000-0000-4000-8012-000000000007', '00000000-0000-4000-8000-000000000007', '00000000-0000-4000-8001-000000000025', 'Biologia', 'Komórka, genetyka, anatomia i ekologia', now()),
   ('00000000-0000-4000-8012-000000000008', '00000000-0000-4000-8000-000000000007', '00000000-0000-4000-8001-000000000025', 'Chemia', 'Pierwiastki, reakcje, wiązania i związki chemiczne', now()),
@@ -423,7 +434,7 @@ ON CONFLICT DO NOTHING;
 -- ----------------------------------------------------------
 -- Topics (15 topics, 3 per deck)
 -- ----------------------------------------------------------
-INSERT INTO "public"."flashcard_topics" ("id", "university_id", "name", "created_by", "created_at") VALUES
+INSERT INTO "public"."flashcard_topics" ("id", "organization_id", "name", "created_by", "created_at") VALUES
   -- Historia Polski
   ('00000000-0000-4000-8010-000000000201', '00000000-0000-4000-8000-000000000007', 'Starożytność i średniowiecze', '00000000-0000-4000-8001-000000000025', now()),
   ('00000000-0000-4000-8010-000000000202', '00000000-0000-4000-8000-000000000007', 'Nowożytność i rozbiory', '00000000-0000-4000-8001-000000000025', now()),

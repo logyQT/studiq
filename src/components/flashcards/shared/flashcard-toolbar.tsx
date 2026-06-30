@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -10,8 +11,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, X, Sparkles, Plus } from 'lucide-react';
+import { Search, X, Sparkles, Plus, Lock } from 'lucide-react';
 import type { Topic } from '@/types/flashcards';
+import { useFeature } from '@/hooks/use-feature';
 
 interface FlashcardToolbarProps {
   searchInput: string;
@@ -42,6 +44,11 @@ export function FlashcardToolbar({
   onCreateNew,
   t,
 }: FlashcardToolbarProps) {
+  const router = useRouter();
+  const { hasAccess: hasStudyAccess } = useFeature('study.create');
+  const { hasAccess: hasAiAccess } = useFeature('ai.chat');
+  const hasAccessGenerate = hasStudyAccess && hasAiAccess;
+
   return (
     <div className="flex flex-wrap items-center gap-3 max-sm:hidden">
       <div className="relative flex-1 basis-full lg:basis-auto lg:max-w-md">
@@ -99,17 +106,27 @@ export function FlashcardToolbar({
             variant="outline"
             size="sm"
             className="gap-1.5"
-            onClick={onGenerate}
+            disabled={!hasAccessGenerate}
+            onClick={hasAccessGenerate ? onGenerate : () => router.push('/checkout?plan_id=student_premium')}
           >
-            <Sparkles className="h-4 w-4" /> {t('generate')}
+            {hasAccessGenerate ? (
+              <><Sparkles className="h-4 w-4" /> {t('generate')}</>
+            ) : (
+              <><Lock className="size-3" /> Upgrade</>
+            )}
           </Button>
         )}
         <Button
           size="sm"
           className="gap-1.5"
-          onClick={onCreateNew}
+          disabled={!hasStudyAccess}
+          onClick={hasStudyAccess ? onCreateNew : () => router.push('/checkout?plan_id=student_premium')}
         >
-          <Plus className="h-4 w-4" /> {t('new_flashcard')}
+          {hasStudyAccess ? (
+            <><Plus className="h-4 w-4" /> {t('new_flashcard')}</>
+          ) : (
+            <><Lock className="size-3" /> Upgrade</>
+          )}
         </Button>
       </div>
     </div>

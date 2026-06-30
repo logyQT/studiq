@@ -24,7 +24,7 @@ export default function ManageOverviewPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/v1/university/members')
+    fetch('/api/v1/organization/members')
       .then((r) => r.json())
       .then((data) => {
         setMembers(data);

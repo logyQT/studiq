@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
-const FULL_WIDTH_ROUTES = ['/app', '/app/ai'];
+const FULL_WIDTH_ROUTES = ['/app/ai'];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

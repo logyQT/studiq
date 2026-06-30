@@ -4,7 +4,7 @@
 -- ==========================================================
 
 -- Flashcard topics (owned by student@dev.local)
-INSERT INTO "public"."flashcard_topics" ("id", "university_id", "name", "created_by", "created_at") VALUES
+INSERT INTO "public"."flashcard_topics" ("id", "organization_id", "name", "created_by", "created_at") VALUES
   ('00000000-0000-4000-8010-000000000101', NULL, 'JavaScript Basics', '00000000-0000-4000-8001-000000000004', now()),
   ('00000000-0000-4000-8010-000000000102', NULL, 'Async Programming', '00000000-0000-4000-8001-000000000004', now()),
   ('00000000-0000-4000-8010-000000000103', NULL, 'ES6 Features', '00000000-0000-4000-8001-000000000004', now()),

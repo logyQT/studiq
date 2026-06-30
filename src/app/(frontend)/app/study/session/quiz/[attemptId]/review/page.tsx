@@ -15,7 +15,6 @@ interface Question {
   id: string;
   content: string;
   type: string;
-  difficulty: string;
   explanation?: string | null;
   question_answers: Array<{ id: string; content: string; is_correct: boolean }>;
 }
@@ -27,26 +26,12 @@ interface AttemptDetails {
   config: {
     subjectId?: string;
     questionTypes?: string[];
-    difficulty?: string;
     questionCount?: number;
   } | null;
   started_at: string;
   completed_at: string | null;
   questions: Question[];
   answers: Record<string, { selected_answer_id: string | null; is_correct: boolean }>;
-}
-
-function getDifficultyColor(difficulty: string) {
-  switch (difficulty) {
-    case 'easy':
-      return '#10b981';
-    case 'medium':
-      return '#f59e0b';
-    case 'hard':
-      return '#ef4444';
-    default:
-      return '#6b7280';
-  }
 }
 
 export default function QuizReviewPage() {
@@ -96,14 +81,7 @@ export default function QuizReviewPage() {
             <span className="flex items-center gap-1">
               <span>{new Date(attempt.started_at).toLocaleDateString()}</span>
             </span>
-            {attempt.config?.difficulty && (
-              <Badge
-                variant="outline"
-                style={{ borderColor: getDifficultyColor(attempt.config.difficulty) }}
-              >
-                {attempt.config.difficulty}
-              </Badge>
-            )}
+
           </div>
         </CardContent>
       </Card>
@@ -123,12 +101,6 @@ export default function QuizReviewPage() {
                 <div className="flex items-center gap-2">
                   <Badge variant="outline">Q{i + 1}</Badge>
                   <Badge variant="outline">{q.type.replace('_', ' ')}</Badge>
-                  <Badge
-                    variant="secondary"
-                    style={{ backgroundColor: getDifficultyColor(q.difficulty), color: 'white' }}
-                  >
-                    {q.difficulty}
-                  </Badge>
                   <Badge variant={isCorrect ? 'default' : 'destructive'} className="ml-auto">
                     {isCorrect ? 'Correct' : 'Incorrect'}
                   </Badge>

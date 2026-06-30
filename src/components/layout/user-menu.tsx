@@ -3,9 +3,7 @@
 import { useTheme } from 'next-themes';
 import { useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { DicebearAvatar } from '@/components/ui/dicebear-avatar';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { UserAvatar } from '@/components/ui/user-avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,12 +11,15 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
+  DropdownMenuGroup,
 } from '@/components/ui/dropdown-menu';
-import { LogOut, Globe, Sun, Moon, Check, ChevronUp } from 'lucide-react';
-import { UserRole } from '@/types';
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from '@/components/ui/sidebar';
+import { LogOut, Globe, Sun, Moon, Check, ChevronsUpDown, Sparkles, BadgeCheck, Bell, CreditCard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type Locale = 'pl' | 'en';
@@ -34,28 +35,18 @@ function changeLanguage(lang: Locale) {
   window.location.reload();
 }
 
-const ROLE_LABELS: Record<UserRole, string> = {
-  [UserRole.SYS_ADMIN]: 'role_sys_admin',
-  [UserRole.UNIVERSITY_ADMIN]: 'role_uni_admin',
-  [UserRole.TEACHER]: 'role_teacher',
-  [UserRole.STUDENT]: 'role_student',
-  [UserRole.PREMIUM]: 'role_premium',
-  [UserRole.FREE]: 'role_free',
-};
-
 interface UserMenuProps {
   className?: string;
-  compact?: boolean;
 }
 
-export function UserMenu({ className, compact }: UserMenuProps) {
+export function UserMenu({ className }: UserMenuProps) {
   const { user } = useAuth();
   const t = useTranslations('DashboardLayout');
   const { setTheme } = useTheme();
   const locale = getLocale();
+  const { isMobile } = useSidebar();
 
   const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || t('default_user');
-  const userRole = user?.app_metadata?.role as UserRole | undefined;
 
   async function handleLogout() {
     try {
@@ -68,91 +59,92 @@ export function UserMenu({ className, compact }: UserMenuProps) {
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        {compact ? (
-          <button
-            className={cn(
-              'flex items-center gap-2 px-2 group-data-[collapsible=icon]:pl-2 group-data-[collapsible=icon]:pr-0 py-1.5 rounded-lg hover:bg-sidebar-accent transition-colors w-full',
-              className,
-            )}
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton
+              size="lg"
+              className={cn('data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground', className)}
+            >
+              <UserAvatar name={userName} email={user?.email} size={20} className="size-8 rounded-lg" />
+              <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+                <span className="truncate font-medium">{userName}</span>
+                <span className="truncate text-xs text-muted-foreground">{user?.email}</span>
+              </div>
+              <ChevronsUpDown className="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+            side={isMobile ? 'bottom' : 'right'}
+            align="end"
+            sideOffset={4}
           >
-            <DicebearAvatar seed={user?.email || userName} size={36} />
-            <span className="truncate text-sm font-medium leading-none group-data-[collapsible=icon]:hidden">
-              {userName.split(' ')[0]}
-            </span>
-            <ChevronUp className="h-3 w-3 ml-auto shrink-0 group-data-[collapsible=icon]:hidden text-muted-foreground" />
-          </button>
-        ) : (
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn('h-9 w-9 rounded-full', className)}
-          >
-            <DicebearAvatar seed={user?.email || userName} size={36} />
-          </Button>
-        )}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="font-normal">
-          <div className="flex items-center gap-3">
-            <DicebearAvatar seed={user?.email || userName} size={40} />
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <p className="text-sm font-medium leading-none truncate">{userName}</p>
-              <p className="text-xs leading-none text-muted-foreground truncate">
-                {user?.email}
-              </p>
-              {userRole && (
-                <Badge variant="secondary" className="mt-1 w-fit text-[10px] px-1.5 py-0">
-                  {t(ROLE_LABELS[userRole])}
-                </Badge>
-              )}
-            </div>
-          </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="gap-2">
-            <Globe className="h-4 w-4 text-muted-foreground" />
-            <span>{t('language')}</span>
-            <span className="ml-auto text-xs text-muted-foreground">
-              {locale === 'pl' ? 'PL' : 'EN'}
-            </span>
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuItem onClick={() => changeLanguage('pl')} className="gap-2">
-              <span>🇵🇱</span>
-              <span>Polski</span>
-              {locale === 'pl' && <Check className="ml-auto h-4 w-4" />}
+            <DropdownMenuLabel className="p-0 font-normal">
+              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                <UserAvatar name={userName} email={user?.email} size={20} className="size-8 rounded-lg" />
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-medium">{userName}</span>
+                  <span className="truncate text-xs text-muted-foreground">{user?.email}</span>
+                </div>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem className="gap-2">
+                <Sparkles className="size-4" />
+                <span>Upgrade to Pro</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem className="gap-2">
+                <BadgeCheck className="size-4 text-muted-foreground" />
+                <span>{t('account')}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="gap-2">
+                <CreditCard className="size-4 text-muted-foreground" />
+                <span>{t('billing')}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="gap-2">
+                <Bell className="size-4 text-muted-foreground" />
+                <span>{t('notifications')}</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem onClick={() => changeLanguage('pl')} className="gap-2">
+                <Globe className="size-4 text-muted-foreground" />
+                <span>Polski</span>
+                {locale === 'pl' && <Check className="ml-auto size-4" />}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => changeLanguage('en')} className="gap-2">
+                <Globe className="size-4 text-muted-foreground" />
+                <span>English</span>
+                {locale === 'en' && <Check className="ml-auto size-4" />}
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => {
+                const isDark = document.documentElement.classList.contains('dark');
+                setTheme(isDark ? 'light' : 'dark');
+              }}
+              className="gap-2"
+            >
+              <Sun className="size-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute size-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              <span>{t('theme')}</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => changeLanguage('en')} className="gap-2">
-              <span>🇬🇧</span>
-              <span>English</span>
-              {locale === 'en' && <Check className="ml-auto h-4 w-4" />}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive gap-2">
+              <LogOut className="size-4" />
+              <span>{t('logout')}</span>
             </DropdownMenuItem>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-
-        <DropdownMenuItem
-          onClick={() => {
-            const isDark = document.documentElement.classList.contains('dark');
-            setTheme(isDark ? 'light' : 'dark');
-          }}
-          className="gap-2"
-        >
-          <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-          <span>{t('theme')}</span>
-        </DropdownMenuItem>
-
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive gap-2">
-          <LogOut className="h-4 w-4" />
-          <span>{t('logout')}</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }

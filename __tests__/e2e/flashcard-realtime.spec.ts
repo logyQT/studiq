@@ -123,7 +123,7 @@ test.describe('Flashcard Realtime Teacher Stats', () => {
     const studentsText = await readStatValue(teacher1, 'summary_students');
     expect(studentsText).toBe('5');
 
-    // 7. Assert teacher 2 sees identical data (same university scope)
+    // 7. Assert teacher 2 sees identical data (same organization scope)
     const practicesText2 = await readStatValue(teacher2, 'summary_practices');
     expect(practicesText2).toBe(practicesText);
 

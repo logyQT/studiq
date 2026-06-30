@@ -18,7 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Copy, Send, Upload, Plus } from 'lucide-react';
-import { UNIVERSITY_ROLES, UniversityRole } from '@/types';
+import { ORGANIZATION_ROLES, OrganizationRole } from '@/types';
 
 interface InvitationResult {
   success: boolean;
@@ -32,10 +32,10 @@ export default function InvitationsPage() {
   const [singleForm, setSingleForm] = useState<{
     name: string;
     email: string;
-    role: UniversityRole;
-  }>({ name: '', email: '', role: UNIVERSITY_ROLES[0] });
+    role: OrganizationRole;
+  }>({ name: '', email: '', role: ORGANIZATION_ROLES[0] });
   const [bulkText, setBulkText] = useState('');
-  const [bulkRole, setBulkRole] = useState<UniversityRole>(UNIVERSITY_ROLES[0]);
+  const [bulkRole, setBulkRole] = useState<OrganizationRole>(ORGANIZATION_ROLES[0]);
   const [loading, setLoading] = useState(false);
 
   async function handleSingleInvite() {
@@ -45,7 +45,7 @@ export default function InvitationsPage() {
     }
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/university/invitations', {
+      const res = await fetch('/api/v1/organization/invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(singleForm),
@@ -55,7 +55,7 @@ export default function InvitationsPage() {
       if (data.inviteLink) {
         setResults([{ success: true, data: { inviteLink: data.inviteLink } }, ...results]);
         toast.success(t('invitation_created'));
-        setSingleForm({ name: '', email: '', role: UNIVERSITY_ROLES[0] });
+        setSingleForm({ name: '', email: '', role: ORGANIZATION_ROLES[0] });
       }
     } catch {
       toast.error(t('invitation_create_failed'));
@@ -79,7 +79,7 @@ export default function InvitationsPage() {
       role: bulkRole,
     }));
     try {
-      const res = await fetch('/api/v1/university/invitations/bulk', {
+      const res = await fetch('/api/v1/organization/invitations/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ invitations }),
@@ -144,13 +144,13 @@ export default function InvitationsPage() {
                 <Label>{t('role_label')}</Label>
                 <Select
                   value={singleForm.role}
-                  onValueChange={(v) => setSingleForm({ ...singleForm, role: v as UniversityRole })}
+                    onValueChange={(v) => setSingleForm({ ...singleForm, role: v as OrganizationRole })}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {UNIVERSITY_ROLES.map((r) => (
+                    {ORGANIZATION_ROLES.map((r) => (
                       <SelectItem key={r} value={r}>
                         {t(`role_${r}`)}
                       </SelectItem>
@@ -174,12 +174,12 @@ export default function InvitationsPage() {
             <CardContent className="space-y-4">
               <div>
                 <Label>{t('bulk_role_label')}</Label>
-                <Select value={bulkRole} onValueChange={(v) => setBulkRole(v as UniversityRole)}>
+                <Select value={bulkRole} onValueChange={(v) => setBulkRole(v as OrganizationRole)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {UNIVERSITY_ROLES.map((r) => (
+                    {ORGANIZATION_ROLES.map((r) => (
                       <SelectItem key={r} value={r}>
                         {t(`role_${r}`)}
                       </SelectItem>

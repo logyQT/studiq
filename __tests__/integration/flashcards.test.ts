@@ -7,7 +7,7 @@ import {
 } from '@/app/(backend)/api/v1/flashcards/[id]/route';
 import {
   TEST_USERS,
-  TEST_UNIVERSITY_ID,
+  TEST_ORGANIZATION_ID,
   mockUser,
   cleanupFlashcards,
   cleanupFlashcardTopics,
@@ -33,7 +33,7 @@ describe('Flashcards Integration', () => {
       .insert({
         name: 'fc-topic-Flashcard Topic',
         created_by: TEST_USERS.TEACHER.id,
-        university_id: TEST_UNIVERSITY_ID,
+        organization_id: TEST_ORGANIZATION_ID,
       })
       .select()
       .single();
@@ -167,7 +167,7 @@ describe('Flashcards Integration', () => {
           front: 'fc-Filtered Card',
           back: 'Answer',
           created_by: TEST_USERS.TEACHER.id,
-          university_id: TEST_UNIVERSITY_ID,
+          organization_id: TEST_ORGANIZATION_ID,
         })
         .select()
         .single();
@@ -196,7 +196,7 @@ describe('Flashcards Integration', () => {
           front: 'fc-Teacher Org Card',
           back: 'Answer',
           created_by: TEST_USERS.TEACHER.id,
-          university_id: TEST_UNIVERSITY_ID,
+          organization_id: TEST_ORGANIZATION_ID,
         })
         .select();
 
@@ -208,7 +208,7 @@ describe('Flashcards Integration', () => {
       expect(body.data).toEqual([]);
     });
 
-    it('returns org flashcards for student in same university', async () => {
+    it('returns org flashcards for student in same organization', async () => {
       mockUser(TEST_USERS.STUDENT);
 
       const supabase = createServiceClient();
@@ -218,7 +218,7 @@ describe('Flashcards Integration', () => {
           front: 'fc-Teacher Org Card',
           back: 'Answer',
           created_by: TEST_USERS.TEACHER.id,
-          university_id: TEST_UNIVERSITY_ID,
+          organization_id: TEST_ORGANIZATION_ID,
         })
         .select()
         .single();
@@ -285,7 +285,7 @@ describe('Flashcards Integration', () => {
           front: 'fc-Get Me',
           back: 'Answer',
           created_by: TEST_USERS.TEACHER.id,
-          university_id: TEST_UNIVERSITY_ID,
+          organization_id: TEST_ORGANIZATION_ID,
         })
         .select()
         .single();
@@ -327,7 +327,7 @@ describe('Flashcards Integration', () => {
           front: 'fc-Original',
           back: 'Answer',
           created_by: TEST_USERS.TEACHER.id,
-          university_id: TEST_UNIVERSITY_ID,
+          organization_id: TEST_ORGANIZATION_ID,
         })
         .select()
         .single();
@@ -358,7 +358,7 @@ describe('Flashcards Integration', () => {
           front: 'fc-Teacher Card',
           back: 'Answer',
           created_by: TEST_USERS.TEACHER.id,
-          university_id: TEST_UNIVERSITY_ID,
+          organization_id: TEST_ORGANIZATION_ID,
         })
         .select()
         .single();
@@ -391,7 +391,7 @@ describe('Flashcards Integration', () => {
           front: 'fc-To Delete',
           back: 'Answer',
           created_by: TEST_USERS.TEACHER.id,
-          university_id: TEST_UNIVERSITY_ID,
+          organization_id: TEST_ORGANIZATION_ID,
         })
         .select()
         .single();
@@ -418,7 +418,7 @@ describe('Flashcards Integration', () => {
           front: 'fc-Teacher Card',
           back: 'Answer',
           created_by: TEST_USERS.TEACHER.id,
-          university_id: TEST_UNIVERSITY_ID,
+          organization_id: TEST_ORGANIZATION_ID,
         })
         .select()
         .single();

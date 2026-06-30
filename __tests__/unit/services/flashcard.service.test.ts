@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flashcardService } from '@/server/services/flashcard.service';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-const mockProfile = { role: 'free', university_id: null };
-const mockTeacherProfile = { role: 'teacher', university_id: 'uni-1' };
+const mockProfile = { role: 'free', organization_id: null };
+const mockTeacherProfile = { role: 'teacher', organization_id: 'uni-1' };
 
 function mockProfileLookup(profile: typeof mockProfile) {
   return {
@@ -94,7 +94,7 @@ describe('FlashcardService', () => {
   });
 
   describe('create', () => {
-    it('inserts flashcard with university_id for teacher role', async () => {
+    it('inserts flashcard with organization_id for teacher role', async () => {
       const mockFlashcard = { id: 'fc-1', front: 'Q', back: 'A' };
 
       mock.from.mockReturnValueOnce(mockProfileLookup(mockTeacherProfile));
@@ -106,7 +106,7 @@ describe('FlashcardService', () => {
       expect(mock.from).toHaveBeenCalledWith('flashcards');
     });
 
-    it('inserts flashcard with null university_id for non-teacher role', async () => {
+    it('inserts flashcard with null organization_id for non-teacher role', async () => {
       const mockFlashcard = { id: 'fc-1', front: 'Q', back: 'A' };
 
       mock.from.mockReturnValueOnce(mockProfileLookup(mockProfile));

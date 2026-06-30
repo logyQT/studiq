@@ -16,16 +16,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Upload, Trash2, Check, Sparkles, AlertCircle } from 'lucide-react';
+import { Loader2, Upload, Trash2, Check, Sparkles, AlertCircle, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { useGenerateFlashcards } from '@/hooks/use-flashcard-generation';
 import type { GeneratedFlashcard } from '@/hooks/use-flashcard-generation';
+import { useFeature } from '@/hooks/use-feature';
 
 type CardState = GeneratedFlashcard & { kept: boolean };
 
 export default function AiFlashcardPage() {
   const t = useTranslations('FlashcardAiPage');
   const router = useRouter();
+  const { hasAccess: hasStudyAccess } = useFeature('study.create');
+  const { hasAccess: hasAiAccess } = useFeature('ai.chat');
+  const hasAccess = hasStudyAccess && hasAiAccess;
   const { flashcards, suggestedDeckName, progress, status, errorMessage, generate, reset } =
     useGenerateFlashcards();
 
@@ -177,8 +181,12 @@ export default function AiFlashcardPage() {
               </Select>
             </div>
 
-            <Button onClick={handleGenerate} disabled={!file}>
-              <Sparkles className="mr-2 h-4 w-4" /> {t('generate_button')}
+            <Button onClick={hasAccess ? handleGenerate : () => router.push('/checkout?plan_id=student_premium')} disabled={!hasAccess || !file}>
+              {hasAccess ? (
+                <><Sparkles className="mr-2 h-4 w-4" /> {t('generate_button')}</>
+              ) : (
+                <><Lock className="size-3" /> Upgrade</>
+              )}
             </Button>
           </CardContent>
         </Card>

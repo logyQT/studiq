@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -34,27 +35,23 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Lock } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { useFeature } from '@/hooks/use-feature';
 
 interface Question {
   id: string;
   content: string;
   type: string;
-  difficulty: string;
   explanation: string | null;
   question_answers: Array<{ id: string; content: string; is_correct: boolean }>;
   created_at: string;
 }
 
-const DIFFICULTY_COLORS: Record<string, string> = {
-  easy: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  hard: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-};
-
 export default function MyQuestionsPage() {
   const t = useTranslations('AppMyQuestionsPage');
+  const router = useRouter();
+  const { hasAccess } = useFeature('test.create');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -64,7 +61,6 @@ export default function MyQuestionsPage() {
   const [formData, setFormData] = useState({
     content: '',
     type: 'mcq',
-    difficulty: 'medium',
     explanation: '',
     answers: [{ content: '', isCorrect: false }],
   });
@@ -82,7 +78,6 @@ export default function MyQuestionsPage() {
     setFormData({
       content: '',
       type: 'mcq',
-      difficulty: 'medium',
       explanation: '',
       answers: [{ content: '', isCorrect: false }],
     });
@@ -99,7 +94,6 @@ export default function MyQuestionsPage() {
     setFormData({
       content: q.content,
       type: q.type,
-      difficulty: q.difficulty,
       explanation: q.explanation || '',
       answers: q.question_answers.map((a) => ({ content: a.content, isCorrect: a.is_correct })),
     });
@@ -133,7 +127,6 @@ export default function MyQuestionsPage() {
     const payload = {
       content: formData.content,
       type: formData.type,
-      difficulty: formData.difficulty,
       explanation: formData.explanation || undefined,
       answers: formData.answers
         .filter((a) => a.content.trim())
@@ -174,8 +167,12 @@ export default function MyQuestionsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">{t('title')}</h2>
-        <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" /> {t('create_question')}
+        <Button disabled={!hasAccess} onClick={hasAccess ? openCreate : () => router.push('/checkout?plan_id=student_premium')}>
+          {hasAccess ? (
+            <><Plus className="mr-2 h-4 w-4" /> {t('create_question')}</>
+          ) : (
+            <><Lock className="size-3" /> Upgrade</>
+          )}
         </Button>
       </div>
 
@@ -188,7 +185,6 @@ export default function MyQuestionsPage() {
                   <p className="font-medium text-sm truncate">{q.content}</p>
                   <div className="flex gap-2">
                     <Badge variant="secondary">{q.type.replace('_', ' ')}</Badge>
-                    <Badge className={DIFFICULTY_COLORS[q.difficulty]}>{q.difficulty}</Badge>
                   </div>
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -241,22 +237,6 @@ export default function MyQuestionsPage() {
                 <SelectContent>
                   <SelectItem value="mcq">{t('type_mcq')}</SelectItem>
                   <SelectItem value="true_false">{t('type_true_false')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>{t('difficulty_label')}</Label>
-              <Select
-                value={formData.difficulty}
-                onValueChange={(v) => setFormData({ ...formData, difficulty: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="easy">{t('diff_easy')}</SelectItem>
-                  <SelectItem value="medium">{t('diff_medium')}</SelectItem>
-                  <SelectItem value="hard">{t('diff_hard')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>

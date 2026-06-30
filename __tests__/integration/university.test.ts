@@ -1,24 +1,24 @@
 import { describe, it, expect, beforeEach, vi, afterAll } from 'vitest';
-import { POST, GET } from '@/app/(backend)/api/v1/admin/universities/route';
-import { GET as GET_BY_ID, PUT, DELETE } from '@/app/(backend)/api/v1/admin/universities/[id]/route';
-import { TEST_USERS, mockUser, createRealClient, cleanupUniversity } from './helpers';
+import { POST, GET } from '@/app/(backend)/api/v1/admin/organizations/route';
+import { GET as GET_BY_ID, PUT, DELETE } from '@/app/(backend)/api/v1/admin/organizations/[id]/route';
+import { TEST_USERS, mockUser, createRealClient, cleanupOrganization } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 const VALID_UUID = '550e8400-e29b-41d4-a716-446655440000';
 
-describe('University Integration', () => {
+describe('Organization Integration', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
   });
 
   afterAll(async () => {
-    await cleanupUniversity('test-');
-    await cleanupUniversity('dup-');
-    await cleanupUniversity('updated-');
+    await cleanupOrganization('test-');
+    await cleanupOrganization('dup-');
+    await cleanupOrganization('updated-');
   });
 
   describe('POST /api/v1/admin/universities', () => {
-    it('creates a university as sys_admin and returns 201', async () => {
+    it('creates an organization as sys_admin and returns 201', async () => {
       mockUser(TEST_USERS.SYS_ADMIN);
 
       const uniqueSlug = `test-uni-${Date.now()}`;
@@ -122,7 +122,7 @@ describe('University Integration', () => {
   });
 
   describe('GET /api/v1/admin/universities', () => {
-    it('lists all universities as sys_admin and returns 200', async () => {
+    it('lists all organizations as sys_admin and returns 200', async () => {
       mockUser(TEST_USERS.SYS_ADMIN);
 
       const uniqueSlug = `test-list-${Date.now()}`;
@@ -162,7 +162,7 @@ describe('University Integration', () => {
   });
 
   describe('GET /api/v1/admin/universities/:id', () => {
-    it('gets a single university by id and returns 200', async () => {
+    it('gets a single organization by id and returns 200', async () => {
       mockUser(TEST_USERS.SYS_ADMIN);
 
       const uniqueSlug = `test-get-${Date.now()}`;
@@ -186,7 +186,7 @@ describe('University Integration', () => {
       expect(body.data.name).toBe('Get Test');
     });
 
-    it('returns 404 for non-existent university', async () => {
+    it('returns 404 for non-existent organization', async () => {
       mockUser(TEST_USERS.SYS_ADMIN);
 
       const { request, params } = createNextRequestWithParams(
@@ -244,7 +244,7 @@ describe('University Integration', () => {
   });
 
   describe('PUT /api/v1/admin/universities/:id', () => {
-    it('updates university name and returns 200', async () => {
+    it('updates organization name and returns 200', async () => {
       mockUser(TEST_USERS.SYS_ADMIN);
 
       const uniqueSlug = `test-put-${Date.now()}`;
@@ -272,7 +272,7 @@ describe('University Integration', () => {
       expect(body.data.name).toBe('Updated Name');
     });
 
-    it('updates university slug and returns 200', async () => {
+    it('updates organization slug and returns 200', async () => {
       mockUser(TEST_USERS.SYS_ADMIN);
 
       const uniqueSlug = `test-put-slug-${Date.now()}`;
@@ -330,7 +330,7 @@ describe('University Integration', () => {
       expect(body.success).toBe(false);
     });
 
-    it('returns 404 for non-existent university', async () => {
+    it('returns 404 for non-existent organization', async () => {
       mockUser(TEST_USERS.SYS_ADMIN);
 
       const { request, params } = createNextRequestWithParams(
@@ -389,7 +389,7 @@ describe('University Integration', () => {
   });
 
   describe('DELETE /api/v1/admin/universities/:id', () => {
-    it('deletes a university and returns 200', async () => {
+    it('deletes an organization and returns 200', async () => {
       mockUser(TEST_USERS.SYS_ADMIN);
 
       const uniqueSlug = `test-delete-${Date.now()}`;
@@ -418,7 +418,7 @@ describe('University Integration', () => {
       expect(deleted).toBeNull();
     });
 
-    it('returns 404 for non-existent university', async () => {
+    it('returns 404 for non-existent organization', async () => {
       mockUser(TEST_USERS.SYS_ADMIN);
 
       const { request, params } = createNextRequestWithParams(

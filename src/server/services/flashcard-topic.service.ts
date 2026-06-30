@@ -9,13 +9,13 @@ import type { Topic } from '@/types/flashcards';
 export class FlashcardTopicService {
   async create(data: CreateTopicInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const universityId = await shouldSetUniversityId(ctx, Permission.TOPIC_CREATE) ? ctx.universityId : null;
+    const organizationId = await shouldSetUniversityId(ctx, Permission.TOPIC_CREATE) ? ctx.activeOrgId : null;
 
     const { data: topic, error } = await supabase
       .from('flashcard_topics')
       .insert({
         name: data.name,
-        university_id: universityId,
+        organization_id: organizationId,
         created_by: ctx.userId,
       })
       .select()
@@ -162,12 +162,12 @@ export class FlashcardTopicService {
 
   async bulkCreate(data: BulkCreateTopicInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const universityId = await shouldSetUniversityId(ctx, Permission.TOPIC_CREATE) ? ctx.universityId : null;
+    const organizationId = await shouldSetUniversityId(ctx, Permission.TOPIC_CREATE) ? ctx.activeOrgId : null;
 
     const topics = data.topics.map((t) => ({
       name: t.name,
       created_by: ctx.userId,
-      university_id: universityId,
+      organization_id: organizationId,
     }));
 
     const { data: created, error } = await supabase

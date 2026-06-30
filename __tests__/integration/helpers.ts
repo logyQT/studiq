@@ -46,7 +46,7 @@ export const TEST_USERS = {
   },
 } as const;
 
-export const TEST_UNIVERSITY_ID = '00000000-0000-4000-8000-000000000001';
+export const TEST_ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001';
 
 // ============================================================
 // Real Supabase Client (bypasses the global mock)
@@ -206,9 +206,9 @@ export async function cleanupInvitations(userId: string) {
   await supabase.from('invitations').delete().eq('inviter_id', userId);
 }
 
-export async function cleanupUniversity(slugPrefix?: string) {
+export async function cleanupOrganization(slugPrefix?: string) {
   const supabase = createServiceClient();
-  let query = supabase.from('universities').delete();
+  let query = supabase.from('organizations').delete();
   if (slugPrefix) {
     query = query.ilike('slug', `${slugPrefix}%`);
   } else {
@@ -223,7 +223,7 @@ export async function cleanupUniversity(slugPrefix?: string) {
 export async function seedSubject(data: {
   name: string;
   created_by: string;
-  university_id?: string;
+  organization_id?: string;
 }) {
   const supabase = createServiceClient();
   const { data: subject, error } = await supabase
@@ -231,7 +231,7 @@ export async function seedSubject(data: {
     .insert({
       name: data.name,
       created_by: data.created_by,
-      university_id: data.university_id ?? null,
+      organization_id: data.organization_id ?? null,
     })
     .select()
     .single();

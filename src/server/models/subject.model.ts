@@ -5,7 +5,7 @@ export const SubjectSchema = registry.register(
   'Subject',
   z.object({
     id: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
-    university_id: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).nullable(),
+    organization_id: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).nullable(),
     name: z
       .string()
       .nonempty({ error: ValidationErrorCode.REQUIRED })

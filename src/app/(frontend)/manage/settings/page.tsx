@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 
-interface University {
+interface Organization {
   id: string;
   name: string;
   slug: string;
@@ -15,19 +15,19 @@ interface University {
 
 export default function SettingsPage() {
   const t = useTranslations('ManageSettingsPage');
-  const [university, setUniversity] = useState<University | null>(null);
+  const [organization, setOrganization] = useState<Organization | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/v1/university/members')
+    fetch('/api/v1/organization/members')
       .then((r) => r.json())
       .then((members) => {
-        if (members.length > 0 && members[0].university_id) {
-          fetch(`/api/v1/subjects?universityId=${members[0].university_id}`)
+        if (members.length > 0 && members[0].organization_id) {
+          fetch(`/api/v1/subjects?organizationId=${members[0].organization_id}`)
             .then((r) => r.json())
             .then(() => {
-              setUniversity({
-                id: members[0].university_id,
+              setOrganization({
+                id: members[0].organization_id,
                 name: 'Loading...',
                 slug: '',
                 created_at: '',
@@ -56,22 +56,22 @@ export default function SettingsPage() {
               <Skeleton className="h-4 w-48" />
               <Skeleton className="h-4 w-32" />
             </div>
-          ) : university ? (
+          ) : organization ? (
             <div className="space-y-3">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{t('name_label')}</p>
-                <p className="text-lg font-semibold">{university.name}</p>
+                <p className="text-lg font-semibold">{organization.name}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{t('slug_label')}</p>
                 <div className="flex items-center gap-2">
-                  <code className="bg-muted px-2 py-1 rounded text-sm">{university.slug}</code>
+                  <code className="bg-muted px-2 py-1 rounded text-sm">{organization.slug}</code>
                   <Badge variant="outline">{t('read_only')}</Badge>
                 </div>
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{t('created_label')}</p>
-                <p className="text-sm">{new Date(university.created_at).toLocaleDateString()}</p>
+                <p className="text-sm">{new Date(organization.created_at).toLocaleDateString()}</p>
               </div>
             </div>
           ) : (

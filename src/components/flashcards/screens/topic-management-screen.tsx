@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -13,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { CheckCheck, Tags, CheckSquare, SquarePen, Plus, Search, X } from 'lucide-react';
+import { CheckCheck, Tags, CheckSquare, SquarePen, Plus, Search, X, Lock } from 'lucide-react';
 import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -30,6 +31,7 @@ import { TopicFormDialog } from '@/components/flashcards/shared/topic-form-dialo
 import { TopicViewDialog } from '@/components/flashcards/shared/topic-view-dialog';
 import { useSelection } from '@/hooks/use-selection';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useFeature } from '@/hooks/use-feature';
 
 interface TopicManagementScreenProps {
   apiBase: string;
@@ -37,6 +39,7 @@ interface TopicManagementScreenProps {
 }
 
 export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
+  const router = useRouter();
   const queryClient = useQueryClient();
 
   const [searchInput, setSearchInput] = useState('');
@@ -143,6 +146,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   const [viewTopicId, setViewTopicId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: '' });
   const selection = useSelection();
+  const canCreateTopic = useFeature('study.create');
   const { isSelecting: selectionIsActive, handleClearSelection: selectionClear } = selection;
 
   const { data: topicFlashcardsData } = useInfiniteQuery({
@@ -314,8 +318,12 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
           </Select>
 
           <div className="sm:ml-auto">
-            <Button onClick={openCreate}>
-              <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
+            <Button disabled={!canCreateTopic.hasAccess} onClick={canCreateTopic.hasAccess ? openCreate : () => router.push('/checkout?plan_id=student_premium')}>
+              {canCreateTopic.hasAccess ? (
+                <><Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}</>
+              ) : (
+                <><Lock className="size-3" /> Upgrade</>
+              )}
             </Button>
           </div>
         </div>
@@ -393,8 +401,12 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
               </EmptyMedia>
               <EmptyTitle>{t('no_topics')}</EmptyTitle>
               <EmptyDescription>
-                <Button variant="outline" size="sm" onClick={openCreate}>
-                  <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
+                <Button variant="outline" size="sm" disabled={!canCreateTopic.hasAccess} onClick={canCreateTopic.hasAccess ? openCreate : () => router.push('/checkout?plan_id=student_premium')}>
+                  {canCreateTopic.hasAccess ? (
+                    <><Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}</>
+                  ) : (
+                    <><Lock className="size-3" /> Upgrade</>
+                  )}
                 </Button>
               </EmptyDescription>
             </Empty>
@@ -445,7 +457,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         <div className="sm:hidden">
           <SpeedDial
             items={[
-              { icon: SquarePen, label: t('new_topic'), onClick: openCreate },
+              { icon: SquarePen, label: t('new_topic'), onClick: canCreateTopic.hasAccess ? openCreate : () => router.push('/checkout?plan_id=student_premium') },
               { icon: CheckSquare, label: t('select_topics'), onClick: () => selection.setIsSelecting(true) },
             ]}
           />

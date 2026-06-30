@@ -22,20 +22,20 @@ export class SearchService {
     if (filter._impossible) return [];
 
     let p_user_id: string | null = null;
-    let p_university_id: string | null = null;
+    let p_organization_id: string | null = null;
 
     if ('created_by' in filter) {
       p_user_id = ctx.userId;
     } else if ('or' in filter) {
       p_user_id = ctx.userId;
-      p_university_id = ctx.universityId;
+      p_organization_id = ctx.activeOrgId;
     }
 
     const { data, error } = await supabase.rpc('search_flashcards', {
       search_query: q,
       result_limit: limit,
       p_user_id,
-      p_university_id,
+      p_organization_id,
     });
 
     if (error) throw mapSupabaseError(error);

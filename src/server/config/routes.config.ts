@@ -34,14 +34,14 @@ export const routeRules: RouteRule[] = [
     allowedRoles: [UserRole.PREMIUM, UserRole.STUDENT, UserRole.TEACHER],
     isApi: true,
   },
-  // Dev tools are public (only available in dev mode)
+  // Stripe webhook is public (signature-verified in production)
   {
-    matcher: /^\/api\/v1\/dev(\/.*)?$/,
+    matcher: /^\/api\/v1\/stripe\/webhook(\/.*)?$/,
     isApi: true,
   },
-  // Catch-all for authenticated API routes (auth and health are unprotected by design)
+  // Catch-all for authenticated API routes (auth, health, avatar, stripe/webhook are unprotected by design)
   {
-    matcher: /^\/api\/v\d+\/(?!auth|health|dev|avatar)(.*)$/,
+    matcher: /^\/api\/v\d+\/(?!auth|health|avatar|stripe\/webhook)(.*)$/,
     requireAuth: true,
     isApi: true,
   },

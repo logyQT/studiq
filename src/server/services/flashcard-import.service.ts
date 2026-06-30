@@ -26,7 +26,7 @@ export class FlashcardImportService {
         const deckName = data.defaultDeckName ?? 'Imported Flashcards';
         const { data: newDeck, error } = await supabase
           .from('flashcard_decks')
-          .insert({ name: deckName, created_by: ctx.userId, university_id: ctx.universityId })
+          .insert({ name: deckName, created_by: ctx.userId, organization_id: ctx.activeOrgId })
           .select('id')
           .single();
 
@@ -36,7 +36,7 @@ export class FlashcardImportService {
     }
 
     const universityId = (await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE))
-      ? ctx.universityId
+      ? ctx.activeOrgId
       : null;
 
     const topicNames = new Set<string>();
@@ -72,7 +72,7 @@ export class FlashcardImportService {
             toCreate.map((name) => ({
               name,
               created_by: ctx.userId,
-              university_id: universityId,
+              organization_id: universityId,
             })),
           )
           .select('id, name');
@@ -108,7 +108,7 @@ export class FlashcardImportService {
               name,
               description: `Auto-created from CSV import`,
               created_by: ctx.userId,
-              university_id: universityId,
+              organization_id: universityId,
             })),
           )
           .select('id, name');
@@ -131,7 +131,7 @@ export class FlashcardImportService {
       front: c.front,
       back: c.back,
       created_by: ctx.userId,
-      university_id: universityId,
+      organization_id: universityId,
     }));
 
     const { data: flashcards, error: insertError } = await supabase

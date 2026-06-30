@@ -13,6 +13,8 @@ import { flashcardKeys } from '@/lib/query-keys';
 import { formatMarkdown } from '@/lib/markdown-utils';
 import { toast } from 'sonner';
 import type { Topic } from '@/types/flashcards';
+import { useFeature } from '@/hooks/use-feature';
+import { Lock } from 'lucide-react';
 
 interface NewCardClientProps {
   deckId: string;
@@ -22,6 +24,7 @@ export default function NewCardClient({ deckId }: NewCardClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const t = useTranslations('AppFlashcardDeckViewPage');
+  const { hasAccess } = useFeature('study.create');
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
   const [topicIds, setTopicIds] = useState<string[]>([]);
@@ -86,8 +89,12 @@ export default function NewCardClient({ deckId }: NewCardClientProps) {
           <Button variant="outline" onClick={() => router.back()} disabled={isSaving}>
             {t('cancel')}
           </Button>
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? t('saving') : t('create')}
+          <Button disabled={!hasAccess || isSaving} onClick={hasAccess ? handleSave : () => router.push('/checkout?plan_id=student_premium')}>
+            {hasAccess ? (
+              isSaving ? t('saving') : t('create')
+            ) : (
+              <><Lock className="size-3" /> Upgrade</>
+            )}
           </Button>
         </div>
       </div>

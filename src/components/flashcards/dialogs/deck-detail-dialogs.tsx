@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
+import { useOrgs } from '@/hooks/use-orgs';
 import type { Flashcard, Deck, Topic } from '@/types/flashcards';
 import type { UserRole } from '@/types';
 import { SingleCardDialogs } from '@/components/flashcards/dialogs/single-card-dialogs';
@@ -96,8 +97,9 @@ export function DeckDetailDialogs({
 }: DeckDetailDialogsProps) {
   const { user } = useAuth();
   const role = user?.app_metadata?.role as UserRole | undefined;
+  const { activeOrg } = useOrgs();
 
-  const ownedDecks = allDecks.filter((d) => can(role, 'deck.update', d.created_by, user?.id));
+  const ownedDecks = allDecks.filter((d) => can(role, 'deck.update', d.created_by, user?.id, activeOrg?.id));
 
   return (
     <>

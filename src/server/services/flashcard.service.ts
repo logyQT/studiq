@@ -35,7 +35,7 @@ export class FlashcardService {
       await checkPermission(ctx, Permission.DECK_UPDATE, deck);
     }
 
-    const universityId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.universityId : null;
+    const organizationId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.activeOrgId : null;
 
     const { data: flashcard, error } = await supabase
       .from('flashcards')
@@ -43,7 +43,7 @@ export class FlashcardService {
         front: data.front,
         back: data.back,
         created_by: ctx.userId,
-        university_id: universityId,
+         organization_id: organizationId,
       })
       .select()
       .single();
@@ -91,12 +91,12 @@ export class FlashcardService {
       }
     }
 
-    const universityId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.universityId : null;
+    const organizationId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.activeOrgId : null;
 
     const { data: flashcards, error } = await supabase.rpc('bulk_create_flashcards', {
       p_cards: data.cards.map((c) => ({ front: c.front, back: c.back })),
       p_user_id: ctx.userId,
-      p_university_id: universityId ?? null,
+      p_organization_id: organizationId ?? null,
       p_deck_ids: data.deckIds ?? [],
       p_topic_ids: data.topicIds ?? [],
     });
@@ -355,7 +355,7 @@ export class FlashcardService {
     if (deckError || !deck) throw new AppError('NOT_FOUND');
     await checkPermission(ctx, Permission.DECK_UPDATE, deck);
 
-    const universityId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.universityId : null;
+    const orgId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.activeOrgId : null;
 
     const { data: newFlashcard, error: insertError } = await supabase
       .from('flashcards')
@@ -363,7 +363,7 @@ export class FlashcardService {
         front: original.front,
         back: original.back,
         created_by: ctx.userId,
-        university_id: universityId,
+        organization_id: orgId,
       })
       .select()
       .single();
@@ -431,7 +431,7 @@ export class FlashcardService {
 
     const { data: flashcards, error: fetchError } = await supabase
       .from('flashcards')
-      .select('id, created_by, university_id')
+      .select('id, created_by, organization_id')
       .in('id', data.ids);
 
     if (fetchError) throw mapSupabaseError(fetchError);
@@ -443,7 +443,7 @@ export class FlashcardService {
 
     const { data: decks } = await supabase
       .from('flashcard_decks')
-      .select('id, created_by, university_id')
+      .select('id, created_by, organization_id')
       .in('id', data.deckIds);
 
     const deckMap = new Map(decks?.map((d) => [d.id, d]) ?? []);
@@ -644,13 +644,13 @@ export class FlashcardService {
     if (!deck) throw new AppError('NOT_FOUND');
     await checkPermission(ctx, Permission.DECK_UPDATE, deck);
 
-    const universityId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.universityId : null;
+    const batchOrgId = await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE) ? ctx.activeOrgId : null;
 
     const cardsToInsert = originals.map((fc) => ({
       front: fc.front,
       back: fc.back,
       created_by: ctx.userId,
-      university_id: universityId,
+      organization_id: batchOrgId,
     }));
 
     const { data: newFlashcards, error: insertError } = await supabase

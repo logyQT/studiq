@@ -13,7 +13,7 @@ describe('FlashcardTopicService', () => {
 
   describe('create', () => {
     it('inserts topic and returns it', async () => {
-      const mockProfile = { id: userId, university_id: 'uni-1' };
+      const mockProfile = { id: userId, organization_id: 'uni-1' };
       const mockTopic = { id: 't-1', name: 'Math Topics' };
 
       mock.from.mockReturnValueOnce({
@@ -62,7 +62,7 @@ describe('FlashcardTopicService', () => {
 
   describe('list', () => {
     it('returns topics for user', async () => {
-      const mockProfile = { id: userId, university_id: null };
+      const mockProfile = { id: userId, organization_id: null };
       const topics = [{ id: 't-1', name: 'Math Topics', flashcard_topic_assignments: [] }];
 
       mock.from.mockReturnValueOnce({

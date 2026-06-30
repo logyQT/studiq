@@ -1,6 +1,6 @@
 import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
-import { UNIVERSITY_ROLES } from '@/types';
+import { ORGANIZATION_ROLES } from '@/types';
 import { NameSchema } from '@/server/models';
 
 export const CreateInviteSchema = registry.register(
@@ -10,10 +10,10 @@ export const CreateInviteSchema = registry.register(
     email: z
       .email({ error: ValidationErrorCode.EMAIL_INVALID })
       .nonempty({ error: ValidationErrorCode.REQUIRED }),
-    role: z.enum(UNIVERSITY_ROLES, {
+    role: z.enum(ORGANIZATION_ROLES, {
       error: ValidationErrorCode.INVALID_ROLE,
     }),
-    universityId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+    organizationId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
   }),
 );
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { POST, GET as GET_LIST } from '@/app/(backend)/api/v1/subjects/route';
 import { PUT, DELETE, GET } from '@/app/(backend)/api/v1/subjects/[id]/route';
-import { TEST_USERS, mockUser, cleanupSubjects, TEST_UNIVERSITY_ID, seedSubject, createRealClient } from './helpers';
+import { TEST_USERS, mockUser, cleanupSubjects, TEST_ORGANIZATION_ID, seedSubject, createRealClient } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Subjects Integration', () => {
@@ -84,17 +84,17 @@ describe('Subjects Integration', () => {
       expect(Array.isArray(body.data)).toBe(true);
     });
 
-    it('filters by universityId when provided', async () => {
+    it('filters by organizationId when provided', async () => {
       mockUser(TEST_USERS.TEACHER);
 
       await seedSubject({
         name: 'subject-Filtered Subject',
-        university_id: TEST_UNIVERSITY_ID,
+        organization_id: TEST_ORGANIZATION_ID,
         created_by: TEST_USERS.TEACHER.id,
       });
 
       const req = createNextRequest(
-        `http://localhost/api/v1/subjects?universityId=${TEST_UNIVERSITY_ID}`,
+        `http://localhost/api/v1/subjects?organizationId=${TEST_ORGANIZATION_ID}`,
       );
       const response = await GET_LIST(req);
       const body = await response.json();

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ChangeRoleSchema, RemoveMemberSchema } from '@/server/models/university-members.model';
+import { ChangeRoleSchema, RemoveMemberSchema } from '@/server/models/organization-member.model';
 import { ValidationErrorCode } from '@/lib/validation-errors';
 
 describe('ChangeRoleSchema', () => {

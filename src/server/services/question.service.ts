@@ -1,15 +1,17 @@
 import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
 import type { CreateQuestionInput, UpdateQuestionInput } from '@/server/models';
-import { UserRole } from '@/types';
 import { mapSupabaseError } from '@/lib/supabase-errors';
+import { shouldSetUniversityId, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
 
 export class QuestionService {
   async create(data: CreateQuestionInput, ctx: RequestContext) {
     const supabase = await createClient();
 
-    const universityId = ctx.role !== UserRole.TEACHER ? null : ctx.universityId;
+    const activeOrgId = (await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE))
+      ? ctx.activeOrgId
+      : null;
 
     const { data: question, error: qError } = await supabase
       .from('questions')
@@ -18,9 +20,8 @@ export class QuestionService {
         type: data.type,
         content: data.content,
         explanation: data.explanation ?? null,
-        difficulty: data.difficulty,
         created_by: ctx.userId,
-        university_id: universityId,
+        organization_id: activeOrgId,
       })
       .select()
       .single();
@@ -53,12 +54,12 @@ export class QuestionService {
 
   async list(
     ctx: RequestContext,
-    filters?: { subjectId?: string; type?: string; difficulty?: string },
+    filters?: { subjectId?: string; type?: string },
   ) {
     const supabase = await createClient();
     const orConditions = [];
 
-    if (ctx.universityId) orConditions.push(`university_id.eq.${ctx.universityId}`);
+    if (ctx.activeOrgId) orConditions.push(`organization_id.eq.${ctx.activeOrgId}`);
     if (ctx.userId) orConditions.push(`created_by.eq.${ctx.userId}`);
 
     let query = supabase
@@ -69,7 +70,6 @@ export class QuestionService {
     if (orConditions.length > 0) query.or(orConditions.join(','));
     if (filters?.subjectId) query = query.eq('subject_id', filters.subjectId);
     if (filters?.type) query = query.eq('type', filters.type);
-    if (filters?.difficulty) query = query.eq('difficulty', filters.difficulty);
 
     const { data, error } = await query;
 
@@ -89,7 +89,7 @@ export class QuestionService {
 
     if (data.created_by === ctx.userId) return data;
 
-    if (data.university_id && data.university_id === ctx.universityId) return data;
+    if (data.organization_id && data.organization_id === ctx.activeOrgId) return data;
 
     throw new AppError('FORBIDDEN');
   }
@@ -102,7 +102,6 @@ export class QuestionService {
     if (data.type) updateFields.type = data.type;
     if (data.content) updateFields.content = data.content;
     if (data.explanation !== undefined) updateFields.explanation = data.explanation;
-    if (data.difficulty) updateFields.difficulty = data.difficulty;
 
     const { data: question, error: qError } = await supabase
       .from('questions')
@@ -150,7 +149,7 @@ export class QuestionService {
 
     const { data: questions } = await supabase
       .from('questions')
-      .select('id, type, difficulty')
+      .select('id, type')
       .eq('subject_id', subjectId);
 
     const { data: attempts } = await supabase
@@ -182,13 +181,6 @@ export class QuestionService {
       byType: questions?.reduce(
         (acc, q) => {
           acc[q.type] = (acc[q.type] || 0) + 1;
-          return acc;
-        },
-        {} as Record<string, number>,
-      ),
-      byDifficulty: questions?.reduce(
-        (acc, q) => {
-          acc[q.difficulty] = (acc[q.difficulty] || 0) + 1;
           return acc;
         },
         {} as Record<string, number>,

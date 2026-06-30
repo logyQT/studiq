@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -10,7 +11,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, X, FileUp, Plus, EyeOff } from 'lucide-react';
+import { Search, X, FileUp, Plus, EyeOff, Lock } from 'lucide-react';
+import { useFeature } from '@/hooks/use-feature';
 
 interface DeckFiltersProps {
   searchInput: string;
@@ -43,6 +45,9 @@ export function DeckFilters({
   onCreateNew,
   t,
 }: DeckFiltersProps) {
+  const { hasAccess } = useFeature('study.create');
+  const router = useRouter();
+
   return (
     <div className="flex flex-wrap items-center gap-3 max-sm:hidden">
       <div className="relative flex-1 basis-full lg:basis-auto lg:max-w-md">
@@ -109,8 +114,12 @@ export function DeckFilters({
         <Button variant="outline" className="justify-start" onClick={onImport}>
           <FileUp className="h-4 w-4" /> {t('common_import')}
         </Button>
-        <Button className="justify-start" onClick={onCreateNew}>
-          <Plus className="h-4 w-4" /> {t('new_deck')}
+        <Button className="justify-start" disabled={!hasAccess} onClick={hasAccess ? onCreateNew : () => router.push('/checkout?plan_id=student_premium')}>
+          {hasAccess ? (
+            <><Plus className="h-4 w-4" /> {t('new_deck')}</>
+          ) : (
+            <><Lock className="size-3" /> Upgrade</>
+          )}
         </Button>
       </div>
     </div>

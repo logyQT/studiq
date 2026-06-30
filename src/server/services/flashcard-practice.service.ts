@@ -212,16 +212,16 @@ export class FlashcardPracticeService {
     if (filter._impossible) return [];
 
     let filterType: string;
-    let universityId: string | null;
+    let organizationId: string | null;
     if (filter.or) {
       filterType = 'university';
-      universityId = ctx.universityId ?? null;
+      organizationId = ctx.activeOrgId ?? null;
     } else if (filter.created_by) {
       filterType = 'own';
-      universityId = null;
+      organizationId = null;
     } else {
       filterType = 'any';
-      universityId = null;
+      organizationId = null;
     }
 
     const settings = await this.resetDailyIfNeeded(ctx);
@@ -230,7 +230,7 @@ export class FlashcardPracticeService {
     const { data: rpcResult, error: rpcError } = await supabase.rpc('get_due_flashcards', {
       p_user_id: ctx.userId,
       p_filter_type: filterType,
-      p_university_id: universityId,
+      p_organization_id: organizationId,
       p_limit: newOnly ? Math.min(limit, newCardLimit) : limit,
       p_deck_ids: filters.deckIds?.length ? filters.deckIds : null,
       p_topic_ids: filters.topicIds?.length ? filters.topicIds : null,
@@ -258,7 +258,7 @@ export class FlashcardPracticeService {
     const { data, error } = await supabase.rpc('get_due_breakdown', {
       p_user_id: ctx.userId,
       p_created_by: filter.created_by ?? (filter.or ? ctx.userId : null),
-      p_university_id: ctx.universityId ?? null,
+      p_organization_id: ctx.activeOrgId ?? null,
       p_topic_ids: null,
       p_deck_ids: null,
     });
@@ -293,7 +293,7 @@ export class FlashcardPracticeService {
     const { data, error } = await supabase.rpc('get_due_breakdown', {
       p_user_id: ctx.userId,
       p_created_by: rbac.created_by ?? (rbac.or ? ctx.userId : null),
-      p_university_id: ctx.universityId ?? null,
+      p_organization_id: ctx.activeOrgId ?? null,
       p_topic_ids: filters.topicIds?.length ? filters.topicIds : null,
       p_deck_ids: filters.deckIds?.length ? filters.deckIds : null,
     });
@@ -360,7 +360,7 @@ export class FlashcardPracticeService {
     const { data, error } = await supabase.rpc('get_practice_state_breakdown', {
       p_user_id: ctx.userId,
       p_created_by: filter.created_by ?? (filter.or ? ctx.userId : null),
-      p_university_id: ctx.universityId ?? null,
+      p_organization_id: ctx.activeOrgId ?? null,
     });
 
     if (error) {

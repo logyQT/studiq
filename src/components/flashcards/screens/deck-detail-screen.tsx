@@ -21,6 +21,7 @@ import {
   FileDown,
   EyeOff,
   Eye,
+  Lock,
 } from 'lucide-react';
 import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { toast } from 'sonner';
@@ -55,9 +56,11 @@ import type { Deck, Flashcard, Topic } from '@/types/flashcards';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
 import { UserRole } from '@/types';
+import { useOrgs } from '@/hooks/use-orgs';
 import { getGradientHex } from '@/lib/color-utils';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useSelection } from '@/hooks/use-selection';
+import { useFeature } from '@/hooks/use-feature';
 
 interface DeckDetailScreenProps {
   deckId: string;
@@ -94,6 +97,7 @@ export function DeckDetailScreen({
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const role = user?.app_metadata?.role as UserRole | undefined;
+  const { activeOrg } = useOrgs();
   const headerGrad = getGradientHex(deckId);
 
   const persisted = loadPersistedFilters(deckId);
@@ -267,6 +271,8 @@ export function DeckDetailScreen({
   });
 
   const selection = useSelection();
+  const canCreateFlashcard = useFeature('study.create');
+  const canAIChat = useFeature('ai.chat');
   const [importOpen, setImportOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [barStyle, setBarStyle] = useState<React.CSSProperties>({});
@@ -594,14 +600,14 @@ export function DeckDetailScreen({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key !== 'n') return;
-      if (!can(role, 'deck.update', currentDeck?.created_by, user?.id)) return;
+      if (!can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id)) return;
       e.preventDefault();
       router.push(`${basePath}/decks/${deckId}/new`);
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [role, currentDeck?.created_by, user?.id, basePath, deckId, router]);
+  }, [role, currentDeck?.created_by, user?.id, activeOrg?.id, basePath, deckId, router]);
 
   if (deckError || (!deckLoading && !currentDeck)) {
     return (
@@ -627,7 +633,7 @@ export function DeckDetailScreen({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
+              {can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) && (
                 <DropdownMenuItem
                   onClick={() =>
                     setD((prev) => ({
@@ -639,7 +645,7 @@ export function DeckDetailScreen({
                   <Pencil className="h-4 w-4 mr-2" /> {t('menu_edit')}
                 </DropdownMenuItem>
               )}
-              {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
+              {can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setImportOpen(true)}>
@@ -664,7 +670,7 @@ export function DeckDetailScreen({
               >
                 <FileDown className="h-4 w-4 mr-2" /> {t('common_export')}
               </DropdownMenuItem>
-              {can(role, 'deck.delete', currentDeck?.created_by, user?.id) && (
+              {can(role, 'deck.delete', currentDeck?.created_by, user?.id, activeOrg?.id) && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -768,7 +774,7 @@ export function DeckDetailScreen({
           setSortOrder(so);
         }}
         topics={topics}
-        canGenerate={can(role, 'deck.update', currentDeck?.created_by, user?.id)}
+        canGenerate={can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id)}
         onGenerate={() => router.push(`/app/ai?deckId=${deckId}`)}
         onCreateNew={() => router.push(`${basePath}/decks/${deckId}/new`)}
         t={t}
@@ -782,15 +788,20 @@ export function DeckDetailScreen({
             <Layers className="h-10 w-10 text-muted-foreground" />
           </EmptyMedia>
           <EmptyTitle>{t('no_flashcards')}</EmptyTitle>
-          {can(role, 'deck.update', currentDeck?.created_by, user?.id) && (
+          {can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) && (
             <EmptyDescription>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => router.push(`${basePath}/decks/${deckId}/new`)}
+                disabled={!canCreateFlashcard.hasAccess}
+                onClick={canCreateFlashcard.hasAccess ? () => router.push(`${basePath}/decks/${deckId}/new`) : () => router.push('/checkout?plan_id=student_premium')}
                 aria-keyshortcuts="n"
               >
-                <Plus className="mr-1.5 h-4 w-4" /> {t('create_first')}
+                {canCreateFlashcard.hasAccess ? (
+                  <><Plus className="mr-1.5 h-4 w-4" /> {t('create_first')}</>
+                ) : (
+                  <><Lock className="size-3" /> Upgrade</>
+                )}
               </Button>
             </EmptyDescription>
           )}
@@ -801,8 +812,8 @@ export function DeckDetailScreen({
             <FlashcardCard
               key={fc.id}
               fc={fc}
-              canUpdate={can(role, 'flashcard.update', fc.created_by, user?.id)}
-              canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false}
+              canUpdate={can(role, 'flashcard.update', fc.created_by, user?.id, activeOrg?.id)}
+              canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) ?? false}
               topics={topics}
               t={t}
               selected={selection.selectedIds.has(fc.id)}
@@ -859,14 +870,14 @@ export function DeckDetailScreen({
         const selectedFlashcards = flashcards.filter((fc) => selection.selectedIds.has(fc.id));
         const canBulkTopics =
           selectedFlashcards.length > 0 &&
-          selectedFlashcards.every((fc) => can(role, 'flashcard.update', fc.created_by, user?.id));
+          selectedFlashcards.every((fc) => can(role, 'flashcard.update', fc.created_by, user?.id, activeOrg?.id));
         const canBulkMove =
-          (can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false) &&
-          selectedFlashcards.every((fc) => can(role, 'flashcard.update', fc.created_by, user?.id));
+          (can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) ?? false) &&
+          selectedFlashcards.every((fc) => can(role, 'flashcard.update', fc.created_by, user?.id, activeOrg?.id));
         return (
           <FlashcardBulkActions
             selectedCount={selection.selectedIds.size}
-            canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id) ?? false}
+            canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) ?? false}
             canTopics={canBulkTopics}
             canMove={canBulkMove}
             canExport={selection.selectedIds.size > 0}
@@ -939,19 +950,19 @@ export function DeckDetailScreen({
         <div className="sm:hidden">
           <SpeedDial
             items={[
-              ...(can(role, 'deck.update', currentDeck?.created_by, user?.id)
+              ...(can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id)
                 ? [
                     {
                       icon: Plus,
-                      label: t('new_flashcard'),
-                      onClick: () => router.push(`${basePath}/decks/${deckId}/new`),
+                      label: canCreateFlashcard.hasAccess ? t('new_flashcard') : 'Upgrade',
+                      onClick: canCreateFlashcard.hasAccess ? () => router.push(`${basePath}/decks/${deckId}/new`) : () => router.push('/checkout?plan_id=student_premium'),
                     },
                   ]
                 : []),
               {
                 icon: Sparkles,
-                label: t('generate'),
-                onClick: () => router.push(`/app/ai?deckId=${deckId}`),
+                label: canCreateFlashcard.hasAccess && canAIChat.hasAccess ? t('generate') : 'Upgrade',
+                onClick: canCreateFlashcard.hasAccess && canAIChat.hasAccess ? () => router.push(`/app/ai?deckId=${deckId}`) : () => router.push('/checkout?plan_id=student_premium'),
               },
             ]}
           />

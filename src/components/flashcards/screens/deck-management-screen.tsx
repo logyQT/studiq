@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { SquarePen, Upload, CheckSquare, Plus, FolderOpen } from 'lucide-react';
+import { SquarePen, Upload, CheckSquare, Plus, FolderOpen, Lock } from 'lucide-react';
 import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -18,6 +19,7 @@ import type { Deck } from '@/types/flashcards';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { can } from '@/lib/frontend-rbac';
 import { UserRole } from '@/types';
+import { useOrgs } from '@/hooks/use-orgs';
 import { DeckCard } from '@/components/flashcards/cards/deck-card';
 import { DeckFilters } from '@/components/flashcards/shared/deck-filters';
 import { SpeedDial } from '@/components/shared/speed-dial';
@@ -41,6 +43,7 @@ const DeckBulkActions = dynamic(() =>
 );
 import { useDebounce } from '@/hooks/use-debounce';
 import { useSelection } from '@/hooks/use-selection';
+import { useFeature } from '@/hooks/use-feature';
 
 interface DeckManagementScreenProps {
   apiBase: string;
@@ -63,8 +66,10 @@ function loadPersistedFilters() {
 }
 
 export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps) {
+  const router = useRouter();
   const { user } = useAuth();
   const role = user?.app_metadata?.role as UserRole | undefined;
+  const { activeOrg } = useOrgs();
   const queryClient = useQueryClient();
 
   const persisted = loadPersistedFilters();
@@ -166,6 +171,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   const [importOpen, setImportOpen] = useState(false);
   const selection = useSelection();
   const { isSelecting: selectionIsActive, handleClearSelection: selectionClear } = selection;
+  const canCreateDeck = useFeature('study.create');
 
   useEffect(() => {
     if (!selectionIsActive) return;
@@ -342,8 +348,8 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
               onToggleSelect={() => handleToggleSelect(deck.id)}
               basePath={basePath}
               t={t}
-              canUpdate={can(role, 'deck.update', deck.created_by, user?.id)}
-              canDelete={can(role, 'deck.delete', deck.created_by, user?.id)}
+              canUpdate={can(role, 'deck.update', deck.created_by, user?.id, activeOrg?.id)}
+              canDelete={can(role, 'deck.delete', deck.created_by, user?.id, activeOrg?.id)}
               onEdit={() => openEdit(deck)}
               onDelete={() => setDeleteId(deck.id)}
               onExport={() =>
@@ -388,8 +394,12 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
               </EmptyMedia>
               <EmptyTitle>{t('no_decks')}</EmptyTitle>
               <EmptyDescription>
-                <Button variant="outline" size="sm" onClick={openCreate}>
-                  <Plus className="mr-1.5 h-4 w-4" /> {t('new_deck')}
+                <Button variant="outline" size="sm" disabled={!canCreateDeck.hasAccess} onClick={canCreateDeck.hasAccess ? openCreate : () => router.push('/checkout?plan_id=student_premium')}>
+                  {canCreateDeck.hasAccess ? (
+                    <><Plus className="mr-1.5 h-4 w-4" /> {t('new_deck')}</>
+                  ) : (
+                    <><Lock className="size-3" /> Upgrade</>
+                  )}
                 </Button>
               </EmptyDescription>
             </Empty>
@@ -442,7 +452,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         <div className="sm:hidden">
           <SpeedDial
             items={[
-              { icon: SquarePen, label: t('new_deck'), onClick: openCreate },
+              { icon: SquarePen, label: t('new_deck'), onClick: canCreateDeck.hasAccess ? openCreate : () => router.push('/checkout?plan_id=student_premium') },
               { icon: Upload, label: t('common_import'), onClick: () => setImportOpen(true) },
               {
                 icon: CheckSquare,

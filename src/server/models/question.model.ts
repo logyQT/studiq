@@ -2,7 +2,6 @@ import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
 
 export const QuestionTypeEnum = z.enum(['mcq', 'true_false', 'open']);
-export const DifficultyEnum = z.enum(['easy', 'medium', 'hard']);
 
 export const CreateQuestionSchema = registry.register(
   'CreateQuestionRequest',
@@ -15,7 +14,6 @@ export const CreateQuestionSchema = registry.register(
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
       .max(255, { error: ValidationErrorCode.TOO_LONG }),
     explanation: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
-    difficulty: DifficultyEnum.default('medium'),
     answers: z
       .array(
         z.object({
@@ -47,7 +45,6 @@ export const UpdateQuestionSchema = registry.register(
       .max(255, { error: ValidationErrorCode.TOO_LONG })
       .optional(),
     explanation: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
-    difficulty: DifficultyEnum.optional(),
     answers: z
       .array(
         z.object({

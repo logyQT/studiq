@@ -5,7 +5,7 @@
 
 CREATE TABLE public.questions (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  university_id uuid REFERENCES public.universities(id) ON DELETE SET NULL,
+  organization_id uuid REFERENCES public.organizations(id) ON DELETE SET NULL,
   subject_id    uuid REFERENCES public.subjects(id) ON DELETE SET NULL,
   created_by    uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
   type          question_type NOT NULL DEFAULT 'mcq',

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { RoleBadge } from '@/components/ui/role-badge';
-import { DicebearAvatar } from '@/components/ui/dicebear-avatar';
+import { UserAvatar } from '@/components/ui/user-avatar';
 import {
   Table,
   TableBody,
@@ -33,7 +33,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { Search, UserMinus, Shield } from 'lucide-react';
-import { UserRole, UNIVERSITY_ROLES } from '@/types';
+import { UserRole, ORGANIZATION_ROLES } from '@/types';
 import { useTranslations } from 'next-intl';
 
 interface Member {
@@ -54,7 +54,7 @@ export default function MembersPage() {
   const [changingRole, setChangingRole] = useState<{ id: string; role: string } | null>(null);
 
   useEffect(() => {
-    fetch('/api/v1/university/members')
+    fetch('/api/v1/organization/members')
       .then((r) => r.json())
       .then((data) => {
         setMembers(data);
@@ -74,7 +74,7 @@ export default function MembersPage() {
   async function handleRemove() {
     if (!removeId) return;
     try {
-      const res = await fetch(`/api/v1/university/members?userId=${removeId}`, {
+      const res = await fetch(`/api/v1/organization/members?userId=${removeId}`, {
         method: 'DELETE',
       });
       if (!res.ok) throw new Error();
@@ -89,7 +89,7 @@ export default function MembersPage() {
   async function handleChangeRole() {
     if (!changingRole) return;
     try {
-      const res = await fetch('/api/v1/university/members', {
+      const res = await fetch('/api/v1/organization/members', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetUserId: changingRole.id, newRole: changingRole.role }),
@@ -130,7 +130,7 @@ export default function MembersPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t('all_roles')}</SelectItem>
-            {UNIVERSITY_ROLES.map((r) => (
+            {ORGANIZATION_ROLES.map((r) => (
               <SelectItem key={r} value={r}>
                 {t(`role_${r}`)}
               </SelectItem>
@@ -154,7 +154,7 @@ export default function MembersPage() {
               <TableRow key={m.id}>
                 <TableCell>
                   <div className="flex items-center gap-3">
-                    <DicebearAvatar seed={m.email} size={32} />
+                    <UserAvatar name={m.full_name} email={m.email} size={32} />
                     <div>
                       <p className="font-medium">{m.full_name || t('unnamed')}</p>
                       <p className="text-xs text-muted-foreground">{m.email}</p>
@@ -178,7 +178,7 @@ export default function MembersPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {UNIVERSITY_ROLES.map((r) => (
+                        {ORGANIZATION_ROLES.map((r) => (
                           <SelectItem key={r} value={r}>
                             {t(`role_${r}`)}
                           </SelectItem>

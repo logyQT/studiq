@@ -23,6 +23,7 @@ import {
   Plus,
   ListChecks,
   TrendingUp,
+  Lock,
 } from 'lucide-react';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
@@ -48,6 +49,7 @@ import { Badge } from '@/components/ui/badge';
 import { apiPost } from '@/lib/api';
 import { toast } from 'sonner';
 import type { Topic, Deck } from '@/types/flashcards';
+import { useFeature } from '@/hooks/use-feature';
 
 interface DueBreakdown {
   total: number;
@@ -69,7 +71,6 @@ interface QuizAttempt {
   config: {
     subjectId?: string;
     questionTypes?: string[];
-    difficulty?: string;
     questionCount?: number;
   } | null;
   started_at: string;
@@ -87,16 +88,10 @@ const QUESTION_TYPE_OPTIONS = [
   { value: 'open', label: 'Open' },
 ] as const;
 
-const DIFFICULTY_OPTIONS = [
-  { value: 'easy', label: 'Easy' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'hard', label: 'Hard' },
-  { value: 'mixed', label: 'Mixed' },
-] as const;
-
 export default function StudyClient() {
   const t = useTranslations('AppFlashcardStudyPage');
   const router = useRouter();
+  const { hasAccess } = useFeature('test.create');
 
   const { data: topicsData, isLoading: topicsLoading } = useApiQuery<{
     items: Topic[];
@@ -155,7 +150,6 @@ export default function StudyClient() {
   // Quiz form state
   const [quizSubjectId, setQuizSubjectId] = useState<string>('');
   const [quizTypes, setQuizTypes] = useState<string[]>([]);
-  const [quizDifficulty, setQuizDifficulty] = useState<string>('mixed');
   const [quizCount, setQuizCount] = useState(10);
   const [quizSubmitting, setQuizSubmitting] = useState(false);
 
@@ -203,7 +197,6 @@ export default function StudyClient() {
       const data = await apiPost<{ id: string }>('/api/v1/quiz/new', {
         ...(quizSubjectId ? { subjectId: quizSubjectId } : {}),
         ...(quizTypes.length > 0 ? { questionTypes: quizTypes } : {}),
-        ...(quizDifficulty !== 'mixed' ? { difficulty: quizDifficulty } : {}),
         questionCount: quizCount,
       });
       router.push(`/app/study/session/quiz/${data.id}`);
@@ -599,24 +592,6 @@ export default function StudyClient() {
               </Field>
 
               <Field orientation="vertical">
-                <FieldLabel>{t('quiz_difficulty')}</FieldLabel>
-                <FieldContent>
-                  <Select value={quizDifficulty} onValueChange={setQuizDifficulty}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DIFFICULTY_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </FieldContent>
-              </Field>
-
-              <Field orientation="vertical">
                 <FieldLabel>{t('quiz_count')}</FieldLabel>
                 <FieldContent>
                   <Input
@@ -634,9 +609,12 @@ export default function StudyClient() {
               </Field>
             </FieldGroup>
 
-            <Button className="mt-6 w-full" onClick={handleGenerateQuiz} disabled={quizSubmitting}>
-              <ListChecks data-icon="inline-start" />
-              {t('generate_quiz')}
+            <Button className="mt-6 w-full" disabled={!hasAccess || quizSubmitting} onClick={hasAccess ? handleGenerateQuiz : () => router.push('/checkout?plan_id=student_premium')}>
+              {hasAccess ? (
+                <><ListChecks data-icon="inline-start" /> {t('generate_quiz')}</>
+              ) : (
+                <><Lock className="size-3" /> Upgrade</>
+              )}
             </Button>
           </CardContent>
         </Card>
@@ -665,7 +643,6 @@ export default function StudyClient() {
                     </CardTitle>
                     <CardDescription>
                       {new Date(attempt.started_at).toLocaleDateString()}
-                      {attempt.config?.difficulty && ` · ${attempt.config.difficulty}`}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>

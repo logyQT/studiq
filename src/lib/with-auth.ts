@@ -33,10 +33,11 @@ export async function withAuth(
   }
 
   const traceId = crypto.randomUUID();
+  const cookieOrgId = req.cookies.get('active_org_id')?.value ?? null;
   const ctx: RequestContext = {
     traceId,
     userId: user.id,
-    universityId: user.app_metadata?.university_id ?? null,
+    activeOrgId: cookieOrgId,
     role,
     url: req.url,
     method: req.method,

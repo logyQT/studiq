@@ -32,12 +32,12 @@ describe('InvitationService', () => {
       ).rejects.toThrow('ERROR_NOT_FOUND');
     });
 
-    it('throws FORBIDDEN when university_admin has no university_id', async () => {
+    it('throws FORBIDDEN when university_admin has no organization_id', async () => {
       const mockChain = {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({
-              data: { id: userId, university_id: null, role: 'university_admin' },
+              data: { id: userId, organization_id: null, role: 'university_admin' },
               error: null,
             }),
           }),
@@ -54,12 +54,12 @@ describe('InvitationService', () => {
       ).rejects.toThrow('ERROR_FORBIDDEN');
     });
 
-    it('throws NOT_FOUND when sys_admin provides no universityId', async () => {
+    it('throws NOT_FOUND when sys_admin provides no organizationId', async () => {
       const mockChain = {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({
-              data: { id: userId, university_id: null, role: 'sys_admin' },
+              data: { id: userId, organization_id: null, role: 'sys_admin' },
               error: null,
             }),
           }),
@@ -76,12 +76,12 @@ describe('InvitationService', () => {
       ).rejects.toThrow('ERROR_NOT_FOUND');
     });
 
-    it('creates invitation successfully for sys_admin with universityId', async () => {
+    it('creates invitation successfully for sys_admin with organizationId', async () => {
       const mockChain = {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({
-              data: { id: userId, university_id: null, role: 'sys_admin' },
+              data: { id: userId, organization_id: null, role: 'sys_admin' },
               error: null,
             }),
           }),
@@ -104,7 +104,7 @@ describe('InvitationService', () => {
         name: 'John Doe',
         email: 'john@example.com',
         role: UserRole.STUDENT,
-        universityId: 'uni-1',
+        organizationId: 'uni-1',
       });
 
       expect(result.success).toBe(true);
@@ -113,12 +113,12 @@ describe('InvitationService', () => {
       vi.unstubAllEnvs();
     });
 
-    it('creates invitation successfully for university_admin with university_id', async () => {
+    it('creates invitation successfully for university_admin with organization_id', async () => {
       const mockChain = {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({
-              data: { id: userId, university_id: 'uni-1', role: 'university_admin' },
+              data: { id: userId, organization_id: 'uni-1', role: 'university_admin' },
               error: null,
             }),
           }),
@@ -153,7 +153,7 @@ describe('InvitationService', () => {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({
-              data: { id: userId, university_id: 'uni-1', role: 'university_admin' },
+              data: { id: userId, organization_id: 'uni-1', role: 'university_admin' },
               error: null,
             }),
           }),
@@ -187,7 +187,7 @@ describe('InvitationService', () => {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({
-              data: { id: userId, university_id: 'uni-1', role: 'university_admin' },
+              data: { id: userId, organization_id: 'uni-1', role: 'university_admin' },
               error: null,
             }),
           }),

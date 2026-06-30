@@ -18,7 +18,6 @@ interface Question {
   id: string;
   content: string;
   type: string;
-  difficulty: string;
   question_answers: Array<{ id: string; content: string; is_correct: boolean }>;
 }
 
@@ -29,19 +28,6 @@ interface AttemptDetails {
   completed_at: string | null;
   questions: Question[];
   answers: Record<string, { selected_answer_id: string | null; is_correct: boolean }>;
-}
-
-function getDifficultyColor(difficulty: string) {
-  switch (difficulty) {
-    case 'easy':
-      return '#10b981';
-    case 'medium':
-      return '#f59e0b';
-    case 'hard':
-      return '#ef4444';
-    default:
-      return '#6b7280';
-  }
 }
 
 export default function QuizTakingPage() {
@@ -116,15 +102,6 @@ export default function QuizTakingPage() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Badge variant="outline">{currentQuestion.type.replace('_', ' ')}</Badge>
-            <Badge
-              variant="secondary"
-              style={{
-                backgroundColor: getDifficultyColor(currentQuestion.difficulty),
-                color: 'white',
-              }}
-            >
-              {currentQuestion.difficulty}
-            </Badge>
           </div>
           <CardTitle className="mt-3 text-xl">{currentQuestion.content}</CardTitle>
         </CardHeader>

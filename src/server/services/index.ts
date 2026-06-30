@@ -1,7 +1,7 @@
 export * from '@/server/services/health.service';
 export * from '@/server/services/auth.service';
-export * from '@/server/services/university.service';
-export * from '@/server/services/university-members.service';
+export * from '@/server/services/organization.service';
+export * from '@/server/services/organization-member.service';
 export * from '@/server/services/invitation.service';
 export * from '@/server/services/subject.service';
 export * from '@/server/services/question.service';
@@ -24,3 +24,7 @@ export * from '@/server/services/flashcard-import.service';
 export * from '@/server/services/flashcard-export.service';
 export * from '@/server/services/storage.service';
 export * from '@/server/services/agent.service';
+export * from '@/server/services/feature.service';
+export * from '@/server/services/mock-stripe.service';
+export * from '@/server/services/org.service';
+export * from '@/server/services/activity.service';

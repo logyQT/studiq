@@ -17,10 +17,12 @@ import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
 import type { RequestContext } from '@/lib/request-context';
 import { log } from '@/lib/logger';
+import { requireFeature } from '@/server/guards/feature.guard';
 
 export class FlashcardController {
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
+      await requireFeature(ctx, 'study.create');
       const parsed = CreateFlashcardSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -51,6 +53,7 @@ export class FlashcardController {
 
   async bulkCreate(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
+      await requireFeature(ctx, 'study.create');
       const parsed = BulkCreateFlashcardsSchema.safeParse(body);
       const t0 = performance.now();
 

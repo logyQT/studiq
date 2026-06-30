@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import { CreateUniversitySchema } from '@/server/models/university.model';
+import { CreateOrganizationSchema } from '@/server/models/organization.model';
 import { CreateInviteSchema } from '@/server/models/invitation.model';
 import { UserRole } from '@/types';
 import { AppError } from '@/lib/errors';
@@ -35,19 +35,19 @@ export default function SysAdminDashboard() {
   const t = useTranslations('AdminPage');
   const [inviteLink, setInviteLink] = useState<string | null>(null);
 
-  const formUniversity = useForm<z.infer<typeof CreateUniversitySchema>>({
-    resolver: zodResolver(CreateUniversitySchema),
+  const formOrganization = useForm<z.infer<typeof CreateOrganizationSchema>>({
+    resolver: zodResolver(CreateOrganizationSchema),
     defaultValues: { name: '', slug: '' },
   });
 
   const formInvite = useForm<z.infer<typeof CreateInviteSchema>>({
     resolver: zodResolver(CreateInviteSchema),
-    defaultValues: { email: '', role: UserRole.UNIVERSITY_ADMIN, universityId: '' },
+    defaultValues: { email: '', role: UserRole.UNIVERSITY_ADMIN, organizationId: '' },
   });
 
-  async function onSubmitUniversity(values: z.infer<typeof CreateUniversitySchema>) {
+  async function onSubmitOrganization(values: z.infer<typeof CreateOrganizationSchema>) {
     try {
-      const res = await fetch('/api/v1/admin/universities', {
+      const res = await fetch('/api/v1/admin/organizations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(values),
@@ -64,8 +64,8 @@ export default function SysAdminDashboard() {
         description: t('success_university_desc', { id: data.id }),
       });
 
-      formInvite.setValue('universityId', data.id);
-      formUniversity.reset();
+      formInvite.setValue('organizationId', data.id);
+      formOrganization.reset();
     } catch (error: unknown) {
       if (error instanceof AppError) {
         toast.error(t('error_unknown'), { description: error.message });
@@ -80,10 +80,10 @@ export default function SysAdminDashboard() {
     try {
       const payload = {
         ...values,
-        universityId: values.universityId === '' ? undefined : values.universityId,
+        organizationId: values.organizationId === '' ? undefined : values.organizationId,
       };
 
-      const res = await fetch('/api/v1/university/invitations', {
+      const res = await fetch('/api/v1/organization/invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -101,7 +101,7 @@ export default function SysAdminDashboard() {
         name: '',
         email: '',
         role: UserRole.UNIVERSITY_ADMIN,
-        universityId: payload.universityId,
+        organizationId: payload.organizationId,
       });
     } catch (error: unknown) {
       if (error instanceof AppError) {
@@ -128,13 +128,13 @@ export default function SysAdminDashboard() {
             <CardDescription>{t('add_university_desc')}</CardDescription>
           </CardHeader>
           <CardContent>
-            <Form {...formUniversity}>
+            <Form {...formOrganization}>
               <form
-                onSubmit={formUniversity.handleSubmit(onSubmitUniversity)}
+                onSubmit={formOrganization.handleSubmit(onSubmitOrganization)}
                 className="space-y-4"
               >
                 <FormField
-                  control={formUniversity.control}
+                  control={formOrganization.control}
                   name="name"
                   render={({ field }) => (
                     <FormItem>
@@ -147,7 +147,7 @@ export default function SysAdminDashboard() {
                   )}
                 />
                 <FormField
-                  control={formUniversity.control}
+                  control={formOrganization.control}
                   name="slug"
                   render={({ field }) => (
                     <FormItem>
@@ -229,7 +229,7 @@ export default function SysAdminDashboard() {
                 />
                 <FormField
                   control={formInvite.control}
-                  name="universityId"
+                  name="organizationId"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>{t('university_id_label')}</FormLabel>

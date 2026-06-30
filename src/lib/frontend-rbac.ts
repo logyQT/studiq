@@ -1,6 +1,6 @@
 import { UserRole } from '@/types';
 
-type Scope = 'own' | 'university' | 'any';
+type Scope = 'own' | 'organization' | 'any';
 
 const ROLE_PERMISSIONS: Record<UserRole, Record<string, Scope>> = {
   [UserRole.FREE]: {
@@ -28,20 +28,20 @@ const ROLE_PERMISSIONS: Record<UserRole, Record<string, Scope>> = {
     'flashcard.delete': 'own',
   },
   [UserRole.TEACHER]: {
-    'deck.read': 'university',
-    'deck.update': 'university',
-    'deck.delete': 'university',
-    'flashcard.read': 'university',
-    'flashcard.update': 'university',
-    'flashcard.delete': 'university',
+    'deck.read': 'organization',
+    'deck.update': 'organization',
+    'deck.delete': 'organization',
+    'flashcard.read': 'organization',
+    'flashcard.update': 'organization',
+    'flashcard.delete': 'organization',
   },
   [UserRole.UNIVERSITY_ADMIN]: {
-    'deck.read': 'university',
-    'deck.update': 'university',
-    'deck.delete': 'university',
-    'flashcard.read': 'university',
-    'flashcard.update': 'university',
-    'flashcard.delete': 'university',
+    'deck.read': 'organization',
+    'deck.update': 'organization',
+    'deck.delete': 'organization',
+    'flashcard.read': 'organization',
+    'flashcard.update': 'organization',
+    'flashcard.delete': 'organization',
   },
   [UserRole.SYS_ADMIN]: {
     'deck.read': 'any',
@@ -58,11 +58,13 @@ export function can(
   permission: string,
   createdBy: string | undefined,
   userId: string | undefined,
+  activeOrgId?: string | null,
 ): boolean {
   if (!role || !userId || !createdBy) return false;
   const scope = ROLE_PERMISSIONS[role]?.[permission];
   if (!scope) return false;
   if (scope === 'any') return true;
-  if (scope === 'university') return true;
+  if (scope === 'organization' && activeOrgId === undefined) return true;
+  if (scope === 'organization') return activeOrgId != null;
   return createdBy === userId;
 }

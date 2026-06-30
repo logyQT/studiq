@@ -34,11 +34,10 @@ export async function POST(req: NextRequest) {
   }
 
     const role = user.app_metadata?.role as UserRole;
-    const universityId = user.app_metadata?.university_id ?? null;
     const ctx: RequestContext = {
       traceId: crypto.randomUUID(),
       userId: user.id,
-      universityId,
+      activeOrgId: req.cookies.get('active_org_id')?.value ?? null,
       role,
       url: req.url,
       method: req.method,

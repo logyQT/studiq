@@ -76,13 +76,13 @@ export enum UserRole {
 /**
  * Role, które mogą być nadawane wewnątrz uniwersytetu (np. przez zaproszenia)
  */
-export const UNIVERSITY_ROLES = [
+export const ORGANIZATION_ROLES = [
   UserRole.STUDENT,
   UserRole.TEACHER,
   UserRole.UNIVERSITY_ADMIN,
 ] as const;
 
-export type UniversityRole = (typeof UNIVERSITY_ROLES)[number];
+export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
 
 // =============================================================================
 // HEALTH TYPES – defined in src/server/models/health.model.ts

@@ -10,7 +10,7 @@ export class QuizService {
 
     const orConditions = [];
 
-    if (ctx.universityId) orConditions.push(`university_id.eq.${ctx.universityId}`);
+    if (ctx.activeOrgId) orConditions.push(`organization_id.eq.${ctx.activeOrgId}`);
     if (ctx.userId) orConditions.push(`created_by.eq.${ctx.userId}`);
 
     let query = supabase
@@ -21,10 +21,6 @@ export class QuizService {
 
     if (config.subjectId) {
       query = query.eq('subject_id', config.subjectId);
-    }
-
-    if (config.difficulty && config.difficulty !== 'mixed') {
-      query = query.eq('difficulty', config.difficulty);
     }
 
     const { data: allQuestions, error: fetchError } = await query;

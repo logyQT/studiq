@@ -3,10 +3,12 @@ import { CreateDeckSchema, UpdateDeckSchema, BatchDeleteDeckSchema, BulkCreateDe
 import { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
 import type { RequestContext } from '@/lib/request-context';
+import { requireFeature } from '@/server/guards/feature.guard';
 
 export class FlashcardDeckController {
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
+      await requireFeature(ctx, 'study.create');
       const parsed = CreateDeckSchema.safeParse(body);
 
       if (!parsed.success) {

@@ -15,7 +15,7 @@ vi.mock('@/server/services/agent.service', () => ({
 import { aiAgentController, type AgentStreamCallbacks } from '@/server/controllers/ai-agent.controller';
 
 describe('AiAgentController', () => {
-  let mockCtx: { userId: string; universityId: null; role: string; url: string; method: string };
+  let mockCtx: { userId: string; organizationId: null; role: string; url: string; method: string };
   let mockCallbacks: AgentStreamCallbacks;
 
   beforeEach(() => {
@@ -24,7 +24,7 @@ describe('AiAgentController', () => {
 
     mockCtx = {
       userId: 'test-user-id',
-      universityId: null,
+      organizationId: null,
       role: 'student',
       url: 'http://localhost',
       method: 'POST',

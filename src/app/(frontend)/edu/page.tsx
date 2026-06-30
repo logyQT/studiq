@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { FileText, Layers, Plus, ArrowRight, Zap } from 'lucide-react';
+import { OnboardingChecklist } from '@/components/edu/onboarding-checklist';
+import { FileText, Layers, Plus, ArrowRight, Zap, Users, Lock } from 'lucide-react';
+import { useFeature } from '@/hooks/use-feature';
 
 interface TeacherStats {
   totalQuestions: number;
@@ -14,6 +17,9 @@ interface TeacherStats {
 
 export default function EduOverviewPage() {
   const t = useTranslations('EduOverviewPage');
+  const router = useRouter();
+  const { hasAccess: hasTestAccess } = useFeature('test.create');
+  const { hasAccess: hasStudyAccess } = useFeature('study.create');
   const [stats, setStats] = useState<TeacherStats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -29,6 +35,8 @@ export default function EduOverviewPage() {
 
   return (
     <div className="space-y-8">
+      <OnboardingChecklist />
+
       {/* Stat Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
@@ -58,33 +66,75 @@ export default function EduOverviewPage() {
             <CardDescription>{t('quick_actions_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 pb-6">
+            {/* Invite students CTA */}
+            <Link href="/edu/classroom/invite" className="group block">
+              <div className="flex items-center gap-4 p-4 rounded-xl bg-green-500/5 hover:bg-green-500/10 border border-green-500/10 hover:border-green-500/25 transition-all duration-200 cursor-pointer">
+                <div className="rounded-xl bg-green-500/15 p-3 shrink-0 group-hover:scale-110 transition-transform duration-200">
+                  <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm text-foreground">{t('invite_students')}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Send invitations to your classroom</p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-green-500 group-hover:translate-x-1 transition-all duration-200 shrink-0" />
+              </div>
+            </Link>
+
             {/* Create question CTA */}
-            <Link href="/edu/questions" className="group block">
+            <button
+              type="button"
+              className="group block w-full disabled:opacity-50"
+              disabled={!hasTestAccess}
+              onClick={hasTestAccess ? () => router.push('/edu/questions') : () => router.push('/checkout?plan_id=teacher_license')}
+            >
               <div className="flex items-center gap-4 p-4 rounded-xl bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/10 hover:border-blue-500/25 transition-all duration-200 cursor-pointer">
                 <div className="rounded-xl bg-blue-500/15 p-3 shrink-0 group-hover:scale-110 transition-transform duration-200">
                   <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-foreground">{t('create_question')}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{t('questions_card_desc')}</p>
+                  {hasTestAccess ? (
+                    <>
+                      <p className="font-semibold text-sm text-foreground">{t('create_question')}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{t('questions_card_desc')}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-semibold text-sm text-foreground"><Lock className="size-3 inline mr-1" /> Upgrade</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{t('questions_card_desc')}</p>
+                    </>
+                  )}
                 </div>
                 <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-blue-500 group-hover:translate-x-1 transition-all duration-200 shrink-0" />
               </div>
-            </Link>
+            </button>
 
             {/* Create flashcard CTA */}
-            <Link href="/edu/flashcards" className="group block">
+            <button
+              type="button"
+              className="group block w-full disabled:opacity-50"
+              disabled={!hasStudyAccess}
+              onClick={hasStudyAccess ? () => router.push('/edu/flashcards') : () => router.push('/checkout?plan_id=teacher_license')}
+            >
               <div className="flex items-center gap-4 p-4 rounded-xl bg-violet-500/5 hover:bg-violet-500/10 border border-violet-500/10 hover:border-violet-500/25 transition-all duration-200 cursor-pointer">
                 <div className="rounded-xl bg-violet-500/15 p-3 shrink-0 group-hover:scale-110 transition-transform duration-200">
                   <Plus className="h-5 w-5 text-violet-600 dark:text-violet-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-foreground">{t('create_flashcard')}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{t('flashcards_card_desc')}</p>
+                  {hasStudyAccess ? (
+                    <>
+                      <p className="font-semibold text-sm text-foreground">{t('create_flashcard')}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{t('flashcards_card_desc')}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-semibold text-sm text-foreground"><Lock className="size-3 inline mr-1" /> Upgrade</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{t('flashcards_card_desc')}</p>
+                    </>
+                  )}
                 </div>
                 <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-violet-500 group-hover:translate-x-1 transition-all duration-200 shrink-0" />
               </div>
-            </Link>
+            </button>
           </CardContent>
         </Card>
 

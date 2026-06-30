@@ -24,7 +24,7 @@ describe('AgentService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCtx = { userId: 'user-1', universityId: null, role: 'STUDENT', url: '/api/v1/ai/chat', method: 'POST' };
+    mockCtx = { userId: 'user-1', organizationId: null, role: 'STUDENT', url: '/api/v1/ai/chat', method: 'POST' };
     mockCallbacks = {
       onStep: vi.fn(),
       onToolCall: vi.fn(),

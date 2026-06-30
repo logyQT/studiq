@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +24,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -32,23 +40,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { toast } from 'sonner';
-import { Plus, Search, Pencil, Trash2, X } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, X, Lock } from 'lucide-react';
+import { useFeature } from '@/hooks/use-feature';
 
 interface Question {
   id: string;
   content: string;
   type: string;
-  difficulty: string;
   subject_id: string | null;
   explanation: string | null;
   question_answers: Array<{
@@ -65,21 +67,16 @@ interface Subject {
   name: string;
 }
 
-const DIFFICULTY_COLORS: Record<string, string> = {
-  easy: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  hard: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-};
-
 export default function QuestionsPage() {
   const t = useTranslations('EduQuestionsPage');
   const dl = useTranslations('DashboardLayout');
+  const router = useRouter();
+  const { hasAccess } = useFeature('test.create');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
-  const [filterDifficulty, setFilterDifficulty] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -87,7 +84,6 @@ export default function QuestionsPage() {
   const [formData, setFormData] = useState({
     content: '',
     type: 'mcq' as string,
-    difficulty: 'medium' as string,
     explanation: '',
     subjectId: 'none',
     answers: [{ content: '', isCorrect: false }],
@@ -95,8 +91,8 @@ export default function QuestionsPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/v1/questions').then((r) => (r.ok ? r.json() : [])),
-      fetch('/api/v1/subjects').then((r) => (r.ok ? r.json() : [])),
+      apiGet<Question[]>('/api/v1/questions').catch(() => []),
+      apiGet<Subject[]>('/api/v1/subjects').catch(() => []),
     ])
       .then(([q, s]) => {
         setQuestions(q);
@@ -113,15 +109,13 @@ export default function QuestionsPage() {
   const filtered = questions.filter((q) => {
     const matchesSearch = q.content.toLowerCase().includes(search.toLowerCase());
     const matchesType = filterType === 'all' || q.type === filterType;
-    const matchesDiff = filterDifficulty === 'all' || q.difficulty === filterDifficulty;
-    return matchesSearch && matchesType && matchesDiff;
+    return matchesSearch && matchesType;
   });
 
   function resetForm() {
     setFormData({
       content: '',
       type: 'mcq',
-      difficulty: 'medium',
       explanation: '',
       subjectId: 'none',
       answers: [{ content: '', isCorrect: false }],
@@ -139,7 +133,6 @@ export default function QuestionsPage() {
     setFormData({
       content: q.content,
       type: q.type,
-      difficulty: q.difficulty,
       explanation: q.explanation || '',
       subjectId: q.subject_id || 'none',
       answers: q.question_answers.map((a) => ({ content: a.content, isCorrect: a.is_correct })),
@@ -179,7 +172,6 @@ export default function QuestionsPage() {
     const payload = {
       content: formData.content,
       type: formData.type,
-      difficulty: formData.difficulty,
       explanation: formData.explanation || undefined,
       subjectId: formData.subjectId === 'none' ? undefined : formData.subjectId,
       answers: formData.answers
@@ -188,15 +180,9 @@ export default function QuestionsPage() {
     };
 
     try {
-      const url = editingQuestion ? `/api/v1/questions/${editingQuestion.id}` : '/api/v1/questions';
-      const method = editingQuestion ? 'PUT' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error('Failed');
-      const data = await res.json();
+      const data = editingQuestion
+        ? await apiPut<Question>(`/api/v1/questions/${editingQuestion.id}`, payload)
+        : await apiPost<Question>('/api/v1/questions', payload);
       if (editingQuestion) {
         setQuestions(questions.map((q) => (q.id === data.id ? data : q)));
       } else {
@@ -213,8 +199,7 @@ export default function QuestionsPage() {
   async function handleDelete() {
     if (!deleteId) return;
     try {
-      const res = await fetch(`/api/v1/questions/${deleteId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed');
+      await apiDelete(`/api/v1/questions/${deleteId}`);
       setQuestions(questions.filter((q) => q.id !== deleteId));
       toast.success(t('deleted'));
     } catch {
@@ -229,8 +214,12 @@ export default function QuestionsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">{t('title')}</h2>
-        <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" /> {t('create_question')}
+        <Button disabled={!hasAccess} onClick={hasAccess ? openCreate : () => router.push('/checkout?plan_id=teacher_license')}>
+          {hasAccess ? (
+            <><Plus className="mr-2 h-4 w-4" /> {t('create_question')}</>
+          ) : (
+            <><Lock className="size-3" /> Upgrade</>
+          )}
         </Button>
       </div>
 
@@ -255,17 +244,6 @@ export default function QuestionsPage() {
             <SelectItem value="open">{t('open_label')}</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={filterDifficulty} onValueChange={setFilterDifficulty}>
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder={t('difficulty')} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('all_difficulty')}</SelectItem>
-            <SelectItem value="easy">{t('easy')}</SelectItem>
-            <SelectItem value="medium">{t('medium')}</SelectItem>
-            <SelectItem value="hard">{t('hard')}</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       <Card>
@@ -274,7 +252,6 @@ export default function QuestionsPage() {
             <TableRow>
               <TableHead>{t('question')}</TableHead>
               <TableHead>{t('type')}</TableHead>
-              <TableHead>{t('difficulty')}</TableHead>
               <TableHead>{t('answers')}</TableHead>
               <TableHead className="text-right">{t('actions')}</TableHead>
             </TableRow>
@@ -294,9 +271,6 @@ export default function QuestionsPage() {
                     )}
                   </Badge>
                 </TableCell>
-                <TableCell>
-                  <Badge className={DIFFICULTY_COLORS[q.difficulty]}>{q.difficulty}</Badge>
-                </TableCell>
                 <TableCell>{q.question_answers?.length ?? 0}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
@@ -312,7 +286,7 @@ export default function QuestionsPage() {
             ))}
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                   {t('no_questions')}
                 </TableCell>
               </TableRow>
@@ -362,22 +336,6 @@ export default function QuestionsPage() {
                   <SelectItem value="mcq">{t('multiple_choice')}</SelectItem>
                   <SelectItem value="true_false">{t('true_false')}</SelectItem>
                   <SelectItem value="open">{t('open_answer')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>{t('difficulty')}</Label>
-              <Select
-                value={formData.difficulty}
-                onValueChange={(v) => setFormData({ ...formData, difficulty: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="easy">{t('easy')}</SelectItem>
-                  <SelectItem value="medium">{t('medium')}</SelectItem>
-                  <SelectItem value="hard">{t('hard')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -106,12 +106,9 @@ export async function GET(req: NextRequest) {
 
     const subjectId = searchParams.get('subjectId') || undefined;
     const type = searchParams.get('type') || undefined;
-    const difficulty = searchParams.get('difficulty') || undefined;
-
-    const filters: { subjectId?: string; type?: string; difficulty?: string } = {};
-    if (subjectId) filters.subjectId = subjectId;
-    if (type) filters.type = type;
-    if (difficulty) filters.difficulty = difficulty;
+      const filters: Record<string, string> = {};
+      if (subjectId) filters.subjectId = subjectId;
+      if (type) filters.type = type;
 
     return toNextResponse(
       await questionController.list(ctx, Object.keys(filters).length > 0 ? filters : undefined),

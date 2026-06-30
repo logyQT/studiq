@@ -5,9 +5,9 @@
 -- ==========================================================
 
 -- ----------------------------------------------------------
--- Test university
+-- Test organization
 -- ----------------------------------------------------------
-INSERT INTO "public"."universities" ("id", "name", "slug") VALUES
+INSERT INTO "public"."organizations" ("id", "name", "slug") VALUES
   ('00000000-0000-4000-8000-000000000001', 'Dev University', 'dev-university'),
   ('00000000-0000-4000-8000-000000000002', 'Politechnika Warszawska', 'politechnika-warszawska'),
   ('00000000-0000-4000-8000-000000000003', 'Uniwersytet Jagielloński', 'uniwersytet-jagiellonski'),
@@ -17,9 +17,9 @@ INSERT INTO "public"."universities" ("id", "name", "slug") VALUES
 ON CONFLICT DO NOTHING;
 
 -- ----------------------------------------------------------
--- University subscriptions
+-- Organization subscriptions
 -- ----------------------------------------------------------
-INSERT INTO "public"."university_subscriptions" ("university_id", "plan_type", "status") VALUES
+INSERT INTO "public"."org_subscriptions" ("organization_id", "plan_type", "status") VALUES
   ('00000000-0000-4000-8000-000000000001', 'enterprise', 'active'),
   ('00000000-0000-4000-8000-000000000002', 'enterprise', 'active'),
   ('00000000-0000-4000-8000-000000000003', 'pro', 'active'),
@@ -470,14 +470,26 @@ ON CONFLICT DO NOTHING;
 UPDATE public.profiles SET role = 'sys_admin'
   WHERE id = '00000000-0000-4000-8001-000000000001';
 
-UPDATE public.profiles SET role = 'university_admin', university_id = '00000000-0000-4000-8000-000000000001'
+UPDATE public.profiles SET role = 'university_admin', organization_id = '00000000-0000-4000-8000-000000000001'
   WHERE id = '00000000-0000-4000-8001-000000000002';
 
-UPDATE public.profiles SET role = 'teacher', university_id = '00000000-0000-4000-8000-000000000001'
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8001-000000000002', 'university_admin')
+ON CONFLICT DO NOTHING;
+
+UPDATE public.profiles SET role = 'teacher', organization_id = '00000000-0000-4000-8000-000000000001'
   WHERE id = '00000000-0000-4000-8001-000000000003';
 
-UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000-8000-000000000001'
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8001-000000000003', 'teacher')
+ON CONFLICT DO NOTHING;
+
+UPDATE public.profiles SET role = 'student', organization_id = '00000000-0000-4000-8000-000000000001'
   WHERE id = '00000000-0000-4000-8001-000000000004';
+
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8001-000000000004', 'student')
+ON CONFLICT DO NOTHING;
 
 UPDATE public.profiles SET role = 'premium'
   WHERE id = '00000000-0000-4000-8001-000000000005';
@@ -487,68 +499,140 @@ UPDATE public.profiles SET role = 'premium'
 -- ----------------------------------------------------------
 -- PW: assign roles + university
 -- ----------------------------------------------------------
-UPDATE public.profiles SET role = 'university_admin', university_id = '00000000-0000-4000-8000-000000000002'
+UPDATE public.profiles SET role = 'university_admin', organization_id = '00000000-0000-4000-8000-000000000002'
   WHERE id = '00000000-0000-4000-8001-000000000007';
 
-UPDATE public.profiles SET role = 'teacher', university_id = '00000000-0000-4000-8000-000000000002'
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8001-000000000007', 'university_admin')
+ON CONFLICT DO NOTHING;
+
+UPDATE public.profiles SET role = 'teacher', organization_id = '00000000-0000-4000-8000-000000000002'
   WHERE id = '00000000-0000-4000-8001-000000000008';
 
-UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000-8000-000000000002'
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8001-000000000008', 'teacher')
+ON CONFLICT DO NOTHING;
+
+UPDATE public.profiles SET role = 'student', organization_id = '00000000-0000-4000-8000-000000000002'
   WHERE id = '00000000-0000-4000-8001-000000000009';
+
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8001-000000000009', 'student')
+ON CONFLICT DO NOTHING;
 
 -- ----------------------------------------------------------
 -- UJ: assign roles + university
 -- ----------------------------------------------------------
-UPDATE public.profiles SET role = 'university_admin', university_id = '00000000-0000-4000-8000-000000000003'
+UPDATE public.profiles SET role = 'university_admin', organization_id = '00000000-0000-4000-8000-000000000003'
   WHERE id = '00000000-0000-4000-8001-000000000010';
 
-UPDATE public.profiles SET role = 'teacher', university_id = '00000000-0000-4000-8000-000000000003'
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8001-000000000010', 'university_admin')
+ON CONFLICT DO NOTHING;
+
+UPDATE public.profiles SET role = 'teacher', organization_id = '00000000-0000-4000-8000-000000000003'
   WHERE id = '00000000-0000-4000-8001-000000000011';
 
-UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000-8000-000000000003'
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8001-000000000011', 'teacher')
+ON CONFLICT DO NOTHING;
+
+UPDATE public.profiles SET role = 'student', organization_id = '00000000-0000-4000-8000-000000000003'
   WHERE id = '00000000-0000-4000-8001-000000000012';
 
-UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000-8000-000000000003'
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8001-000000000012', 'student')
+ON CONFLICT DO NOTHING;
+
+UPDATE public.profiles SET role = 'student', organization_id = '00000000-0000-4000-8000-000000000003'
   WHERE id = '00000000-0000-4000-8001-000000000013';
+
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8001-000000000013', 'student')
+ON CONFLICT DO NOTHING;
 
 -- ----------------------------------------------------------
 -- PG: assign roles + university
 -- ----------------------------------------------------------
-UPDATE public.profiles SET role = 'university_admin', university_id = '00000000-0000-4000-8000-000000000004'
+UPDATE public.profiles SET role = 'university_admin', organization_id = '00000000-0000-4000-8000-000000000004'
   WHERE id = '00000000-0000-4000-8001-000000000014';
 
-UPDATE public.profiles SET role = 'teacher', university_id = '00000000-0000-4000-8000-000000000004'
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000004', '00000000-0000-4000-8001-000000000014', 'university_admin')
+ON CONFLICT DO NOTHING;
+
+UPDATE public.profiles SET role = 'teacher', organization_id = '00000000-0000-4000-8000-000000000004'
   WHERE id = '00000000-0000-4000-8001-000000000015';
 
-UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000-8000-000000000004'
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000004', '00000000-0000-4000-8001-000000000015', 'teacher')
+ON CONFLICT DO NOTHING;
+
+UPDATE public.profiles SET role = 'student', organization_id = '00000000-0000-4000-8000-000000000004'
   WHERE id = '00000000-0000-4000-8001-000000000016';
 
-UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000-8000-000000000004'
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000004', '00000000-0000-4000-8001-000000000016', 'student')
+ON CONFLICT DO NOTHING;
+
+UPDATE public.profiles SET role = 'student', organization_id = '00000000-0000-4000-8000-000000000004'
   WHERE id = '00000000-0000-4000-8001-000000000017';
+
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000004', '00000000-0000-4000-8001-000000000017', 'student')
+ON CONFLICT DO NOTHING;
 
 -- ----------------------------------------------------------
 -- UWR: assign roles + university
 -- ----------------------------------------------------------
-UPDATE public.profiles SET role = 'university_admin', university_id = '00000000-0000-4000-8000-000000000005'
+UPDATE public.profiles SET role = 'university_admin', organization_id = '00000000-0000-4000-8000-000000000005'
   WHERE id = '00000000-0000-4000-8001-000000000018';
 
-UPDATE public.profiles SET role = 'teacher', university_id = '00000000-0000-4000-8000-000000000005'
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000005', '00000000-0000-4000-8001-000000000018', 'university_admin')
+ON CONFLICT DO NOTHING;
+
+UPDATE public.profiles SET role = 'teacher', organization_id = '00000000-0000-4000-8000-000000000005'
   WHERE id = '00000000-0000-4000-8001-000000000019';
 
-UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000-8000-000000000005'
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000005', '00000000-0000-4000-8001-000000000019', 'teacher')
+ON CONFLICT DO NOTHING;
+
+UPDATE public.profiles SET role = 'student', organization_id = '00000000-0000-4000-8000-000000000005'
   WHERE id = '00000000-0000-4000-8001-000000000020';
+
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000005', '00000000-0000-4000-8001-000000000020', 'student')
+ON CONFLICT DO NOTHING;
 
 -- ----------------------------------------------------------
 -- AGH: assign roles + university
 -- ----------------------------------------------------------
-UPDATE public.profiles SET role = 'university_admin', university_id = '00000000-0000-4000-8000-000000000006'
+UPDATE public.profiles SET role = 'university_admin', organization_id = '00000000-0000-4000-8000-000000000006'
   WHERE id = '00000000-0000-4000-8001-000000000021';
 
-UPDATE public.profiles SET role = 'teacher', university_id = '00000000-0000-4000-8000-000000000006'
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000006', '00000000-0000-4000-8001-000000000021', 'university_admin')
+ON CONFLICT DO NOTHING;
+
+UPDATE public.profiles SET role = 'teacher', organization_id = '00000000-0000-4000-8000-000000000006'
   WHERE id = '00000000-0000-4000-8001-000000000022';
 
-UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000-8000-000000000006'
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000006', '00000000-0000-4000-8001-000000000022', 'teacher')
+ON CONFLICT DO NOTHING;
+
+UPDATE public.profiles SET role = 'student', organization_id = '00000000-0000-4000-8000-000000000006'
   WHERE id = '00000000-0000-4000-8001-000000000023';
 
-UPDATE public.profiles SET role = 'student', university_id = '00000000-0000-4000-8000-000000000006'
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000006', '00000000-0000-4000-8001-000000000023', 'student')
+ON CONFLICT DO NOTHING;
+
+UPDATE public.profiles SET role = 'student', organization_id = '00000000-0000-4000-8000-000000000006'
   WHERE id = '00000000-0000-4000-8001-000000000024';
+
+INSERT INTO public.org_members (organization_id, user_id, role) VALUES
+  ('00000000-0000-4000-8000-000000000006', '00000000-0000-4000-8001-000000000024', 'student')
+ON CONFLICT DO NOTHING;

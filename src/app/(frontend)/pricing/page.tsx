@@ -6,63 +6,43 @@ import { MainLayout } from '@/components';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { CheckoutButton } from '@/components/pricing/checkout-button';
 import { Check, ArrowRight } from 'lucide-react';
+import { useAuth } from '@/components/providers/AuthProvider';
 
 export default function PricingPage() {
   const t = useTranslations('PricingPage');
+  const { user } = useAuth();
+  const role = user?.app_metadata?.role as string | undefined;
+  const isTeacher = role === 'teacher' || role === 'university_admin';
+  const showStudentPremium = !user || role === 'free' || role === 'premium' || role === 'student';
+  const showTeacherLicense = !user || isTeacher;
 
-  const plans = [
-    {
-      name: t('free_name'),
-      price: t('free_price'),
-      period: t('free_period'),
-      desc: t('free_desc'),
-      features: [
-        t('free_features_1'),
-        t('free_features_2'),
-        t('free_features_3'),
-        t('free_features_4'),
-      ],
-      cta: t('free_cta'),
-      href: '/register',
-      variant: 'outline' as const,
-    },
-    {
-      name: t('premium_name'),
-      price: t('premium_price'),
-      period: t('premium_period'),
-      desc: t('premium_desc'),
-      features: [
-        t('premium_features_1'),
-        t('premium_features_2'),
-        t('premium_features_3'),
-        t('premium_features_4'),
-        t('premium_features_5'),
-        t('premium_features_6'),
-      ],
-      cta: t('premium_cta'),
-      href: '/register',
-      variant: 'default' as const,
-      popular: true,
-    },
-    {
-      name: t('university_name'),
-      price: t('university_price'),
-      period: t('university_period'),
-      desc: t('university_desc'),
-      features: [
-        t('university_features_1'),
-        t('university_features_2'),
-        t('university_features_3'),
-        t('university_features_4'),
-        t('university_features_5'),
-        t('university_features_6'),
-        t('university_features_7'),
-      ],
-      cta: t('university_cta'),
-      href: '/register',
-      variant: 'outline' as const,
-    },
+  type PlanItem = {
+    name: string; price: string; period: string; desc: string;
+    features: string[]; cta: string; planId: string | null;
+    variant: 'default' | 'outline'; popular?: boolean;
+  };
+
+  const plans: PlanItem[] = [
+    ...(!user ? [{
+      name: t('free_name'), price: t('free_price'), period: t('free_period'), desc: t('free_desc'),
+      features: [t('free_features_1'), t('free_features_2'), t('free_features_3'), t('free_features_4')],
+      cta: t('free_cta'), planId: null as string | null, variant: 'outline' as const,
+    }] : []),
+    ...(!user || showStudentPremium ? [{
+      name: t('premium_name'), price: t('premium_price'), period: t('premium_period'), desc: t('premium_desc'),
+      features: [t('premium_features_1'), t('premium_features_2'), t('premium_features_3'), t('premium_features_4'), t('premium_features_5'), t('premium_features_6')],
+      cta: t('premium_cta'), planId: 'student_premium', variant: 'default' as const,
+      popular: showStudentPremium && !isTeacher,
+    }] : []),
+    ...(!user || showTeacherLicense ? [{
+      name: t('university_name'), price: t('university_price'), period: t('university_period'), desc: t('university_desc'),
+      features: [t('university_features_1'), t('university_features_2'), t('university_features_3'), t('university_features_4'), t('university_features_5'), t('university_features_6'), t('university_features_7'), t('university_features_8')],
+      cta: t('university_cta'), planId: 'teacher_license',
+      variant: isTeacher ? 'default' as const : 'outline' as const,
+      popular: isTeacher,
+    }] : []),
   ];
 
   const faqs = [
@@ -112,9 +92,19 @@ export default function PricingPage() {
                     </li>
                   ))}
                 </ul>
-                <Button className="w-full" variant={plan.variant} asChild>
-                  <Link href={plan.href}>{plan.cta}</Link>
-                </Button>
+                {user && plan.planId ? (
+                  <CheckoutButton
+                    planId={plan.planId}
+                    variant={plan.variant}
+                    className="w-full"
+                  >
+                    {plan.cta}
+                  </CheckoutButton>
+                ) : (
+                  <Button className="w-full" variant={plan.variant} asChild>
+                    <Link href={user ? '/app' : '/register'}>{plan.cta}</Link>
+                  </Button>
+                )}
               </CardContent>
             </Card>
           ))}

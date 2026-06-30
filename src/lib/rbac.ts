@@ -25,7 +25,7 @@ export type PermissionKey = (typeof Permission)[keyof typeof Permission];
 export interface Resource {
   id: string;
   created_by: string;
-  university_id: string | null;
+  organization_id: string | null;
 }
 
 type RolePermissionMap = Map<UserRole, Map<string, PermissionScope>>;
@@ -95,7 +95,7 @@ export async function checkPermission(ctx: RequestContext, permission: string, r
     case 'university':
       if (!resource) throw new AppError('FORBIDDEN');
       if (resource.created_by === ctx.userId) return;
-      if (resource.university_id !== ctx.universityId) throw new AppError('FORBIDDEN');
+      if (resource.organization_id !== ctx.activeOrgId) throw new AppError('FORBIDDEN');
       return;
     case 'own':
       if (!resource || resource.created_by !== ctx.userId) {
@@ -123,7 +123,7 @@ export async function buildQueryFilter(ctx: RequestContext, permission: string, 
     case 'any':
       return {};
     case 'university':
-      return { or: `created_by.eq.${ctx.userId},university_id.eq.${ctx.universityId}` };
+      return { or: `created_by.eq.${ctx.userId},organization_id.eq.${ctx.activeOrgId}` };
     case 'own':
       return { created_by: ctx.userId };
   }

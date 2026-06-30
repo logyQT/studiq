@@ -8,7 +8,6 @@ export const GenerateQuizSchema = registry.register(
     questionTypes: z
       .array(z.enum(['mcq', 'true_false', 'open']))
       .min(1, { error: ValidationErrorCode.INVALID_INPUT }),
-    difficulty: z.enum(['easy', 'medium', 'hard', 'mixed']).optional(),
     questionCount: z
       .number({ error: ValidationErrorCode.NUMBER })
       .int({ error: ValidationErrorCode.INTEGER })

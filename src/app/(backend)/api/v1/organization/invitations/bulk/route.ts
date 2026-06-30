@@ -1,0 +1,56 @@
+/**
+ * @swagger
+ * /api/v1/organization/invitations/bulk:
+ *   post:
+ *     summary: Bulk create invitations
+ *     description: Creates multiple organization invitations at once. Requires university_admin or sys_admin role.
+ *     tags:
+ *       - Invitations
+ *     security:
+ *       - cookieAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - emails
+ *               - role
+ *             properties:
+ *               emails:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: email
+ *               role:
+ *                 type: string
+ *                 enum: [student, teacher, university_admin]
+ *               organizationId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Required for sys_admin to specify target organization
+ *     responses:
+ *       200:
+ *         description: Invitations created successfully
+ *       401:
+ *         description: Unauthorized (no session)
+ *       403:
+ *         description: Forbidden (insufficient permissions)
+ *       422:
+ *         description: Validation error
+ *       500:
+ *         description: Internal server error
+ */
+
+import { NextRequest } from 'next/server';
+import { invitationController } from '@/server/controllers';
+import { toNextResponse } from '@/lib/http-utils';
+import { withAuth } from '@/lib/with-auth';
+
+export async function POST(req: NextRequest) {
+  return withAuth(req, async (ctx) => {
+    const body = await req.json();
+    return toNextResponse(await invitationController.createBulk(ctx, body));
+  });
+}

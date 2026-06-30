@@ -1,6 +1,6 @@
 -- ==========================================
 -- TABLE: invitations
--- Depends on: _enums.sql, universities.sql, profiles.sql
+-- Depends on: _enums.sql, organizations.sql, profiles.sql
 -- ==========================================
 
 CREATE TABLE public.invitations (
@@ -9,7 +9,7 @@ CREATE TABLE public.invitations (
   email       text NOT NULL,
   token       text UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(16), 'hex'),
   target_role user_role NOT NULL,
-  university_id uuid REFERENCES public.universities(id) ON DELETE CASCADE,
+  organization_id uuid REFERENCES public.organizations(id) ON DELETE CASCADE,
   inviter_id  uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
   is_accepted boolean DEFAULT false,
   expires_at  timestamptz NOT NULL
@@ -19,7 +19,7 @@ CREATE TABLE public.invitations (
 -- TRIGGER: handle_new_user
 -- Fires on auth.users INSERT.
 -- If the signup carries a valid invite token:
---   - creates a profile with the invited role + university
+--   - creates a profile with the invited role + organization
 --   - marks the invitation as accepted (atomically)
 -- Otherwise falls back to a standard free-tier profile.
 -- ==========================================
@@ -38,13 +38,13 @@ BEGIN
       AND expires_at  > now();
 
     IF FOUND THEN
-      INSERT INTO public.profiles (id, email, full_name, role, university_id)
+      INSERT INTO public.profiles (id, email, full_name, role, organization_id)
       VALUES (
         NEW.id,
         NEW.email,
         NEW.raw_user_meta_data->>'name',
         invite_record.target_role,
-        invite_record.university_id
+        invite_record.organization_id
       );
 
       UPDATE public.invitations

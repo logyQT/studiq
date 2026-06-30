@@ -9,7 +9,7 @@ vi.mock('@/lib/rbac', () => ({
 
 const mockCtx = {
   userId: 'test-user-id',
-  universityId: null,
+  organizationId: null,
   role: 'student' as const,
   url: 'http://localhost',
   method: 'POST',

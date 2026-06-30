@@ -35,6 +35,18 @@ export class InvitationController {
     });
   }
 
+  async accept(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const { token } = body as { token?: string };
+      if (!token || typeof token !== 'string') {
+        return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
+      }
+
+      const result = await invitationService.acceptInvitation(ctx, token);
+      return { success: true, statusCode: 200, data: result };
+    }, ctx);
+  }
+
   async createBulk(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
       const parsed = BulkInviteSchema.safeParse(body);

@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { universityMembersController } from '@/server/controllers/university-members.controller';
-import { universityMembersService } from '@/server/services';
+import { organizationMemberController } from '@/server/controllers/organization-member.controller';
+import { organizationMemberService } from '@/server/services';
 import { AppError } from '@/lib/errors';
 
 vi.mock('@/server/services', () => ({
-  universityMembersService: {
+  organizationMemberService: {
     getProfile: vi.fn(),
     listMembers: vi.fn(),
     changeRole: vi.fn(),
@@ -12,9 +12,9 @@ vi.mock('@/server/services', () => ({
   },
 }));
 
-const mockService = vi.mocked(universityMembersService);
+const mockService = vi.mocked(organizationMemberService);
 
-describe('UniversityMembersController', () => {
+describe('OrganizationMemberController', () => {
   const userId = 'test-user-id';
 
   beforeEach(() => {
@@ -23,37 +23,37 @@ describe('UniversityMembersController', () => {
 
   describe('listMembers', () => {
     it('returns members when user has university', async () => {
-      mockService.getProfile.mockResolvedValueOnce({ id: userId, university_id: 'uni-1' } as any);
+      mockService.getProfile.mockResolvedValueOnce({ id: userId, organization_id: 'uni-1' } as any);
       const members = [{ id: 'user-1', role: 'student' }];
       mockService.listMembers.mockResolvedValueOnce(members as any);
 
-      const response = await universityMembersController.listMembers(userId);
+      const response = await organizationMemberController.listMembers(userId);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: members });
     });
 
     it('returns FORBIDDEN when user has no university', async () => {
-      mockService.getProfile.mockResolvedValueOnce({ id: userId, university_id: null } as any);
+      mockService.getProfile.mockResolvedValueOnce({ id: userId, organization_id: null } as any);
 
-      const response = await universityMembersController.listMembers(userId);
+      const response = await organizationMemberController.listMembers(userId);
 
       expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
     });
 
     it('passes roleFilter to service', async () => {
-      mockService.getProfile.mockResolvedValueOnce({ id: userId, university_id: 'uni-1' } as any);
+      mockService.getProfile.mockResolvedValueOnce({ id: userId, organization_id: 'uni-1' } as any);
       mockService.listMembers.mockResolvedValueOnce([]);
 
-      await universityMembersController.listMembers(userId, 'student');
+      await organizationMemberController.listMembers(userId, 'student');
 
       expect(mockService.listMembers).toHaveBeenCalledWith('uni-1', 'student');
     });
 
     it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.getProfile.mockResolvedValueOnce({ id: userId, university_id: 'uni-1' } as any);
+      mockService.getProfile.mockResolvedValueOnce({ id: userId, organization_id: 'uni-1' } as any);
       mockService.listMembers.mockRejectedValueOnce(new Error('unexpected'));
 
-      const response = await universityMembersController.listMembers(userId);
+      const response = await organizationMemberController.listMembers(userId);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
@@ -64,13 +64,13 @@ describe('UniversityMembersController', () => {
       const body = { targetUserId: 'user-123', newRole: 'university_admin' };
       mockService.changeRole.mockResolvedValueOnce({ success: true });
 
-      const response = await universityMembersController.changeRole(userId, body);
+      const response = await organizationMemberController.changeRole(userId, body);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: { success: true } });
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
-      const response = await universityMembersController.changeRole(userId, {
+      const response = await organizationMemberController.changeRole(userId, {
         targetUserId: '',
         newRole: 'invalid',
       });
@@ -83,7 +83,7 @@ describe('UniversityMembersController', () => {
     it('returns error when service throws AppError', async () => {
       mockService.changeRole.mockRejectedValueOnce(new AppError('FORBIDDEN'));
 
-      const response = await universityMembersController.changeRole(userId, {
+      const response = await organizationMemberController.changeRole(userId, {
         targetUserId: 'user-123',
         newRole: 'university_admin',
       });
@@ -94,7 +94,7 @@ describe('UniversityMembersController', () => {
     it('returns INTERNAL_SERVER when service throws generic error', async () => {
       mockService.changeRole.mockRejectedValueOnce(new Error('unexpected'));
 
-      const response = await universityMembersController.changeRole(userId, {
+      const response = await organizationMemberController.changeRole(userId, {
         targetUserId: 'user-123',
         newRole: 'university_admin',
       });
@@ -107,13 +107,13 @@ describe('UniversityMembersController', () => {
     it('returns success when service removes member successfully', async () => {
       mockService.removeMember.mockResolvedValueOnce({ success: true });
 
-      const response = await universityMembersController.removeMember(userId, 'user-123');
+      const response = await organizationMemberController.removeMember(userId, 'user-123');
 
       expect(response).toEqual({ success: true, statusCode: 200, data: { success: true } });
     });
 
     it('returns BAD_REQUEST when targetUserId is empty', async () => {
-      const response = await universityMembersController.removeMember(userId, '');
+      const response = await organizationMemberController.removeMember(userId, '');
 
       expect(response).toEqual({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
     });
@@ -121,7 +121,7 @@ describe('UniversityMembersController', () => {
     it('returns error when service throws AppError', async () => {
       mockService.removeMember.mockRejectedValueOnce(new AppError('FORBIDDEN'));
 
-      const response = await universityMembersController.removeMember(userId, 'user-123');
+      const response = await organizationMemberController.removeMember(userId, 'user-123');
 
       expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
     });
@@ -129,7 +129,7 @@ describe('UniversityMembersController', () => {
     it('returns INTERNAL_SERVER when service throws generic error', async () => {
       mockService.removeMember.mockRejectedValueOnce(new Error('unexpected'));
 
-      const response = await universityMembersController.removeMember(userId, 'user-123');
+      const response = await organizationMemberController.removeMember(userId, 'user-123');
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });

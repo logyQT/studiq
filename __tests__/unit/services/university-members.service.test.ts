@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { universityMembersService } from '@/server/services/university-members.service';
+import { organizationMemberService } from '@/server/services/organization-member.service';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-describe('UniversityMembersService', () => {
+describe('OrganizationMemberService', () => {
   const userId = 'test-user-id';
   let mock: ReturnType<typeof mockClient>;
 
@@ -17,7 +17,7 @@ describe('UniversityMembersService', () => {
         id: userId,
         email: 'test@test.com',
         role: 'student',
-        university_id: 'uni-1',
+        organization_id: 'uni-1',
       };
       mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
@@ -27,7 +27,7 @@ describe('UniversityMembersService', () => {
         }),
       });
 
-      const result = await universityMembersService.getProfile(userId);
+      const result = await organizationMemberService.getProfile(userId);
 
       expect(result).toEqual(profile);
     });
@@ -41,13 +41,13 @@ describe('UniversityMembersService', () => {
         }),
       });
 
-      await expect(universityMembersService.getProfile(userId)).rejects.toThrow('ERROR_NOT_FOUND');
+      await expect(organizationMemberService.getProfile(userId)).rejects.toThrow('ERROR_NOT_FOUND');
     });
   });
 
   describe('listMembers', () => {
-    it('returns members for university', async () => {
-      const members = [{ id: 'user-1', role: 'student', university_id: 'uni-1' }];
+    it('returns members for organization', async () => {
+      const members = [{ id: 'user-1', role: 'student', organization_id: 'uni-1' }];
       mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
@@ -56,13 +56,13 @@ describe('UniversityMembersService', () => {
         }),
       });
 
-      const result = await universityMembersService.listMembers('uni-1');
+      const result = await organizationMemberService.listMembers('uni-1');
 
       expect(result).toEqual(members);
     });
 
     it('filters by role when roleFilter provided', async () => {
-      const members = [{ id: 'user-1', role: 'student', university_id: 'uni-1' }];
+      const members = [{ id: 'user-1', role: 'student', organization_id: 'uni-1' }];
       const eqChain = vi.fn();
       const eqFirst = vi.fn().mockReturnValue({
         eq: eqChain.mockReturnValue({
@@ -75,7 +75,7 @@ describe('UniversityMembersService', () => {
         }),
       });
 
-      const result = await universityMembersService.listMembers('uni-1', 'student');
+      const result = await organizationMemberService.listMembers('uni-1', 'student');
 
       expect(result).toEqual(members);
     });
@@ -89,7 +89,7 @@ describe('UniversityMembersService', () => {
         }),
       });
 
-      await expect(universityMembersService.listMembers('uni-1')).rejects.toThrow(
+      await expect(organizationMemberService.listMembers('uni-1')).rejects.toThrow(
         'ERROR_INTERNAL_SERVER',
       );
     });
@@ -99,7 +99,7 @@ describe('UniversityMembersService', () => {
     it('changes role successfully', async () => {
       mock.rpc.mockResolvedValue({ error: null });
 
-      const result = await universityMembersService.changeRole(
+      const result = await organizationMemberService.changeRole(
         userId,
         'user-123',
         'university_admin',
@@ -116,7 +116,7 @@ describe('UniversityMembersService', () => {
       mock.rpc.mockResolvedValue({ error: { message: 'Unauthorized' } });
 
       await expect(
-        universityMembersService.changeRole(userId, 'user-123', 'university_admin'),
+        organizationMemberService.changeRole(userId, 'user-123', 'university_admin'),
       ).rejects.toThrow('ERROR_FORBIDDEN');
     });
 
@@ -124,7 +124,7 @@ describe('UniversityMembersService', () => {
       mock.rpc.mockResolvedValue({ error: { message: 'Some other error' } });
 
       await expect(
-        universityMembersService.changeRole(userId, 'user-123', 'university_admin'),
+        organizationMemberService.changeRole(userId, 'user-123', 'university_admin'),
       ).rejects.toThrow('ERROR_INTERNAL_SERVER');
     });
   });
@@ -133,7 +133,7 @@ describe('UniversityMembersService', () => {
     it('removes member successfully', async () => {
       mock.rpc.mockResolvedValue({ error: null });
 
-      const result = await universityMembersService.removeMember(userId, 'user-123');
+      const result = await organizationMemberService.removeMember(userId, 'user-123');
 
       expect(result).toEqual({ success: true });
     });
@@ -141,7 +141,7 @@ describe('UniversityMembersService', () => {
     it('throws FORBIDDEN when RPC returns Unauthorized', async () => {
       mock.rpc.mockResolvedValue({ error: { message: 'Unauthorized' } });
 
-      await expect(universityMembersService.removeMember(userId, 'user-123')).rejects.toThrow(
+      await expect(organizationMemberService.removeMember(userId, 'user-123')).rejects.toThrow(
         'ERROR_FORBIDDEN',
       );
     });

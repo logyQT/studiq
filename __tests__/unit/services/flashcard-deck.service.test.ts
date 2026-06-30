@@ -12,14 +12,14 @@ describe('FlashcardDeckService', () => {
   });
 
   describe('create', () => {
-    it('inserts deck with university_id and returns it', async () => {
+    it('inserts deck with organization_id and returns it', async () => {
       const mockDeck = { id: 'd-1', name: 'Study Deck', created_by: userId };
 
       mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({
-              data: { university_id: 'uni-1' },
+              data: { organization_id: 'uni-1' },
               error: null,
             }),
           }),
@@ -55,7 +55,7 @@ describe('FlashcardDeckService', () => {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({
-              data: { university_id: null },
+              data: { organization_id: null },
               error: null,
             }),
           }),

@@ -79,7 +79,7 @@ function JoinContent() {
 
     async function verifyToken() {
       try {
-        const res = await fetch(`/api/v1/university/invitations?token=${token}`);
+        const res = await fetch(`/api/v1/organization/invitations?token=${token}`);
         const result = await res.json();
 
         if (!res.ok || !result.success) {

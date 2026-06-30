@@ -24,7 +24,6 @@ interface TeacherStats {
       id: string;
       content: string;
       type: string;
-      difficulty: string;
       correctRate: number;
     }>;
   };
@@ -45,7 +44,7 @@ export default function EduStatsPage() {
   useEffect(() => {
     fetch('/api/v1/subjects')
       .then((r) => r.json())
-      .then(setSubjects);
+      .then((r) => setSubjects(r.data));
   }, []);
 
   useEffect(() => {
@@ -54,8 +53,8 @@ export default function EduStatsPage() {
       : '/api/v1/stats/teacher';
     fetch(url)
       .then((r) => r.json())
-      .then((data) => {
-        setStats(data);
+      .then((r) => {
+        setStats(r.data);
         setLoading(false);
       });
   }, [selectedSubject]);
@@ -105,21 +104,6 @@ export default function EduStatsPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('by_difficulty_title')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {Object.entries(stats.subject.byDifficulty || {}).map(([diff, count]) => (
-                    <div key={diff} className="flex items-center justify-between">
-                      <span className="text-sm capitalize">{diff}</span>
-                      <span className="font-medium">{count}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
           </div>
 
           <Card>
@@ -143,7 +127,7 @@ export default function EduStatsPage() {
                       <div>
                         <p className="font-medium text-sm">{q.content}</p>
                         <p className="text-xs text-muted-foreground">
-                          {q.type} · {q.difficulty}
+                          {q.type}
                         </p>
                       </div>
                       <span className="text-sm font-bold text-red-600">

@@ -1,6 +1,6 @@
 export * from '@/server/controllers/auth.controller';
-export * from '@/server/controllers/university.controller';
-export * from '@/server/controllers/university-members.controller';
+export * from '@/server/controllers/organization.controller';
+export * from '@/server/controllers/organization-member.controller';
 export * from '@/server/controllers/invitation.controller';
 export * from '@/server/controllers/health.controller';
 export * from '@/server/controllers/subject.controller';
@@ -22,3 +22,7 @@ export * from '@/server/controllers/permission.controller';
 export * from '@/server/controllers/search.controller';
 export * from '@/server/controllers/flashcard-import.controller';
 export * from '@/server/controllers/flashcard-export.controller';
+export * from '@/server/controllers/org.controller';
+export * from '@/server/controllers/feature.controller';
+export * from '@/server/controllers/activity.controller';
+export * from '@/server/controllers/stripe.controller';

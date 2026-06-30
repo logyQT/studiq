@@ -4,7 +4,7 @@
 -- ~64 flashcards owned by student@dev.local (user 00000000-0000-4000-8001-000000000004)
 -- ==========================================================
 
-INSERT INTO "public"."flashcards" ("id", "university_id", "created_by", "front", "back", "created_at") VALUES
+INSERT INTO "public"."flashcards" ("id", "organization_id", "created_by", "front", "back", "created_at") VALUES
   -- Deck 1: JavaScript Basics (10 cards)
   ('00000000-0000-4000-8006-000000000001', NULL, '00000000-0000-4000-8001-000000000004', 'Co to jest **closure**?', 'Funkcja, która ma dostęp do zmiennych z zakresu, w którym została utworzona, **nawet po zakończeniu** egzekwowania tej funkcji.', now()),
   ('00000000-0000-4000-8006-000000000002', NULL, '00000000-0000-4000-8001-000000000004', 'Różnica między `let` a `var`?', E'`let` ma **zakres blokowy** `{}`, `var` ma zakres funkcyjny.\n\n```js\nif (true) {\n  let a = 1;\n  var b = 2;\n}\n// a nie istnieje\nconsole.log(b); // 2\n```', now()),

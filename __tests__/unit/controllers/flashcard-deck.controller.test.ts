@@ -17,7 +17,7 @@ const mockService = vi.mocked(flashcardDeckService);
 
 const mockCtx = {
   userId: 'test-user-id',
-  universityId: null,
+  organizationId: null,
   role: 'student' as const,
   url: 'http://localhost',
   method: 'GET',
