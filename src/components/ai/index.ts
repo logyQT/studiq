@@ -5,6 +5,7 @@ export { AiChatScreen } from './ai-chat-screen';
 export { ChatHistory } from './chat-history';
 export { ChatMessage } from './chat-message';
 export { FlashcardBlock } from './flashcard-block';
+export { FlashcardGenerationStatus } from './flashcard-generation-status';
 export { PlanBlock } from './plan-block';
 export { ThinkingBlock } from './thinking-block';
 export { UsageBadge } from './usage-badge';

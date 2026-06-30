@@ -1,19 +1,23 @@
+import type { UIMessage } from 'ai';
+import { convertToModelMessages, hasToolCall, stepCountIs, streamText } from 'ai';
 import type { NextRequest } from 'next/server';
-import { FEATURE_FLAG_AGENTIC } from '@/lib/feature-flags';
+import { conversationStorage } from '@/lib/conversation-context';
 import { toNextResponse } from '@/lib/http-utils';
 import { log } from '@/lib/logger';
-import { checkPermission, Permission } from '@/lib/rbac';
-import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
-import { aiAgentController } from '@/server/controllers/ai-agent.controller';
-import { chatController } from '@/server/controllers/ai-chat.controller';
-import { aiCommandController } from '@/server/controllers/ai-command.controller';
-import { hasFlashcardKeyword } from '@/server/services/ai-utils';
-import type { UserRole } from '@/types';
-
-function sseEvent(event: string, data: unknown): string {
-  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-}
+import { enqueueTrace } from '@/lib/trace-queue';
+import { systemPrompt } from '@/server/agents/system';
+import {
+  askUserTool,
+  createPlanTool,
+  evaluateQualityTool,
+  extractConceptsTool,
+  fetchMaterialTool,
+  finishTool,
+  generateFlashcardsTool,
+  webfetchTool,
+} from '@/server/agents/tools/generic';
+import { chatModel, providerName } from '@/server/ai/model';
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -25,22 +29,6 @@ export async function POST(req: NextRequest) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
   }
 
-  const role = user.app_metadata?.role as UserRole;
-  const ctx: RequestContext = {
-    traceId: crypto.randomUUID(),
-    userId: user.id,
-    activeOrgId: req.cookies.get('active_org_id')?.value ?? null,
-    role,
-    url: req.url,
-    method: req.method,
-  };
-
-  try {
-    await checkPermission(ctx, Permission.AI_CHAT, null);
-  } catch {
-    return toNextResponse({ success: false, statusCode: 403, error: 'FORBIDDEN' });
-  }
-
   let body: unknown;
   try {
     body = await req.json();
@@ -48,130 +36,134 @@ export async function POST(req: NextRequest) {
     return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
   }
 
-  const text = (body as Record<string, unknown>)?.text;
-  if (typeof text !== 'string') {
-    return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
-  }
-  const hasFile = !!(body as Record<string, unknown>)?.file;
-  if (text.trim().length === 0 && !hasFile) {
+  const { messages } = body as { messages?: Array<Record<string, unknown>> };
+  if (!messages?.length) {
     return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
   }
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async start(controller) {
-      let closed = false;
-      const safeClose = () => {
-        if (closed) return;
-        closed = true;
-        clearTimeout(streamTimeout);
-        try {
-          controller.close();
-        } catch {
-          /* already closed */
-        }
-      };
-      let streamTimeout = setTimeout(() => {
-        log.api.error('Stream timeout — closing after 5min');
-        safeClose();
-      }, 300_000);
+  const conversationId =
+    ((messages[0] as Record<string, unknown>)?.id as string) || crypto.randomUUID();
 
-      const send = (event: string, data: unknown) => {
-        clearTimeout(streamTimeout);
-        streamTimeout = setTimeout(() => {
-          log.api.error('Stream timeout — closing after 5min');
-          safeClose();
-        }, 300_000);
-        log.api.info(`SSE → event=${event}, data=${JSON.stringify(data).slice(0, 200)}`);
-        controller.enqueue(encoder.encode(sseEvent(event, data)));
-      };
+  const reasoningEffort = process.env.LL_REASONING_EFFORT;
 
-      const isFlashcardKeyword = hasFlashcardKeyword(text);
-      const context = (body as Record<string, unknown>)?.context as string | undefined;
-      const file = (body as Record<string, unknown>)?.file as
-        | { data: string; mimeType: string }
-        | undefined;
-      const conversationId = (body as Record<string, unknown>)?.conversationId as
-        | string
-        | undefined;
-
-      if (FEATURE_FLAG_AGENTIC) {
-        log.api.info(
-          `Routing: agent pipeline (FEATURE_FLAG_AGENTIC=true), conversationId=${conversationId ?? 'none'}`,
-        );
-
-        await aiAgentController.process(text, file, conversationId, ctx, {
-          onThought: (data: unknown) => send('thought', data),
-          onThinking: (text: string) => {
-            const agentMatch = text.match(/^\[(\w+)\]\s*(.+)/);
-            if (agentMatch) {
-              send('subagent_task', { agent: agentMatch[1], text: agentMatch[2] });
-            } else {
-              send('thinking', { text });
-            }
-          },
-          onToken: (token: string) => send('token', { text: token }),
-          onToolCall: (data: unknown) => send('tool_call', data),
-          onToolResult: (data: unknown) => send('tool_result', data),
-          onFlashcards: (data: unknown) => send('flashcards', data),
-          onQuestion: (data: unknown) => send('question', data),
-          onPlan: (data: unknown) => send('plan', data),
-          onPaused: () => {
-            send('paused', {});
-            safeClose();
-          },
-          onComplete: (summary: unknown) => {
-            send('complete', { message: summary });
-            safeClose();
-          },
-          onError: (message: string) => {
-            send('error', { message });
-          },
-        });
-      } else {
-        const isFlashcard = isFlashcardKeyword || context === 'flashcards';
-        log.api.info(
-          `Routing: flashcardKeyword=${isFlashcardKeyword}, context=${context ?? 'none'}, hasFile=${!!file} → ${isFlashcard ? 'flashcard' : 'chat'}`,
-        );
-
-        if (isFlashcard) {
-          await aiCommandController.chat(text, file, conversationId, ctx, {
-            onThink: (trace: string) => send('thinking', { text: trace }),
-            onToken: () => {},
-            onFlashcards: (data: unknown) => send('flashcards', data),
-            onComplete: (summary: unknown) => {
-              send('complete', { message: summary });
-              safeClose();
-            },
-            onError: (message: string) => {
-              send('error', { message });
-              safeClose();
-            },
-          });
-        } else {
-          await chatController.chat(body, ctx, {
-            onToken: (token: string) => send('token', { text: token }),
-            onResult: (type: string, data: unknown) => send('result', { type, data }),
-            onComplete: (summary: unknown) => {
-              send('complete', { message: summary });
-              safeClose();
-            },
-            onUsage: (usage: unknown) => send('usage', usage),
-            onError: (message: string) => {
-              send('error', { message });
-              safeClose();
-            },
-          });
-        }
-      }
+  log.api.info('streamText start', {
+    metadata: {
+      conversationId,
+      messageCount: messages.length,
+      lastRole: messages[messages.length - 1]?.role,
+      tools:
+        'create_plan,ask_user,fetch_material,webfetch,extract_concepts,evaluate_quality,generate_flashcards,finish',
+      stopWhen: 'finish,ask_user,generate_flashcards,stepCountIs(30)',
+      reasoningEffort: reasoningEffort ?? 'default',
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
+  enqueueTrace({
+    conversationId,
+    agentName: 'general',
+    eventType: 'step',
+    label: 'streamText start',
+    data: { messageCount: messages.length, lastRole: messages[messages.length - 1]?.role },
+  });
+
+  return conversationStorage.run({ conversationId }, async () => {
+    const result = streamText({
+      model: chatModel,
+      system: systemPrompt,
+      messages: await convertToModelMessages(messages as unknown as Array<Omit<UIMessage, 'id'>>),
+      tools: {
+        create_plan: createPlanTool,
+        ask_user: askUserTool,
+        fetch_material: fetchMaterialTool,
+        webfetch: webfetchTool,
+        extract_concepts: extractConceptsTool,
+        evaluate_quality: evaluateQualityTool,
+        generate_flashcards: generateFlashcardsTool,
+        finish: finishTool,
+      },
+      stopWhen: [
+        hasToolCall('finish'),
+        hasToolCall('ask_user'),
+        hasToolCall('generate_flashcards'),
+        stepCountIs(30),
+      ],
+      ...(reasoningEffort ? { providerOptions: { [providerName]: { reasoningEffort } } } : {}),
+
+      experimental_onStepStart: ({ stepNumber, messages: stepMessages }) => {
+        const lastMsg = stepMessages[stepMessages.length - 1];
+        const raw = lastMsg?.content;
+        const preview =
+          typeof raw === 'string' ? raw : Array.isArray(raw) ? JSON.stringify(raw[0]) : '';
+        enqueueTrace({
+          conversationId,
+          agentName: 'general',
+          eventType: 'step',
+          label: `step ${stepNumber} start`,
+          data: {
+            stepNumber,
+            messageCount: stepMessages.length,
+            lastRole: lastMsg?.role,
+            promptPreview: String(preview ?? '').slice(-300),
+          },
+        });
+      },
+
+      onStepFinish: (step) => {
+        if (step.toolCalls?.length) {
+          for (const tc of step.toolCalls) {
+            enqueueTrace({
+              conversationId,
+              agentName: 'general',
+              eventType: 'tool_call',
+              label: `step ${step.stepNumber} tool: ${tc.toolName}`,
+              data: {
+                stepNumber: step.stepNumber,
+                toolName: tc.toolName,
+                toolInput: JSON.stringify(tc.input).slice(0, 500),
+                inputTokens: step.usage?.inputTokens,
+                outputTokens: step.usage?.outputTokens,
+                totalTokens: step.usage?.totalTokens,
+                finishReason: step.finishReason,
+              },
+            });
+          }
+        } else {
+          enqueueTrace({
+            conversationId,
+            agentName: 'general',
+            eventType: 'step',
+            label: `step ${step.stepNumber} response`,
+            data: {
+              stepNumber: step.stepNumber,
+              textLength: step.text?.length ?? 0,
+              reasoningLength: step.reasoningText?.length ?? 0,
+              inputTokens: step.usage?.inputTokens,
+              outputTokens: step.usage?.outputTokens,
+              totalTokens: step.usage?.totalTokens,
+              finishReason: step.finishReason,
+            },
+          });
+        }
+      },
+
+      onFinish: (result) => {
+        enqueueTrace({
+          conversationId,
+          agentName: 'general',
+          eventType: 'step',
+          label: 'streamText finish',
+          data: {
+            totalSteps: result.steps?.length ?? 0,
+            totalInputTokens: result.totalUsage?.inputTokens,
+            totalOutputTokens: result.totalUsage?.outputTokens,
+            totalTokens: result.totalUsage?.totalTokens,
+            finishReason: result.finishReason,
+            finalTextLength: result.text?.length ?? 0,
+          },
+        });
+      },
+    });
+
+    return result.toUIMessageStreamResponse();
   });
 }

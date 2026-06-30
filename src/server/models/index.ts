@@ -1,6 +1,4 @@
-export * from '@/server/models/activity.model';
 export * from '@/server/models/ai-chat.model';
-export * from '@/server/models/ai-command.model';
 export * from '@/server/models/auth.model';
 export * from '@/server/models/classroom.model';
 export * from '@/server/models/flashcard.model';

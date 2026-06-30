@@ -1,32 +1,39 @@
+import { tool } from 'ai';
+import { conversationStorage } from '@/lib/conversation-context';
+import { enqueueTrace } from '@/lib/trace-queue';
 import { z } from '@/lib/zod';
-import type { FlashcardItem } from '@/server/services/ai-utils';
-import type { Tool } from '../types';
 
-const params = z.object({
-  message: z.string().optional(),
+const flashcardSchema = z.object({
+  front: z.string(),
+  back: z.string(),
+  topic: z.string().optional(),
 });
 
-export const finishTool: Tool = {
-  name: 'finish',
+export const finishTool = tool({
   description:
-    'Complete the current task and return the results. Call this when you have successfully generated the requested educational content.',
-  parameters: params,
-  async execute(args, ctx) {
-    const parsed = params.parse(args);
-    const flashcards = ctx.state.results.flashcards as FlashcardItem[] | undefined;
-    const deckName = ctx.state.results.deckName as string | undefined;
-
-    if (flashcards && flashcards.length > 0) {
+    'Complete the current task and return the results to the user. Call this after generate_flashcards finishes.',
+  inputSchema: z.object({
+    type: z.enum(['chat', 'flashcards']).describe('Type of result to return'),
+    message: z.string().optional().describe('Summary message for chat results'),
+    deckName: z.string().optional().describe('Name of the flashcard deck'),
+    flashcards: z.array(flashcardSchema).optional().describe('Generated flashcards'),
+  }),
+  execute: async ({ type, message, deckName, flashcards }) => {
+    const cid = conversationStorage.getStore()?.conversationId;
+    enqueueTrace({
+      conversationId: cid,
+      agentName: 'general',
+      eventType: 'tool_call',
+      label: 'finish',
+      data: { resultType: type, flashcardCount: flashcards?.length ?? 0 },
+    });
+    if (type === 'flashcards' && flashcards?.length) {
       return {
-        type: 'flashcards',
+        type: 'flashcards' as const,
         deckName: deckName || 'Generated Flashcards',
         flashcards,
       };
     }
-
-    return {
-      type: 'chat',
-      content: parsed.message || '',
-    };
+    return { type: 'chat' as const, content: message || '' };
   },
-};
+});

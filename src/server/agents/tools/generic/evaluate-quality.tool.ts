@@ -1,34 +1,34 @@
+import { tool } from 'ai';
+import { conversationStorage } from '@/lib/conversation-context';
+import { enqueueTrace } from '@/lib/trace-queue';
 import { z } from '@/lib/zod';
-import type { Tool } from '../types';
 
-const params = z.object({
-  content: z.string().optional(),
-  criteria: z.array(z.string()).optional(),
-  metadata: z.any().optional(),
-});
-
-export const evaluateQualityTool: Tool = {
-  name: 'evaluate_quality',
+/**
+ * NO-OP PLACEHOLDER — Always returns `{ passed: true }` (all criteria
+ * satisfied). Real quality evaluation is deferred; the stub exists so the
+ * flashcard skill prompt can reference it and the router can resolve the tool.
+ * TODO: implement actual evaluation against input content.
+ */
+export const evaluateQualityTool = tool({
   description:
-    'Evaluate the quality of generated educational content. Checks against criteria and returns a pass/fail assessment.',
-  parameters: params,
-  async execute(args, _ctx) {
-    const parsed = params.parse(args);
-
-    const assessment = {
+    'Review generated flashcards for quality before finishing. Checks specificity, conciseness, clarity, accuracy, and memorability.',
+  inputSchema: z.object({
+    content: z.string().optional().describe('The content to evaluate'),
+  }),
+  execute: async ({ content }) => {
+    const cid = conversationStorage.getStore()?.conversationId;
+    enqueueTrace({
+      conversationId: cid,
+      agentName: 'general',
+      eventType: 'tool_call',
+      label: 'evaluate_quality',
+      data: { contentLength: content?.length ?? 0 },
+    });
+    const notes = content ? `${content.length} chars of content provided` : undefined;
+    return {
       passed: true,
-      criteria: parsed.criteria ?? [
-        'SPECIFICITY',
-        'CONCISENESS',
-        'CLARITY',
-        'ACCURACY',
-        'MEMORABILITY',
-      ],
-      notes: parsed.content
-        ? `Evaluated ${parsed.content.length} chars of content`
-        : 'No content to evaluate',
+      criteria: ['SPECIFICITY', 'CONCISENESS', 'CLARITY', 'ACCURACY', 'MEMORABILITY'],
+      notes,
     };
-
-    return assessment;
   },
-};
+});

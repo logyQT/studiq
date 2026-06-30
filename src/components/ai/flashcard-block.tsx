@@ -16,11 +16,20 @@ interface FlashcardData {
 }
 
 interface FlashcardBlockProps {
-  flashcards: FlashcardData[];
+  flashcards?: FlashcardData[];
   deckName?: string;
+  loading?: boolean;
+  count?: number;
+  readOnly?: boolean;
 }
 
-export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
+export function FlashcardBlock({
+  flashcards = [],
+  deckName,
+  loading = false,
+  count,
+  readOnly = false,
+}: FlashcardBlockProps) {
   const t = useTranslations('AiChatPage');
   const [saving, setSaving] = useState(false);
   const [savedDeckId, setSavedDeckId] = useState<string | null>(null);
@@ -75,6 +84,25 @@ export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
     }
   };
 
+  if (loading) {
+    const skeletonCount = count || 6;
+    return (
+      <div className="space-y-3 mt-2 animate-pulse">
+        <div className="h-4 w-48 bg-muted rounded" />
+        <div className="grid grid-cols-2 gap-2">
+          {Array.from({ length: skeletonCount }).map((_, i) => (
+            <div key={i} className="rounded-lg border bg-background/60 p-2.5 space-y-2">
+              <div className="h-3 w-3/4 bg-muted rounded" />
+              <div className="h-3 w-1/2 bg-muted rounded" />
+              <div className="h-2 w-1/3 bg-muted rounded" />
+            </div>
+          ))}
+        </div>
+        <div className="h-8 w-full bg-muted rounded-md" />
+      </div>
+    );
+  }
+
   if (savedDeckId) {
     return (
       <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 mt-2 space-y-2">
@@ -102,21 +130,30 @@ export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
         <div className="flex items-center gap-2">
           <Layers className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <span className="text-xs font-medium text-muted-foreground">
-            {t('flashcards_generated', { count: flashcards.length })}
+            {readOnly
+              ? t('flashcards_preview', { count: flashcards.length })
+              : t('flashcards_generated', { count: flashcards.length })}
           </span>
+          {readOnly && (
+            <span className="text-[10px] text-muted-foreground/40 italic ml-auto">
+              awaiting approval
+            </span>
+          )}
           {removedCount > 0 && (
             <span className="text-xs text-muted-foreground/60">({removedCount} removed)</span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <Pencil className="h-3 w-3 text-muted-foreground/60 shrink-0" />
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="h-7 text-xs"
-            placeholder={t('flashcard_deck_name')}
-          />
-        </div>
+        {!readOnly && (
+          <div className="flex items-center gap-2">
+            <Pencil className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="h-7 text-xs"
+              placeholder={t('flashcard_deck_name')}
+            />
+          </div>
+        )}
       </div>
 
       {/* Scrollable card grid */}
@@ -162,20 +199,22 @@ export function FlashcardBlock({ flashcards, deckName }: FlashcardBlockProps) {
       </div>
 
       {/* Save button */}
-      <Button
-        onClick={handleSave}
-        disabled={saving || visibleCards.length === 0}
-        size="sm"
-        variant="secondary"
-        className="w-full"
-      >
-        {saving ? (
-          <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-        ) : (
-          <Layers className="mr-2 h-3 w-3" />
-        )}
-        {t('flashcard_save_deck', { count: visibleCards.length })}
-      </Button>
+      {!readOnly && (
+        <Button
+          onClick={handleSave}
+          disabled={saving || visibleCards.length === 0}
+          size="sm"
+          variant="secondary"
+          className="w-full"
+        >
+          {saving ? (
+            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+          ) : (
+            <Layers className="mr-2 h-3 w-3" />
+          )}
+          {t('flashcard_save_deck', { count: visibleCards.length })}
+        </Button>
+      )}
     </div>
   );
 }

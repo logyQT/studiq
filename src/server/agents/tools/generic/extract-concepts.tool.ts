@@ -1,49 +1,36 @@
+import { tool } from 'ai';
+import { conversationStorage } from '@/lib/conversation-context';
+import { log } from '@/lib/logger';
+import { enqueueTrace } from '@/lib/trace-queue';
 import { z } from '@/lib/zod';
-import { ANALYZE_SYSTEM_PROMPT, EXTRACT_TERMS_TOOL } from '@/server/services/ai-prompts';
-import { parseExtractedTerms } from '@/server/services/ai-utils';
-import type { Tool } from '../types';
 
-const params = z.object({
-  material: z.string().optional(),
-  maxTerms: z.number().optional(),
+const termSchema = z.object({
+  term: z.string(),
+  definition: z.string(),
+  context: z.string().optional(),
+  category: z.string().optional(),
 });
 
-export const extractConceptsTool: Tool = {
-  name: 'extract_concepts',
+export const extractConceptsTool = tool({
   description:
-    'Extract atomic, memorizable concepts from educational material. Pass maxTerms to control how many terms to extract (default 50-200). Returns a list of key terms with definitions.',
-  parameters: params,
-  async execute(args, ctx) {
-    const parsed = params.parse(args);
-    let material = parsed.material || ctx.state.material;
-    if (!material) {
-      return { terms: [], error: 'No material provided' };
-    }
-
-    if (material.length > 40000) {
-      material = `${material.slice(0, 40000)}\n\n[...content truncated for length]`;
-    }
-
-    const maxTermsNote = parsed.maxTerms ? `\n\nExtract up to ${parsed.maxTerms} terms.` : '';
-    const result = await ctx.callLLM({
-      prompt: material,
-      systemPrompt: ANALYZE_SYSTEM_PROMPT + maxTermsNote,
-      tools: [EXTRACT_TERMS_TOOL],
-      toolChoice: { type: 'function', function: { name: 'extract_terms' } },
-      maxTokens: 32768,
+    'Extract key terms and definitions from educational material. Pass the material and the model returns structured terms with definitions.',
+  inputSchema: z.object({
+    material: z.string().describe('The educational material to analyze'),
+    maxTerms: z.number().optional().describe('Maximum number of terms to extract'),
+    terms: z.array(termSchema).describe('The extracted terms with definitions'),
+  }),
+  execute: async ({ terms }) => {
+    const cid = conversationStorage.getStore()?.conversationId;
+    enqueueTrace({
+      conversationId: cid,
+      agentName: 'general',
+      eventType: 'tool_call',
+      label: 'extract_concepts',
+      data: { termCount: terms?.length },
     });
-
-    const toolCall = result.toolCalls?.find((tc) => tc.function.name === 'extract_terms');
-    if (!toolCall) {
-      return { terms: [] };
-    }
-
-    const terms = parseExtractedTerms(toolCall.function.arguments);
-    ctx.state.concepts = terms;
-    ctx.state.results.concepts = terms;
-
-    ctx.callbacks?.onThinking?.(`Found ${terms.length} key concepts`);
-
+    log.ai.info('extract_concepts called', {
+      metadata: { termCount: terms?.length },
+    });
     return { terms };
   },
-};
+});

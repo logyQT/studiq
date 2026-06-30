@@ -1,7 +1,8 @@
+import { streamText } from 'ai';
 import { log } from '@/lib/logger';
 import type { RequestContext } from '@/lib/request-context';
-import { callLLMStreaming } from '@/server/ai';
 import type { TokenUsage } from '@/server/ai/ai.types';
+import { chatModel } from '@/server/ai/model';
 import type { ChatMessageInput } from '@/server/models/ai-chat.model';
 import { pdfService } from '@/server/services/pdf.service';
 import { pdfCacheService } from '@/server/services/pdf-cache.service';
@@ -23,7 +24,7 @@ export class ChatService {
     file: { data: string; mimeType: string } | undefined,
     messages: ChatMessageInput[] | undefined,
     conversationId: string | undefined,
-    ctx: RequestContext,
+    _ctx: RequestContext,
     callbacks: ChatServiceCallbacks,
   ): Promise<void> {
     try {
@@ -82,17 +83,31 @@ export class ChatService {
         systemPrompt = `${SYSTEM_PROMPT}\n\nThe user has attached a file with the following content:\n\n${extracted}\n\nUse the file content to answer the user's questions.`;
       }
 
-      const response = await callLLMStreaming(
-        {
-          prompt,
-          systemPrompt,
-          responseFormat: 'text',
+      const result = streamText({
+        model: chatModel,
+        system: systemPrompt,
+        prompt,
+        maxRetries: 3,
+        onChunk: ({ chunk }: { chunk: { type: string; textDelta?: string } }) => {
+          if (chunk.type === 'text-delta' && chunk.textDelta) {
+            callbacks.onToken(chunk.textDelta);
+          }
         },
-        ctx,
-        { onToken: (token) => callbacks.onToken(token) },
-      );
+      });
 
-      callbacks.onComplete(response.content, response.usage);
+      const content = await result.text;
+      const resolvedUsage = await result.usage;
+      const mappedUsage: TokenUsage | undefined = resolvedUsage
+        ? {
+            inputTokens: resolvedUsage.inputTokens ?? 0,
+            outputTokens: resolvedUsage.outputTokens ?? 0,
+            totalTokens: resolvedUsage.totalTokens ?? 0,
+            provider: 'opencode',
+            model: 'mimo-v2.5',
+          }
+        : undefined;
+
+      callbacks.onComplete(content, mappedUsage);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Internal server error';
       log.ai.error('Chat failed', { metadata: { error } });

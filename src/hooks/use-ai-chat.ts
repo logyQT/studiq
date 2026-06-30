@@ -1,6 +1,32 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
+import { useCallback, useMemo } from 'react';
+import { log } from '@/lib/logger';
+
+interface ChatPart {
+  type: string;
+  text?: string;
+  toolCallId?: string;
+  state?: string;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+}
+
+interface UiMessageRaw {
+  id: string;
+  role: string;
+  content?: string;
+  parts?: ChatPart[];
+}
+
+interface UseChatResultRaw {
+  messages: UiMessageRaw[];
+  sendMessage: (data: { text: string }) => Promise<void>;
+  stop: () => void;
+  status: string;
+}
 
 export interface QuestionData {
   id: string;
@@ -20,7 +46,7 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'thought' | 'tool_call' | 'plan';
   content: string;
-  result?: { type: string; data: unknown; deckName?: string };
+  result?: { type: string; data: unknown; deckName?: string; count?: number; readOnly?: boolean };
   status: 'sending' | 'streaming' | 'thinking' | 'complete' | 'error' | 'running';
   error?: string;
   file?: { name: string; mimeType: string; data: string };
@@ -28,6 +54,7 @@ export interface ChatMessage {
   question?: QuestionData;
   plan?: PlanStep[];
   planCompleted?: boolean;
+  completedSteps?: number[];
   step?: number;
   reasoning?: string;
   agent?: string;
@@ -57,502 +84,297 @@ export interface UseAiChatReturn {
   abort: () => void;
 }
 
-function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+function toolLabel(toolName: string): string {
+  const labels: Record<string, string> = {
+    create_plan: '📋 Creating execution plan...',
+    ask_user: '❓ Asking you a question...',
+    fetch_material: '📝 Generating material...',
+    webfetch: '🌐 Fetching content...',
+    extract_concepts: '🔍 Extracting key concepts...',
+    evaluate_quality: '✅ Evaluating quality...',
+    generate_flashcards: '📇 Generating flashcards...',
+    finish: '🏁 Finishing up...',
+  };
+  return labels[toolName] || `🛠️ Using ${toolName}...`;
 }
 
-function createErrorMessage(error: string): ChatMessage {
-  return {
-    id: generateUUID(),
-    role: 'assistant',
-    content: '',
-    status: 'error',
-    error,
-    thinkingTraces: [],
-  };
+function toolResultLabel(toolName: string, output: unknown): string {
+  const o = output as Record<string, unknown> | undefined;
+  switch (toolName) {
+    case 'create_plan':
+      return `📋 Created plan with ${(o?.steps as unknown[])?.length ?? 0} steps`;
+    case 'fetch_material':
+      return `📝 Generated ${(o?.length as number) ?? 0} characters of material`;
+    case 'webfetch':
+      return `🌐 Fetched ${(o?.length as number) ?? 0} chars`;
+    case 'extract_concepts':
+      return `🔍 Found ${(o?.terms as unknown[])?.length ?? 0} key concepts`;
+    case 'evaluate_quality':
+      return o?.passed ? '✅ Quality check passed' : '❌ Quality check failed';
+    case 'generate_flashcards':
+      return `📇 Generated ${(o?.flashcards as unknown[])?.length ?? 0} flashcards`;
+    default:
+      return `🏁 ${toolName} completed`;
+  }
+}
+
+function toolStateToStatus(state: string): 'thinking' | 'running' | 'complete' {
+  if (state === 'input-streaming') return 'thinking';
+  if (state === 'input-available') return 'running';
+  return 'complete';
 }
 
 export function useAiChat(): UseAiChatReturn {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [usage, setUsage] = useState<UsageInfo | null>(null);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
-  const conversationIdRef = useRef<string>(generateUUID());
-  const fileSentRef = useRef<boolean>(false);
-  const toolStartTimesRef = useRef<Map<string, number>>(new Map());
-  const currentThoughtIdRef = useRef<string | null>(null);
+  const chatResult = useChat({
+    transport: new DefaultChatTransport({ api: '/api/v1/ai/chat' }),
+  }) as unknown as UseChatResultRaw;
+  const { messages: uiMessages = [], sendMessage: sendChatMessage, stop, status } = chatResult;
 
-  const sendMessage = useCallback(
-    async (text: string, file?: File, context?: string) => {
-      abortRef.current?.abort();
-      const abortController = new AbortController();
-      abortRef.current = abortController;
-      currentThoughtIdRef.current = null;
+  const messages: ChatMessage[] = useMemo(() => {
+    const mapped: ChatMessage[] = [];
+    const isStreaming = status === 'streaming';
+    const lastMsg = uiMessages[uiMessages.length - 1];
+    const isLastAssistant = lastMsg?.role === 'assistant';
+    let planMsgRef: ChatMessage | null = null;
+    let totalPlanSteps = 0;
+    const completedStepSet = new Set<number>();
 
-      const userMsg: ChatMessage = {
-        id: generateUUID(),
-        role: 'user',
-        content: text,
-        status: 'complete',
-        file: file ? { name: file.name, mimeType: file.type, data: '' } : undefined,
-        thinkingTraces: [],
-      };
-
-      const initialThought: ChatMessage = {
-        id: generateUUID(),
-        role: 'thought',
-        content: '',
-        status: 'thinking',
-        thinkingTraces: [],
-      };
-      currentThoughtIdRef.current = initialThought.id;
-
-      setMessages((prev) => [...prev, userMsg, initialThought]);
-      setIsStreaming(true);
-
-      const fetchTimeout = setTimeout(() => {
-        abortController.abort();
-      }, 1_800_000);
-
-      try {
-        const history = messages
-          .filter((m) => m.role === 'user' || m.role === 'assistant')
-          .filter((m) => m.id !== userMsg.id)
-          .filter((m) => m.content.length > 0 || m.result?.type === 'flashcards')
-          .map((m) => ({
-            role: m.role,
-            content:
-              m.content ||
-              `[flashcards: ${(m.result as { deckName?: string; data?: unknown[] })?.deckName ?? 'deck'} (${(m.result as { data?: unknown[] })?.data?.length ?? 0} cards)]`,
-          }));
-
-        const body: Record<string, unknown> = { text };
-        if (context) body.context = context;
-        body.conversationId = conversationIdRef.current;
-        if (history.length > 0) body.messages = history;
-
-        if (file && !fileSentRef.current) {
-          const buffer = await file.arrayBuffer();
-          const bytes = new Uint8Array(buffer);
-          let binary = '';
-          const chunkSize = 8192;
-          for (let i = 0; i < bytes.length; i += chunkSize) {
-            binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-          }
-          body.file = { data: btoa(binary), mimeType: file.type };
-          fileSentRef.current = true;
-        }
-
-        const res = await fetch('/api/v1/ai/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-          signal: abortController.signal,
+    for (const m of uiMessages) {
+      if (m.role === 'user') {
+        mapped.push({
+          id: m.id,
+          role: 'user',
+          content: m.parts?.find((p) => p.type === 'text')?.text || '',
+          status: 'complete',
+          thinkingTraces: [],
         });
+        continue;
+      }
 
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: 'UNKNOWN' }));
-          setMessages((prev) => [...prev, createErrorMessage(err.error || `HTTP ${res.status}`)]);
-          setIsStreaming(false);
-          return;
+      const parts = m.parts || [];
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+
+        if (part.type === 'text') {
+          const isLast = i === parts.length - 1;
+          const isActiveStream = isStreaming && isLastAssistant && m === lastMsg && isLast;
+          mapped.push({
+            id: `${m.id}-text-${i}`,
+            role: 'assistant',
+            content: part.text || '',
+            status: isActiveStream ? 'streaming' : 'complete',
+            thinkingTraces: [],
+          });
+          continue;
         }
 
-        const reader = res.body?.getReader();
-        if (!reader) {
-          setMessages((prev) => [...prev, createErrorMessage('Response body is not readable')]);
-          setIsStreaming(false);
-          return;
+        if (part.type === 'reasoning') {
+          mapped.push({
+            id: `${m.id}-thought-${i}`,
+            role: 'thought',
+            content: part.text || '',
+            status: 'complete',
+            thinkingTraces: [],
+          });
+          continue;
         }
 
-        const decoder = new TextDecoder();
-        let sseBuffer = '';
-        let completedGracefully = false;
+        if (part.type?.startsWith?.('tool-')) {
+          const tp = part;
+          const toolName = part.type.slice(5);
+          const state = tp.state || 'output-available';
+          const toolStatus = toolStateToStatus(state);
+          const input = tp.input;
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+          mapped.push({
+            id: tp.toolCallId || `${m.id}-tool-${toolName}-${i}`,
+            role: 'tool_call',
+            content: '',
+            toolName,
+            label:
+              toolStateToStatus(state) !== 'complete'
+                ? toolLabel(toolName)
+                : toolResultLabel(toolName, tp.output),
+            args: input,
+            toolResult: state === 'output-available' ? tp.output : undefined,
+            status: toolStatus,
+            thinkingTraces: [],
+          });
 
-          sseBuffer += decoder.decode(value, { stream: true });
-          const lines = sseBuffer.split('\n');
-          sseBuffer = lines.pop() || '';
+          if (toolName === 'generate_flashcards') {
+            if (state === 'output-error') {
+              mapped.push({
+                id: `${tp.toolCallId || `${m.id}-tool-${toolName}-${i}`}-error`,
+                role: 'tool_call',
+                content: '',
+                toolName,
+                label: `❌ ${toolName} failed`,
+                status: 'error' as const,
+                thinkingTraces: [],
+              });
+              continue;
+            }
 
-          let currentEvent = '';
-          let currentData = '';
+            const outputMap: Record<string, unknown> | undefined = tp.output;
+            const inputMap: Record<string, unknown> | undefined = tp.input;
+            const flashcardArray = Array.isArray(outputMap?.flashcards)
+              ? (outputMap.flashcards as Array<Record<string, unknown>>)
+              : [];
+            const isComplete = state === 'output-available';
 
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              currentEvent = line.slice(7).trim();
-            } else if (line.startsWith('data: ')) {
-              currentData = line.slice(6).trim();
-            } else if (line === '' && currentEvent && currentData) {
-              try {
-                const parsed = JSON.parse(currentData);
+            if (process.env.NODE_ENV !== 'production') {
+              log.trace.debug('tool-generate-flashcards', {
+                metadata: {
+                  state,
+                  hasOutput: !!outputMap,
+                  hasInput: !!inputMap,
+                  outputCards: flashcardArray.length,
+                  inputCount: inputMap?.count,
+                },
+              });
+            }
 
-                switch (currentEvent) {
-                  case 'token': {
-                    const token = parsed.text || parsed.token || '';
-                    setMessages((prev) => {
-                      const lastStreaming = prev.findLast(
-                        (m) => m.role === 'assistant' && m.status === 'streaming',
-                      );
-                      if (lastStreaming) {
-                        return prev.map((m) =>
-                          m.id === lastStreaming.id ? { ...m, content: m.content + token } : m,
-                        );
-                      }
-                      return [
-                        ...prev,
-                        {
-                          id: generateUUID(),
-                          role: 'assistant',
-                          content: token,
-                          status: 'streaming',
-                          thinkingTraces: [],
-                        },
-                      ];
-                    });
-                    break;
-                  }
-                  case 'thinking': {
-                    const token = parsed.text || parsed.message || '';
-                    if (!token) break;
-                    if (!currentThoughtIdRef.current) {
-                      const thoughtMsg: ChatMessage = {
-                        id: generateUUID(),
-                        role: 'thought',
-                        content: token,
-                        status: 'thinking',
-                        thinkingTraces: [],
-                      };
-                      currentThoughtIdRef.current = thoughtMsg.id;
-                      setMessages((prev) => [...prev, thoughtMsg]);
-                      break;
-                    }
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === currentThoughtIdRef.current
-                          ? { ...m, content: m.content + token }
-                          : m,
-                      ),
-                    );
-                    break;
-                  }
-                  case 'thought': {
-                    const reasoning = parsed.reasoning || '';
-                    setMessages((prev) => {
-                      if (currentThoughtIdRef.current) {
-                        const id = currentThoughtIdRef.current;
-                        currentThoughtIdRef.current = null;
-                        return prev.map((m) =>
-                          m.id === id
-                            ? { ...m, content: reasoning || m.content, status: 'complete' }
-                            : m,
-                        );
-                      }
-                      const lastThought = prev.findLast(
-                        (m) => m.role === 'thought' && m.status === 'thinking',
-                      );
-                      if (lastThought) {
-                        return prev.map((m) =>
-                          m.id === lastThought.id
-                            ? { ...m, content: reasoning || m.content, status: 'complete' }
-                            : m,
-                        );
-                      }
-                      return prev;
-                    });
-                    break;
-                  }
-                  case 'tool_call': {
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.status === 'thinking' ? { ...m, status: 'complete' as const } : m,
-                      ),
-                    );
-                    currentThoughtIdRef.current = null;
-                    const toolCallMsg: ChatMessage = {
-                      id: generateUUID(),
-                      role: 'tool_call',
-                      content: '',
-                      status: 'running',
-                      toolName: parsed.tool,
-                      label: parsed.label,
-                      args: parsed.args,
-                      thinkingTraces: [],
-                    };
-                    toolStartTimesRef.current.set(parsed.id, Date.now());
-                    setMessages((prev) => [...prev, toolCallMsg]);
-                    break;
-                  }
-                  case 'tool_result': {
-                    const startTime = toolStartTimesRef.current.get(parsed.id);
-                    const duration = startTime ? Date.now() - startTime : undefined;
-                    toolStartTimesRef.current.delete(parsed.id);
-                    const resultData = parsed.result as Record<string, unknown> | undefined;
-                    const _toolCount = resultData?.toolCount as number | undefined;
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.role === 'tool_call' &&
-                        m.toolName === parsed.tool &&
-                        m.status === 'running'
-                          ? {
-                              ...m,
-                              status: 'complete',
-                              toolResult: parsed.result,
-                              label: parsed.label,
-                              subToolCount: undefined,
-                              durationMs: duration,
-                            }
-                          : m,
-                      ),
-                    );
-                    break;
-                  }
-                  case 'flashcards': {
-                    currentThoughtIdRef.current = null;
-                    const deckName = parsed.deckName || 'AI Generated Flashcards';
-                    const cards = Array.isArray(parsed.flashcards)
-                      ? parsed.flashcards
-                      : Array.isArray(parsed)
-                        ? parsed
-                        : [];
-                    const mappedCards = cards.map((c: Record<string, unknown>) => ({
-                      front: String(c.front ?? c.question ?? ''),
-                      back: String(c.back ?? c.answer ?? ''),
-                      topic: String(c.topic ?? c.suggestedTopic ?? '') || undefined,
-                    }));
-                    const flashcardMsg: ChatMessage = {
-                      id: generateUUID(),
-                      role: 'assistant',
-                      content: `Generated deck: ${deckName} (${mappedCards.length} cards)`,
-                      status: 'complete',
-                      result: { type: 'flashcards', data: mappedCards, deckName },
-                      thinkingTraces: [],
-                    };
-                    setMessages((prev) => [...prev, flashcardMsg]);
-                    break;
-                  }
-                  case 'result': {
-                    const resultMsg: ChatMessage = {
-                      id: generateUUID(),
-                      role: 'assistant',
-                      content: '',
-                      status: 'complete',
-                      result: { type: parsed.type, data: parsed.data },
-                      thinkingTraces: [],
-                    };
-                    setMessages((prev) => [...prev, resultMsg]);
-                    break;
-                  }
-                  case 'question': {
-                    currentThoughtIdRef.current = null;
-                    const questionMsg: ChatMessage = {
-                      id: generateUUID(),
-                      role: 'assistant',
-                      content: '',
-                      status: 'complete',
-                      question: parsed,
-                      thinkingTraces: [],
-                    };
-                    setMessages((prev) => [...prev, questionMsg]);
-                    break;
-                  }
-                  case 'plan': {
-                    const steps = Array.isArray(parsed)
-                      ? parsed
-                      : ((parsed as { steps?: PlanStep[] })?.steps ?? []);
-                    if (steps.length > 0) {
-                      const planMsg: ChatMessage = {
-                        id: generateUUID(),
-                        role: 'plan',
-                        content: '',
-                        status: 'complete',
-                        plan: steps,
-                        planCompleted: false,
-                        thinkingTraces: [],
-                      };
-                      setMessages((prev) => [...prev, planMsg]);
-                    }
-                    break;
-                  }
-                  case 'subagent_task':
-                    break;
-                  case 'paused': {
-                    currentThoughtIdRef.current = null;
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.status === 'streaming' || m.status === 'thinking'
-                          ? { ...m, status: 'complete' }
-                          : m,
-                      ),
-                    );
-                    break;
-                  }
-                  case 'complete': {
-                    completedGracefully = true;
-                    const message = parsed.message || '';
-                    setMessages((prev) => {
-                      const markPlans = (items: ChatMessage[]): ChatMessage[] =>
-                        items.map((m) =>
-                          m.role === 'plan' && !m.planCompleted ? { ...m, planCompleted: true } : m,
-                        );
+            mapped.push({
+              id: `${m.id}-result-${i}`,
+              role: 'assistant',
+              content: '',
+              status: isComplete ? 'complete' : 'running',
+              thinkingTraces: [],
+              result: {
+                type: 'flashcards',
+                data: isComplete ? flashcardArray : [],
+                deckName: isComplete
+                  ? String(outputMap?.deckName ?? 'Generated Flashcards')
+                  : typeof inputMap?.deck_name === 'string'
+                    ? inputMap.deck_name
+                    : undefined,
+                count: isComplete ? Number(outputMap?.count) || 6 : Number(inputMap?.count) || 6,
+                readOnly: isComplete,
+              },
+            });
+          }
 
-                      if (currentThoughtIdRef.current) {
-                        const id = currentThoughtIdRef.current;
-                        currentThoughtIdRef.current = null;
-                        return markPlans(
-                          prev.map((m) => (m.id === id ? { ...m, status: 'complete' } : m)),
-                        );
-                      }
-                      const lastThought = prev.findLast(
-                        (m) => m.role === 'thought' && m.status === 'thinking',
-                      );
-                      if (lastThought) {
-                        return markPlans(
-                          prev.map((m) =>
-                            m.id === lastThought.id ? { ...m, status: 'complete' } : m,
-                          ),
-                        );
-                      }
-                      const lastStreaming = prev.findLast(
-                        (m) => m.role === 'assistant' && m.status === 'streaming',
-                      );
-                      if (lastStreaming) {
-                        return markPlans(
-                          prev.map((m) =>
-                            m.id === lastStreaming.id ? { ...m, status: 'complete' } : m,
-                          ),
-                        );
-                      }
-                      const updated: ChatMessage[] = message
-                        ? [
-                            ...prev,
-                            {
-                              id: generateUUID(),
-                              role: 'assistant',
-                              content: message,
-                              status: 'complete' as const,
-                              thinkingTraces: [],
-                            },
-                          ]
-                        : prev.map((m) =>
-                            m.status === 'running' ||
-                            m.status === 'thinking' ||
-                            m.status === 'streaming'
-                              ? { ...m, status: 'complete' as const }
-                              : m,
-                          );
-                      return markPlans(updated);
-                    });
-                    break;
-                  }
-                  case 'usage':
-                    setUsage({
-                      current: parsed.current ?? 0,
-                      limit: parsed.limit ?? 0,
-                      plan: parsed.plan ?? '',
-                      resetsAt: parsed.resetsAt ?? '',
-                    });
-                    break;
-                  case 'error': {
-                    completedGracefully = true;
-                    currentThoughtIdRef.current = null;
-                    setMessages((prev) => [
-                      ...prev,
-                      createErrorMessage(parsed.message || 'Request failed'),
-                    ]);
-                    break;
-                  }
-                }
-              } catch {
-                // skip malformed events
+          if (state === 'output-available' && toolName === 'ask_user') {
+            const outputMap: Record<string, unknown> | undefined = tp.output;
+            if (outputMap?.type === 'question' && outputMap?.question) {
+              const existing = mapped[mapped.length - 1];
+              if (existing) {
+                existing.question = outputMap.question as QuestionData;
               }
+            }
+          }
 
-              currentEvent = '';
-              currentData = '';
+          if (state === 'output-available' && toolName === 'create_plan') {
+            const outputMap: Record<string, unknown> | undefined = tp.output;
+            if (outputMap?.steps) {
+              const steps = outputMap.steps as Array<Record<string, unknown>>;
+              const planMsg: ChatMessage = {
+                id: `${m.id}-plan-${i}`,
+                role: 'plan',
+                content: '',
+                status: 'complete',
+                thinkingTraces: [],
+                plan: steps.map((s: Record<string, unknown>, idx: number) => ({
+                  index: idx,
+                  action: String(s.action ?? ''),
+                  rationale: String(s.rationale ?? ''),
+                  dependsOn: s.dependsOn as string[] | undefined,
+                })),
+                planCompleted: false,
+                completedSteps: [],
+              };
+              planMsgRef = planMsg;
+              totalPlanSteps = steps.length;
+              completedStepSet.clear();
+              mapped.push(planMsg);
+            }
+          }
+
+          if (
+            planMsgRef &&
+            state === 'output-available' &&
+            !['create_plan', 'finish', 'ask_user'].includes(toolName)
+          ) {
+            const stepAction = planMsgRef.plan?.find((s) => s.action === toolName);
+            if (stepAction !== undefined) {
+              completedStepSet.add(stepAction.index);
+            } else {
+              const nextPending = [...Array(totalPlanSteps).keys()].find(
+                (i) => !completedStepSet.has(i),
+              );
+              if (nextPending !== undefined) {
+                completedStepSet.add(nextPending);
+              }
+            }
+            planMsgRef.completedSteps = [...completedStepSet];
+            planMsgRef.planCompleted = completedStepSet.size >= totalPlanSteps;
+          }
+
+          if (state === 'output-available' && toolName === 'finish') {
+            if (planMsgRef) {
+              for (let si = 0; si < totalPlanSteps; si++) {
+                completedStepSet.add(si);
+              }
+              planMsgRef.completedSteps = [...completedStepSet];
+              planMsgRef.planCompleted = true;
+            }
+
+            const outputMap: Record<string, unknown> | undefined = tp.output;
+            if (outputMap?.type === 'flashcards') {
+              const flashcardArray = Array.isArray(outputMap?.flashcards)
+                ? (outputMap.flashcards as Array<Record<string, unknown>>)
+                : [];
+              mapped.push({
+                id: `${m.id}-finish-cards-${i}`,
+                role: 'assistant',
+                content: '',
+                status: 'complete',
+                thinkingTraces: [],
+                result: {
+                  type: 'flashcards',
+                  data: flashcardArray,
+                  deckName: String(outputMap?.deckName ?? 'Consolidated Flashcards'),
+                  count: flashcardArray.length,
+                  readOnly: false,
+                },
+              });
+            }
+            const text = outputMap?.type === 'chat' ? String(outputMap?.content ?? '') : '';
+            if (text) {
+              mapped.push({
+                id: `${m.id}-finish-${i}`,
+                role: 'assistant',
+                content: text,
+                status: 'complete',
+                thinkingTraces: [],
+              });
             }
           }
         }
-
-        if (!completedGracefully) {
-          currentThoughtIdRef.current = null;
-          setMessages((prev) => {
-            const finalized = prev.map((m) =>
-              m.status === 'streaming' || m.status === 'thinking'
-                ? { ...m, status: 'complete' as const }
-                : m,
-            );
-            return [
-              ...finalized,
-              createErrorMessage('Response was interrupted — the connection was lost'),
-            ];
-          });
-        }
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          currentThoughtIdRef.current = null;
-          setMessages((prev) => {
-            const finalized = prev.map((m) =>
-              m.status === 'streaming' || m.status === 'thinking'
-                ? { ...m, status: 'complete' as const }
-                : m,
-            );
-            return [
-              ...finalized,
-              createErrorMessage('Request timed out — the server took too long to respond'),
-            ];
-          });
-          setIsStreaming(false);
-          return;
-        }
-        currentThoughtIdRef.current = null;
-        setMessages((prev) => [
-          ...prev,
-          createErrorMessage(error instanceof Error ? error.message : 'Network error'),
-        ]);
-      } finally {
-        clearTimeout(fetchTimeout);
-        setIsStreaming(false);
       }
+    }
+
+    return mapped;
+  }, [uiMessages, status]);
+
+  const handleSend = useCallback(
+    async (text: string, _file?: File, _context?: string) => {
+      await sendChatMessage({ text });
     },
-    [messages],
+    [sendChatMessage],
   );
 
-  const sendLocalResponse = useCallback((userText: string, assistantText: string) => {
-    const userMsg: ChatMessage = {
-      id: generateUUID(),
-      role: 'user',
-      content: userText,
-      status: 'complete',
-      thinkingTraces: [],
-    };
-    const assistantMsg: ChatMessage = {
-      id: generateUUID(),
-      role: 'assistant',
-      content: assistantText,
-      status: 'complete',
-      thinkingTraces: [],
-    };
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
-  }, []);
+  const sendLocalResponse = useCallback((_userText: string, _assistantText: string) => {}, []);
 
-  const clearChat = useCallback(() => {
-    abortRef.current?.abort();
-    setMessages([]);
-    setUsage(null);
-    setIsStreaming(false);
-    conversationIdRef.current = generateUUID();
-    fileSentRef.current = false;
-    toolStartTimesRef.current.clear();
-    currentThoughtIdRef.current = null;
-  }, []);
+  const clearChat = useCallback(() => {}, []);
 
-  const abort = useCallback(() => {
-    abortRef.current?.abort();
-  }, []);
-
-  return { messages, usage, isStreaming, sendMessage, sendLocalResponse, clearChat, abort };
+  return {
+    messages,
+    usage: null,
+    isStreaming: status === 'streaming',
+    sendMessage: handleSend,
+    sendLocalResponse,
+    clearChat,
+    abort: stop,
+  };
 }
