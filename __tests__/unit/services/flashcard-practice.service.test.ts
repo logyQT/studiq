@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { flashcardPracticeService } from '@/server/services/flashcard-practice.service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { flashcardPracticeService } from '@/server/services/flashcard-practice.service';
 
 vi.mock('@/lib/rbac', () => ({
   buildQueryFilter: vi.fn().mockResolvedValue({}),
@@ -75,17 +75,30 @@ describe('FlashcardPracticeService', () => {
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'flashcard_practice') return { insert: insertMock };
-        if (table === 'flashcard_review_state') return { select: getStateSelectMock, upsert: upsertMock };
-        if (table === 'user_study_settings') return {
-          select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue(defaultSettingsRow) }) }),
-          update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: null }) }),
-        };
+        if (table === 'flashcard_review_state')
+          return { select: getStateSelectMock, upsert: upsertMock };
+        if (table === 'user_study_settings')
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi
+                .fn()
+                .mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue(defaultSettingsRow) }),
+            }),
+            update: vi
+              .fn()
+              .mockReturnValue({ eq: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+          };
         return chain();
       });
     }
 
     it('inserts practice record and returns it with review state', async () => {
-      const mockPractice = { id: 'p-1', user_id: mockCtx.userId, flashcard_id: 'fc-1', was_correct: true };
+      const mockPractice = {
+        id: 'p-1',
+        user_id: mockCtx.userId,
+        flashcard_id: 'fc-1',
+        was_correct: true,
+      };
       const mockReviewState = {
         user_id: mockCtx.userId,
         flashcard_id: 'fc-1',
@@ -97,11 +110,7 @@ describe('FlashcardPracticeService', () => {
         last_quality: 4,
       };
 
-      setupMocks(
-        { data: mockPractice, error: null },
-        null,
-        { data: mockReviewState, error: null },
-      );
+      setupMocks({ data: mockPractice, error: null }, null, { data: mockReviewState, error: null });
 
       const result = await flashcardPracticeService.log('fc-1', true, mockCtx);
 
@@ -127,20 +136,25 @@ describe('FlashcardPracticeService', () => {
         repetitions: 1,
       };
 
-      setupMocks(
-        { data: mockPractice, error: null },
-        null,
-        { data: mockReviewState, error: null },
-      );
+      setupMocks({ data: mockPractice, error: null }, null, { data: mockReviewState, error: null });
 
-      const result = await flashcardPracticeService.log('fc-1', true, mockCtx, 1500, 4, 'session-1');
+      const result = await flashcardPracticeService.log(
+        'fc-1',
+        true,
+        mockCtx,
+        1500,
+        4,
+        'session-1',
+      );
 
       expect(result.practice).toEqual(mockPractice);
       expect(result.reviewState).toEqual(mockReviewState);
     });
 
     it('throws on insert failure', async () => {
-      const practiceSingleMock = vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error', code: 'PGRST116' } });
+      const practiceSingleMock = vi
+        .fn()
+        .mockResolvedValue({ data: null, error: { message: 'DB error', code: 'PGRST116' } });
       const practiceSelectMock = vi.fn().mockReturnValue({ single: practiceSingleMock });
       const insertMock = vi.fn().mockReturnValue({ select: practiceSelectMock });
 
@@ -150,7 +164,12 @@ describe('FlashcardPracticeService', () => {
     });
 
     it('uses existing review state when available', async () => {
-      const mockPractice = { id: 'p-1', user_id: mockCtx.userId, flashcard_id: 'fc-1', was_correct: true };
+      const mockPractice = {
+        id: 'p-1',
+        user_id: mockCtx.userId,
+        flashcard_id: 'fc-1',
+        was_correct: true,
+      };
       const existingState = {
         user_id: mockCtx.userId,
         flashcard_id: 'fc-1',
@@ -166,11 +185,10 @@ describe('FlashcardPracticeService', () => {
         repetitions: 2,
       };
 
-      setupMocks(
-        { data: mockPractice, error: null },
-        existingState,
-        { data: updatedState, error: null },
-      );
+      setupMocks({ data: mockPractice, error: null }, existingState, {
+        data: updatedState,
+        error: null,
+      });
 
       const result = await flashcardPracticeService.log('fc-1', true, mockCtx, undefined, 4);
 
@@ -208,7 +226,8 @@ describe('FlashcardPracticeService', () => {
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'flashcard_practice') return { insert: practiceInsert };
-        if (table === 'flashcard_review_state') return { select: reviewSelectMock, upsert: upsertMock };
+        if (table === 'flashcard_review_state')
+          return { select: reviewSelectMock, upsert: upsertMock };
         if (table === 'user_study_settings') {
           const c = settingsChain();
           return { select: vi.fn(() => c), update: vi.fn(() => c) };
@@ -227,7 +246,12 @@ describe('FlashcardPracticeService', () => {
       );
 
       const result = await flashcardPracticeService.batch(
-        { items: [{ flashcardId: 'fc-1', wasCorrect: true, confidenceLevel: 3 }, { flashcardId: 'fc-2', wasCorrect: true, confidenceLevel: 3 }] },
+        {
+          items: [
+            { flashcardId: 'fc-1', wasCorrect: true, confidenceLevel: 3 },
+            { flashcardId: 'fc-2', wasCorrect: true, confidenceLevel: 3 },
+          ],
+        },
         mockCtx,
       );
 
@@ -244,7 +268,12 @@ describe('FlashcardPracticeService', () => {
       );
 
       const result = await flashcardPracticeService.batch(
-        { items: [{ flashcardId: 'fc-1', wasCorrect: true }, { flashcardId: 'fc-2', wasCorrect: true }] },
+        {
+          items: [
+            { flashcardId: 'fc-1', wasCorrect: true },
+            { flashcardId: 'fc-2', wasCorrect: true },
+          ],
+        },
         mockCtx,
       );
 
@@ -264,7 +293,12 @@ describe('FlashcardPracticeService', () => {
       );
 
       const result = await flashcardPracticeService.batch(
-        { items: [{ flashcardId: 'fc-1', wasCorrect: true }, { flashcardId: 'fc-2', wasCorrect: true }] },
+        {
+          items: [
+            { flashcardId: 'fc-1', wasCorrect: true },
+            { flashcardId: 'fc-2', wasCorrect: true },
+          ],
+        },
         mockCtx,
       );
 
@@ -283,7 +317,13 @@ describe('FlashcardPracticeService', () => {
         data: [
           { id: 'fc-1', front: 'q1', back: 'a1', createdAt: null, reviewState: null },
           { id: 'fc-2', front: 'q2', back: 'a2', createdAt: null, reviewState: null },
-          { id: 'fc-3', front: 'q3', back: 'a3', createdAt: null, reviewState: { easiness_factor: 2.5 } },
+          {
+            id: 'fc-3',
+            front: 'q3',
+            back: 'a3',
+            createdAt: null,
+            reviewState: { easiness_factor: 2.5 },
+          },
         ],
         error: null,
       });
@@ -293,7 +333,10 @@ describe('FlashcardPracticeService', () => {
 
       const result = await flashcardPracticeService.getDueCards(mockCtx, {});
 
-      expect(mock.rpc).toHaveBeenCalledWith('get_due_flashcards', expect.objectContaining({ p_new_card_limit: 2 }));
+      expect(mock.rpc).toHaveBeenCalledWith(
+        'get_due_flashcards',
+        expect.objectContaining({ p_new_card_limit: 2 }),
+      );
       expect(result).toHaveLength(3);
     });
 
@@ -302,7 +345,13 @@ describe('FlashcardPracticeService', () => {
       const c = settingsChain(settings);
       const rpcMock = vi.fn().mockResolvedValue({
         data: [
-          { id: 'fc-3', front: 'q3', back: 'a3', createdAt: null, reviewState: { easiness_factor: 2.5 } },
+          {
+            id: 'fc-3',
+            front: 'q3',
+            back: 'a3',
+            createdAt: null,
+            reviewState: { easiness_factor: 2.5 },
+          },
         ],
         error: null,
       });
@@ -312,7 +361,10 @@ describe('FlashcardPracticeService', () => {
 
       const result = await flashcardPracticeService.getDueCards(mockCtx, {});
 
-      expect(mock.rpc).toHaveBeenCalledWith('get_due_flashcards', expect.objectContaining({ p_new_card_limit: 0 }));
+      expect(mock.rpc).toHaveBeenCalledWith(
+        'get_due_flashcards',
+        expect.objectContaining({ p_new_card_limit: 0 }),
+      );
       expect(result).toHaveLength(1);
     });
 
@@ -324,7 +376,13 @@ describe('FlashcardPracticeService', () => {
         data: [
           { id: 'fc-1', front: 'q1', back: 'a1', createdAt: null, reviewState: null },
           { id: 'fc-2', front: 'q2', back: 'a2', createdAt: null, reviewState: null },
-          { id: 'fc-3', front: 'q3', back: 'a3', createdAt: null, reviewState: { easiness_factor: 2.5 } },
+          {
+            id: 'fc-3',
+            front: 'q3',
+            back: 'a3',
+            createdAt: null,
+            reviewState: { easiness_factor: 2.5 },
+          },
         ],
         error: null,
       });
@@ -338,7 +396,11 @@ describe('FlashcardPracticeService', () => {
     });
 
     it('resets daily counter when reset date is stale', async () => {
-      const settings = { ...defaultSettings, new_cards_introduced: 15, daily_reset_date: '2026-06-15' };
+      const settings = {
+        ...defaultSettings,
+        new_cards_introduced: 15,
+        daily_reset_date: '2026-06-15',
+      };
       const c = settingsChain(settings);
       const tableUpdate = vi.fn(() => c);
       const rpcMock = vi.fn().mockResolvedValue({ data: [], error: null });
@@ -348,7 +410,9 @@ describe('FlashcardPracticeService', () => {
 
       await flashcardPracticeService.getDueCards(mockCtx, {});
 
-      expect(tableUpdate).toHaveBeenCalledWith(expect.objectContaining({ new_cards_introduced: 0 }));
+      expect(tableUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ new_cards_introduced: 0 }),
+      );
     });
   });
 
@@ -359,7 +423,7 @@ describe('FlashcardPracticeService', () => {
       const settings = { ...defaultSettings };
       const settingsC = settingsChain(settings);
 
-      const flashcardsC = chain({ data: flashcardIds.map(id => ({ id })), error: null });
+      const flashcardsC = chain({ data: flashcardIds.map((id) => ({ id })), error: null });
 
       const states = [
         { flashcard_id: 'fc-2', next_review_at: new Date(Date.now() - 3600000).toISOString() },
@@ -393,7 +457,7 @@ describe('FlashcardPracticeService', () => {
     it('excludes new cards from total and breakdown', async () => {
       const flashcardIds = ['fc-1', 'fc-2', 'fc-3', 'fc-4'];
 
-      const flashcardsC = chain({ data: flashcardIds.map(id => ({ id })), error: null });
+      const flashcardsC = chain({ data: flashcardIds.map((id) => ({ id })), error: null });
 
       const states = [
         { flashcard_id: 'fc-2', next_review_at: new Date(Date.now() - 3600000).toISOString() },

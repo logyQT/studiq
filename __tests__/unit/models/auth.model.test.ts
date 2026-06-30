@@ -1,13 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { ValidationErrorCode } from '@/lib/validation-errors';
 import {
-  RegisterSchema,
-  LoginSchema,
   forgotPasswordSchema,
-  updatePasswordSchema,
+  LoginSchema,
   NameSchema,
   passwordSchema,
+  RegisterSchema,
+  updatePasswordSchema,
 } from '@/server/models/auth.model';
-import { ValidationErrorCode } from '@/lib/validation-errors';
 
 describe('NameSchema', () => {
   it('passes with valid name', () => {
@@ -71,7 +71,7 @@ describe('passwordSchema', () => {
   });
 
   it('fails when too long', () => {
-    const result = passwordSchema.safeParse('A'.repeat(129) + '1');
+    const result = passwordSchema.safeParse(`${'A'.repeat(129)}1`);
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0].message).toBe(ValidationErrorCode.PASSWORD_TOO_LONG);

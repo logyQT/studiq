@@ -1,9 +1,17 @@
-import { createServiceClient } from '@/lib/supabase/service';
 import { AppError } from '@/lib/errors';
+import { createServiceClient } from '@/lib/supabase/service';
 
 const BUCKET = 'flashcard-media';
 
-const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'audio/mpeg', 'audio/wav', 'audio/ogg'];
+const ALLOWED_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'audio/mpeg',
+  'audio/wav',
+  'audio/ogg',
+];
 const MAX_SIZE = 50 * 1024 * 1024;
 
 function validateFile(file: File): void {
@@ -23,18 +31,14 @@ export class StorageService {
     const ext = file.name.split('.').pop() ?? 'bin';
     const storagePath = `${userId}/${crypto.randomUUID()}.${ext}`;
 
-    const { error } = await supabase.storage
-      .from(BUCKET)
-      .upload(storagePath, file, {
-        contentType: file.type,
-        upsert: false,
-      });
+    const { error } = await supabase.storage.from(BUCKET).upload(storagePath, file, {
+      contentType: file.type,
+      upsert: false,
+    });
 
     if (error) throw new AppError('INTERNAL_SERVER');
 
-    const { data: urlData } = supabase.storage
-      .from(BUCKET)
-      .getPublicUrl(storagePath);
+    const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
 
     return { url: urlData.publicUrl };
   }

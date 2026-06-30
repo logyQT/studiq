@@ -1,8 +1,8 @@
-import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import type { SubmitQuizAttemptInput } from '@/server/models';
-import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
+import { createClient } from '@/lib/supabase/server';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { SubmitQuizAttemptInput } from '@/server/models';
 
 export class QuizAttemptService {
   async list(ctx: RequestContext) {

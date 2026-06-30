@@ -1,16 +1,16 @@
 'use client';
 
+import { AlertCircle, ChevronDown, ChevronRight, FileText, Loader2, Sparkles } from 'lucide-react';
 import { useState } from 'react';
-import { FileText, Loader2, AlertCircle, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { ChatMessage as ChatMessageType } from '@/hooks/use-ai-chat';
-import { FlashcardBlock } from './flashcard-block';
-import { ThinkingBlock } from './thinking-block';
-import { QuestionBlock } from './question-block';
-import { ToolCallBlock } from './tool-call-block';
-import { PlanBlock } from './plan-block';
-import { AgentCallBlock } from './agent-call-block';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
+import type { ChatMessage as ChatMessageType } from '@/hooks/use-ai-chat';
+import { cn } from '@/lib/utils';
+import { AgentCallBlock } from './agent-call-block';
+import { FlashcardBlock } from './flashcard-block';
+import { PlanBlock } from './plan-block';
+import { QuestionBlock } from './question-block';
+import { ThinkingBlock } from './thinking-block';
+import { ToolCallBlock } from './tool-call-block';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -31,10 +31,7 @@ export function ChatMessage({ message, onAnswer }: ChatMessageProps) {
     return (
       <div className="flex justify-start">
         <div className="max-w-[80%] w-full">
-          <PlanBlock
-            steps={message.plan || []}
-            isComplete={message.planCompleted ?? false}
-          />
+          <PlanBlock steps={message.plan || []} isComplete={message.planCompleted ?? false} />
         </div>
       </div>
     );
@@ -55,7 +52,12 @@ export function ChatMessage({ message, onAnswer }: ChatMessageProps) {
     );
   }
 
-  if (isToolCall && (message.toolName === 'create_plan' || message.toolName === 'finish' || message.toolName === 'ask_user')) {
+  if (
+    isToolCall &&
+    (message.toolName === 'create_plan' ||
+      message.toolName === 'finish' ||
+      message.toolName === 'ask_user')
+  ) {
     return null;
   }
 
@@ -108,9 +110,7 @@ export function ChatMessage({ message, onAnswer }: ChatMessageProps) {
             <span className="text-xs italic">Thinking...</span>
           </div>
         ) : isUser ? (
-          <div className="whitespace-pre-wrap break-words">
-            {message.content}
-          </div>
+          <div className="whitespace-pre-wrap break-words">{message.content}</div>
         ) : isStreaming ? (
           <div className="whitespace-pre-wrap break-words">
             {message.content}
@@ -126,7 +126,9 @@ export function ChatMessage({ message, onAnswer }: ChatMessageProps) {
 
         {isFlashcardResult && (isComplete || isError) && Array.isArray(message.result!.data) && (
           <FlashcardBlock
-            flashcards={message.result!.data as Array<{ front: string; back: string; topic?: string }>}
+            flashcards={
+              message.result!.data as Array<{ front: string; back: string; topic?: string }>
+            }
             deckName={message.result!.deckName as string | undefined}
           />
         )}
@@ -168,16 +170,27 @@ function ThoughtMessage({ message }: { message: ChatMessageType }) {
           onClick={() => setOpen(!open)}
           className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-muted-foreground hover:text-foreground transition-colors"
         >
-          {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+          {open ? (
+            <ChevronDown className="h-3 w-3 shrink-0" />
+          ) : (
+            <ChevronRight className="h-3 w-3 shrink-0" />
+          )}
           <Sparkles className="h-3 w-3 shrink-0" />
-          <span className="font-medium">
-            {isThinking ? 'Thinking...' : 'Thought'}
-          </span>
+          <span className="font-medium">{isThinking ? 'Thinking...' : 'Thought'}</span>
           {isThinking && (
             <span className="ml-auto flex gap-0.5">
-              <span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '0ms' }} />
-              <span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '150ms' }} />
-              <span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '300ms' }} />
+              <span
+                className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
+                style={{ animationDelay: '0ms' }}
+              />
+              <span
+                className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
+                style={{ animationDelay: '150ms' }}
+              />
+              <span
+                className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
+                style={{ animationDelay: '300ms' }}
+              />
             </span>
           )}
         </button>

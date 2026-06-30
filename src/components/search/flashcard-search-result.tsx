@@ -22,9 +22,7 @@ export function FlashcardSearchResult({
     <div>
       <div className="px-2 py-2 text-sm border-b border-border/50">
         <span className="font-medium truncate block">{result.title}</span>
-        <span className="text-xs text-muted-foreground truncate block">
-          {result.subtitle}
-        </span>
+        <span className="text-xs text-muted-foreground truncate block">{result.subtitle}</span>
       </div>
       {result.decks.map((deck, di) => (
         <button

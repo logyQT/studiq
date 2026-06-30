@@ -1,7 +1,7 @@
 import { log } from '@/lib/logger';
 import { getModelsConfig } from '@/server/config/models.config';
-import { getProvider } from '@/server/providers/providerRegistry';
 import type { GeneratedFlashcard } from '@/server/providers/LLMProvider';
+import { getProvider } from '@/server/providers/providerRegistry';
 import { pdfService } from './pdf.service';
 
 export interface GenerationCallbacks {
@@ -25,16 +25,22 @@ export class FlashcardGenerationService {
     language: string,
     callbacks: GenerationCallbacks,
   ): Promise<void> {
-    log.ai.warn('[DEPRECATED] FlashcardGenerationService.generateStreaming is deprecated. Use AiCommandService.generateFlashcards() instead.');
+    log.ai.warn(
+      '[DEPRECATED] FlashcardGenerationService.generateStreaming is deprecated. Use AiCommandService.generateFlashcards() instead.',
+    );
     const config = getModelsConfig();
-    log.ai.info('Config', { metadata: { provider: config.provider, model: config.modelName, baseUrl: config.baseUrl } });
+    log.ai.info('Config', {
+      metadata: { provider: config.provider, model: config.modelName, baseUrl: config.baseUrl },
+    });
 
     let provider;
     try {
       provider = getProvider(config);
     } catch (error) {
       log.ai.error('Failed to initialize provider', { metadata: { error } });
-      callbacks.onError(error instanceof Error ? error.message : 'Failed to initialize LLM provider');
+      callbacks.onError(
+        error instanceof Error ? error.message : 'Failed to initialize LLM provider',
+      );
       return;
     }
 

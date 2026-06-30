@@ -1,11 +1,18 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { GET as attemptsGet } from '@/app/(backend)/api/v1/quiz-attempts/route';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   GET as attemptGet,
   POST as attemptPost,
 } from '@/app/(backend)/api/v1/quiz-attempts/[attemptId]/route';
+import { GET as attemptsGet } from '@/app/(backend)/api/v1/quiz-attempts/route';
 import { POST as quizPost } from '@/app/(backend)/api/v1/quizzes/route';
-import { TEST_USERS, mockUser, cleanupQuizAttempts, cleanupQuestions, cleanupSubjects, createServiceClient } from './helpers';
+import {
+  cleanupQuestions,
+  cleanupQuizAttempts,
+  cleanupSubjects,
+  createServiceClient,
+  mockUser,
+  TEST_USERS,
+} from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Quiz Attempts Integration', () => {
@@ -26,7 +33,8 @@ describe('Quiz Attempts Integration', () => {
       .insert({ name: 'quiz-attempt-Quiz Attempt Subject', created_by: TEST_USERS.TEACHER.id })
       .select()
       .single();
-    if (subjectError || !subject) throw new Error(`Failed to create subject: ${subjectError?.message}`);
+    if (subjectError || !subject)
+      throw new Error(`Failed to create subject: ${subjectError?.message}`);
     subjectId = subject.id;
 
     for (let i = 0; i < 3; i++) {
@@ -41,7 +49,8 @@ describe('Quiz Attempts Integration', () => {
         })
         .select()
         .single();
-      if (questionError || !question) throw new Error(`Failed to create question ${i}: ${questionError?.message}`);
+      if (questionError || !question)
+        throw new Error(`Failed to create question ${i}: ${questionError?.message}`);
 
       await supabase.from('question_answers').insert({
         question_id: question.id,

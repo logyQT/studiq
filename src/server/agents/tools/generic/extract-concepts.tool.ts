@@ -21,7 +21,7 @@ export const extractConceptsTool: Tool = {
     }
 
     if (material.length > 40000) {
-      material = material.slice(0, 40000) + '\n\n[...content truncated for length]';
+      material = `${material.slice(0, 40000)}\n\n[...content truncated for length]`;
     }
 
     const maxTermsNote = parsed.maxTerms ? `\n\nExtract up to ${parsed.maxTerms} terms.` : '';
@@ -40,7 +40,7 @@ export const extractConceptsTool: Tool = {
 
     const terms = parseExtractedTerms(toolCall.function.arguments);
     ctx.state.concepts = terms;
-    ctx.state.results['concepts'] = terms;
+    ctx.state.results.concepts = terms;
 
     ctx.callbacks?.onThinking?.(`Found ${terms.length} key concepts`);
 

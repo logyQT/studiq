@@ -1,9 +1,9 @@
-import { orgService } from '@/server/services/org.service';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
-import { z } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import { z } from '@/lib/zod';
+import { orgService } from '@/server/services/org.service';
 
 const SwitchOrgSchema = z.object({
   orgId: z.uuid({ error: ValidationErrorCode.INVALID_INPUT }),

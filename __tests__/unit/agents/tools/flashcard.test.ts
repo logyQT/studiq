@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/zod', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/zod')>();
@@ -50,7 +50,14 @@ describe('brainstormConceptsTool', () => {
     const ctx = mockCtx();
     ctx.callLLM = vi.fn().mockResolvedValue({
       content: '',
-      toolCalls: [{ function: { name: 'brainstorm_output', arguments: JSON.stringify({ terms: [{ term: 'Atom', definition: 'Basic unit' }] }) } }],
+      toolCalls: [
+        {
+          function: {
+            name: 'brainstorm_output',
+            arguments: JSON.stringify({ terms: [{ term: 'Atom', definition: 'Basic unit' }] }),
+          },
+        },
+      ],
     });
     const result = await brainstormConceptsTool.execute({ topic: 'Chemistry', count: 10 }, ctx);
     expect(result.concepts).toHaveLength(1);
@@ -70,28 +77,52 @@ describe('flashcardCreateTool', () => {
     const ctx = mockCtx();
     ctx.callLLM = vi.fn().mockResolvedValue({
       content: '',
-      toolCalls: [{ function: { name: 'generate_flashcards', arguments: JSON.stringify({ deck_name: 'Science', flashcards: [{ front: 'Q', back: 'A' }] }) } }],
+      toolCalls: [
+        {
+          function: {
+            name: 'generate_flashcards',
+            arguments: JSON.stringify({
+              deck_name: 'Science',
+              flashcards: [{ front: 'Q', back: 'A' }],
+            }),
+          },
+        },
+      ],
     });
-    const result = await flashcardCreateTool.execute({ concepts: [{ term: 'T1', definition: 'D1' }], deckName: 'My Deck' }, ctx);
-    expect(ctx.state.results['flashcards']).toHaveLength(1);
-    expect(ctx.state.results['deckName']).toBe('Science');
+    const result = await flashcardCreateTool.execute(
+      { concepts: [{ term: 'T1', definition: 'D1' }], deckName: 'My Deck' },
+      ctx,
+    );
+    expect(ctx.state.results.flashcards).toHaveLength(1);
+    expect(ctx.state.results.deckName).toBe('Science');
     expect(result.deckName).toBe('Science');
   });
 
   it('returns fallback when no tool call in response', async () => {
     const ctx = mockCtx();
     ctx.callLLM = vi.fn().mockResolvedValue({ content: 'no tool call' });
-    const result = await flashcardCreateTool.execute({ concepts: [{ term: 'T1', definition: 'D1' }] }, ctx);
+    const result = await flashcardCreateTool.execute(
+      { concepts: [{ term: 'T1', definition: 'D1' }] },
+      ctx,
+    );
     expect(result.flashcards).toEqual([]);
   });
 
   it('includes count line in prompt when count specified', async () => {
     const ctx = mockCtx();
-    ctx.callLLM = vi.fn().mockResolvedValue({ content: 'ok', toolCalls: [{ function: { name: 'generate_flashcards', arguments: '{}' } }] });
-    await flashcardCreateTool.execute({ concepts: [{ term: 'T1', definition: 'D1' }], count: 10 }, ctx);
-    expect(ctx.callLLM).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: expect.stringContaining('10'),
-    }));
+    ctx.callLLM = vi.fn().mockResolvedValue({
+      content: 'ok',
+      toolCalls: [{ function: { name: 'generate_flashcards', arguments: '{}' } }],
+    });
+    await flashcardCreateTool.execute(
+      { concepts: [{ term: 'T1', definition: 'D1' }], count: 10 },
+      ctx,
+    );
+    expect(ctx.callLLM).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining('10'),
+      }),
+    );
   });
 });
 
@@ -100,13 +131,19 @@ describe('flashcardReviewTool', () => {
     const ctx = mockCtx();
     ctx.callLLM = vi.fn().mockResolvedValue({
       content: '',
-      toolCalls: [{ function: { name: 'review_cards', arguments: JSON.stringify({ kept: [0, 2] }) } }],
+      toolCalls: [
+        { function: { name: 'review_cards', arguments: JSON.stringify({ kept: [0, 2] }) } },
+      ],
     });
-    const cards = [{ front: 'Q1', back: 'A1' }, { front: 'Q2', back: 'A2' }, { front: 'Q3', back: 'A3' }];
+    const cards = [
+      { front: 'Q1', back: 'A1' },
+      { front: 'Q2', back: 'A2' },
+      { front: 'Q3', back: 'A3' },
+    ];
     const result = await flashcardReviewTool.execute({ cards }, ctx);
     expect(result.kept).toHaveLength(2);
     expect(result.dropped).toHaveLength(1);
-    expect(ctx.state.results['flashcards']).toHaveLength(2);
+    expect(ctx.state.results.flashcards).toHaveLength(2);
   });
 
   it('returns all cards as kept when no tool call in response', async () => {
@@ -124,7 +161,14 @@ describe('flashcardReviseTool', () => {
     const ctx = mockCtx();
     ctx.callLLM = vi.fn().mockResolvedValue({
       content: '',
-      toolCalls: [{ function: { name: 'generate_flashcards', arguments: JSON.stringify({ flashcards: [{ front: 'Q1', back: 'A1 improved' }] }) } }],
+      toolCalls: [
+        {
+          function: {
+            name: 'generate_flashcards',
+            arguments: JSON.stringify({ flashcards: [{ front: 'Q1', back: 'A1 improved' }] }),
+          },
+        },
+      ],
     });
     const cards = [{ front: 'Q1', back: 'A1' }];
     const result = await flashcardReviseTool.execute({ cards, feedback: 'Make it clearer' }, ctx);

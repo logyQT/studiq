@@ -12,10 +12,6 @@ INSERT INTO "public"."organizations" ("id", "name", "slug") VALUES
   ('00000000-0000-4000-8000-000000000007', 'E2E Test University', 'e2e-test-university')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO "public"."org_subscriptions" ("organization_id", "plan_type", "status") VALUES
-  ('00000000-0000-4000-8000-000000000007', 'enterprise', 'active')
-ON CONFLICT DO NOTHING;
-
 -- ----------------------------------------------------------
 -- Auth users
 -- ----------------------------------------------------------

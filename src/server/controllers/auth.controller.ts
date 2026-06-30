@@ -1,12 +1,12 @@
-import { authService } from '@/server/services';
+import type { ControllerResponse } from '@/lib/controller-response';
+import { withErrorHandling } from '@/lib/with-error-handling';
 import {
-  RegisterSchema,
-  LoginSchema,
   forgotPasswordSchema,
+  LoginSchema,
+  RegisterSchema,
   updatePasswordSchema,
 } from '@/server/models';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import { authService } from '@/server/services';
 
 export class AuthController {
   async register(body: unknown): Promise<ControllerResponse> {
@@ -43,7 +43,11 @@ export class AuthController {
 
       const result = await authService.login(parsed.data);
 
-      return { success: true, statusCode: 200, data: { user: result.user, session: result.session } };
+      return {
+        success: true,
+        statusCode: 200,
+        data: { user: result.user, session: result.session },
+      };
     });
   }
 

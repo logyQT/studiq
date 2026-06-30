@@ -1,7 +1,7 @@
-import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
-import { ORGANIZATION_ROLES } from '@/types';
+import { registry, z } from '@/lib/zod';
 import { NameSchema } from '@/server/models';
+import { ORGANIZATION_ROLES } from '@/types';
 
 export const CreateInviteSchema = registry.register(
   'CreateInviteRequest',

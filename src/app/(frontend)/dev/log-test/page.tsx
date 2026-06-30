@@ -25,9 +25,17 @@ export default function LogTestPage() {
   const [running, setRunning] = useState(false);
 
   async function sendLog(entry: LogEntry) {
-    const payload: Record<string, unknown> = { level: entry.level, namespace: entry.namespace, message: entry.message };
+    const payload: Record<string, unknown> = {
+      level: entry.level,
+      namespace: entry.namespace,
+      message: entry.message,
+    };
     if (entry.metadata) {
-      try { payload.metadata = JSON.parse(entry.metadata); } catch { payload.metadata = entry.metadata; }
+      try {
+        payload.metadata = JSON.parse(entry.metadata);
+      } catch {
+        payload.metadata = entry.metadata;
+      }
     }
     if (entry.durationMs) payload.durationMs = Number(entry.durationMs);
     if (entry.conversationId) payload.conversationId = entry.conversationId;
@@ -45,7 +53,9 @@ export default function LogTestPage() {
     const label = `${level.toUpperCase()} [${namespace.toUpperCase()}] ${message}`;
     setResults((prev) => [{ label, status: 'sending...' }, ...prev]);
     const ok = await sendLog({ level, namespace, message, metadata, durationMs, conversationId });
-    setResults((prev) => prev.map((r) => r.label === label ? { ...r, status: ok ? 'ok' : 'fail' } : r));
+    setResults((prev) =>
+      prev.map((r) => (r.label === label ? { ...r, status: ok ? 'ok' : 'fail' } : r)),
+    );
     setRunning(false);
   }
 
@@ -65,14 +75,19 @@ export default function LogTestPage() {
           message: `Preset test from ${ns} logger at ${lvl} level`,
           metadata: JSON.stringify({ test: true, source: 'preset-battery', timestamp: Date.now() }),
           durationMs: String(Math.floor(Math.random() * 5000)),
-          conversationId: 'test-conv-' + ns,
+          conversationId: `test-conv-${ns}`,
         });
-        setResults((prev) => prev.map((r) => r.label === label ? { ...r, status: ok ? 'ok' : 'fail' } : r));
+        setResults((prev) =>
+          prev.map((r) => (r.label === label ? { ...r, status: ok ? 'ok' : 'fail' } : r)),
+        );
         done++;
       }
     }
 
-    setResults((prev) => [{ label: `✅ Battery complete: ${done}/${total} tests sent`, status: '' }, ...prev]);
+    setResults((prev) => [
+      { label: `✅ Battery complete: ${done}/${total} tests sent`, status: '' },
+      ...prev,
+    ]);
     setRunning(false);
   }
 
@@ -94,47 +109,94 @@ export default function LogTestPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="text-sm font-medium">Level</label>
-            <select value={level} onChange={(e) => setLevel(e.target.value)} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm">
-              {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+            <select
+              value={level}
+              onChange={(e) => setLevel(e.target.value)}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            >
+              {LEVELS.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
             </select>
           </div>
           <div>
             <label className="text-sm font-medium">Namespace</label>
-            <select value={namespace} onChange={(e) => setNamespace(e.target.value)} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm">
-              {NAMESPACES.map((ns) => <option key={ns} value={ns}>{ns}</option>)}
+            <select
+              value={namespace}
+              onChange={(e) => setNamespace(e.target.value)}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            >
+              {NAMESPACES.map((ns) => (
+                <option key={ns} value={ns}>
+                  {ns}
+                </option>
+              ))}
             </select>
           </div>
         </div>
 
         <div>
           <label className="text-sm font-medium">Message</label>
-          <input value={message} onChange={(e) => setMessage(e.target.value)} className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+          <input
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          />
         </div>
 
         <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="text-sm font-medium">metadata (JSON)</label>
-            <input value={metadata} onChange={(e) => setMetadata(e.target.value)} placeholder='{"key": "value"}' className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+            <input
+              value={metadata}
+              onChange={(e) => setMetadata(e.target.value)}
+              placeholder='{"key": "value"}'
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            />
           </div>
           <div>
             <label className="text-sm font-medium">durationMs</label>
-            <input value={durationMs} onChange={(e) => setDurationMs(e.target.value)} placeholder="150" type="number" className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+            <input
+              value={durationMs}
+              onChange={(e) => setDurationMs(e.target.value)}
+              placeholder="150"
+              type="number"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            />
           </div>
           <div>
             <label className="text-sm font-medium">conversationId</label>
-            <input value={conversationId} onChange={(e) => setConversationId(e.target.value)} placeholder="conv_123" className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+            <input
+              value={conversationId}
+              onChange={(e) => setConversationId(e.target.value)}
+              placeholder="conv_123"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            />
           </div>
         </div>
 
-        <button onClick={handleManualSend} disabled={running} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+        <button
+          onClick={handleManualSend}
+          disabled={running}
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        >
           {running ? 'Sending...' : 'Send'}
         </button>
       </div>
 
       <div className="rounded-lg border border-border p-4 space-y-4">
         <h2 className="text-lg font-semibold">Preset Battery</h2>
-        <p className="text-sm text-muted-foreground">Fires all {LEVELS.length} levels × {NAMESPACES.length} namespaces = {LEVELS.length * NAMESPACES.length} log calls with populated optional fields.</p>
-        <button onClick={handlePresetBattery} disabled={running} className="rounded-md bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80 disabled:opacity-50">
+        <p className="text-sm text-muted-foreground">
+          Fires all {LEVELS.length} levels × {NAMESPACES.length} namespaces ={' '}
+          {LEVELS.length * NAMESPACES.length} log calls with populated optional fields.
+        </p>
+        <button
+          onClick={handlePresetBattery}
+          disabled={running}
+          className="rounded-md bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80 disabled:opacity-50"
+        >
           {running ? 'Running...' : `Run All ${LEVELS.length * NAMESPACES.length} Combinations`}
         </button>
       </div>
@@ -145,7 +207,15 @@ export default function LogTestPage() {
           <div className="max-h-80 overflow-y-auto space-y-1">
             {results.map((r, i) => (
               <div key={i} className="flex items-center gap-2 text-sm font-mono">
-                <span className={r.status === 'ok' ? 'text-emerald-500' : r.status === 'fail' ? 'text-red-500' : 'text-muted-foreground'}>
+                <span
+                  className={
+                    r.status === 'ok'
+                      ? 'text-emerald-500'
+                      : r.status === 'fail'
+                        ? 'text-red-500'
+                        : 'text-muted-foreground'
+                  }
+                >
                   {r.status === 'ok' ? '✓' : r.status === 'fail' ? '✗' : '⋯'}
                 </span>
                 <span>{r.label}</span>

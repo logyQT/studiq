@@ -1,9 +1,9 @@
-import { NextRequest } from 'next/server';
-import { withAuth } from '@/lib/with-auth';
-import { createClient } from '@/lib/supabase/server';
+import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
-import { withErrorHandling } from '@/lib/with-error-handling';
 import type { RequestContext } from '@/lib/request-context';
+import { createClient } from '@/lib/supabase/server';
+import { withAuth } from '@/lib/with-auth';
+import { withErrorHandling } from '@/lib/with-error-handling';
 
 async function handler(ctx: RequestContext) {
   return withErrorHandling(async () => {
@@ -18,18 +18,34 @@ async function handler(ctx: RequestContext) {
       return { success: true, statusCode: 200, data: [] as unknown[] };
     }
 
-    type QuizRow = { score: number; total_questions: number; config: Record<string, unknown> | null };
+    type QuizRow = {
+      score: number;
+      total_questions: number;
+      config: Record<string, unknown> | null;
+    };
     const rows = (data || []) as unknown as QuizRow[];
 
-    const quizMap = new Map<string, { totalScore: number; totalAttempts: number; totalCompletion: number }>();
+    const quizMap = new Map<
+      string,
+      { totalScore: number; totalAttempts: number; totalCompletion: number }
+    >();
 
     for (const row of rows) {
-      const title = (row.config && typeof row.config === 'object' ? (row.config as Record<string, unknown>)?.title : undefined) as string | undefined;
+      const title = (
+        row.config && typeof row.config === 'object'
+          ? (row.config as Record<string, unknown>)?.title
+          : undefined
+      ) as string | undefined;
       const quizTitle = title || 'Untitled Quiz';
-      const entry = quizMap.get(quizTitle) || { totalScore: 0, totalAttempts: 0, totalCompletion: 0 };
+      const entry = quizMap.get(quizTitle) || {
+        totalScore: 0,
+        totalAttempts: 0,
+        totalCompletion: 0,
+      };
       entry.totalScore += row.score;
       entry.totalAttempts += 1;
-      entry.totalCompletion += row.total_questions > 0 ? (row.score / row.total_questions) * 100 : 0;
+      entry.totalCompletion +=
+        row.total_questions > 0 ? (row.score / row.total_questions) * 100 : 0;
       quizMap.set(quizTitle, entry);
     }
 

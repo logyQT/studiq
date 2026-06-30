@@ -1,8 +1,8 @@
 'use client';
 
+import { BarChart3, HelpCircle, Layers, LayoutDashboard, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { LayoutDashboard, HelpCircle, Layers, BarChart3, Users } from 'lucide-react';
 
 export default function EduNotFound() {
   const t = useTranslations('EduNotFound');

@@ -1,9 +1,9 @@
-import { NextRequest } from 'next/server';
-import { flashcardDeckController } from '@/server/controllers';
-import { toNextResponse } from '@/lib/http-utils';
-import { withAuth } from '@/lib/with-auth';
-import type { RequestContext } from '@/lib/request-context';
+import type { NextRequest } from 'next/server';
 import type { ControllerResponse } from '@/lib/controller-response';
+import { toNextResponse } from '@/lib/http-utils';
+import type { RequestContext } from '@/lib/request-context';
+import { withAuth } from '@/lib/with-auth';
+import { flashcardDeckController } from '@/server/controllers';
 
 type ActionHandler = (body: unknown, ctx: RequestContext) => Promise<ControllerResponse>;
 
@@ -13,10 +13,7 @@ const actionHandlers: Record<string, ActionHandler> = {
   suspend: (body, ctx) => flashcardDeckController.batchToggleSuspend(body, ctx),
 };
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ action: string }> },
-) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ action: string }> }) {
   return withAuth(req, async (ctx) => {
     const { action } = await params;
     const handler = actionHandlers[action];

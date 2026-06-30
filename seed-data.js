@@ -1,28 +1,214 @@
 // seed-data.js — paste into browser console, type: seed()
 const cfg = { topics: 10000, decks: 10000, perDeck: 1000 };
-const api = (p, o) => fetch(p, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...o }).then(async (r) => { const j = await r.json(); if (!r.ok) throw Error(j.error); return j.data; });
-const SUBJECTS = ['Biology', 'Chemistry', 'Physics', 'Mathematics', 'Computer Science', 'Psychology', 'Economics', 'History', 'Philosophy', 'Sociology', 'Literature', 'Linguistics', 'Geography', 'Political Science', 'Art History', 'Anthropology', 'Neuroscience', 'Statistics', 'Engineering', 'Medicine'];
-const DECK_TEMPLATES = [(n) => `Chapter ${n}: Core Concepts`, (n) => `Topic ${n} — Key Definitions`, (n) => `Unit ${n} Review Questions`, (n) => `${n} Formulas & Equations`, (n) => `Exam Prep: ${n}`, (n) => `${n} — Case Studies`, (n) => `Fundamentals of ${n}`, (n) => `${n} — Important Figures`, (n) => `Week ${n % 15 + 1}: ${n} Lecture Notes`, (n) => `${n} Glossary Terms`];
-const DESCS = [(n) => `Comprehensive review of ${n.toLowerCase()} covering all major topics from the semester.`, () => null, (n) => `Key concepts and principles from ${n.toLowerCase()} organized for quick revision.`, (n) => `Practice questions and answers for the ${n.toLowerCase()} final exam.`, (n) => `Essential ${n.toLowerCase()} terminology with definitions and examples.`, () => null, (n) => `A curated set of flashcards covering the most important ${n.toLowerCase()} topics.`, (n) => `Study aid for ${n.toLowerCase()} — includes diagrams, formulas, and mnemonics.`, () => null, (n) => `Covers chapters 1-${Math.floor(Math.random() * 12) + 3} of ${n.toLowerCase()} curriculum.`];
-const PREFIXES = ['Introduction to', 'Advanced', 'Fundamentals of', 'Principles of', 'Theories of', 'History of', 'Foundations of', 'Basics of', 'Applications of', 'Analysis of'];
-const SUFFIXES = ['Concepts', 'Methods', 'Systems', 'Structures', 'Processes', 'Models', 'Techniques', 'Frameworks', 'Paradigms', 'Mechanisms'];
+const api = (p, o) =>
+  fetch(p, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...o }).then(
+    async (r) => {
+      const j = await r.json();
+      if (!r.ok) throw Error(j.error);
+      return j.data;
+    },
+  );
+const SUBJECTS = [
+  'Biology',
+  'Chemistry',
+  'Physics',
+  'Mathematics',
+  'Computer Science',
+  'Psychology',
+  'Economics',
+  'History',
+  'Philosophy',
+  'Sociology',
+  'Literature',
+  'Linguistics',
+  'Geography',
+  'Political Science',
+  'Art History',
+  'Anthropology',
+  'Neuroscience',
+  'Statistics',
+  'Engineering',
+  'Medicine',
+];
+const DECK_TEMPLATES = [
+  (n) => `Chapter ${n}: Core Concepts`,
+  (n) => `Topic ${n} — Key Definitions`,
+  (n) => `Unit ${n} Review Questions`,
+  (n) => `${n} Formulas & Equations`,
+  (n) => `Exam Prep: ${n}`,
+  (n) => `${n} — Case Studies`,
+  (n) => `Fundamentals of ${n}`,
+  (n) => `${n} — Important Figures`,
+  (n) => `Week ${(n % 15) + 1}: ${n} Lecture Notes`,
+  (n) => `${n} Glossary Terms`,
+];
+const DESCS = [
+  (n) => `Comprehensive review of ${n.toLowerCase()} covering all major topics from the semester.`,
+  () => null,
+  (n) => `Key concepts and principles from ${n.toLowerCase()} organized for quick revision.`,
+  (n) => `Practice questions and answers for the ${n.toLowerCase()} final exam.`,
+  (n) => `Essential ${n.toLowerCase()} terminology with definitions and examples.`,
+  () => null,
+  (n) => `A curated set of flashcards covering the most important ${n.toLowerCase()} topics.`,
+  (n) => `Study aid for ${n.toLowerCase()} — includes diagrams, formulas, and mnemonics.`,
+  () => null,
+  (n) =>
+    `Covers chapters 1-${Math.floor(Math.random() * 12) + 3} of ${n.toLowerCase()} curriculum.`,
+];
+const PREFIXES = [
+  'Introduction to',
+  'Advanced',
+  'Fundamentals of',
+  'Principles of',
+  'Theories of',
+  'History of',
+  'Foundations of',
+  'Basics of',
+  'Applications of',
+  'Analysis of',
+];
+const SUFFIXES = [
+  'Concepts',
+  'Methods',
+  'Systems',
+  'Structures',
+  'Processes',
+  'Models',
+  'Techniques',
+  'Frameworks',
+  'Paradigms',
+  'Mechanisms',
+];
 const rand = (a) => a[Math.floor(Math.random() * a.length)];
 const subj = () => rand(SUBJECTS);
-const topicName = (i) => { const s = subj(); return Math.random() < 0.4 ? `${s} - ${rand(SUFFIXES)}` : Math.random() < 0.5 ? `${rand(PREFIXES)} ${s}` : `${s} — Part ${(i % 5) + 1}`; };
-const deckName = (i) => rand(DECK_TEMPLATES)(subj());
+const topicName = (i) => {
+  const s = subj();
+  return Math.random() < 0.4
+    ? `${s} - ${rand(SUFFIXES)}`
+    : Math.random() < 0.5
+      ? `${rand(PREFIXES)} ${s}`
+      : `${s} — Part ${(i % 5) + 1}`;
+};
+const deckName = (_i) => rand(DECK_TEMPLATES)(subj());
 const deckDesc = () => rand(DESCS)(subj());
 const QA = [
-  (n) => ({ front: `What is the definition of ${subj().toLowerCase()}?`, back: `The study of ${subj().toLowerCase()} principles and ${rand(SUFFIXES).toLowerCase()}.` }),
-  (n) => ({ front: `Explain ${rand(SUFFIXES).toLowerCase()} in ${subj().toLowerCase()}.`, back: `${rand(SUFFIXES)} refers to how ${['systems', 'processes', 'elements'][Math.floor(Math.random() * 3)]} ${['function', 'interact', 'evolve'][Math.floor(Math.random() * 3)]} under ${['various conditions', 'standard parameters'][Math.floor(Math.random() * 2)]}.` }),
-  (n) => ({ front: `Key characteristics of ${subj().toLowerCase()}?`, back: `Includes ${['structure', 'function', 'evolution', 'interaction'][Math.floor(Math.random() * 4)]}, ${['complexity', 'diversity', 'hierarchy'][Math.floor(Math.random() * 3)]}, and ${['integration', 'specialization'][Math.floor(Math.random() * 2)]}.` }),
-  (n) => ({ front: `How does ${subj().toLowerCase()} differ from ${subj().toLowerCase()}?`, back: `They differ in ${['methodology', 'scope', 'approach', 'theoretical framework'][Math.floor(Math.random() * 4)]}.` }),
-  (n) => ({ front: `Significance of ${rand(SUFFIXES).toLowerCase()} in ${subj().toLowerCase()}?`, back: `Provides a ${['theoretical framework', 'practical methodology', 'analytical tool'][Math.floor(Math.random() * 3)]} for understanding complex ${['phenomena', 'systems', 'processes'][Math.floor(Math.random() * 3)]}.` }),
-  (n) => ({ front: `Question ${n}: Define the term.`, back: `Answer ${n}: Refers to the ${['process', 'method', 'system', 'framework'][Math.floor(Math.random() * 4)]} by which ${['elements', 'components', 'variables'][Math.floor(Math.random() * 3)]} ${['interact', 'combine', 'relate'][Math.floor(Math.random() * 3)]}.` }),
-  (n) => ({ front: `Relationship between ${rand(SUFFIXES).toLowerCase()} and ${rand(SUFFIXES).toLowerCase()}?`, back: `These are ${['closely related', 'complementary', 'interdependent'][Math.floor(Math.random() * 3)]} concepts in ${subj().toLowerCase()}.` }),
-  (n) => ({ front: `Main components of ${rand(SUFFIXES).toLowerCase()}?`, back: `Include ${['input', 'process', 'output', 'feedback'][Math.floor(Math.random() * 4)]}, ${['structure', 'function', 'regulation'][Math.floor(Math.random() * 3)]}, and ${['integration', 'coordination', 'control'][Math.floor(Math.random() * 3)]}.` }),
-  (n) => ({ front: `Summarize the history of ${subj().toLowerCase()}.`, back: `Evolved from ${['early observations', 'fundamental principles', 'classical theories'][Math.floor(Math.random() * 3)]} to a ${['comprehensive discipline', 'mature science', 'rigorous field'][Math.floor(Math.random() * 3)]}.` }),
-  (n) => ({ front: `${['Define', 'Explain', 'Describe'][Math.floor(Math.random() * 3)]}: ${rand(SUFFIXES)}`, back: `${rand(SUFFIXES)} is a ${['concept', 'principle', 'method'][Math.floor(Math.random() * 3)]} describing how ${['systems', 'processes'][Math.floor(Math.random() * 2)]} ${['interact', 'behave', 'change'][Math.floor(Math.random() * 3)]}.` }),
+  (_n) => ({
+    front: `What is the definition of ${subj().toLowerCase()}?`,
+    back: `The study of ${subj().toLowerCase()} principles and ${rand(SUFFIXES).toLowerCase()}.`,
+  }),
+  (_n) => ({
+    front: `Explain ${rand(SUFFIXES).toLowerCase()} in ${subj().toLowerCase()}.`,
+    back: `${rand(SUFFIXES)} refers to how ${['systems', 'processes', 'elements'][Math.floor(Math.random() * 3)]} ${['function', 'interact', 'evolve'][Math.floor(Math.random() * 3)]} under ${['various conditions', 'standard parameters'][Math.floor(Math.random() * 2)]}.`,
+  }),
+  (_n) => ({
+    front: `Key characteristics of ${subj().toLowerCase()}?`,
+    back: `Includes ${['structure', 'function', 'evolution', 'interaction'][Math.floor(Math.random() * 4)]}, ${['complexity', 'diversity', 'hierarchy'][Math.floor(Math.random() * 3)]}, and ${['integration', 'specialization'][Math.floor(Math.random() * 2)]}.`,
+  }),
+  (_n) => ({
+    front: `How does ${subj().toLowerCase()} differ from ${subj().toLowerCase()}?`,
+    back: `They differ in ${['methodology', 'scope', 'approach', 'theoretical framework'][Math.floor(Math.random() * 4)]}.`,
+  }),
+  (_n) => ({
+    front: `Significance of ${rand(SUFFIXES).toLowerCase()} in ${subj().toLowerCase()}?`,
+    back: `Provides a ${['theoretical framework', 'practical methodology', 'analytical tool'][Math.floor(Math.random() * 3)]} for understanding complex ${['phenomena', 'systems', 'processes'][Math.floor(Math.random() * 3)]}.`,
+  }),
+  (n) => ({
+    front: `Question ${n}: Define the term.`,
+    back: `Answer ${n}: Refers to the ${['process', 'method', 'system', 'framework'][Math.floor(Math.random() * 4)]} by which ${['elements', 'components', 'variables'][Math.floor(Math.random() * 3)]} ${['interact', 'combine', 'relate'][Math.floor(Math.random() * 3)]}.`,
+  }),
+  (_n) => ({
+    front: `Relationship between ${rand(SUFFIXES).toLowerCase()} and ${rand(SUFFIXES).toLowerCase()}?`,
+    back: `These are ${['closely related', 'complementary', 'interdependent'][Math.floor(Math.random() * 3)]} concepts in ${subj().toLowerCase()}.`,
+  }),
+  (_n) => ({
+    front: `Main components of ${rand(SUFFIXES).toLowerCase()}?`,
+    back: `Include ${['input', 'process', 'output', 'feedback'][Math.floor(Math.random() * 4)]}, ${['structure', 'function', 'regulation'][Math.floor(Math.random() * 3)]}, and ${['integration', 'coordination', 'control'][Math.floor(Math.random() * 3)]}.`,
+  }),
+  (_n) => ({
+    front: `Summarize the history of ${subj().toLowerCase()}.`,
+    back: `Evolved from ${['early observations', 'fundamental principles', 'classical theories'][Math.floor(Math.random() * 3)]} to a ${['comprehensive discipline', 'mature science', 'rigorous field'][Math.floor(Math.random() * 3)]}.`,
+  }),
+  (_n) => ({
+    front: `${['Define', 'Explain', 'Describe'][Math.floor(Math.random() * 3)]}: ${rand(SUFFIXES)}`,
+    back: `${rand(SUFFIXES)} is a ${['concept', 'principle', 'method'][Math.floor(Math.random() * 3)]} describing how ${['systems', 'processes'][Math.floor(Math.random() * 2)]} ${['interact', 'behave', 'change'][Math.floor(Math.random() * 3)]}.`,
+  }),
 ];
-const perfmon = (() => { const p = []; let s; return { begin(l) { s = performance.now(); console.log(`  ▶ ${l}`); }, end(l, c) { const e = (performance.now() - s) / 1000; const r = Math.round(c / e); p.push({ l, c, e: +e.toFixed(1), r }); console.log(`  ✓ ${l}: ${c} in ${e.toFixed(1)}s (${r}/s)`); }, summary() { let t = 0; for (const x of p) { console.log(`  ${x.l.padEnd(20)} ${String(x.c).padStart(8)}  ${String(x.e).padStart(6)}s  ${String(x.r).padStart(8)}/s`); t += x.e; } console.log(`  ${''.padEnd(20)} ${''.padStart(8)}  ${''.padStart(6)}  ${''.padStart(8)}\n  ${'TOTAL'.padEnd(20)} ${String(p.reduce((a, x) => a + x.c, 0)).padStart(8)}  ${t.toFixed(1).padStart(6)}s`); }, }; })();
-async function seed() { console.log('\n======= SEED START ======='); perfmon.begin('Create Topics'); const top = await api('/api/v1/flashcards/topics/batch/create', { method: 'POST', body: JSON.stringify({ topics: Array.from({ length: cfg.topics }, (_, i) => ({ name: topicName(i) })) }) }); const tids = top.map(t => t.id); perfmon.end('Create Topics', tids.length); perfmon.begin('Create Decks'); const dec = await api('/api/v1/flashcards/decks/batch/create', { method: 'POST', body: JSON.stringify({ decks: Array.from({ length: cfg.decks }, (_, i) => { const d = deckDesc(); return d ? { name: deckName(i), description: d } : { name: deckName(i) }; }) }) }); const dids = dec.map(d => d.id); perfmon.end('Create Decks', dids.length); if (!tids.length || !dids.length) { console.error('Aborting'); return; } perfmon.begin('Create Flashcards'); const cr = await Promise.allSettled(dids.map((did, di) => api('/api/v1/flashcards/batch/create', { method: 'POST', body: JSON.stringify({ topicIds: [...tids].sort(() => 0.5 - Math.random()).slice(0, 1 + Math.round(Math.random())), deckIds: [did], cards: Array.from({ length: cfg.perDeck }, (_, ci) => { const q = rand(QA)(ci + 1); return { front: q.front, back: q.back }; }) }) }))); const ok = cr.filter(r => r.status === 'fulfilled').length; perfmon.end('Create Flashcards', ok * cfg.perDeck); console.log('\n======= PERFMON ======='); perfmon.summary(); }
+const perfmon = (() => {
+  const p = [];
+  let s;
+  return {
+    begin(l) {
+      s = performance.now();
+      console.log(`  ▶ ${l}`);
+    },
+    end(l, c) {
+      const e = (performance.now() - s) / 1000;
+      const r = Math.round(c / e);
+      p.push({ l, c, e: +e.toFixed(1), r });
+      console.log(`  ✓ ${l}: ${c} in ${e.toFixed(1)}s (${r}/s)`);
+    },
+    summary() {
+      let t = 0;
+      for (const x of p) {
+        console.log(
+          `  ${x.l.padEnd(20)} ${String(x.c).padStart(8)}  ${String(x.e).padStart(6)}s  ${String(x.r).padStart(8)}/s`,
+        );
+        t += x.e;
+      }
+      console.log(
+        `  ${''.padEnd(20)} ${''.padStart(8)}  ${''.padStart(6)}  ${''.padStart(8)}\n  ${'TOTAL'.padEnd(20)} ${String(p.reduce((a, x) => a + x.c, 0)).padStart(8)}  ${t.toFixed(1).padStart(6)}s`,
+      );
+    },
+  };
+})();
+async function _seed() {
+  console.log('\n======= SEED START =======');
+  perfmon.begin('Create Topics');
+  const top = await api('/api/v1/flashcards/topics/batch/create', {
+    method: 'POST',
+    body: JSON.stringify({
+      topics: Array.from({ length: cfg.topics }, (_, i) => ({ name: topicName(i) })),
+    }),
+  });
+  const tids = top.map((t) => t.id);
+  perfmon.end('Create Topics', tids.length);
+  perfmon.begin('Create Decks');
+  const dec = await api('/api/v1/flashcards/decks/batch/create', {
+    method: 'POST',
+    body: JSON.stringify({
+      decks: Array.from({ length: cfg.decks }, (_, i) => {
+        const d = deckDesc();
+        return d ? { name: deckName(i), description: d } : { name: deckName(i) };
+      }),
+    }),
+  });
+  const dids = dec.map((d) => d.id);
+  perfmon.end('Create Decks', dids.length);
+  if (!tids.length || !dids.length) {
+    console.error('Aborting');
+    return;
+  }
+  perfmon.begin('Create Flashcards');
+  const cr = await Promise.allSettled(
+    dids.map((did, _di) =>
+      api('/api/v1/flashcards/batch/create', {
+        method: 'POST',
+        body: JSON.stringify({
+          topicIds: [...tids]
+            .sort(() => 0.5 - Math.random())
+            .slice(0, 1 + Math.round(Math.random())),
+          deckIds: [did],
+          cards: Array.from({ length: cfg.perDeck }, (_, ci) => {
+            const q = rand(QA)(ci + 1);
+            return { front: q.front, back: q.back };
+          }),
+        }),
+      }),
+    ),
+  );
+  const ok = cr.filter((r) => r.status === 'fulfilled').length;
+  perfmon.end('Create Flashcards', ok * cfg.perDeck);
+  console.log('\n======= PERFMON =======');
+  perfmon.summary();
+}
 // seed().catch(console.error);

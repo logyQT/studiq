@@ -1,6 +1,6 @@
-import { NextRequest } from 'next/server';
-import { featureController } from '@/server/controllers';
+import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
+import { hasPermission } from '@/lib/rbac';
 import { withAuth } from '@/lib/with-auth';
 
 export async function GET(
@@ -9,6 +9,7 @@ export async function GET(
 ) {
   return withAuth(req, async (ctx) => {
     const { featureKey } = await params;
-    return toNextResponse(await featureController.checkFeature(ctx, featureKey));
+    const granted = await hasPermission(ctx, featureKey);
+    return toNextResponse({ success: true, statusCode: 200, data: { hasAccess: granted } });
   });
 }

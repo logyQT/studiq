@@ -1,28 +1,29 @@
-import { flashcardService } from '@/server/services';
+import type { ControllerResponse } from '@/lib/controller-response';
+import { AppError } from '@/lib/errors';
+import { log } from '@/lib/logger';
+import { hasPermission, Permission } from '@/lib/rbac';
+import type { RequestContext } from '@/lib/request-context';
+import { withErrorHandling } from '@/lib/with-error-handling';
 import {
-  CreateFlashcardSchema,
-  BulkCreateFlashcardsSchema,
-  UpdateFlashcardSchema,
-  LinkFlashcardSchema,
-  CopyFlashcardSchema,
+  BatchCopySchema,
   BatchDeleteSchema,
   BatchLinkSchema,
-  BatchTopicsSchema,
   BatchMoveSchema,
-  BatchCopySchema,
-  UnlinkFlashcardSchema,
+  BatchTopicsSchema,
   BatchUnlinkSchema,
+  BulkCreateFlashcardsSchema,
+  CopyFlashcardSchema,
+  CreateFlashcardSchema,
+  LinkFlashcardSchema,
+  UnlinkFlashcardSchema,
+  UpdateFlashcardSchema,
 } from '@/server/models';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
-import type { RequestContext } from '@/lib/request-context';
-import { log } from '@/lib/logger';
-import { requireFeature } from '@/server/guards/feature.guard';
+import { flashcardService } from '@/server/services';
 
 export class FlashcardController {
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      await requireFeature(ctx, 'study.create');
+      if (!(await hasPermission(ctx, Permission.STUDY_CREATE))) throw new AppError('FORBIDDEN');
       const parsed = CreateFlashcardSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -42,7 +43,15 @@ export class FlashcardController {
 
   async list(
     ctx: RequestContext,
-    filters?: { topicIds?: string[]; deckIds?: string[]; q?: string; sortBy?: string; sortOrder?: string; cursor?: string; limit?: number },
+    filters?: {
+      topicIds?: string[];
+      deckIds?: string[];
+      q?: string;
+      sortBy?: string;
+      sortOrder?: string;
+      cursor?: string;
+      limit?: number;
+    },
   ): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
       const result = await flashcardService.list(ctx, filters);
@@ -53,7 +62,7 @@ export class FlashcardController {
 
   async bulkCreate(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      await requireFeature(ctx, 'study.create');
+      if (!(await hasPermission(ctx, Permission.STUDY_CREATE))) throw new AppError('FORBIDDEN');
       const parsed = BulkCreateFlashcardsSchema.safeParse(body);
       const t0 = performance.now();
 
@@ -72,7 +81,12 @@ export class FlashcardController {
 
       const cardCount = parsed.data.cards.length;
       log.trace.info('bulkCreate:validation_ok', {
-        metadata: { traceId: ctx.traceId, cardCount, deckIds: parsed.data.deckIds?.length ?? 0, topicIds: parsed.data.topicIds?.length ?? 0 },
+        metadata: {
+          traceId: ctx.traceId,
+          cardCount,
+          deckIds: parsed.data.deckIds?.length ?? 0,
+          topicIds: parsed.data.topicIds?.length ?? 0,
+        },
         durationMs: performance.now() - t0,
       });
 
@@ -236,7 +250,11 @@ export class FlashcardController {
     }, ctx);
   }
 
-  async unlinkFromDeck(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+  async unlinkFromDeck(
+    id: string,
+    body: unknown,
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
       const parsed = UnlinkFlashcardSchema.safeParse(body);
 

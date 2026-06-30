@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/zod', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/zod')>();
@@ -51,7 +51,10 @@ beforeEach(() => {
 describe('askUserTool', () => {
   it('returns a question object with generated id', async () => {
     const ctx = mockCtx();
-    const result = await askUserTool.execute({ question: 'What topic?', options: [{ label: 'A', value: 'a' }] }, ctx);
+    const result = await askUserTool.execute(
+      { question: 'What topic?', options: [{ label: 'A', value: 'a' }] },
+      ctx,
+    );
     expect(result.type).toBe('question');
     expect(result.question.id).toMatch(/^q_\d+_/);
     expect(result.question.question).toBe('What topic?');
@@ -68,9 +71,13 @@ describe('askUserTool', () => {
 describe('createPlanTool', () => {
   it('stores plan in metadata', async () => {
     const ctx = mockCtx();
-    const plan = { steps: [{ action: 'fetch', rationale: 'need data' }], estimatedComplexity: 'simple', needsClarification: false };
+    const plan = {
+      steps: [{ action: 'fetch', rationale: 'need data' }],
+      estimatedComplexity: 'simple',
+      needsClarification: false,
+    };
     const result = await createPlanTool.execute(plan, ctx);
-    expect(ctx.state.metadata['plan']).toEqual(plan);
+    expect(ctx.state.metadata.plan).toEqual(plan);
     expect(result).toEqual(plan);
   });
 });
@@ -80,7 +87,13 @@ describe('evaluateQualityTool', () => {
     const ctx = mockCtx();
     const result = await evaluateQualityTool.execute({}, ctx);
     expect(result.passed).toBe(true);
-    expect(result.criteria).toEqual(['SPECIFICITY', 'CONCISENESS', 'CLARITY', 'ACCURACY', 'MEMORABILITY']);
+    expect(result.criteria).toEqual([
+      'SPECIFICITY',
+      'CONCISENESS',
+      'CLARITY',
+      'ACCURACY',
+      'MEMORABILITY',
+    ]);
   });
 
   it('returns notes about content length when content provided', async () => {
@@ -101,7 +114,14 @@ describe('extractConceptsTool', () => {
     const ctx = mockCtx();
     ctx.callLLM = vi.fn().mockResolvedValue({
       content: '',
-      toolCalls: [{ function: { name: 'extract_terms', arguments: JSON.stringify({ terms: [{ term: 'T1', definition: 'D1' }] }) } }],
+      toolCalls: [
+        {
+          function: {
+            name: 'extract_terms',
+            arguments: JSON.stringify({ terms: [{ term: 'T1', definition: 'D1' }] }),
+          },
+        },
+      ],
     });
     const result = await extractConceptsTool.execute({ material: 'some content' }, ctx);
     expect(result.terms).toHaveLength(1);
@@ -130,9 +150,11 @@ describe('fetchMaterialTool', () => {
     const ctx = mockCtx();
     ctx.callLLM = vi.fn().mockResolvedValue({ content: 'focused content' });
     await fetchMaterialTool.execute({ topic: 'Math', focusAreas: ['Algebra', 'Geometry'] }, ctx);
-    expect(ctx.callLLM).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: expect.stringContaining('Algebra'),
-    }));
+    expect(ctx.callLLM).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining('Algebra'),
+      }),
+    );
   });
 });
 
@@ -143,7 +165,10 @@ describe('webfetchTool', () => {
 
   it('fetches URL and stores material in state', async () => {
     const ctx = mockCtx();
-    (global.fetch as any).mockResolvedValue({ ok: true, text: () => Promise.resolve('Webpage content about biology.') });
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve('Webpage content about biology.'),
+    });
     const result = await webfetchTool.execute({ url: 'https://example.com/biology' }, ctx);
     expect(ctx.state.material).toBe('Webpage content about biology.');
     expect(result.content).toBe('Webpage content about biology.');
@@ -171,13 +196,15 @@ describe('webfetchTool', () => {
     const ctx = mockCtx();
     (global.fetch as any).mockResolvedValue({ ok: true, text: () => Promise.resolve('content') });
     await webfetchTool.execute({ url: 'https://example.com/article' }, ctx);
-    expect(ctx.state.results['sourceUrl']).toBe('https://example.com/article');
+    expect(ctx.state.results.sourceUrl).toBe('https://example.com/article');
   });
 });
 
 describe('finishTool', () => {
   it('returns flashcards from state results', async () => {
-    const ctx = mockCtx({ results: { flashcards: [{ front: 'Q', back: 'A' }], deckName: 'Test Deck' } });
+    const ctx = mockCtx({
+      results: { flashcards: [{ front: 'Q', back: 'A' }], deckName: 'Test Deck' },
+    });
     const result = await finishTool.execute({ message: 'Done' }, ctx);
     expect(result.type).toBe('flashcards');
     expect(result.flashcards).toHaveLength(1);

@@ -1,5 +1,4 @@
-import type { Nullable } from '@/types';
-import { UserRole } from '@/types';
+import type { Nullable, UserRole } from '@/types';
 
 export interface RequestContext {
   traceId: string;

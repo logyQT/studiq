@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
-import { getLocale, getMessages } from 'next-intl/server';
 import { NextIntlClientProvider } from 'next-intl';
+import { getLocale, getMessages } from 'next-intl/server';
 import { Toaster } from 'sonner';
-import { AuthProvider, ThemeProvider, QueryProvider } from '@/components/providers';
+import { AuthProvider, QueryProvider, ThemeProvider } from '@/components/providers';
 import '@/app/globals.css';
 import { ToastProvider } from '@/components/ui/toast';
 
@@ -74,9 +74,7 @@ export default async function RootLayout({
   return (
     <html lang={locale} className="bg-background" suppressHydrationWarning>
       <head>
-        {supabaseUrl && (
-          <link rel="preconnect" href={supabaseUrl} crossOrigin="anonymous" />
-        )}
+        {supabaseUrl && <link rel="preconnect" href={supabaseUrl} crossOrigin="anonymous" />}
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
         <ThemeProvider

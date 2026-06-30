@@ -1,14 +1,15 @@
-import { questionService } from '@/server/services';
-import { CreateQuestionSchema, UpdateQuestionSchema } from '@/server/models';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
+import { AppError } from '@/lib/errors';
+import { hasPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
-import { requireFeature } from '@/server/guards/feature.guard';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import { CreateQuestionSchema, UpdateQuestionSchema } from '@/server/models';
+import { questionService } from '@/server/services';
 
 export class QuestionController {
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      await requireFeature(ctx, 'test.create');
+      if (!(await hasPermission(ctx, Permission.TEST_CREATE))) throw new AppError('FORBIDDEN');
       const parsed = CreateQuestionSchema.safeParse(body);
 
       if (!parsed.success) {

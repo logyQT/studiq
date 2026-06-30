@@ -1,8 +1,8 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { MarkdownToolbar } from '@/components/flashcards/editor/markdown-toolbar';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { useMarkdownEditor } from '@/hooks/use-markdown-editor';
 
 interface FlashcardEditorProps {

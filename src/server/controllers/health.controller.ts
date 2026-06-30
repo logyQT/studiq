@@ -1,7 +1,7 @@
-import { healthService } from '@/server/services';
-import type { HealthStatusResponse } from '@/server/models';
-import { ControllerResponse } from '@/lib/controller-response';
+import type { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
+import type { HealthStatusResponse } from '@/server/models';
+import { healthService } from '@/server/services';
 
 export class HealthController {
   async getStatus(): Promise<ControllerResponse> {

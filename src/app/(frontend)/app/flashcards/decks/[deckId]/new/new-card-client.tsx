@@ -1,20 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Lock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { FlashcardEditor } from '@/components/flashcards';
 import { Button } from '@/components/ui/button';
 import { MultiSelect } from '@/components/ui/multi-select';
-import { FlashcardEditor } from '@/components/flashcards';
 import { useApiQuery } from '@/hooks/use-api';
-import { apiPost } from '@/lib/api';
-import { flashcardKeys } from '@/lib/query-keys';
-import { formatMarkdown } from '@/lib/markdown-utils';
-import { toast } from 'sonner';
-import type { Topic } from '@/types/flashcards';
 import { useFeature } from '@/hooks/use-feature';
-import { Lock } from 'lucide-react';
+import { apiPost } from '@/lib/api';
+import { formatMarkdown } from '@/lib/markdown-utils';
+import { flashcardKeys } from '@/lib/query-keys';
+import type { Topic } from '@/types/flashcards';
 
 interface NewCardClientProps {
   deckId: string;
@@ -29,7 +29,11 @@ export default function NewCardClient({ deckId }: NewCardClientProps) {
   const [back, setBack] = useState('');
   const [topicIds, setTopicIds] = useState<string[]>([]);
 
-  const { data: topicsData } = useApiQuery<{ items: Topic[]; nextCursor: string | null; hasMore: boolean }>({
+  const { data: topicsData } = useApiQuery<{
+    items: Topic[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  }>({
     queryKey: flashcardKeys.topics.all,
     url: '/api/v1/flashcards/topics?limit=200',
   });
@@ -89,11 +93,22 @@ export default function NewCardClient({ deckId }: NewCardClientProps) {
           <Button variant="outline" onClick={() => router.back()} disabled={isSaving}>
             {t('cancel')}
           </Button>
-          <Button disabled={!hasAccess || isSaving} onClick={hasAccess ? handleSave : () => router.push('/checkout?plan_id=student_premium')}>
+          <Button
+            disabled={!hasAccess || isSaving}
+            onClick={
+              hasAccess ? handleSave : () => router.push('/checkout?plan_id=student_premium')
+            }
+          >
             {hasAccess ? (
-              isSaving ? t('saving') : t('create')
+              isSaving ? (
+                t('saving')
+              ) : (
+                t('create')
+              )
             ) : (
-              <><Lock className="size-3" /> Upgrade</>
+              <>
+                <Lock className="size-3" /> Upgrade
+              </>
             )}
           </Button>
         </div>

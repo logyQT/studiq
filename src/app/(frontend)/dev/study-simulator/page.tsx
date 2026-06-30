@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { AlertCircle, CheckCircle2, Loader2, Play } from 'lucide-react';
+import { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2, Play, CheckCircle2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const STUDENTS = [
@@ -40,33 +40,36 @@ export default function StudySimulatorPage() {
     { done: 0, practices: 0 },
   );
 
-  const simulate = useCallback(async (email: string) => {
-    setResults((prev) => ({ ...prev, [email]: { status: 'loading' } }));
-    try {
-      const res = await fetch('/api/v1/dev/study-simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, limit: count }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
+  const simulate = useCallback(
+    async (email: string) => {
+      setResults((prev) => ({ ...prev, [email]: { status: 'loading' } }));
+      try {
+        const res = await fetch('/api/v1/dev/study-simulate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, limit: count }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setResults((prev) => ({
+            ...prev,
+            [email]: { status: 'error', error: data.error },
+          }));
+        } else {
+          setResults((prev) => ({
+            ...prev,
+            [email]: { status: 'done', updated: data.updated, cards: data.cards },
+          }));
+        }
+      } catch (err) {
         setResults((prev) => ({
           ...prev,
-          [email]: { status: 'error', error: data.error },
-        }));
-      } else {
-        setResults((prev) => ({
-          ...prev,
-          [email]: { status: 'done', updated: data.updated, cards: data.cards },
+          [email]: { status: 'error', error: String(err) },
         }));
       }
-    } catch (err) {
-      setResults((prev) => ({
-        ...prev,
-        [email]: { status: 'error', error: String(err) },
-      }));
-    }
-  }, [count]);
+    },
+    [count],
+  );
 
   const simulateAll = useCallback(async () => {
     setStartedAt(Date.now());
@@ -90,7 +93,9 @@ export default function StudySimulatorPage() {
   };
 
   if (process.env.NODE_ENV !== 'development') {
-    return <div className="p-8 text-center text-muted-foreground">Only available in development</div>;
+    return (
+      <div className="p-8 text-center text-muted-foreground">Only available in development</div>
+    );
   }
 
   return (
@@ -101,7 +106,9 @@ export default function StudySimulatorPage() {
             <h1 className="text-2xl font-bold tracking-tight">Study Simulator</h1>
             <p className="text-sm text-muted-foreground">
               Simulate students studying flashcards. Open{' '}
-              <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">/edu/flashcards/stats</code>{' '}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">
+                /edu/flashcards/stats
+              </code>{' '}
               in another tab to watch realtime updates.
             </p>
           </div>
@@ -132,25 +139,28 @@ export default function StudySimulatorPage() {
             const r = results[student.email];
             const isLoading = r.status === 'loading';
             return (
-              <Card key={student.email} className={cn(
-                'transition-shadow',
-                r.status === 'done' && 'border-green-200 dark:border-green-800',
-                r.status === 'error' && 'border-destructive/50',
-              )}>
+              <Card
+                key={student.email}
+                className={cn(
+                  'transition-shadow',
+                  r.status === 'done' && 'border-green-200 dark:border-green-800',
+                  r.status === 'error' && 'border-destructive/50',
+                )}
+              >
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-xs font-mono truncate">{student.short}</CardTitle>
                     {statusIcon(r)}
                   </div>
-                  <CardDescription className="text-[10px] truncate">{student.email}</CardDescription>
+                  <CardDescription className="text-[10px] truncate">
+                    {student.email}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {r.status === 'done' ? (
                     <div className="space-y-1">
                       <p className="text-lg font-bold tabular-nums">{r.updated}</p>
-                      <p className="text-xs text-muted-foreground">
-                        practices on {r.cards} cards
-                      </p>
+                      <p className="text-xs text-muted-foreground">practices on {r.cards} cards</p>
                     </div>
                   ) : r.status === 'error' ? (
                     <p className="text-xs text-destructive">{r.error}</p>
@@ -167,9 +177,13 @@ export default function StudySimulatorPage() {
                     onClick={() => simulate(student.email)}
                   >
                     {isLoading ? (
-                      <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Studying...</>
+                      <>
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Studying...
+                      </>
                     ) : (
-                      <><Play className="mr-1 h-3 w-3" /> Study {count}</>
+                      <>
+                        <Play className="mr-1 h-3 w-3" /> Study {count}
+                      </>
                     )}
                   </Button>
                 </CardContent>

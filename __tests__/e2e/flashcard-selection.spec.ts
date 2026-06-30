@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { t } from './utils';
 
 const PASSWORD = 'pass';
@@ -17,12 +17,18 @@ test.describe('Flashcard Selection Mode', () => {
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') }).first().click();
+    await page
+      .getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') })
+      .first()
+      .click();
     await page.waitForURL(/\/edu\/flashcards\/decks\//);
 
     const flashcardCard = page.locator('.group').first();
     await flashcardCard.hover();
-    const menuButton = flashcardCard.locator('button').filter({ has: page.locator('svg.lucide-more-vertical') }).first();
+    const menuButton = flashcardCard
+      .locator('button')
+      .filter({ has: page.locator('svg.lucide-more-vertical') })
+      .first();
     await menuButton.click();
 
     await page.getByRole('menuitem', { name: t('EduDeckViewPage.select_cards') }).click();
@@ -36,12 +42,18 @@ test.describe('Flashcard Selection Mode', () => {
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') }).first().click();
+    await page
+      .getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') })
+      .first()
+      .click();
     await page.waitForURL(/\/edu\/flashcards\/decks\//);
 
     const flashcardCard = page.locator('.group').first();
     await flashcardCard.hover();
-    const menuButton = flashcardCard.locator('button').filter({ has: page.locator('svg.lucide-more-vertical') }).first();
+    const menuButton = flashcardCard
+      .locator('button')
+      .filter({ has: page.locator('svg.lucide-more-vertical') })
+      .first();
     await menuButton.click();
     await page.getByRole('menuitem', { name: t('EduDeckViewPage.select_cards') }).click();
 
@@ -55,12 +67,18 @@ test.describe('Flashcard Selection Mode', () => {
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') }).first().click();
+    await page
+      .getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') })
+      .first()
+      .click();
     await page.waitForURL(/\/edu\/flashcards\/decks\//);
 
     const flashcardCard = page.locator('.group').first();
     await flashcardCard.hover();
-    const menuButton = flashcardCard.locator('button').filter({ has: page.locator('svg.lucide-more-vertical') }).first();
+    const menuButton = flashcardCard
+      .locator('button')
+      .filter({ has: page.locator('svg.lucide-more-vertical') })
+      .first();
     await menuButton.click();
     await page.getByRole('menuitem', { name: t('EduDeckViewPage.select_cards') }).click();
 
@@ -82,12 +100,18 @@ test.describe('Flashcard Selection Mode', () => {
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') }).first().click();
+    await page
+      .getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') })
+      .first()
+      .click();
     await page.waitForURL(/\/edu\/flashcards\/decks\//);
 
     const flashcardCard = page.locator('.group').first();
     await flashcardCard.hover();
-    const menuButton = flashcardCard.locator('button').filter({ has: page.locator('svg.lucide-more-vertical') }).first();
+    const menuButton = flashcardCard
+      .locator('button')
+      .filter({ has: page.locator('svg.lucide-more-vertical') })
+      .first();
     await menuButton.click();
     await page.getByRole('menuitem', { name: t('EduDeckViewPage.select_cards') }).click();
 
@@ -100,12 +124,18 @@ test.describe('Flashcard Selection Mode', () => {
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') }).first().click();
+    await page
+      .getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') })
+      .first()
+      .click();
     await page.waitForURL(/\/edu\/flashcards\/decks\//);
 
     const flashcardCard = page.locator('.group').first();
     await flashcardCard.hover();
-    const menuButton = flashcardCard.locator('button').filter({ has: page.locator('svg.lucide-more-vertical') }).first();
+    const menuButton = flashcardCard
+      .locator('button')
+      .filter({ has: page.locator('svg.lucide-more-vertical') })
+      .first();
     await menuButton.click();
     await page.getByRole('menuitem', { name: t('EduDeckViewPage.select_cards') }).click();
 
@@ -127,23 +157,35 @@ test.describe('Flashcard Selection Mode', () => {
     await expect(page.getByText('Bulk Delete Deck').first()).toBeVisible();
 
     await page.getByText('Bulk Delete Deck').hover();
-    await page.getByRole('button', { name: t('AppFlashcardDecksPage.manage_deck') }).first().click();
+    await page
+      .getByRole('button', { name: t('AppFlashcardDecksPage.manage_deck') })
+      .first()
+      .click();
     await page.waitForURL(/\/app\/flashcards\/decks\//);
     await page.waitForLoadState('networkidle');
 
     const flashcardCard = page.locator('.group').first();
     await flashcardCard.hover();
-    const menuButton = flashcardCard.locator('button').filter({ has: page.locator('svg.lucide-more-vertical') }).first();
+    const menuButton = flashcardCard
+      .locator('button')
+      .filter({ has: page.locator('svg.lucide-more-vertical') })
+      .first();
     await menuButton.click();
     await page.getByRole('menuitem', { name: t('AppFlashcardDeckViewPage.select_cards') }).click();
 
     await page.getByRole('checkbox').first().click();
 
-    const deleteButton = page.locator('button').filter({ has: page.locator('svg.lucide-trash-2') }).first();
+    const deleteButton = page
+      .locator('button')
+      .filter({ has: page.locator('svg.lucide-trash-2') })
+      .first();
     await deleteButton.click();
 
     await expect(page.getByRole('dialog')).toBeVisible();
-    await page.getByRole('button', { name: t('Common.common_delete') }).last().click();
+    await page
+      .getByRole('button', { name: t('Common.common_delete') })
+      .last()
+      .click();
     await expect(page.getByText(t('AppFlashcardDeckViewPage.no_flashcards'))).toBeVisible();
   });
 
@@ -154,7 +196,10 @@ test.describe('Flashcard Selection Mode', () => {
 
     await page.setViewportSize({ width: 375, height: 812 });
 
-    const fabButton = page.locator('button').filter({ has: page.locator('svg.lucide-plus') }).first();
+    const fabButton = page
+      .locator('button')
+      .filter({ has: page.locator('svg.lucide-plus') })
+      .first();
     await fabButton.click();
 
     await page.getByText(t('EduFlashcardTopicsPage.select_topics')).click();
@@ -172,7 +217,10 @@ test.describe('Flashcard Selection Mode', () => {
 
     await page.setViewportSize({ width: 375, height: 812 });
 
-    const menuButton = page.locator('button').filter({ has: page.locator('svg.lucide-more-vertical') }).first();
+    const menuButton = page
+      .locator('button')
+      .filter({ has: page.locator('svg.lucide-more-vertical') })
+      .first();
     await menuButton.click();
     await page.getByRole('menuitem', { name: t('EduFlashcardDecksPage.select_cards') }).click();
 

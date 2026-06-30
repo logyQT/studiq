@@ -1,6 +1,8 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import type { useTranslations } from 'next-intl';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -9,9 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { DIALOG_GRADIENT_HEX } from '@/lib/color-utils';
 import type { Topic } from '@/types/flashcards';
 
@@ -82,9 +82,7 @@ export function TopicFormDialog({
           <Button variant="outline" onClick={onCancel}>
             {t('common_cancel')}
           </Button>
-          <Button onClick={onSubmit}>
-            {editing ? t('common_update') : t('common_create')}
-          </Button>
+          <Button onClick={onSubmit}>{editing ? t('common_update') : t('common_create')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Check, ChevronRight, Rocket, X } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { useOrgs } from '@/hooks/use-orgs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Check, ChevronRight, X, Rocket } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useOrgs } from '@/hooks/use-orgs';
 
 const DISMISS_KEY = 'onboarding_dismissed';
 
@@ -24,14 +24,18 @@ export function OnboardingChecklist() {
   const { orgs } = useOrgs();
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window === 'undefined') return false;
-    try { return localStorage.getItem(DISMISS_KEY) === 'true'; }
-    catch { return false; }
+    try {
+      return localStorage.getItem(DISMISS_KEY) === 'true';
+    } catch {
+      return false;
+    }
   });
   const [memberCount, setMemberCount] = useState(0);
 
   useEffect(() => {
     if (orgs.length === 0) return;
-    if (user?.app_metadata?.role !== 'teacher' && user?.app_metadata?.role !== 'university_admin') return;
+    if (user?.app_metadata?.role !== 'teacher' && user?.app_metadata?.role !== 'university_admin')
+      return;
     fetch('/api/v1/organization/members')
       .then((r) => r.json())
       .then((d) => setMemberCount(d.data?.length || 0))
@@ -41,8 +45,18 @@ export function OnboardingChecklist() {
   if (dismissed || orgs.length === 0) return null;
 
   const items: ChecklistItem[] = [
-    { key: 'create_org', labelKey: 'create_classroom', href: '/edu/classroom/new', done: orgs.length > 0 },
-    { key: 'invite', labelKey: 'invite_students', href: '/edu/classroom/invite', done: memberCount > 1 },
+    {
+      key: 'create_org',
+      labelKey: 'create_classroom',
+      href: '/edu/classroom/new',
+      done: orgs.length > 0,
+    },
+    {
+      key: 'invite',
+      labelKey: 'invite_students',
+      href: '/edu/classroom/invite',
+      done: memberCount > 1,
+    },
     { key: 'content', labelKey: 'create_content', href: '/edu/flashcards/decks', done: false },
   ];
 
@@ -65,9 +79,7 @@ export function OnboardingChecklist() {
             <X className="size-4" />
           </Button>
         </div>
-        <CardDescription>
-          {allDone ? t('all_done_desc') : t('description')}
-        </CardDescription>
+        <CardDescription>{allDone ? t('all_done_desc') : t('description')}</CardDescription>
       </CardHeader>
       <CardContent>
         <ul className="space-y-2">

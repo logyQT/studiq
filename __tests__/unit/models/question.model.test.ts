@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { CreateQuestionSchema, UpdateQuestionSchema } from '@/server/models/question.model';
+import { describe, expect, it } from 'vitest';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import { CreateQuestionSchema, UpdateQuestionSchema } from '@/server/models/question.model';
 
 describe('CreateQuestionSchema', () => {
   it('passes with valid input', () => {

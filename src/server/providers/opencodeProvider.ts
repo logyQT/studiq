@@ -1,15 +1,15 @@
 import { log } from '@/lib/logger';
+import type { ToolCall, ToolDefinition } from '@/server/ai/ai.types';
+import type { ModelsConfig } from '@/server/config/models.config';
 import {
-  LLMProvider,
-  GeneratedFlashcard,
   FLASHCARD_PROMPT,
+  type GenerateChatResult,
+  type GeneratedFlashcard,
+  type LLMProvider,
+  type ProviderUsage,
   parseJsonResponse,
   type StreamCallbacks,
-  type GenerateChatResult,
-  type ProviderUsage,
 } from './LLMProvider';
-import type { ModelsConfig } from '@/server/config/models.config';
-import type { ToolDefinition, ToolCall } from '@/server/ai/ai.types';
 
 export class OpenCodeProvider implements LLMProvider {
   private apiKey: string;
@@ -229,7 +229,7 @@ export class OpenCodeProvider implements LLMProvider {
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith('data: ')) continue;
+          if (!trimmed?.startsWith('data: ')) continue;
           const payload = trimmed.slice(6);
           if (payload === '[DONE]') break;
           try {

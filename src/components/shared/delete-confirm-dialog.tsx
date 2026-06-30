@@ -42,7 +42,10 @@ export function DeleteConfirmDialog({
           </Button>
           <Button
             variant="destructive"
-            onClick={() => { onConfirm(); onOpenChange(false); }}
+            onClick={() => {
+              onConfirm();
+              onOpenChange(false);
+            }}
           >
             {confirmText}
           </Button>

@@ -1,39 +1,33 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { EntityNotFound } from '@/components/shared/entity-not-found';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Plus,
-  Pencil,
-  Trash2,
-  Play,
-  Sparkles,
-  Layers,
-  MoreVertical,
-  FileUp,
-  FileDown,
-  EyeOff,
   Eye,
+  EyeOff,
+  FileDown,
+  FileUp,
+  Layers,
   Lock,
+  MoreVertical,
+  Pencil,
+  Play,
+  Plus,
+  Sparkles,
+  Trash2,
 } from 'lucide-react';
-import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+import { useRouter } from 'next/navigation';
+import type { useTranslations } from 'next-intl';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { flashcardKeys } from '@/lib/query-keys';
-import { DeckDetailSkeleton } from '@/components/flashcards/shared/deck-detail-skeleton';
 import { FlashcardCard } from '@/components/flashcards/cards/flashcard-card';
+import { DeckDetailSkeleton } from '@/components/flashcards/shared/deck-detail-skeleton';
 import { FlashcardBulkActions } from '@/components/flashcards/shared/flashcard-bulk-actions';
 import { FlashcardToolbar } from '@/components/flashcards/shared/flashcard-toolbar';
+import { EntityNotFound } from '@/components/shared/entity-not-found';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,6 +35,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { flashcardKeys } from '@/lib/query-keys';
+
 const DeckDetailDialogs = lazy(() =>
   import('@/components/flashcards/dialogs/deck-detail-dialogs').then((mod) => ({
     default: mod.DeckDetailDialogs,
@@ -49,18 +50,19 @@ const DeckDetailDialogs = lazy(() =>
 type DialogsState = import('@/components/flashcards/dialogs/deck-detail-dialogs').DialogsState;
 type DialogsHandlers =
   import('@/components/flashcards/dialogs/deck-detail-dialogs').DialogsHandlers;
+
 import { ImportDialog } from '@/components/flashcards/shared/import-dialog';
-import { SpeedDial } from '@/components/shared/speed-dial';
-import { ScrollBackToBar } from '@/components/shared/scroll-back-to-bar';
-import type { Deck, Flashcard, Topic } from '@/types/flashcards';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { can } from '@/lib/frontend-rbac';
-import { UserRole } from '@/types';
-import { useOrgs } from '@/hooks/use-orgs';
-import { getGradientHex } from '@/lib/color-utils';
+import { ScrollBackToBar } from '@/components/shared/scroll-back-to-bar';
+import { SpeedDial } from '@/components/shared/speed-dial';
 import { useDebounce } from '@/hooks/use-debounce';
-import { useSelection } from '@/hooks/use-selection';
 import { useFeature } from '@/hooks/use-feature';
+import { useOrgs } from '@/hooks/use-orgs';
+import { useSelection } from '@/hooks/use-selection';
+import { getGradientHex } from '@/lib/color-utils';
+import { can } from '@/lib/frontend-rbac';
+import type { UserRole } from '@/types';
+import type { Deck, Flashcard, Topic } from '@/types/flashcards';
 
 interface DeckDetailScreenProps {
   deckId: string;
@@ -166,7 +168,11 @@ export function DeckDetailScreen({
     enabled: !!deckId,
   });
 
-  const { data: allDecksData } = useApiQuery<{ items: Deck[]; nextCursor: string | null; hasMore: boolean }>({
+  const { data: allDecksData } = useApiQuery<{
+    items: Deck[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  }>({
     queryKey: flashcardKeys.decks.all,
     url: '/api/v1/flashcards/decks?limit=200',
   });
@@ -305,62 +311,44 @@ export function DeckDetailScreen({
     bulkTopicIds: [],
   });
 
-  const handleCardDelete = useCallback(
-    (id: string) => {
-      setD((prev) => ({ ...prev, deleteId: id }));
-    },
-    [setD],
-  );
+  const handleCardDelete = useCallback((id: string) => {
+    setD((prev) => ({ ...prev, deleteId: id }));
+  }, []);
 
-  const handleCardLink = useCallback(
-    (fc: Flashcard) => {
-      setD((prev) => ({
-        ...prev,
-        activeFlashcardId: fc.id,
-        linkDeckIds: [],
-        linkOpen: true,
-      }));
-    },
-    [setD],
-  );
+  const handleCardLink = useCallback((fc: Flashcard) => {
+    setD((prev) => ({
+      ...prev,
+      activeFlashcardId: fc.id,
+      linkDeckIds: [],
+      linkOpen: true,
+    }));
+  }, []);
 
-  const handleCardCopy = useCallback(
-    (fc: Flashcard) => {
-      setD((prev) => ({
-        ...prev,
-        activeFlashcardId: fc.id,
-        copyTargetDeckId: null,
-        copyOpen: true,
-      }));
-    },
-    [setD],
-  );
+  const handleCardCopy = useCallback((fc: Flashcard) => {
+    setD((prev) => ({
+      ...prev,
+      activeFlashcardId: fc.id,
+      copyTargetDeckId: null,
+      copyOpen: true,
+    }));
+  }, []);
 
-  const handleCardAddTopic = useCallback(
-    (fc: Flashcard) => {
-      setD((prev) => ({
-        ...prev,
-        activeFlashcardId: fc.id,
-        topicActionIds: [],
-        addTopicOpen: true,
-      }));
-    },
-    [setD],
-  );
+  const handleCardAddTopic = useCallback((fc: Flashcard) => {
+    setD((prev) => ({
+      ...prev,
+      activeFlashcardId: fc.id,
+      topicActionIds: [],
+      addTopicOpen: true,
+    }));
+  }, []);
 
-  const handleCardManageTopics = useCallback(
-    (fc: Flashcard) => {
-      setD((prev) => ({ ...prev, activeFlashcardId: fc.id, manageTopicOpen: true }));
-    },
-    [setD],
-  );
+  const handleCardManageTopics = useCallback((fc: Flashcard) => {
+    setD((prev) => ({ ...prev, activeFlashcardId: fc.id, manageTopicOpen: true }));
+  }, []);
 
-  const handleCardViewByTopic = useCallback(
-    (_fc: Flashcard, topicId: string) => {
-      setD((prev) => ({ ...prev, viewTopicId: topicId }));
-    },
-    [setD],
-  );
+  const handleCardViewByTopic = useCallback((_fc: Flashcard, topicId: string) => {
+    setD((prev) => ({ ...prev, viewTopicId: topicId }));
+  }, []);
 
   const openEdit = useCallback(
     (fc: Flashcard) => {
@@ -623,7 +611,6 @@ export function DeckDetailScreen({
 
   return (
     <div className="space-y-6">
-
       <div className="relative rounded-xl border bg-card p-6">
         <div className="absolute right-4 top-4 z-10">
           <DropdownMenu>
@@ -654,7 +641,9 @@ export function DeckDetailScreen({
                 </>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => toggleSuspendMutation.mutate(!currentDeck?.suspended)}>
+              <DropdownMenuItem
+                onClick={() => toggleSuspendMutation.mutate(!currentDeck?.suspended)}
+              >
                 {currentDeck?.suspended ? (
                   <Eye className="h-4 w-4 mr-2" />
                 ) : (
@@ -794,13 +783,21 @@ export function DeckDetailScreen({
                 variant="outline"
                 size="sm"
                 disabled={!canCreateFlashcard.hasAccess}
-                onClick={canCreateFlashcard.hasAccess ? () => router.push(`${basePath}/decks/${deckId}/new`) : () => router.push('/checkout?plan_id=student_premium')}
+                onClick={
+                  canCreateFlashcard.hasAccess
+                    ? () => router.push(`${basePath}/decks/${deckId}/new`)
+                    : () => router.push('/checkout?plan_id=student_premium')
+                }
                 aria-keyshortcuts="n"
               >
                 {canCreateFlashcard.hasAccess ? (
-                  <><Plus className="mr-1.5 h-4 w-4" /> {t('create_first')}</>
+                  <>
+                    <Plus className="mr-1.5 h-4 w-4" /> {t('create_first')}
+                  </>
                 ) : (
-                  <><Lock className="size-3" /> Upgrade</>
+                  <>
+                    <Lock className="size-3" /> Upgrade
+                  </>
                 )}
               </Button>
             </EmptyDescription>
@@ -813,7 +810,9 @@ export function DeckDetailScreen({
               key={fc.id}
               fc={fc}
               canUpdate={can(role, 'flashcard.update', fc.created_by, user?.id, activeOrg?.id)}
-              canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) ?? false}
+              canDelete={
+                can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) ?? false
+              }
               topics={topics}
               t={t}
               selected={selection.selectedIds.has(fc.id)}
@@ -829,39 +828,40 @@ export function DeckDetailScreen({
               onViewByTopic={handleCardViewByTopic}
             />
           ))}
-          {hasNextPage && Array.from({ length: 6 }).map((_, i) => (
-            <Card key={`skel-${i}`} className="group relative sm:min-h-28 max-sm:py-0">
-              <div className="sm:hidden px-3 py-2.5">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <Skeleton className="h-4 w-3/4 inline-block align-middle" />
+          {hasNextPage &&
+            Array.from({ length: 6 }).map((_, i) => (
+              <Card key={`skel-${i}`} className="group relative sm:min-h-28 max-sm:py-0">
+                <div className="sm:hidden px-3 py-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <Skeleton className="h-4 w-3/4 inline-block align-middle" />
+                    </div>
+                    <Skeleton className="h-7 w-7 rounded-md shrink-0" />
                   </div>
-                  <Skeleton className="h-7 w-7 rounded-md shrink-0" />
-                </div>
-                <div className="my-1.5 border-t border-border/50" />
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-2/3 mt-1" />
-              </div>
-              <div className="hidden sm:flex sm:flex-col sm:flex-1 sm:px-4 sm:py-3.5">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0 pr-6">
-                    <Skeleton className="h-5 w-3/4" />
-                  </div>
-                  <Skeleton className="h-7 w-7 rounded-md shrink-0" />
-                </div>
-                <div className="my-2 border-t border-border/50" />
-                <div className="flex-1 space-y-1.5 min-w-0">
+                  <div className="my-1.5 border-t border-border/50" />
                   <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-5/6" />
-                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-4 w-2/3 mt-1" />
                 </div>
-                <div className="flex flex-wrap gap-1.5 mt-2.5">
-                  <Skeleton className="h-5 w-16 rounded-full" />
-                  <Skeleton className="h-5 w-20 rounded-full" />
+                <div className="hidden sm:flex sm:flex-col sm:flex-1 sm:px-4 sm:py-3.5">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0 pr-6">
+                      <Skeleton className="h-5 w-3/4" />
+                    </div>
+                    <Skeleton className="h-7 w-7 rounded-md shrink-0" />
+                  </div>
+                  <div className="my-2 border-t border-border/50" />
+                  <div className="flex-1 space-y-1.5 min-w-0">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-5/6" />
+                    <Skeleton className="h-4 w-2/3" />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-2.5">
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                  </div>
                 </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            ))}
           <div ref={loadMoreRef} className="min-h-[1px]" />
         </div>
       )}
@@ -870,14 +870,20 @@ export function DeckDetailScreen({
         const selectedFlashcards = flashcards.filter((fc) => selection.selectedIds.has(fc.id));
         const canBulkTopics =
           selectedFlashcards.length > 0 &&
-          selectedFlashcards.every((fc) => can(role, 'flashcard.update', fc.created_by, user?.id, activeOrg?.id));
+          selectedFlashcards.every((fc) =>
+            can(role, 'flashcard.update', fc.created_by, user?.id, activeOrg?.id),
+          );
         const canBulkMove =
           (can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) ?? false) &&
-          selectedFlashcards.every((fc) => can(role, 'flashcard.update', fc.created_by, user?.id, activeOrg?.id));
+          selectedFlashcards.every((fc) =>
+            can(role, 'flashcard.update', fc.created_by, user?.id, activeOrg?.id),
+          );
         return (
           <FlashcardBulkActions
             selectedCount={selection.selectedIds.size}
-            canDelete={can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) ?? false}
+            canDelete={
+              can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) ?? false
+            }
             canTopics={canBulkTopics}
             canMove={canBulkMove}
             canExport={selection.selectedIds.size > 0}
@@ -955,14 +961,20 @@ export function DeckDetailScreen({
                     {
                       icon: Plus,
                       label: canCreateFlashcard.hasAccess ? t('new_flashcard') : 'Upgrade',
-                      onClick: canCreateFlashcard.hasAccess ? () => router.push(`${basePath}/decks/${deckId}/new`) : () => router.push('/checkout?plan_id=student_premium'),
+                      onClick: canCreateFlashcard.hasAccess
+                        ? () => router.push(`${basePath}/decks/${deckId}/new`)
+                        : () => router.push('/checkout?plan_id=student_premium'),
                     },
                   ]
                 : []),
               {
                 icon: Sparkles,
-                label: canCreateFlashcard.hasAccess && canAIChat.hasAccess ? t('generate') : 'Upgrade',
-                onClick: canCreateFlashcard.hasAccess && canAIChat.hasAccess ? () => router.push(`/app/ai?deckId=${deckId}`) : () => router.push('/checkout?plan_id=student_premium'),
+                label:
+                  canCreateFlashcard.hasAccess && canAIChat.hasAccess ? t('generate') : 'Upgrade',
+                onClick:
+                  canCreateFlashcard.hasAccess && canAIChat.hasAccess
+                    ? () => router.push(`/app/ai?deckId=${deckId}`)
+                    : () => router.push('/checkout?plan_id=student_premium'),
               },
             ]}
           />

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/zod', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/zod')>();
@@ -6,8 +6,8 @@ vi.mock('@/lib/zod', async (importOriginal) => {
 });
 
 import { AgentRegistry } from '@/server/agents/agent-registry';
-import { GeneralAgent } from '@/server/agents/general.agent';
 import { FlashcardAgent } from '@/server/agents/flashcard.agent';
+import { GeneralAgent } from '@/server/agents/general.agent';
 
 describe('AgentRegistry', () => {
   let registry: AgentRegistry;

@@ -1,8 +1,8 @@
-import { createClient } from '@/lib/supabase/server';
-import { questionService } from '@/server/services';
-import { mapSupabaseError } from '@/lib/supabase-errors';
-import type { RequestContext } from '@/lib/request-context';
 import { log } from '@/lib/logger';
+import type { RequestContext } from '@/lib/request-context';
+import { createClient } from '@/lib/supabase/server';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import { questionService } from '@/server/services';
 
 export class StatsService {
   async getTeacherStats(ctx: RequestContext, subjectId?: string) {
@@ -173,7 +173,11 @@ export class StatsService {
         metadata: {
           traceId: ctx.traceId,
           count: practice.length,
-          first3: practice.slice(0, 3).map((p) => ({ fid: p.flashcard_id?.slice(0, 8), correct: p.was_correct, type: typeof p.was_correct })),
+          first3: practice.slice(0, 3).map((p) => ({
+            fid: p.flashcard_id?.slice(0, 8),
+            correct: p.was_correct,
+            type: typeof p.was_correct,
+          })),
         },
       });
     }
@@ -193,9 +197,10 @@ export class StatsService {
     for (const a of deckAssignments ?? []) {
       const decks = cardToDecks.get(a.flashcard_id) ?? [];
       const deckRaw = a.flashcard_decks as unknown;
-      const deckName = deckRaw && typeof deckRaw === 'object' && 'name' in (deckRaw as object)
-        ? (deckRaw as { name: string }).name
-        : (deckRaw as Array<{ name: string }> | null)?.[0]?.name ?? 'Unknown';
+      const deckName =
+        deckRaw && typeof deckRaw === 'object' && 'name' in (deckRaw as object)
+          ? (deckRaw as { name: string }).name
+          : ((deckRaw as Array<{ name: string }> | null)?.[0]?.name ?? 'Unknown');
       decks.push({ deckId: a.deck_id, name: deckName });
       cardToDecks.set(a.flashcard_id, decks);
     }
@@ -237,9 +242,10 @@ export class StatsService {
     for (const a of topicAssignments ?? []) {
       const topics = cardToTopics.get(a.flashcard_id) ?? [];
       const topicRaw = a.flashcard_topics as unknown;
-      const topicName = topicRaw && typeof topicRaw === 'object' && 'name' in (topicRaw as object)
-        ? (topicRaw as { name: string }).name
-        : (topicRaw as Array<{ name: string }> | null)?.[0]?.name ?? 'Unknown';
+      const topicName =
+        topicRaw && typeof topicRaw === 'object' && 'name' in (topicRaw as object)
+          ? (topicRaw as { name: string }).name
+          : ((topicRaw as Array<{ name: string }> | null)?.[0]?.name ?? 'Unknown');
       topics.push({ topicId: a.topic_id, name: topicName });
       cardToTopics.set(a.flashcard_id, topics);
     }

@@ -34,7 +34,8 @@ Match the requested number of flashcards exactly. If the user specifies a count,
       properties: {
         deck_name: {
           type: 'string',
-          description: 'Descriptive deck name summarizing the topic (e.g. "TCP/IP Networking Basics", "Cell Biology — Organelles")',
+          description:
+            'Descriptive deck name summarizing the topic (e.g. "TCP/IP Networking Basics", "Cell Biology — Organelles")',
         },
         flashcards: {
           type: 'array',
@@ -43,15 +44,18 @@ Match the requested number of flashcards exactly. If the user specifies a count,
             properties: {
               front: {
                 type: 'string',
-                description: 'Specific question about ONE term or concept. Format: "What is X?", "Define X", or "What does X mean?". Never broad overview questions.',
+                description:
+                  'Specific question about ONE term or concept. Format: "What is X?", "Define X", or "What does X mean?". Never broad overview questions.',
               },
               back: {
                 type: 'string',
-                description: 'Concise, precise answer in 1-3 sentences. Must be factual and specific. NOT an essay.',
+                description:
+                  'Concise, precise answer in 1-3 sentences. Must be factual and specific. NOT an essay.',
               },
               topic: {
                 type: 'string',
-                description: '(Optional) 1-2 word grouping label for related cards, e.g. "Networking", "Cell Biology"',
+                description:
+                  '(Optional) 1-2 word grouping label for related cards, e.g. "Networking", "Cell Biology"',
               },
             },
             required: ['front', 'back'],
@@ -118,19 +122,23 @@ Extract 50-200 terms depending on content density. For large documents, extract 
             properties: {
               term: {
                 type: 'string',
-                description: 'Specific technical term or concept name (e.g. "TCP handshake", "Mitochondria", "Binary search")',
+                description:
+                  'Specific technical term or concept name (e.g. "TCP handshake", "Mitochondria", "Binary search")',
               },
               definition: {
                 type: 'string',
-                description: 'Concise factual definition in 1-2 sentences. Example: "A 3-step process to establish a connection before data transfer."',
+                description:
+                  'Concise factual definition in 1-2 sentences. Example: "A 3-step process to establish a connection before data transfer."',
               },
               context: {
                 type: 'string',
-                description: '(Optional) Where this term appears or how it relates to other terms in the content',
+                description:
+                  '(Optional) Where this term appears or how it relates to other terms in the content',
               },
               category: {
                 type: 'string',
-                description: '(Optional) 1-2 word grouping label, e.g. "Networking", "Cell Biology", "Algorithms"',
+                description:
+                  '(Optional) 1-2 word grouping label, e.g. "Networking", "Cell Biology", "Algorithms"',
               },
             },
             required: ['term', 'definition'],
@@ -201,11 +209,13 @@ Be strict — fewer high-quality cards is better than many poor ones. If ALL car
         kept: {
           type: 'array',
           items: { type: 'number' },
-          description: '0-based indices of cards that PASS all 5 criteria. Example: [0, 2, 4] means cards at indices 0, 2, and 4 are good.',
+          description:
+            '0-based indices of cards that PASS all 5 criteria. Example: [0, 2, 4] means cards at indices 0, 2, and 4 are good.',
         },
         reasons: {
           type: 'object',
-          description: 'Key-value pairs for DROPPED cards only. Keys are stringified card indices, values are the reason. Example: {"1": "too broad — covers multiple concepts", "3": "answer exceeds 3 sentences"}',
+          description:
+            'Key-value pairs for DROPPED cards only. Keys are stringified card indices, values are the reason. Example: {"1": "too broad — covers multiple concepts", "3": "answer exceeds 3 sentences"}',
           additionalProperties: { type: 'string' },
         },
       },

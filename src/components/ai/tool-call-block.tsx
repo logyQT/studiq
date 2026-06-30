@@ -1,7 +1,7 @@
 'use client';
 
+import { Check, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Check, Loader2 } from 'lucide-react';
 
 interface ToolCallBlockProps {
   toolName: string;
@@ -12,7 +12,14 @@ interface ToolCallBlockProps {
   durationMs?: number;
 }
 
-export function ToolCallBlock({ toolName: _toolName, label, status, args, result, durationMs }: ToolCallBlockProps) {
+export function ToolCallBlock({
+  toolName: _toolName,
+  label,
+  status,
+  args,
+  result,
+  durationMs,
+}: ToolCallBlockProps) {
   const [expanded, setExpanded] = useState(false);
   const isRunning = status === 'running';
 
@@ -23,7 +30,11 @@ export function ToolCallBlock({ toolName: _toolName, label, status, args, result
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-muted-foreground hover:text-foreground transition-colors"
       >
-        {expanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+        {expanded ? (
+          <ChevronDown className="h-3 w-3 shrink-0" />
+        ) : (
+          <ChevronRight className="h-3 w-3 shrink-0" />
+        )}
         {isRunning ? (
           <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
         ) : (
@@ -37,9 +48,18 @@ export function ToolCallBlock({ toolName: _toolName, label, status, args, result
         )}
         {isRunning && (
           <span className="ml-auto flex gap-0.5">
-            <span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '0ms' }} />
-            <span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '150ms' }} />
-            <span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '300ms' }} />
+            <span
+              className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
+              style={{ animationDelay: '0ms' }}
+            />
+            <span
+              className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
+              style={{ animationDelay: '150ms' }}
+            />
+            <span
+              className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
+              style={{ animationDelay: '300ms' }}
+            />
           </span>
         )}
       </button>

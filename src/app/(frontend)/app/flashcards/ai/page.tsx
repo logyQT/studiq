@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { AlertCircle, Check, Loader2, Lock, Sparkles, Trash2, Upload } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent } from '@/components/ui/card';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -16,11 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Upload, Trash2, Check, Sparkles, AlertCircle, Lock } from 'lucide-react';
-import { toast } from 'sonner';
-import { useGenerateFlashcards } from '@/hooks/use-flashcard-generation';
-import type { GeneratedFlashcard } from '@/hooks/use-flashcard-generation';
+import { Textarea } from '@/components/ui/textarea';
 import { useFeature } from '@/hooks/use-feature';
+import type { GeneratedFlashcard } from '@/hooks/use-flashcard-generation';
+import { useGenerateFlashcards } from '@/hooks/use-flashcard-generation';
 
 type CardState = GeneratedFlashcard & { kept: boolean };
 
@@ -181,11 +181,20 @@ export default function AiFlashcardPage() {
               </Select>
             </div>
 
-            <Button onClick={hasAccess ? handleGenerate : () => router.push('/checkout?plan_id=student_premium')} disabled={!hasAccess || !file}>
+            <Button
+              onClick={
+                hasAccess ? handleGenerate : () => router.push('/checkout?plan_id=student_premium')
+              }
+              disabled={!hasAccess || !file}
+            >
               {hasAccess ? (
-                <><Sparkles className="mr-2 h-4 w-4" /> {t('generate_button')}</>
+                <>
+                  <Sparkles className="mr-2 h-4 w-4" /> {t('generate_button')}
+                </>
               ) : (
-                <><Lock className="size-3" /> Upgrade</>
+                <>
+                  <Lock className="size-3" /> Upgrade
+                </>
               )}
             </Button>
           </CardContent>

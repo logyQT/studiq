@@ -1,18 +1,21 @@
-import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
+import { createClient } from '@/lib/supabase/server';
+import { mapSupabaseError } from '@/lib/supabase-errors';
 import type {
   ActivityQuery,
   ClassActivityResponse,
-  StudentActivityRow,
   DailyActivityPoint,
-  QuizActivityItem,
   MetricComparison,
+  QuizActivityItem,
+  StudentActivityRow,
 } from '@/server/models/activity.model';
 
 export class ActivityService {
-  async getClassActivity(ctx: RequestContext, query: ActivityQuery): Promise<ClassActivityResponse> {
+  async getClassActivity(
+    ctx: RequestContext,
+    query: ActivityQuery,
+  ): Promise<ClassActivityResponse> {
     const supabase = await createClient();
     const orgId = ctx.activeOrgId;
 
@@ -43,12 +46,17 @@ export class ActivityService {
       .in('id', studentIds);
 
     const profileMap = new Map(
-      (profiles || []).map((p: { id: string; email: string; full_name: string | null }) => [p.id, p]),
+      (profiles || []).map((p: { id: string; email: string; full_name: string | null }) => [
+        p.id,
+        p,
+      ]),
     );
 
     const { data: activity } = await supabase
       .from('user_daily_activity')
-      .select('user_id, date, reviews_count, reviews_correct, quizzes_count, quizzes_score, quizzes_total')
+      .select(
+        'user_id, date, reviews_count, reviews_correct, quizzes_count, quizzes_score, quizzes_total',
+      )
       .in('user_id', studentIds)
       .gte('date', prevRangeStart.toISOString().split('T')[0])
       .lte('date', now.toISOString().split('T')[0]);
@@ -64,14 +72,20 @@ export class ActivityService {
     }>;
 
     const currentRows = rows.filter((r) => new Date(r.date) >= rangeStart);
-    const previousRows = rows.filter((r) => new Date(r.date) >= prevRangeStart && new Date(r.date) < rangeStart);
+    const previousRows = rows.filter(
+      (r) => new Date(r.date) >= prevRangeStart && new Date(r.date) < rangeStart,
+    );
 
     const summary = this.computeSummary(currentRows, previousRows, studentIds.length);
 
     const dailyActivity = this.computeDailyActivity(currentRows, rangeDays);
 
     const students = await this.computeStudentActivity(
-      supabase, studentIdSet, profileMap, currentRows, rangeStart,
+      supabase,
+      studentIdSet,
+      profileMap,
+      currentRows,
+      rangeStart,
     );
 
     const quizzes = await this.computeQuizActivity(supabase, studentIds, rangeStart);
@@ -88,26 +102,6 @@ export class ActivityService {
     };
   }
 
-  private computeNumeric(
-    rows: Array<{ reviews_count: number; reviews_correct: number; quizzes_count: number; quizzes_score: number; quizzes_total: number }>,
-  ) {
-    const uniqueUsers = new Set<string>();
-    let totalPractices = 0;
-    let totalCorrect = 0;
-    let totalQuizzes = 0;
-    for (const r of rows) {
-      totalPractices += r.reviews_count;
-      totalCorrect += r.reviews_correct;
-      totalQuizzes += r.quizzes_count;
-    }
-    return {
-      activeUserCount: uniqueUsers.size,
-      totalPractices,
-      avgAccuracy: totalPractices > 0 ? Math.round((totalCorrect / totalPractices) * 100) : 0,
-      totalQuizzes,
-    };
-  }
-
   private computeSummary(
     currentRows: Array<{
       user_id: string;
@@ -121,7 +115,7 @@ export class ActivityService {
       reviews_correct: number;
       quizzes_count: number;
     }>,
-    totalStudents: number,
+    _totalStudents: number,
   ): {
     activeStudents: MetricComparison;
     totalPractices: MetricComparison;
@@ -137,8 +131,10 @@ export class ActivityService {
     const currentCorrect = currentRows.reduce((s, r) => s + r.reviews_correct, 0);
     const previousCorrect = previousRows.reduce((s, r) => s + r.reviews_correct, 0);
 
-    const currentAccuracy = currentPractices > 0 ? Math.round((currentCorrect / currentPractices) * 100) : 0;
-    const previousAccuracy = previousPractices > 0 ? Math.round((previousCorrect / previousPractices) * 100) : 0;
+    const currentAccuracy =
+      currentPractices > 0 ? Math.round((currentCorrect / currentPractices) * 100) : 0;
+    const previousAccuracy =
+      previousPractices > 0 ? Math.round((previousCorrect / previousPractices) * 100) : 0;
 
     const currentQuizzes = currentRows.reduce((s, r) => s + r.quizzes_count, 0);
     const previousQuizzes = previousRows.reduce((s, r) => s + r.quizzes_count, 0);
@@ -187,7 +183,7 @@ export class ActivityService {
       reviews_correct: number;
       quizzes_count: number;
     }>,
-    rangeStart: Date,
+    _rangeStart: Date,
   ): Promise<StudentActivityRow[]> {
     const { data: lastPractice } = await supabase
       .from('flashcard_practice')
@@ -202,7 +198,10 @@ export class ActivityService {
       }
     }
 
-    const studentActivityMap = new Map<string, { practices: number; correct: number; quizzes: number }>();
+    const studentActivityMap = new Map<
+      string,
+      { practices: number; correct: number; quizzes: number }
+    >();
     for (const r of currentRows) {
       const entry = studentActivityMap.get(r.user_id) || { practices: 0, correct: 0, quizzes: 0 };
       entry.practices += r.reviews_count;
@@ -211,13 +210,14 @@ export class ActivityService {
       studentActivityMap.set(r.user_id, entry);
     }
 
-    const dayCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const _dayCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
     return studentIds.map((id) => {
       const profile = profileMap.get(id);
       const lastActive = lastActiveMap.get(id) ?? null;
       const activity = studentActivityMap.get(id) || { practices: 0, correct: 0, quizzes: 0 };
-      const accuracy = activity.practices > 0 ? Math.round((activity.correct / activity.practices) * 100) : null;
+      const accuracy =
+        activity.practices > 0 ? Math.round((activity.correct / activity.practices) * 100) : null;
 
       let status: 'active' | 'recent' | 'check_in';
       if (!lastActive) {
@@ -257,7 +257,10 @@ export class ActivityService {
 
     const quizMap = new Map<string, { totalScore: number; count: number }>();
 
-    for (const row of (attempts || []) as Array<{ score: number; config: Record<string, unknown> | null }>) {
+    for (const row of (attempts || []) as Array<{
+      score: number;
+      config: Record<string, unknown> | null;
+    }>) {
       const config = row.config as Record<string, unknown> | null;
       const difficulty = (config?.difficulty as string) || 'mixed';
       const key = difficulty;

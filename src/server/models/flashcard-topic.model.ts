@@ -1,5 +1,5 @@
-import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import { registry, z } from '@/lib/zod';
 
 export const CreateTopicSchema = registry.register(
   'CreateFlashcardTopicRequest',
@@ -27,7 +27,9 @@ export const UpdateTopicSchema = registry.register(
 export const BatchDeleteTopicSchema = registry.register(
   'BatchDeleteTopicRequest',
   z.object({
-    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    ids: z
+      .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
+      .min(1, { error: ValidationErrorCode.TOO_FEW }),
   }),
 );
 
@@ -46,15 +48,17 @@ export const TopicListQuerySchema = registry.register(
 export const BulkCreateTopicSchema = registry.register(
   'BulkCreateTopicRequest',
   z.object({
-    topics: z.array(
-      z.object({
-        name: z
-          .string({ error: ValidationErrorCode.REQUIRED })
-          .nonempty({ error: ValidationErrorCode.REQUIRED })
-          .min(1, { error: ValidationErrorCode.TOO_SHORT })
-          .max(64, { error: ValidationErrorCode.TOO_LONG }),
-      }),
-    ).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    topics: z
+      .array(
+        z.object({
+          name: z
+            .string({ error: ValidationErrorCode.REQUIRED })
+            .nonempty({ error: ValidationErrorCode.REQUIRED })
+            .min(1, { error: ValidationErrorCode.TOO_SHORT })
+            .max(64, { error: ValidationErrorCode.TOO_LONG }),
+        }),
+      )
+      .min(1, { error: ValidationErrorCode.TOO_FEW }),
   }),
 );
 

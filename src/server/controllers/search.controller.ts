@@ -1,8 +1,8 @@
-import { searchService } from '@/server/services';
-import { SearchQuerySchema } from '@/server/models';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import { SearchQuerySchema } from '@/server/models';
+import { searchService } from '@/server/services';
 
 export class SearchController {
   async search(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {

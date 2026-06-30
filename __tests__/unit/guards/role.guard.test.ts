@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { roleGuard } from '@/server/guards/role.guard';
 import { UserRole } from '@/types';
 
@@ -35,7 +35,12 @@ describe('roleGuard', () => {
     roles.forEach((role) => {
       const user = { id: 'user-1', app_metadata: { role } } as any;
       expect(roleGuard(user, [role])).toBe(true);
-      expect(roleGuard(user, roles.filter((r) => r !== role))).toBe(false);
+      expect(
+        roleGuard(
+          user,
+          roles.filter((r) => r !== role),
+        ),
+      ).toBe(false);
     });
   });
 });

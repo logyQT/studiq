@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { flashcardService } from '@/server/services/flashcard.service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { flashcardService } from '@/server/services/flashcard.service';
 
 const mockProfile = { role: 'free', organization_id: null };
 const mockTeacherProfile = { role: 'teacher', organization_id: 'uni-1' };

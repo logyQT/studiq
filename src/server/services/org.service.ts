@@ -1,7 +1,7 @@
-import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
+import { createClient } from '@/lib/supabase/server';
+import { mapSupabaseError } from '@/lib/supabase-errors';
 
 export class OrgService {
   async listOrgs(ctx: RequestContext) {
@@ -27,7 +27,9 @@ export class OrgService {
 
     if (oError) throw mapSupabaseError(oError);
 
-    const orgMap = new Map((orgs || []).map((o: { id: string; name: string; slug: string }) => [o.id, o]));
+    const orgMap = new Map(
+      (orgs || []).map((o: { id: string; name: string; slug: string }) => [o.id, o]),
+    );
 
     return memberships.map((m: { organization_id: string; role: string }) => {
       const org = orgMap.get(m.organization_id);

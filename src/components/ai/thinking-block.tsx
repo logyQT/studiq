@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { useTranslations } from 'next-intl';
 import { ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 
 interface ThinkingBlockProps {
   traces: string[];
@@ -32,13 +32,32 @@ export function ThinkingBlock({ traces, isComplete }: ThinkingBlockProps) {
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         <Sparkles className="h-3 w-3" />
         <span className="font-medium">{t('thinking_title')}</span>
-        {!isComplete && <span className="ml-auto flex gap-0.5"><span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '0ms' }} /><span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '150ms' }} /><span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '300ms' }} /></span>}
+        {!isComplete && (
+          <span className="ml-auto flex gap-0.5">
+            <span
+              className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
+              style={{ animationDelay: '0ms' }}
+            />
+            <span
+              className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
+              style={{ animationDelay: '150ms' }}
+            />
+            <span
+              className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
+              style={{ animationDelay: '300ms' }}
+            />
+          </span>
+        )}
       </button>
       {open && traces.length > 0 && (
         <div className="space-y-1 px-3 pb-2">
           {traces.map((trace, i) => (
             <div key={i} className="text-muted-foreground/80 whitespace-pre-wrap">
-              {i > 0 && <span className="text-muted-foreground/40 text-[10px] block mb-0.5">step {i + 1}</span>}
+              {i > 0 && (
+                <span className="text-muted-foreground/40 text-[10px] block mb-0.5">
+                  step {i + 1}
+                </span>
+              )}
               {trace}
             </div>
           ))}

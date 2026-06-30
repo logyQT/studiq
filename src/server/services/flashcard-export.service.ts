@@ -1,6 +1,6 @@
+import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { flashcardService } from '@/server/services';
-import type { RequestContext } from '@/lib/request-context';
 import type { Flashcard } from '@/types/flashcards';
 
 type FlashcardWithAssignments = Flashcard & {
@@ -35,9 +35,10 @@ export class FlashcardExportService {
 
     const flashcards = allFlashcards;
 
-    const filtered = filters?.ids && filters.ids.length > 0
-      ? flashcards.filter((fc) => filters.ids!.includes(fc.id))
-      : flashcards;
+    const filtered =
+      filters?.ids && filters.ids.length > 0
+        ? flashcards.filter((fc) => filters.ids!.includes(fc.id))
+        : flashcards;
 
     const topicIds = new Set<string>();
     const deckIds = new Set<string>();
@@ -86,7 +87,12 @@ export class FlashcardExportService {
   }
 
   private escapeCsv(value: string): string {
-    if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r')) {
+    if (
+      value.includes(',') ||
+      value.includes('"') ||
+      value.includes('\n') ||
+      value.includes('\r')
+    ) {
       return `"${value.replace(/"/g, '""')}"`;
     }
     return value;

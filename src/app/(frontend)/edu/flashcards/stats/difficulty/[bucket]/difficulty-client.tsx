@@ -1,20 +1,20 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, BarChart3, Filter, Layers, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, BarChart3, Layers, Sparkles, Filter } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { DeckDetailSkeleton } from '@/components/flashcards';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Empty, EmptyHeader, EmptyTitle, EmptyMedia } from '@/components/ui/empty';
-import { DeckDetailSkeleton } from '@/components/flashcards';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { MultiSelect } from '@/components/ui/multi-select';
-import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
-import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { useApiQuery } from '@/hooks/use-api';
+import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { DifficultyFlashcardDetail } from '@/server/models';
 
@@ -28,12 +28,18 @@ export default function DifficultyBucketClient() {
   const [deckIds, setDeckIds] = useState<string[]>([]);
   const [topicIds, setTopicIds] = useState<string[]>([]);
 
-  const deckOpts = useApiQuery<{ items: NamedItem[]; nextCursor: string | null; hasMore: boolean }>({
-    queryKey: ['flashcards', 'decks'],
-    url: '/api/v1/flashcards/decks?limit=200',
-  });
+  const deckOpts = useApiQuery<{ items: NamedItem[]; nextCursor: string | null; hasMore: boolean }>(
+    {
+      queryKey: ['flashcards', 'decks'],
+      url: '/api/v1/flashcards/decks?limit=200',
+    },
+  );
 
-  const topicOpts = useApiQuery<{ items: NamedItem[]; nextCursor: string | null; hasMore: boolean }>({
+  const topicOpts = useApiQuery<{
+    items: NamedItem[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  }>({
     queryKey: ['flashcards', 'topics'],
     url: '/api/v1/flashcards/topics?limit=200',
   });
@@ -54,8 +60,12 @@ export default function DifficultyBucketClient() {
 
   useRealtimeChannel(
     channel(`difficulty-${bucket}`)
-      .listen('flashcard_practice', () => { queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.difficultyBucket(bucket) }); })
-      .listen('flashcard_review_state', () => { queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.difficultyBucket(bucket) }); }),
+      .listen('flashcard_practice', () => {
+        queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.difficultyBucket(bucket) });
+      })
+      .listen('flashcard_review_state', () => {
+        queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.difficultyBucket(bucket) });
+      }),
   );
 
   const titleKey = `title_${bucket}` as 'title_easy' | 'title_medium' | 'title_hard' | 'title_new';
@@ -93,7 +103,14 @@ export default function DifficultyBucketClient() {
           className="max-w-xs"
         />
         {(deckIds.length > 0 || topicIds.length > 0) && (
-          <Button variant="ghost" size="sm" onClick={() => { setDeckIds([]); setTopicIds([]); }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setDeckIds([]);
+              setTopicIds([]);
+            }}
+          >
             {t('clearFilters')}
           </Button>
         )}
@@ -114,8 +131,12 @@ export default function DifficultyBucketClient() {
             <Card key={fc.id} className="flex flex-col">
               <CardContent className="p-5 flex flex-col gap-3 flex-1">
                 <div className="space-y-1.5 min-h-0">
-                  <p className="text-sm font-medium leading-snug line-clamp-2"><MarkdownRenderer content={fc.front} /></p>
-                  <p className="text-sm text-muted-foreground leading-snug line-clamp-2"><MarkdownRenderer content={fc.back} /></p>
+                  <p className="text-sm font-medium leading-snug line-clamp-2">
+                    <MarkdownRenderer content={fc.front} />
+                  </p>
+                  <p className="text-sm text-muted-foreground leading-snug line-clamp-2">
+                    <MarkdownRenderer content={fc.back} />
+                  </p>
                 </div>
 
                 <div className="flex flex-wrap gap-1.5">

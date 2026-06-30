@@ -1,12 +1,15 @@
-import { flashcardExportService } from '@/server/services';
-import { ExportQuerySchema } from '@/server/models';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
-import type { ControllerResponse } from '@/lib/controller-response';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import { ExportQuerySchema } from '@/server/models';
+import { flashcardExportService } from '@/server/services';
 
 export class FlashcardExportController {
-  async exportCsv(query: Record<string, string | null>, ctx: RequestContext): Promise<ControllerResponse> {
+  async exportCsv(
+    query: Record<string, string | null>,
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
       const parsed = ExportQuerySchema.safeParse(query);
 
@@ -21,11 +24,17 @@ export class FlashcardExportController {
       }
       if (parsed.data.deckIds) {
         filters.deckIds = (filters.deckIds ?? []).concat(
-          parsed.data.deckIds.split(',').map((s) => s.trim()).filter(Boolean),
+          parsed.data.deckIds
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
         );
       }
       if (parsed.data.ids) {
-        filters.ids = parsed.data.ids.split(',').map((s) => s.trim()).filter(Boolean);
+        filters.ids = parsed.data.ids
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
       }
 
       const csv = await flashcardExportService.exportCsv(

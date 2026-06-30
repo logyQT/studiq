@@ -1,9 +1,9 @@
-import { motion } from 'motion/react';
-import { cn } from '@/lib/utils';
-import { CardContent } from '@/components/ui/card';
-import { ArrowUp, ArrowDown } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { ArrowDown, ArrowUp } from 'lucide-react';
+import { motion } from 'motion/react';
 import type { ReactNode } from 'react';
+import { CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
 type StatCardVariant = 'blue' | 'violet' | 'emerald' | 'amber' | 'rose';
 
@@ -108,9 +108,7 @@ export function StatCard({
           ) : (
             <p className="text-3xl font-extrabold tracking-tight tabular-nums">{value}</p>
           )}
-          {description && (
-            <p className="text-xs text-muted-foreground">{description}</p>
-          )}
+          {description && <p className="text-xs text-muted-foreground">{description}</p>}
           {trend && (
             <span
               className={cn(
@@ -134,7 +132,10 @@ export function StatCard({
           <div className="mt-4 space-y-1">
             <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
               <div
-                className={cn('h-full rounded-full transition-all duration-700', styles.progressColor)}
+                className={cn(
+                  'h-full rounded-full transition-all duration-700',
+                  styles.progressColor,
+                )}
                 style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
               />
             </div>

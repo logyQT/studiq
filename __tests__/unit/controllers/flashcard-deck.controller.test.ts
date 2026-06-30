@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AppError } from '@/lib/errors';
 import { flashcardDeckController } from '@/server/controllers/flashcard-deck.controller';
 import { flashcardDeckService } from '@/server/services';
-import { AppError } from '@/lib/errors';
 
 vi.mock('@/server/services', () => ({
   flashcardDeckService: {

@@ -2,18 +2,18 @@
 
 import { useTranslations } from 'next-intl';
 import {
-  BarChart,
   Bar,
+  BarChart,
+  Brush,
+  CartesianGrid,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ReferenceLine,
-  Brush,
-  ResponsiveContainer,
 } from 'recharts';
-import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 import { Button } from '@/components/ui/button';
+import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 
 interface DailyActivity {
   date: string;
@@ -71,7 +71,12 @@ export function DailyActivityChart({ data, goal, range, onRangeChange }: DailyAc
                 y={goal}
                 stroke="hsl(var(--destructive))"
                 strokeDasharray="4 4"
-                label={{ value: t('daily_goal'), position: 'insideTopRight', fill: 'hsl(var(--destructive))', fontSize: 11 }}
+                label={{
+                  value: t('daily_goal'),
+                  position: 'insideTopRight',
+                  fill: 'hsl(var(--destructive))',
+                  fontSize: 11,
+                }}
               />
             )}
             <Brush dataKey="date" height={30} stroke="oklch(0.546 0.245 265)" />

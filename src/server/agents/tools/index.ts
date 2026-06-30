@@ -1,3 +1,3 @@
-export * from './types';
-export * from './generic';
 export * from './flashcard';
+export * from './generic';
+export * from './types';

@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CheckCircle2, ListRestart, Loader2, Play, XCircle } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Play, CheckCircle2, XCircle, ListRestart } from 'lucide-react';
-import { apiPost } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
+import { apiPost } from '@/lib/api';
 
 type TimelineKind = 'api' | 'event' | 'fetch' | 'verdict';
 
@@ -28,8 +28,12 @@ export function SimulatorClient() {
 
   const eventCountsRef = useRef(eventCounts);
   const networkFetchesRef = useRef(networkFetches);
-  useEffect(() => { eventCountsRef.current = eventCounts; }, [eventCounts]);
-  useEffect(() => { networkFetchesRef.current = networkFetches; }, [networkFetches]);
+  useEffect(() => {
+    eventCountsRef.current = eventCounts;
+  }, [eventCounts]);
+  useEffect(() => {
+    networkFetchesRef.current = networkFetches;
+  }, [networkFetches]);
 
   const addTimeline = useCallback((kind: TimelineKind, label: string) => {
     setTimeline((prev) => [...prev, { time: new Date().toISOString().slice(11, 23), label, kind }]);
@@ -77,10 +81,9 @@ export function SimulatorClient() {
 
     try {
       addTimeline('api', `Creating deck "${deckName}"...`);
-      const { id: deckId } = await apiPost<{ id: string }>(
-        '/api/v1/flashcards/decks',
-        { name: deckName },
-      );
+      const { id: deckId } = await apiPost<{ id: string }>('/api/v1/flashcards/decks', {
+        name: deckName,
+      });
       addTimeline('api', `Deck created: ${deckId}`);
 
       const cards = Array.from({ length: cardCount }, (_, i) => ({
@@ -118,9 +121,7 @@ export function SimulatorClient() {
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              Flashcard Save Simulator
-            </h1>
+            <h1 className="text-2xl font-bold tracking-tight">Flashcard Save Simulator</h1>
             <p className="text-sm text-muted-foreground">
               Simulates the agent saving flashcards to a deck. Verifies the realtime debounce
               coalesces N Supabase events into 1&ndash;2 re-fetches.
@@ -168,9 +169,13 @@ export function SimulatorClient() {
               </div>
               <Button onClick={handleSimulate} disabled={running}>
                 {running ? (
-                  <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Simulating...</>
+                  <>
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Simulating...
+                  </>
                 ) : (
-                  <><Play className="mr-1.5 h-4 w-4" /> Simulate Agent Save</>
+                  <>
+                    <Play className="mr-1.5 h-4 w-4" /> Simulate Agent Save
+                  </>
                 )}
               </Button>
             </div>
@@ -224,9 +229,7 @@ export function SimulatorClient() {
               <p className="text-3xl font-bold tabular-nums text-green-600 dark:text-green-400">
                 ~2&ndash;4
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                vs {totalEvents} raw events
-              </p>
+              <p className="text-xs text-muted-foreground mt-1">vs {totalEvents} raw events</p>
             </CardContent>
           </Card>
         </div>
@@ -234,9 +237,7 @@ export function SimulatorClient() {
         {verdict && (
           <Card
             className={
-              verdict === 'pass'
-                ? 'border-green-400 dark:border-green-700'
-                : 'border-destructive'
+              verdict === 'pass' ? 'border-green-400 dark:border-green-700' : 'border-destructive'
             }
           >
             <CardContent className="pt-6">
@@ -268,9 +269,7 @@ export function SimulatorClient() {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm">Timeline</CardTitle>
-              <span className="text-xs text-muted-foreground">
-                {timeline.length} entries
-              </span>
+              <span className="text-xs text-muted-foreground">{timeline.length} entries</span>
             </div>
           </CardHeader>
           <CardContent>
@@ -293,8 +292,7 @@ export function SimulatorClient() {
                             : 'text-foreground font-bold'
                     }
                   >
-                    <span className="text-muted-foreground">{entry.time}</span>{' '}
-                    {entry.label}
+                    <span className="text-muted-foreground">{entry.time}</span> {entry.label}
                   </div>
                 ))
               )}

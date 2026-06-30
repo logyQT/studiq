@@ -14,7 +14,9 @@ export default function EduDecksLoading() {
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="rounded-lg border p-5 animate-pulse">
             <div className="flex items-start gap-3">
-              <div className={`h-10 w-10 rounded-lg bg-gradient-to-br ${GRADIENTS[i % GRADIENTS.length]} shrink-0`} />
+              <div
+                className={`h-10 w-10 rounded-lg bg-gradient-to-br ${GRADIENTS[i % GRADIENTS.length]} shrink-0`}
+              />
               <div className="flex-1 space-y-2">
                 <div className="h-5 w-32 rounded bg-muted" />
                 <div className="h-4 w-48 rounded bg-muted" />

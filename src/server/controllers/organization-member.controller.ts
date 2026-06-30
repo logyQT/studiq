@@ -1,8 +1,8 @@
-import { organizationMemberService } from '@/server/services';
-import { ChangeRoleSchema } from '@/server/models/organization-member.model';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import { ChangeRoleSchema } from '@/server/models/organization-member.model';
+import { organizationMemberService } from '@/server/services';
 
 export class OrganizationMemberController {
   async listMembers(ctx: RequestContext, roleFilter?: string): Promise<ControllerResponse> {
@@ -26,7 +26,11 @@ export class OrganizationMemberController {
         };
       }
 
-      await organizationMemberService.changeRole(ctx, parsed.data.targetUserId, parsed.data.newRole);
+      await organizationMemberService.changeRole(
+        ctx,
+        parsed.data.targetUserId,
+        parsed.data.newRole,
+      );
 
       return { success: true, statusCode: 200, data: { success: true } };
     }, ctx);

@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AppError } from '@/lib/errors';
 import { flashcardPracticeController } from '@/server/controllers/flashcard-practice.controller';
 import { flashcardPracticeService } from '@/server/services';
-import { AppError } from '@/lib/errors';
 
 vi.mock('@/server/services', () => ({
   flashcardPracticeService: {
@@ -63,7 +63,11 @@ describe('FlashcardPracticeController', () => {
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
-      const response = await flashcardPracticeController.log('fc-1', { responseTimeMs: 1000 }, mockCtx);
+      const response = await flashcardPracticeController.log(
+        'fc-1',
+        { responseTimeMs: 1000 },
+        mockCtx,
+      );
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);

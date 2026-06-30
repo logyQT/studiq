@@ -1,8 +1,8 @@
 'use client';
 
+import { LayoutDashboard, Monitor, ScrollText, Shield } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { LayoutDashboard, ScrollText, Shield, Monitor } from 'lucide-react';
 
 export default function AdminNotFound() {
   const t = useTranslations('AdminNotFound');

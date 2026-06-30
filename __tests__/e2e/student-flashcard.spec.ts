@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { t } from './utils';
 
 const email = 'student@dev.local';

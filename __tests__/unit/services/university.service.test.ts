@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { universityService } from '@/server/services/university.service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { universityService } from '@/server/services/university.service';
 
 describe('UniversityService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;

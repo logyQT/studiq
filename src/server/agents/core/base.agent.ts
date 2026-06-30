@@ -1,5 +1,5 @@
 import type { ToolDefinition } from '@/server/ai/ai.types';
-import type { Tool, ToolContext, AgentState, AgentResult } from '../tools/types';
+import type { AgentResult, AgentState, Tool, ToolContext } from '../tools/types';
 import { zodToJsonSchema } from './schema-helper';
 
 export abstract class BaseAgent {
@@ -9,7 +9,7 @@ export abstract class BaseAgent {
   protected tools: Tool[] = [];
   protected maxIterations: number = 25;
 
-  async execute(task: string, ctx: ToolContext): Promise<AgentResult> {
+  async execute(_task: string, ctx: ToolContext): Promise<AgentResult> {
     const state: AgentState = {
       text: ctx.state.text,
       file: ctx.state.file,
@@ -20,7 +20,7 @@ export abstract class BaseAgent {
       metadata: ctx.state.metadata,
     };
 
-    state.metadata['agent'] = this.name;
+    state.metadata.agent = this.name;
 
     const mergedCtx: ToolContext = { ...ctx, state };
 
@@ -28,9 +28,7 @@ export abstract class BaseAgent {
   }
 
   private buildSystemMessage(): string {
-    const descriptions = this.tools
-      .map((t) => `- ${t.name}: ${t.description}`)
-      .join('\n');
+    const descriptions = this.tools.map((t) => `- ${t.name}: ${t.description}`).join('\n');
 
     return [
       this.systemPrompt,
@@ -87,7 +85,9 @@ export abstract class BaseAgent {
       const prompt = this.buildPrompt(ctx.state.text, history);
       const systemMsg = this.buildSystemMessage();
 
-      ctx.callbacks?.onThinking?.(iteration === 0 ? 'Analyzing request...' : `Step ${stepNumber}: thinking...`);
+      ctx.callbacks?.onThinking?.(
+        iteration === 0 ? 'Analyzing request...' : `Step ${stepNumber}: thinking...`,
+      );
 
       const result = await ctx.callLLM({
         prompt,
@@ -117,11 +117,12 @@ export abstract class BaseAgent {
 
       const thinkingText = result.reasoning;
       const hasToolCalls = result.toolCalls && result.toolCalls.length > 0;
-      const looksLikeToolCallJson = !hasToolCalls && thinkingText && (
-        thinkingText.trimStart().startsWith('{') ||
-        thinkingText.trimStart().startsWith('```json') ||
-        thinkingText.includes('"tool"') && thinkingText.includes('"input"')
-      );
+      const looksLikeToolCallJson =
+        !hasToolCalls &&
+        thinkingText &&
+        (thinkingText.trimStart().startsWith('{') ||
+          thinkingText.trimStart().startsWith('```json') ||
+          (thinkingText.includes('"tool"') && thinkingText.includes('"input"')));
       if (thinkingText && !looksLikeToolCallJson) {
         ctx.callbacks?.onThought?.({ reasoning: thinkingText, step: stepNumber, agent: this.name });
       }
@@ -206,7 +207,13 @@ export abstract class BaseAgent {
           consecutiveToolCalls.set(tool.name, lastCount + 1);
 
           if (tool.name === 'ask_user') {
-            const r = toolResult as { question?: { id: string; question: string; options?: Array<{ label: string; value: string }> } };
+            const r = toolResult as {
+              question?: {
+                id: string;
+                question: string;
+                options?: Array<{ label: string; value: string }>;
+              };
+            };
             if (r.question) {
               return { type: 'question', questions: [r.question] };
             }
@@ -226,11 +233,11 @@ export abstract class BaseAgent {
               label: `Loop detected: ${tool.name} called ${consecutiveToolCalls.get(tool.name)} times consecutively`,
               data: { toolName: tool.name, count: consecutiveToolCalls.get(tool.name) },
             });
-            const flashcards = ctx.state.results?.['flashcards'];
+            const flashcards = ctx.state.results?.flashcards;
             if (flashcards && Array.isArray(flashcards) && flashcards.length > 0) {
               return {
                 type: 'flashcards',
-                deckName: (ctx.state.results?.['deckName'] as string) || 'Generated Flashcards',
+                deckName: (ctx.state.results?.deckName as string) || 'Generated Flashcards',
                 flashcards,
               };
             }
@@ -264,11 +271,11 @@ export abstract class BaseAgent {
               label: `No tool calls returned, agent appears stuck (last tool: ${last2[0]})`,
               data: { recentTools: recentToolNames },
             });
-            const flashcards = ctx.state.results?.['flashcards'];
+            const flashcards = ctx.state.results?.flashcards;
             if (flashcards && Array.isArray(flashcards) && flashcards.length > 0) {
               return {
                 type: 'flashcards',
-                deckName: (ctx.state.results?.['deckName'] as string) || 'Generated Flashcards',
+                deckName: (ctx.state.results?.deckName as string) || 'Generated Flashcards',
                 flashcards,
               };
             }
@@ -278,15 +285,19 @@ export abstract class BaseAgent {
       }
     }
 
-    const flashcards = ctx.state.results?.['flashcards'];
+    const flashcards = ctx.state.results?.flashcards;
     if (flashcards && Array.isArray(flashcards) && flashcards.length > 0) {
       return {
         type: 'flashcards',
-        deckName: (ctx.state.results?.['deckName'] as string) || 'Generated Flashcards',
+        deckName: (ctx.state.results?.deckName as string) || 'Generated Flashcards',
         flashcards,
       };
     }
 
-    return { type: 'chat', content: 'I reached the maximum number of iterations. Please try again with a simpler request.' };
+    return {
+      type: 'chat',
+      content:
+        'I reached the maximum number of iterations. Please try again with a simpler request.',
+    };
   }
 }

@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { ArrowLeft, Brain, Check, Loader2, Minus, X, Zap } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { Check, X, ArrowLeft, Minus, Zap, Brain, Loader2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FlashcardFlip, SessionSummaryDialog } from '@/components/flashcards';
+import { KeyboardShortcutsPanel } from '@/components/shared/keyboard-shortcuts-panel';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,11 +18,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { SessionSummaryDialog } from '@/components/flashcards';
-import { FlashcardFlip } from '@/components/flashcards';
-import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
-import { KeyboardShortcutsPanel } from '@/components/shared/keyboard-shortcuts-panel';
-import { AnimatePresence, motion } from 'motion/react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
 
 interface Flashcard {
   id: string;
@@ -143,22 +142,21 @@ export default function SessionClient(props: SessionClientProps) {
   const t = useTranslations('AppFlashcardSessionPage');
   const router = useRouter();
 
-  const config = SESSION_TYPE_CONFIG[props.type as keyof typeof SESSION_TYPE_CONFIG] ?? SESSION_TYPE_CONFIG.review;
+  const config =
+    SESSION_TYPE_CONFIG[props.type as keyof typeof SESSION_TYPE_CONFIG] ??
+    SESSION_TYPE_CONFIG.review;
   const mode = config.mode;
   const isCram = mode === 'cram';
   const newOnly = config.newOnly || props.newOnly === 'true';
   const studyMode = props.studyMode || config.studyMode;
   const isLimited = studyMode === 'limited';
-  const targetCount = parseInt(props.target || '10');
+  const targetCount = parseInt(props.target || '10', 10);
   const batchSize = 20;
   const deckIds = useMemo(
     () => (props.deckId ? [props.deckId] : (props.decks?.split(',').filter(Boolean) ?? [])),
     [props.deckId, props.decks],
   );
-  const topicIds = useMemo(
-    () => props.topics?.split(',').filter(Boolean) ?? [],
-    [props.topics],
-  );
+  const topicIds = useMemo(() => props.topics?.split(',').filter(Boolean) ?? [], [props.topics]);
 
   const sessionIdRef = useRef<string>(generateUUID());
   const [startedAt] = useState(() => Date.now());
@@ -239,7 +237,7 @@ export default function SessionClient(props: SessionClientProps) {
     return () => {
       cancelled = true;
     };
-  }, [isCram, props.deckId, batchSize, deckIds, topicIds, newOnly]);
+  }, [isCram, props.deckId, deckIds, topicIds, newOnly]);
 
   const visibleCards = useMemo(
     () => cards.filter((c) => !suspendedIds.has(c.id)),
@@ -300,7 +298,7 @@ export default function SessionClient(props: SessionClientProps) {
       setLeechDialogCardId(cardId);
       setLeechDialogResolve(() => resolve);
     });
-  }, [setLeechDialogCardId, setLeechDialogResolve]);
+  }, []);
 
   const handleLeechAction = useCallback(
     (action: 'suspend' | 'keep') => {
@@ -308,7 +306,7 @@ export default function SessionClient(props: SessionClientProps) {
       setLeechDialogCardId(null);
       setLeechDialogResolve(null);
     },
-    [leechDialogResolve, setLeechDialogCardId, setLeechDialogResolve],
+    [leechDialogResolve],
   );
 
   useEffect(() => {
@@ -383,9 +381,7 @@ export default function SessionClient(props: SessionClientProps) {
   }, [fetchDueCards, hasMore, isCram]);
 
   const advanceCard = useCallback(async () => {
-    const nextRaw = visibleCards.findIndex(
-      (c, i) => i > currentIndex && !suspendedIds.has(c.id),
-    );
+    const nextRaw = visibleCards.findIndex((c, i) => i > currentIndex && !suspendedIds.has(c.id));
     if (nextRaw !== -1) {
       setCurrentIndex(nextRaw);
       setFlipped(false);
@@ -482,7 +478,14 @@ export default function SessionClient(props: SessionClientProps) {
         }
       });
     }
-  }, [currentCard?.id, currentCard, cardState.isLeech, leechDialogCardId, showLeechDialog, advanceCard]);
+  }, [
+    currentCard?.id,
+    currentCard,
+    cardState.isLeech,
+    leechDialogCardId,
+    showLeechDialog,
+    advanceCard,
+  ]);
 
   const backUrl = '/app/study';
 
@@ -493,7 +496,7 @@ export default function SessionClient(props: SessionClientProps) {
   const handleBackToSetup = useCallback(async () => {
     await sendBatchUpdate();
     router.push(backUrl);
-  }, [sendBatchUpdate, router, backUrl]);
+  }, [sendBatchUpdate, router]);
 
   const flippedRef = useRef(flipped);
   const terminalRef = useRef(sessionComplete || allCaughtUp);

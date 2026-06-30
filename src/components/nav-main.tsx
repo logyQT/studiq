@@ -4,11 +4,7 @@ import { ChevronRight, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -45,8 +41,7 @@ export function NavMain({
       <SidebarMenu>
         {items.map((item) => {
           if (item.children) {
-            const isParentActive =
-              pathname === item.href || pathname.startsWith(item.href + '/');
+            const isParentActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Collapsible
                 key={item.titleKey}
@@ -56,10 +51,7 @@ export function NavMain({
               >
                 <SidebarMenuItem>
                   <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      tooltip={t(item.titleKey)}
-                      isActive={isParentActive}
-                    >
+                    <SidebarMenuButton tooltip={t(item.titleKey)} isActive={isParentActive}>
                       {item.icon && <item.icon />}
                       <span>{t(item.titleKey)}</span>
                       <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
@@ -69,8 +61,7 @@ export function NavMain({
                     <SidebarMenuSub>
                       {item.children.map((child) => {
                         const isChildActive =
-                          pathname === child.href ||
-                          pathname.startsWith(child.href + '/');
+                          pathname === child.href || pathname.startsWith(`${child.href}/`);
                         return (
                           <SidebarMenuSubItem key={child.titleKey}>
                             <SidebarMenuSubButton asChild isActive={isChildActive}>

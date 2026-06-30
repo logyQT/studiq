@@ -1,12 +1,10 @@
-import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import { registry, z } from '@/lib/zod';
 
 export const ActivityQuerySchema = registry.register(
   'ActivityQuery',
   z.object({
-    range: z
-      .enum(['7d', '30d', '90d'], { error: ValidationErrorCode.INVALID_INPUT })
-      .default('7d'),
+    range: z.enum(['7d', '30d', '90d'], { error: ValidationErrorCode.INVALID_INPUT }).default('7d'),
   }),
 );
 

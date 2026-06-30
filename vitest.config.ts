@@ -1,6 +1,6 @@
-import { defineConfig } from 'vitest/config';
+import path from 'node:path';
 import { loadEnv } from 'vite';
-import path from 'path';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode || 'test', process.cwd(), '');
@@ -25,10 +25,7 @@ export default defineConfig(({ mode }) => {
       coverage: {
         provider: 'v8',
         include: ['src/server/**/*.ts'],
-        exclude: [
-          'src/server/**/index.ts',
-          'src/server/**/routes.config.ts',
-        ],
+        exclude: ['src/server/**/index.ts', 'src/server/**/routes.config.ts'],
       },
     },
     resolve: {

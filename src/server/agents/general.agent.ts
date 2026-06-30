@@ -1,19 +1,20 @@
 import { BaseAgent } from './core';
 import {
-  createPlanTool,
   askUserTool,
-  fetchMaterialTool,
-  webfetchTool,
-  extractConceptsTool,
+  createPlanTool,
   evaluateQualityTool,
-  generateFlashcardsTool,
+  extractConceptsTool,
+  fetchMaterialTool,
   finishTool,
+  generateFlashcardsTool,
+  webfetchTool,
 } from './tools/generic';
 
 export class GeneralAgent extends BaseAgent {
   readonly name = 'general';
 
-  readonly systemPrompt = `You are Agent Q — StudiQ's built-in AI assistant, part of an AI-powered learning platform.
+  readonly systemPrompt =
+    `You are Agent Q — StudiQ's built-in AI assistant, part of an AI-powered learning platform.
 
 StudiQ helps students and teachers learn with:
 - Flashcards with SM-2 spaced repetition — study, review, and track retention

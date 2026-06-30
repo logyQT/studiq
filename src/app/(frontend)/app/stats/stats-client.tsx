@@ -1,11 +1,11 @@
 'use client';
 
+import { BarChart3, BookOpen, ClipboardList } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BarChart3, ClipboardList, BookOpen } from 'lucide-react';
+import { FlashcardsTab } from '@/components/stats/flashcards-tab';
 import { OverviewTab } from '@/components/stats/overview-tab';
 import { QuizzesTab } from '@/components/stats/quizzes-tab';
-import { FlashcardsTab } from '@/components/stats/flashcards-tab';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export function StatsClient() {
   const t = useTranslations('AppStatsPage');

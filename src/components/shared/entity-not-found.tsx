@@ -1,10 +1,10 @@
 'use client';
 
+import { FileX, Home } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { FileX, Home } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 
 type Props = {
   titleKey: string;

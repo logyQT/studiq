@@ -1,14 +1,14 @@
 'use client';
 
+import { ArrowRight, Check } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { MainLayout } from '@/components';
+import { CheckoutButton } from '@/components/pricing/checkout-button';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { CheckoutButton } from '@/components/pricing/checkout-button';
-import { Check, ArrowRight } from 'lucide-react';
-import { useAuth } from '@/components/providers/AuthProvider';
 
 export default function PricingPage() {
   const t = useTranslations('PricingPage');
@@ -19,30 +19,83 @@ export default function PricingPage() {
   const showTeacherLicense = !user || isTeacher;
 
   type PlanItem = {
-    name: string; price: string; period: string; desc: string;
-    features: string[]; cta: string; planId: string | null;
-    variant: 'default' | 'outline'; popular?: boolean;
+    name: string;
+    price: string;
+    period: string;
+    desc: string;
+    features: string[];
+    cta: string;
+    planId: string | null;
+    variant: 'default' | 'outline';
+    popular?: boolean;
   };
 
   const plans: PlanItem[] = [
-    ...(!user ? [{
-      name: t('free_name'), price: t('free_price'), period: t('free_period'), desc: t('free_desc'),
-      features: [t('free_features_1'), t('free_features_2'), t('free_features_3'), t('free_features_4')],
-      cta: t('free_cta'), planId: null as string | null, variant: 'outline' as const,
-    }] : []),
-    ...(!user || showStudentPremium ? [{
-      name: t('premium_name'), price: t('premium_price'), period: t('premium_period'), desc: t('premium_desc'),
-      features: [t('premium_features_1'), t('premium_features_2'), t('premium_features_3'), t('premium_features_4'), t('premium_features_5'), t('premium_features_6')],
-      cta: t('premium_cta'), planId: 'student_premium', variant: 'default' as const,
-      popular: showStudentPremium && !isTeacher,
-    }] : []),
-    ...(!user || showTeacherLicense ? [{
-      name: t('university_name'), price: t('university_price'), period: t('university_period'), desc: t('university_desc'),
-      features: [t('university_features_1'), t('university_features_2'), t('university_features_3'), t('university_features_4'), t('university_features_5'), t('university_features_6'), t('university_features_7'), t('university_features_8')],
-      cta: t('university_cta'), planId: 'teacher_license',
-      variant: isTeacher ? 'default' as const : 'outline' as const,
-      popular: isTeacher,
-    }] : []),
+    ...(!user
+      ? [
+          {
+            name: t('free_name'),
+            price: t('free_price'),
+            period: t('free_period'),
+            desc: t('free_desc'),
+            features: [
+              t('free_features_1'),
+              t('free_features_2'),
+              t('free_features_3'),
+              t('free_features_4'),
+            ],
+            cta: t('free_cta'),
+            planId: null as string | null,
+            variant: 'outline' as const,
+          },
+        ]
+      : []),
+    ...(!user || showStudentPremium
+      ? [
+          {
+            name: t('premium_name'),
+            price: t('premium_price'),
+            period: t('premium_period'),
+            desc: t('premium_desc'),
+            features: [
+              t('premium_features_1'),
+              t('premium_features_2'),
+              t('premium_features_3'),
+              t('premium_features_4'),
+              t('premium_features_5'),
+              t('premium_features_6'),
+            ],
+            cta: t('premium_cta'),
+            planId: 'student_premium',
+            variant: 'default' as const,
+            popular: showStudentPremium && !isTeacher,
+          },
+        ]
+      : []),
+    ...(!user || showTeacherLicense
+      ? [
+          {
+            name: t('university_name'),
+            price: t('university_price'),
+            period: t('university_period'),
+            desc: t('university_desc'),
+            features: [
+              t('university_features_1'),
+              t('university_features_2'),
+              t('university_features_3'),
+              t('university_features_4'),
+              t('university_features_5'),
+              t('university_features_6'),
+              t('university_features_7'),
+              t('university_features_8'),
+            ],
+            cta: t('university_cta'),
+            planId: 'teacher_license',
+            variant: isTeacher ? ('default' as const) : ('outline' as const),
+            popular: isTeacher,
+          },
+        ]
+      : []),
   ];
 
   const faqs = [
@@ -71,7 +124,9 @@ export default function PricingPage() {
               className={plan.popular ? 'border-primary shadow-lg relative' : 'border-border/50'}
             >
               {plan.popular && (
-                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">{t('most_popular')}</Badge>
+                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
+                  {t('most_popular')}
+                </Badge>
               )}
               <CardHeader>
                 <CardTitle className="text-xl">{plan.name}</CardTitle>
@@ -93,11 +148,7 @@ export default function PricingPage() {
                   ))}
                 </ul>
                 {user && plan.planId ? (
-                  <CheckoutButton
-                    planId={plan.planId}
-                    variant={plan.variant}
-                    className="w-full"
-                  >
+                  <CheckoutButton planId={plan.planId} variant={plan.variant} className="w-full">
                     {plan.cta}
                   </CheckoutButton>
                 ) : (

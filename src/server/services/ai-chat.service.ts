@@ -1,10 +1,10 @@
 import { log } from '@/lib/logger';
-import { callLLMStreaming } from '@/server/ai';
-import { pdfService } from '@/server/services/pdf.service';
-import { pdfCacheService } from '@/server/services/pdf-cache.service';
 import type { RequestContext } from '@/lib/request-context';
+import { callLLMStreaming } from '@/server/ai';
 import type { TokenUsage } from '@/server/ai/ai.types';
 import type { ChatMessageInput } from '@/server/models/ai-chat.model';
+import { pdfService } from '@/server/services/pdf.service';
+import { pdfCacheService } from '@/server/services/pdf-cache.service';
 
 const MAX_FILE_CHARS = parseInt(process.env.LLM_MAX_FILE_CHARS || '200000', 10);
 
@@ -57,7 +57,9 @@ export class ChatService {
 
         // Truncate to configurable limit
         if (extracted.length > MAX_FILE_CHARS) {
-          log.ai.warn(`Truncating file content from ${extracted.length} to ${MAX_FILE_CHARS} chars`);
+          log.ai.warn(
+            `Truncating file content from ${extracted.length} to ${MAX_FILE_CHARS} chars`,
+          );
           extracted = extracted.slice(0, MAX_FILE_CHARS);
         }
 
@@ -70,7 +72,9 @@ export class ChatService {
         const cached = pdfCacheService.get(conversationId);
         if (cached) {
           extracted = cached.text;
-          log.ai.info(`Retrieved ${extracted.length} chars from cache for conversation ${conversationId}`);
+          log.ai.info(
+            `Retrieved ${extracted.length} chars from cache for conversation ${conversationId}`,
+          );
         }
       }
 

@@ -1,20 +1,26 @@
 import { z } from '@/lib/zod';
-import { GENERATE_FROM_TERMS_SYSTEM_PROMPT, GENERATE_FLASHCARDS_TOOL } from '@/server/services/ai-prompts';
+import {
+  GENERATE_FLASHCARDS_TOOL,
+  GENERATE_FROM_TERMS_SYSTEM_PROMPT,
+} from '@/server/services/ai-prompts';
 import { parseFlashcards } from '@/server/services/ai-utils';
 import type { Tool } from '../types';
 
 const params = z.object({
-  cards: z.array(z.object({
-    front: z.string(),
-    back: z.string(),
-    topic: z.string().optional(),
-  })),
+  cards: z.array(
+    z.object({
+      front: z.string(),
+      back: z.string(),
+      topic: z.string().optional(),
+    }),
+  ),
   feedback: z.string(),
 });
 
 export const flashcardReviseTool: Tool = {
   name: 'flashcard_revise',
-  description: 'Revise and improve flashcards based on quality feedback. Rewrites cards to better meet quality criteria.',
+  description:
+    'Revise and improve flashcards based on quality feedback. Rewrites cards to better meet quality criteria.',
   parameters: params,
   async execute(args, ctx) {
     const parsed = params.parse(args);
@@ -23,7 +29,9 @@ export const flashcardReviseTool: Tool = {
 
     const result = await ctx.callLLM({
       prompt,
-      systemPrompt: GENERATE_FROM_TERMS_SYSTEM_PROMPT + '\nFocus on fixing the issues mentioned in the feedback.',
+      systemPrompt:
+        GENERATE_FROM_TERMS_SYSTEM_PROMPT +
+        '\nFocus on fixing the issues mentioned in the feedback.',
       tools: [GENERATE_FLASHCARDS_TOOL],
       toolChoice: { type: 'function', function: { name: 'generate_flashcards' } },
       maxTokens: 8192,
@@ -42,7 +50,7 @@ export const flashcardReviseTool: Tool = {
     }
 
     const revised = parseFlashcards(llmResult.flashcards);
-    ctx.state.results['flashcards'] = revised;
+    ctx.state.results.flashcards = revised;
 
     ctx.callbacks?.onThinking?.(`Revised to ${revised.length} improved flashcards`);
 

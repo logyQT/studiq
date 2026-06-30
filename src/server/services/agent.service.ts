@@ -1,9 +1,14 @@
+import type { RequestContext } from '@/lib/request-context';
 import { agentRegistry } from '@/server/agents/agent-registry';
+import type {
+  AgentCallbacks,
+  AgentResult,
+  AgentState,
+  ToolContext,
+} from '@/server/agents/tools/types';
+import type { LLMGatewayRequest } from '@/server/ai/ai.types';
 import { callLLM as llmCallLLM } from '@/server/ai/llm-gateway';
 import { agentTraceService } from '@/server/services/agent-trace.service';
-import type { RequestContext } from '@/lib/request-context';
-import type { AgentCallbacks, AgentResult, AgentState, ToolContext } from '@/server/agents/tools/types';
-import type { LLMGatewayRequest } from '@/server/ai/ai.types';
 
 export class AgentService {
   private conversationStates: Map<string, AgentState> = new Map();
@@ -22,15 +27,16 @@ export class AgentService {
     const modelConfig = agentRegistry.getModelConfig('general');
     const conversationId = body.conversationId || 'no-conversation';
 
-    const existingState = conversationId !== 'no-conversation'
-      ? this.conversationStates.get(conversationId)
-      : undefined;
+    const existingState =
+      conversationId !== 'no-conversation'
+        ? this.conversationStates.get(conversationId)
+        : undefined;
 
     let stateText: string;
     let stateFile: { data: string; mimeType: string } | undefined;
 
     if (existingState) {
-      stateText = existingState.text + `\n\n[User responded: ${body.text}]`;
+      stateText = `${existingState.text}\n\n[User responded: ${body.text}]`;
       stateFile = body.file || existingState.file;
     } else {
       stateText = body.text;
@@ -61,49 +67,63 @@ export class AgentService {
       },
       callLLM: async (req) => {
         const promptPreview = req.prompt.slice(0, 500);
-        const toolNames = ((req.tools as LLMGatewayRequest['tools']) || []).map((t) => t.function.name);
+        const toolNames = ((req.tools as LLMGatewayRequest['tools']) || []).map(
+          (t) => t.function.name,
+        );
 
         await agentTraceService.log({
           conversationId,
           agentName: 'general',
           eventType: 'llm_request',
           label: `LLM call: ${toolNames.join(', ') || 'text'}`,
-          data: { prompt: promptPreview, systemPrompt: req.systemPrompt?.slice(0, 200), tools: toolNames },
+          data: {
+            prompt: promptPreview,
+            systemPrompt: req.systemPrompt?.slice(0, 200),
+            tools: toolNames,
+          },
         });
 
-        const resp = await llmCallLLM({
-          prompt: req.prompt,
-          systemPrompt: req.systemPrompt,
-          tools: req.tools as LLMGatewayRequest['tools'],
-          toolChoice: req.toolChoice as LLMGatewayRequest['toolChoice'],
-          maxTokens: req.maxTokens,
-          onToken: req.onToken,
-          onReasoningToken: req.onReasoning,
-          ...modelConfig,
-          onRetry: async (attempt, maxRetries, delayMs) => {
-            const msg = `LLM temporarily unavailable, retrying in ${delayMs / 1000}s (${attempt}/${maxRetries})...`;
-            callbacks.onThinking?.(msg);
-            await agentTraceService.log({
-              conversationId,
-              agentName: 'general',
-              eventType: 'retry',
-              label: msg,
-              data: { attempt, maxRetries, delayMs },
-            });
+        const resp = await llmCallLLM(
+          {
+            prompt: req.prompt,
+            systemPrompt: req.systemPrompt,
+            tools: req.tools as LLMGatewayRequest['tools'],
+            toolChoice: req.toolChoice as LLMGatewayRequest['toolChoice'],
+            maxTokens: req.maxTokens,
+            onToken: req.onToken,
+            onReasoningToken: req.onReasoning,
+            ...modelConfig,
+            onRetry: async (attempt, maxRetries, delayMs) => {
+              const msg = `LLM temporarily unavailable, retrying in ${delayMs / 1000}s (${attempt}/${maxRetries})...`;
+              callbacks.onThinking?.(msg);
+              await agentTraceService.log({
+                conversationId,
+                agentName: 'general',
+                eventType: 'retry',
+                label: msg,
+                data: { attempt, maxRetries, delayMs },
+              });
+            },
           },
-        }, ctx);
+          ctx,
+        );
 
-        const toolCallsInfo = resp.toolCalls?.map((tc) => ({ name: tc.function.name, args: tc.function.arguments }));
+        const toolCallsInfo = resp.toolCalls?.map((tc) => ({
+          name: tc.function.name,
+          args: tc.function.arguments,
+        }));
 
-        const usageLog = resp.usage ? {
-          inputTokens: resp.usage.inputTokens,
-          outputTokens: resp.usage.outputTokens,
-          totalTokens: resp.usage.totalTokens,
-          contextWindow: modelConfig.contextWindow,
-          contextWindowUtilization: modelConfig.contextWindow
-            ? Math.round((resp.usage.totalTokens / modelConfig.contextWindow) * 100)
-            : undefined,
-        } : {};
+        const usageLog = resp.usage
+          ? {
+              inputTokens: resp.usage.inputTokens,
+              outputTokens: resp.usage.outputTokens,
+              totalTokens: resp.usage.totalTokens,
+              contextWindow: modelConfig.contextWindow,
+              contextWindowUtilization: modelConfig.contextWindow
+                ? Math.round((resp.usage.totalTokens / modelConfig.contextWindow) * 100)
+                : undefined,
+            }
+          : {};
 
         await agentTraceService.log({
           conversationId,
@@ -113,7 +133,12 @@ export class AgentService {
           data: { content: resp.content.slice(0, 1000), toolCalls: toolCallsInfo, ...usageLog },
         });
 
-        return { content: resp.content, reasoning: resp.reasoning, toolCalls: resp.toolCalls, usage: resp.usage };
+        return {
+          content: resp.content,
+          reasoning: resp.reasoning,
+          toolCalls: resp.toolCalls,
+          usage: resp.usage,
+        };
       },
     };
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import type React from 'react';
 import { useFeature } from '@/hooks/use-feature';
 
 interface FeatureGuardProps {

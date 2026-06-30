@@ -1,25 +1,25 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { useTranslations } from 'next-intl';
+import { useQueryClient } from '@tanstack/react-query';
+import { Plus } from 'lucide-react';
+import type { useTranslations } from 'next-intl';
+import { useCallback, useState } from 'react';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogDescription,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { MultiSelect } from '@/components/ui/multi-select';
-import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
-import { Plus } from 'lucide-react';
-import { getTopicColor } from '@/lib/color-utils';
 import { apiPost, apiPut } from '@/lib/api';
-import { useQueryClient } from '@tanstack/react-query';
+import { getGradientHex } from '@/lib/color-utils';
 import { flashcardKeys } from '@/lib/query-keys';
-import type { Topic, Flashcard } from '@/types/flashcards';
+import type { Flashcard, Topic } from '@/types/flashcards';
 
 interface TopicDialogsProps {
   t: ReturnType<typeof useTranslations>;
@@ -86,7 +86,8 @@ export function TopicDialogs({
     } finally {
       setCreatingTopic(false);
     }
-  }, [newTopicName, activeFlashcardId, flashcards, queryClient, onAddTopicOpenChange]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: getTopicIds is a callback ref
+  }, [newTopicName, activeFlashcardId, flashcards, queryClient, onAddTopicOpenChange, getTopicIds]);
 
   const handleManageTopicsConfirm = useCallback(async () => {
     if (!activeFlashcardId) return;
@@ -120,7 +121,12 @@ export function TopicDialogs({
                 const viewTopic = topics.find((tp) => tp.id === viewTopicId);
                 return viewTopic ? (
                   <span className="flex items-center gap-2">
-                    <div className={`h-5 w-5 rounded ${getTopicColor(viewTopic.name)}`} />
+                    <div
+                      className="h-5 w-5 rounded"
+                      style={{
+                        background: `linear-gradient(135deg, ${getGradientHex(viewTopic.name).from}, ${getGradientHex(viewTopic.name).to})`,
+                      }}
+                    />
                     {viewTopic.name}
                   </span>
                 ) : null;
@@ -249,7 +255,10 @@ export function TopicDialogs({
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent transition-colors"
                       >
                         <div
-                          className={`h-2 w-2 rounded-full shrink-0 ${getTopicColor(topic.name)}`}
+                          className="h-2 w-2 rounded-full shrink-0"
+                          style={{
+                            background: `linear-gradient(135deg, ${getGradientHex(topic.name).from}, ${getGradientHex(topic.name).to})`,
+                          }}
                         />
                         {topic.name}
                       </button>

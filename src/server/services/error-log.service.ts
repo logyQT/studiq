@@ -28,15 +28,11 @@ export interface ErrorLogListFilters {
 }
 
 export class ErrorLogService {
-  async logError(
-    error: unknown,
-    errorCode: string,
-    context?: ErrorLogContext,
-  ): Promise<string> {
+  async logError(error: unknown, errorCode: string, context?: ErrorLogContext): Promise<string> {
     const supabase = createServiceClient();
 
     const message = error instanceof Error ? error.message : String(error);
-    const stackTrace = error instanceof Error ? error.stack ?? null : null;
+    const stackTrace = error instanceof Error ? (error.stack ?? null) : null;
 
     const { data, error: insertError } = await supabase
       .from('error_logs')
@@ -62,11 +58,7 @@ export class ErrorLogService {
   async getById(id: string): Promise<ErrorLogEntry | null> {
     const supabase = createServiceClient();
 
-    const { data, error } = await supabase
-      .from('error_logs')
-      .select('*')
-      .eq('id', id)
-      .single();
+    const { data, error } = await supabase.from('error_logs').select('*').eq('id', id).single();
 
     if (error) return null;
 

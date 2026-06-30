@@ -1,8 +1,8 @@
-import { quizService } from '@/server/services';
-import { GenerateQuizSchema } from '@/server/models';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import { GenerateQuizSchema } from '@/server/models';
+import { quizService } from '@/server/services';
 
 export class QuizController {
   async generate(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {

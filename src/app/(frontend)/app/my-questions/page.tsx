@@ -1,29 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { Lock, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { useTranslations } from 'next-intl';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,10 +15,29 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, X, Lock } from 'lucide-react';
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { useFeature } from '@/hooks/use-feature';
+import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 
 interface Question {
   id: string;
@@ -167,11 +167,18 @@ export default function MyQuestionsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">{t('title')}</h2>
-        <Button disabled={!hasAccess} onClick={hasAccess ? openCreate : () => router.push('/checkout?plan_id=student_premium')}>
+        <Button
+          disabled={!hasAccess}
+          onClick={hasAccess ? openCreate : () => router.push('/checkout?plan_id=student_premium')}
+        >
           {hasAccess ? (
-            <><Plus className="mr-2 h-4 w-4" /> {t('create_question')}</>
+            <>
+              <Plus className="mr-2 h-4 w-4" /> {t('create_question')}
+            </>
           ) : (
-            <><Lock className="size-3" /> Upgrade</>
+            <>
+              <Lock className="size-3" /> Upgrade
+            </>
           )}
         </Button>
       </div>
@@ -220,9 +227,7 @@ export default function MyQuestionsPage() {
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? t('edit_title') : t('create_title')}</DialogTitle>
-            <DialogDescription>
-              {editing ? t('edit_desc') : t('create_desc')}
-            </DialogDescription>
+            <DialogDescription>{editing ? t('edit_desc') : t('create_desc')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
@@ -301,7 +306,9 @@ export default function MyQuestionsPage() {
             >
               {t('common_cancel')}
             </Button>
-            <Button onClick={handleSubmit}>{editing ? t('common_update') : t('common_create')}</Button>
+            <Button onClick={handleSubmit}>
+              {editing ? t('common_update') : t('common_create')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,13 +1,13 @@
 'use client';
 
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useTranslations } from 'next-intl';
+import { Loader2, Lock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { updatePasswordSchema, type UpdatePasswordInput } from '@/server/models/auth.model';
-import { APP_ERRORS } from '@/lib/errors';
+import { useTranslations } from 'next-intl';
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Form,
   FormControl,
@@ -16,10 +16,10 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { toast } from 'sonner';
-import { Loader2, Lock } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { APP_ERRORS } from '@/lib/errors';
 import { cn } from '@/lib/utils';
+import { type UpdatePasswordInput, updatePasswordSchema } from '@/server/models/auth.model';
 
 export default function PasswordUpdatePage() {
   const t = useTranslations('PasswordUpdatePage');

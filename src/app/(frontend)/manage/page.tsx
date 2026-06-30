@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { ArrowRight, GraduationCap, Plus, UserCheck, Users } from 'lucide-react';
 import Link from 'next/link';
-import { StatCard } from '@/components/ui/stat-card';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useTranslations } from 'next-intl';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RoleBadge } from '@/components/ui/role-badge';
-import { Users, UserCheck, GraduationCap, ArrowRight, Plus } from 'lucide-react';
+import { StatCard } from '@/components/ui/stat-card';
 import { UserRole } from '@/types';
 
 interface Member {

@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { FileText, TrendingDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { StatCard } from '@/components/ui/stat-card';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Select,
@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { FileText, TrendingDown } from 'lucide-react';
+import { StatCard } from '@/components/ui/stat-card';
 
 interface TeacherStats {
   totalQuestions: number;
@@ -82,7 +82,11 @@ export default function EduStatsPage() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard title={t('questions_stat')} value={stats?.totalQuestions ?? 0} icon={FileText} />
-        <StatCard title={t('flashcards_stat')} value={stats?.totalFlashcards ?? 0} icon={FileText} />
+        <StatCard
+          title={t('flashcards_stat')}
+          value={stats?.totalFlashcards ?? 0}
+          icon={FileText}
+        />
       </div>
 
       {stats?.subject && (
@@ -103,7 +107,6 @@ export default function EduStatsPage() {
                 </div>
               </CardContent>
             </Card>
-
           </div>
 
           <Card>
@@ -112,9 +115,7 @@ export default function EduStatsPage() {
                 <TrendingDown className="h-5 w-5 text-red-500" />
                 {t('problematic_title')}
               </CardTitle>
-              <CardDescription>
-                {t('problematic_desc')}
-              </CardDescription>
+              <CardDescription>{t('problematic_desc')}</CardDescription>
             </CardHeader>
             <CardContent>
               {stats.subject.problematicQuestions.length > 0 ? (
@@ -126,9 +127,7 @@ export default function EduStatsPage() {
                     >
                       <div>
                         <p className="font-medium text-sm">{q.content}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {q.type}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{q.type}</p>
                       </div>
                       <span className="text-sm font-bold text-red-600">
                         {Math.round(q.correctRate * 100)}% {t('correct_suffix')}
@@ -137,9 +136,7 @@ export default function EduStatsPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-center py-8 text-muted-foreground">
-                  {t('no_problematic')}
-                </p>
+                <p className="text-center py-8 text-muted-foreground">{t('no_problematic')}</p>
               )}
             </CardContent>
           </Card>

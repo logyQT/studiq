@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { flashcardTopicService } from '@/server/services/flashcard-topic.service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { flashcardTopicService } from '@/server/services/flashcard-topic.service';
 
 describe('FlashcardTopicService', () => {
   const userId = 'test-user-id';

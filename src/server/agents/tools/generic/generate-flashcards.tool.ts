@@ -1,10 +1,10 @@
 import { z } from '@/lib/zod';
-import type { FlashcardItem, ExtractedTerm } from '@/server/services/ai-utils';
-import { parseFlashcards } from '@/server/services/ai-utils';
 import {
-  GENERATE_FROM_TERMS_SYSTEM_PROMPT,
   GENERATE_FLASHCARDS_TOOL,
+  GENERATE_FROM_TERMS_SYSTEM_PROMPT,
 } from '@/server/services/ai-prompts';
+import type { ExtractedTerm, FlashcardItem } from '@/server/services/ai-utils';
+import { parseFlashcards } from '@/server/services/ai-utils';
 import type { Tool } from '../types';
 
 const BATCH_SIZE = 25;
@@ -140,8 +140,8 @@ export const generateFlashcardsTool: Tool = {
     const results = await runWithConcurrency(batchFns, parsed.concurrency);
     const allFlashcards = results.flatMap((r) => r.flashcards);
     const deckName = results.find((r) => r.deckName)?.deckName || 'Generated Flashcards';
-    ctx.state.results['flashcards'] = allFlashcards;
-    ctx.state.results['deckName'] = deckName;
+    ctx.state.results.flashcards = allFlashcards;
+    ctx.state.results.deckName = deckName;
     return {
       type: 'flashcards' as const,
       deckName,

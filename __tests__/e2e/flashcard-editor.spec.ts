@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { t } from './utils';
 
 async function login(page: import('@playwright/test').Page) {
@@ -19,7 +19,10 @@ async function createDeckAndNavigateToEditor(page: import('@playwright/test').Pa
   await expect(page.getByText('Editor Deck').first()).toBeVisible();
 
   await page.getByText('Editor Deck').hover();
-  await page.getByRole('button', { name: t('AppFlashcardDecksPage.manage_deck') }).first().click();
+  await page
+    .getByRole('button', { name: t('AppFlashcardDecksPage.manage_deck') })
+    .first()
+    .click();
   await page.waitForURL(/\/app\/flashcards\/decks\//);
 
   await page.getByRole('button', { name: t('AppFlashcardDeckViewPage.new_flashcard') }).click();
@@ -57,17 +60,23 @@ test.describe('Flashcard Editor', () => {
     const frontTextarea = page.getByPlaceholder(t('FlashcardEditorComponent.front_placeholder'));
     await frontTextarea.fill('heading text');
 
-    await page.getByRole('button', { name: t('FlashcardEditorComponent.toolbar_heading1') }).click();
+    await page
+      .getByRole('button', { name: t('FlashcardEditorComponent.toolbar_heading1') })
+      .click();
     await expect(frontTextarea).toHaveValue('# heading text');
 
     await frontTextarea.fill('');
     await frontTextarea.fill('heading2 text');
-    await page.getByRole('button', { name: t('FlashcardEditorComponent.toolbar_heading2') }).click();
+    await page
+      .getByRole('button', { name: t('FlashcardEditorComponent.toolbar_heading2') })
+      .click();
     await expect(frontTextarea).toHaveValue('## heading2 text');
 
     await frontTextarea.fill('');
     await frontTextarea.fill('heading3 text');
-    await page.getByRole('button', { name: t('FlashcardEditorComponent.toolbar_heading3') }).click();
+    await page
+      .getByRole('button', { name: t('FlashcardEditorComponent.toolbar_heading3') })
+      .click();
     await expect(frontTextarea).toHaveValue('### heading3 text');
   });
 
@@ -77,13 +86,17 @@ test.describe('Flashcard Editor', () => {
     const frontTextarea = page.getByPlaceholder(t('FlashcardEditorComponent.front_placeholder'));
     await frontTextarea.fill('item');
     await frontTextarea.selectText();
-    await page.getByRole('button', { name: t('FlashcardEditorComponent.toolbar_bullet_list') }).click();
+    await page
+      .getByRole('button', { name: t('FlashcardEditorComponent.toolbar_bullet_list') })
+      .click();
     await expect(frontTextarea).toHaveValue('- item');
 
     await frontTextarea.fill('');
     await frontTextarea.fill('item');
     await frontTextarea.selectText();
-    await page.getByRole('button', { name: t('FlashcardEditorComponent.toolbar_ordered_list') }).click();
+    await page
+      .getByRole('button', { name: t('FlashcardEditorComponent.toolbar_ordered_list') })
+      .click();
     await expect(frontTextarea).toHaveValue('1. item');
   });
 
@@ -93,7 +106,9 @@ test.describe('Flashcard Editor', () => {
     const frontTextarea = page.getByPlaceholder(t('FlashcardEditorComponent.front_placeholder'));
     await frontTextarea.fill('**bold**');
 
-    const previewToggle = page.getByRole('button', { name: t('FlashcardEditorComponent.toolbar_preview') });
+    const previewToggle = page.getByRole('button', {
+      name: t('FlashcardEditorComponent.toolbar_preview'),
+    });
     await previewToggle.click();
 
     await expect(frontTextarea).not.toBeVisible();
@@ -105,10 +120,14 @@ test.describe('Flashcard Editor', () => {
 
     const frontTextarea = page.getByPlaceholder(t('FlashcardEditorComponent.front_placeholder'));
 
-    const previewToggle = page.getByRole('button', { name: t('FlashcardEditorComponent.toolbar_preview') });
+    const previewToggle = page.getByRole('button', {
+      name: t('FlashcardEditorComponent.toolbar_preview'),
+    });
     await previewToggle.click();
 
-    const editToggle = page.getByRole('button', { name: t('FlashcardEditorComponent.toolbar_edit') });
+    const editToggle = page.getByRole('button', {
+      name: t('FlashcardEditorComponent.toolbar_edit'),
+    });
     await editToggle.click();
 
     await expect(frontTextarea).toBeVisible();

@@ -1,10 +1,10 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
-import { Card } from '@/components/ui/card';
+import { Play } from 'lucide-react';
+import type { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Play } from 'lucide-react';
+import { Card } from '@/components/ui/card';
 import { getGradientHex } from '@/lib/color-utils';
 import type { Deck } from '@/types/flashcards';
 

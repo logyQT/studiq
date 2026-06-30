@@ -1,13 +1,13 @@
 'use client';
 
+import { Check, School, Sparkles, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Check, Sparkles, School, X } from 'lucide-react';
 
 export default function AppBillingPage() {
   const t = useTranslations('BillingPage');
@@ -15,7 +15,7 @@ export default function AppBillingPage() {
   const { user } = useAuth();
   const role = user?.app_metadata?.role as string;
   const isPremium = role === 'premium';
-  const isFree = role === 'free' || role === 'student';
+  const _isFree = role === 'free' || role === 'student';
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -31,13 +31,17 @@ export default function AppBillingPage() {
               <CardTitle>{t('current_plan')}</CardTitle>
               <CardDescription>{isPremium ? t('premium_plan') : t('free_plan')}</CardDescription>
             </div>
-            <Badge variant={isPremium ? 'default' : 'secondary'}>{isPremium ? t('active') : t('free')}</Badge>
+            <Badge variant={isPremium ? 'default' : 'secondary'}>
+              {isPremium ? t('active') : t('free')}
+            </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-bold">{isPremium ? '$9.99' : '$0'}</span>
-            <span className="text-muted-foreground">{isPremium ? '/month' : t('free_forever')}</span>
+            <span className="text-muted-foreground">
+              {isPremium ? '/month' : t('free_forever')}
+            </span>
           </div>
 
           {role === 'student' && (
@@ -66,7 +70,10 @@ export default function AppBillingPage() {
           </ul>
 
           {!isPremium && (
-            <Button className="w-full" onClick={() => router.push('/checkout?plan_id=student_premium')}>
+            <Button
+              className="w-full"
+              onClick={() => router.push('/checkout?plan_id=student_premium')}
+            >
               <Sparkles className="size-4 mr-2" />
               {t('upgrade')}
             </Button>

@@ -1,7 +1,6 @@
+import type { RequestContext } from '@/lib/request-context';
 import { ChatRequestSchema } from '@/server/models/ai-chat.model';
 import { chatService } from '@/server/services/ai-chat.service';
-import { checkSubscription, checkUsage } from '@/server/guards';
-import type { RequestContext } from '@/lib/request-context';
 
 export interface ChatStreamCallbacks {
   onToken: (text: string) => void;
@@ -12,32 +11,10 @@ export interface ChatStreamCallbacks {
 }
 
 export class ChatController {
-  async chat(
-    body: unknown,
-    ctx: RequestContext,
-    callbacks: ChatStreamCallbacks,
-  ): Promise<void> {
+  async chat(body: unknown, ctx: RequestContext, callbacks: ChatStreamCallbacks): Promise<void> {
     const parsed = ChatRequestSchema.safeParse(body);
     if (!parsed.success) {
       callbacks.onError('Invalid request body');
-      return;
-    }
-
-    const subResult = await checkSubscription(ctx.userId);
-    if (!subResult.allowed) {
-      callbacks.onError(subResult.reason || 'Subscription check failed');
-      return;
-    }
-
-    const usageResult = await checkUsage(ctx.userId, 'chat', subResult.plan);
-    if (!usageResult.allowed) {
-      callbacks.onUsage({
-        current: usageResult.current.daily,
-        limit: usageResult.limits.daily,
-        plan: subResult.plan?.name || 'unknown',
-        resetsAt: usageResult.resetsAt.daily,
-      });
-      callbacks.onError('Usage limit exceeded');
       return;
     }
 
@@ -46,15 +23,13 @@ export class ChatController {
     await chatService.chat(text, file, messages, conversationId, ctx, {
       onToken: (token) => callbacks.onToken(token),
       onResult: (type, data) => callbacks.onResult(type, data),
-      onComplete: (summary, usage) => {
-        if (usage) {
-          callbacks.onUsage({
-            current: usageResult.current.daily + 1,
-            limit: usageResult.limits.daily,
-            plan: subResult.plan?.name || 'unknown',
-            resetsAt: usageResult.resetsAt.daily,
-          });
-        }
+      onComplete: (summary) => {
+        callbacks.onUsage({
+          current: 0,
+          limit: Infinity,
+          plan: 'free',
+          resetsAt: '',
+        });
         callbacks.onComplete(summary);
       },
       onError: (message) => callbacks.onError(message),

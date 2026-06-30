@@ -1,9 +1,10 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { apiGet, apiPost } from '@/lib/api';
+import { useEffect, useRef } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { apiGet, apiPost } from '@/lib/api';
 
 export type OrgMembership = {
   id: string;
@@ -26,6 +27,7 @@ export function useOrgs() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const router = useRouter();
+  const hasAutoSelected = useRef(false);
 
   const { data: orgs = [], isLoading } = useQuery<OrgMembership[]>({
     queryKey: ['orgs'],
@@ -45,10 +47,19 @@ export function useOrgs() {
     },
   });
 
+  const activeOrg = orgs.find((o) => o.isActive) || null;
+
+  useEffect(() => {
+    if (!isLoading && orgs.length > 0 && !activeOrg && !hasAutoSelected.current) {
+      hasAutoSelected.current = true;
+      switchOrgMutation.mutate(orgs[0].id);
+    }
+  }, [orgs, activeOrg, isLoading, switchOrgMutation]);
+
   return {
     orgs,
     isLoading,
-    activeOrg: orgs.find((o) => o.isActive) || null,
+    activeOrg,
     switchOrg: switchOrgMutation.mutateAsync,
     isSwitching: switchOrgMutation.isPending,
   };

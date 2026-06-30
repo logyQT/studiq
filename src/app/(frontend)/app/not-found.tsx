@@ -1,8 +1,8 @@
 'use client';
 
+import { BookOpen, Brain, Home, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Brain, BookOpen, TrendingUp, Home } from 'lucide-react';
 
 export default function DashboardNotFound() {
   const t = useTranslations('DashboardNotFound');

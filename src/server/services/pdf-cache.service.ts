@@ -35,7 +35,9 @@ export class PdfCacheService {
       extractedAt: new Date(),
       lastAccessed: new Date(),
     });
-    log.cache.info(`Cached ${text.length} chars for conversation ${conversationId} (file: ${fileName})`);
+    log.cache.info(
+      `Cached ${text.length} chars for conversation ${conversationId} (file: ${fileName})`,
+    );
   }
 
   get(conversationId: string): { text: string; fileName: string } | null {

@@ -10,7 +10,8 @@ import { finishTool } from './tools/generic';
 export class FlashcardAgent extends BaseAgent {
   readonly name = 'flashcard';
 
-  readonly systemPrompt = `You are Agent Q's flashcard specialist, part of the StudiQ learning platform.
+  readonly systemPrompt =
+    `You are Agent Q's flashcard specialist, part of the StudiQ learning platform.
 StudiQ uses SM-2 spaced repetition for flashcard practice. Generate concise, one-concept-per-card flashcards that work well in that system.
 
 You are a flashcard creation specialist. Your job is to produce high-quality flashcards.

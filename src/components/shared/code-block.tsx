@@ -1,7 +1,7 @@
 'use client';
 
+import { Check, Copy } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
-import { Copy, Check } from 'lucide-react';
 
 interface CodeBlockProps {
   children: ReactNode;

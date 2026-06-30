@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { flashcardSpacedRepetitionService } from '@/server/services';
 
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not available in production' }, { status: 404 });
   }
 
-  const { email, limit = 20 } = await req.json() as { email: string; limit?: number };
+  const { email, limit = 20 } = (await req.json()) as { email: string; limit?: number };
 
   const supabase = createServiceClient();
 
@@ -30,9 +30,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `User not found: ${email}` }, { status: 404 });
   }
 
-  let query = supabase
-    .from('flashcards')
-    .select('id');
+  let query = supabase.from('flashcards').select('id');
 
   if (profile.university_id) {
     query = query.eq('university_id', profile.university_id);
@@ -52,7 +50,10 @@ export async function POST(req: NextRequest) {
     .from('flashcard_review_state')
     .select('*')
     .eq('user_id', profile.id)
-    .in('flashcard_id', allFlashcards.map((f) => f.id));
+    .in(
+      'flashcard_id',
+      allFlashcards.map((f) => f.id),
+    );
 
   const stateByCard = new Map((states ?? []).map((s) => [s.flashcard_id, s]));
 
@@ -99,22 +100,20 @@ export async function POST(req: NextRequest) {
   for (const fc of selected) {
     const rand = Math.random();
     let confidenceLevel: number;
-    if (rand < 0.10) confidenceLevel = 1;
+    if (rand < 0.1) confidenceLevel = 1;
     else if (rand < 0.25) confidenceLevel = 2;
     else if (rand < 0.55) confidenceLevel = 3;
-    else if (rand < 0.80) confidenceLevel = 4;
+    else if (rand < 0.8) confidenceLevel = 4;
     else confidenceLevel = 5;
 
     const wasCorrect = confidenceLevel >= 3;
 
-    const { error: practiceError } = await supabase
-      .from('flashcard_practice')
-      .insert({
-        user_id: profile.id,
-        flashcard_id: fc.id,
-        was_correct: wasCorrect,
-        confidence_level: confidenceLevel,
-      });
+    const { error: practiceError } = await supabase.from('flashcard_practice').insert({
+      user_id: profile.id,
+      flashcard_id: fc.id,
+      was_correct: wasCorrect,
+      confidence_level: confidenceLevel,
+    });
 
     if (practiceError) {
       errors.push(`practice ${fc.id}: ${practiceError.message}`);
@@ -139,9 +138,8 @@ export async function POST(req: NextRequest) {
 
     const quality = flashcardSpacedRepetitionService.mapToQuality(rating);
 
-    const { error: reviewError } = await supabase
-      .from('flashcard_review_state')
-      .upsert({
+    const { error: reviewError } = await supabase.from('flashcard_review_state').upsert(
+      {
         user_id: profile.id,
         flashcard_id: fc.id,
         easiness_factor: result.newEasinessFactor,
@@ -154,9 +152,11 @@ export async function POST(req: NextRequest) {
         learning_step: result.learningStep,
         lapse_count: result.lapseCount,
         is_leech: result.isLeech,
-      }, {
+      },
+      {
         onConflict: 'user_id, flashcard_id',
-      });
+      },
+    );
 
     if (reviewError) {
       errors.push(`review ${fc.id}: ${reviewError.message}`);

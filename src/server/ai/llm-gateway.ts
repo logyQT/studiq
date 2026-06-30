@@ -1,10 +1,15 @@
-import { log } from '@/lib/logger';
-import { getProvider } from '@/server/providers/providerRegistry';
-import { getModelsConfig } from '@/server/config/models.config';
 import { AppError } from '@/lib/errors';
-import type { LLMProvider, ProviderUsage } from '@/server/providers/LLMProvider';
+import { log } from '@/lib/logger';
 import type { RequestContext } from '@/lib/request-context';
-import type { LLMGatewayRequest, LLMGatewayResponse, GatewayStreamCallbacks, TokenUsage } from './ai.types';
+import { getModelsConfig } from '@/server/config/models.config';
+import type { LLMProvider, ProviderUsage } from '@/server/providers/LLMProvider';
+import { getProvider } from '@/server/providers/providerRegistry';
+import type {
+  GatewayStreamCallbacks,
+  LLMGatewayRequest,
+  LLMGatewayResponse,
+  TokenUsage,
+} from './ai.types';
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -39,21 +44,41 @@ function resolveProviderConfig(req: LLMGatewayRequest) {
 async function generateStreamingWithRetry(
   provider: LLMProvider,
   req: LLMGatewayRequest,
-): Promise<{ content: string; reasoning?: string; toolCalls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>; usage?: ProviderUsage }> {
+): Promise<{
+  content: string;
+  reasoning?: string;
+  toolCalls?: Array<{
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+  }>;
+  usage?: ProviderUsage;
+}> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= MAX_5XX_RETRIES; attempt++) {
     try {
-      const result = await provider.generateChatStreaming(req.prompt, req.systemPrompt, {
-        onToken: (token) => req.onToken?.(token),
-        onReasoning: req.onReasoningToken ? (token: string) => req.onReasoningToken!(token) : () => {},
-      }, req.tools, req.toolChoice, req.maxTokens, req.reasoningEffort);
+      const result = await provider.generateChatStreaming(
+        req.prompt,
+        req.systemPrompt,
+        {
+          onToken: (token) => req.onToken?.(token),
+          onReasoning: req.onReasoningToken
+            ? (token: string) => req.onReasoningToken!(token)
+            : () => {},
+        },
+        req.tools,
+        req.toolChoice,
+        req.maxTokens,
+        req.reasoningEffort,
+      );
       return result;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       const msg = lastError.message;
 
-      const isRetryable = is5xxError(msg) ||
+      const isRetryable =
+        is5xxError(msg) ||
         msg.includes('400') ||
         msg.includes('422') ||
         msg.includes('invalid_type') ||
@@ -72,7 +97,11 @@ async function generateStreamingWithRetry(
       if (msg.includes('429') || msg.includes('rate limit')) {
         throw new AppError('RATE_LIMITED');
       }
-      if (msg.includes('fetch') || msg.includes('ECONNREFUSED') || msg.includes('Failed to initialize')) {
+      if (
+        msg.includes('fetch') ||
+        msg.includes('ECONNREFUSED') ||
+        msg.includes('Failed to initialize')
+      ) {
         throw new AppError('SERVICE_UNAVAILABLE');
       }
       throw lastError;
@@ -82,7 +111,10 @@ async function generateStreamingWithRetry(
   throw lastError || new AppError('SERVICE_UNAVAILABLE');
 }
 
-export async function callLLM(req: LLMGatewayRequest, _ctx: RequestContext): Promise<LLMGatewayResponse> {
+export async function callLLM(
+  req: LLMGatewayRequest,
+  _ctx: RequestContext,
+): Promise<LLMGatewayResponse> {
   const providerConfig = resolveProviderConfig(req);
   const { modelName: model, provider: providerName } = providerConfig;
 
@@ -111,7 +143,17 @@ export async function callLLM(req: LLMGatewayRequest, _ctx: RequestContext): Pro
         model,
       };
 
-  log.ai.info('Streaming result', { metadata: { contentLength: result.content?.length ?? 0, reasoningLength: result.reasoning?.length ?? 0, toolCallCount: result.toolCalls?.length ?? 0, toolNames: result.toolCalls?.map((tc) => tc.function.name).join(', ') ?? '', inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, totalTokens: usage.totalTokens } });
+  log.ai.info('Streaming result', {
+    metadata: {
+      contentLength: result.content?.length ?? 0,
+      reasoningLength: result.reasoning?.length ?? 0,
+      toolCallCount: result.toolCalls?.length ?? 0,
+      toolNames: result.toolCalls?.map((tc) => tc.function.name).join(', ') ?? '',
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      totalTokens: usage.totalTokens,
+    },
+  });
 
   return {
     content: result.content,
@@ -137,7 +179,15 @@ export async function callLLMStreaming(
   }
 
   try {
-    const result = await provider.generateChatStreaming(req.prompt, req.systemPrompt, callbacks, req.tools, req.toolChoice, req.maxTokens, req.reasoningEffort);
+    const result = await provider.generateChatStreaming(
+      req.prompt,
+      req.systemPrompt,
+      callbacks,
+      req.tools,
+      req.toolChoice,
+      req.maxTokens,
+      req.reasoningEffort,
+    );
 
     const usage: TokenUsage = result.usage
       ? {
@@ -169,7 +219,11 @@ export async function callLLMStreaming(
     if (msg.includes('429') || msg.includes('rate limit')) {
       throw new AppError('RATE_LIMITED');
     }
-    if (msg.includes('fetch') || msg.includes('ECONNREFUSED') || msg.includes('Failed to initialize')) {
+    if (
+      msg.includes('fetch') ||
+      msg.includes('ECONNREFUSED') ||
+      msg.includes('Failed to initialize')
+    ) {
       throw new AppError('SERVICE_UNAVAILABLE');
     }
     throw error;

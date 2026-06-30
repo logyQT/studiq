@@ -1,6 +1,6 @@
 import { z } from '@/lib/zod';
-import { parseExtractedTerms } from '@/server/services/ai-utils';
 import type { ExtractedTerm } from '@/server/services/ai-utils';
+import { parseExtractedTerms } from '@/server/services/ai-utils';
 import type { Tool } from '../types';
 
 const params = z.object({
@@ -11,7 +11,8 @@ const params = z.object({
 
 export const brainstormConceptsTool: Tool = {
   name: 'brainstorm_concepts',
-  description: 'Ideate and brainstorm key concepts related to a topic. Useful when you need to identify what concepts exist before generating flashcards.',
+  description:
+    'Ideate and brainstorm key concepts related to a topic. Useful when you need to identify what concepts exist before generating flashcards.',
   parameters: params,
   async execute(args, ctx) {
     const parsed = params.parse(args);
@@ -25,31 +26,33 @@ export const brainstormConceptsTool: Tool = {
     const result = await ctx.callLLM({
       prompt,
       systemPrompt,
-      tools: [{
-        type: 'function',
-        function: {
-          name: 'brainstorm_output',
-          description: 'Output brainstormed concepts',
-          parameters: {
-            type: 'object',
-            properties: {
-              terms: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    term: { type: 'string' },
-                    definition: { type: 'string' },
-                    category: { type: 'string' },
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'brainstorm_output',
+            description: 'Output brainstormed concepts',
+            parameters: {
+              type: 'object',
+              properties: {
+                terms: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      term: { type: 'string' },
+                      definition: { type: 'string' },
+                      category: { type: 'string' },
+                    },
+                    required: ['term', 'definition'],
                   },
-                  required: ['term', 'definition'],
                 },
               },
+              required: ['terms'],
             },
-            required: ['terms'],
           },
         },
-      }],
+      ],
       toolChoice: { type: 'function', function: { name: 'brainstorm_output' } },
       maxTokens: 32768,
     });
@@ -64,7 +67,7 @@ export const brainstormConceptsTool: Tool = {
       concepts = parseExtractedTerms(toolCall.function.arguments);
     } catch {
       ctx.callbacks?.onThinking?.('Brainstorm output was truncated — using partial results');
-      const truncated = toolCall.function.arguments + ']}';
+      const truncated = `${toolCall.function.arguments}]}`;
       try {
         concepts = parseExtractedTerms(truncated);
       } catch {
@@ -72,7 +75,7 @@ export const brainstormConceptsTool: Tool = {
       }
     }
     ctx.state.concepts = concepts;
-    ctx.state.results['concepts'] = concepts;
+    ctx.state.results.concepts = concepts;
 
     return { concepts };
   },

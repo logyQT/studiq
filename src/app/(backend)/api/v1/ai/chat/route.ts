@@ -1,13 +1,14 @@
-import { log } from '@/lib/logger';
-import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import type { NextRequest } from 'next/server';
+import { FEATURE_FLAG_AGENTIC } from '@/lib/feature-flags';
 import { toNextResponse } from '@/lib/http-utils';
+import { log } from '@/lib/logger';
+import { checkPermission, Permission } from '@/lib/rbac';
+import type { RequestContext } from '@/lib/request-context';
+import { createClient } from '@/lib/supabase/server';
+import { aiAgentController } from '@/server/controllers/ai-agent.controller';
 import { chatController } from '@/server/controllers/ai-chat.controller';
 import { aiCommandController } from '@/server/controllers/ai-command.controller';
-import { aiAgentController } from '@/server/controllers/ai-agent.controller';
 import { hasFlashcardKeyword } from '@/server/services/ai-utils';
-import { FEATURE_FLAG_AGENTIC } from '@/lib/feature-flags';
-import type { RequestContext } from '@/lib/request-context';
 import type { UserRole } from '@/types';
 
 function sseEvent(event: string, data: unknown): string {
@@ -16,21 +17,29 @@ function sseEvent(event: string, data: unknown): string {
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
   }
 
-    const role = user.app_metadata?.role as UserRole;
-    const ctx: RequestContext = {
-      traceId: crypto.randomUUID(),
-      userId: user.id,
-      activeOrgId: req.cookies.get('active_org_id')?.value ?? null,
-      role,
-      url: req.url,
-      method: req.method,
-    };
+  const role = user.app_metadata?.role as UserRole;
+  const ctx: RequestContext = {
+    traceId: crypto.randomUUID(),
+    userId: user.id,
+    activeOrgId: req.cookies.get('active_org_id')?.value ?? null,
+    role,
+    url: req.url,
+    method: req.method,
+  };
+
+  try {
+    await checkPermission(ctx, Permission.AI_CHAT, null);
+  } catch {
+    return toNextResponse({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+  }
 
   let body: unknown;
   try {
@@ -56,7 +65,11 @@ export async function POST(req: NextRequest) {
         if (closed) return;
         closed = true;
         clearTimeout(streamTimeout);
-        try { controller.close(); } catch { /* already closed */ }
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
       };
       let streamTimeout = setTimeout(() => {
         log.api.error('Stream timeout — closing after 5min');
@@ -75,11 +88,17 @@ export async function POST(req: NextRequest) {
 
       const isFlashcardKeyword = hasFlashcardKeyword(text);
       const context = (body as Record<string, unknown>)?.context as string | undefined;
-      const file = (body as Record<string, unknown>)?.file as { data: string; mimeType: string } | undefined;
-      const conversationId = (body as Record<string, unknown>)?.conversationId as string | undefined;
+      const file = (body as Record<string, unknown>)?.file as
+        | { data: string; mimeType: string }
+        | undefined;
+      const conversationId = (body as Record<string, unknown>)?.conversationId as
+        | string
+        | undefined;
 
       if (FEATURE_FLAG_AGENTIC) {
-        log.api.info(`Routing: agent pipeline (FEATURE_FLAG_AGENTIC=true), conversationId=${conversationId ?? 'none'}`);
+        log.api.info(
+          `Routing: agent pipeline (FEATURE_FLAG_AGENTIC=true), conversationId=${conversationId ?? 'none'}`,
+        );
 
         await aiAgentController.process(text, file, conversationId, ctx, {
           onThought: (data: unknown) => send('thought', data),
@@ -111,7 +130,9 @@ export async function POST(req: NextRequest) {
         });
       } else {
         const isFlashcard = isFlashcardKeyword || context === 'flashcards';
-        log.api.info(`Routing: flashcardKeyword=${isFlashcardKeyword}, context=${context ?? 'none'}, hasFile=${!!file} → ${isFlashcard ? 'flashcard' : 'chat'}`);
+        log.api.info(
+          `Routing: flashcardKeyword=${isFlashcardKeyword}, context=${context ?? 'none'}, hasFile=${!!file} → ${isFlashcard ? 'flashcard' : 'chat'}`,
+        );
 
         if (isFlashcard) {
           await aiCommandController.chat(text, file, conversationId, ctx, {

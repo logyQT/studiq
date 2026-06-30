@@ -1,5 +1,5 @@
-import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import { registry, z } from '@/lib/zod';
 
 export const CreateFlashcardSchema = registry.register(
   'CreateFlashcardRequest',
@@ -71,7 +71,9 @@ export type UpdateFlashcardInput = z.infer<typeof UpdateFlashcardSchema>;
 export const LinkFlashcardSchema = registry.register(
   'LinkFlashcardRequest',
   z.object({
-    deckIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    deckIds: z
+      .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
+      .min(1, { error: ValidationErrorCode.TOO_FEW }),
   }),
 );
 
@@ -85,15 +87,21 @@ export const CopyFlashcardSchema = registry.register(
 export const BatchDeleteSchema = registry.register(
   'BatchDeleteRequest',
   z.object({
-    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    ids: z
+      .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
+      .min(1, { error: ValidationErrorCode.TOO_FEW }),
   }),
 );
 
 export const BatchLinkSchema = registry.register(
   'BatchLinkRequest',
   z.object({
-    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
-    deckIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    ids: z
+      .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
+      .min(1, { error: ValidationErrorCode.TOO_FEW }),
+    deckIds: z
+      .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
+      .min(1, { error: ValidationErrorCode.TOO_FEW }),
   }),
 );
 
@@ -107,7 +115,9 @@ export const UnlinkFlashcardSchema = registry.register(
 export const BatchUnlinkSchema = registry.register(
   'BatchUnlinkRequest',
   z.object({
-    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    ids: z
+      .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
+      .min(1, { error: ValidationErrorCode.TOO_FEW }),
     deckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
   }),
 );
@@ -115,7 +125,9 @@ export const BatchUnlinkSchema = registry.register(
 export const BatchTopicsSchema = registry.register(
   'BatchTopicsRequest',
   z.object({
-    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    ids: z
+      .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
+      .min(1, { error: ValidationErrorCode.TOO_FEW }),
     topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
     operation: z.enum(['add', 'remove', 'set']).default('set'),
   }),
@@ -124,7 +136,9 @@ export const BatchTopicsSchema = registry.register(
 export const BatchMoveSchema = registry.register(
   'BatchMoveRequest',
   z.object({
-    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    ids: z
+      .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
+      .min(1, { error: ValidationErrorCode.TOO_FEW }),
     sourceDeckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
     targetDeckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
   }),
@@ -133,7 +147,9 @@ export const BatchMoveSchema = registry.register(
 export const BatchCopySchema = registry.register(
   'BatchCopyRequest',
   z.object({
-    ids: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    ids: z
+      .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
+      .min(1, { error: ValidationErrorCode.TOO_FEW }),
     targetDeckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
   }),
 );

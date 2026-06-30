@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { POST as registerPost } from '@/app/(backend)/api/v1/auth/register/route';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST as loginPost } from '@/app/(backend)/api/v1/auth/login/route';
 import { POST as logoutPost } from '@/app/(backend)/api/v1/auth/logout/route';
 import { POST as resetPost } from '@/app/(backend)/api/v1/auth/password/reset/route';
 import { POST as updatePasswordPost } from '@/app/(backend)/api/v1/auth/password/update/route';
+import { POST as registerPost } from '@/app/(backend)/api/v1/auth/register/route';
 import { TEST_USERS, useRealSupabase } from './helpers';
 import { createNextRequest } from './test-utils';
 

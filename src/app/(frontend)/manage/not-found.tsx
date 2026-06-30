@@ -1,8 +1,8 @@
 'use client';
 
+import { LayoutDashboard, Send, Settings, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { LayoutDashboard, Users, Send, Settings } from 'lucide-react';
 
 export default function ManageNotFound() {
   const t = useTranslations('ManageNotFound');

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { t } from './utils';
 
 const PASSWORD = 'pass';
@@ -38,7 +38,9 @@ test.describe('Flashcard Topic Management', () => {
 
     const topicCard = page.locator('.group').filter({ hasText: 'Topic To Edit' }).first();
     await topicCard.hover();
-    const menuButton = topicCard.locator('button').filter({ has: page.locator('svg.lucide-more-vertical') });
+    const menuButton = topicCard
+      .locator('button')
+      .filter({ has: page.locator('svg.lucide-more-vertical') });
     await menuButton.click();
 
     await page.getByRole('menuitem', { name: t('Common.common_edit') }).click();
@@ -59,12 +61,17 @@ test.describe('Flashcard Topic Management', () => {
 
     const topicCard = page.locator('.group').filter({ hasText: 'Topic To Delete' }).first();
     await topicCard.hover();
-    const menuButton = topicCard.locator('button').filter({ has: page.locator('svg.lucide-more-vertical') });
+    const menuButton = topicCard
+      .locator('button')
+      .filter({ has: page.locator('svg.lucide-more-vertical') });
     await menuButton.click();
 
     await page.getByRole('menuitem', { name: t('Common.common_delete') }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
-    await page.getByRole('button', { name: t('Common.common_delete') }).last().click();
+    await page
+      .getByRole('button', { name: t('Common.common_delete') })
+      .last()
+      .click();
     await expect(page.getByText('Topic To Delete')).not.toBeVisible();
   });
 
@@ -107,7 +114,10 @@ test.describe('Flashcard Topic Management', () => {
 
     await page.setViewportSize({ width: 375, height: 812 });
 
-    const fabButton = page.locator('button').filter({ has: page.locator('svg.lucide-plus') }).first();
+    const fabButton = page
+      .locator('button')
+      .filter({ has: page.locator('svg.lucide-plus') })
+      .first();
     await fabButton.click();
 
     await page.getByText(t('EduFlashcardTopicsPage.select_topics')).click();

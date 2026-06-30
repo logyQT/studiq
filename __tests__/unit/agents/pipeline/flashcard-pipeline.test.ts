@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/zod', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/zod')>();
@@ -46,7 +46,10 @@ function mockContext(overrides?: {
     },
     callLLM: (overrides?.callLLM || vi.fn().mockResolvedValue({ content: 'ok' })) as unknown as (
       req: unknown,
-    ) => Promise<{ content: string; toolCalls?: Array<{ function: { name: string; arguments: string } }> }>,
+    ) => Promise<{
+      content: string;
+      toolCalls?: Array<{ function: { name: string; arguments: string } }>;
+    }>,
   };
 }
 
@@ -69,10 +72,16 @@ describe('Flashcard Pipeline', () => {
       type: 'flashcards' as const,
       deckName: 'Photosynthesis',
       flashcards: [
-        { front: 'What is photosynthesis?', back: 'Process by which plants convert light to energy' },
+        {
+          front: 'What is photosynthesis?',
+          back: 'Process by which plants convert light to energy',
+        },
         { front: 'What is chlorophyll?', back: 'Green pigment that absorbs light' },
         { front: 'What are stomata?', back: 'Pores in leaves for gas exchange' },
-        { front: 'What is the Calvin cycle?', back: 'Light-independent reactions in photosynthesis' },
+        {
+          front: 'What is the Calvin cycle?',
+          back: 'Light-independent reactions in photosynthesis',
+        },
         { front: 'What is photolysis?', back: 'Splitting of water molecules using light' },
       ],
     });
@@ -87,15 +96,21 @@ describe('Flashcard Pipeline', () => {
       type: 'flashcards' as const,
       deckName: 'Photosynthesis',
       flashcards: [
-        { front: 'What is photosynthesis?', back: 'Process by which plants convert light to energy' },
+        {
+          front: 'What is photosynthesis?',
+          back: 'Process by which plants convert light to energy',
+        },
         { front: 'What is chlorophyll?', back: 'Green pigment that absorbs light' },
         { front: 'What are stomata?', back: 'Pores in leaves for gas exchange' },
-        { front: 'What is the Calvin cycle?', back: 'Light-independent reactions in photosynthesis' },
+        {
+          front: 'What is the Calvin cycle?',
+          back: 'Light-independent reactions in photosynthesis',
+        },
         { front: 'What is photolysis?', back: 'Splitting of water molecules using light' },
       ],
     });
 
-    agent['tools'] = [
+    agent.tools = [
       mockTool({ name: 'create_plan', execute: planExecute }),
       mockTool({ name: 'ask_user' }),
       mockTool({ name: 'fetch_material' }),
@@ -106,14 +121,37 @@ describe('Flashcard Pipeline', () => {
       mockTool({ name: 'finish', execute: finishExecute }),
     ];
 
-    const callLLM = vi.fn()
+    const callLLM = vi
+      .fn()
       .mockResolvedValueOnce({
         content: 'I will plan first.',
-        toolCalls: [{ function: { name: 'create_plan', arguments: JSON.stringify({ steps: [{ action: 'call flashcard agent', rationale: 'user wants flashcards' }], estimatedComplexity: 'simple', needsClarification: false }) } }],
+        toolCalls: [
+          {
+            function: {
+              name: 'create_plan',
+              arguments: JSON.stringify({
+                steps: [{ action: 'call flashcard agent', rationale: 'user wants flashcards' }],
+                estimatedComplexity: 'simple',
+                needsClarification: false,
+              }),
+            },
+          },
+        ],
       })
       .mockResolvedValueOnce({
         content: 'Delegating to flashcard agent.',
-        toolCalls: [{ function: { name: 'generate_flashcards', arguments: JSON.stringify({ agent: 'flashcard', task: 'Create 5 flashcards about photosynthesis', count: 5 }) } }],
+        toolCalls: [
+          {
+            function: {
+              name: 'generate_flashcards',
+              arguments: JSON.stringify({
+                agent: 'flashcard',
+                task: 'Create 5 flashcards about photosynthesis',
+                count: 5,
+              }),
+            },
+          },
+        ],
       })
       .mockResolvedValueOnce({
         content: 'Evaluating quality.',
@@ -121,7 +159,14 @@ describe('Flashcard Pipeline', () => {
       })
       .mockResolvedValueOnce({
         content: 'Done.',
-        toolCalls: [{ function: { name: 'finish', arguments: JSON.stringify({ message: 'Created 5 flashcards' }) } }],
+        toolCalls: [
+          {
+            function: {
+              name: 'finish',
+              arguments: JSON.stringify({ message: 'Created 5 flashcards' }),
+            },
+          },
+        ],
       });
 
     const ctx = mockContext({ callLLM });
@@ -169,7 +214,7 @@ describe('Flashcard Pipeline', () => {
       ],
     });
 
-    agent['tools'] = [
+    agent.tools = [
       mockTool({ name: 'create_plan', execute: planExecute }),
       mockTool({ name: 'ask_user' }),
       mockTool({ name: 'fetch_material' }),
@@ -180,14 +225,41 @@ describe('Flashcard Pipeline', () => {
       mockTool({ name: 'finish', execute: finishExecute }),
     ];
 
-    const callLLM = vi.fn()
+    const callLLM = vi
+      .fn()
       .mockResolvedValueOnce({
         content: 'Planning.',
-        toolCalls: [{ function: { name: 'create_plan', arguments: JSON.stringify({ steps: [{ action: 'delegate to flashcard agent', rationale: 'file uploaded for flashcards' }], estimatedComplexity: 'moderate', needsClarification: false }) } }],
+        toolCalls: [
+          {
+            function: {
+              name: 'create_plan',
+              arguments: JSON.stringify({
+                steps: [
+                  {
+                    action: 'delegate to flashcard agent',
+                    rationale: 'file uploaded for flashcards',
+                  },
+                ],
+                estimatedComplexity: 'moderate',
+                needsClarification: false,
+              }),
+            },
+          },
+        ],
       })
       .mockResolvedValueOnce({
         content: 'Calling flashcard agent.',
-        toolCalls: [{ function: { name: 'generate_flashcards', arguments: JSON.stringify({ agent: 'flashcard', task: 'Create flashcards from uploaded file' }) } }],
+        toolCalls: [
+          {
+            function: {
+              name: 'generate_flashcards',
+              arguments: JSON.stringify({
+                agent: 'flashcard',
+                task: 'Create flashcards from uploaded file',
+              }),
+            },
+          },
+        ],
       })
       .mockResolvedValueOnce({
         content: 'Evaluating.',
@@ -227,10 +299,17 @@ describe('Flashcard Pipeline', () => {
 
     const askUserExecute = vi.fn().mockResolvedValue({
       type: 'question' as const,
-      question: { id: 'q_1', question: 'What topic would you like flashcards about?', options: [{ label: 'Biology', value: 'biology' }, { label: 'History', value: 'history' }] },
+      question: {
+        id: 'q_1',
+        question: 'What topic would you like flashcards about?',
+        options: [
+          { label: 'Biology', value: 'biology' },
+          { label: 'History', value: 'history' },
+        ],
+      },
     });
 
-    agent['tools'] = [
+    agent.tools = [
       mockTool({ name: 'create_plan', execute: planExecute }),
       mockTool({ name: 'ask_user', execute: askUserExecute }),
       mockTool({ name: 'fetch_material' }),
@@ -241,14 +320,39 @@ describe('Flashcard Pipeline', () => {
       mockTool({ name: 'finish' }),
     ];
 
-    const callLLM = vi.fn()
+    const callLLM = vi
+      .fn()
       .mockResolvedValueOnce({
         content: 'Planning.',
-        toolCalls: [{ function: { name: 'create_plan', arguments: JSON.stringify({ steps: [{ action: 'ask user for clarification', rationale: 'ambiguous request' }], estimatedComplexity: 'simple', needsClarification: true }) } }],
+        toolCalls: [
+          {
+            function: {
+              name: 'create_plan',
+              arguments: JSON.stringify({
+                steps: [{ action: 'ask user for clarification', rationale: 'ambiguous request' }],
+                estimatedComplexity: 'simple',
+                needsClarification: true,
+              }),
+            },
+          },
+        ],
       })
       .mockResolvedValueOnce({
         content: 'Need to ask user.',
-        toolCalls: [{ function: { name: 'ask_user', arguments: JSON.stringify({ question: 'What topic would you like flashcards about?', options: [{ label: 'Biology', value: 'biology' }, { label: 'History', value: 'history' }] }) } }],
+        toolCalls: [
+          {
+            function: {
+              name: 'ask_user',
+              arguments: JSON.stringify({
+                question: 'What topic would you like flashcards about?',
+                options: [
+                  { label: 'Biology', value: 'biology' },
+                  { label: 'History', value: 'history' },
+                ],
+              }),
+            },
+          },
+        ],
       });
 
     const ctx = mockContext({ callLLM });
@@ -304,7 +408,7 @@ describe('Flashcard Pipeline', () => {
       ],
     });
 
-    agent['tools'] = [
+    agent.tools = [
       mockTool({ name: 'create_plan', execute: planExecute }),
       mockTool({ name: 'ask_user' }),
       mockTool({ name: 'fetch_material' }),
@@ -315,18 +419,53 @@ describe('Flashcard Pipeline', () => {
       mockTool({ name: 'finish', execute: finishExecute }),
     ];
 
-    const callLLM = vi.fn()
+    const callLLM = vi
+      .fn()
       .mockResolvedValueOnce({
         content: 'Planning.',
-        toolCalls: [{ function: { name: 'create_plan', arguments: JSON.stringify({ steps: [{ action: 'fetch from URL', rationale: 'user provided URL' }, { action: 'delegate to flashcard agent', rationale: 'create flashcards from content' }], estimatedComplexity: 'moderate', needsClarification: false }) } }],
+        toolCalls: [
+          {
+            function: {
+              name: 'create_plan',
+              arguments: JSON.stringify({
+                steps: [
+                  { action: 'fetch from URL', rationale: 'user provided URL' },
+                  {
+                    action: 'delegate to flashcard agent',
+                    rationale: 'create flashcards from content',
+                  },
+                ],
+                estimatedComplexity: 'moderate',
+                needsClarification: false,
+              }),
+            },
+          },
+        ],
       })
       .mockResolvedValueOnce({
         content: 'Fetching URL.',
-        toolCalls: [{ function: { name: 'webfetch', arguments: JSON.stringify({ url: 'https://example.com/solar-system' }) } }],
+        toolCalls: [
+          {
+            function: {
+              name: 'webfetch',
+              arguments: JSON.stringify({ url: 'https://example.com/solar-system' }),
+            },
+          },
+        ],
       })
       .mockResolvedValueOnce({
         content: 'Calling flashcard agent.',
-        toolCalls: [{ function: { name: 'generate_flashcards', arguments: JSON.stringify({ agent: 'flashcard', task: 'Create flashcards from fetched content' }) } }],
+        toolCalls: [
+          {
+            function: {
+              name: 'generate_flashcards',
+              arguments: JSON.stringify({
+                agent: 'flashcard',
+                task: 'Create flashcards from fetched content',
+              }),
+            },
+          },
+        ],
       })
       .mockResolvedValueOnce({
         content: 'Evaluating.',
@@ -334,12 +473,22 @@ describe('Flashcard Pipeline', () => {
       })
       .mockResolvedValueOnce({
         content: 'Done.',
-        toolCalls: [{ function: { name: 'finish', arguments: JSON.stringify({ message: 'Created flashcards from web content' }) } }],
+        toolCalls: [
+          {
+            function: {
+              name: 'finish',
+              arguments: JSON.stringify({ message: 'Created flashcards from web content' }),
+            },
+          },
+        ],
       });
 
     const ctx = mockContext({ callLLM });
 
-    const result = await agent.execute('Go to https://example.com/solar-system and make flashcards', ctx);
+    const result = await agent.execute(
+      'Go to https://example.com/solar-system and make flashcards',
+      ctx,
+    );
 
     expect(planExecute).toHaveBeenCalled();
     expect(webfetchExecute).toHaveBeenCalled();

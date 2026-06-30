@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { POST, GET } from '@/app/(backend)/api/v1/flashcards/decks/route';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  DELETE as deleteFn,
   GET as getById,
   PUT as update,
-  DELETE as deleteFn,
 } from '@/app/(backend)/api/v1/flashcards/decks/[id]/route';
-import { TEST_USERS, mockUser, cleanupFlashcardDecks, createServiceClient } from './helpers';
+import { GET, POST } from '@/app/(backend)/api/v1/flashcards/decks/route';
+import { cleanupFlashcardDecks, createServiceClient, mockUser, TEST_USERS } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Flashcard Decks Integration', () => {

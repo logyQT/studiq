@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { Check, ChevronRight, Rocket, X } from 'lucide-react';
 import Link from 'next/link';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApiQuery } from '@/hooks/use-api';
-import { Check, ChevronRight, X, Rocket } from 'lucide-react';
 
 const DISMISS_KEY = 'app_onboarding_dismissed';
 
@@ -25,8 +25,11 @@ export function OnboardingChecklist() {
   const t = useTranslations('AppOnboarding');
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window === 'undefined') return false;
-    try { return localStorage.getItem(DISMISS_KEY) === 'true'; }
-    catch { return false; }
+    try {
+      return localStorage.getItem(DISMISS_KEY) === 'true';
+    } catch {
+      return false;
+    }
   });
   const { data: stats, isLoading } = useApiQuery<StudentStats>({
     queryKey: ['stats', 'student'],
@@ -37,16 +40,28 @@ export function OnboardingChecklist() {
 
   const items = [
     { key: 'create_deck', href: '/app/flashcards/decks', done: (stats?.totalDecks ?? 0) > 0 },
-    { key: 'add_flashcards', href: '/app/flashcards/decks', done: (stats?.totalFlashcards ?? 0) > 0 },
+    {
+      key: 'add_flashcards',
+      href: '/app/flashcards/decks',
+      done: (stats?.totalFlashcards ?? 0) > 0,
+    },
     { key: 'take_quiz', href: '/app/study', done: (stats?.totalQuizzes ?? 0) > 0 },
-    { key: 'review_cards', href: '/app/study', done: (stats?.dueToday ?? 0) > 0 || (stats?.flashcardsPracticed ?? 0) > 0 },
+    {
+      key: 'review_cards',
+      href: '/app/study',
+      done: (stats?.dueToday ?? 0) > 0 || (stats?.flashcardsPracticed ?? 0) > 0,
+    },
   ];
 
   if (items.every((i) => i.done)) return null;
 
   function handleDismiss() {
     setDismissed(true);
-    try { localStorage.setItem(DISMISS_KEY, 'true'); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(DISMISS_KEY, 'true');
+    } catch {
+      /* ignore */
+    }
   }
 
   return (

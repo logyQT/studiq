@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { POST, GET } from '@/app/(backend)/api/v1/flashcards/topics/route';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  DELETE as deleteFn,
   GET as getById,
   PUT as update,
-  DELETE as deleteFn,
 } from '@/app/(backend)/api/v1/flashcards/topics/[id]/route';
-import { TEST_USERS, mockUser, cleanupFlashcardTopics, createServiceClient } from './helpers';
+import { GET, POST } from '@/app/(backend)/api/v1/flashcards/topics/route';
+import { cleanupFlashcardTopics, createServiceClient, mockUser, TEST_USERS } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Flashcard Topics Integration', () => {

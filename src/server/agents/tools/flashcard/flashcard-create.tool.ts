@@ -1,22 +1,34 @@
 import { z } from '@/lib/zod';
-import { GENERATE_FROM_TERMS_SYSTEM_PROMPT, GENERATE_FLASHCARDS_TOOL } from '@/server/services/ai-prompts';
-import { parseFlashcards } from '@/server/services/ai-utils';
+import {
+  GENERATE_FLASHCARDS_TOOL,
+  GENERATE_FROM_TERMS_SYSTEM_PROMPT,
+} from '@/server/services/ai-prompts';
 import type { FlashcardItem } from '@/server/services/ai-utils';
+import { parseFlashcards } from '@/server/services/ai-utils';
 import type { Tool } from '../types';
 
 const params = z.object({
-  concepts: z.preprocess((val) => {
-    if (typeof val === 'string') {
-      try { const p = JSON.parse(val); return Array.isArray(p) ? p : val; }
-      catch { return val; }
-    }
-    return val;
-  }, z.array(z.object({
-    term: z.string(),
-    definition: z.string(),
-    context: z.string().optional(),
-    category: z.string().optional(),
-  }))),
+  concepts: z.preprocess(
+    (val) => {
+      if (typeof val === 'string') {
+        try {
+          const p = JSON.parse(val);
+          return Array.isArray(p) ? p : val;
+        } catch {
+          return val;
+        }
+      }
+      return val;
+    },
+    z.array(
+      z.object({
+        term: z.string(),
+        definition: z.string(),
+        context: z.string().optional(),
+        category: z.string().optional(),
+      }),
+    ),
+  ),
   deckName: z.string().optional(),
   style: z.enum(['basic', 'detailed']).optional(),
   count: z.number().min(1).max(200).optional(),
@@ -24,7 +36,8 @@ const params = z.object({
 
 export const flashcardCreateTool: Tool = {
   name: 'flashcard_create',
-  description: 'Generate flashcards from a structured list of concepts. Each concept becomes one or more specific Q&A flashcards. Optionally specify the desired number of flashcards.',
+  description:
+    'Generate flashcards from a structured list of concepts. Each concept becomes one or more specific Q&A flashcards. Optionally specify the desired number of flashcards.',
   parameters: params,
   async execute(args, ctx) {
     const parsed = params.parse(args);
@@ -37,7 +50,7 @@ export const flashcardCreateTool: Tool = {
       systemPrompt: GENERATE_FROM_TERMS_SYSTEM_PROMPT,
       tools: [GENERATE_FLASHCARDS_TOOL],
       toolChoice: { type: 'function', function: { name: 'generate_flashcards' } },
-      maxTokens: (ctx.state.metadata['flashcardMaxTokens'] as number) || 16384,
+      maxTokens: (ctx.state.metadata.flashcardMaxTokens as number) || 16384,
     });
 
     const toolCall = result.toolCalls?.find((tc) => tc.function.name === 'generate_flashcards');
@@ -55,9 +68,9 @@ export const flashcardCreateTool: Tool = {
     const flashcards = parseFlashcards(llmResult.flashcards);
     const deckName = String(llmResult.deck_name || parsed.deckName || 'AI Generated Flashcards');
 
-    const existing = (ctx.state.results['flashcards'] as FlashcardItem[]) || [];
-    ctx.state.results['flashcards'] = [...existing, ...flashcards];
-    ctx.state.results['deckName'] = deckName;
+    const existing = (ctx.state.results.flashcards as FlashcardItem[]) || [];
+    ctx.state.results.flashcards = [...existing, ...flashcards];
+    ctx.state.results.deckName = deckName;
 
     return { deckName, flashcards };
   },

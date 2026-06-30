@@ -1,8 +1,8 @@
-import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import { CreateSubjectInput, UpdateSubjectInput } from '@/server/models';
-import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
+import { createClient } from '@/lib/supabase/server';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { CreateSubjectInput, UpdateSubjectInput } from '@/server/models';
 
 export class SubjectService {
   async create(data: CreateSubjectInput, ctx: RequestContext) {

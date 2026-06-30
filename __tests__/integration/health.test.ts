@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET } from '@/app/(backend)/api/v1/health/route';
 import { useRealSupabase } from './helpers';
 

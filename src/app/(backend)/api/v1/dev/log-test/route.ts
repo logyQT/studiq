@@ -1,8 +1,17 @@
-import { NextRequest } from 'next/server';
-import { log, createLogger } from '@/lib/logger';
+import type { NextRequest } from 'next/server';
+import { createLogger, log } from '@/lib/logger';
 
 const VALID_LEVELS = ['info', 'warn', 'error', 'debug'] as const;
-const VALID_NAMESPACES = ['ai', 'providers', 'pdf', 'cache', 'auth', 'trace', 'api', 'system'] as const;
+const VALID_NAMESPACES = [
+  'ai',
+  'providers',
+  'pdf',
+  'cache',
+  'auth',
+  'trace',
+  'api',
+  'system',
+] as const;
 
 export async function POST(req: NextRequest) {
   if (process.env.NODE_ENV !== 'development') {
@@ -13,11 +22,17 @@ export async function POST(req: NextRequest) {
   const { level, namespace, message, metadata, durationMs, conversationId } = body;
 
   if (!level || !namespace || !message) {
-    return Response.json({ error: 'Missing required fields: level, namespace, message' }, { status: 400 });
+    return Response.json(
+      { error: 'Missing required fields: level, namespace, message' },
+      { status: 400 },
+    );
   }
 
   if (!VALID_LEVELS.includes(level)) {
-    return Response.json({ error: `Invalid level. Must be one of: ${VALID_LEVELS.join(', ')}` }, { status: 400 });
+    return Response.json(
+      { error: `Invalid level. Must be one of: ${VALID_LEVELS.join(', ')}` },
+      { status: 400 },
+    );
   }
 
   const logger = (VALID_NAMESPACES as readonly string[]).includes(namespace)

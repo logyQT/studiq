@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { AppError, AppErrorCode, APP_ERRORS, getErrorMessage } from '@/lib/errors';
-import { ControllerResponse } from '@/lib/controller-response';
+import type { ControllerResponse } from '@/lib/controller-response';
+import { APP_ERRORS, AppError, type AppErrorCode, getErrorMessage } from '@/lib/errors';
+import type { RequestContext } from '@/lib/request-context';
 import { z } from '@/lib/zod';
 import { errorLogService } from '@/server/services/error-log.service';
-import type { RequestContext } from '@/lib/request-context';
 
 export function toNextResponse<T>(response: ControllerResponse<T>): NextResponse {
   if (response.success) {
@@ -41,10 +41,7 @@ export async function handleApiError(
     if (error.code === 'INTERNAL_SERVER') {
       const errorId = await errorLogService.logError(error, error.code, ctx);
       console.error(`[AppError INTERNAL_SERVER] errorId=${errorId}:`, error);
-      return NextResponse.json(
-        { success: false, error: error.code, errorId },
-        { status },
-      );
+      return NextResponse.json({ success: false, error: error.code, errorId }, { status });
     }
 
     return NextResponse.json(

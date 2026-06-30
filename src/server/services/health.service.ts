@@ -1,5 +1,5 @@
-import type { HealthStatusResponse, ServiceStatus, AppStatus } from '@/server/models/health.model';
 import { createClient } from '@/lib/supabase/server';
+import type { AppStatus, HealthStatusResponse, ServiceStatus } from '@/server/models/health.model';
 
 type HealthStatus = HealthStatusResponse;
 

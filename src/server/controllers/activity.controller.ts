@@ -1,8 +1,8 @@
+import type { ControllerResponse } from '@/lib/controller-response';
+import type { RequestContext } from '@/lib/request-context';
+import { withErrorHandling } from '@/lib/with-error-handling';
 import { ActivityQuerySchema } from '@/server/models/activity.model';
 import { activityService } from '@/server/services/activity.service';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
-import type { RequestContext } from '@/lib/request-context';
 
 export class ActivityController {
   async getActivity(ctx: RequestContext, query: unknown): Promise<ControllerResponse> {

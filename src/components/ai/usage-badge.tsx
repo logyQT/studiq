@@ -18,7 +18,11 @@ export function UsageBadge({ usage }: UsageBadgeProps) {
   const variant = pct >= 80 ? 'destructive' : pct >= 50 ? 'secondary' : 'outline';
 
   return (
-    <Badge variant={variant} className="gap-1.5 px-2.5 py-1 text-xs font-normal" title={t('usage_label', { current: usage.current, limit: usage.limit })}>
+    <Badge
+      variant={variant}
+      className="gap-1.5 px-2.5 py-1 text-xs font-normal"
+      title={t('usage_label', { current: usage.current, limit: usage.limit })}
+    >
       <Zap className="h-3 w-3" />
       <span>
         {usage.current}/{usage.limit}

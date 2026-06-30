@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { GET, PUT, DELETE } from '@/app/(backend)/api/v1/organization/members/route';
-import { TEST_USERS, mockUser } from './helpers';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/organization/members/route';
+import { mockUser, TEST_USERS } from './helpers';
 import { createNextRequest } from './test-utils';
 
 describe('Members Integration', () => {

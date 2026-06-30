@@ -1,7 +1,7 @@
 'use client';
 
-import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 
 interface ScrollBackToBarProps {
   chevronDirection: 'up' | 'down';

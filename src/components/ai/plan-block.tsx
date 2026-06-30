@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
 import { ChevronDown, ChevronRight, ListChecks, Sparkles } from 'lucide-react';
+import { useState } from 'react';
 
 interface PlanStep {
   index: number;
@@ -26,14 +26,20 @@ export function PlanBlock({ steps, estimatedComplexity, isComplete }: PlanBlockP
         onClick={() => setOpen(!open)}
         className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-muted-foreground hover:text-foreground transition-colors"
       >
-        {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+        {open ? (
+          <ChevronDown className="h-3 w-3 shrink-0" />
+        ) : (
+          <ChevronRight className="h-3 w-3 shrink-0" />
+        )}
         <ListChecks className="h-3.5 w-3.5 shrink-0" />
         <span className="font-medium">Execution Plan ({steps.length} steps)</span>
         {estimatedComplexity && (
           <span className="text-muted-foreground/50 ml-1">· {estimatedComplexity}</span>
         )}
         {isComplete && (
-          <span className="ml-auto text-green-600 dark:text-green-400 font-medium">All steps complete</span>
+          <span className="ml-auto text-green-600 dark:text-green-400 font-medium">
+            All steps complete
+          </span>
         )}
       </button>
       {open && (
@@ -51,7 +57,9 @@ export function PlanBlock({ steps, estimatedComplexity, isComplete }: PlanBlockP
               </span>
               <div className="min-w-0">
                 <div className="font-medium text-foreground/80">{step.action}</div>
-                <div className="text-muted-foreground/60 mt-0.5 leading-relaxed">{step.rationale}</div>
+                <div className="text-muted-foreground/60 mt-0.5 leading-relaxed">
+                  {step.rationale}
+                </div>
               </div>
             </div>
           ))}

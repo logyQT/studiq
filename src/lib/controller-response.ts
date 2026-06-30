@@ -1,5 +1,5 @@
-import { AppErrorCode, APP_ERRORS } from '@/lib/errors';
 import type { ZodIssue } from 'zod';
+import { APP_ERRORS, type AppErrorCode } from '@/lib/errors';
 
 export type ControllerResponse<T = unknown> =
   | { success: true; statusCode: number; data?: T }

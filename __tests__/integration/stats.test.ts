@@ -1,14 +1,14 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { GET as teacherGet } from '@/app/(backend)/api/v1/stats/teacher/route';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET as studentGet } from '@/app/(backend)/api/v1/stats/student/route';
+import { GET as teacherGet } from '@/app/(backend)/api/v1/stats/teacher/route';
 import {
-  TEST_USERS,
-  mockUser,
-  cleanupSubjects,
-  cleanupQuestions,
   cleanupFlashcards,
+  cleanupQuestions,
   cleanupQuizAttempts,
+  cleanupSubjects,
   createRealClient,
+  mockUser,
+  TEST_USERS,
 } from './helpers';
 import { createNextRequest } from './test-utils';
 
@@ -46,7 +46,8 @@ describe('Stats Integration', () => {
         .insert({ name: 'stats-Stats Subject', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
-      if (subjectError || !subject) throw new Error(`Failed to create subject: ${subjectError?.message}`);
+      if (subjectError || !subject)
+        throw new Error(`Failed to create subject: ${subjectError?.message}`);
 
       for (let i = 0; i < 3; i++) {
         const { error: questionError } = await supabase.from('questions').insert({
@@ -56,7 +57,8 @@ describe('Stats Integration', () => {
           difficulty: 'easy',
           created_by: TEST_USERS.TEACHER.id,
         });
-        if (questionError) throw new Error(`Failed to create question ${i}: ${questionError.message}`);
+        if (questionError)
+          throw new Error(`Failed to create question ${i}: ${questionError.message}`);
       }
 
       const req = createNextRequest(

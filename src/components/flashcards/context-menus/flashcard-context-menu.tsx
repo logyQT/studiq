@@ -1,6 +1,17 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import {
+  CheckSquare,
+  Copy,
+  ExternalLink,
+  Link2,
+  Pencil,
+  Plus,
+  Settings,
+  Tags,
+  Trash2,
+} from 'lucide-react';
+import type { useTranslations } from 'next-intl';
 import {
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -8,17 +19,6 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  CheckSquare,
-  Pencil,
-  Tags,
-  Plus,
-  Settings,
-  ExternalLink,
-  Link2,
-  Copy,
-  Trash2,
-} from 'lucide-react';
 
 interface FlashcardContextMenuProps {
   t: ReturnType<typeof useTranslations>;

@@ -1,6 +1,6 @@
-@import 'tailwindcss';
-@import 'tw-animate-css';
-@import '../styles/highlight.css';
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "../styles/highlight.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -106,8 +106,8 @@
  * =============================================================================
  */
 @theme inline {
-  --font-sans: 'Geist', 'Geist Fallback', system-ui, sans-serif;
-  --font-mono: 'Geist Mono', 'Geist Mono Fallback', monospace;
+  --font-sans: "Geist", "Geist Fallback", system-ui, sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", monospace;
 
   /* Core colors */
   --color-background: var(--background);
@@ -193,35 +193,35 @@
 
 /* Toast styling */
 [data-sonner-toaster] {
-  --normal-bg: var(--popover) !important;
-  --normal-text: var(--popover-foreground) !important;
-  --normal-border: var(--border) !important;
-  font-family: var(--font-geist-sans) !important;
+  --normal-bg: var(--popover);
+  --normal-text: var(--popover-foreground);
+  --normal-border: var(--border);
+  font-family: var(--font-geist-sans);
 }
 
 [data-sonner-toaster] [data-sonner-toast] {
-  border-radius: var(--radius) !important;
-  border: 1px solid var(--border) !important;
-  background: var(--popover) !important;
-  color: var(--popover-foreground) !important;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
   box-shadow:
     0 4px 12px rgba(0, 0, 0, 0.08),
-    0 1px 3px rgba(0, 0, 0, 0.05) !important;
-  backdrop-filter: blur(8px) !important;
+    0 1px 3px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(8px);
 }
 
 [data-sonner-toaster] [data-sonner-toast][data-type="success"] [data-icon] {
-  color: var(--success) !important;
+  color: var(--success);
 }
 
 [data-sonner-toaster] [data-sonner-toast][data-type="error"] [data-icon] {
-  color: var(--destructive) !important;
+  color: var(--destructive);
 }
 
 [data-sonner-toaster] [data-sonner-toast][data-type="warning"] [data-icon] {
-  color: var(--warning) !important;
+  color: var(--warning);
 }
 
 [data-sonner-toaster] [data-sonner-toast][data-type="info"] [data-icon] {
-  color: var(--info) !important;
+  color: var(--info);
 }

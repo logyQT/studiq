@@ -1,7 +1,7 @@
-import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
+import { createClient } from '@/lib/supabase/server';
+import { mapSupabaseError } from '@/lib/supabase-errors';
 
 export class OrganizationMemberService {
   async getProfile(ctx: RequestContext) {
@@ -41,7 +41,12 @@ export class OrganizationMemberService {
     if (error) throw mapSupabaseError(error);
 
     return data.map((m) => {
-      const profile = m.profiles as unknown as { id: string; email: string; full_name: string | null; created_at: string };
+      const profile = m.profiles as unknown as {
+        id: string;
+        email: string;
+        full_name: string | null;
+        created_at: string;
+      };
       return {
         id: m.user_id,
         email: profile.email,

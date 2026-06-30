@@ -1,16 +1,28 @@
 'use client';
 
-import { useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import {
+  ArrowRight,
+  BookOpen,
+  Brain,
+  FileText,
+  Layers,
+  Lock,
+  Plus,
+  RotateCcw,
+  Target,
+  TrendingUp,
+  Zap,
+} from 'lucide-react';
 import Link from 'next/link';
-import { useTranslations, useLocale } from 'next-intl';
-import { Brain, Target, FileText, TrendingUp, ArrowRight, Plus, RotateCcw, Layers, Zap, BookOpen, Lock } from 'lucide-react';
-import { useAuth } from '@/components/providers';
-import { StatCard } from '@/components/ui/stat-card';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { useApiQuery } from '@/hooks/use-api';
+import { useRouter } from 'next/navigation';
+import { useLocale, useTranslations } from 'next-intl';
+import { useMemo } from 'react';
 import { OnboardingChecklist } from '@/components/app/onboarding-checklist';
+import { useAuth } from '@/components/providers';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatCard } from '@/components/ui/stat-card';
+import { useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
 
 interface StudentStats {
@@ -75,11 +87,24 @@ export default function AppOverviewPage() {
               <RotateCcw className="w-4 h-4 mr-1.5" />
               {t('continue_reviewing')}
             </Button>
-            <Button variant="outline" size="sm" disabled={!hasAccess} onClick={hasAccess ? () => router.push('/app/flashcards/decks') : () => router.push('/checkout?plan_id=student_premium')}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!hasAccess}
+              onClick={
+                hasAccess
+                  ? () => router.push('/app/flashcards/decks')
+                  : () => router.push('/checkout?plan_id=student_premium')
+              }
+            >
               {hasAccess ? (
-                <><Plus className="w-4 h-4 mr-1.5" /> {t('create_deck')}</>
+                <>
+                  <Plus className="w-4 h-4 mr-1.5" /> {t('create_deck')}
+                </>
               ) : (
-                <><Lock className="size-3" /> Upgrade</>
+                <>
+                  <Lock className="size-3" /> Upgrade
+                </>
               )}
             </Button>
           </div>
@@ -172,7 +197,9 @@ export default function AppOverviewPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm text-foreground">{t('manage_flashcards')}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{t('manage_flashcards_desc')}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {t('manage_flashcards_desc')}
+                  </p>
                 </div>
                 <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-amber-500 group-hover:translate-x-1 transition-all duration-200 shrink-0" />
               </div>

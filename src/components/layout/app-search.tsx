@@ -1,19 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { BookOpen } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { BookOpen } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import {
   CommandDialog,
-  CommandInput,
-  CommandList,
   CommandEmpty,
   CommandGroup,
+  CommandInput,
   CommandItem,
+  CommandList,
 } from '@/components/ui/command';
-import { useDebounce } from '@/hooks/use-debounce';
 import { useApiQuery } from '@/hooks/use-api';
+import { useDebounce } from '@/hooks/use-debounce';
 import type { SearchResult } from '@/server/models';
 
 export function AppSearch() {
@@ -57,25 +57,16 @@ export function AppSearch() {
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <CommandInput
-        placeholder={t('search_placeholder')}
-        value={query}
-        onValueChange={setQuery}
-      />
+      <CommandInput placeholder={t('search_placeholder')} value={query} onValueChange={setQuery} />
       <CommandList>
-        {isLoading && (
-          <CommandEmpty>{t('search_loading')}</CommandEmpty>
-        )}
+        {isLoading && <CommandEmpty>{t('search_loading')}</CommandEmpty>}
         {!isLoading && (!results || results.length === 0) && debouncedQuery.length >= 2 && (
           <CommandEmpty>{t('search_no_results')}</CommandEmpty>
         )}
         {results?.map((result) => (
           <CommandGroup key={result.id} heading={result.title}>
             {result.decks?.map((deck) => (
-              <CommandItem
-                key={deck.id}
-                onSelect={() => handleSelect(deck.href)}
-              >
+              <CommandItem key={deck.id} onSelect={() => handleSelect(deck.href)}>
                 <BookOpen className="h-4 w-4" />
                 <span>{deck.name}</span>
               </CommandItem>

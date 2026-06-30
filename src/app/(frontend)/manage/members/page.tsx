@@ -1,26 +1,9 @@
 'use client';
 
+import { Search, Shield, UserMinus } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { RoleBadge } from '@/components/ui/role-badge';
-import { UserAvatar } from '@/components/ui/user-avatar';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { toast } from 'sonner';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,10 +14,27 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { toast } from 'sonner';
-import { Search, UserMinus, Shield } from 'lucide-react';
-import { UserRole, ORGANIZATION_ROLES } from '@/types';
-import { useTranslations } from 'next-intl';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { RoleBadge } from '@/components/ui/role-badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { UserAvatar } from '@/components/ui/user-avatar';
+import { ORGANIZATION_ROLES, UserRole } from '@/types';
 
 interface Member {
   id: string;
@@ -111,7 +111,9 @@ export default function MembersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">{t('title')}</h2>
-        <span className="text-sm text-muted-foreground">{t('total_count', { count: members.length })}</span>
+        <span className="text-sm text-muted-foreground">
+          {t('total_count', { count: members.length })}
+        </span>
       </div>
 
       <div className="flex gap-3">
@@ -207,9 +209,7 @@ export default function MembersPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('remove_dialog_title')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('remove_dialog_desc')}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t('remove_dialog_desc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common_cancel')}</AlertDialogCancel>

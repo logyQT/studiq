@@ -1,7 +1,7 @@
-import { z, registry } from '@/lib/zod';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { ValidationErrorCode } from '@/lib/validation-errors';
-import { User as SupabaseUser } from '@supabase/supabase-js';
-import { UserRole } from '@/types';
+import { registry, z } from '@/lib/zod';
+import type { UserRole } from '@/types';
 
 export const NameSchema = z
   .string({ error: ValidationErrorCode.NAME_REQUIRED })

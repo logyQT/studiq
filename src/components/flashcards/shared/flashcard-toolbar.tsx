@@ -1,7 +1,8 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { Lock, Plus, Search, Sparkles, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import type { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -11,9 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, X, Sparkles, Plus, Lock } from 'lucide-react';
-import type { Topic } from '@/types/flashcards';
 import { useFeature } from '@/hooks/use-feature';
+import type { Topic } from '@/types/flashcards';
 
 interface FlashcardToolbarProps {
   searchInput: string;
@@ -107,12 +107,20 @@ export function FlashcardToolbar({
             size="sm"
             className="gap-1.5"
             disabled={!hasAccessGenerate}
-            onClick={hasAccessGenerate ? onGenerate : () => router.push('/checkout?plan_id=student_premium')}
+            onClick={
+              hasAccessGenerate
+                ? onGenerate
+                : () => router.push('/checkout?plan_id=student_premium')
+            }
           >
             {hasAccessGenerate ? (
-              <><Sparkles className="h-4 w-4" /> {t('generate')}</>
+              <>
+                <Sparkles className="h-4 w-4" /> {t('generate')}
+              </>
             ) : (
-              <><Lock className="size-3" /> Upgrade</>
+              <>
+                <Lock className="size-3" /> Upgrade
+              </>
             )}
           </Button>
         )}
@@ -120,12 +128,18 @@ export function FlashcardToolbar({
           size="sm"
           className="gap-1.5"
           disabled={!hasStudyAccess}
-          onClick={hasStudyAccess ? onCreateNew : () => router.push('/checkout?plan_id=student_premium')}
+          onClick={
+            hasStudyAccess ? onCreateNew : () => router.push('/checkout?plan_id=student_premium')
+          }
         >
           {hasStudyAccess ? (
-            <><Plus className="h-4 w-4" /> {t('new_flashcard')}</>
+            <>
+              <Plus className="h-4 w-4" /> {t('new_flashcard')}
+            </>
           ) : (
-            <><Lock className="size-3" /> Upgrade</>
+            <>
+              <Lock className="size-3" /> Upgrade
+            </>
           )}
         </Button>
       </div>

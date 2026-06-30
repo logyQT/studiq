@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useCallback } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { useTranslations } from 'next-intl';
+import { useCallback, useState } from 'react';
+import { useAuth } from '@/components/providers';
+import { ScrollBackToBar } from '@/components/shared/scroll-back-to-bar';
 import { useAiChat } from '@/hooks/use-ai-chat';
 import { useScrollToBottom } from '@/hooks/use-scroll-to-bottom';
-import { ScrollBackToBar } from '@/components/shared/scroll-back-to-bar';
-import { useAuth } from '@/components/providers';
 import { AiChatGreeting } from './ai-chat-greeting';
 import { AiChatInput } from './ai-chat-input';
 import { ChatHistory } from './chat-history';

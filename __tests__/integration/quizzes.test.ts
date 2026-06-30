@@ -1,6 +1,13 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST } from '@/app/(backend)/api/v1/quizzes/route';
-import { TEST_USERS, mockUser, cleanupQuizAttempts, cleanupQuestions, cleanupSubjects, createServiceClient } from './helpers';
+import {
+  cleanupQuestions,
+  cleanupQuizAttempts,
+  cleanupSubjects,
+  createServiceClient,
+  mockUser,
+  TEST_USERS,
+} from './helpers';
 import { createNextRequest } from './test-utils';
 
 describe('Quizzes Integration', () => {
@@ -20,7 +27,8 @@ describe('Quizzes Integration', () => {
       .insert({ name: 'quiz-Quiz Test Subject', created_by: TEST_USERS.TEACHER.id })
       .select()
       .single();
-    if (subjectError || !subject) throw new Error(`Failed to create subject: ${subjectError?.message}`);
+    if (subjectError || !subject)
+      throw new Error(`Failed to create subject: ${subjectError?.message}`);
     subjectId = subject.id;
 
     for (let i = 0; i < 5; i++) {
@@ -31,7 +39,8 @@ describe('Quizzes Integration', () => {
         difficulty: 'easy',
         created_by: TEST_USERS.TEACHER.id,
       });
-      if (questionError) throw new Error(`Failed to create question ${i}: ${questionError.message}`);
+      if (questionError)
+        throw new Error(`Failed to create question ${i}: ${questionError.message}`);
     }
   });
 

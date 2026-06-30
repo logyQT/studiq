@@ -8,26 +8,69 @@ export const FLASHCARD_MAX_TOKENS = parseInt(process.env.LLM_FLASHCARD_MAX_TOKEN
 
 export const FLASHCARD_KEYWORDS = [
   // English
-  'flashcard', 'flash card', 'study card', 'index card', 'cue card',
-  'flashcards', 'study cards', 'index cards',
-  'study', 'review', 'learn', 'memorize', 'cheat sheet',
+  'flashcard',
+  'flash card',
+  'study card',
+  'index card',
+  'cue card',
+  'flashcards',
+  'study cards',
+  'index cards',
+  'study',
+  'review',
+  'learn',
+  'memorize',
+  'cheat sheet',
   // Polish — fiszka (all cases)
-  'fiszka', 'fiszki', 'fiszkę', 'fiszce', 'fiszek',
-  'fiszkom', 'fiszkami', 'fiszkach',
+  'fiszka',
+  'fiszki',
+  'fiszkę',
+  'fiszce',
+  'fiszek',
+  'fiszkom',
+  'fiszkami',
+  'fiszkach',
   // Polish — notatka
-  'notatka', 'notatki', 'notatkę', 'notatce', 'notatek',
-  'notatkom', 'notatkami', 'notatkach',
+  'notatka',
+  'notatki',
+  'notatkę',
+  'notatce',
+  'notatek',
+  'notatkom',
+  'notatkami',
+  'notatkach',
   // Polish — karta
-  'karta', 'karty', 'kartę', 'karcie', 'kart',
-  'kartom', 'kartami', 'kartach',
+  'karta',
+  'karty',
+  'kartę',
+  'karcie',
+  'kart',
+  'kartom',
+  'kartami',
+  'kartach',
   // Polish — ściąga
-  'ściąga', 'ściągę', 'ściągi', 'ściąg', 'ściągą',
-  'ściągom', 'ściągami', 'ściągach',
+  'ściąga',
+  'ściągę',
+  'ściągi',
+  'ściąg',
+  'ściągą',
+  'ściągom',
+  'ściągami',
+  'ściągach',
   // Polish — powtórka
-  'powtórka', 'powtórki', 'powtórkę', 'powtórce', 'powtórek',
-  'powtórkom', 'powtórkami', 'powtorkach',
+  'powtórka',
+  'powtórki',
+  'powtórkę',
+  'powtórce',
+  'powtórek',
+  'powtórkom',
+  'powtórkami',
+  'powtorkach',
   // Polish — misc
-  'zapamiętaj', 'zapamiętać', 'zapamiętywanie', 'zapamiętywać',
+  'zapamiętaj',
+  'zapamiętać',
+  'zapamiętywanie',
+  'zapamiętywać',
   'przypominajka',
 ];
 
@@ -72,7 +115,11 @@ export function hasFlashcardKeyword(text: string): boolean {
 export function parseFlashcards(raw: unknown): FlashcardItem[] {
   let cards: unknown;
   if (typeof raw === 'string') {
-    try { cards = JSON.parse(raw); } catch { cards = []; }
+    try {
+      cards = JSON.parse(raw);
+    } catch {
+      cards = [];
+    }
   } else {
     cards = raw;
   }
@@ -86,7 +133,11 @@ export function parseFlashcards(raw: unknown): FlashcardItem[] {
 export function parseExtractedTerms(raw: unknown): ExtractedTerm[] {
   let data: unknown;
   if (typeof raw === 'string') {
-    try { data = JSON.parse(raw); } catch { data = []; }
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = [];
+    }
   } else {
     data = raw;
   }
@@ -99,31 +150,46 @@ export function parseExtractedTerms(raw: unknown): ExtractedTerm[] {
   }));
 }
 
-export function parseReviewResult(raw: unknown): { kept: number[]; reasons: Record<string, string> } {
+export function parseReviewResult(raw: unknown): {
+  kept: number[];
+  reasons: Record<string, string>;
+} {
   let data: unknown;
   if (typeof raw === 'string') {
-    try { data = JSON.parse(raw); } catch { data = {}; }
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = {};
+    }
   } else {
     data = raw;
   }
   const d = data as Record<string, unknown> | undefined;
   return {
     kept: Array.isArray(d?.kept) ? d.kept.map(Number) : [],
-    reasons: d?.reasons && typeof d.reasons === 'object' ? (d.reasons as Record<string, string>) : {},
+    reasons:
+      d?.reasons && typeof d.reasons === 'object' ? (d.reasons as Record<string, string>) : {},
   };
 }
 
-export function parseToolCallArgs<T = Record<string, unknown>>(toolCalls: Array<{ function: { name: string; arguments: string } }> | undefined, toolName: string): T | null {
+export function parseToolCallArgs<T = Record<string, unknown>>(
+  toolCalls: Array<{ function: { name: string; arguments: string } }> | undefined,
+  toolName: string,
+): T | null {
   if (!toolCalls || toolCalls.length === 0) {
     log.ai.debug('parseToolCallArgs: no tool calls provided');
     return null;
   }
   const toolCall = toolCalls.find((tc) => tc.function.name === toolName);
   if (!toolCall) {
-    log.ai.debug(`parseToolCallArgs: tool "${toolName}" not found`, { metadata: { available: toolCalls.map((tc) => tc.function.name).join(', ') } });
+    log.ai.debug(`parseToolCallArgs: tool "${toolName}" not found`, {
+      metadata: { available: toolCalls.map((tc) => tc.function.name).join(', ') },
+    });
     return null;
   }
-  log.ai.debug(`parseToolCallArgs: parsing "${toolName}"`, { metadata: { argsLength: toolCall.function.arguments.length } });
+  log.ai.debug(`parseToolCallArgs: parsing "${toolName}"`, {
+    metadata: { argsLength: toolCall.function.arguments.length },
+  });
   try {
     return JSON.parse(toolCall.function.arguments) as T;
   } catch (_parseError) {
@@ -178,7 +244,9 @@ export async function extractFileContent(
     if (conversationId) {
       const cached = pdfCacheService.get(conversationId);
       if (cached) {
-        log.ai.info(`Retrieved ${cached.text.length} chars from cache for conversation ${conversationId}`);
+        log.ai.info(
+          `Retrieved ${cached.text.length} chars from cache for conversation ${conversationId}`,
+        );
         return cached.text;
       }
     }

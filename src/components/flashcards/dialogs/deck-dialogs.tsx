@@ -1,8 +1,8 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
-import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import type { useTranslations } from 'next-intl';
 import { DeckFormDialog } from '@/components/flashcards/shared/deck-form-dialog';
+import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 
 interface DeckDialogsProps {
   t: ReturnType<typeof useTranslations>;

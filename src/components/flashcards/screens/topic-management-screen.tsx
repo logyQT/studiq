@@ -1,11 +1,20 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useTranslations } from 'next-intl';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { CheckCheck, CheckSquare, Lock, Plus, Search, SquarePen, Tags, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import type { useTranslations } from 'next-intl';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { TopicCard } from '@/components/flashcards/cards/topic-card';
+import { TopicBulkActions } from '@/components/flashcards/shared/topic-bulk-actions';
+import { TopicFormDialog } from '@/components/flashcards/shared/topic-form-dialog';
+import { TopicViewDialog } from '@/components/flashcards/shared/topic-view-dialog';
+import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import { SpeedDial } from '@/components/shared/speed-dial';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -14,24 +23,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { CheckCheck, Tags, CheckSquare, SquarePen, Plus, Search, X, Lock } from 'lucide-react';
-import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
-import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { useApiMutation } from '@/hooks/use-api';
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
-import { useQueryClient } from '@tanstack/react-query';
-import { flashcardKeys } from '@/lib/query-keys';
-import type { Topic, Flashcard } from '@/types/flashcards';
-import { SpeedDial } from '@/components/shared/speed-dial';
-import { TopicBulkActions } from '@/components/flashcards/shared/topic-bulk-actions';
-import { TopicCard } from '@/components/flashcards/cards/topic-card';
-import { TopicFormDialog } from '@/components/flashcards/shared/topic-form-dialog';
-import { TopicViewDialog } from '@/components/flashcards/shared/topic-view-dialog';
-import { useSelection } from '@/hooks/use-selection';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useFeature } from '@/hooks/use-feature';
+import { useSelection } from '@/hooks/use-selection';
+import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { flashcardKeys } from '@/lib/query-keys';
+import type { Flashcard, Topic } from '@/types/flashcards';
 
 interface TopicManagementScreenProps {
   apiBase: string;
@@ -150,7 +149,11 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   const { isSelecting: selectionIsActive, handleClearSelection: selectionClear } = selection;
 
   const { data: topicFlashcardsData } = useInfiniteQuery({
-    queryKey: [...flashcardKeys.list({ topicIds: viewTopicId ? [viewTopicId] : [] }), 'view', viewTopicId],
+    queryKey: [
+      ...flashcardKeys.list({ topicIds: viewTopicId ? [viewTopicId] : [] }),
+      'view',
+      viewTopicId,
+    ],
     queryFn: ({ pageParam }) =>
       apiGet<{ items: Flashcard[]; nextCursor: string | null; hasMore: boolean }>(
         `/api/v1/flashcards?topicIds=${viewTopicId}&limit=50${pageParam ? `&cursor=${pageParam}` : ''}`,
@@ -259,7 +262,9 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
           <Button
             variant="outline"
             size="sm"
-            onClick={selection.selectedIds.size === topics.length ? handleDeselectAll : handleSelectAll}
+            onClick={
+              selection.selectedIds.size === topics.length ? handleDeselectAll : handleSelectAll
+            }
           >
             <CheckCheck className="mr-1.5 h-4 w-4" />
             {selection.selectedIds.size === topics.length ? t('deselect_all') : t('select_all')}
@@ -301,11 +306,14 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
             </SelectContent>
           </Select>
 
-          <Select value={`${sortBy}:${sortOrder}`} onValueChange={(v) => {
-            const [sb, so] = v.split(':');
-            setSortBy(sb);
-            setSortOrder(so);
-          }}>
+          <Select
+            value={`${sortBy}:${sortOrder}`}
+            onValueChange={(v) => {
+              const [sb, so] = v.split(':');
+              setSortBy(sb);
+              setSortOrder(so);
+            }}
+          >
             <SelectTrigger className="w-37.5 truncate">
               <SelectValue />
             </SelectTrigger>
@@ -318,11 +326,22 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
           </Select>
 
           <div className="sm:ml-auto">
-            <Button disabled={!canCreateTopic.hasAccess} onClick={canCreateTopic.hasAccess ? openCreate : () => router.push('/checkout?plan_id=student_premium')}>
+            <Button
+              disabled={!canCreateTopic.hasAccess}
+              onClick={
+                canCreateTopic.hasAccess
+                  ? openCreate
+                  : () => router.push('/checkout?plan_id=student_premium')
+              }
+            >
               {canCreateTopic.hasAccess ? (
-                <><Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}</>
+                <>
+                  <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
+                </>
               ) : (
-                <><Lock className="size-3" /> Upgrade</>
+                <>
+                  <Lock className="size-3" /> Upgrade
+                </>
               )}
             </Button>
           </div>
@@ -370,22 +389,23 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
               t={t}
             />
           ))}
-          {hasNextPage && Array.from({ length: 8 }).map((_, i) => (
-            <Card key={`skel-${i}`} className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">
-              <div className="flex items-center gap-3 p-4 sm:hidden">
-                <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-1/2" />
-                  <Skeleton className="h-3 w-1/4" />
+          {hasNextPage &&
+            Array.from({ length: 8 }).map((_, i) => (
+              <Card key={`skel-${i}`} className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">
+                <div className="flex items-center gap-3 p-4 sm:hidden">
+                  <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-3 w-1/4" />
+                  </div>
+                  <Skeleton className="h-7 w-7 rounded-md shrink-0" />
                 </div>
-                <Skeleton className="h-7 w-7 rounded-md shrink-0" />
-              </div>
-              <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
-                <div className="flex items-center gap-3">
-                  <Skeleton className="h-10 w-10 rounded-xl" />
-                  <Skeleton className="h-6 w-3/4" />
-                </div>
-                <div className="flex-1" />
+                <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-10 w-10 rounded-xl" />
+                    <Skeleton className="h-6 w-3/4" />
+                  </div>
+                  <div className="flex-1" />
                   <div className="flex items-center justify-between pt-4 mt-auto">
                     <Skeleton className="h-6 w-16 rounded-full" />
                     <Skeleton className="h-8 w-24 rounded-md" />
@@ -401,11 +421,24 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
               </EmptyMedia>
               <EmptyTitle>{t('no_topics')}</EmptyTitle>
               <EmptyDescription>
-                <Button variant="outline" size="sm" disabled={!canCreateTopic.hasAccess} onClick={canCreateTopic.hasAccess ? openCreate : () => router.push('/checkout?plan_id=student_premium')}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!canCreateTopic.hasAccess}
+                  onClick={
+                    canCreateTopic.hasAccess
+                      ? openCreate
+                      : () => router.push('/checkout?plan_id=student_premium')
+                  }
+                >
                   {canCreateTopic.hasAccess ? (
-                    <><Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}</>
+                    <>
+                      <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
+                    </>
                   ) : (
-                    <><Lock className="size-3" /> Upgrade</>
+                    <>
+                      <Lock className="size-3" /> Upgrade
+                    </>
                   )}
                 </Button>
               </EmptyDescription>
@@ -457,8 +490,18 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         <div className="sm:hidden">
           <SpeedDial
             items={[
-              { icon: SquarePen, label: t('new_topic'), onClick: canCreateTopic.hasAccess ? openCreate : () => router.push('/checkout?plan_id=student_premium') },
-              { icon: CheckSquare, label: t('select_topics'), onClick: () => selection.setIsSelecting(true) },
+              {
+                icon: SquarePen,
+                label: t('new_topic'),
+                onClick: canCreateTopic.hasAccess
+                  ? openCreate
+                  : () => router.push('/checkout?plan_id=student_premium'),
+              },
+              {
+                icon: CheckSquare,
+                label: t('select_topics'),
+                onClick: () => selection.setIsSelecting(true),
+              },
             ]}
           />
         </div>

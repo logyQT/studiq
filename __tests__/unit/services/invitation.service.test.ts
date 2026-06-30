@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { invitationService } from '@/server/services/invitation.service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { invitationService } from '@/server/services/invitation.service';
 import { UserRole } from '@/types';
 
 describe('InvitationService', () => {

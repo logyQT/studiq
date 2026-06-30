@@ -1,6 +1,28 @@
 'use client';
 
+import {
+  AlertTriangle,
+  BarChart3,
+  Brain,
+  FileText,
+  Folder,
+  GraduationCap,
+  Layers,
+  LayoutDashboard,
+  ListPlus,
+  Mail,
+  Monitor,
+  Settings,
+  ShieldCheck,
+  Sparkles,
+  Tag,
+  UserPlus,
+  Users,
+} from 'lucide-react';
 import { usePathname } from 'next/navigation';
+import { OrgSwitcher } from '@/components/layout/org-switcher';
+import { UserMenu } from '@/components/layout/user-menu';
+import { type NavItem, NavMain } from '@/components/nav-main';
 import {
   Sidebar,
   SidebarContent,
@@ -9,28 +31,6 @@ import {
   SidebarRail,
 } from '@/components/ui/sidebar';
 import { useFeature } from '@/hooks/use-feature';
-import { OrgSwitcher } from '@/components/layout/org-switcher';
-import { UserMenu } from '@/components/layout/user-menu';
-import { NavMain, type NavItem } from '@/components/nav-main';
-import {
-  LayoutDashboard,
-  FileText,
-  Layers,
-  BarChart3,
-  Users,
-  UserPlus,
-  Mail,
-  Settings,
-  Brain,
-  ListPlus,
-  GraduationCap,
-  Monitor,
-  AlertTriangle,
-  ShieldCheck,
-  Sparkles,
-  Folder,
-  Tag,
-} from 'lucide-react';
 
 const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
   '/edu': [
@@ -154,7 +154,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     for (const group of groups) {
       for (const item of group.items) {
         const matches =
-          pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href + '/'));
+          pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`));
         if (matches && (!best || item.href.length > best.length)) {
           best = item.href;
         }

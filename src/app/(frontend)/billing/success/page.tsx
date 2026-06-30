@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect } from 'react';
+import { ArrowRight, CheckCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, ArrowRight } from 'lucide-react';
 
 export default function BillingSuccessPage() {
   const t = useTranslations('BillingSuccessPage');

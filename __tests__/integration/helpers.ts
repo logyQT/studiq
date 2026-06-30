@@ -1,6 +1,6 @@
-import { vi } from 'vitest';
-import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
+import { vi } from 'vitest';
 import * as supabaseModule from '@/lib/supabase/server';
 
 // ============================================================

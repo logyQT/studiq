@@ -1,8 +1,8 @@
 'use client';
 
+import { Download, EyeOff, Trash2, X } from 'lucide-react';
+import type { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
-import { Trash2, Download, X, EyeOff } from 'lucide-react';
-import { useTranslations } from 'next-intl';
 
 interface DeckBulkActionsProps {
   selectedCount: number;

@@ -1,8 +1,8 @@
 'use client';
 
+import { ArrowRight, Copy, Download, Link2, Tags, Trash2, X } from 'lucide-react';
+import type { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
-import { Trash2, Link2, Tags, ArrowRight, Copy, Download, X } from 'lucide-react';
-import { useTranslations } from 'next-intl';
 
 interface FlashcardBulkActionsProps {
   selectedCount: number;

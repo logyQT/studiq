@@ -1,19 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Loader2 } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { FlashcardEditor } from '@/components/flashcards';
+import { EntityNotFound } from '@/components/shared/entity-not-found';
 import { Button } from '@/components/ui/button';
 import { MultiSelect } from '@/components/ui/multi-select';
-import { EntityNotFound } from '@/components/shared/entity-not-found';
-import { FlashcardEditor } from '@/components/flashcards';
 import { useApiQuery } from '@/hooks/use-api';
 import { apiPut } from '@/lib/api';
-import { flashcardKeys } from '@/lib/query-keys';
 import { formatMarkdown } from '@/lib/markdown-utils';
-import { toast } from 'sonner';
+import { flashcardKeys } from '@/lib/query-keys';
 import type { Flashcard, Topic } from '@/types/flashcards';
 
 interface EditCardClientProps {
@@ -46,7 +46,11 @@ export default function EditCardClient({ deckId, cardId }: EditCardClientProps) 
     setTopicIds(flashcard.flashcard_topic_assignments?.map((a) => a.topic_id) ?? []);
   }
 
-  const { data: topicsData } = useApiQuery<{ items: Topic[]; nextCursor: string | null; hasMore: boolean }>({
+  const { data: topicsData } = useApiQuery<{
+    items: Topic[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  }>({
     queryKey: flashcardKeys.topics.all,
     url: '/api/v1/flashcards/topics?limit=200',
   });

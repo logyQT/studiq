@@ -38,7 +38,8 @@ function createNoopLogger() {
   return { info: () => {}, warn: () => {}, error: () => {}, debug: () => {}, enabled: false };
 }
 
-const isTraceEnabled = process.env.NODE_ENV !== 'production' || process.env.TRACE_ENABLED === 'true';
+const isTraceEnabled =
+  process.env.NODE_ENV !== 'production' || process.env.TRACE_ENABLED === 'true';
 
 export const log = {
   ai: createLogger('ai'),

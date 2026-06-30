@@ -1,15 +1,11 @@
-import { flashcardPracticeService } from '@/server/services';
-import { LogPracticeSchema, BatchPracticeSchema, CompleteSessionSchema } from '@/server/models';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import { BatchPracticeSchema, CompleteSessionSchema, LogPracticeSchema } from '@/server/models';
+import { flashcardPracticeService } from '@/server/services';
 
 export class FlashcardPracticeController {
-  async log(
-    flashcardId: string,
-    body: unknown,
-    ctx: RequestContext,
-  ): Promise<ControllerResponse> {
+  async log(flashcardId: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
       const parsed = LogPracticeSchema.safeParse(body);
 
@@ -108,7 +104,15 @@ export class FlashcardPracticeController {
 
   async getAllCardStats(
     ctx: RequestContext,
-    filters?: { deckIds?: string[]; topicIds?: string[]; state?: string; sortBy?: string; order?: string; limit?: number; cursor?: string },
+    filters?: {
+      deckIds?: string[];
+      topicIds?: string[];
+      state?: string;
+      sortBy?: string;
+      order?: string;
+      limit?: number;
+      cursor?: string;
+    },
   ): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
       const result = await flashcardPracticeService.getAllCardStats(ctx, filters);

@@ -7,11 +7,11 @@ const params = z.object({
 
 export const webfetchTool: Tool = {
   name: 'webfetch',
-  description: 'Fetch and extract text content from a URL. Use this when the user provides a webpage URL to create study material from its content.',
+  description:
+    'Fetch and extract text content from a URL. Use this when the user provides a webpage URL to create study material from its content.',
   parameters: params,
   async execute(args, ctx) {
     const parsed = params.parse(args);
-
 
     let text: string;
     try {
@@ -21,12 +21,16 @@ export const webfetchTool: Tool = {
       }
       text = await res.text();
     } catch (err) {
-      return { content: '', error: `Fetch failed: ${err instanceof Error ? err.message : 'Unknown error'}`, url: parsed.url };
+      return {
+        content: '',
+        error: `Fetch failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        url: parsed.url,
+      };
     }
 
     ctx.state.material = text;
-    ctx.state.results['material'] = text;
-    ctx.state.results['sourceUrl'] = parsed.url;
+    ctx.state.results.material = text;
+    ctx.state.results.sourceUrl = parsed.url;
 
     return { content: text, url: parsed.url, length: text.length };
   },

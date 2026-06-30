@@ -1,18 +1,25 @@
 'use client';
 
-import { useState } from 'react';
-import { useTranslations } from 'next-intl';
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from '@/lib/zod';
+import { ArrowLeft, Copy, Loader2, Send } from 'lucide-react';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Copy, Loader2, Send } from 'lucide-react';
-import { toast } from 'sonner';
+import { z } from '@/lib/zod';
 import { UserRole } from '@/types';
-import Link from 'next/link';
 
 const InviteFormSchema = z.object({
   name: z.string().nonempty().min(1).max(100),

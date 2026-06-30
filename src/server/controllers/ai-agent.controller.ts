@@ -1,6 +1,11 @@
-import { agentService } from '@/server/services/agent.service';
 import type { RequestContext } from '@/lib/request-context';
-import type { AgentCallbacks, AgentQuestion, AgentResult, PlanStep } from '@/server/agents/tools/types';
+import type {
+  AgentCallbacks,
+  AgentQuestion,
+  AgentResult,
+  PlanStep,
+} from '@/server/agents/tools/types';
+import { agentService } from '@/server/services/agent.service';
 
 export interface AgentStreamCallbacks {
   onThought: (data: { reasoning: string; step: number; agent: string }) => void;
@@ -19,22 +24,32 @@ export interface AgentStreamCallbacks {
 function generateToolCallLabel(tool: string, args: unknown): string {
   const a = args as Record<string, unknown>;
   switch (tool) {
-    case 'create_plan': return '📋 Creating execution plan...';
-    case 'ask_user': return '❓ Asking you a question...';
+    case 'create_plan':
+      return '📋 Creating execution plan...';
+    case 'ask_user':
+      return '❓ Asking you a question...';
     case 'fetch_material':
       return `📝 Generating material${a.topic ? ` on "${a.topic as string}"` : ''}...`;
     case 'webfetch':
       return `🌐 Fetching content from ${(a.url as string)?.slice(0, 80)}...`;
-    case 'extract_concepts': return '🔍 Extracting key concepts...';
-    case 'evaluate_quality': return '✅ Evaluating quality...';
+    case 'extract_concepts':
+      return '🔍 Extracting key concepts...';
+    case 'evaluate_quality':
+      return '✅ Evaluating quality...';
     case 'generate_flashcards':
       return `📇 Generating flashcards${a.count ? ` (${a.count as number} cards)` : ''}...`;
-    case 'finish': return '🏁 Finishing up...';
-    case 'flashcard_create': return '📇 Creating flashcards...';
-    case 'flashcard_review': return '🔎 Reviewing flashcards...';
-    case 'flashcard_revise': return '✏️ Revising flashcards...';
-    case 'brainstorm_concepts': return '💡 Brainstorming concepts...';
-    default: return `🛠️ Using ${tool}...`;
+    case 'finish':
+      return '🏁 Finishing up...';
+    case 'flashcard_create':
+      return '📇 Creating flashcards...';
+    case 'flashcard_review':
+      return '🔎 Reviewing flashcards...';
+    case 'flashcard_revise':
+      return '✏️ Revising flashcards...';
+    case 'brainstorm_concepts':
+      return '💡 Brainstorming concepts...';
+    default:
+      return `🛠️ Using ${tool}...`;
   }
 }
 
@@ -45,7 +60,8 @@ function generateToolResultLabel(tool: string, result: unknown): string {
       const steps = r.steps as Array<unknown> | undefined;
       return `📋 Created plan with ${steps?.length ?? 0} steps`;
     }
-    case 'ask_user': return '❓ Question sent';
+    case 'ask_user':
+      return '❓ Question sent';
     case 'fetch_material':
       return `📝 Generated ${(r.length as number) ?? 0} characters of material`;
     case 'webfetch':
@@ -54,12 +70,14 @@ function generateToolResultLabel(tool: string, result: unknown): string {
       const terms = r.terms as Array<unknown> | undefined;
       return `🔍 Found ${terms?.length ?? 0} key concepts`;
     }
-    case 'evaluate_quality': return r.passed ? '✅ Quality check passed' : '❌ Quality check failed';
+    case 'evaluate_quality':
+      return r.passed ? '✅ Quality check passed' : '❌ Quality check failed';
     case 'generate_flashcards': {
       const cards = r.flashcards as Array<unknown> | undefined;
       return `📇 Generated ${cards?.length ?? 0} flashcards`;
     }
-    case 'finish': return '🏁 Task complete';
+    case 'finish':
+      return '🏁 Task complete';
     case 'flashcard_create': {
       const cards = r.flashcards as Array<unknown> | undefined;
       return `📇 Created ${cards?.length ?? 0} flashcards`;
@@ -77,7 +95,8 @@ function generateToolResultLabel(tool: string, result: unknown): string {
       const concepts = r.concepts as Array<unknown> | undefined;
       return `💡 Brainstormed ${concepts?.length ?? 0} concepts`;
     }
-    default: return `🛠️ ${tool} completed`;
+    default:
+      return `🛠️ ${tool} completed`;
   }
 }
 
@@ -94,13 +113,16 @@ export class AiAgentController {
         onThought: (data) => callbacks.onThought(data),
         onThinking: (text) => callbacks.onThinking(text),
         onToken: (token) => callbacks.onToken?.(token),
-        onToolCall: (data) => callbacks.onToolCall({
-          ...data,
-          label: generateToolCallLabel(data.tool, data.args),
-        }),
+        onToolCall: (data) =>
+          callbacks.onToolCall({
+            ...data,
+            label: generateToolCallLabel(data.tool, data.args),
+          }),
         onToolResult: (data) => {
           if (data.tool === 'create_plan') {
-            const steps = (data.result as Record<string, unknown>)?.steps as Array<{ action: string; rationale: string; dependsOn?: string[] }> | undefined;
+            const steps = (data.result as Record<string, unknown>)?.steps as
+              | Array<{ action: string; rationale: string; dependsOn?: string[] }>
+              | undefined;
             if (steps) {
               const planSteps = steps.map((s, i) => ({ index: i, ...s }));
               callbacks.onPlan(planSteps);

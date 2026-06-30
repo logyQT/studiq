@@ -1,13 +1,15 @@
 'use client';
 
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Loader2, Lock, Mail, User } from 'lucide-react';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useTranslations } from 'next-intl';
-import { RegisterSchema, type RegisterInput } from '@/server/models/auth.model';
-import { APP_ERRORS } from '@/lib/errors';
+import { toast } from 'sonner';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Form,
   FormControl,
@@ -16,12 +18,10 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { toast } from 'sonner';
-import { Loader2, Mail, Lock, User } from 'lucide-react';
-import Link from 'next/link';
+import { Input } from '@/components/ui/input';
+import { APP_ERRORS } from '@/lib/errors';
 import { cn } from '@/lib/utils';
+import { type RegisterInput, RegisterSchema } from '@/server/models/auth.model';
 
 export default function RegisterPage() {
   const t = useTranslations('RegisterPage');

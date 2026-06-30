@@ -1,8 +1,8 @@
 'use client';
 
+import { AlertTriangle, CheckCircle, Info, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, XCircle, AlertTriangle, Info } from 'lucide-react';
 
 export default function DevClient() {
   return (

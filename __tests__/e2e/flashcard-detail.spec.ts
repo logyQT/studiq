@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { t } from './utils';
 
 const PASSWORD = 'pass';
@@ -25,7 +25,10 @@ test.describe('Flashcard Deck Detail', () => {
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') }).first().click();
+    await page
+      .getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') })
+      .first()
+      .click();
     await page.waitForURL(/\/edu\/flashcards\/decks\//);
 
     const heading = page.locator('h2');
@@ -38,7 +41,10 @@ test.describe('Flashcard Deck Detail', () => {
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') }).first().click();
+    await page
+      .getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') })
+      .first()
+      .click();
     await page.waitForURL(/\/edu\/flashcards\/decks\//);
 
     const searchInput = page.getByPlaceholder(t('EduDeckViewPage.search_placeholder'));
@@ -53,11 +59,15 @@ test.describe('Flashcard Deck Detail', () => {
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
-    const manageButton = page.getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') }).first();
+    const manageButton = page
+      .getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') })
+      .first();
     await manageButton.click();
     await page.waitForURL(/\/edu\/flashcards\/decks\//);
 
-    const topicSelect = page.getByRole('combobox').filter({ hasText: t('EduDeckViewPage.topic_all') });
+    const topicSelect = page
+      .getByRole('combobox')
+      .filter({ hasText: t('EduDeckViewPage.topic_all') });
     await expect(topicSelect).toBeVisible();
   });
 
@@ -66,10 +76,18 @@ test.describe('Flashcard Deck Detail', () => {
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') }).first().click();
+    await page
+      .getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') })
+      .first()
+      .click();
     await page.waitForURL(/\/edu\/flashcards\/decks\//);
 
-    await expect(page.getByRole('combobox').filter({ hasText: t('EduDeckViewPage.sort_newest') }).first()).toBeVisible();
+    await expect(
+      page
+        .getByRole('combobox')
+        .filter({ hasText: t('EduDeckViewPage.sort_newest') })
+        .first(),
+    ).toBeVisible();
   });
 
   test('new flashcard button navigates to create page', async ({ page }) => {
@@ -83,7 +101,10 @@ test.describe('Flashcard Deck Detail', () => {
     await expect(page.getByText('Detail Test Deck').first()).toBeVisible();
 
     await page.getByText('Detail Test Deck').hover();
-    await page.getByRole('button', { name: t('AppFlashcardDecksPage.manage_deck') }).first().click();
+    await page
+      .getByRole('button', { name: t('AppFlashcardDecksPage.manage_deck') })
+      .first()
+      .click();
     await page.waitForURL(/\/app\/flashcards\/decks\//);
 
     await page.getByRole('button', { name: t('AppFlashcardDeckViewPage.new_flashcard') }).click();
@@ -101,7 +122,10 @@ test.describe('Flashcard Deck Detail', () => {
     await expect(page.getByText('Shortcut Deck').first()).toBeVisible();
 
     await page.getByText('Shortcut Deck').hover();
-    await page.getByRole('button', { name: t('AppFlashcardDecksPage.manage_deck') }).first().click();
+    await page
+      .getByRole('button', { name: t('AppFlashcardDecksPage.manage_deck') })
+      .first()
+      .click();
     await page.waitForURL(/\/app\/flashcards\/decks\//);
 
     await page.keyboard.press('n');
@@ -113,7 +137,9 @@ test.describe('Flashcard Deck Detail', () => {
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
-    const manageButton = page.getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') }).first();
+    const manageButton = page
+      .getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') })
+      .first();
     await manageButton.click();
     await page.waitForURL(/\/edu\/flashcards\/decks\//);
 
@@ -129,13 +155,19 @@ test.describe('Flashcard Deck Detail', () => {
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') }).first().click();
+    await page
+      .getByRole('button', { name: t('EduFlashcardDecksPage.manage_deck') })
+      .first()
+      .click();
     await page.waitForURL(/\/edu\/flashcards\/decks\//);
 
     const flashcardCard = page.locator('.group').first();
     await flashcardCard.hover();
 
-    const menuButton = flashcardCard.locator('button').filter({ has: page.locator('svg.lucide-more-vertical') }).first();
+    const menuButton = flashcardCard
+      .locator('button')
+      .filter({ has: page.locator('svg.lucide-more-vertical') })
+      .first();
     await menuButton.click();
 
     await page.getByRole('menuitem', { name: t('EduDeckViewPage.menu_link') }).click();
@@ -155,21 +187,30 @@ test.describe('Flashcard Deck Detail', () => {
     await expect(page.getByText('Delete Test Deck').first()).toBeVisible();
 
     await page.getByText('Delete Test Deck').hover();
-    await page.getByRole('button', { name: t('AppFlashcardDecksPage.manage_deck') }).first().click();
+    await page
+      .getByRole('button', { name: t('AppFlashcardDecksPage.manage_deck') })
+      .first()
+      .click();
     await page.waitForURL(/\/app\/flashcards\/decks\//);
     await page.waitForLoadState('networkidle');
 
     const flashcardCard = page.locator('.group').first();
     await flashcardCard.hover();
 
-    const menuButton = flashcardCard.locator('button').filter({ has: page.locator('svg.lucide-more-vertical') }).first();
+    const menuButton = flashcardCard
+      .locator('button')
+      .filter({ has: page.locator('svg.lucide-more-vertical') })
+      .first();
     await menuButton.click();
 
     await page.getByRole('menuitem', { name: t('AppFlashcardDeckViewPage.menu_delete') }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page.getByText(t('AppFlashcardDeckViewPage.delete_dialog_title'))).toBeVisible();
 
-    await page.getByRole('button', { name: t('Common.common_delete') }).last().click();
+    await page
+      .getByRole('button', { name: t('Common.common_delete') })
+      .last()
+      .click();
     await expect(page.getByText(t('AppFlashcardDeckViewPage.no_flashcards'))).toBeVisible();
   });
 });

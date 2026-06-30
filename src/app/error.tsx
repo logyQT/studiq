@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
 import { Copy } from 'lucide-react';
+import { useEffect } from 'react';
 
 interface ErrorProps {
   error: Error & { digest?: string };

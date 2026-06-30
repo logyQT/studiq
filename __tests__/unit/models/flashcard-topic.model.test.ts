@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { CreateTopicSchema, UpdateTopicSchema } from '@/server/models/flashcard-topic.model';
+import { describe, expect, it } from 'vitest';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import { CreateTopicSchema, UpdateTopicSchema } from '@/server/models/flashcard-topic.model';
 
 describe('CreateTopicSchema', () => {
   it('passes with valid input', () => {

@@ -1,8 +1,8 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { CheckSquare, Eye, EyeOff, FileDown, Pencil, Trash2 } from 'lucide-react';
+import type { useTranslations } from 'next-intl';
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { CheckSquare, Pencil, Trash2, FileDown, EyeOff, Eye } from 'lucide-react';
 
 interface DeckContextMenuProps {
   t: ReturnType<typeof useTranslations>;
@@ -54,11 +54,7 @@ export function DeckContextMenu({
           onToggleSuspend();
         }}
       >
-        {suspended ? (
-          <Eye className="mr-2 h-4 w-4" />
-        ) : (
-          <EyeOff className="mr-2 h-4 w-4" />
-        )}
+        {suspended ? <Eye className="mr-2 h-4 w-4" /> : <EyeOff className="mr-2 h-4 w-4" />}
         {suspended ? t('unsuspend_deck') : t('suspend_deck')}
       </DropdownMenuItem>
       <DropdownMenuItem

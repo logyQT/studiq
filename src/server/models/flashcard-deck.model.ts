@@ -1,5 +1,5 @@
-import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import { registry, z } from '@/lib/zod';
 
 export const CreateDeckSchema = registry.register(
   'CreateFlashcardDeckRequest',
@@ -54,16 +54,18 @@ export const DeckListQuerySchema = registry.register(
 export const BulkCreateDeckSchema = registry.register(
   'BulkCreateDeckRequest',
   z.object({
-    decks: z.array(
-      z.object({
-        name: z
-          .string({ error: ValidationErrorCode.REQUIRED })
-          .nonempty({ error: ValidationErrorCode.REQUIRED })
-          .min(1, { error: ValidationErrorCode.TOO_SHORT })
-          .max(128, { error: ValidationErrorCode.TOO_LONG }),
-        description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
-      }),
-    ).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    decks: z
+      .array(
+        z.object({
+          name: z
+            .string({ error: ValidationErrorCode.REQUIRED })
+            .nonempty({ error: ValidationErrorCode.REQUIRED })
+            .min(1, { error: ValidationErrorCode.TOO_SHORT })
+            .max(128, { error: ValidationErrorCode.TOO_LONG }),
+          description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
+        }),
+      )
+      .min(1, { error: ValidationErrorCode.TOO_FEW }),
   }),
 );
 

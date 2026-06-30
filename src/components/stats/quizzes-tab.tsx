@@ -1,12 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 import { ClipboardList } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { useEffect, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 type Attempt = {
   id: string;
@@ -97,9 +104,19 @@ export function QuizzesTab() {
             <TableBody>
               {attempts.map((attempt, i) => (
                 <TableRow key={attempt.id}>
-                  <TableCell className="font-medium">{t('quiz_attempt')} #{i + 1}</TableCell>
+                  <TableCell className="font-medium">
+                    {t('quiz_attempt')} #{i + 1}
+                  </TableCell>
                   <TableCell className="text-right">
-                    <Badge variant={attempt.score >= 70 ? 'default' : attempt.score >= 40 ? 'secondary' : 'destructive'}>
+                    <Badge
+                      variant={
+                        attempt.score >= 70
+                          ? 'default'
+                          : attempt.score >= 40
+                            ? 'secondary'
+                            : 'destructive'
+                      }
+                    >
                       {attempt.score}%
                     </Badge>
                   </TableCell>

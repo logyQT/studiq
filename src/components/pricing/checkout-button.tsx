@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
+import { useState } from 'react';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 
 interface CheckoutButtonProps {
   planId: string;
@@ -12,7 +12,12 @@ interface CheckoutButtonProps {
   className?: string;
 }
 
-export function CheckoutButton({ planId, children, variant = 'default', className }: CheckoutButtonProps) {
+export function CheckoutButton({
+  planId,
+  children,
+  variant = 'default',
+  className,
+}: CheckoutButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
 
   async function handleClick() {

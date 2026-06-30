@@ -1,9 +1,9 @@
 'use client';
 
+import { Building2, Check, ChevronsUpDown, LogIn, Plus } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useOrgs } from '@/hooks/use-orgs';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { OrgAvatar } from '@/components/ui/org-avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,15 +12,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { OrgAvatar } from '@/components/ui/org-avatar';
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from '@/components/ui/sidebar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Building2, Check, ChevronsUpDown, Plus, LogIn } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useSidebar } from '@/components/ui/sidebar';
+import { useOrgs } from '@/hooks/use-orgs';
 
 const ROLE_LABEL_MAP: Record<string, string> = {
   teacher: 'role_teacher',

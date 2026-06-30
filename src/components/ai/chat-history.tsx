@@ -1,7 +1,7 @@
 'use client';
 
-import { ChatMessage } from './chat-message';
 import type { ChatMessage as ChatMessageType } from '@/hooks/use-ai-chat';
+import { ChatMessage } from './chat-message';
 
 interface ChatHistoryProps {
   messages: ChatMessageType[];

@@ -48,7 +48,8 @@ export class FlashcardSpacedRepetitionService {
     currentState: 'learning' | 'relearning',
     input: CalculateNextReviewInput,
   ): CalculateNextReviewOutput {
-    const { currentStep, learningSteps, rating, easinessFactor, lapseCount, leechThreshold } = input;
+    const { currentStep, learningSteps, rating, easinessFactor, lapseCount, leechThreshold } =
+      input;
     const totalSteps = learningSteps.length;
 
     const scheduleMinutes = (delayMinutes: number) => {

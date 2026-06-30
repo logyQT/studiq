@@ -1,18 +1,23 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentCallbacks } from '@/server/agents/tools/types';
 
 let capturedCallbacks: AgentCallbacks | undefined;
 
 vi.mock('@/server/services/agent.service', () => ({
   agentService: {
-    process: vi.fn().mockImplementation(async (_body: unknown, _ctx: unknown, callbacks: AgentCallbacks) => {
-      capturedCallbacks = callbacks;
-      return { type: 'chat', content: 'Default' };
-    }),
+    process: vi
+      .fn()
+      .mockImplementation(async (_body: unknown, _ctx: unknown, callbacks: AgentCallbacks) => {
+        capturedCallbacks = callbacks;
+        return { type: 'chat', content: 'Default' };
+      }),
   },
 }));
 
-import { aiAgentController, type AgentStreamCallbacks } from '@/server/controllers/ai-agent.controller';
+import {
+  type AgentStreamCallbacks,
+  aiAgentController,
+} from '@/server/controllers/ai-agent.controller';
 
 describe('AiAgentController', () => {
   let mockCtx: { userId: string; organizationId: null; role: string; url: string; method: string };
@@ -62,7 +67,13 @@ describe('AiAgentController', () => {
         flashcards: [{ front: 'Q', back: 'A' }],
       });
 
-      await aiAgentController.process('Make flashcards', undefined, undefined, mockCtx, mockCallbacks);
+      await aiAgentController.process(
+        'Make flashcards',
+        undefined,
+        undefined,
+        mockCtx,
+        mockCallbacks,
+      );
 
       expect(mockCallbacks.onFlashcards).toHaveBeenCalledWith({
         deckName: 'Science Deck',
@@ -106,7 +117,11 @@ describe('AiAgentController', () => {
     it('onThought forwards to stream callback', async () => {
       await aiAgentController.process('Hi', undefined, undefined, mockCtx, mockCallbacks);
 
-      capturedCallbacks?.onThought?.({ reasoning: 'I need to create flashcards.', step: 1, agent: 'general' });
+      capturedCallbacks?.onThought?.({
+        reasoning: 'I need to create flashcards.',
+        step: 1,
+        agent: 'general',
+      });
 
       expect(mockCallbacks.onThought).toHaveBeenCalledWith({
         reasoning: 'I need to create flashcards.',

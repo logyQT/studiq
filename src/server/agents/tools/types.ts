@@ -1,7 +1,7 @@
 import type { z } from '@/lib/zod';
-import type { ExtractedTerm, FlashcardItem } from '@/server/services/ai-utils';
 import type { AgentLLMConfig } from '@/server/ai/ai.types';
 import type { AgentTraceService } from '@/server/services/agent-trace.service';
+import type { ExtractedTerm, FlashcardItem } from '@/server/services/ai-utils';
 
 export interface Tool {
   name: string;
@@ -18,15 +18,22 @@ export interface ToolContext {
     get(name: string): unknown;
     getAll(): string[];
   };
-  callLLM: (req: {
-    prompt: string;
-    systemPrompt?: string;
-    tools?: unknown[];
-    toolChoice?: unknown;
-    maxTokens?: number;
-    onToken?: (token: string) => void;
-    onReasoning?: (token: string) => void;
-  } & AgentLLMConfig) => Promise<{ content: string; reasoning?: string; toolCalls?: Array<{ function: { name: string; arguments: string } }>; usage?: { inputTokens: number; outputTokens: number; totalTokens: number } }>;
+  callLLM: (
+    req: {
+      prompt: string;
+      systemPrompt?: string;
+      tools?: unknown[];
+      toolChoice?: unknown;
+      maxTokens?: number;
+      onToken?: (token: string) => void;
+      onReasoning?: (token: string) => void;
+    } & AgentLLMConfig,
+  ) => Promise<{
+    content: string;
+    reasoning?: string;
+    toolCalls?: Array<{ function: { name: string; arguments: string } }>;
+    usage?: { inputTokens: number; outputTokens: number; totalTokens: number };
+  }>;
 }
 
 export interface AgentState {

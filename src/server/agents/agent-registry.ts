@@ -1,8 +1,8 @@
-import { BaseAgent } from './core/base.agent';
-import { GeneralAgent } from './general.agent';
-import { FlashcardAgent } from './flashcard.agent';
-import { getAgentModelConfig } from '@/server/config/agent-models.config';
 import type { AgentLLMConfig } from '@/server/ai/ai.types';
+import { getAgentModelConfig } from '@/server/config/agent-models.config';
+import type { BaseAgent } from './core/base.agent';
+import { FlashcardAgent } from './flashcard.agent';
+import { GeneralAgent } from './general.agent';
 
 export class AgentRegistry {
   private agents = new Map<string, BaseAgent>();

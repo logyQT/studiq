@@ -1,20 +1,20 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import type { useTranslations } from 'next-intl';
+import { DeckCheckboxSelector } from '@/components/flashcards/shared/deck-checkbox-selector';
+import { DeckRadioSelector } from '@/components/flashcards/shared/deck-radio-selector';
+import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog';
-import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
-import { DeckCheckboxSelector } from '@/components/flashcards/shared/deck-checkbox-selector';
-import { DeckRadioSelector } from '@/components/flashcards/shared/deck-radio-selector';
-import { getTopicColor } from '@/lib/color-utils';
+import { getGradientHex } from '@/lib/color-utils';
 import type { Deck, Topic } from '@/types/flashcards';
 
 interface BulkDialogsProps {
@@ -213,7 +213,12 @@ export function BulkDialogs({
                       )
                     }
                   />
-                  <div className={`h-2 w-2 rounded-full ${getTopicColor(topic.name)}`} />
+                  <div
+                    className="h-2 w-2 rounded-full"
+                    style={{
+                      background: `linear-gradient(135deg, ${getGradientHex(topic.name).from}, ${getGradientHex(topic.name).to})`,
+                    }}
+                  />
                   <span className="text-sm">{topic.name}</span>
                 </div>
               ))

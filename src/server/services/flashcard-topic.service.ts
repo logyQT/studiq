@@ -1,15 +1,23 @@
-import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import type { CreateTopicInput, UpdateTopicInput, BatchDeleteTopicInput, BulkCreateTopicInput, TopicListQuery } from '@/server/models';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { buildQueryFilter, checkPermission, Permission, shouldSetUniversityId } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
-import { checkPermission, shouldSetUniversityId, buildQueryFilter, Permission } from '@/lib/rbac';
+import { createClient } from '@/lib/supabase/server';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type {
+  BatchDeleteTopicInput,
+  BulkCreateTopicInput,
+  CreateTopicInput,
+  TopicListQuery,
+  UpdateTopicInput,
+} from '@/server/models';
 import type { Topic } from '@/types/flashcards';
 
 export class FlashcardTopicService {
   async create(data: CreateTopicInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const organizationId = await shouldSetUniversityId(ctx, Permission.TOPIC_CREATE) ? ctx.activeOrgId : null;
+    const organizationId = (await shouldSetUniversityId(ctx, Permission.TOPIC_CREATE))
+      ? ctx.activeOrgId
+      : null;
 
     const { data: topic, error } = await supabase
       .from('flashcard_topics')
@@ -71,7 +79,9 @@ export class FlashcardTopicService {
       const cursorVal = decoded.v;
       const cursorId = decoded.id;
       const op = sortAsc ? 'gt' : 'lt';
-      query = query.or(`${sortBy}.${op}.${cursorVal},and(${sortBy}.eq.${cursorVal},id.gt.${cursorId})`);
+      query = query.or(
+        `${sortBy}.${op}.${cursorVal},and(${sortBy}.eq.${cursorVal},id.gt.${cursorId})`,
+      );
     }
 
     const { data, error } = await query;
@@ -85,7 +95,12 @@ export class FlashcardTopicService {
       return { ...item, flashcard_count: countArr?.[0]?.count ?? 0 };
     });
     const nextCursor = hasMore
-      ? Buffer.from(JSON.stringify({ v: sliced[sliced.length - 1][sortBy], id: sliced[sliced.length - 1].id })).toString('base64')
+      ? Buffer.from(
+          JSON.stringify({
+            v: sliced[sliced.length - 1][sortBy],
+            id: sliced[sliced.length - 1].id,
+          }),
+        ).toString('base64')
       : null;
 
     return {
@@ -99,10 +114,7 @@ export class FlashcardTopicService {
     const supabase = await createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.TOPIC_READ, 'topic');
-    let query = supabase
-      .from('flashcard_topics')
-      .select('*')
-      .eq('id', id);
+    let query = supabase.from('flashcard_topics').select('*').eq('id', id);
 
     if (filter._impossible) throw new AppError('NOT_FOUND');
     if (filter.or) {
@@ -152,17 +164,16 @@ export class FlashcardTopicService {
     if (fetchError || !existing) throw new AppError('NOT_FOUND');
     await checkPermission(ctx, Permission.TOPIC_DELETE, existing);
 
-    const { error } = await supabase
-      .from('flashcard_topics')
-      .delete()
-      .eq('id', id);
+    const { error } = await supabase.from('flashcard_topics').delete().eq('id', id);
 
     if (error) throw mapSupabaseError(error);
   }
 
   async bulkCreate(data: BulkCreateTopicInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const organizationId = await shouldSetUniversityId(ctx, Permission.TOPIC_CREATE) ? ctx.activeOrgId : null;
+    const organizationId = (await shouldSetUniversityId(ctx, Permission.TOPIC_CREATE))
+      ? ctx.activeOrgId
+      : null;
 
     const topics = data.topics.map((t) => ({
       name: t.name,
@@ -194,10 +205,7 @@ export class FlashcardTopicService {
       await checkPermission(ctx, Permission.TOPIC_DELETE, topic);
     }
 
-    const { error } = await supabase
-      .from('flashcard_topics')
-      .delete()
-      .in('id', data.ids);
+    const { error } = await supabase.from('flashcard_topics').delete().in('id', data.ids);
 
     if (error) throw mapSupabaseError(error);
 

@@ -1,7 +1,15 @@
 import { log } from '@/lib/logger';
-import { LLMProvider, GeneratedFlashcard, FLASHCARD_PROMPT, parseJsonResponse, type StreamCallbacks, type GenerateChatResult, type ProviderUsage } from './LLMProvider';
+import type { ToolCall, ToolDefinition } from '@/server/ai/ai.types';
 import type { ModelsConfig } from '@/server/config/models.config';
-import type { ToolDefinition, ToolCall } from '@/server/ai/ai.types';
+import {
+  FLASHCARD_PROMPT,
+  type GenerateChatResult,
+  type GeneratedFlashcard,
+  type LLMProvider,
+  type ProviderUsage,
+  parseJsonResponse,
+  type StreamCallbacks,
+} from './LLMProvider';
 
 export class OpenAIProvider implements LLMProvider {
   private apiKey: string;
@@ -18,13 +26,16 @@ export class OpenAIProvider implements LLMProvider {
     log.providers.info(`Initialized: baseUrl=${this.baseUrl}, model=${this.modelName}`);
   }
 
-  async generateFlashcardsFromChunk(chunk: string, language: string): Promise<GeneratedFlashcard[]> {
-    const prompt = FLASHCARD_PROMPT
-      .replace('{language}', language)
-      .replace('{chunk}', chunk);
+  async generateFlashcardsFromChunk(
+    chunk: string,
+    language: string,
+  ): Promise<GeneratedFlashcard[]> {
+    const prompt = FLASHCARD_PROMPT.replace('{language}', language).replace('{chunk}', chunk);
     const chunkPreview = chunk.slice(0, 100).replace(/\n/g, ' ');
 
-    log.providers.info('Generating flashcards', { metadata: { language, chunkLength: chunk.length, preview: chunkPreview } });
+    log.providers.info('Generating flashcards', {
+      metadata: { language, chunkLength: chunk.length, preview: chunkPreview },
+    });
 
     const url = `${this.baseUrl}/v1/chat/completions`;
     log.providers.info(`POST ${url} model=${this.modelName}`);
@@ -33,12 +44,15 @@ export class OpenAIProvider implements LLMProvider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
+        Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
         model: this.modelName,
         messages: [
-          { role: 'system', content: 'You are a flashcard generator. Always respond with valid JSON.' },
+          {
+            role: 'system',
+            content: 'You are a flashcard generator. Always respond with valid JSON.',
+          },
           { role: 'user', content: prompt },
         ],
         response_format: { type: 'json_object' },
@@ -53,7 +67,9 @@ export class OpenAIProvider implements LLMProvider {
 
     const data = await res.json();
     const content = data.choices?.[0]?.message?.content || '';
-    log.providers.info('Raw response', { metadata: { length: content.length, preview: content.slice(0, 200) } });
+    log.providers.info('Raw response', {
+      metadata: { length: content.length, preview: content.slice(0, 200) },
+    });
 
     return parseJsonResponse(content);
   }
@@ -85,7 +101,7 @@ export class OpenAIProvider implements LLMProvider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
+        Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(body),
     });
@@ -116,7 +132,20 @@ export class OpenAIProvider implements LLMProvider {
     return message?.content || '';
   }
 
-  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, maxTokens?: number, reasoningEffort?: 'low' | 'medium' | 'high'): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[]; usage?: ProviderUsage }> {
+  async generateChatStreaming(
+    prompt: string,
+    systemPrompt: string | undefined,
+    callbacks: StreamCallbacks,
+    tools?: ToolDefinition[],
+    toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } },
+    _maxTokens?: number,
+    reasoningEffort?: 'low' | 'medium' | 'high',
+  ): Promise<{
+    content: string;
+    reasoning?: string;
+    toolCalls?: ToolCall[];
+    usage?: ProviderUsage;
+  }> {
     const messages: Array<{ role: string; content: string }> = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
     messages.push({ role: 'user', content: prompt });
@@ -141,7 +170,7 @@ export class OpenAIProvider implements LLMProvider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
+        Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(body),
     });
@@ -170,7 +199,7 @@ export class OpenAIProvider implements LLMProvider {
 
       for (const line of lines) {
         const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+        if (!trimmed?.startsWith('data: ')) continue;
         const payload = trimmed.slice(6);
         if (payload === '[DONE]') break;
         try {
@@ -197,7 +226,10 @@ export class OpenAIProvider implements LLMProvider {
               }
             }
           }
-          if (parsed.usage && (!parsed.choices || parsed.choices.length === 0 || !parsed.choices[0].delta)) {
+          if (
+            parsed.usage &&
+            (!parsed.choices || parsed.choices.length === 0 || !parsed.choices[0].delta)
+          ) {
             capturedUsage = {
               prompt_tokens: parsed.usage.prompt_tokens,
               completion_tokens: parsed.usage.completion_tokens,

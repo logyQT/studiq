@@ -1,14 +1,12 @@
 'use client';
 
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Copy, PlusCircle, Send } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from '@/lib/zod';
-import { Copy, PlusCircle, Send } from 'lucide-react';
 import { toast } from 'sonner';
-import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Form,
@@ -18,6 +16,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -25,11 +24,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-
-import { CreateOrganizationSchema } from '@/server/models/organization.model';
-import { CreateInviteSchema } from '@/server/models/invitation.model';
-import { UserRole } from '@/types';
 import { AppError } from '@/lib/errors';
+import type { z } from '@/lib/zod';
+import { CreateInviteSchema } from '@/server/models/invitation.model';
+import { CreateOrganizationSchema } from '@/server/models/organization.model';
+import { UserRole } from '@/types';
 
 export default function SysAdminDashboard() {
   const t = useTranslations('AdminPage');
@@ -54,7 +53,7 @@ export default function SysAdminDashboard() {
       });
 
       if (!res.ok) {
-        if (res.status == 409) throw new AppError('CONFLICT');
+        if (res.status === 409) throw new AppError('CONFLICT');
         throw new AppError('INTERNAL_SERVER');
       }
 

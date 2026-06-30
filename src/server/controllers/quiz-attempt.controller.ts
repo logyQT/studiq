@@ -1,8 +1,8 @@
-import { quizAttemptService } from '@/server/services';
-import { SubmitQuizAttemptSchema } from '@/server/models';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import { SubmitQuizAttemptSchema } from '@/server/models';
+import { quizAttemptService } from '@/server/services';
 
 export class QuizAttemptController {
   async list(ctx: RequestContext): Promise<ControllerResponse> {
@@ -21,11 +21,7 @@ export class QuizAttemptController {
     }, ctx);
   }
 
-  async submit(
-    body: unknown,
-    attemptId: string,
-    ctx: RequestContext,
-  ): Promise<ControllerResponse> {
+  async submit(body: unknown, attemptId: string, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
       const parsed = SubmitQuizAttemptSchema.safeParse({
         ...(body as Record<string, unknown>),

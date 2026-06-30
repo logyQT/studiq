@@ -1,9 +1,9 @@
-import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
 import type { RequestContext } from '@/lib/request-context';
-import { UserRole } from '@/types';
+import { createClient } from '@/lib/supabase/server';
+import type { UserRole } from '@/types';
 
-export type PermissionScope = 'own' | 'university' | 'any';
+export type PermissionScope = 'own' | 'university' | 'any' | 'granted';
 
 export const Permission = {
   FLASHCARD_READ: 'flashcard.read',
@@ -18,6 +18,12 @@ export const Permission = {
   DECK_CREATE: 'deck.create',
   DECK_UPDATE: 'deck.update',
   DECK_DELETE: 'deck.delete',
+  STUDY_CREATE: 'study.create',
+  STUDY_PARTICIPATE: 'study.participate',
+  TEST_CREATE: 'test.create',
+  TEST_PARTICIPATE: 'test.participate',
+  AI_CHAT: 'ai.chat',
+  ORG_MANAGE: 'org.manage',
 } as const;
 
 export type PermissionKey = (typeof Permission)[keyof typeof Permission];
@@ -44,7 +50,12 @@ async function ensureRolePermissionsLoaded(): Promise<RolePermissionMap> {
       .select('role, scope, permissions!inner(name)');
 
     if (error || !data) {
-      console.error('[ensureRolePermissionsLoaded] query failed:', JSON.stringify(error), 'data:', !!data);
+      console.error(
+        '[ensureRolePermissionsLoaded] query failed:',
+        JSON.stringify(error),
+        'data:',
+        !!data,
+      );
       cachedRolePermissions = new Map();
       return cachedRolePermissions;
     }
@@ -53,7 +64,9 @@ async function ensureRolePermissionsLoaded(): Promise<RolePermissionMap> {
 
     for (const row of data) {
       const role = row.role as UserRole;
-      const permissionName = (row as unknown as { role: string; scope: string; permissions: { name: string } }).permissions.name;
+      const permissionName = (
+        row as unknown as { role: string; scope: string; permissions: { name: string } }
+      ).permissions.name;
       const scope = row.scope as PermissionScope;
 
       if (!permissionName) continue;
@@ -80,22 +93,50 @@ export function clearRolePermissionCache() {
   loadPromise = null;
 }
 
-async function getScopeForRole(role: UserRole, permission: string): Promise<PermissionScope | null> {
+async function getScopeForRole(
+  role: UserRole,
+  permission: string,
+): Promise<PermissionScope | null> {
   await ensureRolePermissionsLoaded();
   return cachedRolePermissions!.get(role)?.get(permission) ?? null;
 }
 
-export async function checkPermission(ctx: RequestContext, permission: string, resource: Resource | null) {
+export async function getPermissionsForRole(
+  role: UserRole,
+): Promise<Record<string, PermissionScope | null>> {
+  const map = await ensureRolePermissionsLoaded();
+  const rolePerms = map.get(role);
+  if (!rolePerms) return {};
+  const allNames = new Set<string>();
+  for (const inner of map.values()) {
+    for (const name of inner.keys()) {
+      allNames.add(name);
+    }
+  }
+  const result: Record<string, PermissionScope | null> = {};
+  for (const perm of allNames) {
+    result[perm] = rolePerms.get(perm) ?? null;
+  }
+  return result;
+}
+
+export async function checkPermission(
+  ctx: RequestContext,
+  permission: string,
+  resource: Resource | null,
+) {
   const scope = await getScopeForRole(ctx.role, permission);
   if (!scope) throw new AppError('FORBIDDEN');
 
   switch (scope) {
     case 'any':
+    case 'granted':
       return;
     case 'university':
       if (!resource) throw new AppError('FORBIDDEN');
       if (resource.created_by === ctx.userId) return;
-      if (resource.organization_id !== ctx.activeOrgId) throw new AppError('FORBIDDEN');
+      if (!ctx.activeOrgId || resource.organization_id !== ctx.activeOrgId)
+        throw new AppError('FORBIDDEN');
       return;
     case 'own':
       if (!resource || resource.created_by !== ctx.userId) {
@@ -110,20 +151,30 @@ export async function hasPermission(ctx: RequestContext, permission: string): Pr
   return scope !== null;
 }
 
-export async function shouldSetUniversityId(ctx: RequestContext, permission: string): Promise<boolean> {
+export async function shouldSetUniversityId(
+  ctx: RequestContext,
+  permission: string,
+): Promise<boolean> {
   const scope = await getScopeForRole(ctx.role, permission);
   return scope === 'university' || scope === 'any';
 }
 
-export async function buildQueryFilter(ctx: RequestContext, permission: string, _resourceType?: string) {
+export async function buildQueryFilter(
+  ctx: RequestContext,
+  permission: string,
+  _resourceType?: string,
+) {
   const scope = await getScopeForRole(ctx.role, permission);
   if (!scope) return { _impossible: true };
 
   switch (scope) {
     case 'any':
+    case 'granted':
       return {};
     case 'university':
-      return { or: `created_by.eq.${ctx.userId},organization_id.eq.${ctx.activeOrgId}` };
+      return ctx.activeOrgId
+        ? { or: `created_by.eq.${ctx.userId},organization_id.eq.${ctx.activeOrgId}` }
+        : { created_by: ctx.userId };
     case 'own':
       return { created_by: ctx.userId };
   }

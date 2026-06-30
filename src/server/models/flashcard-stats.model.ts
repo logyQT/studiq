@@ -1,4 +1,4 @@
-import { z, registry } from '@/lib/zod';
+import { registry, z } from '@/lib/zod';
 
 export const TeacherFlashcardStatsQuerySchema = registry.register(
   'TeacherFlashcardStatsQuery',

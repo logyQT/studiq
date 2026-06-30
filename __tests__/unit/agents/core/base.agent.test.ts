@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/zod', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/zod')>();
@@ -7,7 +7,12 @@ vi.mock('@/lib/zod', async (importOriginal) => {
 
 import * as z from 'zod';
 import { BaseAgent, zodToJsonSchema } from '@/server/agents/core';
-import type { Tool, ToolContext, AgentCallbacks, ToolDefinition } from '@/server/agents/tools/types';
+import type {
+  AgentCallbacks,
+  Tool,
+  ToolContext,
+  ToolDefinition,
+} from '@/server/agents/tools/types';
 
 class TestAgent extends BaseAgent {
   readonly name = 'test_agent';
@@ -33,13 +38,16 @@ function createMockCallbacks(): AgentCallbacks {
 }
 
 function createMockContext(overrides?: {
-  callLLMResult?: { content: string; toolCalls?: Array<{ function: { name: string; arguments: string } }> };
+  callLLMResult?: {
+    content: string;
+    toolCalls?: Array<{ function: { name: string; arguments: string } }>;
+  };
   stateOverrides?: Partial<Record<string, unknown>>;
 }): ToolContext {
   const callbacks = createMockCallbacks();
-  const callLLM = vi.fn().mockResolvedValue(
-    overrides?.callLLMResult || { content: 'Test thinking.' },
-  );
+  const callLLM = vi
+    .fn()
+    .mockResolvedValue(overrides?.callLLMResult || { content: 'Test thinking.' });
 
   return {
     trace: { log: vi.fn(), getByConversation: vi.fn(), getAll: vi.fn(), clear: vi.fn() },
@@ -47,7 +55,7 @@ function createMockContext(overrides?: {
       text: 'test task',
       results: {},
       metadata: {},
-      ...(overrides?.stateOverrides as Record<string, unknown> || {}),
+      ...((overrides?.stateOverrides as Record<string, unknown>) || {}),
     },
     callbacks,
     agentRegistry: {
@@ -76,10 +84,12 @@ describe('zodToJsonSchema', () => {
   });
 
   it('converts an object schema', () => {
-    const result = zodToJsonSchema(z.object({
-      name: z.string(),
-      age: z.number().optional(),
-    }));
+    const result = zodToJsonSchema(
+      z.object({
+        name: z.string(),
+        age: z.number().optional(),
+      }),
+    );
     expect(result.type).toBe('object');
     expect(result.properties).toBeDefined();
     expect(result.required).toEqual(['name']);
@@ -117,14 +127,19 @@ describe('BaseAgent', () => {
       const agent = new TestAgent([fakeTool]);
       agent.maxIterations = 3;
 
-      const callLLM = vi.fn()
+      const callLLM = vi
+        .fn()
         .mockResolvedValueOnce({
           content: 'I will use the tool.',
-          toolCalls: [{ function: { name: 'fake_tool', arguments: JSON.stringify({ input: 'hello' }) } }],
+          toolCalls: [
+            { function: { name: 'fake_tool', arguments: JSON.stringify({ input: 'hello' }) } },
+          ],
         })
         .mockResolvedValueOnce({
           content: 'Task complete.',
-          toolCalls: [{ function: { name: 'finish', arguments: JSON.stringify({ message: 'done' }) } }],
+          toolCalls: [
+            { function: { name: 'finish', arguments: JSON.stringify({ message: 'done' }) } },
+          ],
         });
 
       const callbacks = createMockCallbacks();
@@ -163,16 +178,21 @@ describe('BaseAgent', () => {
 
       const callLLM = vi.fn().mockResolvedValue({
         content: '',
-        toolCalls: [{ function: { name: 'my_tool', arguments: JSON.stringify({ name: 'test', count: 42 }) } }],
+        toolCalls: [
+          { function: { name: 'my_tool', arguments: JSON.stringify({ name: 'test', count: 42 }) } },
+        ],
       });
 
       const ctx = { ...createMockContext(), callLLM: callLLM as ToolContext['callLLM'] };
-      agent.tools = [tool, {
-        name: 'finish',
-        description: 'Finish',
-        parameters: z.object({}),
-        execute: vi.fn().mockResolvedValue({ type: 'chat', content: 'ok' }),
-      }];
+      agent.tools = [
+        tool,
+        {
+          name: 'finish',
+          description: 'Finish',
+          parameters: z.object({}),
+          execute: vi.fn().mockResolvedValue({ type: 'chat', content: 'ok' }),
+        },
+      ];
 
       await agent.execute('test', ctx);
 
@@ -187,7 +207,11 @@ describe('BaseAgent', () => {
         description: 'Ask the user',
         parameters: z.object({ question: z.string() }),
         execute: vi.fn().mockResolvedValue({
-          question: { id: 'q1', question: 'What color?', options: [{ label: 'Red', value: 'red' }] },
+          question: {
+            id: 'q1',
+            question: 'What color?',
+            options: [{ label: 'Red', value: 'red' }],
+          },
         }),
       };
 
@@ -196,7 +220,11 @@ describe('BaseAgent', () => {
 
       const callLLM = vi.fn().mockResolvedValue({
         content: '',
-        toolCalls: [{ function: { name: 'ask_user', arguments: JSON.stringify({ question: 'What color?' }) } }],
+        toolCalls: [
+          {
+            function: { name: 'ask_user', arguments: JSON.stringify({ question: 'What color?' }) },
+          },
+        ],
       });
 
       const ctx = { ...createMockContext(), callLLM: callLLM as ToolContext['callLLM'] };
@@ -286,7 +314,8 @@ describe('BaseAgent', () => {
       const agent = new TestAgent([finishTool]);
       agent.maxIterations = 3;
 
-      const callLLM = vi.fn()
+      const callLLM = vi
+        .fn()
         .mockResolvedValueOnce({
           content: '',
           toolCalls: [{ function: { name: 'nonexistent_tool', arguments: '{}' } }],
@@ -324,7 +353,8 @@ describe('BaseAgent', () => {
       const agent = new TestAgent([fakeTool, finishTool]);
       agent.maxIterations = 5;
 
-      const callLLM = vi.fn()
+      const callLLM = vi
+        .fn()
         .mockResolvedValueOnce({ content: 'Thinking about what to do...' })
         .mockResolvedValueOnce({ content: 'Still thinking...' })
         .mockResolvedValueOnce({
@@ -388,7 +418,8 @@ describe('BaseAgent', () => {
       const agent = new TestAgent([finishTool]);
       agent.maxIterations = 5;
 
-      const callLLM = vi.fn()
+      const callLLM = vi
+        .fn()
         .mockResolvedValueOnce({ content: 'Thinking...' })
         .mockResolvedValueOnce({ content: 'Still thinking...' })
         .mockResolvedValueOnce({
@@ -461,7 +492,9 @@ describe('BaseAgent', () => {
       expect(myToolDef.function.description).toBe('A test tool');
       expect(myToolDef.function.parameters.type).toBe('object');
       expect(myToolDef.function.parameters.properties).toBeDefined();
-      expect((myToolDef.function.parameters.properties as Record<string, unknown>).input).toEqual({ type: 'string' });
+      expect((myToolDef.function.parameters.properties as Record<string, unknown>).input).toEqual({
+        type: 'string',
+      });
     });
   });
 
@@ -484,10 +517,13 @@ describe('BaseAgent', () => {
       const agent = new TestAgent([tool, finishTool]);
       agent.maxIterations = 3;
 
-      const callLLM = vi.fn()
+      const callLLM = vi
+        .fn()
         .mockResolvedValueOnce({
           content: '',
-          toolCalls: [{ function: { name: 'greet', arguments: JSON.stringify({ name: 'World' }) } }],
+          toolCalls: [
+            { function: { name: 'greet', arguments: JSON.stringify({ name: 'World' }) } },
+          ],
         })
         .mockResolvedValueOnce({
           content: '',
@@ -499,8 +535,16 @@ describe('BaseAgent', () => {
 
       await agent.execute('test', ctx);
 
-      expect(callbacks.onToolCall).toHaveBeenCalledWith({ id: 'tc-0-0', tool: 'greet', args: { name: 'World' } });
-      expect(callbacks.onToolResult).toHaveBeenCalledWith({ id: 'tc-0-0', tool: 'greet', result: { greeting: 'Hello!' } });
+      expect(callbacks.onToolCall).toHaveBeenCalledWith({
+        id: 'tc-0-0',
+        tool: 'greet',
+        args: { name: 'World' },
+      });
+      expect(callbacks.onToolResult).toHaveBeenCalledWith({
+        id: 'tc-0-0',
+        tool: 'greet',
+        result: { greeting: 'Hello!' },
+      });
     });
   });
 
@@ -523,7 +567,8 @@ describe('BaseAgent', () => {
       const agent = new TestAgent([tool, finishTool]);
       agent.maxIterations = 3;
 
-      const callLLM = vi.fn()
+      const callLLM = vi
+        .fn()
         .mockResolvedValueOnce({
           content: '',
           toolCalls: [{ function: { name: 'my_tool', arguments: 'NOT VALID JSON' } }],

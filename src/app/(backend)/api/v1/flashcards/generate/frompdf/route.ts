@@ -1,47 +1,39 @@
-import { log } from '@/lib/logger';
-import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { toNextResponse } from '@/lib/http-utils';
+import type { NextRequest } from 'next/server';
 import { AppError } from '@/lib/errors';
-import { flashcardGenerationController } from '@/server/controllers';
+import { toNextResponse } from '@/lib/http-utils';
+import { log } from '@/lib/logger';
 import type { RequestContext } from '@/lib/request-context';
-import type { UserRole } from '@/types';
+import { createClient } from '@/lib/supabase/server';
+import { flashcardGenerationController } from '@/server/controllers';
 import type { GeneratedFlashcard } from '@/server/providers/LLMProvider';
+import type { UserRole } from '@/types';
 
 function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-/**
- * @deprecated Use POST /api/v1/ai/chat with context="flashcards" instead.
- * This endpoint is kept temporarily for large PDF chunking support.
- * Will be removed once the chat endpoint gains chunked PDF processing.
- *
- * @swagger
- * /api/v1/flashcards/generate/frompdf:
- *   post:
- *     deprecated: true
- *     summary: "[DEPRECATED] Generate flashcards from PDF"
- *     description: "Deprecated. Use POST /api/v1/ai/chat with context=flashcards instead. This endpoint is kept for large PDF chunking until the chat endpoint gains chunk support."
- */
 export async function POST(req: NextRequest) {
-  log.api.warn('[DEPRECATED] POST /api/v1/flashcards/generate/frompdf is deprecated. Use POST /api/v1/ai/chat with context="flashcards" instead.');
+  log.api.warn(
+    '[DEPRECATED] POST /api/v1/flashcards/generate/frompdf is deprecated. Use POST /api/v1/ai/chat with context="flashcards" instead.',
+  );
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
   }
 
-    const role = user.app_metadata?.role as UserRole;
-    const ctx: RequestContext = {
-      traceId: crypto.randomUUID(),
-      userId: user.id,
-      activeOrgId: req.cookies.get('active_org_id')?.value ?? null,
-      role,
-      url: req.url,
-      method: req.method,
-    };
+  const role = user.app_metadata?.role as UserRole;
+  const ctx: RequestContext = {
+    traceId: crypto.randomUUID(),
+    userId: user.id,
+    activeOrgId: req.cookies.get('active_org_id')?.value ?? null,
+    role,
+    url: req.url,
+    method: req.method,
+  };
 
   let formData: FormData;
   try {
@@ -57,11 +49,13 @@ export async function POST(req: NextRequest) {
     return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
   }
 
-    if (!fileField.name.toLowerCase().endsWith('.pdf')) {
+  if (!fileField.name.toLowerCase().endsWith('.pdf')) {
     return toNextResponse({ success: false, statusCode: 422, error: 'UNPROCESSABLE_ENTITY' });
   }
 
-  log.api.info(`Starting generation: file=${fileField.name}, size=${fileField.size}, language=${language}`);
+  log.api.info(
+    `Starting generation: file=${fileField.name}, size=${fileField.size}, language=${language}`,
+  );
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -113,7 +107,7 @@ export async function POST(req: NextRequest) {
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
+      Connection: 'keep-alive',
     },
   });
 }

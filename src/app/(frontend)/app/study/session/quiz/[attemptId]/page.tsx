@@ -1,18 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { ArrowLeft, ArrowRight, Send } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { EntityNotFound } from '@/components/shared/entity-not-found';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowRight, ArrowLeft, Send } from 'lucide-react';
-import { toast } from 'sonner';
 import { apiGet, apiPost } from '@/lib/api';
-import { EntityNotFound } from '@/components/shared/entity-not-found';
 
 interface Question {
   id: string;
@@ -76,7 +76,8 @@ export default function QuizTakingPage() {
   }
 
   if (loading) return <div className="flex justify-center py-12">Loading...</div>;
-  if (!attempt) return <EntityNotFound titleKey="quiz_not_found" descriptionKey="quiz_not_found_desc" />;
+  if (!attempt)
+    return <EntityNotFound titleKey="quiz_not_found" descriptionKey="quiz_not_found_desc" />;
 
   const questions = attempt.questions;
   const currentQuestion = questions[currentQ];

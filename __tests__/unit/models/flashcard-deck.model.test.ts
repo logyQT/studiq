@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { CreateDeckSchema, UpdateDeckSchema } from '@/server/models/flashcard-deck.model';
+import { describe, expect, it } from 'vitest';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import { CreateDeckSchema, UpdateDeckSchema } from '@/server/models/flashcard-deck.model';
 
 describe('CreateDeckSchema', () => {
   it('passes with valid input', () => {

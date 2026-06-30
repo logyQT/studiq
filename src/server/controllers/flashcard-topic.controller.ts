@@ -1,14 +1,21 @@
-import { flashcardTopicService } from '@/server/services';
-import { CreateTopicSchema, UpdateTopicSchema, BatchDeleteTopicSchema, BulkCreateTopicSchema, TopicListQuerySchema } from '@/server/models';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
+import { AppError } from '@/lib/errors';
+import { hasPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
-import { requireFeature } from '@/server/guards/feature.guard';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import {
+  BatchDeleteTopicSchema,
+  BulkCreateTopicSchema,
+  CreateTopicSchema,
+  TopicListQuerySchema,
+  UpdateTopicSchema,
+} from '@/server/models';
+import { flashcardTopicService } from '@/server/services';
 
 export class FlashcardTopicController {
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      await requireFeature(ctx, 'study.create');
+      if (!(await hasPermission(ctx, Permission.STUDY_CREATE))) throw new AppError('FORBIDDEN');
       const parsed = CreateTopicSchema.safeParse(body);
 
       if (!parsed.success) {

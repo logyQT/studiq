@@ -1,8 +1,8 @@
 'use client';
 
+import { GraduationCap } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { GraduationCap } from 'lucide-react';
 import { LanguageToggle } from './LanguageToggle';
 
 export function Footer() {

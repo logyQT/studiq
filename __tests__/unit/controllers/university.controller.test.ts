@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AppError } from '@/lib/errors';
 import { organizationController } from '@/server/controllers/organization.controller';
 import { organizationService } from '@/server/services';
-import { AppError } from '@/lib/errors';
 
 vi.mock('@/server/services', () => ({
   organizationService: {
@@ -25,7 +25,10 @@ describe('OrganizationController', () => {
       const university = { id: 'uni-1', name: 'Test University', slug: 'test' };
       mockService.create.mockResolvedValueOnce(university);
 
-      const response = await organizationController.create({ name: 'Test University', slug: 'test' });
+      const response = await organizationController.create({
+        name: 'Test University',
+        slug: 'test',
+      });
 
       expect(response).toEqual({
         success: true,

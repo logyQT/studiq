@@ -1,15 +1,16 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { AlertCircle, Loader2, Lock, Mail } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useRouter } from 'next/navigation';
-import { LoginSchema, type LoginInput } from '@/server/models/auth.model';
-import { createClient } from '@/lib/supabase/client';
-import { APP_ERRORS } from '@/lib/errors';
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
+import { DevQuickLogin } from '@/components/dev/dev-quick-login';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Form,
   FormControl,
@@ -18,13 +19,11 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { toast } from 'sonner';
-import { Loader2, Mail, Lock, AlertCircle } from 'lucide-react';
-import Link from 'next/link';
+import { Input } from '@/components/ui/input';
+import { APP_ERRORS } from '@/lib/errors';
+import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
-import { DevQuickLogin } from '@/components/dev/dev-quick-login';
+import { type LoginInput, LoginSchema } from '@/server/models/auth.model';
 
 export default function LoginPage() {
   const t = useTranslations('LoginPage');

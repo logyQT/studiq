@@ -1,7 +1,15 @@
 import { log } from '@/lib/logger';
-import { LLMProvider, GeneratedFlashcard, FLASHCARD_PROMPT, parseJsonResponse, type StreamCallbacks, type GenerateChatResult, type ProviderUsage } from './LLMProvider';
+import type { ToolCall, ToolDefinition } from '@/server/ai/ai.types';
 import type { ModelsConfig } from '@/server/config/models.config';
-import type { ToolDefinition, ToolCall } from '@/server/ai/ai.types';
+import {
+  FLASHCARD_PROMPT,
+  type GenerateChatResult,
+  type GeneratedFlashcard,
+  type LLMProvider,
+  type ProviderUsage,
+  parseJsonResponse,
+  type StreamCallbacks,
+} from './LLMProvider';
 
 export class OllamaProvider implements LLMProvider {
   private baseUrl: string;
@@ -20,7 +28,9 @@ export class OllamaProvider implements LLMProvider {
     const prompt = FLASHCARD_PROMPT.replace('{language}', language).replace('{chunk}', chunk);
     const chunkPreview = chunk.slice(0, 100).replace(/\n/g, ' ');
 
-    log.providers.info('Generating flashcards', { metadata: { language, chunkLength: chunk.length, preview: chunkPreview } });
+    log.providers.info('Generating flashcards', {
+      metadata: { language, chunkLength: chunk.length, preview: chunkPreview },
+    });
 
     const url = `${this.baseUrl}/api/generate`;
     log.providers.info(`POST ${url} model=${this.modelName}`);
@@ -43,7 +53,9 @@ export class OllamaProvider implements LLMProvider {
 
     const data = await res.json();
     const text = (data.response || '').trim();
-    log.providers.info('Raw response', { metadata: { length: text.length, start: text.slice(0, 150), end: text.slice(-200) } });
+    log.providers.info('Raw response', {
+      metadata: { length: text.length, start: text.slice(0, 150), end: text.slice(-200) },
+    });
 
     return parseJsonResponse(text);
   }
@@ -76,7 +88,20 @@ export class OllamaProvider implements LLMProvider {
     return (data.response || '').trim();
   }
 
-  async generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks, _tools?: ToolDefinition[], _toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, _maxTokens?: number, _reasoningEffort?: 'low' | 'medium' | 'high'): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[]; usage?: ProviderUsage }> {
+  async generateChatStreaming(
+    prompt: string,
+    systemPrompt: string | undefined,
+    callbacks: StreamCallbacks,
+    _tools?: ToolDefinition[],
+    _toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } },
+    _maxTokens?: number,
+    _reasoningEffort?: 'low' | 'medium' | 'high',
+  ): Promise<{
+    content: string;
+    reasoning?: string;
+    toolCalls?: ToolCall[];
+    usage?: ProviderUsage;
+  }> {
     const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
 
     const res = await fetch(`${this.baseUrl}/api/generate`, {

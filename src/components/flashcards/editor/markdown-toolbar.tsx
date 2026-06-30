@@ -1,23 +1,23 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
-import { Toggle } from '@/components/ui/toggle';
-import { Separator } from '@/components/ui/separator';
 import {
   Bold,
-  Italic,
+  Eye,
   Heading1,
   Heading2,
   Heading3,
+  Image,
+  Italic,
   List,
   ListOrdered,
-  Image,
-  Eye,
-  Pen,
   Loader2,
+  Pen,
 } from 'lucide-react';
-import { type RefObject } from 'react';
+import type { useTranslations } from 'next-intl';
+import type { RefObject } from 'react';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { Toggle } from '@/components/ui/toggle';
 
 interface MarkdownToolbarProps {
   t: ReturnType<typeof useTranslations>;
@@ -124,11 +124,7 @@ export function MarkdownToolbar({
           aria-label={t('toolbar_upload_media')}
           title={t('toolbar_upload_media')}
         >
-          {uploading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Image className="h-4 w-4" />
-          )}
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Image className="h-4 w-4" />}
         </Button>
       </div>
       <Toggle

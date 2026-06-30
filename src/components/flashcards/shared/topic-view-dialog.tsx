@@ -1,18 +1,18 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import type { useTranslations } from 'next-intl';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { getGradientHex } from '@/lib/color-utils';
-import type { Topic, Flashcard } from '@/types/flashcards';
+import type { Flashcard, Topic } from '@/types/flashcards';
 
 interface TopicViewDialogProps {
   viewTopic: Topic | undefined;
@@ -69,9 +69,7 @@ export function TopicViewDialog({
         </DialogHeader>
         <div className="space-y-3 py-4">
           {viewFlashcards.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">
-              {t('no_flashcards_for_topic')}
-            </p>
+            <p className="text-center text-muted-foreground py-8">{t('no_flashcards_for_topic')}</p>
           ) : (
             viewFlashcards.map((fc) => (
               <div key={fc.id} className="p-4 rounded-lg border space-y-2">

@@ -1,4 +1,4 @@
-import { AppError, AppErrorCode } from '@/lib/errors';
+import { AppError, type AppErrorCode } from '@/lib/errors';
 
 interface SupabaseError {
   code: string;

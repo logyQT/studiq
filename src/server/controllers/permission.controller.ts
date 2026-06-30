@@ -1,6 +1,6 @@
+import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import { createClient } from '@/lib/supabase/server';
 import { withErrorHandling } from '@/lib/with-error-handling';
-import { ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import { UserRole } from '@/types';
 
 export class PermissionController {

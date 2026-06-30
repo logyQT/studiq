@@ -1,7 +1,7 @@
 import { log } from '@/lib/logger';
-import { flashcardGenerationService } from '@/server/services';
 import type { RequestContext } from '@/lib/request-context';
 import type { GeneratedFlashcard } from '@/server/providers/LLMProvider';
+import { flashcardGenerationService } from '@/server/services';
 
 export interface GenerationStreamCallbacks {
   onFlashcards: (flashcards: GeneratedFlashcard[]) => void;
@@ -20,10 +20,12 @@ export class FlashcardGenerationController {
    */
   async generateFromPdf(
     body: { file: Buffer; filename: string; language: string },
-    ctx: RequestContext,
+    _ctx: RequestContext,
     callbacks: GenerationStreamCallbacks,
   ): Promise<void> {
-    log.ai.warn('[DEPRECATED] FlashcardGenerationController.generateFromPdf is deprecated. Use AiCommandService.generateFlashcards() instead.');
+    log.ai.warn(
+      '[DEPRECATED] FlashcardGenerationController.generateFromPdf is deprecated. Use AiCommandService.generateFlashcards() instead.',
+    );
     const { file, filename, language } = body;
 
     if (language !== 'en' && language !== 'pl') {
@@ -36,12 +38,7 @@ export class FlashcardGenerationController {
       return;
     }
 
-    await flashcardGenerationService.generateStreaming(
-      file,
-      filename,
-      language,
-      callbacks,
-    );
+    await flashcardGenerationService.generateStreaming(file, filename, language, callbacks);
   }
 }
 

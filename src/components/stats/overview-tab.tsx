@@ -1,16 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { AlertTriangle, Brain, CalendarDays, TrendingUp } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
+import { DailyActivityChart } from '@/components/stats/daily-activity-chart';
+import { StateBreakdownChart } from '@/components/stats/state-breakdown-chart';
+import { WeakPointsList } from '@/components/stats/weak-points-list';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatCard } from '@/components/ui/stat-card';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
-import { CalendarDays, Target, Brain, AlertTriangle, TrendingUp } from 'lucide-react';
-import { DailyActivityChart } from '@/components/stats/daily-activity-chart';
-import { StateBreakdownChart } from '@/components/stats/state-breakdown-chart';
-import { WeakPointsList } from '@/components/stats/weak-points-list';
 
 interface StateBreakdown {
   totalCards: number;
@@ -114,7 +114,12 @@ export function OverviewTab() {
               <Skeleton className="h-48 w-full" />
             ) : (
               <div className="min-h-[260px]">
-                <DailyActivityChart data={activity?.items ?? []} goal={activity?.dailyReviewGoal ?? 0} range={range} onRangeChange={setRange} />
+                <DailyActivityChart
+                  data={activity?.items ?? []}
+                  goal={activity?.dailyReviewGoal ?? 0}
+                  range={range}
+                  onRangeChange={setRange}
+                />
               </div>
             )}
           </CardContent>

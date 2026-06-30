@@ -1,7 +1,11 @@
-import { CreateOrganizationSchema, UpdateOrganizationSchema, OrganizationIdParamsSchema } from '@/server/models';
-import { organizationService } from '@/server/services';
-import { ControllerResponse } from '@/lib/controller-response';
+import type { ControllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
+import {
+  CreateOrganizationSchema,
+  OrganizationIdParamsSchema,
+  UpdateOrganizationSchema,
+} from '@/server/models';
+import { organizationService } from '@/server/services';
 
 export class OrganizationController {
   async create(body: unknown): Promise<ControllerResponse> {

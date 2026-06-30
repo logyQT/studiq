@@ -1,18 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { CreditCard, GraduationCap, LayoutDashboard, Menu, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useAuth } from '@/components/providers';
-import { UserRole } from '@/types';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { ThemeToggle } from './ThemeToggle';
-import { LanguageToggle } from './LanguageToggle';
-import { UserAvatar } from '@/components/ui/user-avatar';
-import { Menu, X, LayoutDashboard, GraduationCap, Sparkles, CreditCard } from 'lucide-react';
+import { useState } from 'react';
 import { toast } from 'sonner';
+import { useAuth } from '@/components/providers';
+import { Button } from '@/components/ui/button';
+import { UserAvatar } from '@/components/ui/user-avatar';
+import { cn } from '@/lib/utils';
+import { UserRole } from '@/types';
+import { LanguageToggle } from './LanguageToggle';
+import { ThemeToggle } from './ThemeToggle';
 
 const ROLE_DASHBOARD: Record<UserRole, string> = {
   [UserRole.SYS_ADMIN]: '/admin',
@@ -51,7 +51,7 @@ export function Navbar() {
     setAvatarOpen(false);
   };
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
+  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/70 backdrop-blur-xl">

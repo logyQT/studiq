@@ -12,7 +12,7 @@ export default async function SessionTypePage({ params, searchParams }: Props) {
   const { type } = await params;
   const sp = await searchParams;
 
-  if (!VALID_TYPES.includes(type as typeof VALID_TYPES[number])) {
+  if (!VALID_TYPES.includes(type as (typeof VALID_TYPES)[number])) {
     notFound();
   }
 

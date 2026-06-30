@@ -1,9 +1,10 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
-import { Card } from '@/components/ui/card';
+import { CheckSquare, Eye, MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import type { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
@@ -11,8 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { CheckSquare, Eye, MoreVertical, Pencil, Trash2 } from 'lucide-react';
-import { getGradientHex, getTopicColor } from '@/lib/color-utils';
+import { getGradientHex } from '@/lib/color-utils';
 import type { Topic } from '@/types/flashcards';
 
 interface TopicCardProps {
@@ -85,7 +85,6 @@ export function TopicCard({
           </div>
           <div className="min-w-0 flex-1 space-y-0.5">
             <h3 className="text-[15px] font-bold tracking-tight text-foreground truncate flex items-center gap-1.5">
-              <div className={`h-2 w-2 rounded-full shrink-0 ${getTopicColor(topic.name)}`} />
               {topic.name}
             </h3>
             <div className="flex items-center gap-1.5 text-muted-foreground/80">
@@ -176,7 +175,6 @@ export function TopicCard({
               </div>
             </div>
             <h3 className="text-lg font-bold tracking-tight text-foreground truncate min-w-0 flex items-center gap-1.5">
-              <div className={`h-2 w-2 rounded-full shrink-0 ${getTopicColor(topic.name)}`} />
               {topic.name}
             </h3>
           </div>

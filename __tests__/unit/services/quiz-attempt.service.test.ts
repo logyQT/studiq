@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { quizAttemptService } from '@/server/services/quiz-attempt.service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { quizAttemptService } from '@/server/services/quiz-attempt.service';
 
 describe('QuizAttemptService', () => {
   const userId = 'test-user-id';

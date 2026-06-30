@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { Loader2, LogIn } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, LogIn } from 'lucide-react';
-import { toast } from 'sonner';
 
 export default function AppJoinPage() {
   const t = useTranslations('AppJoinPage');

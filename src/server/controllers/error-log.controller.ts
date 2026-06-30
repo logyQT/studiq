@@ -1,6 +1,6 @@
-import { errorLogService } from '@/server/services';
+import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import { withErrorHandling } from '@/lib/with-error-handling';
-import { ControllerResponse, controllerResponse } from '@/lib/controller-response';
+import { errorLogService } from '@/server/services';
 
 export class ErrorLogController {
   async list(searchParams: URLSearchParams): Promise<ControllerResponse> {

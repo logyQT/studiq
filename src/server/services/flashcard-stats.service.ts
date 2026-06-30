@@ -1,8 +1,13 @@
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
 import { buildQueryFilter, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
-import type { TeacherFlashcardStatsResponse, TeacherFlashcardStatsQuery, DifficultyBucket, DifficultyFlashcardDetail } from '@/server/models';
+import { createClient } from '@/lib/supabase/server';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type {
+  DifficultyBucket,
+  DifficultyFlashcardDetail,
+  TeacherFlashcardStatsQuery,
+  TeacherFlashcardStatsResponse,
+} from '@/server/models';
 
 const emptyResponse: TeacherFlashcardStatsResponse = {
   summary: {
@@ -150,7 +155,8 @@ export class FlashcardStatsService {
 
     const cardStudentCounts = new Map<string, Set<string>>();
     for (const row of practiceRows ?? []) {
-      if (!cardStudentCounts.has(row.flashcard_id)) cardStudentCounts.set(row.flashcard_id, new Set());
+      if (!cardStudentCounts.has(row.flashcard_id))
+        cardStudentCounts.set(row.flashcard_id, new Set());
       cardStudentCounts.get(row.flashcard_id)!.add(row.user_id);
     }
 
@@ -186,7 +192,7 @@ export class FlashcardStatsService {
       let mediumCount = 0;
       let hardCount = 0;
       for (const [key, entry] of pairAccuracy) {
-        if (!key.startsWith(fcId + ':')) continue;
+        if (!key.startsWith(`${fcId}:`)) continue;
         const rate = entry.correct / entry.total;
         if (rate >= 0.8) easyCount++;
         else if (rate >= 0.5) mediumCount++;
@@ -194,9 +200,11 @@ export class FlashcardStatsService {
       }
 
       const majorityBucket: DifficultyBucket =
-        hardCount >= mediumCount && hardCount >= easyCount ? 'hard'
-        : mediumCount >= easyCount ? 'medium'
-        : 'easy';
+        hardCount >= mediumCount && hardCount >= easyCount
+          ? 'hard'
+          : mediumCount >= easyCount
+            ? 'medium'
+            : 'easy';
 
       if (majorityBucket !== bucket) continue;
 

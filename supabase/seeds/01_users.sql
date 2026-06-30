@@ -17,18 +17,6 @@ INSERT INTO "public"."organizations" ("id", "name", "slug") VALUES
 ON CONFLICT DO NOTHING;
 
 -- ----------------------------------------------------------
--- Organization subscriptions
--- ----------------------------------------------------------
-INSERT INTO "public"."org_subscriptions" ("organization_id", "plan_type", "status") VALUES
-  ('00000000-0000-4000-8000-000000000001', 'enterprise', 'active'),
-  ('00000000-0000-4000-8000-000000000002', 'enterprise', 'active'),
-  ('00000000-0000-4000-8000-000000000003', 'pro', 'active'),
-  ('00000000-0000-4000-8000-000000000004', 'pro', 'active'),
-  ('00000000-0000-4000-8000-000000000005', 'basic', 'active'),
-  ('00000000-0000-4000-8000-000000000006', 'basic', 'active')
-ON CONFLICT DO NOTHING;
-
--- ----------------------------------------------------------
 -- Auth users
 -- ----------------------------------------------------------
 INSERT INTO "auth"."users" (

@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AppError } from '@/lib/errors';
 import { organizationMemberController } from '@/server/controllers/organization-member.controller';
 import { organizationMemberService } from '@/server/services';
-import { AppError } from '@/lib/errors';
 
 vi.mock('@/server/services', () => ({
   organizationMemberService: {

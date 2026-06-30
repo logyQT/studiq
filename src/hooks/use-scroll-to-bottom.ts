@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useCallback, useLayoutEffect } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 export function useScrollToBottom() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -15,7 +15,6 @@ export function useScrollToBottom() {
     setIsAtBottom(atBottom);
   }, []);
 
-   
   useLayoutEffect(() => {
     if (isAtBottomRef.current) {
       const el = containerRef.current;

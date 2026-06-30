@@ -1,8 +1,8 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiPost } from '@/lib/api';
 import { useRouter } from 'next/navigation';
+import { apiPost } from '@/lib/api';
 
 export function useCreateClassroom() {
   const queryClient = useQueryClient();
@@ -10,7 +10,10 @@ export function useCreateClassroom() {
 
   return useMutation({
     mutationFn: async (data: { name: string; slug?: string }) => {
-      return apiPost<{ id: string; name: string; slug: string }>('/api/v1/teacher/classrooms', data);
+      return apiPost<{ id: string; name: string; slug: string }>(
+        '/api/v1/teacher/classrooms',
+        data,
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orgs'] });

@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { flashcardDeckService } from '@/server/services/flashcard-deck.service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { flashcardDeckService } from '@/server/services/flashcard-deck.service';
 
 describe('FlashcardDeckService', () => {
   const userId = 'test-user-id';
@@ -184,9 +184,9 @@ describe('FlashcardDeckService', () => {
         }),
       });
 
-      await expect(
-        flashcardDeckService.update('d-1', { name: 'Updated' }, userId),
-      ).rejects.toThrow('ERROR_FORBIDDEN');
+      await expect(flashcardDeckService.update('d-1', { name: 'Updated' }, userId)).rejects.toThrow(
+        'ERROR_FORBIDDEN',
+      );
     });
   });
 

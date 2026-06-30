@@ -1,7 +1,14 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { POST, GET as GET_LIST } from '@/app/(backend)/api/v1/subjects/route';
-import { PUT, DELETE, GET } from '@/app/(backend)/api/v1/subjects/[id]/route';
-import { TEST_USERS, mockUser, cleanupSubjects, TEST_ORGANIZATION_ID, seedSubject, createRealClient } from './helpers';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/subjects/[id]/route';
+import { GET as GET_LIST, POST } from '@/app/(backend)/api/v1/subjects/route';
+import {
+  cleanupSubjects,
+  createRealClient,
+  mockUser,
+  seedSubject,
+  TEST_ORGANIZATION_ID,
+  TEST_USERS,
+} from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Subjects Integration', () => {
@@ -12,11 +19,14 @@ describe('Subjects Integration', () => {
     }
 
     const supabase = createRealClient();
-    await supabase.from('subjects').delete().in('id', [
-      '00000000-0000-4000-8003-000000000001',
-      '00000000-0000-4000-8003-000000000002',
-      '00000000-0000-4000-8003-000000000003',
-    ]);
+    await supabase
+      .from('subjects')
+      .delete()
+      .in('id', [
+        '00000000-0000-4000-8003-000000000001',
+        '00000000-0000-4000-8003-000000000002',
+        '00000000-0000-4000-8003-000000000003',
+      ]);
   });
 
   describe('POST /api/v1/subjects', () => {
@@ -196,7 +206,10 @@ describe('Subjects Integration', () => {
     it('deletes own subject and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const subject = await seedSubject({ name: 'subject-To Delete', created_by: TEST_USERS.TEACHER.id });
+      const subject = await seedSubject({
+        name: 'subject-To Delete',
+        created_by: TEST_USERS.TEACHER.id,
+      });
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/subjects/${subject.id}`,

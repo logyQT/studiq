@@ -1,6 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mockExecute = vi.hoisted(() => vi.fn().mockResolvedValue({ type: 'chat', content: 'Test result' }));
+const mockExecute = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ type: 'chat', content: 'Test result' }),
+);
 
 vi.mock('@/server/agents/agent-registry', () => ({
   agentRegistry: {
@@ -14,9 +16,9 @@ vi.mock('@/server/ai/llm-gateway', () => ({
   callLLM: vi.fn(),
 }));
 
-import { agentService } from '@/server/services/agent.service';
 import { agentRegistry as mockedRegistry } from '@/server/agents/agent-registry';
 import type { AgentCallbacks, AgentResult } from '@/server/agents/tools/types';
+import { agentService } from '@/server/services/agent.service';
 
 describe('AgentService', () => {
   let mockCtx: any;
@@ -24,7 +26,13 @@ describe('AgentService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCtx = { userId: 'user-1', organizationId: null, role: 'STUDENT', url: '/api/v1/ai/chat', method: 'POST' };
+    mockCtx = {
+      userId: 'user-1',
+      organizationId: null,
+      role: 'STUDENT',
+      url: '/api/v1/ai/chat',
+      method: 'POST',
+    };
     mockCallbacks = {
       onStep: vi.fn(),
       onToolCall: vi.fn(),
@@ -38,14 +46,25 @@ describe('AgentService', () => {
 
   describe('process', () => {
     it('returns an AgentResult', async () => {
-      const result: AgentResult = await agentService.process({ text: 'Hello' }, mockCtx, mockCallbacks);
+      const result: AgentResult = await agentService.process(
+        { text: 'Hello' },
+        mockCtx,
+        mockCallbacks,
+      );
       expect(result).toBeDefined();
       expect(result.type).toBe('chat');
     });
 
     it('passes the task text to agent.execute', async () => {
-      await agentService.process({ text: 'Create flashcards about history' }, mockCtx, mockCallbacks);
-      expect(mockExecute).toHaveBeenCalledWith('Create flashcards about history', expect.anything());
+      await agentService.process(
+        { text: 'Create flashcards about history' },
+        mockCtx,
+        mockCallbacks,
+      );
+      expect(mockExecute).toHaveBeenCalledWith(
+        'Create flashcards about history',
+        expect.anything(),
+      );
     });
 
     it('includes callbacks in the ToolContext', async () => {

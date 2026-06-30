@@ -1,28 +1,28 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useTranslations } from 'next-intl';
-import { useRouter } from 'next/navigation';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { SquarePen, Upload, CheckSquare, Plus, FolderOpen, Lock } from 'lucide-react';
-import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
-import { toast } from 'sonner';
-import { Skeleton } from '@/components/ui/skeleton';
-import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import { CheckSquare, FolderOpen, Lock, Plus, SquarePen, Upload } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { useApiMutation } from '@/hooks/use-api';
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
-import { flashcardKeys } from '@/lib/query-keys';
-import type { Deck } from '@/types/flashcards';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { can } from '@/lib/frontend-rbac';
-import { UserRole } from '@/types';
-import { useOrgs } from '@/hooks/use-orgs';
+import { useRouter } from 'next/navigation';
+import type { useTranslations } from 'next-intl';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { DeckCard } from '@/components/flashcards/cards/deck-card';
 import { DeckFilters } from '@/components/flashcards/shared/deck-filters';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { SpeedDial } from '@/components/shared/speed-dial';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useApiMutation } from '@/hooks/use-api';
+import { useOrgs } from '@/hooks/use-orgs';
+import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { can } from '@/lib/frontend-rbac';
+import { flashcardKeys } from '@/lib/query-keys';
+import { UserRole } from '@/types';
+import type { Deck } from '@/types/flashcards';
 
 const ImportDialog = dynamic(
   () =>
@@ -41,9 +41,10 @@ const DeckBulkActions = dynamic(() =>
     default: m.DeckBulkActions,
   })),
 );
+
 import { useDebounce } from '@/hooks/use-debounce';
-import { useSelection } from '@/hooks/use-selection';
 import { useFeature } from '@/hooks/use-feature';
+import { useSelection } from '@/hooks/use-selection';
 
 interface DeckManagementScreenProps {
   apiBase: string;
@@ -394,11 +395,24 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
               </EmptyMedia>
               <EmptyTitle>{t('no_decks')}</EmptyTitle>
               <EmptyDescription>
-                <Button variant="outline" size="sm" disabled={!canCreateDeck.hasAccess} onClick={canCreateDeck.hasAccess ? openCreate : () => router.push('/checkout?plan_id=student_premium')}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!canCreateDeck.hasAccess}
+                  onClick={
+                    canCreateDeck.hasAccess
+                      ? openCreate
+                      : () => router.push('/checkout?plan_id=student_premium')
+                  }
+                >
                   {canCreateDeck.hasAccess ? (
-                    <><Plus className="mr-1.5 h-4 w-4" /> {t('new_deck')}</>
+                    <>
+                      <Plus className="mr-1.5 h-4 w-4" /> {t('new_deck')}
+                    </>
                   ) : (
-                    <><Lock className="size-3" /> Upgrade</>
+                    <>
+                      <Lock className="size-3" /> Upgrade
+                    </>
                   )}
                 </Button>
               </EmptyDescription>
@@ -452,7 +466,13 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         <div className="sm:hidden">
           <SpeedDial
             items={[
-              { icon: SquarePen, label: t('new_deck'), onClick: canCreateDeck.hasAccess ? openCreate : () => router.push('/checkout?plan_id=student_premium') },
+              {
+                icon: SquarePen,
+                label: t('new_deck'),
+                onClick: canCreateDeck.hasAccess
+                  ? openCreate
+                  : () => router.push('/checkout?plan_id=student_premium'),
+              },
               { icon: Upload, label: t('common_import'), onClick: () => setImportOpen(true) },
               {
                 icon: CheckSquare,

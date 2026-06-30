@@ -1,13 +1,9 @@
 'use client';
 
-import React from 'react';
 import { usePathname } from 'next/navigation';
-import {
-  SidebarProvider,
-  SidebarInset,
-  SidebarTrigger,
-} from '@/components/ui/sidebar';
-import { Separator } from '@/components/ui/separator';
+import React from 'react';
+import { AppSidebar } from '@/components/app-sidebar';
+import { AppSearch } from '@/components/layout/app-search';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -16,8 +12,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
-import { AppSidebar } from '@/components/app-sidebar';
-import { AppSearch } from '@/components/layout/app-search';
+import { Separator } from '@/components/ui/separator';
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
 
 export function DashboardLayout({
@@ -42,12 +38,14 @@ export function DashboardLayout({
             <Breadcrumb>
               <BreadcrumbList>
                 {segments.map((segment, index) => {
-                  const href = '/' + segments.slice(0, index + 1).join('/');
+                  const href = `/${segments.slice(0, index + 1).join('/')}`;
                   const isLast = index === segments.length - 1;
                   return (
                     <React.Fragment key={segment}>
                       {index > 0 && <BreadcrumbSeparator className="hidden md:block" />}
-                      <BreadcrumbItem className={index < segments.length - 1 ? 'hidden md:block' : ''}>
+                      <BreadcrumbItem
+                        className={index < segments.length - 1 ? 'hidden md:block' : ''}
+                      >
                         {isLast ? (
                           <BreadcrumbPage className="capitalize">{segment}</BreadcrumbPage>
                         ) : (

@@ -1,15 +1,15 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { can } from '@/lib/frontend-rbac';
-import { useOrgs } from '@/hooks/use-orgs';
-import type { Flashcard, Deck, Topic } from '@/types/flashcards';
-import type { UserRole } from '@/types';
-import { SingleCardDialogs } from '@/components/flashcards/dialogs/single-card-dialogs';
-import { DeckDialogs } from '@/components/flashcards/dialogs/deck-dialogs';
-import { TopicDialogs } from '@/components/flashcards/dialogs/topic-dialogs';
+import type { useTranslations } from 'next-intl';
 import { BulkDialogs } from '@/components/flashcards/dialogs/bulk-dialogs';
+import { DeckDialogs } from '@/components/flashcards/dialogs/deck-dialogs';
+import { SingleCardDialogs } from '@/components/flashcards/dialogs/single-card-dialogs';
+import { TopicDialogs } from '@/components/flashcards/dialogs/topic-dialogs';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { useOrgs } from '@/hooks/use-orgs';
+import { can } from '@/lib/frontend-rbac';
+import type { UserRole } from '@/types';
+import type { Deck, Flashcard, Topic } from '@/types/flashcards';
 
 export interface DialogsState {
   deleteId: string | null;
@@ -99,7 +99,9 @@ export function DeckDetailDialogs({
   const role = user?.app_metadata?.role as UserRole | undefined;
   const { activeOrg } = useOrgs();
 
-  const ownedDecks = allDecks.filter((d) => can(role, 'deck.update', d.created_by, user?.id, activeOrg?.id));
+  const ownedDecks = allDecks.filter((d) =>
+    can(role, 'deck.update', d.created_by, user?.id, activeOrg?.id),
+  );
 
   return (
     <>

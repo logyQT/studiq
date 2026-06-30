@@ -1,8 +1,8 @@
-import { log } from '@/lib/logger';
-import { RegisterInput, LoginInput, User } from '@/server/models';
-import { createClient } from '@/lib/supabase/server';
+import type { Session } from '@supabase/supabase-js';
 import { AppError } from '@/lib/errors';
-import { Session } from '@supabase/supabase-js';
+import { log } from '@/lib/logger';
+import { createClient } from '@/lib/supabase/server';
+import type { LoginInput, RegisterInput, User } from '@/server/models';
 
 export class AuthService {
   async register(data: RegisterInput): Promise<void> {
@@ -21,7 +21,12 @@ export class AuthService {
 
       if (invite.email !== data.email || invite.name !== data.name) {
         log.auth.error('Invite token does not match email or name', {
-          metadata: { tokenEmail: invite.email, tokenName: invite.name, inputEmail: data.email, inputName: data.name },
+          metadata: {
+            tokenEmail: invite.email,
+            tokenName: invite.name,
+            inputEmail: data.email,
+            inputName: data.name,
+          },
         });
         throw new AppError('UNPROCESSABLE_ENTITY');
       }

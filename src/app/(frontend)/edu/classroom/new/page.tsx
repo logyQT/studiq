@@ -1,20 +1,33 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from '@/lib/zod';
-import { useCreateClassroom } from '@/hooks/use-create-classroom';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
 import { ArrowLeft, Loader2, School } from 'lucide-react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { useForm } from 'react-hook-form';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { useCreateClassroom } from '@/hooks/use-create-classroom';
+import { z } from '@/lib/zod';
 
 const CreateClassroomFormSchema = z.object({
   name: z.string().nonempty().min(2).max(64),
-  slug: z.string().regex(/^[a-z0-9-]+$/).min(2).max(24).optional().or(z.literal('')),
+  slug: z
+    .string()
+    .regex(/^[a-z0-9-]+$/)
+    .min(2)
+    .max(24)
+    .optional()
+    .or(z.literal('')),
 });
 
 export default function NewClassroomPage() {

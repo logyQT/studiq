@@ -1,17 +1,28 @@
 'use client';
 
-import { useTheme } from 'next-themes';
+import {
+  BadgeCheck,
+  Bell,
+  Check,
+  ChevronsUpDown,
+  CreditCard,
+  Globe,
+  LogOut,
+  Moon,
+  Sparkles,
+  Sun,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useTheme } from 'next-themes';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { UserAvatar } from '@/components/ui/user-avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuGroup,
 } from '@/components/ui/dropdown-menu';
 import {
   SidebarMenu,
@@ -19,7 +30,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { LogOut, Globe, Sun, Moon, Check, ChevronsUpDown, Sparkles, BadgeCheck, Bell, CreditCard } from 'lucide-react';
+import { UserAvatar } from '@/components/ui/user-avatar';
 import { cn } from '@/lib/utils';
 
 type Locale = 'pl' | 'en';
@@ -65,9 +76,17 @@ export function UserMenu({ className }: UserMenuProps) {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className={cn('data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground', className)}
+              className={cn(
+                'data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground',
+                className,
+              )}
             >
-              <UserAvatar name={userName} email={user?.email} size={20} className="size-8 rounded-lg" />
+              <UserAvatar
+                name={userName}
+                email={user?.email}
+                size={20}
+                className="size-8 rounded-lg"
+              />
               <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
                 <span className="truncate font-medium">{userName}</span>
                 <span className="truncate text-xs text-muted-foreground">{user?.email}</span>
@@ -83,7 +102,12 @@ export function UserMenu({ className }: UserMenuProps) {
           >
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <UserAvatar name={userName} email={user?.email} size={20} className="size-8 rounded-lg" />
+                <UserAvatar
+                  name={userName}
+                  email={user?.email}
+                  size={20}
+                  className="size-8 rounded-lg"
+                />
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{userName}</span>
                   <span className="truncate text-xs text-muted-foreground">{user?.email}</span>
@@ -138,7 +162,10 @@ export function UserMenu({ className }: UserMenuProps) {
               <span>{t('theme')}</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive gap-2">
+            <DropdownMenuItem
+              onClick={handleLogout}
+              className="text-destructive focus:text-destructive gap-2"
+            >
               <LogOut className="size-4" />
               <span>{t('logout')}</span>
             </DropdownMenuItem>

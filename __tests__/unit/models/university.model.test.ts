@@ -1,6 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { CreateOrganizationSchema, UpdateOrganizationSchema, OrganizationIdParamsSchema } from '@/server/models/organization.model';
+import { describe, expect, it } from 'vitest';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import {
+  CreateOrganizationSchema,
+  OrganizationIdParamsSchema,
+  UpdateOrganizationSchema,
+} from '@/server/models/organization.model';
 
 describe('CreateOrganizationSchema', () => {
   it('passes with valid input', () => {

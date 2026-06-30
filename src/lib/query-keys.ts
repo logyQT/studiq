@@ -8,8 +8,7 @@ export const flashcardKeys = {
       ['flashcards', 'decks', 'paginated', filters] as const,
     detail: (id: string) => ['flashcards', 'decks', id] as const,
   },
-  list: (filters?: Record<string, string[]>) =>
-    ['flashcards', 'list', filters] as const,
+  list: (filters?: Record<string, string[]>) => ['flashcards', 'list', filters] as const,
   topics: {
     all: ['flashcards', 'topics'] as const,
     paginated: (filters?: Record<string, string | undefined>) =>

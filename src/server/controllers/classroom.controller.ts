@@ -1,8 +1,8 @@
+import type { ControllerResponse } from '@/lib/controller-response';
+import type { RequestContext } from '@/lib/request-context';
+import { withErrorHandling } from '@/lib/with-error-handling';
 import { CreateClassroomSchema } from '@/server/models/classroom.model';
 import { classroomService } from '@/server/services/classroom.service';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
-import type { RequestContext } from '@/lib/request-context';
 
 export class ClassroomController {
   async create(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {

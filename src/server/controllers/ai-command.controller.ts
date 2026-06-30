@@ -1,7 +1,7 @@
 import { log } from '@/lib/logger';
+import type { RequestContext } from '@/lib/request-context';
 import { FlashcardGenRequestSchema } from '@/server/models/ai-command.model';
 import { aiCommandService } from '@/server/services/ai-command.service';
-import type { RequestContext } from '@/lib/request-context';
 
 export interface FlashcardGenStreamCallbacks {
   onThink: (trace: string) => void;
@@ -33,9 +33,15 @@ export class AiCommandController {
     }
 
     try {
-      const result = await aiCommandService.generateFlashcards(parsed.data.text, undefined, undefined, ctx, {
-        onThink: callbacks.onThink,
-      });
+      const result = await aiCommandService.generateFlashcards(
+        parsed.data.text,
+        undefined,
+        undefined,
+        ctx,
+        {
+          onThink: callbacks.onThink,
+        },
+      );
       log.ai.info(`emit ${result.flashcards.length} flashcards`);
       callbacks.onFlashcards({ deckName: result.deckName, flashcards: result.flashcards });
       callbacks.onComplete();
@@ -53,7 +59,13 @@ export class AiCommandController {
     ctx: RequestContext,
     callbacks: FlashcardChatStreamCallbacks,
   ): Promise<void> {
-    log.ai.info('chat called', { metadata: { text: text.slice(0, 80), hasFile: !!file, conversationId: conversationId ?? 'none' } });
+    log.ai.info('chat called', {
+      metadata: {
+        text: text.slice(0, 80),
+        hasFile: !!file,
+        conversationId: conversationId ?? 'none',
+      },
+    });
     try {
       const result = await aiCommandService.chat(text, file, conversationId, ctx, {
         onThink: callbacks.onThink,

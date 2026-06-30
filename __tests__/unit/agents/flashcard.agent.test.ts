@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/zod', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/zod')>();
@@ -46,7 +46,10 @@ function mockContext(overrides?: {
     },
     callLLM: (overrides?.callLLM || vi.fn().mockResolvedValue({ content: 'ok' })) as unknown as (
       req: unknown,
-    ) => Promise<{ content: string; toolCalls?: Array<{ function: { name: string; arguments: string } }> }>,
+    ) => Promise<{
+      content: string;
+      toolCalls?: Array<{ function: { name: string; arguments: string } }>;
+    }>,
   };
 }
 
@@ -69,7 +72,7 @@ describe('FlashcardAgent', () => {
 
     it('has all 5 flashcard tools', () => {
       const agent = new FlashcardAgent();
-      const names = agent['tools'].map((t: Tool) => t.name).sort();
+      const names = agent.tools.map((t: Tool) => t.name).sort();
       expect(names).toEqual([
         'brainstorm_concepts',
         'finish',
@@ -81,7 +84,7 @@ describe('FlashcardAgent', () => {
 
     it('has maxIterations set to 10', () => {
       const agent = new FlashcardAgent();
-      expect(agent['maxIterations']).toBe(10);
+      expect(agent.maxIterations).toBe(10);
     });
 
     it('extends BaseAgent', () => {
@@ -106,18 +109,33 @@ describe('FlashcardAgent', () => {
         flashcards: [{ front: 'Q', back: 'A' }],
       });
 
-      agent['tools'] = [
+      agent.tools = [
         mockTool({ name: 'brainstorm_concepts' }),
-        mockTool({ name: 'flashcard_create', description: 'Create flashcards', execute: createExecute }),
+        mockTool({
+          name: 'flashcard_create',
+          description: 'Create flashcards',
+          execute: createExecute,
+        }),
         mockTool({ name: 'flashcard_review' }),
         mockTool({ name: 'flashcard_revise' }),
         mockTool({ name: 'finish', description: 'Finish', execute: finishExecute }),
       ];
 
-      const callLLM = vi.fn()
+      const callLLM = vi
+        .fn()
         .mockResolvedValueOnce({
           content: 'I have concepts, creating flashcards.',
-          toolCalls: [{ function: { name: 'flashcard_create', arguments: JSON.stringify({ concepts: [{ term: 'X', definition: 'Y' }], deckName: 'Deck' }) } }],
+          toolCalls: [
+            {
+              function: {
+                name: 'flashcard_create',
+                arguments: JSON.stringify({
+                  concepts: [{ term: 'X', definition: 'Y' }],
+                  deckName: 'Deck',
+                }),
+              },
+            },
+          ],
         })
         .mockResolvedValueOnce({
           content: 'Done.',
@@ -141,7 +159,9 @@ describe('FlashcardAgent', () => {
       const agent = new FlashcardAgent();
       agent.maxIterations = 5;
 
-      const brainstormExecute = vi.fn().mockResolvedValue({ concepts: [{ term: 'X', definition: 'Y' }] });
+      const brainstormExecute = vi
+        .fn()
+        .mockResolvedValue({ concepts: [{ term: 'X', definition: 'Y' }] });
       const createExecute = vi.fn().mockResolvedValue({ deckName: 'Deck', flashcards: [] });
       const finishExecute = vi.fn().mockResolvedValue({
         type: 'flashcards' as const,
@@ -149,22 +169,44 @@ describe('FlashcardAgent', () => {
         flashcards: [],
       });
 
-      agent['tools'] = [
-        mockTool({ name: 'brainstorm_concepts', description: 'Brainstorm', execute: brainstormExecute }),
+      agent.tools = [
+        mockTool({
+          name: 'brainstorm_concepts',
+          description: 'Brainstorm',
+          execute: brainstormExecute,
+        }),
         mockTool({ name: 'flashcard_create', description: 'Create', execute: createExecute }),
         mockTool({ name: 'flashcard_review' }),
         mockTool({ name: 'flashcard_revise' }),
         mockTool({ name: 'finish', description: 'Finish', execute: finishExecute }),
       ];
 
-      const callLLM = vi.fn()
+      const callLLM = vi
+        .fn()
         .mockResolvedValueOnce({
           content: 'No concepts provided, brainstorming first.',
-          toolCalls: [{ function: { name: 'brainstorm_concepts', arguments: JSON.stringify({ topic: 'photosynthesis', count: 15 }) } }],
+          toolCalls: [
+            {
+              function: {
+                name: 'brainstorm_concepts',
+                arguments: JSON.stringify({ topic: 'photosynthesis', count: 15 }),
+              },
+            },
+          ],
         })
         .mockResolvedValueOnce({
           content: 'Now creating flashcards.',
-          toolCalls: [{ function: { name: 'flashcard_create', arguments: JSON.stringify({ concepts: [{ term: 'X', definition: 'Y' }], deckName: 'Photosynthesis' }) } }],
+          toolCalls: [
+            {
+              function: {
+                name: 'flashcard_create',
+                arguments: JSON.stringify({
+                  concepts: [{ term: 'X', definition: 'Y' }],
+                  deckName: 'Photosynthesis',
+                }),
+              },
+            },
+          ],
         })
         .mockResolvedValueOnce({
           content: 'Done.',
@@ -190,7 +232,7 @@ describe('FlashcardAgent', () => {
         flashcards: [],
       });
 
-      agent['tools'] = [
+      agent.tools = [
         mockTool({ name: 'brainstorm_concepts' }),
         mockTool({ name: 'flashcard_create' }),
         mockTool({ name: 'flashcard_review' }),
@@ -198,11 +240,10 @@ describe('FlashcardAgent', () => {
         mockTool({ name: 'finish', description: 'Finish', execute: finishExecute }),
       ];
 
-      const callLLM = vi.fn()
-        .mockResolvedValueOnce({
-          content: 'I cannot do this.',
-          toolCalls: [{ function: { name: 'finish', arguments: JSON.stringify({}) } }],
-        });
+      const callLLM = vi.fn().mockResolvedValueOnce({
+        content: 'I cannot do this.',
+        toolCalls: [{ function: { name: 'finish', arguments: JSON.stringify({}) } }],
+      });
 
       const ctx = mockContext({ callLLM });
 
@@ -224,7 +265,7 @@ describe('FlashcardAgent', () => {
         flashcards: [{ front: 'Q', back: 'A' }],
       });
 
-      agent['tools'] = [
+      agent.tools = [
         mockTool({ name: 'brainstorm_concepts' }),
         mockTool({ name: 'flashcard_create' }),
         mockTool({ name: 'flashcard_review' }),
@@ -232,11 +273,10 @@ describe('FlashcardAgent', () => {
         mockTool({ name: 'finish', description: 'Finish', execute: finishExecute }),
       ];
 
-      const callLLM = vi.fn()
-        .mockResolvedValueOnce({
-          content: 'Done.',
-          toolCalls: [{ function: { name: 'finish', arguments: JSON.stringify({}) } }],
-        });
+      const callLLM = vi.fn().mockResolvedValueOnce({
+        content: 'Done.',
+        toolCalls: [{ function: { name: 'finish', arguments: JSON.stringify({}) } }],
+      });
 
       const ctx = mockContext({ callLLM });
 

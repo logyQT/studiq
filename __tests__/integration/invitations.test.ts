@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import {
-  POST as invitePost,
-  GET as inviteGet,
-} from '@/app/(backend)/api/v1/organization/invitations/route';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST as bulkPost } from '@/app/(backend)/api/v1/organization/invitations/bulk/route';
-import { TEST_USERS, mockUser, cleanupInvitations, createRealClient } from './helpers';
+import {
+  GET as inviteGet,
+  POST as invitePost,
+} from '@/app/(backend)/api/v1/organization/invitations/route';
+import { cleanupInvitations, createRealClient, mockUser, TEST_USERS } from './helpers';
 import { createNextRequest } from './test-utils';
 
 describe('Invitations Integration', () => {
@@ -103,7 +103,8 @@ describe('Invitations Integration', () => {
         })
         .select()
         .single();
-      if (insertError || !invitation) throw new Error(`Failed to insert invitation: ${insertError?.message}`);
+      if (insertError || !invitation)
+        throw new Error(`Failed to insert invitation: ${insertError?.message}`);
 
       const req = createNextRequest(
         `http://localhost/api/v1/organization/invitations?token=${invitation.token}`,

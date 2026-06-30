@@ -6,7 +6,7 @@ export function formatMarkdown(text: string): string {
     return lines
       .map((line, i, arr) => {
         if (line.trim() === '$$') return line;
-        if (i < arr.length - 1) return line + '  ';
+        if (i < arr.length - 1) return `${line}  `;
         return line;
       })
       .join('\n');

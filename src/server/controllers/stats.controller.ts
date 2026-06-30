@@ -1,7 +1,7 @@
-import { statsService } from '@/server/services';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import { statsService } from '@/server/services';
 
 export class StatsController {
   async getTeacherStats(ctx: RequestContext, subjectId?: string): Promise<ControllerResponse> {
@@ -20,7 +20,12 @@ export class StatsController {
     }, ctx);
   }
 
-  async getActivity(ctx: RequestContext, range?: string, startDate?: string, endDate?: string): Promise<ControllerResponse> {
+  async getActivity(
+    ctx: RequestContext,
+    range?: string,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
       const data = await statsService.getActivity(ctx, range, startDate, endDate);
       return { success: true, statusCode: 200, data };

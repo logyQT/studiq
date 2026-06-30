@@ -1,8 +1,8 @@
-import { subjectService } from '@/server/services';
-import { CreateSubjectSchema, UpdateSubjectSchema } from '@/server/models';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import { CreateSubjectSchema, UpdateSubjectSchema } from '@/server/models';
+import { subjectService } from '@/server/services';
 
 export class SubjectController {
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {

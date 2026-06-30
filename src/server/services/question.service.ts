@@ -1,9 +1,9 @@
-import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import type { CreateQuestionInput, UpdateQuestionInput } from '@/server/models';
-import { mapSupabaseError } from '@/lib/supabase-errors';
-import { shouldSetUniversityId, Permission } from '@/lib/rbac';
+import { Permission, shouldSetUniversityId } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
+import { createClient } from '@/lib/supabase/server';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { CreateQuestionInput, UpdateQuestionInput } from '@/server/models';
 
 export class QuestionService {
   async create(data: CreateQuestionInput, ctx: RequestContext) {
@@ -52,10 +52,7 @@ export class QuestionService {
     };
   }
 
-  async list(
-    ctx: RequestContext,
-    filters?: { subjectId?: string; type?: string },
-  ) {
+  async list(ctx: RequestContext, filters?: { subjectId?: string; type?: string }) {
     const supabase = await createClient();
     const orConditions = [];
 

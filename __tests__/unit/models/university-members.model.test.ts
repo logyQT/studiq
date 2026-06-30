@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { ChangeRoleSchema, RemoveMemberSchema } from '@/server/models/organization-member.model';
+import { describe, expect, it } from 'vitest';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import { ChangeRoleSchema, RemoveMemberSchema } from '@/server/models/organization-member.model';
 
 describe('ChangeRoleSchema', () => {
   it('passes with valid input', () => {

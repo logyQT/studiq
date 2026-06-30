@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { Copy, Plus, Send, Upload } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -16,9 +17,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { toast } from 'sonner';
-import { Copy, Send, Upload, Plus } from 'lucide-react';
-import { ORGANIZATION_ROLES, OrganizationRole } from '@/types';
+import { Textarea } from '@/components/ui/textarea';
+import { ORGANIZATION_ROLES, type OrganizationRole } from '@/types';
 
 interface InvitationResult {
   success: boolean;
@@ -89,7 +89,9 @@ export default function InvitationsPage() {
       setResults([...data.results, ...results]);
       setBulkText('');
       toast.success(
-        t('bulk_invitations_created', { count: data.results.filter((r: InvitationResult) => r.success).length }),
+        t('bulk_invitations_created', {
+          count: data.results.filter((r: InvitationResult) => r.success).length,
+        }),
       );
     } catch {
       toast.error(t('bulk_invitations_failed'));
@@ -144,7 +146,9 @@ export default function InvitationsPage() {
                 <Label>{t('role_label')}</Label>
                 <Select
                   value={singleForm.role}
-                    onValueChange={(v) => setSingleForm({ ...singleForm, role: v as OrganizationRole })}
+                  onValueChange={(v) =>
+                    setSingleForm({ ...singleForm, role: v as OrganizationRole })
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -208,18 +212,14 @@ export default function InvitationsPage() {
           <Card>
             <CardHeader>
               <CardTitle>{t('bulk_csv_title')}</CardTitle>
-              <CardDescription>
-                {t('bulk_csv_desc')}
-              </CardDescription>
+              <CardDescription>{t('bulk_csv_desc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
                 <Label>{t('csv_file_label')}</Label>
                 <div className="border-2 border-dashed rounded-lg p-8 text-center">
                   <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {t('csv_drop_text')}
-                  </p>
+                  <p className="mt-2 text-sm text-muted-foreground">{t('csv_drop_text')}</p>
                   <input type="file" accept=".csv" onChange={handleCsvUpload} className="mt-2" />
                 </div>
               </div>

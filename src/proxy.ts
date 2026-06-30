@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { updateSession } from '@/lib/supabase/session';
-import { authGuard, roleGuard } from '@/server/guards';
-import { routeRules } from '@/server/config/routes.config';
 import { APP_ERRORS } from '@/lib/errors';
+import { updateSession } from '@/lib/supabase/session';
+import { routeRules } from '@/server/config/routes.config';
+import { authGuard, roleGuard } from '@/server/guards';
 import { UserRole } from '@/types';
 
 function preserveCookies(originalResponse: NextResponse, newResponse: NextResponse) {

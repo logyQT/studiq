@@ -1,22 +1,22 @@
 'use client';
 
+import {
+  ArrowRight,
+  BarChart3,
+  BookOpen,
+  Brain,
+  FileText,
+  Sparkles,
+  Target,
+  TrendingUp,
+  Zap,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { MainLayout } from '@/components';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import {
-  FileText,
-  Brain,
-  BookOpen,
-  BarChart3,
-  Sparkles,
-  Zap,
-  Target,
-  TrendingUp,
-  ArrowRight,
-} from 'lucide-react';
 
 const iconColors = [
   { bg: 'bg-blue-500/10', text: 'text-blue-500' },

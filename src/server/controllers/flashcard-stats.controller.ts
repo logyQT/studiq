@@ -1,8 +1,8 @@
-import { flashcardStatsService } from '@/server/services';
-import { TeacherFlashcardStatsQuerySchema, DifficultyBucketSchema } from '@/server/models';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import { DifficultyBucketSchema, TeacherFlashcardStatsQuerySchema } from '@/server/models';
+import { flashcardStatsService } from '@/server/services';
 
 export class FlashcardStatsController {
   async getTeacherStats(query: unknown, ctx: RequestContext): Promise<ControllerResponse> {
@@ -23,7 +23,10 @@ export class FlashcardStatsController {
     }, ctx);
   }
 
-  async getDifficultyCards(query: { bucket?: string }, ctx: RequestContext): Promise<ControllerResponse> {
+  async getDifficultyCards(
+    query: { bucket?: string },
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
       const parsed = DifficultyBucketSchema.safeParse(query.bucket);
 

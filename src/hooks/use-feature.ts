@@ -1,8 +1,8 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { apiGet } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { apiGet } from '@/lib/api';
 
 export function useFeature(featureKey: string): { hasAccess: boolean; isLoading: boolean } {
   const { user } = useAuth();

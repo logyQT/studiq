@@ -1,4 +1,4 @@
-import { test, expect, Page, BrowserContext } from '@playwright/test';
+import { type BrowserContext, expect, type Page, test } from '@playwright/test';
 import { t } from './utils';
 
 const PASSWORD = 'pass';
@@ -7,8 +7,9 @@ const TEACHER_1_EMAIL = 'e2e-teacher1@test.local';
 const TEACHER_2_EMAIL = 'e2e-teacher2@test.local';
 const STUDENT_EMAILS = Array.from({ length: 5 }, (_, i) => `e2e-student${i + 1}@test.local`);
 
-const FLASHCARD_IDS = Array.from({ length: 100 }, (_, i) =>
-  `00000000-0000-4000-8006-${(101 + i).toString().padStart(12, '0')}`,
+const FLASHCARD_IDS = Array.from(
+  { length: 100 },
+  (_, i) => `00000000-0000-4000-8006-${(101 + i).toString().padStart(12, '0')}`,
 );
 
 const tStats = (key: string) => t(`EduFlashcardStatsPage.${key}`);
@@ -27,10 +28,10 @@ async function submitPracticeBatch(page: Page): Promise<number> {
     [1, 2, 3].map(() => {
       const rand = Math.random();
       let confidence: number;
-      if (rand < 0.10) confidence = 1;
+      if (rand < 0.1) confidence = 1;
       else if (rand < 0.25) confidence = 2;
       else if (rand < 0.55) confidence = 3;
-      else if (rand < 0.80) confidence = 4;
+      else if (rand < 0.8) confidence = 4;
       else confidence = 5;
       return {
         flashcardId: id,

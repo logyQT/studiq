@@ -1,15 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Eye } from 'lucide-react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { EntityNotFound } from '@/components/shared/entity-not-found';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
-import { toast } from 'sonner';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiGet } from '@/lib/api';
-import { EntityNotFound } from '@/components/shared/entity-not-found';
-import { Eye } from 'lucide-react';
 
 interface Question {
   id: string;
@@ -54,7 +54,8 @@ export default function QuizReviewPage() {
   }, [attemptId]);
 
   if (loading) return <div className="flex justify-center py-12">Loading...</div>;
-  if (!attempt) return <EntityNotFound titleKey="attempt_not_found" descriptionKey="attempt_not_found_desc" />;
+  if (!attempt)
+    return <EntityNotFound titleKey="attempt_not_found" descriptionKey="attempt_not_found_desc" />;
 
   const percentage = Math.round((attempt.score / attempt.total_questions) * 100);
 
@@ -81,7 +82,6 @@ export default function QuizReviewPage() {
             <span className="flex items-center gap-1">
               <span>{new Date(attempt.started_at).toLocaleDateString()}</span>
             </span>
-
           </div>
         </CardContent>
       </Card>

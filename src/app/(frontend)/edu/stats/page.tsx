@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { ArrowRight, Brain, FileText, GraduationCap, Layers } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { StatCard } from '@/components/ui/stat-card';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Layers, FileText, Brain, GraduationCap, ArrowRight } from 'lucide-react';
+import { StatCard } from '@/components/ui/stat-card';
 
 type TeacherStats = {
   totalQuestions: number;
@@ -28,7 +28,9 @@ export default function TeacherStatsOverview() {
   useEffect(() => {
     Promise.all([
       fetch('/api/v1/stats/teacher').then((r) => r.json()),
-      fetch('/api/v1/stats/teacher/quizzes').then((r) => r.json()).catch(() => ({ data: [] })),
+      fetch('/api/v1/stats/teacher/quizzes')
+        .then((r) => r.json())
+        .catch(() => ({ data: [] })),
     ])
       .then(([statsData, quizData]) => {
         setStats(statsData.data || statsData);
@@ -58,7 +60,13 @@ export default function TeacherStatsOverview() {
         />
         <StatCard
           title={t('quiz_attempts')}
-          value={loading ? '...' : (quizzes.length > 0 ? quizzes.reduce((s, q) => s + q.totalAttempts, 0) : 0)}
+          value={
+            loading
+              ? '...'
+              : quizzes.length > 0
+                ? quizzes.reduce((s, q) => s + q.totalAttempts, 0)
+                : 0
+          }
           icon={Brain}
         />
         <StatCard
@@ -67,7 +75,7 @@ export default function TeacherStatsOverview() {
             loading
               ? '...'
               : quizzes.length > 0
-                ? Math.round(quizzes.reduce((s, q) => s + q.avgScore, 0) / quizzes.length) + '%'
+                ? `${Math.round(quizzes.reduce((s, q) => s + q.avgScore, 0) / quizzes.length)}%`
                 : '—'
           }
           icon={GraduationCap}

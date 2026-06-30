@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
-import { ArrowUp, Square, Plus, Mic, Upload, FileText, X } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { ArrowUp, FileText, Mic, Plus, Square, Upload, X } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useTranslations } from 'next-intl';
+import { useCallback, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -176,9 +176,7 @@ export function AiChatInput({
         )}
       </div>
 
-      <p className="mt-2 text-center text-[10px] text-muted-foreground">
-        {t('disclaimer')}
-      </p>
+      <p className="mt-2 text-center text-[10px] text-muted-foreground">{t('disclaimer')}</p>
     </div>
   );
 }

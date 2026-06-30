@@ -1,4 +1,4 @@
-import type { ToolDefinition, ToolCall } from '@/server/ai/ai.types';
+import type { ToolCall, ToolDefinition } from '@/server/ai/ai.types';
 
 export interface GeneratedFlashcard {
   question: string;
@@ -33,8 +33,22 @@ export type StreamingResult = {
 
 export interface LLMProvider {
   generateFlashcardsFromChunk(chunk: string, language: string): Promise<GeneratedFlashcard[]>;
-  generateChat(prompt: string, systemPrompt?: string, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, maxTokens?: number): Promise<GenerateChatResult | string>;
-  generateChatStreaming(prompt: string, systemPrompt: string | undefined, callbacks: StreamCallbacks, tools?: ToolDefinition[], toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } }, maxTokens?: number, reasoningEffort?: 'low' | 'medium' | 'high'): Promise<StreamingResult>;
+  generateChat(
+    prompt: string,
+    systemPrompt?: string,
+    tools?: ToolDefinition[],
+    toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } },
+    maxTokens?: number,
+  ): Promise<GenerateChatResult | string>;
+  generateChatStreaming(
+    prompt: string,
+    systemPrompt: string | undefined,
+    callbacks: StreamCallbacks,
+    tools?: ToolDefinition[],
+    toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } },
+    maxTokens?: number,
+    reasoningEffort?: 'low' | 'medium' | 'high',
+  ): Promise<StreamingResult>;
 }
 
 function tryParse(raw: string): unknown {
@@ -91,15 +105,18 @@ function extractArray(raw: string): string {
 
 function extractFlashcardsByPattern(text: string): GeneratedFlashcard[] {
   const results: GeneratedFlashcard[] = [];
-  const objPattern = /\{"question"\s*:\s*"(.*?)"\s*,\s*"answer"\s*:\s*"(.*?)"\s*(?:,\s*"suggestedTopic"\s*:\s*"(.*?)")?\s*\}/g;
+  const objPattern =
+    /\{"question"\s*:\s*"(.*?)"\s*,\s*"answer"\s*:\s*"(.*?)"\s*(?:,\s*"suggestedTopic"\s*:\s*"(.*?)")?\s*\}/g;
   let match: RegExpExecArray | null;
 
-  while ((match = objPattern.exec(text)) !== null) {
+  match = objPattern.exec(text);
+  while (match !== null) {
     results.push({
       question: match[1].replace(/\\"/g, '"'),
       answer: match[2].replace(/\\"/g, '"'),
       suggestedTopic: match[3] ? match[3].replace(/\\"/g, '"') : '',
     });
+    match = objPattern.exec(text);
   }
 
   return results;

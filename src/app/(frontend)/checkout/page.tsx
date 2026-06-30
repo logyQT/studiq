@@ -1,20 +1,28 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { Check, CreditCard, Loader2, Lock } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { Suspense, useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { apiPost } from '@/lib/api';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { Loader2, Check, CreditCard, Lock } from 'lucide-react';
-import { toast } from 'sonner';
 
-const PLAN_INFO: Record<string, { name: string; price: string; period: string; seats: string | null }> = {
-  teacher_license: { name: 'Teacher License', price: '29.99', period: '/month', seats: 'Up to 50 student seats' },
+const PLAN_INFO: Record<
+  string,
+  { name: string; price: string; period: string; seats: string | null }
+> = {
+  teacher_license: {
+    name: 'Teacher License',
+    price: '29.99',
+    period: '/month',
+    seats: 'Up to 50 student seats',
+  },
   student_premium: { name: 'Student Premium', price: '9.99', period: '/month', seats: null },
 };
 
@@ -48,7 +56,7 @@ function CheckoutContent() {
 
   function formatExpiry(value: string) {
     const digits = value.replace(/\D/g, '').slice(0, 4);
-    if (digits.length > 2) return digits.slice(0, 2) + '/' + digits.slice(2);
+    if (digits.length > 2) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
     return digits;
   }
 
@@ -92,15 +100,19 @@ function CheckoutContent() {
           <CardContent className="space-y-4">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">{plan.name}</span>
-              <span className="font-medium">${plan.price}{plan.period}</span>
+              <span className="font-medium">
+                ${plan.price}
+                {plan.period}
+              </span>
             </div>
-            {plan.seats && (
-              <div className="text-xs text-muted-foreground">{plan.seats}</div>
-            )}
+            {plan.seats && <div className="text-xs text-muted-foreground">{plan.seats}</div>}
             <Separator />
             <div className="flex justify-between text-sm font-medium">
               <span>{t('total')}</span>
-              <span>${plan.price}{plan.period}</span>
+              <span>
+                ${plan.price}
+                {plan.period}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -131,22 +143,44 @@ function CheckoutContent() {
                     className="pr-10 font-mono"
                     disabled={isProcessing || isDone}
                   />
-                  {isCardValid && <Check className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-green-500" />}
+                  {isCardValid && (
+                    <Check className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-green-500" />
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="expiry">{t('expiry')}</Label>
-                  <Input id="expiry" placeholder="MM/YY" value={expiry} onChange={(e) => setExpiry(formatExpiry(e.target.value))} className="font-mono" disabled={isProcessing || isDone} />
+                  <Input
+                    id="expiry"
+                    placeholder="MM/YY"
+                    value={expiry}
+                    onChange={(e) => setExpiry(formatExpiry(e.target.value))}
+                    className="font-mono"
+                    disabled={isProcessing || isDone}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cvc">{t('cvc')}</Label>
-                  <Input id="cvc" placeholder="123" value={cvc} onChange={(e) => setCvc(e.target.value.replace(/\D/g, '').slice(0, 3))} className="font-mono" disabled={isProcessing || isDone} />
+                  <Input
+                    id="cvc"
+                    placeholder="123"
+                    value={cvc}
+                    onChange={(e) => setCvc(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                    className="font-mono"
+                    disabled={isProcessing || isDone}
+                  />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cardName">{t('card_name')}</Label>
-                <Input id="cardName" placeholder="John Doe" value={cardName} onChange={(e) => setCardName(e.target.value)} disabled={isProcessing || isDone} />
+                <Input
+                  id="cardName"
+                  placeholder="John Doe"
+                  value={cardName}
+                  onChange={(e) => setCardName(e.target.value)}
+                  disabled={isProcessing || isDone}
+                />
               </div>
 
               <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2">

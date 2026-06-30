@@ -1,18 +1,13 @@
 'use client';
 
+import { ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import type { useTranslations } from 'next-intl';
 import { DeckCheckboxSelector } from '@/components/flashcards/shared/deck-checkbox-selector';
 import { DeckRadioSelector } from '@/components/flashcards/shared/deck-radio-selector';
-import { ExternalLink } from 'lucide-react';
+import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { Deck } from '@/types/flashcards';
 
 interface SingleCardDialogsProps {

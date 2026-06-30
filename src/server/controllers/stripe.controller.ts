@@ -1,7 +1,7 @@
-import { mockStripeService } from '@/server/services/mock-stripe.service';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import { mockStripeService } from '@/server/services/mock-stripe.service';
 
 export class StripeController {
   async createCheckoutSession(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
@@ -12,11 +12,7 @@ export class StripeController {
         return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
       }
 
-      const result = await mockStripeService.createCheckoutSession(
-        planId,
-        ctx.userId,
-        orgId,
-      );
+      const result = await mockStripeService.createCheckoutSession(planId, ctx.userId, orgId);
 
       return { success: true, statusCode: 200, data: result };
     }, ctx);

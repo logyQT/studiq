@@ -1,43 +1,40 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Play,
-  FolderOpen,
-  Tags,
-  Dumbbell,
-  Sparkles,
-  Moon,
   Brain,
   ClipboardList,
+  Dumbbell,
+  FolderOpen,
   History,
-  Plus,
   ListChecks,
-  TrendingUp,
   Lock,
+  Moon,
+  Play,
+  Plus,
+  Sparkles,
+  Tags,
+  TrendingUp,
 } from 'lucide-react';
-import { useApiQuery } from '@/hooks/use-api';
-import { flashcardKeys } from '@/lib/query-keys';
-import { Progress } from '@/components/ui/progress';
+import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { useState } from 'react';
+import { toast } from 'sonner';
 import { CramDeckCard } from '@/components/flashcards/cards/cram-deck-card';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Empty,
+  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-  EmptyDescription,
 } from '@/components/ui/empty';
-import { FieldGroup, Field, FieldContent, FieldLabel } from '@/components/ui/field';
+import { Field, FieldContent, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import {
   Select,
   SelectContent,
@@ -45,11 +42,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { apiPost } from '@/lib/api';
-import { toast } from 'sonner';
-import type { Topic, Deck } from '@/types/flashcards';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
+import { apiPost } from '@/lib/api';
+import { flashcardKeys } from '@/lib/query-keys';
+import type { Deck, Topic } from '@/types/flashcards';
 
 interface DueBreakdown {
   total: number;
@@ -132,8 +132,7 @@ export default function StudyClient() {
   });
   const attempts = attemptsData;
 
-  const isLoading =
-    topicsLoading || decksLoading || breakdownLoading || settingsLoading;
+  const isLoading = topicsLoading || decksLoading || breakdownLoading || settingsLoading;
 
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [selectedDecks, setSelectedDecks] = useState<string[]>([]);
@@ -232,11 +231,7 @@ export default function StudyClient() {
             <History className="size-4" /> {t('tab_history')}
           </TabsTrigger>
         </TabsList>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => router.push('/app/statistics')}
-        >
+        <Button variant="outline" size="sm" onClick={() => router.push('/app/statistics')}>
           <TrendingUp data-icon="inline-start" /> {t('statistics')}
         </Button>
       </div>
@@ -382,9 +377,7 @@ export default function StudyClient() {
                     </ToggleGroupItem>
                   </ToggleGroup>
                   <p className="text-sm text-muted-foreground">
-                    {studyMode === 'endless'
-                      ? t('mode_endless_desc')
-                      : t('mode_limited_desc')}
+                    {studyMode === 'endless' ? t('mode_endless_desc') : t('mode_limited_desc')}
                   </p>
                 </div>
 
@@ -398,7 +391,7 @@ export default function StudyClient() {
                       value={targetCount}
                       onChange={(e) =>
                         setTargetCount(
-                          Math.max(1, Math.min(100, parseInt(e.target.value) || 1)),
+                          Math.max(1, Math.min(100, parseInt(e.target.value, 10) || 1)),
                         )
                       }
                       className="max-w-32"
@@ -424,7 +417,7 @@ export default function StudyClient() {
                           })}
                         </>
                       ) : (
-                        <>{t('due_for_review')}</>
+                        t('due_for_review')
                       )}
                     </span>
                     {isFiltered && <span className="ml-2">({t('filtered')})</span>}
@@ -524,12 +517,7 @@ export default function StudyClient() {
         ) : decks && decks.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {decks.map((deck) => (
-              <CramDeckCard
-                key={deck.id}
-                deck={deck}
-                onStart={() => startCram(deck.id)}
-                t={t}
-              />
+              <CramDeckCard key={deck.id} deck={deck} onStart={() => startCram(deck.id)} t={t} />
             ))}
           </div>
         ) : (
@@ -600,20 +588,30 @@ export default function StudyClient() {
                     max={50}
                     value={quizCount}
                     onChange={(e) =>
-                      setQuizCount(
-                        Math.max(1, Math.min(50, parseInt(e.target.value) || 1)),
-                      )
+                      setQuizCount(Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 1)))
                     }
                   />
                 </FieldContent>
               </Field>
             </FieldGroup>
 
-            <Button className="mt-6 w-full" disabled={!hasAccess || quizSubmitting} onClick={hasAccess ? handleGenerateQuiz : () => router.push('/checkout?plan_id=student_premium')}>
+            <Button
+              className="mt-6 w-full"
+              disabled={!hasAccess || quizSubmitting}
+              onClick={
+                hasAccess
+                  ? handleGenerateQuiz
+                  : () => router.push('/checkout?plan_id=student_premium')
+              }
+            >
               {hasAccess ? (
-                <><ListChecks data-icon="inline-start" /> {t('generate_quiz')}</>
+                <>
+                  <ListChecks data-icon="inline-start" /> {t('generate_quiz')}
+                </>
               ) : (
-                <><Lock className="size-3" /> Upgrade</>
+                <>
+                  <Lock className="size-3" /> Upgrade
+                </>
               )}
             </Button>
           </CardContent>
@@ -624,16 +622,12 @@ export default function StudyClient() {
         {attempts && attempts.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {attempts.map((attempt) => {
-              const percentage = Math.round(
-                (attempt.score / attempt.total_questions) * 100,
-              );
+              const percentage = Math.round((attempt.score / attempt.total_questions) * 100);
               return (
                 <Card key={attempt.id}>
                   <CardHeader>
                     <div className="flex items-center justify-between">
-                      <Badge
-                        variant={attempt.completed_at ? 'default' : 'secondary'}
-                      >
+                      <Badge variant={attempt.completed_at ? 'default' : 'secondary'}>
                         {attempt.completed_at ? 'Completed' : 'In Progress'}
                       </Badge>
                       <span className="text-2xl font-bold">{percentage}%</span>

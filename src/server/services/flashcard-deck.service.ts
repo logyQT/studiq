@@ -1,16 +1,24 @@
-import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import type { CreateDeckInput, UpdateDeckInput, BatchDeleteDeckInput, BulkCreateDeckInput, DeckListQuery } from '@/server/models';
-import { mapSupabaseError } from '@/lib/supabase-errors';
-import type { RequestContext } from '@/lib/request-context';
-import { checkPermission, shouldSetUniversityId, buildQueryFilter, Permission } from '@/lib/rbac';
-import type { Deck } from '@/types/flashcards';
 import { log } from '@/lib/logger';
+import { buildQueryFilter, checkPermission, Permission, shouldSetUniversityId } from '@/lib/rbac';
+import type { RequestContext } from '@/lib/request-context';
+import { createClient } from '@/lib/supabase/server';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type {
+  BatchDeleteDeckInput,
+  BulkCreateDeckInput,
+  CreateDeckInput,
+  DeckListQuery,
+  UpdateDeckInput,
+} from '@/server/models';
+import type { Deck } from '@/types/flashcards';
 
 export class FlashcardDeckService {
   async create(data: CreateDeckInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const organizationId = await shouldSetUniversityId(ctx, Permission.DECK_CREATE) ? ctx.activeOrgId : null;
+    const organizationId = (await shouldSetUniversityId(ctx, Permission.DECK_CREATE))
+      ? ctx.activeOrgId
+      : null;
 
     const { data: deck, error } = await supabase
       .from('flashcard_decks')
@@ -43,7 +51,9 @@ export class FlashcardDeckService {
       .from('suspended_decks')
       .select('deck_id')
       .eq('user_id', ctx.userId);
-    log.trace.info('getSuspendedDeckIds', { metadata: { traceId: ctx.traceId, count: (data ?? []).length, errorCode: error?.code } });
+    log.trace.info('getSuspendedDeckIds', {
+      metadata: { traceId: ctx.traceId, count: (data ?? []).length, errorCode: error?.code },
+    });
     return new Set((data ?? []).map((r) => r.deck_id));
   }
 
@@ -108,7 +118,9 @@ export class FlashcardDeckService {
       const cursorVal = decoded.v;
       const cursorId = decoded.id;
       const op = sortAsc ? 'gt' : 'lt';
-      query = query.or(`${sortBy}.${op}.${cursorVal},and(${sortBy}.eq.${cursorVal},id.gt.${cursorId})`);
+      query = query.or(
+        `${sortBy}.${op}.${cursorVal},and(${sortBy}.eq.${cursorVal},id.gt.${cursorId})`,
+      );
     }
 
     const { data, error } = await query;
@@ -126,7 +138,12 @@ export class FlashcardDeckService {
       };
     });
     const nextCursor = hasMore
-      ? Buffer.from(JSON.stringify({ v: sliced[sliced.length - 1][sortBy], id: sliced[sliced.length - 1].id })).toString('base64')
+      ? Buffer.from(
+          JSON.stringify({
+            v: sliced[sliced.length - 1][sortBy],
+            id: sliced[sliced.length - 1].id,
+          }),
+        ).toString('base64')
       : null;
 
     return {
@@ -157,10 +174,14 @@ export class FlashcardDeckService {
     }
 
     const { data: deck, error } = await query.single();
-    log.trace.info('getById/result', { metadata: { traceId: ctx.traceId, found: !!deck, errorCode: error?.code } });
+    log.trace.info('getById/result', {
+      metadata: { traceId: ctx.traceId, found: !!deck, errorCode: error?.code },
+    });
     if (error || !deck) throw new AppError('NOT_FOUND');
 
-    const countArr = (deck as Record<string, unknown>).flashcard_count as { count: number }[] | undefined;
+    const countArr = (deck as Record<string, unknown>).flashcard_count as
+      | { count: number }[]
+      | undefined;
     return {
       ...deck,
       flashcard_count: countArr?.[0]?.count ?? 0,
@@ -171,7 +192,9 @@ export class FlashcardDeckService {
   async update(id: string, data: UpdateDeckInput, ctx: RequestContext) {
     const supabase = await createClient();
 
-    log.trace.info('update/start', { metadata: { traceId: ctx.traceId, deckId: id, hasSuspended: 'suspended' in data } });
+    log.trace.info('update/start', {
+      metadata: { traceId: ctx.traceId, deckId: id, hasSuspended: 'suspended' in data },
+    });
 
     const { data: existing, error: fetchError } = await supabase
       .from('flashcard_decks')
@@ -179,7 +202,9 @@ export class FlashcardDeckService {
       .eq('id', id)
       .single();
 
-    log.trace.info('update/fetch', { metadata: { traceId: ctx.traceId, found: !!existing, errorCode: fetchError?.code } });
+    log.trace.info('update/fetch', {
+      metadata: { traceId: ctx.traceId, found: !!existing, errorCode: fetchError?.code },
+    });
     if (fetchError || !existing) throw new AppError('NOT_FOUND');
     await checkPermission(ctx, Permission.DECK_UPDATE, existing);
     log.trace.info('update/permission_ok', { metadata: { traceId: ctx.traceId } });
@@ -196,7 +221,9 @@ export class FlashcardDeckService {
         .select()
         .single();
 
-      log.trace.info('update/update_done', { metadata: { traceId: ctx.traceId, hasDeck: !!deck, errorCode: error?.code } });
+      log.trace.info('update/update_done', {
+        metadata: { traceId: ctx.traceId, hasDeck: !!deck, errorCode: error?.code },
+      });
       if (error) throw mapSupabaseError(error);
       if (!deck) throw new AppError('NOT_FOUND');
     }
@@ -214,16 +241,11 @@ export class FlashcardDeckService {
 
     if (data.suspended !== undefined) {
       if (data.suspended) {
-        await supabase.from('suspended_decks').upsert(
-          { user_id: ctx.userId, deck_id: id },
-          { onConflict: 'user_id,deck_id' },
-        );
-      } else {
         await supabase
           .from('suspended_decks')
-          .delete()
-          .eq('user_id', ctx.userId)
-          .eq('deck_id', id);
+          .upsert({ user_id: ctx.userId, deck_id: id }, { onConflict: 'user_id,deck_id' });
+      } else {
+        await supabase.from('suspended_decks').delete().eq('user_id', ctx.userId).eq('deck_id', id);
       }
     }
 
@@ -243,17 +265,16 @@ export class FlashcardDeckService {
     if (fetchError || !existing) throw new AppError('NOT_FOUND');
     await checkPermission(ctx, Permission.DECK_DELETE, existing);
 
-    const { error } = await supabase
-      .from('flashcard_decks')
-      .delete()
-      .eq('id', id);
+    const { error } = await supabase.from('flashcard_decks').delete().eq('id', id);
 
     if (error) throw mapSupabaseError(error);
   }
 
   async bulkCreate(data: BulkCreateDeckInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const organizationId = await shouldSetUniversityId(ctx, Permission.DECK_CREATE) ? ctx.activeOrgId : null;
+    const organizationId = (await shouldSetUniversityId(ctx, Permission.DECK_CREATE))
+      ? ctx.activeOrgId
+      : null;
 
     const decks = data.decks.map((d) => ({
       name: d.name,
@@ -286,10 +307,7 @@ export class FlashcardDeckService {
       await checkPermission(ctx, Permission.DECK_DELETE, deck);
     }
 
-    const { error } = await supabase
-      .from('flashcard_decks')
-      .delete()
-      .in('id', data.ids);
+    const { error } = await supabase.from('flashcard_decks').delete().in('id', data.ids);
 
     if (error) throw mapSupabaseError(error);
 

@@ -1,5 +1,5 @@
-import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import { registry, z } from '@/lib/zod';
 import { ORGANIZATION_ROLES } from '@/types';
 
 export const ChangeRoleSchema = registry.register(

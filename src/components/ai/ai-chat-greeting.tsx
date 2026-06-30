@@ -1,7 +1,7 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
 import { motion } from 'motion/react';
+import { useTranslations } from 'next-intl';
 
 interface AiChatGreetingProps {
   userName?: string;
@@ -11,12 +11,7 @@ interface AiChatGreetingProps {
 export function AiChatGreeting({ userName, onSuggestion }: AiChatGreetingProps) {
   const t = useTranslations('AiChatPage');
 
-  const suggestions = [
-    t('suggestion_1'),
-    t('suggestion_2'),
-    t('suggestion_3'),
-    t('suggestion_4'),
-  ];
+  const suggestions = [t('suggestion_1'), t('suggestion_2'), t('suggestion_3'), t('suggestion_4')];
 
   return (
     <motion.div

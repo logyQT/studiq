@@ -4,7 +4,14 @@ export interface TraceEvent {
   conversationId?: string;
   agentName: string;
   iteration?: number;
-  eventType: 'step' | 'tool_call' | 'tool_result' | 'llm_request' | 'llm_response' | 'error' | 'retry';
+  eventType:
+    | 'step'
+    | 'tool_call'
+    | 'tool_result'
+    | 'llm_request'
+    | 'llm_response'
+    | 'error'
+    | 'retry';
   label: string;
   data: Record<string, unknown>;
 }
@@ -68,7 +75,16 @@ export class AgentTraceService {
       try {
         db.run(
           'INSERT INTO traces (id, timestamp, conversationId, agentName, iteration, eventType, label, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [full.id, full.timestamp, full.conversationId ?? null, full.agentName, full.iteration ?? null, full.eventType, full.label, JSON.stringify(full.data)],
+          [
+            full.id,
+            full.timestamp,
+            full.conversationId ?? null,
+            full.agentName,
+            full.iteration ?? null,
+            full.eventType,
+            full.label,
+            JSON.stringify(full.data),
+          ],
         );
       } catch {
         // persist failure is non-critical

@@ -1,7 +1,13 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { POST, GET as GET_LIST } from '@/app/(backend)/api/v1/questions/route';
-import { GET, PUT, DELETE } from '@/app/(backend)/api/v1/questions/[id]/route';
-import { TEST_USERS, mockUser, cleanupQuestions, cleanupSubjects, createRealClient } from './helpers';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/questions/[id]/route';
+import { GET as GET_LIST, POST } from '@/app/(backend)/api/v1/questions/route';
+import {
+  cleanupQuestions,
+  cleanupSubjects,
+  createRealClient,
+  mockUser,
+  TEST_USERS,
+} from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Questions Integration', () => {
@@ -20,7 +26,8 @@ describe('Questions Integration', () => {
       .insert({ name: 'question-Question Test Subject', created_by: TEST_USERS.TEACHER.id })
       .select()
       .single();
-    if (subjectError || !subject) throw new Error(`Failed to create subject: ${subjectError?.message}`);
+    if (subjectError || !subject)
+      throw new Error(`Failed to create subject: ${subjectError?.message}`);
     subjectId = subject.id;
   });
 

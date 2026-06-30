@@ -1,14 +1,31 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { BookOpen, ClipboardList, Target, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line, ComposedChart, Legend } from 'recharts';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TrendingUp, TrendingDown, Users, BookOpen, Target, ClipboardList } from 'lucide-react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 type StudentRow = {
   id: string;
@@ -53,7 +70,9 @@ function TrendIndicator({ current, previous }: MetricComp) {
   const pct = Math.round((diff / previous) * 100);
   if (pct === 0) return <span className="text-xs text-muted-foreground ml-1">→ 0%</span>;
   return (
-    <span className={`text-xs ml-1 flex items-center gap-0.5 ${pct > 0 ? 'text-green-600' : 'text-red-500'}`}>
+    <span
+      className={`text-xs ml-1 flex items-center gap-0.5 ${pct > 0 ? 'text-green-600' : 'text-red-500'}`}
+    >
       {pct > 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
       {Math.abs(pct)}%
     </span>
@@ -91,14 +110,38 @@ export default function TeacherActivityPage() {
     }
   }, [range]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-  const summaryCards = data ? [
-    { title: t('active_students'), value: `${data.summary.activeStudents.current}`, icon: Users, metric: data.summary.activeStudents },
-    { title: t('total_practices'), value: data.summary.totalPractices.current.toLocaleString(), icon: BookOpen, metric: data.summary.totalPractices },
-    { title: t('avg_accuracy'), value: `${data.summary.avgAccuracy.current}%`, icon: Target, metric: data.summary.avgAccuracy },
-    { title: t('quizzes_taken'), value: data.summary.totalQuizzes.current.toString(), icon: ClipboardList, metric: data.summary.totalQuizzes },
-  ] : [];
+  const summaryCards = data
+    ? [
+        {
+          title: t('active_students'),
+          value: `${data.summary.activeStudents.current}`,
+          icon: Users,
+          metric: data.summary.activeStudents,
+        },
+        {
+          title: t('total_practices'),
+          value: data.summary.totalPractices.current.toLocaleString(),
+          icon: BookOpen,
+          metric: data.summary.totalPractices,
+        },
+        {
+          title: t('avg_accuracy'),
+          value: `${data.summary.avgAccuracy.current}%`,
+          icon: Target,
+          metric: data.summary.avgAccuracy,
+        },
+        {
+          title: t('quizzes_taken'),
+          value: data.summary.totalQuizzes.current.toString(),
+          icon: ClipboardList,
+          metric: data.summary.totalQuizzes,
+        },
+      ]
+    : [];
 
   return (
     <div className="space-y-6">
@@ -125,20 +168,28 @@ export default function TeacherActivityPage() {
       {loading ? (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-4">
-            {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-28 rounded-xl" />
+            ))}
           </div>
           <Skeleton className="h-72 rounded-xl" />
           <Skeleton className="h-64 rounded-xl" />
         </div>
       ) : !data ? (
-        <Card><CardContent className="py-12 text-center text-muted-foreground">{t('no_data')}</CardContent></Card>
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            {t('no_data')}
+          </CardContent>
+        </Card>
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-4">
             {summaryCards.map((card) => (
               <Card key={card.title}>
                 <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                  <CardTitle className="text-sm text-muted-foreground font-medium">{card.title}</CardTitle>
+                  <CardTitle className="text-sm text-muted-foreground font-medium">
+                    {card.title}
+                  </CardTitle>
                   <card.icon className="size-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -155,7 +206,7 @@ export default function TeacherActivityPage() {
           <Card>
             <CardHeader>
               <CardTitle>{t('daily_activity')}</CardTitle>
-              <CardDescription>{t('range_' + range)}</CardDescription>
+              <CardDescription>{t(`range_${range}`)}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="h-72">
@@ -177,8 +228,21 @@ export default function TeacherActivityPage() {
                       labelFormatter={(d: string) => new Date(d).toLocaleDateString()}
                     />
                     <Legend />
-                    <Bar yAxisId="left" dataKey="reviews" name={t('reviews')} fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                    <Line yAxisId="right" dataKey="activeStudents" name={t('active_students_chart')} stroke="hsl(var(--destructive))" strokeWidth={2} dot={{ r: 3 }} />
+                    <Bar
+                      yAxisId="left"
+                      dataKey="reviews"
+                      name={t('reviews')}
+                      fill="hsl(var(--primary))"
+                      radius={[4, 4, 0, 0]}
+                    />
+                    <Line
+                      yAxisId="right"
+                      dataKey="activeStudents"
+                      name={t('active_students_chart')}
+                      stroke="hsl(var(--destructive))"
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                    />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -188,7 +252,7 @@ export default function TeacherActivityPage() {
           <Card>
             <CardHeader>
               <CardTitle>{t('student_table')}</CardTitle>
-              <CardDescription>{t('range_' + range)}</CardDescription>
+              <CardDescription>{t(`range_${range}`)}</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
@@ -204,17 +268,33 @@ export default function TeacherActivityPage() {
                 </TableHeader>
                 <TableBody>
                   {data.students.length === 0 ? (
-                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">{t('no_data')}</TableCell></TableRow>
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                        {t('no_data')}
+                      </TableCell>
+                    </TableRow>
                   ) : (
                     data.students.map((s) => (
                       <TableRow key={s.id}>
                         <TableCell className="font-medium">{s.name}</TableCell>
-                        <TableCell className="text-muted-foreground">{formatLastActive(s.lastActive)}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {formatLastActive(s.lastActive)}
+                        </TableCell>
                         <TableCell className="text-right">{s.practices7d}</TableCell>
-                        <TableCell className="text-right">{s.accuracy7d !== null ? `${s.accuracy7d}%` : '—'}</TableCell>
+                        <TableCell className="text-right">
+                          {s.accuracy7d !== null ? `${s.accuracy7d}%` : '—'}
+                        </TableCell>
                         <TableCell className="text-right">{s.quizzes7d}</TableCell>
                         <TableCell>
-                          <Badge variant={s.status === 'active' ? 'default' : s.status === 'recent' ? 'secondary' : 'outline'}>
+                          <Badge
+                            variant={
+                              s.status === 'active'
+                                ? 'default'
+                                : s.status === 'recent'
+                                  ? 'secondary'
+                                  : 'outline'
+                            }
+                          >
                             {s.status === 'active' ? '🟢 ' : s.status === 'recent' ? '🟡 ' : '🔴 '}
                             {t(`status_${s.status}`)}
                           </Badge>
@@ -230,7 +310,7 @@ export default function TeacherActivityPage() {
           <Card>
             <CardHeader>
               <CardTitle>{t('quiz_activity')}</CardTitle>
-              <CardDescription>{t('range_' + range)}</CardDescription>
+              <CardDescription>{t(`range_${range}`)}</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
@@ -243,14 +323,26 @@ export default function TeacherActivityPage() {
                 </TableHeader>
                 <TableBody>
                   {data.quizzes.length === 0 ? (
-                    <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-8">{t('no_data')}</TableCell></TableRow>
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
+                        {t('no_data')}
+                      </TableCell>
+                    </TableRow>
                   ) : (
                     data.quizzes.map((q) => (
                       <TableRow key={q.difficulty}>
                         <TableCell className="capitalize">{q.difficulty}</TableCell>
                         <TableCell className="text-right">{q.attempts}</TableCell>
                         <TableCell className="text-right">
-                          <Badge variant={q.avgScore >= 70 ? 'default' : q.avgScore >= 40 ? 'secondary' : 'destructive'}>
+                          <Badge
+                            variant={
+                              q.avgScore >= 70
+                                ? 'default'
+                                : q.avgScore >= 40
+                                  ? 'secondary'
+                                  : 'destructive'
+                            }
+                          >
                             {q.avgScore}%
                           </Badge>
                         </TableCell>

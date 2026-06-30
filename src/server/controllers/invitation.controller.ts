@@ -1,8 +1,8 @@
-import { CreateInviteSchema, BulkInviteSchema } from '@/server/models/invitation.model';
-import { invitationService } from '@/server/services';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
+import { withErrorHandling } from '@/lib/with-error-handling';
+import { BulkInviteSchema, CreateInviteSchema } from '@/server/models/invitation.model';
+import { invitationService } from '@/server/services';
 
 export class InvitationController {
   async create(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {

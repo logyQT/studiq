@@ -9,9 +9,5 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const fullWidth = FULL_WIDTH_ROUTES.some((route) => pathname === route);
 
-  return (
-    <DashboardLayout fullWidth={fullWidth}>
-      {children}
-    </DashboardLayout>
-  );
+  return <DashboardLayout fullWidth={fullWidth}>{children}</DashboardLayout>;
 }

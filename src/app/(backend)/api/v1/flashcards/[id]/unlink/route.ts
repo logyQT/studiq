@@ -1,7 +1,7 @@
-import { NextRequest } from 'next/server';
-import { flashcardController } from '@/server/controllers';
+import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
+import { flashcardController } from '@/server/controllers';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(req, async (ctx) => {

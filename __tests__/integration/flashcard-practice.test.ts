@@ -1,11 +1,18 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST as logPractice } from '@/app/(backend)/api/v1/flashcards/[id]/practice/route';
 import { GET as getStatsForCard } from '@/app/(backend)/api/v1/flashcards/[id]/practice/stats/route';
-import { GET as getStatsAll } from '@/app/(backend)/api/v1/flashcards/practice/stats/route';
-import { GET as getDueCards } from '@/app/(backend)/api/v1/flashcards/practice/due/route';
-import { GET as getDueCount } from '@/app/(backend)/api/v1/flashcards/practice/due/count/route';
 import { GET as getDueBreakdown } from '@/app/(backend)/api/v1/flashcards/practice/due/breakdown/route';
-import { TEST_USERS, mockUser, cleanupFlashcardPractice, cleanupFlashcardReviewState, cleanupFlashcards, createServiceClient } from './helpers';
+import { GET as getDueCount } from '@/app/(backend)/api/v1/flashcards/practice/due/count/route';
+import { GET as getDueCards } from '@/app/(backend)/api/v1/flashcards/practice/due/route';
+import { GET as getStatsAll } from '@/app/(backend)/api/v1/flashcards/practice/stats/route';
+import {
+  cleanupFlashcardPractice,
+  cleanupFlashcardReviewState,
+  cleanupFlashcards,
+  createServiceClient,
+  mockUser,
+  TEST_USERS,
+} from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
 describe('Flashcard Practice Integration', () => {
@@ -22,7 +29,11 @@ describe('Flashcard Practice Integration', () => {
     const supabase = createServiceClient();
     const { data: fc } = await supabase
       .from('flashcards')
-      .insert({ front: 'practice-Practice Card', back: 'Answer', created_by: TEST_USERS.TEACHER.id })
+      .insert({
+        front: 'practice-Practice Card',
+        back: 'Answer',
+        created_by: TEST_USERS.TEACHER.id,
+      })
       .select()
       .single();
     flashcardId = fc.id;
@@ -64,7 +75,12 @@ describe('Flashcard Practice Integration', () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wasCorrect: true, responseTimeMs: 1500, confidenceLevel: 4, sessionId }),
+          body: JSON.stringify({
+            wasCorrect: true,
+            responseTimeMs: 1500,
+            confidenceLevel: 4,
+            sessionId,
+          }),
         },
       );
 
@@ -173,9 +189,7 @@ describe('Flashcard Practice Integration', () => {
     it('returns due flashcards for user', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const request = createNextRequest(
-        `http://localhost/api/v1/flashcards/practice/due?limit=10`,
-      );
+      const request = createNextRequest(`http://localhost/api/v1/flashcards/practice/due?limit=10`);
 
       const response = await getDueCards(request);
       const body = await response.json();
@@ -201,9 +215,7 @@ describe('Flashcard Practice Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const request = createNextRequest(
-        `http://localhost/api/v1/flashcards/practice/due`,
-      );
+      const request = createNextRequest(`http://localhost/api/v1/flashcards/practice/due`);
 
       const response = await getDueCards(request);
       const body = await response.json();
@@ -249,9 +261,7 @@ describe('Flashcard Practice Integration', () => {
     it('returns due count', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const request = createNextRequest(
-        `http://localhost/api/v1/flashcards/practice/due/count`,
-      );
+      const request = createNextRequest(`http://localhost/api/v1/flashcards/practice/due/count`);
 
       const response = await getDueCount(request);
       const body = await response.json();
@@ -263,9 +273,7 @@ describe('Flashcard Practice Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const request = createNextRequest(
-        `http://localhost/api/v1/flashcards/practice/due/count`,
-      );
+      const request = createNextRequest(`http://localhost/api/v1/flashcards/practice/due/count`);
 
       const response = await getDueCount(request);
       const body = await response.json();

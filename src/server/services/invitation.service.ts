@@ -1,10 +1,10 @@
-import { log } from '@/lib/logger';
-import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import { CreateInviteInput } from '@/server/models';
-import { UserRole } from '@/types';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { log } from '@/lib/logger';
 import type { RequestContext } from '@/lib/request-context';
+import { createClient } from '@/lib/supabase/server';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { CreateInviteInput } from '@/server/models';
+import { UserRole } from '@/types';
 
 export class InvitationService {
   async createInvitation(ctx: RequestContext, data: CreateInviteInput) {
@@ -75,7 +75,12 @@ export class InvitationService {
       throw new AppError('GONE');
     }
 
-    return { email: data.email, name: data.name, organizationId: data.organization_id, targetRole: data.target_role };
+    return {
+      email: data.email,
+      name: data.name,
+      organizationId: data.organization_id,
+      targetRole: data.target_role,
+    };
   }
 
   async acceptInvitation(ctx: RequestContext, token: string) {
@@ -95,18 +100,19 @@ export class InvitationService {
 
     if (orgError || !org) throw new AppError('GONE');
 
-    const { error: memberError } = await supabase.from('org_members').upsert({
-      organization_id: invite.organizationId,
-      user_id: ctx.userId,
-      role: invite.targetRole,
-    }).select().single();
+    const { error: memberError } = await supabase
+      .from('org_members')
+      .upsert({
+        organization_id: invite.organizationId,
+        user_id: ctx.userId,
+        role: invite.targetRole,
+      })
+      .select()
+      .single();
 
     if (memberError) throw mapSupabaseError(memberError);
 
-    await supabase
-      .from('invitations')
-      .update({ is_accepted: true })
-      .eq('token', token);
+    await supabase.from('invitations').update({ is_accepted: true }).eq('token', token);
 
     return { id: org.id, name: org.name, slug: org.slug, role: invite.targetRole };
   }

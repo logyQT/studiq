@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { statsService } from '@/server/services/stats.service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { questionService } from '@/server/services';
+import { statsService } from '@/server/services/stats.service';
 
 vi.mock('@/server/services', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/server/services')>();

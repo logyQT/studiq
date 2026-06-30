@@ -22,13 +22,24 @@ export function AgentCallBlock({ agentName, status, subTask, toolCount }: AgentC
         )}
         <span className="font-medium">🤖 {agentName}</span>
         {!isRunning && toolCount !== undefined && (
-          <span className="text-muted-foreground/60 ml-1">· {toolCount} tool call{toolCount !== 1 ? 's' : ''} executed</span>
+          <span className="text-muted-foreground/60 ml-1">
+            · {toolCount} tool call{toolCount !== 1 ? 's' : ''} executed
+          </span>
         )}
         {isRunning && (
           <span className="ml-auto flex gap-0.5">
-            <span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '0ms' }} />
-            <span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '150ms' }} />
-            <span className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: '300ms' }} />
+            <span
+              className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
+              style={{ animationDelay: '0ms' }}
+            />
+            <span
+              className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
+              style={{ animationDelay: '150ms' }}
+            />
+            <span
+              className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
+              style={{ animationDelay: '300ms' }}
+            />
           </span>
         )}
       </div>

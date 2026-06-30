@@ -1,8 +1,8 @@
-import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import type { GenerateQuizInput } from '@/server/models';
-import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { RequestContext } from '@/lib/request-context';
+import { createClient } from '@/lib/supabase/server';
+import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { GenerateQuizInput } from '@/server/models';
 
 export class QuizService {
   async generateQuiz(config: GenerateQuizInput, ctx: RequestContext) {

@@ -1,7 +1,7 @@
-import { createClient } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
-import { CreateOrganizationInput, UpdateOrganizationInput } from '@/server/models';
+import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { CreateOrganizationInput, UpdateOrganizationInput } from '@/server/models';
 
 export class OrganizationService {
   async create(data: CreateOrganizationInput) {
@@ -74,7 +74,11 @@ export class OrganizationService {
   async delete(id: string) {
     const supabase = await createClient();
 
-    const { data: exists } = await supabase.from('organizations').select('id').eq('id', id).single();
+    const { data: exists } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('id', id)
+      .single();
 
     if (!exists) {
       throw new AppError('NOT_FOUND');

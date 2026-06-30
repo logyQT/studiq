@@ -1,11 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { Brain } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { useEffect, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 type QuizData = {
   id: string;
@@ -70,7 +77,15 @@ export default function TeacherQuizStats() {
                     <TableCell className="font-medium">{quiz.title}</TableCell>
                     <TableCell className="text-right">{quiz.totalAttempts}</TableCell>
                     <TableCell className="text-right">
-                      <Badge variant={quiz.avgScore >= 70 ? 'default' : quiz.avgScore >= 40 ? 'secondary' : 'destructive'}>
+                      <Badge
+                        variant={
+                          quiz.avgScore >= 70
+                            ? 'default'
+                            : quiz.avgScore >= 40
+                              ? 'secondary'
+                              : 'destructive'
+                        }
+                      >
                         {Math.round(quiz.avgScore)}%
                       </Badge>
                     </TableCell>

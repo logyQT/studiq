@@ -17,7 +17,7 @@
 |---------|-------------|
 | `bun run dev` | Start dev server |
 | `bun run build` | Production build |
-| `bun run lint` | **Runs `tsc && eslint .`** — both typecheck AND lint in one command |
+| `bun run lint` | **Runs `tsc --incremental --skipLibCheck --noEmit && biome ci src/`** — both typecheck AND lint in one command |
 | `bun run format` | Prettier write |
 | `bun test` | **Runs `supabase db reset` first** — requires local Supabase running |
 | `bun test:unit` | **BROKEN** — script is `vitest run src/server` but no tests exist there |

@@ -1,7 +1,7 @@
-import { NextRequest } from 'next/server';
-import { classroomController } from '@/server/controllers/classroom.controller';
+import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
+import { classroomController } from '@/server/controllers/classroom.controller';
 import { UserRole } from '@/types';
 
 export async function POST(req: NextRequest) {

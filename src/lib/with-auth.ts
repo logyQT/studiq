@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { toNextResponse } from '@/lib/http-utils';
+import type { NextRequest, NextResponse } from 'next/server';
 import { AppError } from '@/lib/errors';
-import { errorLogService } from '@/server/services';
-import type { RequestContext } from '@/lib/request-context';
-import { UserRole } from '@/types';
+import { toNextResponse } from '@/lib/http-utils';
 import { log } from '@/lib/logger';
+import type { RequestContext } from '@/lib/request-context';
+import { createClient } from '@/lib/supabase/server';
+import { errorLogService } from '@/server/services';
+import type { UserRole } from '@/types';
 
 export interface WithAuthOptions {
   allowedRoles?: UserRole[];
@@ -43,14 +43,22 @@ export async function withAuth(
     method: req.method,
   };
 
-  log.api.info('request', { metadata: { traceId, method: req.method, url: req.url, userId: user.id } });
+  log.api.info('request', {
+    metadata: { traceId, method: req.method, url: req.url, userId: user.id },
+  });
 
   try {
     const res = await handler(ctx);
-    log.api.info('response', { metadata: { traceId, status: res.status }, durationMs: performance.now() - t0 });
+    log.api.info('response', {
+      metadata: { traceId, status: res.status },
+      durationMs: performance.now() - t0,
+    });
     return res;
   } catch (error) {
-    log.api.error('error', { metadata: { traceId, error: String(error) }, durationMs: performance.now() - t0 });
+    log.api.error('error', {
+      metadata: { traceId, error: String(error) },
+      durationMs: performance.now() - t0,
+    });
     if (error instanceof AppError) {
       if (error.code === 'INTERNAL_SERVER') {
         const errorId = await errorLogService.logError(error, error.code, ctx);

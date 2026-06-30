@@ -1,13 +1,15 @@
 'use client';
 
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Loader2, Mail } from 'lucide-react';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useTranslations } from 'next-intl';
-import { forgotPasswordSchema, type ForgotPasswordInput } from '@/server/models/auth.model';
-import { APP_ERRORS } from '@/lib/errors';
+import { toast } from 'sonner';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Form,
   FormControl,
@@ -16,11 +18,9 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Mail } from 'lucide-react';
-import Link from 'next/link';
-import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import { APP_ERRORS } from '@/lib/errors';
+import { type ForgotPasswordInput, forgotPasswordSchema } from '@/server/models/auth.model';
 
 export default function PasswordResetPage() {
   const t = useTranslations('PasswordResetPage');

@@ -1,0 +1,17 @@
+{
+  "name": "Studiq Dev Env",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
+  "features": {
+    "ghcr.io/devcontainers-extra/features/bun:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "moby": false
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "supabase.supabase"]
+    }
+  },
+  "postCreateCommand": "npm install -g supabase",
+  "remoteUser": "node"
+}

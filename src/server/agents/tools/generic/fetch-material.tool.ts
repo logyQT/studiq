@@ -10,7 +10,8 @@ const params = z.object({
 
 export const fetchMaterialTool: Tool = {
   name: 'fetch_material',
-  description: 'Generate educational content on a topic. Creates comprehensive material suitable for creating flashcards, questions, or notes.',
+  description:
+    'Generate educational content on a topic. Creates comprehensive material suitable for creating flashcards, questions, or notes.',
   parameters: params,
   async execute(args, ctx) {
     const parsed = params.parse(args);
@@ -22,12 +23,12 @@ export const fetchMaterialTool: Tool = {
     const result = await ctx.callLLM({
       prompt,
       systemPrompt: GENERATE_MATERIAL_PROMPT,
-      model: ctx.state.metadata['model'] as string,
+      model: ctx.state.metadata.model as string,
       maxTokens: 8192,
     });
 
     ctx.state.material = result.content;
-    ctx.state.results['material'] = result.content;
+    ctx.state.results.material = result.content;
 
     return { content: result.content, length: result.content.length };
   },
