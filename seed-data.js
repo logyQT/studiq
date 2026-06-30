@@ -1,5 +1,5 @@
 // seed-data.js — paste into browser console, type: seed()
-const cfg = { topics: 10000, decks: 10000, perDeck: 1000 };
+const cfg = { topics: 10000, decks: 10000, perDeck: 500 };
 const api = (p, o) =>
   fetch(p, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...o }).then(
     async (r) => {
@@ -161,7 +161,7 @@ const perfmon = (() => {
     },
   };
 })();
-async function _seed() {
+async function seed() {
   console.log('\n======= SEED START =======');
   perfmon.begin('Create Topics');
   const top = await api('/api/v1/flashcards/topics/batch/create', {

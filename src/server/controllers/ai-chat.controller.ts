@@ -4,6 +4,7 @@ import { chatService } from '@/server/services/ai-chat.service';
 
 export interface ChatStreamCallbacks {
   onToken: (text: string) => void;
+  onReasoning?: (token: string) => void;
   onResult: (type: string, data: unknown) => void;
   onComplete: (summary: string) => void;
   onUsage: (usage: { current: number; limit: number; plan: string; resetsAt: string }) => void;
@@ -22,6 +23,7 @@ export class ChatController {
 
     await chatService.chat(text, file, messages, conversationId, ctx, {
       onToken: (token) => callbacks.onToken(token),
+      onReasoning: (token) => callbacks.onReasoning?.(token),
       onResult: (type, data) => callbacks.onResult(type, data),
       onComplete: (summary) => {
         callbacks.onUsage({

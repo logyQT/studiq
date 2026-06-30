@@ -152,6 +152,10 @@ export function useAiChat(): UseAiChatReturn {
       }
 
       const parts = m.parts || [];
+      let pendingCards: Array<Record<string, unknown>> | null = null;
+      let pendingDeckName = 'Generated Flashcards';
+      let finalFlashcardsProcessed = false;
+
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
 
@@ -234,27 +238,30 @@ export function useAiChat(): UseAiChatReturn {
               });
             }
 
-            mapped.push({
-              id: `${m.id}-result-${i}`,
-              role: 'assistant',
-              content: '',
-              status: isComplete ? 'complete' : 'running',
-              thinkingTraces: [],
-              result: {
-                type: 'flashcards',
-                data: isComplete ? flashcardArray : [],
-                deckName: isComplete
-                  ? String(outputMap?.deckName ?? 'Generated Flashcards')
-                  : typeof inputMap?.deck_name === 'string'
-                    ? inputMap.deck_name
-                    : undefined,
-                count: isComplete ? Number(outputMap?.count) || 6 : Number(inputMap?.count) || 6,
-                readOnly: isComplete,
-              },
-            });
+            if (isComplete) {
+              pendingCards = flashcardArray;
+              pendingDeckName = String(outputMap?.deckName ?? 'Generated Flashcards');
+            }
           }
 
           if (state === 'output-available' && toolName === 'ask_user') {
+            if (pendingCards && !finalFlashcardsProcessed) {
+              mapped.push({
+                id: `${m.id}-preview-${i}`,
+                role: 'assistant',
+                content: '',
+                status: 'complete',
+                thinkingTraces: [],
+                result: {
+                  type: 'flashcards',
+                  data: pendingCards,
+                  deckName: pendingDeckName,
+                  count: pendingCards.length,
+                  readOnly: true,
+                },
+              });
+              pendingCards = null;
+            }
             const outputMap: Record<string, unknown> | undefined = tp.output;
             if (outputMap?.type === 'question' && outputMap?.question) {
               const existing = mapped[mapped.length - 1];
@@ -321,23 +328,27 @@ export function useAiChat(): UseAiChatReturn {
 
             const outputMap: Record<string, unknown> | undefined = tp.output;
             if (outputMap?.type === 'flashcards') {
-              const flashcardArray = Array.isArray(outputMap?.flashcards)
-                ? (outputMap.flashcards as Array<Record<string, unknown>>)
-                : [];
+              const cards =
+                pendingCards && pendingCards.length > 0
+                  ? pendingCards
+                  : Array.isArray(outputMap.flashcards)
+                    ? (outputMap.flashcards as Array<Record<string, unknown>>)
+                    : [];
               mapped.push({
-                id: `${m.id}-finish-cards-${i}`,
+                id: `${m.id}-cards-${i}`,
                 role: 'assistant',
                 content: '',
                 status: 'complete',
                 thinkingTraces: [],
                 result: {
                   type: 'flashcards',
-                  data: flashcardArray,
-                  deckName: String(outputMap?.deckName ?? 'Consolidated Flashcards'),
-                  count: flashcardArray.length,
+                  data: cards,
+                  deckName: pendingDeckName,
+                  count: cards.length,
                   readOnly: false,
                 },
               });
+              finalFlashcardsProcessed = true;
             }
             const text = outputMap?.type === 'chat' ? String(outputMap?.content ?? '') : '';
             if (text) {
@@ -351,6 +362,23 @@ export function useAiChat(): UseAiChatReturn {
             }
           }
         }
+      }
+
+      if (pendingCards && !finalFlashcardsProcessed) {
+        mapped.push({
+          id: `${m.id}-buffered-cards`,
+          role: 'assistant',
+          content: '',
+          status: 'complete',
+          thinkingTraces: [],
+          result: {
+            type: 'flashcards',
+            data: pendingCards,
+            deckName: pendingDeckName,
+            count: pendingCards.length,
+            readOnly: false,
+          },
+        });
       }
     }
 

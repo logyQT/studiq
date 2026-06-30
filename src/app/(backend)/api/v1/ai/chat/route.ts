@@ -17,7 +17,7 @@ import {
   generateFlashcardsTool,
   webfetchTool,
 } from '@/server/agents/tools/generic';
-import { chatModel, providerName } from '@/server/ai/model';
+import { chatModel, providerName, reasoningEffort } from '@/server/ai/model';
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -43,8 +43,6 @@ export async function POST(req: NextRequest) {
 
   const conversationId =
     ((messages[0] as Record<string, unknown>)?.id as string) || crypto.randomUUID();
-
-  const reasoningEffort = process.env.LL_REASONING_EFFORT;
 
   log.api.info('streamText start', {
     metadata: {
@@ -81,12 +79,7 @@ export async function POST(req: NextRequest) {
         generate_flashcards: generateFlashcardsTool,
         finish: finishTool,
       },
-      stopWhen: [
-        hasToolCall('finish'),
-        hasToolCall('ask_user'),
-        hasToolCall('generate_flashcards'),
-        stepCountIs(30),
-      ],
+      stopWhen: [hasToolCall('finish'), hasToolCall('ask_user'), stepCountIs(30)],
       ...(reasoningEffort ? { providerOptions: { [providerName]: { reasoningEffort } } } : {}),
 
       experimental_onStepStart: ({ stepNumber, messages: stepMessages }) => {

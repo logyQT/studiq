@@ -2,7 +2,7 @@ import { streamText } from 'ai';
 import { log } from '@/lib/logger';
 import type { RequestContext } from '@/lib/request-context';
 import type { TokenUsage } from '@/server/ai/ai.types';
-import { chatModel } from '@/server/ai/model';
+import { chatModel, providerName, reasoningEffort } from '@/server/ai/model';
 import type { ChatMessageInput } from '@/server/models/ai-chat.model';
 import { pdfService } from '@/server/services/pdf.service';
 import { pdfCacheService } from '@/server/services/pdf-cache.service';
@@ -11,6 +11,7 @@ const MAX_FILE_CHARS = parseInt(process.env.LLM_MAX_FILE_CHARS || '200000', 10);
 
 export interface ChatServiceCallbacks {
   onToken: (token: string) => void;
+  onReasoning?: (token: string) => void;
   onResult: (type: string, data: unknown) => void;
   onComplete: (summary: string, usage?: TokenUsage) => void;
   onError: (message: string) => void;
@@ -88,9 +89,13 @@ export class ChatService {
         system: systemPrompt,
         prompt,
         maxRetries: 3,
+        ...(reasoningEffort ? { providerOptions: { [providerName]: { reasoningEffort } } } : {}),
         onChunk: ({ chunk }: { chunk: { type: string; textDelta?: string } }) => {
           if (chunk.type === 'text-delta' && chunk.textDelta) {
             callbacks.onToken(chunk.textDelta);
+          }
+          if (chunk.type === 'reasoning' && chunk.textDelta) {
+            callbacks.onReasoning?.(chunk.textDelta);
           }
         },
       });
@@ -102,8 +107,8 @@ export class ChatService {
             inputTokens: resolvedUsage.inputTokens ?? 0,
             outputTokens: resolvedUsage.outputTokens ?? 0,
             totalTokens: resolvedUsage.totalTokens ?? 0,
-            provider: 'opencode',
-            model: 'mimo-v2.5',
+            provider: providerName,
+            model: chatModel.modelId,
           }
         : undefined;
 

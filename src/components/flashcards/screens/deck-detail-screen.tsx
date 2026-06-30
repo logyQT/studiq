@@ -130,7 +130,7 @@ export function DeckDetailScreen({
 
   const params: Record<string, string> = {};
   params.deckIds = deckId;
-  params.limit = '50';
+  params.limit = '30';
   if (filters.q) params.q = filters.q;
   if (filters.sortBy) params.sortBy = filters.sortBy;
   if (filters.sortOrder) params.sortOrder = filters.sortOrder;
@@ -143,7 +143,14 @@ export function DeckDetailScreen({
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: [...flashcardKeys.list({ deckIds: [deckId] }), filters],
+    queryKey: [
+      'flashcards',
+      deckId,
+      filters.q ?? '',
+      filters.topicIds?.[0] ?? '',
+      sortBy,
+      sortOrder,
+    ],
     queryFn: ({ pageParam }) =>
       apiGet<{ items: Flashcard[]; nextCursor: string | null; hasMore: boolean }>(
         `/api/v1/flashcards?${queryString}${pageParam ? `&cursor=${pageParam}` : ''}`,
