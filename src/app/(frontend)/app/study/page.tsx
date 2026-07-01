@@ -1,5 +1,5 @@
-import StudyClient from './study-client';
+import { redirect } from 'next/navigation';
 
 export default function StudyPage() {
-  return <StudyClient />;
+  redirect('/app/study/learn');
 }

@@ -1,5 +1,5 @@
-import { StatsClient } from './stats-client';
+import { redirect } from 'next/navigation';
 
-export default function StatsPage() {
-  return <StatsClient />;
+export default function StatsRedirect() {
+  redirect('/app/stats/content');
 }

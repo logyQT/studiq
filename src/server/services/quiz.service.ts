@@ -1,4 +1,5 @@
 import { AppError } from '@/lib/errors';
+import { log } from '@/lib/logger';
 import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
@@ -13,23 +14,31 @@ export class QuizService {
     if (ctx.activeOrgId) orConditions.push(`organization_id.eq.${ctx.activeOrgId}`);
     if (ctx.userId) orConditions.push(`created_by.eq.${ctx.userId}`);
 
-    let query = supabase
-      .from('questions')
-      .select('*, question_answers(*)')
-      .or(orConditions.join(','))
-      .in('type', config.questionTypes);
+    let query = supabase.from('questions').select('*, question_answers(*)');
+
+    if (orConditions.length > 0) {
+      query = query.or(orConditions.join(','));
+    }
+
+    query = query.in('type', config.questionTypes);
 
     if (config.subjectId) {
       query = query.eq('subject_id', config.subjectId);
     }
 
     const { data: allQuestions, error: fetchError } = await query;
+    log.trace.info('quiz_questions_fetched', {
+      metadata: {
+        traceId: ctx.traceId,
+        count: allQuestions?.length ?? 0,
+        questionTypes: config.questionTypes,
+        subjectId: config.subjectId,
+      },
+    });
     if (fetchError) throw mapSupabaseError(fetchError);
     if (!allQuestions || allQuestions.length === 0) {
       throw new AppError('NOT_FOUND');
     }
-
-    if (allQuestions.length < config.questionCount) throw new AppError('BAD_REQUEST');
 
     const shuffled = [...allQuestions].sort(() => Math.random() - 0.5);
     const selectedQuestions = shuffled.slice(0, Math.min(config.questionCount, shuffled.length));
@@ -46,7 +55,18 @@ export class QuizService {
       .select()
       .single();
 
-    if (attemptError) throw mapSupabaseError(attemptError);
+    if (attemptError) {
+      log.trace.error('quiz_attempt_insert_failed', {
+        metadata: {
+          traceId: ctx.traceId,
+          code: attemptError.code,
+          message: attemptError.message,
+          details: attemptError.details,
+          hint: attemptError.hint,
+        },
+      });
+      throw mapSupabaseError(attemptError);
+    }
     if (!attempt) throw new AppError('NOT_FOUND');
 
     const attemptQuestions = selectedQuestions.map((q, i) => ({
@@ -59,7 +79,18 @@ export class QuizService {
       .from('quiz_attempt_questions')
       .insert(attemptQuestions);
 
-    if (questionsError) throw mapSupabaseError(questionsError);
+    if (questionsError) {
+      log.trace.error('quiz_attempt_questions_insert_failed', {
+        metadata: {
+          traceId: ctx.traceId,
+          code: questionsError.code,
+          message: questionsError.message,
+          details: questionsError.details,
+          hint: questionsError.hint,
+        },
+      });
+      throw mapSupabaseError(questionsError);
+    }
 
     return {
       ...attempt,

@@ -33,7 +33,7 @@ const studentLinks: NavLink[] = [
   { labelKey: 'nav_overview', href: '/app', icon: LayoutDashboard },
   { labelKey: 'nav_decks', href: '/app/flashcards/decks', icon: BookOpen },
   { labelKey: 'nav_my_questions', href: '/app/my-questions', icon: FileText },
-  { labelKey: 'nav_stats', href: '/app/stats', icon: BarChart3 },
+  { labelKey: 'nav_stats', href: '/app/stats/content', icon: BarChart3 },
 ];
 
 const teacherLinks: NavLink[] = [

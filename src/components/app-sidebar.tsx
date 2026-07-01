@@ -4,6 +4,8 @@ import {
   AlertTriangle,
   BarChart3,
   Brain,
+  ClipboardList,
+  Dumbbell,
   FileText,
   Folder,
   GraduationCap,
@@ -13,6 +15,7 @@ import {
   Mail,
   Monitor,
   PieChart,
+  Radio,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -89,8 +92,16 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
       label: 'sidebar_main',
       items: [
         { titleKey: 'app_overview', href: '/app', icon: LayoutDashboard },
-        { titleKey: 'flashcard_study', href: '/app/study', icon: Brain },
         { titleKey: 'ai_chat', href: '/app/ai', icon: Sparkles, feature: 'ai.chat' },
+      ],
+    },
+    {
+      label: 'sidebar_study',
+      items: [
+        { titleKey: 'app_learn', href: '/app/study/learn', icon: Brain },
+        { titleKey: 'app_cram', href: '/app/study/cram', icon: Dumbbell },
+        { titleKey: 'app_quiz', href: '/app/study/quiz', icon: ClipboardList },
+        { titleKey: 'app_live', href: '/app/study/live', icon: Radio },
       ],
     },
     {
@@ -103,7 +114,11 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
     },
     {
       label: 'sidebar_statistics',
-      items: [{ titleKey: 'app_stats', href: '/app/stats', icon: BarChart3 }],
+      items: [
+        { titleKey: 'stats_data', href: '/app/stats/content', icon: PieChart },
+        { titleKey: 'stats_results', href: '/app/stats/results', icon: BarChart3 },
+        { titleKey: 'stats_activity', href: '/app/stats/activity', icon: TrendingUp },
+      ],
     },
   ],
   '/admin': [
