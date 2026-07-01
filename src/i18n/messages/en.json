@@ -1923,6 +1923,9 @@
     "step2_title": "You enter the code",
     "step2_desc": "Enter the code here to join the session instantly.",
     "step3_title": "Answer in real-time",
-    "step3_desc": "Answer questions as they appear and see results immediately."
+    "step3_desc": "Answer questions as they appear and see results immediately.",
+    "how_it_works": "How does it work?",
+    "faq_title": "How to join a live session",
+    "faq_subtitle": "Follow these three simple steps to participate in a live study session with your class."
   }
 }
