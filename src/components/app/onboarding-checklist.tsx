@@ -72,7 +72,7 @@ export function OnboardingChecklist() {
             <Rocket className="size-5 text-primary" />
             <CardTitle className="text-lg">{t('title')}</CardTitle>
           </div>
-          <Button variant="ghost" size="icon" className="size-7" onClick={handleDismiss}>
+          <Button variant="ghost" size="icon-xs" onClick={handleDismiss}>
             <X className="size-4" />
           </Button>
         </div>

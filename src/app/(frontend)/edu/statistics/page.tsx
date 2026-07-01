@@ -1,6 +1,6 @@
 'use client';
 
-import { FileText, TrendingDown } from 'lucide-react';
+import { FileText, Layers, TrendingDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,7 +38,7 @@ export default function EduStatsPage() {
   const t = useTranslations('EduStatisticsPage');
   const [stats, setStats] = useState<TeacherStats | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [selectedSubject, setSelectedSubject] = useState<string>('');
+  const [selectedSubject, setSelectedSubject] = useState<string>('__all__');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -48,9 +48,10 @@ export default function EduStatsPage() {
   }, []);
 
   useEffect(() => {
-    const url = selectedSubject
-      ? `/api/v1/stats/teacher?subjectId=${selectedSubject}`
-      : '/api/v1/stats/teacher';
+    const url =
+      selectedSubject !== '__all__'
+        ? `/api/v1/stats/teacher?subjectId=${selectedSubject}`
+        : '/api/v1/stats/teacher';
     fetch(url)
       .then((r) => r.json())
       .then((r) => {
@@ -70,7 +71,7 @@ export default function EduStatsPage() {
             <SelectValue placeholder={t('all_subjects')} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">{t('all_subjects')}</SelectItem>
+            <SelectItem value="__all__">{t('all_subjects')}</SelectItem>
             {subjects.map((s) => (
               <SelectItem key={s.id} value={s.id}>
                 {s.name}
@@ -82,11 +83,7 @@ export default function EduStatsPage() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard title={t('questions_stat')} value={stats?.totalQuestions ?? 0} icon={FileText} />
-        <StatCard
-          title={t('flashcards_stat')}
-          value={stats?.totalFlashcards ?? 0}
-          icon={FileText}
-        />
+        <StatCard title={t('flashcards_stat')} value={stats?.totalFlashcards ?? 0} icon={Layers} />
       </div>
 
       {stats?.subject && (

@@ -41,9 +41,9 @@ interface CardStateInfo {
 }
 
 const SESSION_TYPE_CONFIG = {
-  review: { mode: 'review', newOnly: false, studyMode: 'endless' },
-  learn: { mode: 'review', newOnly: true, studyMode: 'endless' },
-  cram: { mode: 'cram', newOnly: false, studyMode: 'unlimited' },
+  review: { mode: 'review', studyMode: 'endless' },
+  new: { mode: 'review', studyMode: 'endless' },
+  cram: { mode: 'cram', studyMode: 'unlimited' },
 } as const;
 
 function getCardStateInfo(
@@ -135,7 +135,6 @@ interface SessionClientProps {
   decks?: string;
   target?: string;
   limit?: string;
-  newOnly?: string;
 }
 
 export default function SessionClient(props: SessionClientProps) {
@@ -147,7 +146,7 @@ export default function SessionClient(props: SessionClientProps) {
     SESSION_TYPE_CONFIG.review;
   const mode = config.mode;
   const isCram = mode === 'cram';
-  const newOnly = config.newOnly || props.newOnly === 'true';
+  const isNew = props.type === 'new';
   const studyMode = props.studyMode || config.studyMode;
   const isLimited = studyMode === 'limited';
   const targetCount = parseInt(props.target || '10', 10);
@@ -214,8 +213,8 @@ export default function SessionClient(props: SessionClientProps) {
           params.set('limit', String(batchSize));
           if (deckIds.length > 0) params.set('deckIds', deckIds.join(','));
           if (topicIds.length > 0) params.set('topicIds', topicIds.join(','));
-          if (newOnly) params.set('newOnly', 'true');
-          const res = await fetch(`/api/v1/flashcards/practice/due?${params.toString()}`);
+          const endpoint = isNew ? 'new' : 'review';
+          const res = await fetch(`/api/v1/flashcards/practice/${endpoint}?${params.toString()}`);
           if (!res.ok) {
             setError('FETCH_FAILED');
             return;
@@ -237,7 +236,7 @@ export default function SessionClient(props: SessionClientProps) {
     return () => {
       cancelled = true;
     };
-  }, [isCram, props.deckId, deckIds, topicIds, newOnly]);
+  }, [isCram, props.deckId, deckIds, topicIds, isNew]);
 
   const visibleCards = useMemo(
     () => cards.filter((c) => !suspendedIds.has(c.id)),
@@ -253,15 +252,15 @@ export default function SessionClient(props: SessionClientProps) {
       params.set('limit', String(BATCH_SIZE));
       if (deckIds.length > 0) params.set('deckIds', deckIds.join(','));
       if (topicIds.length > 0) params.set('topicIds', topicIds.join(','));
-      if (newOnly) params.set('newOnly', 'true');
-      const res = await fetch(`/api/v1/flashcards/practice/due?${params.toString()}`);
+      const endpoint = isNew ? 'new' : 'review';
+      const res = await fetch(`/api/v1/flashcards/practice/${endpoint}?${params.toString()}`);
       if (!res.ok) return [];
       const body = await res.json();
       return mapCards(body.data);
     } catch {
       return [];
     }
-  }, [deckIds, topicIds, newOnly]);
+  }, [deckIds, topicIds, isNew]);
 
   const sendBatchUpdate = useCallback(async () => {
     if (pendingUpdatesRef.current.length === 0) return;

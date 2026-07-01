@@ -161,8 +161,8 @@ export const FlashcardCard = memo(function FlashcardCard({
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground transition-colors"
+                  size="icon-xs"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MoreVertical className="h-3 w-3" />

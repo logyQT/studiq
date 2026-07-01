@@ -2,6 +2,7 @@
 
 import { Copy } from 'lucide-react';
 import { useEffect } from 'react';
+import { Button } from '@/components/ui/button';
 
 interface ErrorProps {
   error: Error & { digest?: string };
@@ -48,19 +49,11 @@ export default function GlobalError({ error, reset }: ErrorProps) {
         )}
 
         <div className="flex gap-4 justify-center">
-          <button
-            onClick={() => reset()}
-            className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity font-medium"
-          >
-            Try again
-          </button>
+          <Button onClick={() => reset()}>Try again</Button>
 
-          <button
-            onClick={() => (window.location.href = '/')}
-            className="px-6 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-accent hover:text-accent-foreground transition-colors font-medium border border-border"
-          >
+          <Button variant="outline" onClick={() => (window.location.href = '/')}>
             Go Home
-          </button>
+          </Button>
         </div>
 
         {process.env.NODE_ENV === 'development' && (

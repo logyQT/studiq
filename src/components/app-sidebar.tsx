@@ -12,10 +12,12 @@ import {
   ListPlus,
   Mail,
   Monitor,
+  PieChart,
   Settings,
   ShieldCheck,
   Sparkles,
   Tag,
+  TrendingUp,
   UserPlus,
   Users,
 } from 'lucide-react';
@@ -59,11 +61,9 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
     {
       label: 'sidebar_statistics',
       items: [
-        { titleKey: 'stats_overview', href: '/edu/stats', icon: BarChart3 },
-        { titleKey: 'stats_flashcards', href: '/edu/flashcards/stats', icon: BarChart3 },
-        { titleKey: 'stats_questions', href: '/edu/statistics', icon: BarChart3 },
-        { titleKey: 'stats_quizzes', href: '/edu/stats/quizzes', icon: BarChart3 },
-        { titleKey: 'stats_activity', href: '/edu/stats/activity', icon: BarChart3 },
+        { titleKey: 'stats_data', href: '/edu/stats/data', icon: PieChart },
+        { titleKey: 'stats_results', href: '/edu/stats/results', icon: BarChart3 },
+        { titleKey: 'stats_activity', href: '/edu/stats/activity', icon: TrendingUp },
       ],
     },
   ],

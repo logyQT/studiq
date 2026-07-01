@@ -1,21 +1,21 @@
 'use client';
 
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCheck, CheckSquare, Lock, Plus, Search, SquarePen, Tags, X } from 'lucide-react';
+import { CheckCheck, CheckSquare, Lock, Plus, SquarePen, Tags, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { TopicCard } from '@/components/flashcards/cards/topic-card';
-import { TopicBulkActions } from '@/components/flashcards/shared/topic-bulk-actions';
 import { TopicFormDialog } from '@/components/flashcards/shared/topic-form-dialog';
 import { TopicViewDialog } from '@/components/flashcards/shared/topic-view-dialog';
+import { BulkActionBar } from '@/components/shared/bulk-action-bar';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import { PageGrid } from '@/components/shared/page-grid';
+import { PageToolbar } from '@/components/shared/page-toolbar';
 import { SpeedDial } from '@/components/shared/speed-dial';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
-import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -276,25 +276,29 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
       )}
 
       {!selection.isSelecting && (
-        <div className="flex flex-wrap items-center gap-3 max-sm:hidden">
-          <div className="relative flex-1 basis-full lg:basis-auto lg:max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder={t('search_topics')}
-              className="pl-9 pr-9"
-            />
-            {searchInput && (
-              <button
-                onClick={() => setSearchInput('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-
+        <PageToolbar
+          search={{ value: searchInput, onChange: setSearchInput, placeholder: t('search_topics') }}
+          actions={
+            <Button
+              disabled={!canCreateTopic.hasAccess}
+              onClick={
+                canCreateTopic.hasAccess
+                  ? openCreate
+                  : () => router.push('/checkout?plan_id=student_premium')
+              }
+            >
+              {canCreateTopic.hasAccess ? (
+                <>
+                  <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
+                </>
+              ) : (
+                <>
+                  <Lock className="size-3" /> Upgrade
+                </>
+              )}
+            </Button>
+          }
+        >
           <Select value={owner} onValueChange={setOwner}>
             <SelectTrigger className="w-35 truncate">
               <SelectValue />
@@ -324,128 +328,79 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
               <SelectItem value="name:desc">{t('sort_name_desc')}</SelectItem>
             </SelectContent>
           </Select>
-
-          <div className="sm:ml-auto">
-            <Button
-              disabled={!canCreateTopic.hasAccess}
-              onClick={
-                canCreateTopic.hasAccess
-                  ? openCreate
-                  : () => router.push('/checkout?plan_id=student_premium')
-              }
-            >
-              {canCreateTopic.hasAccess ? (
-                <>
-                  <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
-                </>
-              ) : (
-                <>
-                  <Lock className="size-3" /> Upgrade
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
+        </PageToolbar>
       )}
 
-      {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Card key={i} className="flex flex-col h-full max-sm:py-0 min-w-0">
-              <div className="flex items-center gap-3 p-4 sm:hidden">
-                <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-1/2" />
-                  <Skeleton className="h-3 w-1/4" />
-                </div>
-                <Skeleton className="h-7 w-7 rounded-md shrink-0" />
+      <PageGrid
+        cols={4}
+        isLoading={isLoading}
+        skeleton={
+          <Card className="flex flex-col h-full max-sm:py-0 min-w-0">
+            <div className="flex items-center gap-3 p-4 sm:hidden">
+              <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-3 w-1/4" />
               </div>
-              <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
-                <div className="flex items-center gap-3">
-                  <Skeleton className="h-10 w-10 rounded-xl" />
-                  <Skeleton className="h-6 w-3/4" />
-                </div>
-                <div className="flex-1" />
-                <div className="flex items-center justify-between pt-4 mt-auto">
-                  <Skeleton className="h-6 w-16 rounded-full" />
-                  <Skeleton className="h-8 w-24 rounded-md" />
-                </div>
+              <Skeleton className="h-7 w-7 rounded-md shrink-0" />
+            </div>
+            <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-10 w-10 rounded-xl" />
+                <Skeleton className="h-6 w-3/4" />
               </div>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {topics.map((topic) => (
-            <TopicCard
-              key={topic.id}
-              topic={topic}
-              isSelected={selection.selectedIds.has(topic.id)}
-              isSelecting={selection.isSelecting}
-              onToggleSelect={() => handleToggleSelect(topic.id)}
-              onView={() => setViewTopicId(topic.id)}
-              onEdit={() => openEdit(topic)}
-              onDelete={() => setDeleteId(topic.id)}
-              t={t}
-            />
-          ))}
-          {hasNextPage &&
-            Array.from({ length: 8 }).map((_, i) => (
-              <Card key={`skel-${i}`} className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">
-                <div className="flex items-center gap-3 p-4 sm:hidden">
-                  <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-1/2" />
-                    <Skeleton className="h-3 w-1/4" />
-                  </div>
-                  <Skeleton className="h-7 w-7 rounded-md shrink-0" />
-                </div>
-                <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
-                  <div className="flex items-center gap-3">
-                    <Skeleton className="h-10 w-10 rounded-xl" />
-                    <Skeleton className="h-6 w-3/4" />
-                  </div>
-                  <div className="flex-1" />
-                  <div className="flex items-center justify-between pt-4 mt-auto">
-                    <Skeleton className="h-6 w-16 rounded-full" />
-                    <Skeleton className="h-8 w-24 rounded-md" />
-                  </div>
-                </div>
-              </Card>
-            ))}
-          <div ref={loadMoreRef} className="min-h-[1px]" />
-          {topics.length === 0 && !isFetchingNextPage && (
-            <Empty className="col-span-full">
-              <EmptyMedia>
-                <Tags className="h-10 w-10 text-muted-foreground" />
-              </EmptyMedia>
-              <EmptyTitle>{t('no_topics')}</EmptyTitle>
-              <EmptyDescription>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!canCreateTopic.hasAccess}
-                  onClick={
-                    canCreateTopic.hasAccess
-                      ? openCreate
-                      : () => router.push('/checkout?plan_id=student_premium')
-                  }
-                >
-                  {canCreateTopic.hasAccess ? (
-                    <>
-                      <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="size-3" /> Upgrade
-                    </>
-                  )}
-                </Button>
-              </EmptyDescription>
-            </Empty>
-          )}
-        </div>
-      )}
+              <div className="flex-1" />
+              <div className="flex items-center justify-between pt-4 mt-auto">
+                <Skeleton className="h-6 w-16 rounded-full" />
+                <Skeleton className="h-8 w-24 rounded-md" />
+              </div>
+            </div>
+          </Card>
+        }
+        skeletonCount={8}
+        hasNextPage={hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+        loadMoreRef={loadMoreRef}
+        isEmpty={topics.length === 0}
+        emptyIcon={<Tags className="h-10 w-10 text-muted-foreground" />}
+        emptyTitle={t('no_topics')}
+        emptyAction={
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!canCreateTopic.hasAccess}
+            onClick={
+              canCreateTopic.hasAccess
+                ? openCreate
+                : () => router.push('/checkout?plan_id=student_premium')
+            }
+          >
+            {canCreateTopic.hasAccess ? (
+              <>
+                <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
+              </>
+            ) : (
+              <>
+                <Lock className="size-3" /> Upgrade
+              </>
+            )}
+          </Button>
+        }
+      >
+        {topics.map((topic) => (
+          <TopicCard
+            key={topic.id}
+            topic={topic}
+            isSelected={selection.selectedIds.has(topic.id)}
+            isSelecting={selection.isSelecting}
+            onToggleSelect={() => handleToggleSelect(topic.id)}
+            onView={() => setViewTopicId(topic.id)}
+            onEdit={() => openEdit(topic)}
+            onDelete={() => setDeleteId(topic.id)}
+            t={t}
+          />
+        ))}
+      </PageGrid>
 
       <TopicFormDialog
         open={dialogOpen}
@@ -479,12 +434,14 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         confirmText={t('common_delete')}
       />
 
-      <TopicBulkActions
+      <BulkActionBar
         selectedCount={selection.selectedIds.size}
-        onDelete={handleBatchDeleteSelection}
         onClearSelection={handleClearSelection}
-        t={t}
-      />
+      >
+        <Button variant="destructive" size="sm" onClick={handleBatchDeleteSelection}>
+          <Trash2 className="mr-1.5 h-4 w-4" /> {t('common_delete')}
+        </Button>
+      </BulkActionBar>
 
       {!selection.isSelecting && (
         <div className="sm:hidden">

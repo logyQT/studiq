@@ -58,25 +58,15 @@ export class FlashcardPracticeService {
         session_id: item.sessionId ?? null,
       });
 
-      if (practiceError) {
-        results.push({ flashcardId: item.flashcardId, isLeech: false });
-        continue;
-      }
+      if (practiceError) throw mapSupabaseError(practiceError);
 
-      try {
-        const reviewState = await this.upsertReviewState(
-          item.flashcardId,
-          item.wasCorrect,
-          item.confidenceLevel,
-          ctx,
-        );
-        results.push({ flashcardId: item.flashcardId, isLeech: reviewState.is_leech });
-      } catch (err) {
-        log.system.error(`[batch] upsertReviewState failed for card ${item.flashcardId}`, {
-          metadata: { err },
-        });
-        results.push({ flashcardId: item.flashcardId, isLeech: false });
-      }
+      const reviewState = await this.upsertReviewState(
+        item.flashcardId,
+        item.wasCorrect,
+        item.confidenceLevel,
+        ctx,
+      );
+      results.push({ flashcardId: item.flashcardId, isLeech: reviewState.is_leech });
     }
 
     return { success: true, results };
@@ -138,15 +128,42 @@ export class FlashcardPracticeService {
 
   async getSettings(ctx: RequestContext) {
     const settings = await this.resetDailyIfNeeded(ctx);
+    const budget = Math.max(0, settings.new_cards_per_day - settings.new_cards_introduced);
+    const actualNew = await this.countNewCards(ctx);
     return {
       learningSteps: settings.learning_steps,
       newCardsPerDay: settings.new_cards_per_day,
       newCardsIntroduced: settings.new_cards_introduced,
       leechThreshold: settings.leech_threshold,
       dailyResetDate: settings.daily_reset_date,
-      remainingNewCards: Math.max(0, settings.new_cards_per_day - settings.new_cards_introduced),
+      remainingNewCards: Math.min(budget, actualNew),
+      totalNewCards: actualNew,
       dailyReviewGoal: settings.daily_review_goal ?? 0,
     };
+  }
+
+  private async countNewCards(ctx: RequestContext): Promise<number> {
+    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    if (filter._impossible) return 0;
+
+    let filterType = 'own';
+    let organizationId: string | null = null;
+    if (filter.or) {
+      filterType = 'university';
+      organizationId = ctx.activeOrgId ?? null;
+    } else if (!filter.created_by) {
+      filterType = 'any';
+    }
+
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc('count_new_cards', {
+      p_user_id: ctx.userId,
+      p_filter_type: filterType,
+      p_organization_id: organizationId,
+    });
+
+    if (error) return 0;
+    return (data as number) ?? 0;
   }
 
   private async upsertReviewState(

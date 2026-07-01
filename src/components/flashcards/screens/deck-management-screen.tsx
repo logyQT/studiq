@@ -1,7 +1,17 @@
 'use client';
 
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckSquare, FolderOpen, Lock, Plus, SquarePen, Upload } from 'lucide-react';
+import {
+  CheckSquare,
+  Download,
+  EyeOff,
+  FolderOpen,
+  Lock,
+  Plus,
+  SquarePen,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import type { useTranslations } from 'next-intl';
@@ -10,11 +20,12 @@ import { toast } from 'sonner';
 import { DeckCard } from '@/components/flashcards/cards/deck-card';
 import { DeckFilters } from '@/components/flashcards/shared/deck-filters';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { BulkActionBar } from '@/components/shared/bulk-action-bar';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import { PageGrid } from '@/components/shared/page-grid';
 import { SpeedDial } from '@/components/shared/speed-dial';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useApiMutation } from '@/hooks/use-api';
 import { useOrgs } from '@/hooks/use-orgs';
@@ -34,11 +45,6 @@ const ImportDialog = dynamic(
 const DeckFormDialog = dynamic(() =>
   import('@/components/flashcards/shared/deck-form-dialog').then((m) => ({
     default: m.DeckFormDialog,
-  })),
-);
-const DeckBulkActions = dynamic(() =>
-  import('@/components/flashcards/shared/deck-bulk-actions').then((m) => ({
-    default: m.DeckBulkActions,
   })),
 );
 
@@ -309,117 +315,86 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         t={t}
       />
 
-      {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 12 }).map((_, i) => (
-            <Card key={i} className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">
-              <div className="flex items-center gap-3 p-4 sm:hidden">
-                <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-1/2" />
-                  <Skeleton className="h-3 w-1/4" />
-                </div>
-                <Skeleton className="h-7 w-7 rounded-md shrink-0" />
+      <PageGrid
+        cols={4}
+        isLoading={isLoading}
+        skeleton={
+          <Card className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">
+            <div className="flex items-center gap-3 p-4 sm:hidden">
+              <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-3 w-1/4" />
               </div>
-              <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
-                <div className="flex items-center gap-3">
-                  <Skeleton className="h-10 w-10 rounded-xl" />
-                  <Skeleton className="h-6 w-3/4" />
-                </div>
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-4/5" />
-                </div>
-                <div className="flex items-center justify-between pt-4 mt-auto">
-                  <Skeleton className="h-6 w-16 rounded-full" />
-                  <Skeleton className="h-8 w-24 rounded-md" />
-                </div>
+              <Skeleton className="h-7 w-7 rounded-md shrink-0" />
+            </div>
+            <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-10 w-10 rounded-xl" />
+                <Skeleton className="h-6 w-3/4" />
               </div>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {decks.map((deck) => (
-            <DeckCard
-              key={deck.id}
-              deck={deck}
-              isSelecting={selection.isSelecting}
-              isSelected={selection.selectedIds.has(deck.id)}
-              onToggleSelect={() => handleToggleSelect(deck.id)}
-              basePath={basePath}
-              t={t}
-              canUpdate={can(role, 'deck.update', deck.created_by, user?.id, activeOrg?.id)}
-              canDelete={can(role, 'deck.delete', deck.created_by, user?.id, activeOrg?.id)}
-              onEdit={() => openEdit(deck)}
-              onDelete={() => setDeleteId(deck.id)}
-              onExport={() =>
-                window.open(`/api/v1/flashcards/export/csv?deckIds=${deck.id}`, '_blank')
-              }
-              onSelect={() => selection.setIsSelecting(true)}
-              onToggleSuspend={() => handleToggleSuspend(deck)}
-            />
-          ))}
-          {hasNextPage &&
-            Array.from({ length: 8 }).map((_, i) => (
-              <Card key={`skel-${i}`} className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">
-                <div className="flex items-center gap-3 p-4 sm:hidden">
-                  <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-1/2" />
-                    <Skeleton className="h-3 w-1/4" />
-                  </div>
-                  <Skeleton className="h-7 w-7 rounded-md shrink-0" />
-                </div>
-                <div className="hidden sm:flex flex-col h-full p-5 space-y-4">
-                  <div className="flex items-center gap-3">
-                    <Skeleton className="h-10 w-10 rounded-xl" />
-                    <Skeleton className="h-6 w-3/4" />
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-4/5" />
-                  </div>
-                  <div className="flex items-center justify-between pt-4 mt-auto">
-                    <Skeleton className="h-6 w-16 rounded-full" />
-                    <Skeleton className="h-8 w-24 rounded-md" />
-                  </div>
-                </div>
-              </Card>
-            ))}
-          <div ref={loadMoreRef} className="min-h-px" />
-          {decks.length === 0 && !isFetchingNextPage && (
-            <Empty className="col-span-full">
-              <EmptyMedia>
-                <FolderOpen className="h-10 w-10 text-muted-foreground" />
-              </EmptyMedia>
-              <EmptyTitle>{t('no_decks')}</EmptyTitle>
-              <EmptyDescription>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!canCreateDeck.hasAccess}
-                  onClick={
-                    canCreateDeck.hasAccess
-                      ? openCreate
-                      : () => router.push('/checkout?plan_id=student_premium')
-                  }
-                >
-                  {canCreateDeck.hasAccess ? (
-                    <>
-                      <Plus className="mr-1.5 h-4 w-4" /> {t('new_deck')}
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="size-3" /> Upgrade
-                    </>
-                  )}
-                </Button>
-              </EmptyDescription>
-            </Empty>
-          )}
-        </div>
-      )}
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-4/5" />
+              </div>
+              <div className="flex items-center justify-between pt-4 mt-auto">
+                <Skeleton className="h-6 w-16 rounded-full" />
+                <Skeleton className="h-8 w-24 rounded-md" />
+              </div>
+            </div>
+          </Card>
+        }
+        skeletonCount={12}
+        hasNextPage={hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+        loadMoreRef={loadMoreRef}
+        isEmpty={decks.length === 0}
+        emptyIcon={<FolderOpen className="h-10 w-10 text-muted-foreground" />}
+        emptyTitle={t('no_decks')}
+        emptyAction={
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!canCreateDeck.hasAccess}
+            onClick={
+              canCreateDeck.hasAccess
+                ? openCreate
+                : () => router.push('/checkout?plan_id=student_premium')
+            }
+          >
+            {canCreateDeck.hasAccess ? (
+              <>
+                <Plus className="mr-1.5 h-4 w-4" /> {t('new_deck')}
+              </>
+            ) : (
+              <>
+                <Lock className="size-3" /> Upgrade
+              </>
+            )}
+          </Button>
+        }
+      >
+        {decks.map((deck) => (
+          <DeckCard
+            key={deck.id}
+            deck={deck}
+            isSelecting={selection.isSelecting}
+            isSelected={selection.selectedIds.has(deck.id)}
+            onToggleSelect={() => handleToggleSelect(deck.id)}
+            basePath={basePath}
+            t={t}
+            canUpdate={can(role, 'deck.update', deck.created_by, user?.id, activeOrg?.id)}
+            canDelete={can(role, 'deck.delete', deck.created_by, user?.id, activeOrg?.id)}
+            onEdit={() => openEdit(deck)}
+            onDelete={() => setDeleteId(deck.id)}
+            onExport={() =>
+              window.open(`/api/v1/flashcards/export/csv?deckIds=${deck.id}`, '_blank')
+            }
+            onSelect={() => selection.setIsSelecting(true)}
+            onToggleSuspend={() => handleToggleSuspend(deck)}
+          />
+        ))}
+      </PageGrid>
 
       <DeckFormDialog
         open={dialogOpen}
@@ -451,14 +426,23 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         confirmText={t('common_delete')}
       />
 
-      <DeckBulkActions
+      <BulkActionBar
         selectedCount={selection.selectedIds.size}
-        onExport={handleBatchExportSelection}
-        onDelete={handleBatchDeleteSelection}
         onClearSelection={handleClearSelection}
-        onToggleSuspend={handleBatchToggleSuspend}
-        t={t}
-      />
+      >
+        <Button variant="outline" size="sm" onClick={() => handleBatchToggleSuspend(true)}>
+          <EyeOff className="mr-1.5 h-4 w-4" /> {t('suspend_deck')}
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => handleBatchToggleSuspend(false)}>
+          <EyeOff className="mr-1.5 h-4 w-4" /> {t('unsuspend_deck')}
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleBatchExportSelection}>
+          <Download className="mr-1.5 h-4 w-4" /> {t('common_export')}
+        </Button>
+        <Button variant="destructive" size="sm" onClick={handleBatchDeleteSelection}>
+          <Trash2 className="mr-1.5 h-4 w-4" /> {t('common_delete')}
+        </Button>
+      </BulkActionBar>
 
       <ImportDialog open={importOpen} onOpenChange={setImportOpen} t={t} />
 

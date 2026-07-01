@@ -1,8 +1,9 @@
 'use client';
 
-import { ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
+import { CollapsibleToggle } from '@/components/shared/collapsible-toggle';
 
 interface ThinkingBlockProps {
   traces: string[];
@@ -24,31 +25,30 @@ export function ThinkingBlock({ traces, isComplete }: ThinkingBlockProps) {
 
   return (
     <div className="mt-2 rounded-lg border bg-background/40 text-xs">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-muted-foreground hover:text-foreground transition-colors"
-      >
-        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-        <Sparkles className="h-3 w-3" />
-        <span className="font-medium">{t('thinking_title')}</span>
-        {!isComplete && (
-          <span className="ml-auto flex gap-0.5">
-            <span
-              className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
-              style={{ animationDelay: '0ms' }}
-            />
-            <span
-              className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
-              style={{ animationDelay: '150ms' }}
-            />
-            <span
-              className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
-              style={{ animationDelay: '300ms' }}
-            />
-          </span>
-        )}
-      </button>
+      <CollapsibleToggle
+        open={open}
+        onToggle={() => setOpen(!open)}
+        icon={<Sparkles className="h-3 w-3" />}
+        label={t('thinking_title')}
+        badge={
+          !isComplete ? (
+            <span className="flex gap-0.5">
+              <span
+                className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
+                style={{ animationDelay: '0ms' }}
+              />
+              <span
+                className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
+                style={{ animationDelay: '150ms' }}
+              />
+              <span
+                className="h-1 w-1 animate-bounce rounded-full bg-muted-foreground"
+                style={{ animationDelay: '300ms' }}
+              />
+            </span>
+          ) : undefined
+        }
+      />
       {open && traces.length > 0 && (
         <div className="space-y-1 px-3 pb-2">
           {traces.map((trace, i) => (

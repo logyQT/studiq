@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import SessionClient from './session-client';
 
-const VALID_TYPES = ['review', 'learn', 'cram'] as const;
+const VALID_TYPES = ['review', 'new', 'cram'] as const;
 
 interface Props {
   params: Promise<{ type: string }>;
@@ -25,7 +25,6 @@ export default async function SessionTypePage({ params, searchParams }: Props) {
       decks={sp.decks as string}
       target={sp.target as string}
       limit={sp.limit as string}
-      newOnly={sp.newOnly as string}
     />
   );
 }

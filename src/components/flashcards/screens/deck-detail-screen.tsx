@@ -2,17 +2,22 @@
 
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  ArrowRight,
+  Copy,
+  Download,
   Eye,
   EyeOff,
   FileDown,
   FileUp,
   Layers,
+  Link2,
   Lock,
   MoreVertical,
   Pencil,
   Play,
   Plus,
   Sparkles,
+  Tags,
   Trash2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -21,9 +26,10 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner';
 import { FlashcardCard } from '@/components/flashcards/cards/flashcard-card';
 import { DeckDetailSkeleton } from '@/components/flashcards/shared/deck-detail-skeleton';
-import { FlashcardBulkActions } from '@/components/flashcards/shared/flashcard-bulk-actions';
 import { FlashcardToolbar } from '@/components/flashcards/shared/flashcard-toolbar';
+import { BulkActionBar } from '@/components/shared/bulk-action-bar';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
+import { PageGrid } from '@/components/shared/page-grid';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,7 +41,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
@@ -778,100 +783,98 @@ export function DeckDetailScreen({
 
       <h3 className="text-lg font-semibold max-sm:block hidden">{t('flashcards_section')}</h3>
 
-      {flashcards.length === 0 ? (
-        <Empty>
-          <EmptyMedia>
-            <Layers className="h-10 w-10 text-muted-foreground" />
-          </EmptyMedia>
-          <EmptyTitle>{t('no_flashcards')}</EmptyTitle>
-          {can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) && (
-            <EmptyDescription>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!canCreateFlashcard.hasAccess}
-                onClick={
-                  canCreateFlashcard.hasAccess
-                    ? () => router.push(`${basePath}/decks/${deckId}/new`)
-                    : () => router.push('/checkout?plan_id=student_premium')
-                }
-                aria-keyshortcuts="n"
-              >
-                {canCreateFlashcard.hasAccess ? (
-                  <>
-                    <Plus className="mr-1.5 h-4 w-4" /> {t('create_first')}
-                  </>
-                ) : (
-                  <>
-                    <Lock className="size-3" /> Upgrade
-                  </>
-                )}
-              </Button>
-            </EmptyDescription>
-          )}
-        </Empty>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {flashcards.map((fc) => (
-            <FlashcardCard
-              key={fc.id}
-              fc={fc}
-              canUpdate={can(role, 'flashcard.update', fc.created_by, user?.id, activeOrg?.id)}
-              canDelete={
-                can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) ?? false
+      <PageGrid
+        isLoading={false}
+        skeleton={
+          <Card className="group relative sm:min-h-28 max-sm:py-0">
+            <div className="sm:hidden px-3 py-2.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <Skeleton className="h-4 w-3/4 inline-block align-middle" />
+                </div>
+                <Skeleton className="h-7 w-7 rounded-md shrink-0" />
+              </div>
+              <div className="my-1.5 border-t border-border/50" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-2/3 mt-1" />
+            </div>
+            <div className="hidden sm:flex sm:flex-col sm:flex-1 sm:px-4 sm:py-3.5">
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0 pr-6">
+                  <Skeleton className="h-5 w-3/4" />
+                </div>
+                <Skeleton className="h-7 w-7 rounded-md shrink-0" />
+              </div>
+              <div className="my-2 border-t border-border/50" />
+              <div className="flex-1 space-y-1.5 min-w-0">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-5/6" />
+                <Skeleton className="h-4 w-2/3" />
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                <Skeleton className="h-5 w-16 rounded-full" />
+                <Skeleton className="h-5 w-20 rounded-full" />
+              </div>
+            </div>
+          </Card>
+        }
+        skeletonCount={6}
+        hasNextPage={hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+        loadMoreRef={loadMoreRef}
+        isEmpty={flashcards.length === 0}
+        emptyIcon={<Layers className="h-10 w-10 text-muted-foreground" />}
+        emptyTitle={t('no_flashcards')}
+        emptyAction={
+          can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!canCreateFlashcard.hasAccess}
+              onClick={
+                canCreateFlashcard.hasAccess
+                  ? () => router.push(`${basePath}/decks/${deckId}/new`)
+                  : () => router.push('/checkout?plan_id=student_premium')
               }
-              topics={topics}
-              t={t}
-              selected={selection.selectedIds.has(fc.id)}
-              selectable={selection.isSelecting}
-              onToggleSelect={selection.toggleSelect}
-              onEnterSelectionMode={handleEnterSelectionMode}
-              onEdit={openEdit}
-              onDelete={handleCardDelete}
-              onLink={handleCardLink}
-              onCopy={handleCardCopy}
-              onAddTopic={handleCardAddTopic}
-              onManageTopics={handleCardManageTopics}
-              onViewByTopic={handleCardViewByTopic}
-            />
-          ))}
-          {hasNextPage &&
-            Array.from({ length: 6 }).map((_, i) => (
-              <Card key={`skel-${i}`} className="group relative sm:min-h-28 max-sm:py-0">
-                <div className="sm:hidden px-3 py-2.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <Skeleton className="h-4 w-3/4 inline-block align-middle" />
-                    </div>
-                    <Skeleton className="h-7 w-7 rounded-md shrink-0" />
-                  </div>
-                  <div className="my-1.5 border-t border-border/50" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-2/3 mt-1" />
-                </div>
-                <div className="hidden sm:flex sm:flex-col sm:flex-1 sm:px-4 sm:py-3.5">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0 pr-6">
-                      <Skeleton className="h-5 w-3/4" />
-                    </div>
-                    <Skeleton className="h-7 w-7 rounded-md shrink-0" />
-                  </div>
-                  <div className="my-2 border-t border-border/50" />
-                  <div className="flex-1 space-y-1.5 min-w-0">
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-5/6" />
-                    <Skeleton className="h-4 w-2/3" />
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 mt-2.5">
-                    <Skeleton className="h-5 w-16 rounded-full" />
-                    <Skeleton className="h-5 w-20 rounded-full" />
-                  </div>
-                </div>
-              </Card>
-            ))}
-          <div ref={loadMoreRef} className="min-h-[1px]" />
-        </div>
-      )}
+              aria-keyshortcuts="n"
+            >
+              {canCreateFlashcard.hasAccess ? (
+                <>
+                  <Plus className="mr-1.5 h-4 w-4" /> {t('create_first')}
+                </>
+              ) : (
+                <>
+                  <Lock className="size-3" /> Upgrade
+                </>
+              )}
+            </Button>
+          ) : undefined
+        }
+      >
+        {flashcards.map((fc) => (
+          <FlashcardCard
+            key={fc.id}
+            fc={fc}
+            canUpdate={can(role, 'flashcard.update', fc.created_by, user?.id, activeOrg?.id)}
+            canDelete={
+              can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) ?? false
+            }
+            topics={topics}
+            t={t}
+            selected={selection.selectedIds.has(fc.id)}
+            selectable={selection.isSelecting}
+            onToggleSelect={selection.toggleSelect}
+            onEnterSelectionMode={handleEnterSelectionMode}
+            onEdit={openEdit}
+            onDelete={handleCardDelete}
+            onLink={handleCardLink}
+            onCopy={handleCardCopy}
+            onAddTopic={handleCardAddTopic}
+            onManageTopics={handleCardManageTopics}
+            onViewByTopic={handleCardViewByTopic}
+          />
+        ))}
+      </PageGrid>
 
       {(() => {
         const selectedFlashcards = flashcards.filter((fc) => selection.selectedIds.has(fc.id));
@@ -886,61 +889,95 @@ export function DeckDetailScreen({
             can(role, 'flashcard.update', fc.created_by, user?.id, activeOrg?.id),
           );
         return (
-          <FlashcardBulkActions
+          <BulkActionBar
             selectedCount={selection.selectedIds.size}
-            canDelete={
-              can(role, 'deck.update', currentDeck?.created_by, user?.id, activeOrg?.id) ?? false
-            }
-            canTopics={canBulkTopics}
-            canMove={canBulkMove}
-            canExport={selection.selectedIds.size > 0}
-            onDelete={() =>
-              setD((prev) => ({
-                ...prev,
-                bulkDeleteOpen: true,
-                selectedIds: Array.from(selection.selectedIds),
-              }))
-            }
-            onLink={() =>
-              setD((prev) => ({
-                ...prev,
-                bulkLinkOpen: true,
-                bulkLinkDeckIds: [],
-                selectedIds: Array.from(selection.selectedIds),
-              }))
-            }
-            onTopics={() =>
-              setD((prev) => ({
-                ...prev,
-                bulkTopicsOpen: true,
-                bulkTopicIds: [],
-                bulkTopicsOperation: 'set',
-                selectedIds: Array.from(selection.selectedIds),
-              }))
-            }
-            onCopy={() =>
-              setD((prev) => ({
-                ...prev,
-                bulkCopyOpen: true,
-                bulkCopyTargetDeckId: null,
-                selectedIds: Array.from(selection.selectedIds),
-              }))
-            }
-            onMove={() =>
-              setD((prev) => ({
-                ...prev,
-                bulkMoveOpen: true,
-                bulkMoveTargetDeckId: null,
-                selectedIds: Array.from(selection.selectedIds),
-              }))
-            }
-            onExport={() => {
-              const ids = Array.from(selection.selectedIds).join(',');
-              window.open(`/api/v1/flashcards/export/csv?ids=${ids}`, '_blank');
-            }}
             onClearSelection={selection.handleClearSelection}
-            t={t}
-          />
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setD((prev) => ({
+                  ...prev,
+                  bulkCopyOpen: true,
+                  bulkCopyTargetDeckId: null,
+                  selectedIds: Array.from(selection.selectedIds),
+                }))
+              }
+            >
+              <Copy className="mr-1.5 h-4 w-4" /> {t('common_copy')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const ids = Array.from(selection.selectedIds).join(',');
+                window.open(`/api/v1/flashcards/export/csv?ids=${ids}`, '_blank');
+              }}
+            >
+              <Download className="mr-1.5 h-4 w-4" /> {t('common_export')}
+            </Button>
+            {canBulkTopics && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setD((prev) => ({
+                    ...prev,
+                    bulkTopicsOpen: true,
+                    bulkTopicIds: [],
+                    bulkTopicsOperation: 'set',
+                    selectedIds: Array.from(selection.selectedIds),
+                  }))
+                }
+              >
+                <Tags className="mr-1.5 h-4 w-4" /> {t('topics')}
+              </Button>
+            )}
+            {canBulkMove && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setD((prev) => ({
+                    ...prev,
+                    bulkMoveOpen: true,
+                    bulkMoveTargetDeckId: null,
+                    selectedIds: Array.from(selection.selectedIds),
+                  }))
+                }
+              >
+                <ArrowRight className="mr-1.5 h-4 w-4" /> {t('move')}
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setD((prev) => ({
+                  ...prev,
+                  bulkLinkOpen: true,
+                  bulkLinkDeckIds: [],
+                  selectedIds: Array.from(selection.selectedIds),
+                }))
+              }
+            >
+              <Link2 className="mr-1.5 h-4 w-4" /> {t('link')}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() =>
+                setD((prev) => ({
+                  ...prev,
+                  bulkDeleteOpen: true,
+                  selectedIds: Array.from(selection.selectedIds),
+                }))
+              }
+            >
+              <Trash2 className="mr-1.5 h-4 w-4" /> {t('common_delete')}
+            </Button>
+          </BulkActionBar>
         );
       })()}
 

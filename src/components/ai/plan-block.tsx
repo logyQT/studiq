@@ -1,7 +1,8 @@
 'use client';
 
-import { ChevronDown, ChevronRight, ListChecks, Loader2, Sparkles } from 'lucide-react';
+import { ListChecks, Loader2, Sparkles } from 'lucide-react';
 import { useState } from 'react';
+import { CollapsibleToggle } from '@/components/shared/collapsible-toggle';
 import { cn } from '@/lib/utils';
 
 interface PlanStep {
@@ -30,25 +31,24 @@ export function PlanBlock({
 
   return (
     <div className="mt-2 rounded-lg border bg-background/40 text-xs">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-muted-foreground hover:text-foreground transition-colors"
-      >
-        {open ? (
-          <ChevronDown className="h-3 w-3 shrink-0" />
-        ) : (
-          <ChevronRight className="h-3 w-3 shrink-0" />
-        )}
-        <ListChecks className="h-3.5 w-3.5 shrink-0" />
-        <span className="font-medium">Execution Plan ({steps.length} steps)</span>
-        {estimatedComplexity && (
-          <span className="text-muted-foreground/50 ml-1">· {estimatedComplexity}</span>
-        )}
-        <span className="ml-auto text-muted-foreground/60">
-          {isComplete ? 'All steps complete' : `${completed.size} / ${steps.length} completed`}
-        </span>
-      </button>
+      <CollapsibleToggle
+        open={open}
+        onToggle={() => setOpen(!open)}
+        icon={<ListChecks className="h-3.5 w-3.5 shrink-0" />}
+        label={
+          <>
+            Execution Plan ({steps.length} steps)
+            {estimatedComplexity && (
+              <span className="text-muted-foreground/50 ml-1">· {estimatedComplexity}</span>
+            )}
+          </>
+        }
+        badge={
+          <span className="text-muted-foreground/60">
+            {isComplete ? 'All steps complete' : `${completed.size} / ${steps.length} completed`}
+          </span>
+        }
+      />
       {open && (
         <div className="space-y-1.5 px-3 pb-2.5">
           {steps.map((step) => {
