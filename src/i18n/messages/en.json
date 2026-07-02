@@ -2006,5 +2006,28 @@
     "created": "Question created",
     "updated": "Question updated",
     "save_failed": "Failed to save question"
+  },
+  "AccountPage": {
+    "title": "Account",
+    "subtitle": "Manage your account settings",
+    "avatar_label": "Profile picture",
+    "update_avatar": "Update avatar",
+    "avatar_coming_soon": "Avatar upload is coming soon",
+    "name_label": "Name",
+    "name_saved": "Name updated successfully",
+    "email_label": "Email",
+    "role_label": "Role",
+    "member_since": "Member since",
+    "password_section": "Change Password",
+    "current_password": "Current password",
+    "new_password": "New password",
+    "confirm_password": "Confirm password",
+    "password_mismatch": "Passwords do not match",
+    "password_updated": "Password updated successfully",
+    "update_password": "Update Password",
+    "saving": "Saving...",
+    "payments_title": "Payment History",
+    "no_payments": "No payments yet",
+    "manage_billing": "Manage billing"
   }
 }

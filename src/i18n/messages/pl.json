@@ -1988,5 +1988,28 @@
     "created": "Pytanie utworzone",
     "updated": "Pytanie zaktualizowane",
     "save_failed": "Nie udało się zapisać pytania"
+  },
+  "AccountPage": {
+    "title": "Konto",
+    "subtitle": "Zarządzaj ustawieniami konta",
+    "avatar_label": "Zdjęcie profilowe",
+    "update_avatar": "Aktualizuj avatar",
+    "avatar_coming_soon": "Możliwość dodania avatara wkrótce",
+    "name_label": "Nazwa",
+    "name_saved": "Nazwa zaktualizowana pomyślnie",
+    "email_label": "E-mail",
+    "role_label": "Rola",
+    "member_since": "Użytkownik od",
+    "password_section": "Zmień hasło",
+    "current_password": "Obecne hasło",
+    "new_password": "Nowe hasło",
+    "confirm_password": "Potwierdź hasło",
+    "password_mismatch": "Hasła nie są zgodne",
+    "password_updated": "Hasło zaktualizowane pomyślnie",
+    "update_password": "Zaktualizuj hasło",
+    "saving": "Zapisywanie...",
+    "payments_title": "Historia płatności",
+    "no_payments": "Brak płatności",
+    "manage_billing": "Zarządzaj rozliczeniami"
   }
 }

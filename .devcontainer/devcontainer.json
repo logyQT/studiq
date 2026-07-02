@@ -14,9 +14,9 @@
   },
   "postCreateCommand": "npm install -g supabase",
   "remoteUser": "node",
-  "runArgs": ["--cpus=2", "--memory=8g", "--memory-reservation=8g"],
+  "runArgs": ["--cpus=3", "--memory=10g", "--memory-reservation=10g"],
   "hostRequirements": {
-    "cpus": 2,
-    "memory": "8gb"
+    "cpus": 3,
+    "memory": "10gb"
   }
 }

@@ -11,10 +11,12 @@ import {
   Sparkles,
   Sun,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { UserAvatar } from '@/components/ui/user-avatar';
+import { UserRole } from '@/types';
 
 type Locale = 'pl' | 'en';
 
@@ -47,8 +49,24 @@ export function UserMenuHeader() {
 
 export function UserMenuItems({ onItemClick }: { onItemClick?: () => void }) {
   const t = useTranslations('DashboardLayout');
+  const router = useRouter();
+  const { user } = useAuth();
   const locale = getLocale();
   const { setTheme } = useTheme();
+
+  const role = user?.app_metadata?.role as UserRole | undefined;
+  const dashboardPrefix = (() => {
+    switch (role) {
+      case UserRole.TEACHER:
+        return '/edu';
+      case UserRole.UNIVERSITY_ADMIN:
+        return '/manage';
+      case UserRole.SYS_ADMIN:
+        return '/admin';
+      default:
+        return '/app';
+    }
+  })();
 
   async function handleLogout() {
     try {
@@ -65,7 +83,10 @@ export function UserMenuItems({ onItemClick }: { onItemClick?: () => void }) {
       <button
         type="button"
         className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors"
-        onClick={onItemClick}
+        onClick={() => {
+          router.push(`${dashboardPrefix}/upgrade`);
+          onItemClick?.();
+        }}
       >
         <Sparkles className="size-4" />
         <span>{t('upgrade')}</span>
@@ -76,7 +97,10 @@ export function UserMenuItems({ onItemClick }: { onItemClick?: () => void }) {
       <button
         type="button"
         className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors"
-        onClick={onItemClick}
+        onClick={() => {
+          router.push(`${dashboardPrefix}/account`);
+          onItemClick?.();
+        }}
       >
         <BadgeCheck className="size-4 text-muted-foreground" />
         <span>{t('account')}</span>
@@ -84,7 +108,10 @@ export function UserMenuItems({ onItemClick }: { onItemClick?: () => void }) {
       <button
         type="button"
         className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors"
-        onClick={onItemClick}
+        onClick={() => {
+          router.push(`${dashboardPrefix}/billing`);
+          onItemClick?.();
+        }}
       >
         <CreditCard className="size-4 text-muted-foreground" />
         <span>{t('billing')}</span>
