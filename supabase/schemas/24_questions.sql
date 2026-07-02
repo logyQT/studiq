@@ -1,12 +1,11 @@
 -- ==========================================
 -- TABLE: questions
--- Depends on: 18_learning_enums.sql, 21_subjects.sql, 04_profiles.sql
+-- Depends on: 18_learning_enums.sql, 04_profiles.sql
 -- ==========================================
 
 CREATE TABLE public.questions (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid REFERENCES public.organizations(id) ON DELETE SET NULL,
-  subject_id    uuid REFERENCES public.subjects(id) ON DELETE SET NULL,
   created_by    uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
   type          question_type NOT NULL DEFAULT 'mcq',
   content       text NOT NULL,
@@ -16,5 +15,4 @@ CREATE TABLE public.questions (
   updated_at    timestamptz DEFAULT now()
 );
 
-CREATE INDEX idx_questions_subject ON public.questions(subject_id);
 CREATE INDEX idx_questions_created_by ON public.questions(created_by);

@@ -2,12 +2,12 @@
 -- FUNCTION: bulk_create_flashcards
 -- Atomic multi-table insert for flashcards
 -- ============================================
--- Depends on: 30_flashcards.sql, 32_flashcard_topic_assignments.sql, 35_flashcard_space_assignments.sql
+-- Depends on: 30_flashcards.sql, 32_flashcard_topic_assignments.sql, 34_flashcard_decks.sql
 
 CREATE OR REPLACE FUNCTION bulk_create_flashcards(
   p_cards JSONB,
   p_user_id UUID,
-  p_university_id UUID DEFAULT NULL,
+  p_organization_id UUID DEFAULT NULL,
   p_deck_ids UUID[] DEFAULT '{}',
   p_topic_ids UUID[] DEFAULT '{}'
 ) RETURNS SETOF flashcards AS $$
@@ -15,8 +15,8 @@ DECLARE
   v_ids UUID[];
 BEGIN
   WITH ins AS (
-    INSERT INTO flashcards (front, back, created_by, university_id)
-    SELECT c->>'front', c->>'back', p_user_id, p_university_id
+    INSERT INTO flashcards (front, back, created_by, organization_id)
+    SELECT c->>'front', c->>'back', p_user_id, p_organization_id
     FROM jsonb_array_elements(p_cards) AS c
     RETURNING id
   )
