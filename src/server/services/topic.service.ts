@@ -12,7 +12,7 @@ import type {
 } from '@/server/models';
 import type { Topic } from '@/types/flashcards';
 
-export class FlashcardTopicService {
+export class TopicService {
   async create(data: CreateTopicInput, ctx: RequestContext) {
     const supabase = await createClient();
     const organizationId = (await shouldSetUniversityId(ctx, Permission.TOPIC_CREATE))
@@ -20,7 +20,7 @@ export class FlashcardTopicService {
       : null;
 
     const { data: topic, error } = await supabase
-      .from('flashcard_topics')
+      .from('topics')
       .insert({
         name: data.name,
         organization_id: organizationId,
@@ -41,7 +41,7 @@ export class FlashcardTopicService {
     if (filter._impossible) return { items: [], nextCursor: null, hasMore: false };
 
     let query = supabase
-      .from('flashcard_topics')
+      .from('topics')
       .select('*, flashcard_count:flashcard_topic_assignments(count)');
 
     if (filter.or) {
@@ -114,7 +114,7 @@ export class FlashcardTopicService {
     const supabase = await createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.TOPIC_READ, 'topic');
-    let query = supabase.from('flashcard_topics').select('*').eq('id', id);
+    let query = supabase.from('topics').select('*').eq('id', id);
 
     if (filter._impossible) throw new AppError('NOT_FOUND');
     if (filter.or) {
@@ -132,7 +132,7 @@ export class FlashcardTopicService {
     const supabase = await createClient();
 
     const { data: existing, error: fetchError } = await supabase
-      .from('flashcard_topics')
+      .from('topics')
       .select('*')
       .eq('id', id)
       .single();
@@ -141,7 +141,7 @@ export class FlashcardTopicService {
     await checkPermission(ctx, Permission.TOPIC_UPDATE, existing);
 
     const { data: topic, error } = await supabase
-      .from('flashcard_topics')
+      .from('topics')
       .update({ name: data.name })
       .eq('id', id)
       .select()
@@ -156,7 +156,7 @@ export class FlashcardTopicService {
     const supabase = await createClient();
 
     const { data: existing, error: fetchError } = await supabase
-      .from('flashcard_topics')
+      .from('topics')
       .select('*')
       .eq('id', id)
       .single();
@@ -164,7 +164,7 @@ export class FlashcardTopicService {
     if (fetchError || !existing) throw new AppError('NOT_FOUND');
     await checkPermission(ctx, Permission.TOPIC_DELETE, existing);
 
-    const { error } = await supabase.from('flashcard_topics').delete().eq('id', id);
+    const { error } = await supabase.from('topics').delete().eq('id', id);
 
     if (error) throw mapSupabaseError(error);
   }
@@ -181,10 +181,7 @@ export class FlashcardTopicService {
       organization_id: organizationId,
     }));
 
-    const { data: created, error } = await supabase
-      .from('flashcard_topics')
-      .insert(topics)
-      .select('*');
+    const { data: created, error } = await supabase.from('topics').insert(topics).select('*');
 
     if (error) throw mapSupabaseError(error);
     return created;
@@ -194,7 +191,7 @@ export class FlashcardTopicService {
     const supabase = await createClient();
 
     const { data: topics, error: fetchError } = await supabase
-      .from('flashcard_topics')
+      .from('topics')
       .select('*')
       .in('id', data.ids);
 
@@ -205,7 +202,7 @@ export class FlashcardTopicService {
       await checkPermission(ctx, Permission.TOPIC_DELETE, topic);
     }
 
-    const { error } = await supabase.from('flashcard_topics').delete().in('id', data.ids);
+    const { error } = await supabase.from('topics').delete().in('id', data.ids);
 
     if (error) throw mapSupabaseError(error);
 
@@ -213,4 +210,4 @@ export class FlashcardTopicService {
   }
 }
 
-export const flashcardTopicService = new FlashcardTopicService();
+export const topicService = new TopicService();

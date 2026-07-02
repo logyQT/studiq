@@ -35,7 +35,7 @@ export function useFlashcardDomainRealtime() {
         debouncedInvalidate(['flashcards', 'decks']);
         debouncedInvalidate(['flashcards', 'list']);
       })
-      .listen('flashcard_topics', () => debouncedInvalidate(['flashcards', 'topics']))
+      .listen('topics', () => debouncedInvalidate(['flashcards', 'topics']))
       .listen('flashcard_topic_assignments', () => debouncedInvalidate(['flashcards', 'list']))
       .listen('flashcard_practice', () => debouncedInvalidate(['flashcards', 'practice']))
       .listen('flashcard_review_state', () => debouncedInvalidate(['flashcards', 'practice'])),

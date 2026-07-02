@@ -9,11 +9,6 @@ export const flashcardKeys = {
     detail: (id: string) => ['flashcards', 'decks', id] as const,
   },
   list: (filters?: Record<string, string[]>) => ['flashcards', 'list', filters] as const,
-  topics: {
-    all: ['flashcards', 'topics'] as const,
-    paginated: (filters?: Record<string, string | undefined>) =>
-      ['flashcards', 'topics', 'paginated', filters] as const,
-  },
   practice: {
     dueBreakdown: ['flashcards', 'practice', 'dueBreakdown'] as const,
     states: ['flashcards', 'practice', 'states'] as const,
@@ -23,6 +18,24 @@ export const flashcardKeys = {
     difficultyBucket: (bucket: string) => ['flashcards', 'stats', 'difficulty', bucket] as const,
     activity: (range: string) => ['stats', 'activity', range] as const,
     weakPoints: ['stats', 'weak-points'] as const,
+  },
+};
+
+export const topicKeys = {
+  all: ['topics'] as const,
+  paginated: (filters?: Record<string, string | undefined>) =>
+    ['topics', 'paginated', filters] as const,
+};
+
+export const questionKeys = {
+  all: ['questions'] as const,
+  list: (filters?: Record<string, string | undefined>) => ['questions', 'list', filters] as const,
+  detail: (id: string) => ['questions', id] as const,
+  banks: {
+    all: ['questions', 'banks'] as const,
+    paginated: (filters?: Record<string, string | undefined>) =>
+      ['questions', 'banks', 'paginated', filters] as const,
+    detail: (id: string) => ['questions', 'banks', id] as const,
   },
 };
 

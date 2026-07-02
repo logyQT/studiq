@@ -5,13 +5,6 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
 import {
   Table,
@@ -29,11 +22,6 @@ interface TeacherStats {
     byType: Record<string, number>;
     byDifficulty: Record<string, number>;
   };
-}
-
-interface Subject {
-  id: string;
-  name: string;
 }
 
 interface FlashcardStats {
@@ -59,8 +47,7 @@ export default function StatsDataPage() {
   const t = useTranslations('StatsDataPage');
   const [stats, setStats] = useState<TeacherStats | null>(null);
   const [flashStats, setFlashStats] = useState<FlashcardStats | null>(null);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [selectedSubject, setSelectedSubject] = useState('__all__');
+  const [selectedSubject, _setSelectedSubject] = useState('__all__');
   const [subjectBreakdown, setSubjectBreakdown] = useState<TeacherStats['subject'] | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -68,12 +55,10 @@ export default function StatsDataPage() {
     Promise.all([
       fetch('/api/v1/stats/teacher').then((r) => r.json()),
       fetch('/api/v1/flashcards/stats/teacher').then((r) => r.json()),
-      fetch('/api/v1/subjects').then((r) => r.json()),
     ])
-      .then(([s, f, sub]) => {
+      .then(([s, f]) => {
         setStats(s.data ?? s);
         setFlashStats(f.data ?? f);
-        setSubjects(sub.data ?? sub);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -110,19 +95,6 @@ export default function StatsDataPage() {
           <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-muted-foreground mt-1">{t('description')}</p>
         </div>
-        <Select value={selectedSubject} onValueChange={setSelectedSubject}>
-          <SelectTrigger className="w-64">
-            <SelectValue placeholder={t('all_subjects')} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">{t('all_subjects')}</SelectItem>
-            {subjects.map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                {s.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

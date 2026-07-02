@@ -2,7 +2,7 @@ import { ValidationErrorCode } from '@/lib/validation-errors';
 import { registry, z } from '@/lib/zod';
 
 export const CreateTopicSchema = registry.register(
-  'CreateFlashcardTopicRequest',
+  'CreateTopicRequest',
   z.object({
     name: z
       .string({ error: ValidationErrorCode.REQUIRED })
@@ -13,7 +13,7 @@ export const CreateTopicSchema = registry.register(
 );
 
 export const UpdateTopicSchema = registry.register(
-  'UpdateFlashcardTopicRequest',
+  'UpdateTopicRequest',
   z.object({
     name: z
       .string({ error: ValidationErrorCode.REQUIRED })

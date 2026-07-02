@@ -54,7 +54,7 @@ export class FlashcardExportService {
 
     const [topicResult, deckResult] = await Promise.all([
       topicIds.size > 0
-        ? supabase.from('flashcard_topics').select('id, name').in('id', Array.from(topicIds))
+        ? supabase.from('topics').select('id, name').in('id', Array.from(topicIds))
         : Promise.resolve({ data: [] as { id: string; name: string }[], error: null }),
       deckIds.size > 0
         ? supabase.from('flashcard_decks').select('id, name').in('id', Array.from(deckIds))

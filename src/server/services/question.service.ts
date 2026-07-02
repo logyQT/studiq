@@ -16,7 +16,6 @@ export class QuestionService {
     const { data: question, error: qError } = await supabase
       .from('questions')
       .insert({
-        subject_id: data.subjectId ?? null,
         type: data.type,
         content: data.content,
         explanation: data.explanation ?? null,
@@ -39,22 +38,34 @@ export class QuestionService {
     const { error: aError } = await supabase.from('question_answers').insert(answersToInsert);
     if (aError) throw mapSupabaseError(aError);
 
-    return {
-      ...question,
-      question_answers: data.answers.map((a, i) => ({
-        id: '',
+    if (data.bankIds && data.bankIds.length > 0) {
+      const bankAssignments = data.bankIds.map((bankId) => ({
         question_id: question.id,
-        content: a.content,
-        is_correct: a.isCorrect,
-        order_index: a.orderIndex ?? i,
-        created_at: new Date().toISOString(),
-      })),
-    };
+        bank_id: bankId,
+      }));
+      const { error: bError } = await supabase
+        .from('question_bank_assignments')
+        .insert(bankAssignments);
+      if (bError) throw mapSupabaseError(bError);
+    }
+
+    if (data.topicIds && data.topicIds.length > 0) {
+      const topicAssignments = data.topicIds.map((topicId) => ({
+        question_id: question.id,
+        topic_id: topicId,
+      }));
+      const { error: tError } = await supabase
+        .from('question_topic_assignments')
+        .insert(topicAssignments);
+      if (tError) throw mapSupabaseError(tError);
+    }
+
+    return this.getById(question.id, ctx);
   }
 
-  async list(ctx: RequestContext, filters?: { subjectId?: string; type?: string }) {
+  async list(ctx: RequestContext, filters?: { bankId?: string; topicIds?: string; type?: string }) {
     const supabase = await createClient();
-    const orConditions = [];
+    const orConditions: string[] = [];
 
     if (ctx.activeOrgId) orConditions.push(`organization_id.eq.${ctx.activeOrgId}`);
     if (ctx.userId) orConditions.push(`created_by.eq.${ctx.userId}`);
@@ -64,8 +75,31 @@ export class QuestionService {
       .select('*, question_answers(*)')
       .order('created_at', { ascending: false });
 
-    if (orConditions.length > 0) query.or(orConditions.join(','));
-    if (filters?.subjectId) query = query.eq('subject_id', filters.subjectId);
+    if (orConditions.length > 0) query = query.or(orConditions.join(','));
+
+    if (filters?.bankId) {
+      const { data: bankAssignments } = await supabase
+        .from('question_bank_assignments')
+        .select('question_id')
+        .eq('bank_id', filters.bankId);
+
+      const questionIds = bankAssignments?.map((a) => a.question_id) ?? [];
+      if (questionIds.length === 0) return [];
+      query = query.in('id', questionIds);
+    }
+
+    if (filters?.topicIds) {
+      const topicIdArray = filters.topicIds.split(',');
+      const { data: topicAssignments } = await supabase
+        .from('question_topic_assignments')
+        .select('question_id')
+        .in('topic_id', topicIdArray);
+
+      const questionIds = topicAssignments?.map((a) => a.question_id) ?? [];
+      if (questionIds.length === 0) return [];
+      query = query.in('id', questionIds);
+    }
+
     if (filters?.type) query = query.eq('type', filters.type);
 
     const { data, error } = await query;
@@ -95,7 +129,6 @@ export class QuestionService {
     const supabase = await createClient();
 
     const updateFields: Record<string, unknown> = {};
-    if (data.subjectId !== undefined) updateFields.subject_id = data.subjectId;
     if (data.type) updateFields.type = data.type;
     if (data.content) updateFields.content = data.content;
     if (data.explanation !== undefined) updateFields.explanation = data.explanation;
@@ -123,6 +156,28 @@ export class QuestionService {
       await supabase.from('question_answers').insert(answersToInsert);
     }
 
+    if (data.bankIds !== undefined) {
+      await supabase.from('question_bank_assignments').delete().eq('question_id', id);
+      if (data.bankIds.length > 0) {
+        const bankAssignments = data.bankIds.map((bankId) => ({
+          question_id: id,
+          bank_id: bankId,
+        }));
+        await supabase.from('question_bank_assignments').insert(bankAssignments);
+      }
+    }
+
+    if (data.topicIds !== undefined) {
+      await supabase.from('question_topic_assignments').delete().eq('question_id', id);
+      if (data.topicIds.length > 0) {
+        const topicAssignments = data.topicIds.map((topicId) => ({
+          question_id: id,
+          topic_id: topicId,
+        }));
+        await supabase.from('question_topic_assignments').insert(topicAssignments);
+      }
+    }
+
     return this.getById(id, ctx);
   }
 
@@ -139,51 +194,6 @@ export class QuestionService {
 
     if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
     if (!data || (Array.isArray(data) && data.length === 0)) throw new AppError('FORBIDDEN');
-  }
-
-  async getStatsBySubject(subjectId: string) {
-    const supabase = await createClient();
-
-    const { data: questions } = await supabase
-      .from('questions')
-      .select('id, type')
-      .eq('subject_id', subjectId);
-
-    const { data: attempts } = await supabase
-      .from('quiz_answers')
-      .select('question_id, is_correct')
-      .in('question_id', questions?.map((q) => q.id) ?? []);
-
-    const correctMap = new Map<string, { correct: number; total: number }>();
-    attempts?.forEach((a) => {
-      const entry = correctMap.get(a.question_id) || { correct: 0, total: 0 };
-      entry.total++;
-      if (a.is_correct) entry.correct++;
-      correctMap.set(a.question_id, entry);
-    });
-
-    const problematicQuestions = questions
-      ?.map((q) => ({
-        ...q,
-        stats: correctMap.get(q.id),
-        correctRate: correctMap.get(q.id)
-          ? correctMap.get(q.id)!.correct / correctMap.get(q.id)!.total
-          : null,
-      }))
-      .filter((q) => q.stats && q.correctRate !== null && q.correctRate < 0.5)
-      .sort((a, b) => (a.correctRate ?? 1) - (b.correctRate ?? 1));
-
-    return {
-      totalQuestions: questions?.length ?? 0,
-      byType: questions?.reduce(
-        (acc, q) => {
-          acc[q.type] = (acc[q.type] || 0) + 1;
-          return acc;
-        },
-        {} as Record<string, number>,
-      ),
-      problematicQuestions: problematicQuestions ?? [],
-    };
   }
 }
 

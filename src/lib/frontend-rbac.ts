@@ -19,6 +19,14 @@ const ROLE_PERMISSIONS: Record<UserRole, Record<string, Scope>> = {
     'deck.create': 'own',
     'deck.update': 'own',
     'deck.delete': 'own',
+    'question.read': 'own',
+    'question.create': 'own',
+    'question.update': 'own',
+    'question.delete': 'own',
+    'question_bank.read': 'own',
+    'question_bank.create': 'own',
+    'question_bank.update': 'own',
+    'question_bank.delete': 'own',
   },
   [UserRole.PREMIUM]: {
     'flashcard.read': 'own',
@@ -33,6 +41,14 @@ const ROLE_PERMISSIONS: Record<UserRole, Record<string, Scope>> = {
     'deck.create': 'own',
     'deck.update': 'own',
     'deck.delete': 'own',
+    'question.read': 'own',
+    'question.create': 'own',
+    'question.update': 'own',
+    'question.delete': 'own',
+    'question_bank.read': 'own',
+    'question_bank.create': 'own',
+    'question_bank.update': 'own',
+    'question_bank.delete': 'own',
   },
   [UserRole.STUDENT]: {
     'flashcard.read': 'organization',
@@ -47,6 +63,14 @@ const ROLE_PERMISSIONS: Record<UserRole, Record<string, Scope>> = {
     'deck.create': 'own',
     'deck.update': 'own',
     'deck.delete': 'own',
+    'question.read': 'organization',
+    'question.create': 'own',
+    'question.update': 'own',
+    'question.delete': 'own',
+    'question_bank.read': 'organization',
+    'question_bank.create': 'own',
+    'question_bank.update': 'own',
+    'question_bank.delete': 'own',
   },
   [UserRole.TEACHER]: {
     'flashcard.read': 'own',
@@ -61,6 +85,14 @@ const ROLE_PERMISSIONS: Record<UserRole, Record<string, Scope>> = {
     'deck.create': 'organization',
     'deck.update': 'own',
     'deck.delete': 'own',
+    'question.read': 'own',
+    'question.create': 'organization',
+    'question.update': 'own',
+    'question.delete': 'own',
+    'question_bank.read': 'own',
+    'question_bank.create': 'organization',
+    'question_bank.update': 'own',
+    'question_bank.delete': 'own',
   },
   [UserRole.UNIVERSITY_ADMIN]: {
     'flashcard.read': 'organization',
@@ -75,6 +107,14 @@ const ROLE_PERMISSIONS: Record<UserRole, Record<string, Scope>> = {
     'deck.create': 'own',
     'deck.update': 'organization',
     'deck.delete': 'organization',
+    'question.read': 'organization',
+    'question.create': 'own',
+    'question.update': 'organization',
+    'question.delete': 'organization',
+    'question_bank.read': 'organization',
+    'question_bank.create': 'own',
+    'question_bank.update': 'organization',
+    'question_bank.delete': 'organization',
   },
   [UserRole.SYS_ADMIN]: {
     'flashcard.read': 'any',
@@ -89,8 +129,27 @@ const ROLE_PERMISSIONS: Record<UserRole, Record<string, Scope>> = {
     'deck.create': 'any',
     'deck.update': 'any',
     'deck.delete': 'any',
+    'question.read': 'any',
+    'question.create': 'any',
+    'question.update': 'any',
+    'question.delete': 'any',
+    'question_bank.read': 'any',
+    'question_bank.create': 'any',
+    'question_bank.update': 'any',
+    'question_bank.delete': 'any',
   },
 };
+
+const FEATURE_PERMISSIONS = new Set([
+  'study.create',
+  'study.participate',
+  'test.create',
+  'test.participate',
+  'question.create',
+  'question_bank.create',
+  'ai.chat',
+  'org.manage',
+]);
 
 export function can(
   role: UserRole | undefined,
@@ -101,7 +160,10 @@ export function can(
 ): boolean {
   if (!role || !userId || !createdBy) return false;
   const scope = ROLE_PERMISSIONS[role]?.[permission];
-  if (!scope) return false;
+  if (!scope) {
+    if (FEATURE_PERMISSIONS.has(permission)) return true;
+    return false;
+  }
   if (scope === 'any') return true;
   if (scope === 'organization' && activeOrgId === undefined) return true;
   if (scope === 'organization') return activeOrgId != null;

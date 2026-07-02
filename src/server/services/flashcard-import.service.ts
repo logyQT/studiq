@@ -52,7 +52,7 @@ export class FlashcardImportService {
 
     if (topicNames.size > 0) {
       const { data: existingTopics } = await supabase
-        .from('flashcard_topics')
+        .from('topics')
         .select('id, name')
         .in('name', Array.from(topicNames))
         .eq('created_by', ctx.userId);
@@ -67,7 +67,7 @@ export class FlashcardImportService {
 
       if (toCreate.length > 0) {
         const { data: newTopics, error } = await supabase
-          .from('flashcard_topics')
+          .from('topics')
           .insert(
             toCreate.map((name) => ({
               name,

@@ -4,9 +4,9 @@ import { withErrorHandling } from '@/lib/with-error-handling';
 import { statsService } from '@/server/services';
 
 export class StatsController {
-  async getTeacherStats(ctx: RequestContext, subjectId?: string): Promise<ControllerResponse> {
+  async getTeacherStats(ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const stats = await statsService.getTeacherStats(ctx, subjectId);
+      const stats = await statsService.getTeacherStats(ctx);
 
       return { success: true, statusCode: 200, data: stats };
     }, ctx);

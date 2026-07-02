@@ -24,7 +24,6 @@ interface AttemptDetails {
   score: number;
   total_questions: number;
   config: {
-    subjectId?: string;
     questionTypes?: string[];
     questionCount?: number;
   } | null;

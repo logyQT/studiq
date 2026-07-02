@@ -13,7 +13,7 @@ import { MultiSelect } from '@/components/ui/multi-select';
 import { useApiQuery } from '@/hooks/use-api';
 import { apiPut } from '@/lib/api';
 import { formatMarkdown } from '@/lib/markdown-utils';
-import { flashcardKeys } from '@/lib/query-keys';
+import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 import type { Flashcard, Topic } from '@/types/flashcards';
 
 interface EditCardClientProps {
@@ -51,7 +51,7 @@ export default function EditCardClient({ deckId, cardId }: EditCardClientProps) 
     nextCursor: string | null;
     hasMore: boolean;
   }>({
-    queryKey: flashcardKeys.topics.all,
+    queryKey: topicKeys.all,
     url: '/api/v1/flashcards/topics?limit=200',
   });
   const topics = topicsData?.items ?? [];

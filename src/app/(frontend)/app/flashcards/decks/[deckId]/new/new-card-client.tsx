@@ -13,7 +13,7 @@ import { useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
 import { apiPost } from '@/lib/api';
 import { formatMarkdown } from '@/lib/markdown-utils';
-import { flashcardKeys } from '@/lib/query-keys';
+import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 import type { Topic } from '@/types/flashcards';
 
 interface NewCardClientProps {
@@ -34,7 +34,7 @@ export default function NewCardClient({ deckId }: NewCardClientProps) {
     nextCursor: string | null;
     hasMore: boolean;
   }>({
-    queryKey: flashcardKeys.topics.all,
+    queryKey: topicKeys.all,
     url: '/api/v1/flashcards/topics?limit=200',
   });
   const topics = topicsData?.items ?? [];

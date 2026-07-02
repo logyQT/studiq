@@ -47,6 +47,7 @@ export const PANEL_GRADIENTS: Record<string, string> = {
   topics: 'from-violet-400 to-purple-600',
   study: 'from-blue-400 to-indigo-600',
   stats: 'from-amber-400 to-orange-600',
+  question_banks: 'from-rose-400 to-pink-600',
 };
 
 export const DIALOG_GRADIENT = 'from-sky-400 to-indigo-500';

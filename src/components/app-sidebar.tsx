@@ -5,13 +5,12 @@ import {
   BarChart3,
   Brain,
   ClipboardList,
+  Database,
   Dumbbell,
-  FileText,
   Folder,
   GraduationCap,
   Layers,
   LayoutDashboard,
-  ListPlus,
   Mail,
   Monitor,
   PieChart,
@@ -57,8 +56,8 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
       label: 'sidebar_content',
       items: [
         { titleKey: 'flashcard_decks', href: '/edu/flashcards/decks', icon: Layers },
-        { titleKey: 'flashcard_topics', href: '/edu/flashcards/topics', icon: Tag },
-        { titleKey: 'edu_questions', href: '/edu/questions', icon: FileText },
+        { titleKey: 'flashcard_topics', href: '/edu/topics', icon: Tag },
+        { titleKey: 'question_banks', href: '/edu/questions/banks', icon: Database },
       ],
     },
     {
@@ -108,8 +107,8 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
       label: 'sidebar_content',
       items: [
         { titleKey: 'flashcard_decks', href: '/app/flashcards/decks', icon: Folder },
-        { titleKey: 'flashcard_topics', href: '/app/flashcards/topics', icon: Tag },
-        { titleKey: 'app_my_questions', href: '/app/my-questions', icon: ListPlus },
+        { titleKey: 'flashcard_topics', href: '/app/topics', icon: Tag },
+        { titleKey: 'question_banks', href: '/app/questions/banks', icon: Database },
       ],
     },
     {

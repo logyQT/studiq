@@ -2,10 +2,9 @@ import { log } from '@/lib/logger';
 import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
-import { questionService } from '@/server/services';
 
 export class StatsService {
-  async getTeacherStats(ctx: RequestContext, subjectId?: string) {
+  async getTeacherStats(ctx: RequestContext) {
     const supabase = await createClient();
 
     const { data: questions, error: questionsError } = await supabase
@@ -22,17 +21,10 @@ export class StatsService {
 
     if (flashcardsError) throw mapSupabaseError(flashcardsError);
 
-    const stats = {
+    return {
       totalQuestions: questions?.length ?? 0,
       totalFlashcards: flashcards?.length ?? 0,
     };
-
-    if (subjectId) {
-      const questionStats = await questionService.getStatsBySubject(subjectId);
-      return { ...stats, subject: questionStats };
-    }
-
-    return stats;
   }
 
   async getStudentStats(ctx: RequestContext) {
@@ -233,7 +225,7 @@ export class StatsService {
       .select(`
         flashcard_id,
         topic_id,
-        flashcard_topics(name)
+        topics(name)
       `);
 
     if (taError) throw mapSupabaseError(taError);
@@ -241,7 +233,7 @@ export class StatsService {
     const cardToTopics = new Map<string, Array<{ topicId: string; name: string }>>();
     for (const a of topicAssignments ?? []) {
       const topics = cardToTopics.get(a.flashcard_id) ?? [];
-      const topicRaw = a.flashcard_topics as unknown;
+      const topicRaw = a.topics as unknown;
       const topicName =
         topicRaw && typeof topicRaw === 'object' && 'name' in (topicRaw as object)
           ? (topicRaw as { name: string }).name

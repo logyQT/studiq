@@ -14,10 +14,12 @@ export async function GET(req: NextRequest) {
   return withAuth(req, async (ctx) => {
     const { searchParams } = new URL(req.url);
 
-    const subjectId = searchParams.get('subjectId') || undefined;
+    const bankId = searchParams.get('bankId') || undefined;
+    const topicIds = searchParams.get('topicIds') || undefined;
     const type = searchParams.get('type') || undefined;
     const filters: Record<string, string> = {};
-    if (subjectId) filters.subjectId = subjectId;
+    if (bankId) filters.bankId = bankId;
+    if (topicIds) filters.topicIds = topicIds;
     if (type) filters.type = type;
 
     return toNextResponse(

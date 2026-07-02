@@ -87,3 +87,5 @@ export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
 // =============================================================================
 // HEALTH TYPES – defined in src/server/models/health.model.ts
 // =============================================================================
+
+export * from './questions';

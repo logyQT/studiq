@@ -23,17 +23,13 @@ export default function SettingsPage() {
       .then((r) => r.json())
       .then((members) => {
         if (members.length > 0 && members[0].organization_id) {
-          fetch(`/api/v1/subjects?organizationId=${members[0].organization_id}`)
-            .then((r) => r.json())
-            .then(() => {
-              setOrganization({
-                id: members[0].organization_id,
-                name: 'Loading...',
-                slug: '',
-                created_at: '',
-              });
-              setLoading(false);
-            });
+          setOrganization({
+            id: members[0].organization_id,
+            name: 'Loading...',
+            slug: '',
+            created_at: '',
+          });
+          setLoading(false);
         } else {
           setLoading(false);
         }

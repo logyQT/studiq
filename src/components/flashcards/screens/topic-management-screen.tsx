@@ -29,7 +29,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { useFeature } from '@/hooks/use-feature';
 import { useSelection } from '@/hooks/use-selection';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
-import { flashcardKeys } from '@/lib/query-keys';
+import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 import type { Flashcard, Topic } from '@/types/flashcards';
 
 interface TopicManagementScreenProps {
@@ -66,7 +66,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     isFetchingNextPage,
     isLoading,
   } = useInfiniteQuery({
-    queryKey: flashcardKeys.topics.paginated(filters),
+    queryKey: topicKeys.paginated(filters),
     queryFn: ({ pageParam }) =>
       apiGet<{ items: Topic[]; nextCursor: string | null; hasMore: boolean }>(
         `/api/v1/flashcards/topics?limit=50${queryString ? `&${queryString}` : ''}${pageParam ? `&cursor=${pageParam}` : ''}`,
@@ -100,43 +100,41 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
 
   const createTopic = useApiMutation({
     mutationFn: (data: { name: string }) => apiPost<Topic>('/api/v1/flashcards/topics', data),
-    invalidateKeys: [flashcardKeys.topics.all],
+    invalidateKeys: [topicKeys.all],
   });
   const updateTopic = useApiMutation({
     mutationFn: ({ id, ...data }: { id: string; name: string }) =>
       apiPut<Topic>(`/api/v1/flashcards/topics/${id}`, data),
-    invalidateKeys: [flashcardKeys.topics.all],
+    invalidateKeys: [topicKeys.all],
     onMutate: async ({ id, ...data }) => {
-      await queryClient.cancelQueries({ queryKey: flashcardKeys.topics.all });
-      const prev = queryClient.getQueryData<Topic[]>(flashcardKeys.topics.all);
-      queryClient.setQueryData<Topic[]>(flashcardKeys.topics.all, (old) =>
+      await queryClient.cancelQueries({ queryKey: topicKeys.all });
+      const prev = queryClient.getQueryData<Topic[]>(topicKeys.all);
+      queryClient.setQueryData<Topic[]>(topicKeys.all, (old) =>
         old?.map((t) => (t.id === id ? { ...t, ...data } : t)),
       );
       return { previous: prev };
     },
     onError: (_err, _vars, ctx) => {
-      queryClient.setQueryData(flashcardKeys.topics.all, ctx?.previous);
+      queryClient.setQueryData(topicKeys.all, ctx?.previous);
     },
   });
   const deleteTopic = useApiMutation({
     mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/topics/${id}`),
-    invalidateKeys: [flashcardKeys.topics.all],
+    invalidateKeys: [topicKeys.all],
     onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: flashcardKeys.topics.all });
-      const prev = queryClient.getQueryData<Topic[]>(flashcardKeys.topics.all);
-      queryClient.setQueryData<Topic[]>(flashcardKeys.topics.all, (old) =>
-        old?.filter((t) => t.id !== id),
-      );
+      await queryClient.cancelQueries({ queryKey: topicKeys.all });
+      const prev = queryClient.getQueryData<Topic[]>(topicKeys.all);
+      queryClient.setQueryData<Topic[]>(topicKeys.all, (old) => old?.filter((t) => t.id !== id));
       return { previous: prev };
     },
     onError: (_err, _id, ctx) => {
-      queryClient.setQueryData(flashcardKeys.topics.all, ctx?.previous);
+      queryClient.setQueryData(topicKeys.all, ctx?.previous);
     },
   });
   const batchDeleteTopics = useApiMutation({
     mutationFn: (data: { ids: string[] }) =>
       apiPost('/api/v1/flashcards/topics/batch/delete', data),
-    invalidateKeys: [flashcardKeys.topics.all],
+    invalidateKeys: [topicKeys.all],
   });
 
   const [dialogOpen, setDialogOpen] = useState(false);

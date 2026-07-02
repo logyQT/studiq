@@ -6,7 +6,8 @@ export const QuestionTypeEnum = z.enum(['mcq', 'true_false', 'open']);
 export const CreateQuestionSchema = registry.register(
   'CreateQuestionRequest',
   z.object({
-    subjectId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+    bankIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+    topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
     type: QuestionTypeEnum,
     content: z
       .string()
@@ -36,7 +37,8 @@ export const CreateQuestionSchema = registry.register(
 export const UpdateQuestionSchema = registry.register(
   'UpdateQuestionRequest',
   z.object({
-    subjectId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+    bankIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+    topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
     type: QuestionTypeEnum.optional(),
     content: z
       .string()

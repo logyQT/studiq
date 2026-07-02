@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { apiPost, apiPut } from '@/lib/api';
 import { getGradientHex } from '@/lib/color-utils';
-import { flashcardKeys } from '@/lib/query-keys';
+import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 import type { Flashcard, Topic } from '@/types/flashcards';
 
 interface TopicDialogsProps {
@@ -77,7 +77,7 @@ export function TopicDialogs({
         back: fc.back,
         topicIds: newIds,
       });
-      queryClient.invalidateQueries({ queryKey: flashcardKeys.topics.all });
+      queryClient.invalidateQueries({ queryKey: topicKeys.all });
       queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
       setNewTopicName('');
       onAddTopicOpenChange(false);

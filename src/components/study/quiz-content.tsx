@@ -12,13 +12,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Field, FieldContent, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
@@ -29,17 +22,11 @@ interface QuizAttempt {
   score: number;
   total_questions: number;
   config: {
-    subjectId?: string;
     questionTypes?: string[];
     questionCount?: number;
   } | null;
   started_at: string;
   completed_at: string | null;
-}
-
-interface Subject {
-  id: string;
-  name: string;
 }
 
 const QUESTION_TYPE_OPTIONS = [
@@ -53,19 +40,12 @@ export function QuizContent() {
   const router = useRouter();
   const { hasAccess } = useFeature('test.create');
 
-  const { data: subjectsData } = useApiQuery<{ items: Subject[] }>({
-    queryKey: ['subjects'],
-    url: '/api/v1/subjects',
-  });
-  const subjects = subjectsData?.items;
-
   const { data: attemptsData } = useApiQuery<QuizAttempt[]>({
     queryKey: ['quiz', 'attempts'],
     url: '/api/v1/quiz/attempts',
   });
   const attempts = attemptsData;
 
-  const [quizSubjectId, setQuizSubjectId] = useState<string>('');
   const [quizTypes, setQuizTypes] = useState<string[]>([]);
   const [quizCount, setQuizCount] = useState(10);
   const [quizSubmitting, setQuizSubmitting] = useState(false);
@@ -82,7 +62,6 @@ export function QuizContent() {
     setQuizSubmitting(true);
     try {
       const data = await apiPost<{ id: string }>('/api/v1/quiz/new', {
-        ...(quizSubjectId ? { subjectId: quizSubjectId } : {}),
         ...(quizTypes.length > 0 ? { questionTypes: quizTypes } : {}),
         questionCount: quizCount,
       });
@@ -152,24 +131,6 @@ export function QuizContent() {
         </CardHeader>
         <CardContent>
           <FieldGroup>
-            <Field orientation="vertical">
-              <FieldLabel>{t('quiz_subject')}</FieldLabel>
-              <FieldContent>
-                <Select value={quizSubjectId} onValueChange={setQuizSubjectId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={t('quiz_subject_placeholder')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {subjects?.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FieldContent>
-            </Field>
-
             <Field orientation="vertical">
               <FieldLabel>{t('quiz_types')}</FieldLabel>
               <FieldContent>

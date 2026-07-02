@@ -45,7 +45,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
-import { flashcardKeys } from '@/lib/query-keys';
+import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 
 const DeckDetailDialogs = lazy(() =>
   import('@/components/flashcards/dialogs/deck-detail-dialogs').then((mod) => ({
@@ -171,7 +171,7 @@ export function DeckDetailScreen({
     nextCursor: string | null;
     hasMore: boolean;
   }>({
-    queryKey: flashcardKeys.topics.paginated({}),
+    queryKey: topicKeys.paginated({}),
     url: '/api/v1/flashcards/topics?limit=200',
   });
   const { data: currentDeck, isLoading: decksLoading } = useApiQuery<Deck>({

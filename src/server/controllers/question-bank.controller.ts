@@ -4,19 +4,20 @@ import { hasPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
 import { withErrorHandling } from '@/lib/with-error-handling';
 import {
-  BatchDeleteTopicSchema,
-  BulkCreateTopicSchema,
-  CreateTopicSchema,
-  TopicListQuerySchema,
-  UpdateTopicSchema,
+  BatchDeleteQuestionBankSchema,
+  BulkCreateQuestionBankSchema,
+  CreateQuestionBankSchema,
+  QuestionBankListQuerySchema,
+  UpdateQuestionBankSchema,
 } from '@/server/models';
-import { flashcardTopicService } from '@/server/services';
+import { questionBankService } from '@/server/services';
 
-export class FlashcardTopicController {
+export class QuestionBankController {
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      if (!(await hasPermission(ctx, Permission.STUDY_CREATE))) throw new AppError('FORBIDDEN');
-      const parsed = CreateTopicSchema.safeParse(body);
+      if (!(await hasPermission(ctx, Permission.QUESTION_BANK_CREATE)))
+        throw new AppError('FORBIDDEN');
+      const parsed = CreateQuestionBankSchema.safeParse(body);
 
       if (!parsed.success) {
         return {
@@ -27,15 +28,15 @@ export class FlashcardTopicController {
         };
       }
 
-      const topic = await flashcardTopicService.create(parsed.data, ctx);
+      const bank = await questionBankService.create(parsed.data, ctx);
 
-      return { success: true, statusCode: 201, data: topic };
+      return { success: true, statusCode: 201, data: bank };
     }, ctx);
   }
 
   async list(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const parsed = TopicListQuerySchema.safeParse(body ?? {});
+      const parsed = QuestionBankListQuerySchema.safeParse(body ?? {});
 
       if (!parsed.success) {
         return {
@@ -46,22 +47,23 @@ export class FlashcardTopicController {
         };
       }
 
-      const result = await flashcardTopicService.list(ctx, parsed.data);
+      const result = await questionBankService.list(ctx, parsed.data);
+
       return { success: true, statusCode: 200, data: result };
     }, ctx);
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const topic = await flashcardTopicService.getById(id, ctx);
+      const bank = await questionBankService.getById(id, ctx);
 
-      return { success: true, statusCode: 200, data: topic };
+      return { success: true, statusCode: 200, data: bank };
     }, ctx);
   }
 
   async update(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const parsed = UpdateTopicSchema.safeParse(body);
+      const parsed = UpdateQuestionBankSchema.safeParse(body);
 
       if (!parsed.success) {
         return {
@@ -72,15 +74,15 @@ export class FlashcardTopicController {
         };
       }
 
-      const topic = await flashcardTopicService.update(id, parsed.data, ctx);
+      const bank = await questionBankService.update(id, parsed.data, ctx);
 
-      return { success: true, statusCode: 200, data: topic };
+      return { success: true, statusCode: 200, data: bank };
     }, ctx);
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      await flashcardTopicService.delete(id, ctx);
+      await questionBankService.delete(id, ctx);
 
       return { success: true, statusCode: 200, data: { success: true } };
     }, ctx);
@@ -88,7 +90,7 @@ export class FlashcardTopicController {
 
   async bulkCreate(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const parsed = BulkCreateTopicSchema.safeParse(body);
+      const parsed = BulkCreateQuestionBankSchema.safeParse(body);
 
       if (!parsed.success) {
         return {
@@ -99,15 +101,15 @@ export class FlashcardTopicController {
         };
       }
 
-      const topics = await flashcardTopicService.bulkCreate(parsed.data, ctx);
+      const banks = await questionBankService.bulkCreate(parsed.data, ctx);
 
-      return { success: true, statusCode: 201, data: topics };
+      return { success: true, statusCode: 201, data: banks };
     }, ctx);
   }
 
   async batchDelete(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      const parsed = BatchDeleteTopicSchema.safeParse(body);
+      const parsed = BatchDeleteQuestionBankSchema.safeParse(body);
 
       if (!parsed.success) {
         return {
@@ -118,11 +120,11 @@ export class FlashcardTopicController {
         };
       }
 
-      const result = await flashcardTopicService.batchDelete(parsed.data, ctx);
+      const result = await questionBankService.batchDelete(parsed.data, ctx);
 
       return { success: true, statusCode: 200, data: result };
     }, ctx);
   }
 }
 
-export const flashcardTopicController = new FlashcardTopicController();
+export const questionBankController = new QuestionBankController();

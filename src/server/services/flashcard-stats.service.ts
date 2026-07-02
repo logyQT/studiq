@@ -113,10 +113,7 @@ export class FlashcardStatsService {
       .in('flashcard_id', flashcardIds);
 
     const topicIds = [...new Set((topicAssignments ?? []).map((a) => a.topic_id))];
-    const { data: topics } = await supabase
-      .from('flashcard_topics')
-      .select('id, name')
-      .in('id', topicIds);
+    const { data: topics } = await supabase.from('topics').select('id, name').in('id', topicIds);
 
     const topicNameMap = new Map((topics ?? []).map((t) => [t.id, t.name]));
     const cardToTopicIds = new Map<string, string[]>();

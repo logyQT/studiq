@@ -22,8 +22,32 @@ export class QuizService {
 
     query = query.in('type', config.questionTypes);
 
-    if (config.subjectId) {
-      query = query.eq('subject_id', config.subjectId);
+    if (config.bankId) {
+      const { data: bankQuestionIds } = await supabase
+        .from('question_bank_assignments')
+        .select('question_id')
+        .eq('bank_id', config.bankId);
+
+      const ids = bankQuestionIds?.map((b) => b.question_id) ?? [];
+      if (ids.length > 0) {
+        query = query.in('id', ids);
+      } else {
+        return { questions: [], attemptId: '' };
+      }
+    }
+
+    if (config.topicIds && config.topicIds.length > 0) {
+      const { data: topicQuestionIds } = await supabase
+        .from('question_topic_assignments')
+        .select('question_id')
+        .in('topic_id', config.topicIds);
+
+      const ids = topicQuestionIds?.map((t) => t.question_id) ?? [];
+      if (ids.length > 0) {
+        query = query.in('id', ids);
+      } else {
+        return { questions: [], attemptId: '' };
+      }
     }
 
     const { data: allQuestions, error: fetchError } = await query;
@@ -32,7 +56,8 @@ export class QuizService {
         traceId: ctx.traceId,
         count: allQuestions?.length ?? 0,
         questionTypes: config.questionTypes,
-        subjectId: config.subjectId,
+        bankId: config.bankId,
+        topicIds: config.topicIds,
       },
     });
     if (fetchError) throw mapSupabaseError(fetchError);

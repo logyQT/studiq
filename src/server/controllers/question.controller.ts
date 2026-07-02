@@ -30,7 +30,8 @@ export class QuestionController {
   async list(
     ctx: RequestContext,
     filters?: {
-      subjectId?: string;
+      bankId?: string;
+      topicIds?: string;
       type?: string;
     },
   ): Promise<ControllerResponse> {

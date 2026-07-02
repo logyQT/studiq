@@ -710,7 +710,7 @@ export class FlashcardPracticeService {
     const { data: flashcards, error } = await supabase
       .from('flashcards')
       .select(
-        'id, front, back, created_at, flashcard_deck_assignments(deck_id, flashcard_decks(name)), flashcard_topic_assignments(topic_id, flashcard_topics(name))',
+        'id, front, back, created_at, flashcard_deck_assignments(deck_id, flashcard_decks(name)), flashcard_topic_assignments(topic_id, topics(name))',
       )
       .in('id', matchingIds);
     if (error) throw mapSupabaseError(error);
@@ -726,7 +726,7 @@ export class FlashcardPracticeService {
       }>;
       flashcard_topic_assignments?: Array<{
         topic_id: string;
-        flashcard_topics?: Array<{ name: string }>;
+        topics?: Array<{ name: string }>;
       }>;
     }
 
@@ -740,7 +740,7 @@ export class FlashcardPracticeService {
         deckName: fc.flashcard_deck_assignments?.[0]?.flashcard_decks?.[0]?.name ?? null,
         topicNames:
           fc.flashcard_topic_assignments?.flatMap((a) => {
-            const name = (a.flashcard_topics as unknown as { name: string } | undefined)?.name;
+            const name = (a.topics as unknown as { name: string } | undefined)?.name;
             return name ? [name] : [];
           }) ?? [],
         reviewState: state

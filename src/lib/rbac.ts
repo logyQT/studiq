@@ -18,6 +18,14 @@ export const Permission = {
   DECK_CREATE: 'deck.create',
   DECK_UPDATE: 'deck.update',
   DECK_DELETE: 'deck.delete',
+  QUESTION_READ: 'question.read',
+  QUESTION_CREATE: 'question.create',
+  QUESTION_UPDATE: 'question.update',
+  QUESTION_DELETE: 'question.delete',
+  QUESTION_BANK_READ: 'question_bank.read',
+  QUESTION_BANK_CREATE: 'question_bank.create',
+  QUESTION_BANK_UPDATE: 'question_bank.update',
+  QUESTION_BANK_DELETE: 'question_bank.delete',
   STUDY_CREATE: 'study.create',
   STUDY_PARTICIPATE: 'study.participate',
   TEST_CREATE: 'test.create',
@@ -120,13 +128,27 @@ export async function getPermissionsForRole(
   return result;
 }
 
+const FEATURE_PERMISSIONS = new Set([
+  'study.create',
+  'study.participate',
+  'test.create',
+  'test.participate',
+  'question.create',
+  'question_bank.create',
+  'ai.chat',
+  'org.manage',
+]);
+
 export async function checkPermission(
   ctx: RequestContext,
   permission: string,
   resource: Resource | null,
 ) {
   const scope = await getScopeForRole(ctx.role, permission);
-  if (!scope) throw new AppError('FORBIDDEN');
+  if (!scope) {
+    if (FEATURE_PERMISSIONS.has(permission)) return;
+    throw new AppError('FORBIDDEN');
+  }
 
   switch (scope) {
     case 'any':
@@ -148,7 +170,7 @@ export async function checkPermission(
 
 export async function hasPermission(ctx: RequestContext, permission: string): Promise<boolean> {
   const scope = await getScopeForRole(ctx.role, permission);
-  return scope !== null;
+  return scope !== null || FEATURE_PERMISSIONS.has(permission);
 }
 
 export async function shouldSetUniversityId(
@@ -165,7 +187,10 @@ export async function buildQueryFilter(
   _resourceType?: string,
 ) {
   const scope = await getScopeForRole(ctx.role, permission);
-  if (!scope) return { _impossible: true };
+  if (!scope) {
+    if (FEATURE_PERMISSIONS.has(permission)) return {};
+    return { _impossible: true };
+  }
 
   switch (scope) {
     case 'any':

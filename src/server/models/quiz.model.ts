@@ -4,7 +4,8 @@ import { registry, z } from '@/lib/zod';
 export const GenerateQuizSchema = registry.register(
   'GenerateQuizRequest',
   z.object({
-    subjectId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+    bankId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+    topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
     questionTypes: z
       .array(z.enum(['mcq', 'true_false', 'open']))
       .min(1, { error: ValidationErrorCode.INVALID_INPUT }),

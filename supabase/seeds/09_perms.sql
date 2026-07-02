@@ -15,6 +15,14 @@ INSERT INTO public.permissions (name) VALUES
   ('deck.create'),
   ('deck.update'),
   ('deck.delete'),
+  ('question.read'),
+  ('question.create'),
+  ('question.update'),
+  ('question.delete'),
+  ('question_bank.read'),
+  ('question_bank.create'),
+  ('question_bank.update'),
+  ('question_bank.delete'),
   ('study.create'),
   ('study.participate'),
   ('test.create'),
@@ -36,6 +44,8 @@ WHERE p.name IN (
   'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
   'topic.read', 'topic.create', 'topic.update', 'topic.delete',
   'deck.read', 'deck.create', 'deck.update', 'deck.delete',
+  'question.read', 'question.create', 'question.update', 'question.delete',
+  'question_bank.read', 'question_bank.create', 'question_bank.update', 'question_bank.delete',
   'study.participate', 'test.participate'
 )
 ON CONFLICT DO NOTHING;
@@ -53,6 +63,8 @@ WHERE p.name IN (
   'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
   'topic.read', 'topic.create', 'topic.update', 'topic.delete',
   'deck.read', 'deck.create', 'deck.update', 'deck.delete',
+  'question.read', 'question.create', 'question.update', 'question.delete',
+  'question_bank.read', 'question_bank.create', 'question_bank.update', 'question_bank.delete',
   'study.create', 'study.participate', 'test.create', 'test.participate', 'ai.chat'
 )
 ON CONFLICT DO NOTHING;
@@ -61,7 +73,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO public.role_permissions (role, permission_id, scope)
 SELECT 'student', p.id,
   CASE
-    WHEN p.name IN ('flashcard.read', 'topic.read', 'deck.read') THEN 'university'
+    WHEN p.name IN ('flashcard.read', 'topic.read', 'deck.read', 'question.read', 'question_bank.read') THEN 'university'
     WHEN p.name IN ('study.participate', 'test.participate', 'ai.chat') THEN 'granted'
     WHEN p.name IN ('study.create', 'test.create') THEN 'own'
     ELSE 'own'
@@ -71,6 +83,8 @@ WHERE p.name IN (
   'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
   'topic.read', 'topic.create', 'topic.update', 'topic.delete',
   'deck.read', 'deck.create', 'deck.update', 'deck.delete',
+  'question.read', 'question.create', 'question.update', 'question.delete',
+  'question_bank.read', 'question_bank.create', 'question_bank.update', 'question_bank.delete',
   'study.create', 'study.participate', 'test.create', 'test.participate', 'ai.chat'
 )
 ON CONFLICT DO NOTHING;
@@ -79,7 +93,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO public.role_permissions (role, permission_id, scope)
 SELECT 'teacher', p.id,
   CASE
-    WHEN p.name IN ('flashcard.create', 'topic.create', 'deck.create') THEN 'university'
+    WHEN p.name IN ('flashcard.create', 'topic.create', 'deck.create', 'question.create', 'question_bank.create') THEN 'university'
     WHEN p.name IN ('study.create', 'test.create') THEN 'university'
     WHEN p.name IN ('study.participate', 'test.participate', 'ai.chat', 'org.manage') THEN 'granted'
     ELSE 'own'
@@ -89,6 +103,8 @@ WHERE p.name IN (
   'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
   'topic.read', 'topic.create', 'topic.update', 'topic.delete',
   'deck.read', 'deck.create', 'deck.update', 'deck.delete',
+  'question.read', 'question.create', 'question.update', 'question.delete',
+  'question_bank.read', 'question_bank.create', 'question_bank.update', 'question_bank.delete',
   'study.create', 'study.participate', 'test.create', 'test.participate', 'ai.chat', 'org.manage'
 )
 ON CONFLICT DO NOTHING;
@@ -97,7 +113,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO public.role_permissions (role, permission_id, scope)
 SELECT 'university_admin', p.id,
   CASE
-    WHEN p.name IN ('flashcard.create', 'topic.create', 'deck.create') THEN 'own'
+    WHEN p.name IN ('flashcard.create', 'topic.create', 'deck.create', 'question.create', 'question_bank.create') THEN 'own'
     WHEN p.name IN ('study.create', 'test.create') THEN 'own'
     WHEN p.name IN ('study.participate', 'test.participate', 'ai.chat', 'org.manage') THEN 'granted'
     ELSE 'university'
@@ -107,6 +123,8 @@ WHERE p.name IN (
   'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
   'topic.read', 'topic.create', 'topic.update', 'topic.delete',
   'deck.read', 'deck.create', 'deck.update', 'deck.delete',
+  'question.read', 'question.create', 'question.update', 'question.delete',
+  'question_bank.read', 'question_bank.create', 'question_bank.update', 'question_bank.delete',
   'study.create', 'study.participate', 'test.create', 'test.participate', 'ai.chat', 'org.manage'
 )
 ON CONFLICT DO NOTHING;

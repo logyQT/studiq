@@ -1,12 +1,6 @@
 export type TeacherStatsResponse = {
   totalQuestions: number;
   totalFlashcards: number;
-  subject?: {
-    totalQuestions: number;
-    byType: Record<string, number>;
-    byDifficulty: Record<string, number>;
-    problematicQuestions: unknown[];
-  };
 };
 
 export type StudentStatsResponse = {

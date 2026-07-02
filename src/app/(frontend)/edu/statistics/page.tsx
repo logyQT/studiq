@@ -4,13 +4,6 @@ import { FileText, Layers, TrendingDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
 
 interface TeacherStats {
@@ -29,23 +22,11 @@ interface TeacherStats {
   };
 }
 
-interface Subject {
-  id: string;
-  name: string;
-}
-
 export default function EduStatsPage() {
   const t = useTranslations('EduStatisticsPage');
   const [stats, setStats] = useState<TeacherStats | null>(null);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [selectedSubject, setSelectedSubject] = useState<string>('__all__');
+  const [selectedSubject, _setSelectedSubject] = useState<string>('__all__');
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch('/api/v1/subjects')
-      .then((r) => r.json())
-      .then((r) => setSubjects(r.data));
-  }, []);
 
   useEffect(() => {
     const url =
@@ -66,19 +47,6 @@ export default function EduStatsPage() {
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">{t('title')}</h2>
-        <Select value={selectedSubject} onValueChange={setSelectedSubject}>
-          <SelectTrigger className="w-64">
-            <SelectValue placeholder={t('all_subjects')} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">{t('all_subjects')}</SelectItem>
-            {subjects.map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                {s.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
