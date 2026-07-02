@@ -1,18 +1,18 @@
 -- ==========================================
 -- TABLE: invitations
--- Depends on: _enums.sql, organizations.sql, profiles.sql
+-- Depends on: 00_enums.sql, 03_organizations.sql, 04_profiles.sql
 -- ==========================================
 
 CREATE TABLE public.invitations (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        text NOT NULL,
-  email       text NOT NULL,
-  token       text UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(16), 'hex'),
-  target_role user_role NOT NULL,
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name            text NOT NULL,
+  email           text NOT NULL,
+  token           text UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(16), 'hex'),
+  target_role     user_role NOT NULL,
   organization_id uuid REFERENCES public.organizations(id) ON DELETE CASCADE,
-  inviter_id  uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
-  is_accepted boolean DEFAULT false,
-  expires_at  timestamptz NOT NULL
+  inviter_id      uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
+  is_accepted     boolean DEFAULT false,
+  expires_at      timestamptz NOT NULL
 );
 
 -- ==========================================
@@ -20,7 +20,8 @@ CREATE TABLE public.invitations (
 -- Fires on auth.users INSERT.
 -- If the signup carries a valid invite token:
 --   - creates a profile with the invited role + organization
---   - marks the invitation as accepted (atomically)
+--   - creates an org_members entry
+--   - marks the invitation as accepted
 -- Otherwise falls back to a standard free-tier profile.
 -- ==========================================
 
@@ -47,6 +48,10 @@ BEGIN
         invite_record.organization_id
       );
 
+      INSERT INTO public.org_members (organization_id, user_id, role)
+      VALUES (invite_record.organization_id, NEW.id, invite_record.target_role)
+      ON CONFLICT DO NOTHING;
+
       UPDATE public.invitations
         SET is_accepted = true
         WHERE id = invite_record.id;
@@ -55,7 +60,6 @@ BEGIN
     END IF;
   END IF;
 
-  -- Fallback: standard free signup
   INSERT INTO public.profiles (id, email, full_name, role)
   VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data->>'name', 'free');
 

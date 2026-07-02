@@ -42,7 +42,7 @@ BEGIN
   -- ═══════════════════════════════════════════════
   -- TOPICS (7)
   -- ═══════════════════════════════════════════════
-  INSERT INTO flashcard_topics (name, created_by) VALUES
+  INSERT INTO topics (name, created_by) VALUES
     ('Biology', v_user_id),
     ('Chemistry', v_user_id),
     ('History', v_user_id),
@@ -51,7 +51,7 @@ BEGIN
     ('Physics', v_user_id),
     ('Geography', v_user_id);
 
-  SELECT array_agg(id) INTO v_topic_ids FROM flashcard_topics WHERE created_by = v_user_id;
+  SELECT array_agg(id) INTO v_topic_ids FROM topics WHERE created_by = v_user_id;
 
   -- ═══════════════════════════════════════════════
   -- DECKS (8)
@@ -228,7 +228,7 @@ BEGIN
   -- ═══════════════════════════════════════════════
   INSERT INTO flashcard_topic_assignments (flashcard_id, topic_id)
   SELECT f.id, t.id
-  FROM flashcards f, flashcard_topics t
+  FROM flashcards f, topics t
   WHERE f.created_by = v_user_id
     AND (
       (t.name = 'Biology' AND (

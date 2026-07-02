@@ -1,6 +1,6 @@
 -- ==========================================
 -- TABLE: error_logs
--- Purpose: Store unhandled exceptions with UUID for debugging
+-- Stores unhandled exceptions for debugging.
 -- Depends on: 04_profiles.sql
 -- ==========================================
 
@@ -18,13 +18,3 @@ CREATE TABLE public.error_logs (
 
 CREATE INDEX idx_error_logs_created_at ON public.error_logs(created_at DESC);
 CREATE INDEX idx_error_logs_error_code ON public.error_logs(error_code);
-
-ALTER TABLE public.error_logs ENABLE ROW LEVEL SECURITY;
-
-GRANT DELETE ON TABLE public.error_logs TO service_role;
-GRANT INSERT ON TABLE public.error_logs TO service_role;
-GRANT REFERENCES ON TABLE public.error_logs TO service_role;
-GRANT SELECT ON TABLE public.error_logs TO service_role;
-GRANT TRIGGER ON TABLE public.error_logs TO service_role;
-GRANT TRUNCATE ON TABLE public.error_logs TO service_role;
-GRANT UPDATE ON TABLE public.error_logs TO service_role;

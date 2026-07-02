@@ -430,7 +430,7 @@ ON CONFLICT DO NOTHING;
 -- ----------------------------------------------------------
 -- Topics (15 topics, 3 per deck)
 -- ----------------------------------------------------------
-INSERT INTO "public"."flashcard_topics" ("id", "organization_id", "name", "created_by", "created_at") VALUES
+INSERT INTO "public"."topics" ("id", "organization_id", "name", "created_by", "created_at") VALUES
   -- Historia Polski
   ('00000000-0000-4000-8010-000000000201', '00000000-0000-4000-8000-000000000007', 'Starożytność i średniowiecze', '00000000-0000-4000-8001-000000000025', now()),
   ('00000000-0000-4000-8010-000000000202', '00000000-0000-4000-8000-000000000007', 'Nowożytność i rozbiory', '00000000-0000-4000-8001-000000000025', now()),

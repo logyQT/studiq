@@ -1,7 +1,8 @@
 -- ==========================================
 -- ENUMS: learning platform
--- Depends on: nothing
+-- Defined in 00_enums.sql (included here for
+-- dependency tracking / readability only).
 -- ==========================================
 
-CREATE TYPE question_type AS ENUM ('mcq', 'true_false', 'open');
-CREATE TYPE question_difficulty AS ENUM ('easy', 'medium', 'hard');
+-- question_type and question_difficulty are now
+-- created in 00_enums.sql alongside user_role.

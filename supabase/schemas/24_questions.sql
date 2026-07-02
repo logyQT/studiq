@@ -1,18 +1,25 @@
 -- ==========================================
 -- TABLE: questions
--- Depends on: 18_learning_enums.sql, 04_profiles.sql
+-- Depends on: 01_config.sql, 00_enums.sql, 03_organizations.sql, 04_profiles.sql
 -- ==========================================
 
 CREATE TABLE public.questions (
-  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid REFERENCES public.organizations(id) ON DELETE SET NULL,
-  created_by    uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
-  type          question_type NOT NULL DEFAULT 'mcq',
-  content       text NOT NULL,
-  explanation   text,
-  difficulty    question_difficulty NOT NULL DEFAULT 'medium',
-  created_at    timestamptz DEFAULT now(),
-  updated_at    timestamptz DEFAULT now()
+  created_by      uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
+  type            question_type NOT NULL DEFAULT 'mcq',
+  content         text NOT NULL,
+  explanation     text,
+  search_vector   tsvector
+                  GENERATED ALWAYS AS (
+                    to_tsvector('english', coalesce(content, '')) ||
+                    to_tsvector('polish', coalesce(content, '')) ||
+                    to_tsvector('english', coalesce(explanation, '')) ||
+                    to_tsvector('polish', coalesce(explanation, ''))
+                  ) STORED,
+  created_at      timestamptz DEFAULT now(),
+  updated_at      timestamptz DEFAULT now()
 );
 
+CREATE INDEX idx_questions_search_vector ON public.questions USING GIN (search_vector);
 CREATE INDEX idx_questions_created_by ON public.questions(created_by);
