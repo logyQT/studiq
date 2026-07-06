@@ -57,7 +57,7 @@ export const QuestionBankCard = memo(
           if (isSelecting) {
             onToggleSelect();
           } else {
-            router.push(`${basePath}/banks/${bank.id}`);
+            router.push(`${basePath}/${bank.id}`);
           }
         }}
       >
@@ -273,10 +273,10 @@ export const QuestionBankCard = memo(
               className="gap-1.5 text-primary hover:text-primary hover:bg-primary/10 font-semibold px-2 -mr-2 transition-colors"
               onClick={(e) => {
                 e.stopPropagation();
-                router.push(`${basePath}/banks/${bank.id}`);
+                router.push(`${basePath}/${bank.id}`);
               }}
             >
-              {canUpdate ? t('manage_bank') : t('view_bank')}
+              {canUpdate ? t('common_manage') : t('common_view')}
               {canUpdate ? <ArrowRight className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
           </div>

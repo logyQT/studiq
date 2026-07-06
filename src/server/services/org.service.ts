@@ -32,13 +32,18 @@ export class OrgService {
     );
 
     return memberships.map(
-      (m: { organization_id: string; org_role_id: string; org_roles: { name: string }[] }) => {
+      (m: {
+        organization_id: string;
+        org_role_id: string;
+        org_roles: { name: string } | { name: string }[];
+      }) => {
         const org = orgMap.get(m.organization_id);
+        const roles = Array.isArray(m.org_roles) ? m.org_roles : [m.org_roles];
         return {
           id: m.organization_id,
           name: org?.name ?? 'Unknown',
           slug: org?.slug ?? '',
-          orgRoleName: m.org_roles?.[0]?.name ?? 'member',
+          orgRoleName: roles[0]?.name ?? 'member',
           orgRoleId: m.org_role_id,
           isActive: m.organization_id === ctx.activeOrgId,
         };

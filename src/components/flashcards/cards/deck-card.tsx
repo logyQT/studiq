@@ -61,7 +61,7 @@ export const DeckCard = memo(
           if (isSelecting) {
             onToggleSelect();
           } else {
-            router.push(`${basePath}/decks/${deck.id}`);
+            router.push(`${basePath}/${deck.id}`);
           }
         }}
       >
@@ -117,7 +117,7 @@ export const DeckCard = memo(
                 )}
                 {!canUpdate && (
                   <span className="flex items-center text-[11px] text-muted-foreground/60 gap-0.5 font-medium ml-0.5">
-                    <Eye className="h-3 w-3" /> {t('view_deck')}
+                    <Eye className="h-3 w-3" /> {t('common_view')}
                   </span>
                 )}
               </div>
@@ -260,10 +260,10 @@ export const DeckCard = memo(
               className="gap-1.5 text-primary hover:text-primary hover:bg-primary/10 font-semibold px-2 -mr-2 transition-colors"
               onClick={(e) => {
                 e.stopPropagation();
-                router.push(`${basePath}/decks/${deck.id}`);
+                router.push(`${basePath}/${deck.id}`);
               }}
             >
-              {canUpdate ? t('manage_deck') : t('view_deck')}
+              {canUpdate ? t('common_manage') : t('common_view')}
               {canUpdate ? <ArrowRight className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
           </div>

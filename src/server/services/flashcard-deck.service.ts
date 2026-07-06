@@ -121,7 +121,7 @@ export class FlashcardDeckService {
 
     let query = supabase
       .from('flashcard_decks')
-      .select('*, flashcard_count:flashcard_deck_assignments(count)');
+      .select('*, flashcard_count:flashcard_deck_assignments(count), deck_groups(group_id)');
 
     // Apply RBAC filter
     if (filter._impossible) return { items: [], nextCursor: null, hasMore: false };
@@ -182,9 +182,11 @@ export class FlashcardDeckService {
     const sliced = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
     const items = sliced.map((item) => {
       const countArr = item.flashcard_count as { count: number }[] | undefined;
+      const groups = item.deck_groups as { group_id: string }[] | undefined;
       return {
         ...item,
         flashcard_count: countArr?.[0]?.count ?? 0,
+        groupIds: groups?.map((g) => g.group_id) ?? [],
         suspended: suspendedIds.has(item.id as string),
       };
     });
@@ -236,7 +238,7 @@ export class FlashcardDeckService {
 
     let query = supabase
       .from('flashcard_decks')
-      .select('*, flashcard_count:flashcard_deck_assignments(count)')
+      .select('*, flashcard_count:flashcard_deck_assignments(count), deck_groups(group_id)')
       .eq('id', id);
 
     if (filter._impossible) throw new AppError('NOT_FOUND');
@@ -252,9 +254,13 @@ export class FlashcardDeckService {
     const countArr = (deck as Record<string, unknown>).flashcard_count as
       | { count: number }[]
       | undefined;
+    const groups = (deck as Record<string, unknown>).deck_groups as
+      | { group_id: string }[]
+      | undefined;
     return {
       ...deck,
       flashcard_count: countArr?.[0]?.count ?? 0,
+      groupIds: groups?.map((g) => g.group_id) ?? [],
       suspended: suspendedIds.has(id),
     } as unknown as Deck;
   }
@@ -346,7 +352,15 @@ export class FlashcardDeckService {
     }
 
     log.trace.info('update/before_getById', { metadata: { traceId: ctx.traceId } });
-    return this.getById(id, ctx);
+    const updated = await this.getById(id, ctx);
+    log.api.info('update/result', {
+      metadata: {
+        deckId: id,
+        visibility: (updated as any).visibility,
+        groupIds: (updated as any).groupIds,
+      },
+    });
+    return updated;
   }
 
   async delete(id: string, ctx: RequestContext) {

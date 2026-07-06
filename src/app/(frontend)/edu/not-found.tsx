@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, HelpCircle, Layers, LayoutDashboard, Users } from 'lucide-react';
+import { BarChart3, HelpCircle, Layers, LayoutDashboard } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 
@@ -58,6 +58,8 @@ export default function EduNotFound() {
               <BarChart3 className="h-3.5 w-3.5" />
               {t('statistics')}
             </Link>
+            {/* UI_HIDDEN: classroom section — stale for org-managed flow */}
+            {/*
             <Link
               href="/edu/classroom"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
@@ -65,6 +67,7 @@ export default function EduNotFound() {
               <Users className="h-3.5 w-3.5" />
               {t('classroom')}
             </Link>
+            */}
           </div>
         </div>
       </div>

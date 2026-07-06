@@ -84,11 +84,7 @@ export default function AppOverviewPage() {
               <RotateCcw className="w-4 h-4 mr-1.5" />
               {t('continue_reviewing')}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push('/app/flashcards/decks')}
-            >
+            <Button variant="outline" size="sm" onClick={() => router.push('/app/flashcards')}>
               <Plus className="w-4 h-4 mr-1.5" /> {t('create_deck')}
             </Button>
           </div>
@@ -161,7 +157,7 @@ export default function AppOverviewPage() {
               </div>
             </Link>
 
-            <Link href="/app/flashcards/decks" className="group block">
+            <Link href="/app/flashcards" className="group block">
               <div className="flex items-center gap-4 p-4 rounded-xl bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/10 hover:border-emerald-500/25 transition-all duration-200 cursor-pointer">
                 <div className="rounded-xl bg-emerald-500/15 p-3 shrink-0 group-hover:scale-110 transition-transform duration-200">
                   <Layers className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />

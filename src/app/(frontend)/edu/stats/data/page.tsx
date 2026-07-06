@@ -179,10 +179,7 @@ export default function StatsDataPage() {
                 {flashStats.byDeck.map((deck) => (
                   <TableRow key={deck.deckId}>
                     <TableCell className="font-medium">
-                      <Link
-                        href={`/edu/flashcards/decks/${deck.deckId}`}
-                        className="hover:underline"
-                      >
+                      <Link href={`/edu/flashcards/${deck.deckId}`} className="hover:underline">
                         {deck.deckName}
                       </Link>
                     </TableCell>

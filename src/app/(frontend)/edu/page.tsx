@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowRight, FileText, Layers, Plus, Users, Zap } from 'lucide-react';
+import { ArrowRight, FileText, Layers, Plus, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
@@ -62,7 +62,8 @@ export default function EduOverviewPage() {
             <CardDescription>{t('quick_actions_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 pb-6">
-            {/* Invite students CTA */}
+            {/* UI_HIDDEN: classroom section — stale for org-managed flow */}
+            {/*
             <Link href="/edu/classroom/invite" className="group block">
               <div className="flex items-center gap-4 p-4 rounded-xl bg-green-500/5 hover:bg-green-500/10 border border-green-500/10 hover:border-green-500/25 transition-all duration-200 cursor-pointer">
                 <div className="rounded-xl bg-green-500/15 p-3 shrink-0 group-hover:scale-110 transition-transform duration-200">
@@ -77,6 +78,7 @@ export default function EduOverviewPage() {
                 <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-green-500 group-hover:translate-x-1 transition-all duration-200 shrink-0" />
               </div>
             </Link>
+            */}
 
             <Link href="/edu/questions" className="group block">
               <div className="flex items-center gap-4 p-4 rounded-xl bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/10 hover:border-blue-500/25 transition-all duration-200 cursor-pointer">

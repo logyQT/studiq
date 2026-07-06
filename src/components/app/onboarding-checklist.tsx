@@ -39,10 +39,10 @@ export function OnboardingChecklist() {
   if (dismissed || isLoading) return null;
 
   const items = [
-    { key: 'create_deck', href: '/app/flashcards/decks', done: (stats?.totalDecks ?? 0) > 0 },
+    { key: 'create_deck', href: '/app/flashcards', done: (stats?.totalDecks ?? 0) > 0 },
     {
       key: 'add_flashcards',
-      href: '/app/flashcards/decks',
+      href: '/app/flashcards',
       done: (stats?.totalFlashcards ?? 0) > 0,
     },
     { key: 'take_quiz', href: '/app/study', done: (stats?.totalQuizzes ?? 0) > 0 },

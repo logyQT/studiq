@@ -7,6 +7,7 @@ export interface Deck {
   updated_at?: string;
   suspended?: boolean;
   visibility?: 'personal' | 'group';
+  groupIds?: string[];
 }
 
 export interface Topic {

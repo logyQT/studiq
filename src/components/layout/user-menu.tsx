@@ -1,7 +1,6 @@
 'use client';
 
 import { ChevronsUpDown } from 'lucide-react';
-import { useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
 import {
   DropdownMenu,
@@ -16,6 +15,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar';
+import { Skeleton } from '@/components/ui/skeleton';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { cn } from '@/lib/utils';
 import { UserMenuHeader, UserMenuItems } from './user-menu-content';
@@ -26,10 +26,25 @@ interface UserMenuProps {
 
 export function UserMenu({ className }: UserMenuProps) {
   const { user } = useAuth();
-  const t = useTranslations('DashboardLayout');
   const { isMobile } = useSidebar();
 
-  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || t('default_user');
+  if (!user) {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton size="lg" disabled>
+            <Skeleton className="size-8 rounded-lg shrink-0" />
+            <div className="grid flex-1 gap-1.5 group-data-[collapsible=icon]:hidden">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-3 w-20" />
+            </div>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    );
+  }
+
+  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'User';
 
   return (
     <SidebarMenu>

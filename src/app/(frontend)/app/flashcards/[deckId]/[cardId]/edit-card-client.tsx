@@ -68,7 +68,7 @@ export default function EditCardClient({ deckId, cardId }: EditCardClientProps) 
       queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
       queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.detail(deckId) });
       toast.success(t('flashcard_updated'));
-      router.push(`/app/flashcards/decks/${deckId}`);
+      router.push(`/app/flashcards/${deckId}`);
     },
     onError: () => {
       toast.error(t('save_failed'));

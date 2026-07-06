@@ -13,7 +13,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useCan } from '@/hooks/use-can';
-import { useFeature } from '@/hooks/use-feature';
 import type { Topic } from '@/types/flashcards';
 
 interface FlashcardToolbarProps {
@@ -26,6 +25,7 @@ interface FlashcardToolbarProps {
   onSortChange: (sortBy: string, sortOrder: string) => void;
   topics: Topic[];
   canGenerate: boolean;
+  canAddCard?: boolean;
   onGenerate: () => void;
   onCreateNew: () => void;
   t: ReturnType<typeof useTranslations>;
@@ -41,14 +41,15 @@ export function FlashcardToolbar({
   onSortChange,
   topics,
   canGenerate,
+  canAddCard,
   onGenerate,
   onCreateNew,
   t,
 }: FlashcardToolbarProps) {
   const { user } = useAuth();
   const can = useCan();
-  const canCreate = can('flashcard.create', user?.id);
-  const { hasAccess: hasAiAccess } = useFeature('ai.chat');
+  const canCreate = can({ permissions: ['flashcard.create'], createdBy: user?.id });
+  const hasAiAccess = can({ features: ['ai.chat'] });
   const hasAccessGenerate = canCreate && hasAiAccess;
 
   return (
@@ -108,7 +109,7 @@ export function FlashcardToolbar({
             <Sparkles className="h-4 w-4" /> {t('generate')}
           </Button>
         )}
-        {canCreate && (
+        {(canAddCard ?? canCreate) && (
           <Button size="sm" className="gap-1.5" onClick={onCreateNew}>
             <Plus className="h-4 w-4" /> {t('new_flashcard')}
           </Button>

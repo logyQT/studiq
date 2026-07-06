@@ -107,7 +107,7 @@ export function SingleCardDialogs({
           <div className="flex flex-col gap-3 py-4">
             <Button
               onClick={() => {
-                router.push(`${basePath}/decks/${copyResult?.deckId}`);
+                router.push(`${basePath}/${copyResult?.deckId}`);
                 onCopyResultClose();
               }}
             >

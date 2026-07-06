@@ -7,29 +7,49 @@ import { usePermissions } from '@/hooks/use-permissions';
 import { evaluate } from '@/lib/authz';
 import type { PermissionScope } from '@/lib/permissions';
 
+export type CanArg = {
+  permissions?: string[];
+  features?: string[];
+  createdBy?: string;
+  orgId?: string;
+};
+
 export function useCan() {
   const { user } = useAuth();
   const { activeOrg } = useOrgs();
   const { data } = usePermissions();
 
-  const permissions = data?.permissions as Record<string, PermissionScope | null> | undefined;
+  const pm = data?.permissions as Record<string, PermissionScope | null> | undefined;
+  const enabledFeatures = data?.features;
 
   return useCallback(
-    (permission: string, createdBy?: string, resourceOrgId?: string): boolean => {
-      if (!permissions || !user) return false;
-      const scope = permissions[permission];
-      if (!scope) return false;
+    ({ permissions, features, createdBy, orgId }: CanArg): boolean => {
+      if (!user) return false;
 
-      return evaluate({
-        scope,
-        userId: user.id,
-        resource: {
-          createdBy: createdBy ?? '',
-          orgId: resourceOrgId ?? null,
-          activeOrgId: activeOrg?.id ?? null,
-        },
-      });
+      if (features?.length) {
+        if (!enabledFeatures) return false;
+        if (!features.every((f) => enabledFeatures.includes(f))) return false;
+      }
+
+      if (permissions && permissions.length > 0) {
+        if (!pm) return false;
+        return permissions.every((p) => {
+          const scope = pm[p];
+          if (!scope) return false;
+          return evaluate({
+            scope,
+            userId: user.id,
+            resource: {
+              createdBy: createdBy ?? '',
+              orgId: orgId ?? null,
+              activeOrgId: activeOrg?.id ?? null,
+            },
+          });
+        });
+      }
+
+      return true;
     },
-    [permissions, user, activeOrg?.id],
+    [pm, enabledFeatures, user, activeOrg?.id],
   );
 }

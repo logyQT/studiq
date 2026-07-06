@@ -95,7 +95,7 @@ export default function RolesPage() {
     load();
   }, [load]);
 
-  async function handleSave(role: { name: string; description?: string }, id?: string) {
+  async function handleSave(role: { name: string; description?: string | null }, id?: string) {
     const url = id ? `/api/v1/organization/roles/${id}` : '/api/v1/organization/roles';
     const method = id ? 'PUT' : 'POST';
 
@@ -256,56 +256,54 @@ export default function RolesPage() {
                       <Button variant="ghost" size="icon" onClick={() => openPermEditor(role)}>
                         <ShieldCheck className="w-4 h-4" />
                       </Button>
+                      <Dialog
+                        open={editing?.id === role.id}
+                        onOpenChange={(o) => !o && setEditing(null)}
+                      >
+                        <DialogTrigger asChild>
+                          <Button variant="ghost" size="icon" onClick={() => setEditing(role)}>
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>{t('edit_title')}</DialogTitle>
+                          </DialogHeader>
+                          {editing?.id === role.id && (
+                            <RoleForm
+                              initial={role}
+                              onSave={(r) => handleSave(r, role.id)}
+                              onCancel={() => setEditing(null)}
+                              t={t}
+                            />
+                          )}
+                        </DialogContent>
+                      </Dialog>
                       {!role.isSystem && (
-                        <>
-                          <Dialog
-                            open={editing?.id === role.id}
-                            onOpenChange={(o) => !o && setEditing(null)}
-                          >
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="icon" onClick={() => setEditing(role)}>
-                                <Pencil className="w-4 h-4" />
+                        <Dialog
+                          open={deleting?.id === role.id}
+                          onOpenChange={(o) => !o && setDeleting(null)}
+                        >
+                          <DialogTrigger asChild>
+                            <Button variant="ghost" size="icon" onClick={() => setDeleting(role)}>
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>{t('delete_title')}</DialogTitle>
+                              <DialogDescription>{t('delete_desc')}</DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => setDeleting(null)}>
+                                {t('common_cancel')}
                               </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>{t('edit_title')}</DialogTitle>
-                              </DialogHeader>
-                              {editing?.id === role.id && (
-                                <RoleForm
-                                  initial={role}
-                                  onSave={(r) => handleSave(r, role.id)}
-                                  onCancel={() => setEditing(null)}
-                                  t={t}
-                                />
-                              )}
-                            </DialogContent>
-                          </Dialog>
-                          <Dialog
-                            open={deleting?.id === role.id}
-                            onOpenChange={(o) => !o && setDeleting(null)}
-                          >
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="icon" onClick={() => setDeleting(role)}>
-                                <Trash2 className="w-4 h-4 text-destructive" />
+                              <Button variant="destructive" onClick={() => handleDelete(role.id)}>
+                                {t('common_delete')}
                               </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>{t('delete_title')}</DialogTitle>
-                                <DialogDescription>{t('delete_desc')}</DialogDescription>
-                              </DialogHeader>
-                              <DialogFooter>
-                                <Button variant="outline" onClick={() => setDeleting(null)}>
-                                  {t('common_cancel')}
-                                </Button>
-                                <Button variant="destructive" onClick={() => handleDelete(role.id)}>
-                                  {t('common_delete')}
-                                </Button>
-                              </DialogFooter>
-                            </DialogContent>
-                          </Dialog>
-                        </>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
                       )}
                     </div>
                   </TableCell>
@@ -345,7 +343,7 @@ function RoleForm({
   t,
 }: {
   initial?: OrgRole;
-  onSave: (role: { name: string; description?: string }) => Promise<void>;
+  onSave: (role: { name: string; description?: string | null }) => Promise<void>;
   onCancel: () => void;
   t: (key: string, values?: Record<string, string | number>) => string;
 }) {
@@ -356,7 +354,7 @@ function RoleForm({
     e.preventDefault();
     await onSave({
       name,
-      description: description || undefined,
+      description: description || null,
     });
   }
 

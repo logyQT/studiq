@@ -54,7 +54,7 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
   const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
     queryKey: groupKeys.list(activeOrg?.id),
     url: '/api/v1/organization/groups',
-    enabled: !!activeOrg?.id && can('org.manage'),
+    enabled: !!activeOrg?.id && can({ features: ['org.manage'] }),
   });
   const accountType = user?.app_metadata?.account_type as AccountType | undefined;
 
@@ -339,8 +339,8 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
             onToggleSelect={() => handleToggleSelect(bank.id)}
             basePath={basePath}
             t={t}
-            canUpdate={can('question_bank.update', bank.created_by)}
-            canDelete={can('question_bank.delete', bank.created_by)}
+            canUpdate={can({ permissions: ['question_bank.update'], createdBy: bank.created_by })}
+            canDelete={can({ permissions: ['question_bank.delete'], createdBy: bank.created_by })}
             onEdit={() => openEdit(bank)}
             onDelete={() => setDeleteId(bank.id)}
             onSelect={() => setIsSelecting(true)}

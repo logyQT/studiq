@@ -77,7 +77,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
     queryKey: groupKeys.list(activeOrg?.id),
     url: '/api/v1/organization/groups',
-    enabled: !!activeOrg?.id && can('org.manage'),
+    enabled: !!activeOrg?.id && can({ features: ['org.manage'] }),
   });
   const accountType = user?.app_metadata?.account_type as AccountType | undefined;
   const queryClient = useQueryClient();
@@ -170,7 +170,6 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
       visibility?: string;
       groupIds?: string[];
     }) => apiPut<Deck>(`/api/v1/flashcards/decks/${id}`, data),
-    invalidateKeys: [flashcardKeys.decks.all],
   });
   const deleteDeck = useApiMutation({
     mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/decks/${id}`),
@@ -234,14 +233,15 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
           name: data.name,
           description: data.description || undefined,
           visibility: data.visibility,
-          groupIds: data.visibility === 'group' ? data.groupIds : undefined,
+          groupIds: data.visibility === 'group' ? data.groupIds : [],
         });
+        await queryClient.refetchQueries({ queryKey: flashcardKeys.decks.all });
       } else {
         await createDeck.mutateAsync({
           name: data.name,
           description: data.description || undefined,
           visibility: data.visibility,
-          groupIds: data.visibility === 'group' ? data.groupIds : undefined,
+          groupIds: data.visibility === 'group' ? data.groupIds : [],
         });
       }
       setDialogOpen(false);
@@ -394,8 +394,8 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
             onToggleSelect={() => handleToggleSelect(deck.id)}
             basePath={basePath}
             t={t}
-            canUpdate={can('deck.update', deck.created_by)}
-            canDelete={can('deck.delete', deck.created_by)}
+            canUpdate={can({ permissions: ['deck.update'], createdBy: deck.created_by })}
+            canDelete={can({ permissions: ['deck.delete'], createdBy: deck.created_by })}
             onEdit={() => openEdit(deck)}
             onDelete={() => setDeleteId(deck.id)}
             onExport={() =>
@@ -414,7 +414,14 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
           if (!open) setTimeout(() => setEditing(null), 200);
         }}
         initialValues={
-          editing ? { name: editing.name, description: editing.description ?? '' } : null
+          editing
+            ? {
+                name: editing.name,
+                description: editing.description ?? '',
+                visibility: editing.visibility,
+                groupIds: editing.groupIds ?? [],
+              }
+            : null
         }
         onSubmit={handleSubmit}
         title={editing ? t('edit_title') : t('new_deck_title')}

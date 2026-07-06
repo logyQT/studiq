@@ -111,7 +111,7 @@ export function FlashcardBlock({
           <span>{t('flashcard_saved', { count: visibleCards.length })}</span>
         </div>
         <a
-          href={`/app/flashcards/decks/${savedDeckId}`}
+          href={`/app/flashcards/${savedDeckId}`}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"

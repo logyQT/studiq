@@ -30,7 +30,7 @@ export function OnboardingChecklist() {
       return false;
     }
   });
-  const [memberCount, setMemberCount] = useState(0);
+  const [_memberCount, setMemberCount] = useState(0);
 
   useEffect(() => {
     if (orgs.length === 0) return;
@@ -48,19 +48,20 @@ export function OnboardingChecklist() {
   if (dismissed || orgs.length === 0) return null;
 
   const items: ChecklistItem[] = [
-    {
-      key: 'create_org',
-      labelKey: 'create_classroom',
-      href: '/edu/classroom/new',
-      done: orgs.length > 0,
-    },
-    {
-      key: 'invite',
-      labelKey: 'invite_students',
-      href: '/edu/classroom/invite',
-      done: memberCount > 1,
-    },
-    { key: 'content', labelKey: 'create_content', href: '/edu/flashcards/decks', done: false },
+    // UI_HIDDEN: classroom section — stale for org-managed flow
+    // {
+    //   key: 'create_org',
+    //   labelKey: 'create_classroom',
+    //   href: '/edu/classroom/new',
+    //   done: orgs.length > 0,
+    // },
+    // {
+    //   key: 'invite',
+    //   labelKey: 'invite_students',
+    //   href: '/edu/classroom/invite',
+    //   done: memberCount > 1,
+    // },
+    { key: 'content', labelKey: 'create_content', href: '/edu/flashcards', done: false },
   ];
 
   const allDone = items.every((i) => i.done);

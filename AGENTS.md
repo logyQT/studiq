@@ -183,7 +183,7 @@ UI dashboards: `/admin` (SYS_ADMIN), `/manage` (UNIVERSITY_ADMIN), `/edu` (TEACH
 - `hasPermission(ctx, 'flashcard.read')` — boolean check (controllers)
 - `checkPermission(ctx, 'flashcard.read', resource)` — throws FORBIDDEN on mismatch (services)
 - `buildQueryFilter(ctx, 'flashcard.read')` — returns Supabase filter based on scope (services)
-- Frontend: Static map in `src/lib/frontend-rbac.ts`, `can(role, permission, createdBy, userId)` — scope-aware
+- Frontend: **`useCan()` hook is the single source of truth** for both RBAC permissions and feature flags — use `can({ permissions: [...] })` for scoped resource checks and `can({ features: [...] })` for boolean feature gating
 
 ---
 

@@ -23,7 +23,6 @@ import {
   Tag,
   TrendingUp,
   UserCog,
-  UserPlus,
   Users,
 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
@@ -37,7 +36,7 @@ import {
   SidebarHeader,
   SidebarRail,
 } from '@/components/ui/sidebar';
-import { useFeature } from '@/hooks/use-feature';
+import { useCan } from '@/hooks/use-can';
 
 const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
   '/edu': [
@@ -48,19 +47,20 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
         { titleKey: 'ai_chat', href: '/edu/ai', icon: Sparkles },
       ],
     },
-    {
-      label: 'sidebar_classroom',
-      items: [
-        { titleKey: 'classroom_invite', href: '/edu/classroom/invite', icon: UserPlus },
-        { titleKey: 'classroom_members', href: '/edu/classroom/members', icon: Users },
-      ],
-    },
+    // UI_HIDDEN: classroom section — stale for org-managed flow
+    // {
+    //   label: 'sidebar_classroom',
+    //   items: [
+    //     { titleKey: 'classroom_invite', href: '/edu/classroom/invite', icon: UserPlus },
+    //     { titleKey: 'classroom_members', href: '/edu/classroom/members', icon: Users },
+    //   ],
+    // },
     {
       label: 'sidebar_content',
       items: [
-        { titleKey: 'flashcard_decks', href: '/edu/flashcards/decks', icon: Layers },
+        { titleKey: 'flashcard_decks', href: '/edu/flashcards', icon: Layers },
         { titleKey: 'flashcard_topics', href: '/edu/topics', icon: Tag },
-        { titleKey: 'question_banks', href: '/edu/questions/banks', icon: Database },
+        { titleKey: 'question_banks', href: '/edu/questions', icon: Database },
       ],
     },
     {
@@ -111,9 +111,9 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
     {
       label: 'sidebar_content',
       items: [
-        { titleKey: 'flashcard_decks', href: '/app/flashcards/decks', icon: Folder },
+        { titleKey: 'flashcard_decks', href: '/app/flashcards', icon: Folder },
         { titleKey: 'flashcard_topics', href: '/app/topics', icon: Tag },
-        { titleKey: 'question_banks', href: '/app/questions/banks', icon: Database },
+        { titleKey: 'question_banks', href: '/app/questions', icon: Database },
       ],
     },
     {
@@ -154,7 +154,8 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
-  const { hasAccess: hasAiChat } = useFeature('ai.chat');
+  const can = useCan();
+  const hasAiChat = can({ features: ['ai.chat'] });
 
   const groups = (() => {
     const raw = (() => {

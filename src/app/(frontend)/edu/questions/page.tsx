@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
+import EduBanksClient from './banks-client';
 
-export default function EduQuestionsPage() {
-  redirect('/edu/questions/banks');
+export default function EduQuestionBanksPage() {
+  return <EduBanksClient />;
 }

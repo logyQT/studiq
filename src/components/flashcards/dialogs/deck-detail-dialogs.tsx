@@ -94,7 +94,9 @@ export function DeckDetailDialogs({
 }: DeckDetailDialogsProps) {
   const can = useCan();
 
-  const ownedDecks = allDecks.filter((d) => can('deck.update', d.created_by));
+  const ownedDecks = allDecks.filter((d) =>
+    can({ permissions: ['deck.update'], createdBy: d.created_by }),
+  );
 
   return (
     <>

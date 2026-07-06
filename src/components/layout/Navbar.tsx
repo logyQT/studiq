@@ -31,16 +31,17 @@ import { UserMenuHeader, UserMenuItems } from './user-menu-content';
 
 const studentLinks: NavLink[] = [
   { labelKey: 'nav_overview', href: '/app', icon: LayoutDashboard },
-  { labelKey: 'nav_decks', href: '/app/flashcards/decks', icon: BookOpen },
+  { labelKey: 'nav_decks', href: '/app/flashcards', icon: BookOpen },
   { labelKey: 'nav_my_questions', href: '/app/my-questions', icon: FileText },
   { labelKey: 'nav_stats', href: '/app/stats/content', icon: BarChart3 },
 ];
 
 const teacherLinks: NavLink[] = [
   { labelKey: 'nav_overview', href: '/edu', icon: LayoutDashboard },
-  { labelKey: 'nav_flashcards', href: '/edu/flashcards/decks', icon: BookOpen },
+  { labelKey: 'nav_flashcards', href: '/edu/flashcards', icon: BookOpen },
   { labelKey: 'nav_questions', href: '/edu/questions', icon: FileText },
-  { labelKey: 'nav_classroom', href: '/edu/classroom/members', icon: Users },
+  // UI_HIDDEN: classroom section — stale for org-managed flow
+  // { labelKey: 'nav_classroom', href: '/edu/classroom/members', icon: Users },
   { labelKey: 'nav_stats', href: '/edu/stats/data', icon: BarChart3 },
 ];
 

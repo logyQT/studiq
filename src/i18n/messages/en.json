@@ -15,6 +15,7 @@
     "common_remove": "Remove",
     "common_error": "Something went wrong. Please try again.",
     "common_manage": "Manage",
+    "common_view": "View",
     "common_copy": "Copy",
     "common_confirm": "Confirm",
     "common_all": "All",
@@ -705,6 +706,7 @@
     "sort_name_desc": "Name (Z-A)",
     "topic_all": "All Topics",
     "new_flashcard": "Add Flashcard",
+    "generate": "Create with Agent",
     "no_flashcards": "Nothing here yet, create your first flashcard!",
     "create_first": "Create Your First Flashcard",
     "answer_label": "Answer",
@@ -893,6 +895,7 @@
     "sort_oldest": "Oldest First",
     "sort_name_asc": "Name (A-Z)",
     "sort_name_desc": "Name (Z-A)",
+    "select_cards": "Select Cards",
     "view_flashcards": "View Flashcards",
     "browse_flashcards": "Browse Flashcards",
     "view_flashcards_count": "{count, plural, one {# flashcard} other {# flashcards}} in this topic",
@@ -1359,7 +1362,8 @@
     "cancel_selection": "Cancel Selection",
     "select_all": "Select All",
     "deselect_all": "Deselect All",
-    "n_selected": "{count} selected"
+    "n_selected": "{count} selected",
+    "select_cards": "Select Cards"
   },
   "AppFlashcardStudyPage": {
     "tab_study": "Study",

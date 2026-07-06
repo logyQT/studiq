@@ -159,11 +159,13 @@ export function UserMenuItems({ onItemClick }: { onItemClick?: () => void }) {
           setTheme(isDark ? 'light' : 'dark');
           onItemClick?.();
         }}
-        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors relative"
+        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors"
       >
-        <Sun className="size-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-        <Moon className="absolute left-2 size-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-        <span className="ml-6">{t('theme')}</span>
+        <div className="relative size-4">
+          <Sun className="size-4 absolute rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+          <Moon className="size-4 absolute rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+        </div>
+        <span>{t('theme')}</span>
       </button>
 
       <div className="h-px bg-border my-1" />

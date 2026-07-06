@@ -108,7 +108,7 @@ export class OrgRoleService {
       throw new AppError('FORBIDDEN');
     }
 
-    const update: Record<string, string> = {};
+    const update: Record<string, string | null> = {};
     if (data.name !== undefined) update.name = data.name;
     if (data.description !== undefined) update.description = data.description;
 

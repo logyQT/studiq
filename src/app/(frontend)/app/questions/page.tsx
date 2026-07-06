@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
+import BanksClient from './banks-client';
 
-export default function AppQuestionsPage() {
-  redirect('/app/questions/banks');
+export default function AppQuestionBanksPage() {
+  return <BanksClient />;
 }

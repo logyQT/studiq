@@ -49,7 +49,7 @@ export default function NewCardClient({ deckId }: NewCardClientProps) {
       queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
       queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.detail(deckId) });
       toast.success(t('flashcard_created'));
-      router.push(`/app/flashcards/decks/${deckId}`);
+      router.push(`/app/flashcards/${deckId}`);
     },
     onError: () => {
       toast.error(t('save_failed'));
@@ -95,7 +95,10 @@ export default function NewCardClient({ deckId }: NewCardClientProps) {
           <Button variant="outline" onClick={() => router.back()} disabled={isSaving}>
             {t('cancel')}
           </Button>
-          <Button disabled={!can('flashcard.create', user?.id) || isSaving} onClick={handleSave}>
+          <Button
+            disabled={!can({ permissions: ['flashcard.create'], createdBy: user?.id }) || isSaving}
+            onClick={handleSave}
+          >
             {isSaving ? t('saving') : t('create')}
           </Button>
         </div>

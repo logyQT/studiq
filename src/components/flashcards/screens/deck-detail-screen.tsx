@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { FlashcardCard } from '@/components/flashcards/cards/flashcard-card';
 import { DeckDetailSkeleton } from '@/components/flashcards/shared/deck-detail-skeleton';
 import { FlashcardToolbar } from '@/components/flashcards/shared/flashcard-toolbar';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { BulkActionBar } from '@/components/shared/bulk-action-bar';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
 import { PageGrid } from '@/components/shared/page-grid';
@@ -98,6 +99,7 @@ export function DeckDetailScreen({
   const router = useRouter();
   const queryClient = useQueryClient();
   const can = useCan();
+  const { user } = useAuth();
   const headerGrad = getGradientHex(deckId);
 
   const persisted = loadPersistedFilters(deckId);
@@ -355,7 +357,7 @@ export function DeckDetailScreen({
 
   const openEdit = useCallback(
     (fc: Flashcard) => {
-      router.push(`${basePath}/decks/${deckId}/${fc.id}`);
+      router.push(`${basePath}/${deckId}/${fc.id}`);
     },
     [router, basePath, deckId],
   );
@@ -430,7 +432,7 @@ export function DeckDetailScreen({
     try {
       await deleteDeck.mutateAsync(deckId);
       toast.success(t('deck_deleted'));
-      router.push('/app/flashcards/decks');
+      router.push('/app/flashcards');
     } catch {
       toast.error(t('delete_failed'));
     }
@@ -591,14 +593,18 @@ export function DeckDetailScreen({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key !== 'n') return;
-      if (!can('deck.update', currentDeck?.created_by)) return;
+      if (
+        !can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) ||
+        !can({ permissions: ['flashcard.create'], createdBy: user?.id })
+      )
+        return;
       e.preventDefault();
-      router.push(`${basePath}/decks/${deckId}/new`);
+      router.push(`${basePath}/${deckId}/new`);
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [currentDeck?.created_by, basePath, deckId, router, can]);
+  }, [currentDeck?.created_by, user?.id, basePath, deckId, router, can]);
 
   if (deckError || (!deckLoading && !currentDeck)) {
     return (
@@ -623,7 +629,7 @@ export function DeckDetailScreen({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {can('deck.update', currentDeck?.created_by) && (
+              {can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) && (
                 <DropdownMenuItem
                   onClick={() =>
                     setD((prev) => ({
@@ -635,7 +641,7 @@ export function DeckDetailScreen({
                   <Pencil className="h-4 w-4 mr-2" /> {t('menu_edit')}
                 </DropdownMenuItem>
               )}
-              {can('deck.update', currentDeck?.created_by) && (
+              {can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setImportOpen(true)}>
@@ -662,7 +668,7 @@ export function DeckDetailScreen({
               >
                 <FileDown className="h-4 w-4 mr-2" /> {t('common_export')}
               </DropdownMenuItem>
-              {can('deck.delete', currentDeck?.created_by) && (
+              {can({ permissions: ['deck.delete'], createdBy: currentDeck?.created_by }) && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -766,9 +772,13 @@ export function DeckDetailScreen({
           setSortOrder(so);
         }}
         topics={topics}
-        canGenerate={can('deck.update', currentDeck?.created_by)}
+        canGenerate={can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by })}
+        canAddCard={
+          can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) &&
+          can({ permissions: ['flashcard.create'], createdBy: user?.id })
+        }
         onGenerate={() => router.push(`/app/ai?deckId=${deckId}`)}
-        onCreateNew={() => router.push(`${basePath}/decks/${deckId}/new`)}
+        onCreateNew={() => router.push(`${basePath}/${deckId}/new`)}
         t={t}
       />
 
@@ -817,11 +827,12 @@ export function DeckDetailScreen({
         emptyIcon={<Layers className="h-10 w-10 text-muted-foreground" />}
         emptyTitle={t('no_flashcards')}
         emptyAction={
-          can('deck.update', currentDeck?.created_by) ? (
+          can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) &&
+          can({ permissions: ['flashcard.create'], createdBy: user?.id }) ? (
             <Button
               variant="outline"
               size="sm"
-              onClick={() => router.push(`${basePath}/decks/${deckId}/new`)}
+              onClick={() => router.push(`${basePath}/${deckId}/new`)}
               aria-keyshortcuts="n"
             >
               <Plus className="mr-1.5 h-4 w-4" /> {t('create_first')}
@@ -833,8 +844,8 @@ export function DeckDetailScreen({
           <FlashcardCard
             key={fc.id}
             fc={fc}
-            canUpdate={can('flashcard.update', fc.created_by)}
-            canDelete={can('deck.update', currentDeck?.created_by)}
+            canUpdate={can({ permissions: ['flashcard.update'], createdBy: fc.created_by })}
+            canDelete={can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by })}
             topics={topics}
             t={t}
             selected={selection.selectedIds.has(fc.id)}
@@ -856,10 +867,14 @@ export function DeckDetailScreen({
         const selectedFlashcards = flashcards.filter((fc) => selection.selectedIds.has(fc.id));
         const canBulkTopics =
           selectedFlashcards.length > 0 &&
-          selectedFlashcards.every((fc) => can('flashcard.update', fc.created_by));
+          selectedFlashcards.every((fc) =>
+            can({ permissions: ['flashcard.update'], createdBy: fc.created_by }),
+          );
         const canBulkMove =
-          can('deck.update', currentDeck?.created_by) &&
-          selectedFlashcards.every((fc) => can('flashcard.update', fc.created_by));
+          can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) &&
+          selectedFlashcards.every((fc) =>
+            can({ permissions: ['flashcard.update'], createdBy: fc.created_by }),
+          );
         return (
           <BulkActionBar
             selectedCount={selection.selectedIds.size}
@@ -936,7 +951,7 @@ export function DeckDetailScreen({
             >
               <Link2 className="mr-1.5 h-4 w-4" /> {t('link')}
             </Button>
-            {can('deck.update', currentDeck?.created_by) && (
+            {can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) && (
               <Button
                 variant="destructive"
                 size="sm"
@@ -974,16 +989,17 @@ export function DeckDetailScreen({
         <div className="sm:hidden">
           <SpeedDial
             items={[
-              ...(can('deck.update', currentDeck?.created_by)
+              ...(can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) &&
+              can({ permissions: ['flashcard.create'], createdBy: user?.id })
                 ? [
                     {
                       icon: Plus,
                       label: t('new_flashcard'),
-                      onClick: () => router.push(`${basePath}/decks/${deckId}/new`),
+                      onClick: () => router.push(`${basePath}/${deckId}/new`),
                     },
                   ]
                 : []),
-              ...(can('ai.chat')
+              ...(can({ features: ['ai.chat'] })
                 ? [
                     {
                       icon: Sparkles,

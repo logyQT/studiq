@@ -55,7 +55,7 @@ export class SearchService {
           existing.decks.push({
             id: row.deck_id,
             name: row.deck_name ?? '',
-            href: `${basePath}/flashcards/decks/${row.deck_id}/${row.id}`,
+            href: `${basePath}/flashcards/${row.deck_id}/${row.id}`,
           });
         }
       } else {
@@ -70,7 +70,7 @@ export class SearchService {
                 {
                   id: row.deck_id,
                   name: row.deck_name ?? '',
-                  href: `${basePath}/flashcards/decks/${row.deck_id}/${row.id}`,
+                  href: `${basePath}/flashcards/${row.deck_id}/${row.id}`,
                 },
               ]
             : [],

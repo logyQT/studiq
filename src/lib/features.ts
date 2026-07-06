@@ -6,9 +6,9 @@ export const FEATURES = ['ai.chat', 'org.manage'] as const;
 export type FeatureKey = (typeof FEATURES)[number];
 
 export const DEFAULT_ROLE_FEATURES: Record<string, FeatureKey[]> = {
-  member: ['ai.chat'],
-  teacher: ['ai.chat', 'org.manage'],
-  admin: ['ai.chat', 'org.manage'],
+  student: ['ai.chat'],
+  educator: ['ai.chat', 'org.manage'],
+  manager: ['ai.chat', 'org.manage'],
 };
 
 export async function getEnabledFeatures(ctx: RequestContext): Promise<FeatureKey[]> {
