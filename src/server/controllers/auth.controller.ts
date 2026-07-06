@@ -4,6 +4,7 @@ import {
   forgotPasswordSchema,
   LoginSchema,
   RegisterSchema,
+  UpdateProfileSchema,
   updatePasswordSchema,
 } from '@/server/models';
 import { authService } from '@/server/services';
@@ -78,6 +79,25 @@ export class AuthController {
         statusCode: 200,
         data: { message: 'SUCCESS_PASSWORD_RESET_REQUESTED' },
       };
+    });
+  }
+
+  async updateProfile(body: unknown): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = UpdateProfileSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const user = await authService.updateProfile(parsed.data);
+
+      return { success: true, statusCode: 200, data: { user } };
     });
   }
 

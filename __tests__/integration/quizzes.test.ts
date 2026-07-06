@@ -144,7 +144,7 @@ describe('Quizzes Integration', () => {
       expect(body.success).toBe(false);
     });
 
-    it('generates quiz as free user', async () => {
+    it('generates quiz as student', async () => {
       mockUser(TEST_USERS.FREE);
 
       const req = createNextRequest('http://localhost/api/v1/quizzes', {

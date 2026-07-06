@@ -39,6 +39,19 @@ export const questionKeys = {
   },
 };
 
+export const permissionKeys = {
+  all: ['permissions'] as const,
+  me: ['permissions', 'me'] as const,
+};
+
+export const groupKeys = {
+  all: ['groups'] as const,
+  list: (orgId?: string) => ['groups', 'list', orgId] as const,
+  detail: (id: string) => ['groups', id] as const,
+  members: (groupId: string) => ['groups', groupId, 'members'] as const,
+  my: ['groups', 'my'] as const,
+};
+
 export const searchKeys = {
   all: ['search'] as const,
   query: (q: string) => ['search', q] as const,

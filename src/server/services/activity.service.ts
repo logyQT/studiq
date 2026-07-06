@@ -28,9 +28,9 @@ export class ActivityService {
 
     const { data: studentMembers, error: memberError } = await supabase
       .from('org_members')
-      .select('user_id')
+      .select('user_id, org_roles!inner(name)')
       .eq('organization_id', orgId)
-      .eq('role', 'student');
+      .eq('org_roles.name', 'student');
 
     if (memberError) throw mapSupabaseError(memberError);
     const studentIds = (studentMembers || []).map((m: { user_id: string }) => m.user_id);

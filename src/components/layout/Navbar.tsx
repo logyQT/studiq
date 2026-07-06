@@ -23,7 +23,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { UserAvatar } from '@/components/ui/user-avatar';
-import { UserRole } from '@/types';
+import { AccountType } from '@/types';
 import { DesktopNav } from './navbar/desktop-nav';
 import { MobileNav } from './navbar/mobile-nav';
 import type { NavLink } from './navbar/types';
@@ -65,15 +65,13 @@ export function Navbar() {
   const pathname = usePathname();
   const [avatarOpen, setAvatarOpen] = useState(false);
 
-  const userRole = user?.app_metadata?.role as UserRole | undefined;
+  const accountType = user?.app_metadata?.account_type as AccountType | undefined;
 
   const navLinks: NavLink[] = (() => {
-    switch (userRole) {
-      case UserRole.TEACHER:
-        return teacherLinks;
-      case UserRole.UNIVERSITY_ADMIN:
-        return adminLinks;
-      case UserRole.SYS_ADMIN:
+    switch (accountType) {
+      case AccountType.EDUCATOR:
+        return [...teacherLinks, ...adminLinks];
+      case AccountType.MANAGER:
         return sysAdminLinks;
       default:
         return studentLinks;

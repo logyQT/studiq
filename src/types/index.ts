@@ -64,25 +64,21 @@ export type DeepPartial<T> = {
   [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
 };
 
-export enum UserRole {
-  FREE = 'free',
-  PREMIUM = 'premium',
+export enum AccountType {
   STUDENT = 'student',
-  TEACHER = 'teacher',
-  UNIVERSITY_ADMIN = 'university_admin',
-  SYS_ADMIN = 'sys_admin',
+  EDUCATOR = 'educator',
+  MANAGER = 'manager',
 }
 
-/**
- * Role, które mogą być nadawane wewnątrz uniwersytetu (np. przez zaproszenia)
- */
-export const ORGANIZATION_ROLES = [
-  UserRole.STUDENT,
-  UserRole.TEACHER,
-  UserRole.UNIVERSITY_ADMIN,
-] as const;
+export type OrgRole = {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string | null;
+  is_system: boolean;
+};
 
-export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
+export * from './features';
 
 // =============================================================================
 // HEALTH TYPES – defined in src/server/models/health.model.ts

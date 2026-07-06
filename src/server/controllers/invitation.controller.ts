@@ -1,7 +1,12 @@
 import type { ControllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
 import { withErrorHandling } from '@/lib/with-error-handling';
-import { BulkInviteSchema, CreateInviteSchema } from '@/server/models/invitation.model';
+import {
+  BulkInviteSchema,
+  CreateInviteSchema,
+  InvitationListQuerySchema,
+  UpdateInviteSchema,
+} from '@/server/models/invitation.model';
 import { invitationService } from '@/server/services';
 
 export class InvitationController {
@@ -44,6 +49,47 @@ export class InvitationController {
 
       const result = await invitationService.acceptInvitation(ctx, token);
       return { success: true, statusCode: 200, data: result };
+    }, ctx);
+  }
+
+  async list(ctx: RequestContext, query?: { isAccepted?: boolean }): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = InvitationListQuerySchema.safeParse(query ?? {});
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      const invitations = await invitationService.listInvitations(ctx, parsed.data.isAccepted);
+      return { success: true, statusCode: 200, data: invitations };
+    }, ctx);
+  }
+
+  async update(ctx: RequestContext, id: string, body: unknown): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsed = UpdateInviteSchema.safeParse(body);
+      if (!parsed.success) {
+        return {
+          success: false,
+          statusCode: 422,
+          error: 'UNPROCESSABLE_ENTITY',
+          details: parsed.error.issues,
+        };
+      }
+
+      await invitationService.updateInvitation(ctx, id, parsed.data);
+      return { success: true, statusCode: 200 };
+    }, ctx);
+  }
+
+  async delete(ctx: RequestContext, id: string): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      await invitationService.deleteInvitation(ctx, id);
+      return { success: true, statusCode: 200 };
     }, ctx);
   }
 

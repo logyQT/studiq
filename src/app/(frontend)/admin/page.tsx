@@ -17,18 +17,10 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { AppError } from '@/lib/errors';
 import type { z } from '@/lib/zod';
 import { CreateInviteSchema } from '@/server/models/invitation.model';
 import { CreateOrganizationSchema } from '@/server/models/organization.model';
-import { UserRole } from '@/types';
 
 export default function SysAdminDashboard() {
   const t = useTranslations('AdminPage');
@@ -41,7 +33,7 @@ export default function SysAdminDashboard() {
 
   const formInvite = useForm<z.infer<typeof CreateInviteSchema>>({
     resolver: zodResolver(CreateInviteSchema),
-    defaultValues: { email: '', role: UserRole.UNIVERSITY_ADMIN, organizationId: '' },
+    defaultValues: { email: '', targetOrgRoleId: '', organizationId: '' },
   });
 
   async function onSubmitOrganization(values: z.infer<typeof CreateOrganizationSchema>) {
@@ -82,7 +74,7 @@ export default function SysAdminDashboard() {
         organizationId: values.organizationId === '' ? undefined : values.organizationId,
       };
 
-      const res = await fetch('/api/v1/organization/invitations', {
+      const res = await fetch('/api/v1/organization/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -97,9 +89,8 @@ export default function SysAdminDashboard() {
 
       toast.success(t('success_invite'), { description: t('success_invite_desc') });
       formInvite.reset({
-        name: '',
         email: '',
-        role: UserRole.UNIVERSITY_ADMIN,
+        targetOrgRoleId: '',
         organizationId: payload.organizationId,
       });
     } catch (error: unknown) {
@@ -178,19 +169,6 @@ export default function SysAdminDashboard() {
               <form onSubmit={formInvite.handleSubmit(onSubmitInvite)} className="space-y-4">
                 <FormField
                   control={formInvite.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('invite_name_label')}</FormLabel>
-                      <FormControl>
-                        <Input placeholder={t('invite_name_placeholder')} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={formInvite.control}
                   name="email"
                   render={({ field }) => (
                     <FormItem>
@@ -204,24 +182,13 @@ export default function SysAdminDashboard() {
                 />
                 <FormField
                   control={formInvite.control}
-                  name="role"
+                  name="targetOrgRoleId"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>{t('role_label')}</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder={t('role_label')} />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value={UserRole.UNIVERSITY_ADMIN}>
-                            {t('university_admin')}
-                          </SelectItem>
-                          <SelectItem value={UserRole.TEACHER}>{t('teacher')}</SelectItem>
-                          <SelectItem value={UserRole.STUDENT}>{t('student')}</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <FormControl>
+                        <Input placeholder={t('role_placeholder')} {...field} />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}

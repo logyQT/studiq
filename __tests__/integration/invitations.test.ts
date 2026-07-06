@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { POST as bulkPost } from '@/app/(backend)/api/v1/organization/invitations/bulk/route';
+import { POST as bulkPost } from '@/app/(backend)/api/v1/organization/invites/bulk/route';
 import {
   GET as inviteGet,
   POST as invitePost,
-} from '@/app/(backend)/api/v1/organization/invitations/route';
+} from '@/app/(backend)/api/v1/organization/invites/route';
 import { cleanupInvitations, createRealClient, mockUser, TEST_USERS } from './helpers';
 import { createNextRequest } from './test-utils';
 
@@ -15,18 +15,18 @@ describe('Invitations Integration', () => {
     }
   });
 
-  describe('POST /api/v1/organization/invitations', () => {
+  describe('POST /api/v1/organization/invites', () => {
     it('creates an invitation as university_admin and returns 201', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = createNextRequest('http://localhost/api/v1/organization/invitations', {
+      const req = createNextRequest('http://localhost/api/v1/organization/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'Invitee Name',
-          email: `invite-${Date.now()}@example.com`,
-          role: 'student',
-        }),
+          body: JSON.stringify({
+            name: 'Invitee Name',
+            email: `invite-${Date.now()}@example.com`,
+            targetOrgRoleId: '00000000-0000-4000-8000-000000000001',
+          }),
       });
 
       const response = await invitePost(req);
@@ -39,10 +39,10 @@ describe('Invitations Integration', () => {
     it('returns 422 when email is invalid', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = createNextRequest('http://localhost/api/v1/organization/invitations', {
+      const req = createNextRequest('http://localhost/api/v1/organization/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'not-an-email', role: 'student' }),
+        body: JSON.stringify({ email: 'not-an-email', targetOrgRoleId: '00000000-0000-4000-8000-000000000001' }),
       });
 
       const response = await invitePost(req);
@@ -55,10 +55,10 @@ describe('Invitations Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const req = createNextRequest('http://localhost/api/v1/organization/invitations', {
+      const req = createNextRequest('http://localhost/api/v1/organization/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'test@example.com', role: 'student' }),
+        body: JSON.stringify({ email: 'test@example.com', targetOrgRoleId: '00000000-0000-4000-8000-000000000001' }),
       });
 
       const response = await invitePost(req);
@@ -71,10 +71,10 @@ describe('Invitations Integration', () => {
     it('returns 403 when student tries to invite', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const req = createNextRequest('http://localhost/api/v1/organization/invitations', {
+      const req = createNextRequest('http://localhost/api/v1/organization/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Invitee', email: 'test@example.com', role: 'student' }),
+        body: JSON.stringify({ name: 'Invitee', email: 'test@example.com', targetOrgRoleId: '00000000-0000-4000-8000-000000000001' }),
       });
 
       const response = await invitePost(req);
@@ -85,7 +85,7 @@ describe('Invitations Integration', () => {
     });
   });
 
-  describe('GET /api/v1/organization/invitations?token=...', () => {
+  describe('GET /api/v1/organization/invites?token=...', () => {
     it('returns invitation when token is valid', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
@@ -95,7 +95,7 @@ describe('Invitations Integration', () => {
         .insert({
           name: 'Valid Invitee',
           email: 'valid@example.com',
-          target_role: 'student',
+          targetOrgRoleId: '00000000-0000-4000-8000-000000000001',
           token: 'valid-token-123',
           expires_at: new Date(Date.now() + 86400000).toISOString(),
           inviter_id: TEST_USERS.UNIVERSITY_ADMIN.id,
@@ -107,7 +107,7 @@ describe('Invitations Integration', () => {
         throw new Error(`Failed to insert invitation: ${insertError?.message}`);
 
       const req = createNextRequest(
-        `http://localhost/api/v1/organization/invitations?token=${invitation.token}`,
+        `http://localhost/api/v1/organization/invites?token=${invitation.token}`,
       );
       const response = await inviteGet(req);
       const body = await response.json();
@@ -118,7 +118,7 @@ describe('Invitations Integration', () => {
 
     it('returns 404 when token does not exist', async () => {
       const req = createNextRequest(
-        'http://localhost/api/v1/organization/invitations?token=nonexistent-token',
+        'http://localhost/api/v1/organization/invites?token=nonexistent-token',
       );
       const response = await inviteGet(req);
       const body = await response.json();
@@ -134,7 +134,7 @@ describe('Invitations Integration', () => {
       await supabase.from('invitations').insert({
         name: 'Expired Invitee',
         email: 'expired@example.com',
-        target_role: 'student',
+        targetOrgRoleId: '00000000-0000-4000-8000-000000000001',
         token: 'expired-token-123',
         expires_at: new Date(Date.now() - 86400000).toISOString(),
         inviter_id: TEST_USERS.UNIVERSITY_ADMIN.id,
@@ -142,7 +142,7 @@ describe('Invitations Integration', () => {
       });
 
       const req = createNextRequest(
-        'http://localhost/api/v1/organization/invitations?token=expired-token-123',
+        'http://localhost/api/v1/organization/invites?token=expired-token-123',
       );
       const response = await inviteGet(req);
       const body = await response.json();
@@ -152,7 +152,7 @@ describe('Invitations Integration', () => {
     });
 
     it('returns 400 when token is empty', async () => {
-      const req = createNextRequest('http://localhost/api/v1/organization/invitations?token=');
+      const req = createNextRequest('http://localhost/api/v1/organization/invites?token=');
       const response = await inviteGet(req);
       const body = await response.json();
 
@@ -161,17 +161,17 @@ describe('Invitations Integration', () => {
     });
   });
 
-  describe('POST /api/v1/organization/invitations/bulk', () => {
+  describe('POST /api/v1/organization/invites/bulk', () => {
     it('bulk creates invitations and returns 200', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = createNextRequest('http://localhost/api/v1/organization/invitations/bulk', {
+      const req = createNextRequest('http://localhost/api/v1/organization/invites/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           invitations: [
-            { name: 'Bulk User Alpha', email: `bulk1-${Date.now()}@example.com`, role: 'student' },
-            { name: 'Bulk User Beta', email: `bulk2-${Date.now()}@example.com`, role: 'student' },
+            { name: 'Bulk User Alpha', email: `bulk1-${Date.now()}@example.com`, targetOrgRoleId: '00000000-0000-4000-8000-000000000001' },
+            { name: 'Bulk User Beta', email: `bulk2-${Date.now()}@example.com`, targetOrgRoleId: '00000000-0000-4000-8000-000000000001' },
           ],
         }),
       });
@@ -187,7 +187,7 @@ describe('Invitations Integration', () => {
     it('returns 422 when emails array is empty', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = createNextRequest('http://localhost/api/v1/organization/invitations/bulk', {
+      const req = createNextRequest('http://localhost/api/v1/organization/invites/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ invitations: [] }),

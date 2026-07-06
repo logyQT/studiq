@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
 import { organizationMemberController } from '@/server/controllers/organization-member.controller';
-import { UserRole } from '@/types';
+import { AccountType } from '@/types';
 
 export async function GET(req: NextRequest) {
   return withAuth(
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
       const roleFilter = searchParams.get('role') || undefined;
       return toNextResponse(await organizationMemberController.listMembers(ctx, roleFilter));
     },
-    { allowedRoles: [UserRole.UNIVERSITY_ADMIN, UserRole.TEACHER] },
+    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
   );
 }
 
@@ -23,7 +23,7 @@ export async function PUT(req: NextRequest) {
       const body = await req.json();
       return toNextResponse(await organizationMemberController.changeRole(ctx, body));
     },
-    { allowedRoles: [UserRole.UNIVERSITY_ADMIN] },
+    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
   );
 }
 
@@ -35,6 +35,6 @@ export async function DELETE(req: NextRequest) {
       const targetUserId = searchParams.get('userId') || '';
       return toNextResponse(await organizationMemberController.removeMember(ctx, targetUserId));
     },
-    { allowedRoles: [UserRole.UNIVERSITY_ADMIN] },
+    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
   );
 }

@@ -1,5 +1,5 @@
 import { AppError } from '@/lib/errors';
-import { Permission, shouldSetUniversityId } from '@/lib/rbac';
+import { buildQueryFilter, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
@@ -9,9 +9,16 @@ export class QuestionService {
   async create(data: CreateQuestionInput, ctx: RequestContext) {
     const supabase = await createClient();
 
-    const activeOrgId = (await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE))
-      ? ctx.activeOrgId
-      : null;
+    const bankVisibility =
+      data.bankIds && data.bankIds.length > 0
+        ? ((
+            await supabase
+              .from('question_banks')
+              .select('visibility')
+              .in('id', data.bankIds)
+              .limit(1)
+          ).data?.[0]?.visibility ?? 'personal')
+        : 'personal';
 
     const { data: question, error: qError } = await supabase
       .from('questions')
@@ -20,7 +27,8 @@ export class QuestionService {
         content: data.content,
         explanation: data.explanation ?? null,
         created_by: ctx.userId,
-        organization_id: activeOrgId,
+        organization_id: ctx.activeOrgId,
+        visibility: bankVisibility,
       })
       .select()
       .single();
@@ -65,17 +73,29 @@ export class QuestionService {
 
   async list(ctx: RequestContext, filters?: { bankId?: string; topicIds?: string; type?: string }) {
     const supabase = await createClient();
-    const orConditions: string[] = [];
 
-    if (ctx.activeOrgId) orConditions.push(`organization_id.eq.${ctx.activeOrgId}`);
-    if (ctx.userId) orConditions.push(`created_by.eq.${ctx.userId}`);
+    const filter = await buildQueryFilter(ctx, Permission.QUESTION_READ, 'question');
+
+    if (filter._useRpc) {
+      const rpcParams: Record<string, unknown> = {
+        p_user_id: ctx.userId,
+        p_org_id: ctx.activeOrgId,
+      };
+      if (filters?.bankId) rpcParams.p_bank_ids = [filters.bankId];
+      if (filters?.topicIds) rpcParams.p_topic_ids = filters.topicIds.split(',');
+      const { data, error } = await supabase.rpc('get_accessible_questions', rpcParams);
+      if (error) throw mapSupabaseError(error);
+      return data ?? [];
+    }
 
     let query = supabase
       .from('questions')
       .select('*, question_answers(*)')
       .order('created_at', { ascending: false });
 
-    if (orConditions.length > 0) query = query.or(orConditions.join(','));
+    if (filter._impossible) return [];
+    if (filter.created_by) query = query.eq('created_by', filter.created_by);
+    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
     if (filters?.bankId) {
       const { data: bankAssignments } = await supabase
@@ -110,6 +130,22 @@ export class QuestionService {
 
   async getById(id: string, ctx: RequestContext) {
     const supabase = await createClient();
+
+    const filter = await buildQueryFilter(ctx, Permission.QUESTION_READ, 'question');
+    if (filter._impossible) throw new AppError('NOT_FOUND');
+
+    if (filter._useRpc) {
+      const { data, error } = await supabase
+        .rpc('get_accessible_questions', {
+          p_user_id: ctx.userId,
+          p_org_id: ctx.activeOrgId,
+        })
+        .eq('id', id)
+        .single();
+      if (error) throw new AppError('NOT_FOUND');
+      return data;
+    }
+
     const { data, error } = await supabase
       .from('questions')
       .select('*, question_answers(*)')
@@ -117,12 +153,7 @@ export class QuestionService {
       .single();
 
     if (error || !data) throw new AppError('NOT_FOUND');
-
-    if (data.created_by === ctx.userId) return data;
-
-    if (data.organization_id && data.organization_id === ctx.activeOrgId) return data;
-
-    throw new AppError('FORBIDDEN');
+    return data;
   }
 
   async update(id: string, data: UpdateQuestionInput, ctx: RequestContext) {
@@ -138,6 +169,7 @@ export class QuestionService {
       .update(updateFields)
       .eq('id', id)
       .eq('created_by', ctx.userId)
+      .eq('organization_id', ctx.activeOrgId)
       .select()
       .single();
 

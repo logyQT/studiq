@@ -6,7 +6,6 @@ import {
   Brain,
   FileText,
   Layers,
-  Lock,
   Plus,
   RotateCcw,
   Target,
@@ -23,7 +22,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
 import { useApiQuery } from '@/hooks/use-api';
-import { useFeature } from '@/hooks/use-feature';
 
 interface StudentStats {
   totalQuizzes: number;
@@ -41,7 +39,6 @@ export default function AppOverviewPage() {
   const locale = useLocale();
   const router = useRouter();
   const { user } = useAuth();
-  const { hasAccess } = useFeature('study.create');
 
   const { data: stats, isLoading } = useApiQuery<StudentStats>({
     queryKey: ['stats', 'student'],
@@ -58,7 +55,7 @@ export default function AppOverviewPage() {
     [locale],
   );
 
-  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Alex';
+  const userName = user?.user_metadata?.name.split(' ')[0] || user?.user_metadata.name;
 
   return (
     <div className="space-y-8">
@@ -90,22 +87,9 @@ export default function AppOverviewPage() {
             <Button
               variant="outline"
               size="sm"
-              disabled={!hasAccess}
-              onClick={
-                hasAccess
-                  ? () => router.push('/app/flashcards/decks')
-                  : () => router.push('/checkout?plan_id=student_premium')
-              }
+              onClick={() => router.push('/app/flashcards/decks')}
             >
-              {hasAccess ? (
-                <>
-                  <Plus className="w-4 h-4 mr-1.5" /> {t('create_deck')}
-                </>
-              ) : (
-                <>
-                  <Lock className="size-3" /> Upgrade
-                </>
-              )}
+              <Plus className="w-4 h-4 mr-1.5" /> {t('create_deck')}
             </Button>
           </div>
         </div>

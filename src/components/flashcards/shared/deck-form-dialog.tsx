@@ -12,14 +12,32 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { MultiSelect } from '@/components/ui/multi-select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
 import { DIALOG_GRADIENT_HEX } from '@/lib/color-utils';
+
+interface GroupOption {
+  id: string;
+  name: string;
+}
 
 interface DeckFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  initialValues?: { name: string; description: string } | null;
-  onSubmit: (data: { name: string; description: string }) => void;
+  initialValues?: {
+    name: string;
+    description: string;
+    visibility?: 'personal' | 'group';
+    groupIds?: string[];
+  } | null;
+  onSubmit: (data: {
+    name: string;
+    description: string;
+    visibility?: 'personal' | 'group';
+    groupIds?: string[];
+  }) => void;
   title: string;
   description: string;
   nameLabel: string;
@@ -28,6 +46,12 @@ interface DeckFormDialogProps {
   descriptionPlaceholder: string;
   cancelLabel: string;
   submitLabel: string;
+  groups?: GroupOption[];
+  visibilityLabel?: string;
+  visibilityPersonalLabel?: string;
+  visibilityGroupLabel?: string;
+  groupsPlaceholder?: string;
+  groupsEmptyText?: string;
 }
 
 function FormBody({
@@ -41,19 +65,45 @@ function FormBody({
   submitLabel,
   onSubmit,
   onCancel,
+  groups,
+  visibilityLabel,
+  visibilityPersonalLabel,
+  visibilityGroupLabel,
+  groupsPlaceholder,
+  groupsEmptyText,
 }: {
   gradient: { from: string; to: string };
-  initialValues?: { name: string; description: string } | null;
+  initialValues?: {
+    name: string;
+    description: string;
+    visibility?: 'personal' | 'group';
+    groupIds?: string[];
+  } | null;
   nameLabel: string;
   namePlaceholder: string;
   descriptionLabel: string;
   descriptionPlaceholder: string;
   cancelLabel: string;
   submitLabel: string;
-  onSubmit: (data: { name: string; description: string }) => void;
+  onSubmit: (data: {
+    name: string;
+    description: string;
+    visibility?: 'personal' | 'group';
+    groupIds?: string[];
+  }) => void;
   onCancel: () => void;
+  groups?: GroupOption[];
+  visibilityLabel?: string;
+  visibilityPersonalLabel?: string;
+  visibilityGroupLabel?: string;
+  groupsPlaceholder?: string;
+  groupsEmptyText?: string;
 }) {
-  const [formData, setFormData] = useState(initialValues ?? { name: '', description: '' });
+  const [formData, setFormData] = useState(
+    initialValues ?? { name: '', description: '', visibility: 'personal' as const, groupIds: [] },
+  );
+  const [visibility, setVisibility] = useState(formData.visibility ?? 'personal');
+  const [groupIds, setGroupIds] = useState<string[]>(formData.groupIds ?? []);
 
   return (
     <>
@@ -101,12 +151,48 @@ function FormBody({
             </div>
           </div>
         </Card>
+        {groups && (
+          <div className="mt-4 space-y-3">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">{visibilityLabel}</Label>
+              <RadioGroup
+                value={visibility}
+                onValueChange={(v: 'personal' | 'group') => setVisibility(v)}
+                className="flex gap-4"
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="personal" id="visibility-personal" />
+                  <Label htmlFor="visibility-personal" className="text-sm cursor-pointer">
+                    {visibilityPersonalLabel}
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="group" id="visibility-group" />
+                  <Label htmlFor="visibility-group" className="text-sm cursor-pointer">
+                    {visibilityGroupLabel}
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+            {visibility === 'group' && (
+              <MultiSelect
+                options={groups.map((g) => ({ label: g.name, value: g.id }))}
+                selected={groupIds}
+                onChange={setGroupIds}
+                placeholder={groupsPlaceholder}
+                emptyText={groupsEmptyText}
+              />
+            )}
+          </div>
+        )}
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onCancel}>
           {cancelLabel}
         </Button>
-        <Button onClick={() => onSubmit(formData)}>{submitLabel}</Button>
+        <Button onClick={() => onSubmit({ ...formData, visibility, groupIds })}>
+          {submitLabel}
+        </Button>
       </DialogFooter>
     </>
   );
@@ -125,6 +211,12 @@ export function DeckFormDialog({
   descriptionPlaceholder,
   cancelLabel,
   submitLabel,
+  groups,
+  visibilityLabel,
+  visibilityPersonalLabel,
+  visibilityGroupLabel,
+  groupsPlaceholder,
+  groupsEmptyText,
 }: DeckFormDialogProps) {
   const gradient = DIALOG_GRADIENT_HEX;
 
@@ -146,6 +238,12 @@ export function DeckFormDialog({
           submitLabel={submitLabel}
           onSubmit={onSubmit}
           onCancel={() => onOpenChange(false)}
+          groups={groups}
+          visibilityLabel={visibilityLabel}
+          visibilityPersonalLabel={visibilityPersonalLabel}
+          visibilityGroupLabel={visibilityGroupLabel}
+          groupsPlaceholder={groupsPlaceholder}
+          groupsEmptyText={groupsEmptyText}
         />
       </DialogContent>
     </Dialog>

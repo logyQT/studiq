@@ -63,7 +63,7 @@ describe('Members Integration', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetUserId: TEST_USERS.STUDENT.id,
-          newRole: 'teacher',
+          newOrgRoleId: '00000000-0000-4000-8000-000000000001',
         }),
       });
 
@@ -82,7 +82,7 @@ describe('Members Integration', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetUserId: '',
-          newRole: 'invalid_role',
+          newOrgRoleId: 'invalid_role',
         }),
       });
 
@@ -101,7 +101,7 @@ describe('Members Integration', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetUserId: TEST_USERS.STUDENT.id,
-          newRole: 'teacher',
+          newOrgRoleId: '00000000-0000-4000-8000-000000000001',
         }),
       });
 

@@ -15,7 +15,7 @@ import { topicService } from '@/server/services';
 export class TopicController {
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      if (!(await hasPermission(ctx, Permission.STUDY_CREATE))) throw new AppError('FORBIDDEN');
+      if (!(await hasPermission(ctx, Permission.TOPIC_CREATE))) throw new AppError('FORBIDDEN');
       const parsed = CreateTopicSchema.safeParse(body);
 
       if (!parsed.success) {

@@ -60,8 +60,8 @@ export default function PasswordUpdatePage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/50 p-6">
-      <Card className="w-full max-w-md shadow-lg border">
+    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      <Card className="w-full max-w-md shadow-lg border-sidebar-border bg-sidebar">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl text-center">{t('title')}</CardTitle>
           <CardDescription className="text-center">{t('description')}</CardDescription>

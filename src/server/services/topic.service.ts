@@ -1,5 +1,5 @@
 import { AppError } from '@/lib/errors';
-import { buildQueryFilter, checkPermission, Permission, shouldSetUniversityId } from '@/lib/rbac';
+import { buildQueryFilter, checkPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
@@ -10,27 +10,47 @@ import type {
   TopicListQuery,
   UpdateTopicInput,
 } from '@/server/models';
+import { AccountType } from '@/types';
 import type { Topic } from '@/types/flashcards';
 
 export class TopicService {
   async create(data: CreateTopicInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const organizationId = (await shouldSetUniversityId(ctx, Permission.TOPIC_CREATE))
-      ? ctx.activeOrgId
-      : null;
+    const topicVisibility = ctx.accountType === AccountType.EDUCATOR ? 'group' : 'personal';
 
     const { data: topic, error } = await supabase
       .from('topics')
       .insert({
         name: data.name,
-        organization_id: organizationId,
+        organization_id: ctx.activeOrgId,
         created_by: ctx.userId,
+        visibility: data.visibility ?? topicVisibility,
       })
       .select()
       .single();
 
     if (error) throw mapSupabaseError(error);
     if (!topic) throw new AppError('NOT_FOUND');
+
+    if ((data as any).visibility === 'group' && (data as any).groupIds?.length) {
+      const { groupService } = await import('@/server/services/group.service');
+      let authorized = false;
+      for (const gid of (data as any).groupIds) {
+        if (await groupService.isTeacherInGroup(ctx, gid)) {
+          authorized = true;
+          break;
+        }
+      }
+      if (!authorized) throw new AppError('FORBIDDEN');
+
+      const rows = (data as any).groupIds.map((gid: string) => ({
+        topic_id: topic.id,
+        group_id: gid,
+      }));
+      const { error: ae } = await supabase.from('topic_groups').insert(rows);
+      if (ae) throw mapSupabaseError(ae);
+    }
+
     return topic;
   }
 
@@ -40,22 +60,64 @@ export class TopicService {
     const filter = await buildQueryFilter(ctx, Permission.TOPIC_READ, 'topic');
     if (filter._impossible) return { items: [], nextCursor: null, hasMore: false };
 
+    if (filter._useRpc) {
+      const rpcQuery = supabase.rpc('get_accessible_topics', {
+        p_user_id: ctx.userId,
+        p_org_id: ctx.activeOrgId,
+      });
+      const sortBy = queryParams?.sortBy ?? 'created_at';
+      const sortOrder = queryParams?.sortOrder ?? 'desc';
+      const sortAsc = sortOrder === 'asc';
+      const pageSize = Math.min(queryParams?.limit ?? 50, 100);
+      if (queryParams?.q) {
+        void rpcQuery.ilike('name', `%${queryParams.q}%`);
+      }
+      void rpcQuery.order(sortBy, { ascending: sortAsc }).order('id');
+      void rpcQuery.limit(pageSize + 1);
+      if (queryParams?.cursor) {
+        const decoded = JSON.parse(Buffer.from(queryParams.cursor, 'base64').toString('utf-8'));
+        const cursorVal = decoded.v;
+        const cursorId = decoded.id;
+        const op = sortAsc ? 'gt' : 'lt';
+        void rpcQuery.or(
+          `${sortBy}.${op}.${cursorVal},and(${sortBy}.eq.${cursorVal},id.gt.${cursorId})`,
+        );
+      }
+      const { data, error } = await rpcQuery;
+      if (error) throw mapSupabaseError(error);
+      const rows = data as unknown as Array<{ id: string; [key: string]: unknown }>;
+      const hasMore = (rows?.length ?? 0) > pageSize;
+      const items = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
+      const nextCursor = hasMore
+        ? Buffer.from(
+            JSON.stringify({ v: items[items.length - 1][sortBy], id: items[items.length - 1].id }),
+          ).toString('base64')
+        : null;
+      return { items, nextCursor, hasMore };
+    }
+
     let query = supabase
       .from('topics')
       .select('*, flashcard_count:flashcard_topic_assignments(count)');
 
-    if (filter.or) {
-      query = query.or(filter.or);
-    } else if (filter.created_by) {
-      query = query.eq('created_by', filter.created_by);
-    }
+    if (filter.created_by) query = query.eq('created_by', filter.created_by);
+    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
     // Apply owner filter on top of RBAC
     if (queryParams?.owner && queryParams.owner !== 'all') {
       if (queryParams.owner === 'mine') {
         query = query.eq('created_by', ctx.userId);
       } else if (queryParams.owner === 'shared') {
-        query = query.neq('created_by', ctx.userId);
+        query = query.neq('created_by', ctx.userId).eq('visibility', 'group');
+      } else if (queryParams.owner === 'group') {
+        if (ctx.activeOrgId) {
+          query = query
+            .neq('created_by', ctx.userId)
+            .eq('organization_id', ctx.activeOrgId)
+            .eq('visibility', 'group');
+        } else {
+          return { items: [], nextCursor: null, hasMore: false };
+        }
       }
     }
 
@@ -114,12 +176,25 @@ export class TopicService {
     const supabase = await createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.TOPIC_READ, 'topic');
-    let query = supabase.from('topics').select('*').eq('id', id);
-
     if (filter._impossible) throw new AppError('NOT_FOUND');
-    if (filter.or) {
-      query = query.or(filter.or);
-    } else if (filter.created_by) {
+
+    if (filter._useRpc) {
+      const { data, error } = await supabase
+        .rpc('get_accessible_topics', {
+          p_user_id: ctx.userId,
+          p_org_id: ctx.activeOrgId,
+        })
+        .eq('id', id)
+        .single();
+      if (error) throw mapSupabaseError(error);
+      return data;
+    }
+
+    let query = supabase.from('topics').select('*').eq('id', id);
+    if (filter.organization_id) {
+      query = query.eq('organization_id', filter.organization_id);
+    }
+    if (filter.created_by) {
       query = query.eq('created_by', filter.created_by);
     }
 
@@ -140,16 +215,33 @@ export class TopicService {
     if (fetchError || !existing) throw new AppError('NOT_FOUND');
     await checkPermission(ctx, Permission.TOPIC_UPDATE, existing);
 
-    const { data: topic, error } = await supabase
-      .from('topics')
-      .update({ name: data.name })
-      .eq('id', id)
-      .select()
-      .single();
+    const updateFields: Record<string, unknown> = {};
+    if (data.name !== undefined) updateFields.name = data.name;
+    if (data.visibility !== undefined) updateFields.visibility = data.visibility;
 
-    if (error) throw mapSupabaseError(error);
-    if (!topic) throw new AppError('NOT_FOUND');
-    return topic;
+    if (Object.keys(updateFields).length > 0) {
+      const { data: topic, error } = await supabase
+        .from('topics')
+        .update(updateFields)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw mapSupabaseError(error);
+      if (!topic) throw new AppError('NOT_FOUND');
+    }
+
+    if ((data as any).groupIds !== undefined) {
+      const { error: de } = await supabase.from('topic_groups').delete().eq('topic_id', id);
+      if (de) throw mapSupabaseError(de);
+      if ((data as any).groupIds.length > 0) {
+        const rows = (data as any).groupIds.map((gid: string) => ({ topic_id: id, group_id: gid }));
+        const { error: ae } = await supabase.from('topic_groups').insert(rows);
+        if (ae) throw mapSupabaseError(ae);
+      }
+    }
+
+    return this.getById(id, ctx);
   }
 
   async delete(id: string, ctx: RequestContext) {
@@ -171,14 +263,13 @@ export class TopicService {
 
   async bulkCreate(data: BulkCreateTopicInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const organizationId = (await shouldSetUniversityId(ctx, Permission.TOPIC_CREATE))
-      ? ctx.activeOrgId
-      : null;
+    const topicVisibility = ctx.accountType === AccountType.EDUCATOR ? 'group' : 'personal';
 
     const topics = data.topics.map((t) => ({
       name: t.name,
       created_by: ctx.userId,
-      organization_id: organizationId,
+      organization_id: ctx.activeOrgId,
+      visibility: t.visibility ?? topicVisibility,
     }));
 
     const { data: created, error } = await supabase.from('topics').insert(topics).select('*');

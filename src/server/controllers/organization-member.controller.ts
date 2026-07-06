@@ -29,7 +29,7 @@ export class OrganizationMemberController {
       await organizationMemberService.changeRole(
         ctx,
         parsed.data.targetUserId,
-        parsed.data.newRole,
+        parsed.data.newOrgRoleId,
       );
 
       return { success: true, statusCode: 200, data: { success: true } };

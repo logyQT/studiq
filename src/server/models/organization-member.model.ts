@@ -1,6 +1,5 @@
 import { ValidationErrorCode } from '@/lib/validation-errors';
 import { registry, z } from '@/lib/zod';
-import { ORGANIZATION_ROLES } from '@/types';
 
 export const ChangeRoleSchema = registry.register(
   'ChangeRoleRequest',
@@ -8,7 +7,7 @@ export const ChangeRoleSchema = registry.register(
     targetUserId: z
       .uuid({ error: ValidationErrorCode.UUID_INVALID })
       .nonempty({ error: ValidationErrorCode.REQUIRED }),
-    newRole: z.enum(ORGANIZATION_ROLES, { error: ValidationErrorCode.INVALID_ROLE }),
+    newOrgRoleId: z.string().uuid({ error: ValidationErrorCode.UUID_INVALID }),
   }),
 );
 

@@ -8,6 +8,7 @@ CREATE OR REPLACE FUNCTION bulk_create_flashcards(
   p_cards JSONB,
   p_user_id UUID,
   p_organization_id UUID DEFAULT NULL,
+  p_visibility visibility_type DEFAULT 'personal',
   p_deck_ids UUID[] DEFAULT '{}',
   p_topic_ids UUID[] DEFAULT '{}'
 ) RETURNS SETOF flashcards AS $$
@@ -15,8 +16,8 @@ DECLARE
   v_ids UUID[];
 BEGIN
   WITH ins AS (
-    INSERT INTO flashcards (front, back, created_by, organization_id)
-    SELECT c->>'front', c->>'back', p_user_id, p_organization_id
+    INSERT INTO flashcards (front, back, created_by, organization_id, visibility)
+    SELECT c->>'front', c->>'back', p_user_id, p_organization_id, p_visibility
     FROM jsonb_array_elements(p_cards) AS c
     RETURNING id
   )

@@ -1,8 +1,7 @@
 'use client';
 
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCheck, CheckSquare, Lock, Plus, SquarePen, Tags, Trash2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { CheckCheck, CheckSquare, Plus, SquarePen, Tags, Trash2 } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -24,12 +23,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useApiMutation } from '@/hooks/use-api';
+import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useCan } from '@/hooks/use-can';
 import { useDebounce } from '@/hooks/use-debounce';
-import { useFeature } from '@/hooks/use-feature';
+
+import { useOrgs } from '@/hooks/use-orgs';
 import { useSelection } from '@/hooks/use-selection';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
-import { flashcardKeys, topicKeys } from '@/lib/query-keys';
+import { flashcardKeys, groupKeys, topicKeys } from '@/lib/query-keys';
 import type { Flashcard, Topic } from '@/types/flashcards';
 
 interface TopicManagementScreenProps {
@@ -38,8 +39,15 @@ interface TopicManagementScreenProps {
 }
 
 export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
-  const router = useRouter();
   const queryClient = useQueryClient();
+  const { activeOrg } = useOrgs();
+  const can = useCan();
+
+  const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
+    queryKey: groupKeys.list(activeOrg?.id),
+    url: '/api/v1/organization/groups',
+    enabled: !!activeOrg?.id && can('org.manage'),
+  });
 
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebounce(searchInput, 300);
@@ -99,18 +107,26 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   }, [handleObserver]);
 
   const createTopic = useApiMutation({
-    mutationFn: (data: { name: string }) => apiPost<Topic>('/api/v1/flashcards/topics', data),
+    mutationFn: (data: { name: string; visibility?: string; groupIds?: string[] }) =>
+      apiPost<Topic>('/api/v1/flashcards/topics', data),
     invalidateKeys: [topicKeys.all],
   });
   const updateTopic = useApiMutation({
-    mutationFn: ({ id, ...data }: { id: string; name: string }) =>
-      apiPut<Topic>(`/api/v1/flashcards/topics/${id}`, data),
+    mutationFn: ({
+      id,
+      ...data
+    }: {
+      id: string;
+      name: string;
+      visibility?: string;
+      groupIds?: string[];
+    }) => apiPut<Topic>(`/api/v1/flashcards/topics/${id}`, data),
     invalidateKeys: [topicKeys.all],
     onMutate: async ({ id, ...data }) => {
       await queryClient.cancelQueries({ queryKey: topicKeys.all });
       const prev = queryClient.getQueryData<Topic[]>(topicKeys.all);
       queryClient.setQueryData<Topic[]>(topicKeys.all, (old) =>
-        old?.map((t) => (t.id === id ? { ...t, ...data } : t)),
+        old?.map((t) => (t.id === id ? ({ ...t, ...data } as Topic) : t)),
       );
       return { previous: prev };
     },
@@ -141,9 +157,13 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   const [editing, setEditing] = useState<Topic | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [viewTopicId, setViewTopicId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({ name: '' });
+  const [formData, setFormData] = useState<{
+    name: string;
+    visibility?: 'personal' | 'group';
+    groupIds?: string[];
+  }>({ name: '', visibility: 'personal', groupIds: [] });
   const selection = useSelection();
-  const canCreateTopic = useFeature('study.create');
+  const canCreateTopic = true;
   const { isSelecting: selectionIsActive, handleClearSelection: selectionClear } = selection;
 
   const { data: topicFlashcardsData } = useInfiniteQuery({
@@ -179,7 +199,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   }, [selectionIsActive, selectionClear]);
 
   function resetForm() {
-    setFormData({ name: '' });
+    setFormData({ name: '', visibility: 'personal', groupIds: [] });
     setEditing(null);
   }
 
@@ -190,7 +210,11 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
 
   function openEdit(topic: Topic) {
     setEditing(topic);
-    setFormData({ name: topic.name });
+    setFormData({
+      name: topic.name,
+      visibility: (topic as any).visibility ?? 'personal',
+      groupIds: [],
+    });
     setDialogOpen(true);
   }
 
@@ -201,9 +225,18 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     }
     try {
       if (editing) {
-        await updateTopic.mutateAsync({ id: editing.id, name: formData.name });
+        await updateTopic.mutateAsync({
+          id: editing.id,
+          name: formData.name,
+          visibility: formData.visibility,
+          groupIds: formData.visibility === 'group' ? formData.groupIds : undefined,
+        });
       } else {
-        await createTopic.mutateAsync({ name: formData.name });
+        await createTopic.mutateAsync({
+          name: formData.name,
+          visibility: formData.visibility,
+          groupIds: formData.visibility === 'group' ? formData.groupIds : undefined,
+        });
       }
       setDialogOpen(false);
       resetForm();
@@ -277,24 +310,11 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         <PageToolbar
           search={{ value: searchInput, onChange: setSearchInput, placeholder: t('search_topics') }}
           actions={
-            <Button
-              disabled={!canCreateTopic.hasAccess}
-              onClick={
-                canCreateTopic.hasAccess
-                  ? openCreate
-                  : () => router.push('/checkout?plan_id=student_premium')
-              }
-            >
-              {canCreateTopic.hasAccess ? (
-                <>
-                  <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
-                </>
-              ) : (
-                <>
-                  <Lock className="size-3" /> Upgrade
-                </>
-              )}
-            </Button>
+            canCreateTopic && (
+              <Button onClick={openCreate}>
+                <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
+              </Button>
+            )
           }
         >
           <Select value={owner} onValueChange={setOwner}>
@@ -363,26 +383,11 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         emptyIcon={<Tags className="h-10 w-10 text-muted-foreground" />}
         emptyTitle={t('no_topics')}
         emptyAction={
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!canCreateTopic.hasAccess}
-            onClick={
-              canCreateTopic.hasAccess
-                ? openCreate
-                : () => router.push('/checkout?plan_id=student_premium')
-            }
-          >
-            {canCreateTopic.hasAccess ? (
-              <>
-                <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
-              </>
-            ) : (
-              <>
-                <Lock className="size-3" /> Upgrade
-              </>
-            )}
-          </Button>
+          canCreateTopic && (
+            <Button variant="outline" size="sm" onClick={openCreate}>
+              <Plus className="mr-1.5 h-4 w-4" /> {t('new_topic')}
+            </Button>
+          )
         }
       >
         {topics.map((topic) => (
@@ -412,6 +417,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
           resetForm();
         }}
         t={t}
+        groups={groupsData}
       />
 
       <TopicViewDialog
@@ -445,13 +451,15 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         <div className="sm:hidden">
           <SpeedDial
             items={[
-              {
-                icon: SquarePen,
-                label: t('new_topic'),
-                onClick: canCreateTopic.hasAccess
-                  ? openCreate
-                  : () => router.push('/checkout?plan_id=student_premium'),
-              },
+              ...(canCreateTopic
+                ? [
+                    {
+                      icon: SquarePen,
+                      label: t('new_topic'),
+                      onClick: openCreate,
+                    },
+                  ]
+                : []),
               {
                 icon: CheckSquare,
                 label: t('select_topics'),

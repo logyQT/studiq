@@ -38,7 +38,7 @@ const QUESTION_TYPE_OPTIONS = [
 export function QuizContent() {
   const t = useTranslations('AppFlashcardStudyPage');
   const router = useRouter();
-  const { hasAccess } = useFeature('test.create');
+  const { hasAccess } = useFeature('quiz');
 
   const { data: attemptsData } = useApiQuery<QuizAttempt[]>({
     queryKey: ['quiz', 'attempts'],

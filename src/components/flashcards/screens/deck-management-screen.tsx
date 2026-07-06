@@ -6,14 +6,12 @@ import {
   Download,
   EyeOff,
   FolderOpen,
-  Lock,
   Plus,
   SquarePen,
   Trash2,
   Upload,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
 import type { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -27,12 +25,12 @@ import { SpeedDial } from '@/components/shared/speed-dial';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useApiMutation } from '@/hooks/use-api';
+import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useCan } from '@/hooks/use-can';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
-import { can } from '@/lib/frontend-rbac';
-import { flashcardKeys } from '@/lib/query-keys';
-import { UserRole } from '@/types';
+import { flashcardKeys, groupKeys } from '@/lib/query-keys';
+import { AccountType } from '@/types';
 import type { Deck } from '@/types/flashcards';
 
 const ImportDialog = dynamic(
@@ -49,7 +47,6 @@ const DeckFormDialog = dynamic(() =>
 );
 
 import { useDebounce } from '@/hooks/use-debounce';
-import { useFeature } from '@/hooks/use-feature';
 import { useSelection } from '@/hooks/use-selection';
 
 interface DeckManagementScreenProps {
@@ -73,10 +70,16 @@ function loadPersistedFilters() {
 }
 
 export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps) {
-  const router = useRouter();
   const { user } = useAuth();
-  const role = user?.app_metadata?.role as UserRole | undefined;
   const { activeOrg } = useOrgs();
+  const can = useCan();
+
+  const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
+    queryKey: groupKeys.list(activeOrg?.id),
+    url: '/api/v1/organization/groups',
+    enabled: !!activeOrg?.id && can('org.manage'),
+  });
+  const accountType = user?.app_metadata?.account_type as AccountType | undefined;
   const queryClient = useQueryClient();
 
   const persisted = loadPersistedFilters();
@@ -148,13 +151,25 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   }
 
   const createDeck = useApiMutation({
-    mutationFn: (data: { name: string; description?: string }) =>
-      apiPost<Deck>('/api/v1/flashcards/decks', data),
+    mutationFn: (data: {
+      name: string;
+      description?: string;
+      visibility?: string;
+      groupIds?: string[];
+    }) => apiPost<Deck>('/api/v1/flashcards/decks', data),
     invalidateKeys: [flashcardKeys.decks.all],
   });
   const updateDeck = useApiMutation({
-    mutationFn: ({ id, ...data }: { id: string; name: string; description?: string }) =>
-      apiPut<Deck>(`/api/v1/flashcards/decks/${id}`, data),
+    mutationFn: ({
+      id,
+      ...data
+    }: {
+      id: string;
+      name: string;
+      description?: string;
+      visibility?: string;
+      groupIds?: string[];
+    }) => apiPut<Deck>(`/api/v1/flashcards/decks/${id}`, data),
     invalidateKeys: [flashcardKeys.decks.all],
   });
   const deleteDeck = useApiMutation({
@@ -178,7 +193,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
   const [importOpen, setImportOpen] = useState(false);
   const selection = useSelection();
   const { isSelecting: selectionIsActive, handleClearSelection: selectionClear } = selection;
-  const canCreateDeck = useFeature('study.create');
+  const canCreateDeck = true;
 
   useEffect(() => {
     if (!selectionIsActive) return;
@@ -202,7 +217,12 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     setDialogOpen(true);
   }
 
-  async function handleSubmit(data: { name: string; description: string }) {
+  async function handleSubmit(data: {
+    name: string;
+    description: string;
+    visibility?: 'personal' | 'group';
+    groupIds?: string[];
+  }) {
     if (!data.name.trim()) {
       toast.error(t('name_required'));
       return;
@@ -213,11 +233,15 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
           id: editing.id,
           name: data.name,
           description: data.description || undefined,
+          visibility: data.visibility,
+          groupIds: data.visibility === 'group' ? data.groupIds : undefined,
         });
       } else {
         await createDeck.mutateAsync({
           name: data.name,
           description: data.description || undefined,
+          visibility: data.visibility,
+          groupIds: data.visibility === 'group' ? data.groupIds : undefined,
         });
       }
       setDialogOpen(false);
@@ -287,14 +311,17 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     setDeleteId(null);
   }
 
-  const canSeeOrg =
-    role === UserRole.TEACHER || role === UserRole.UNIVERSITY_ADMIN || role === UserRole.SYS_ADMIN;
+  const canSeeGroup =
+    activeOrg?.orgRoleName === 'teacher' ||
+    activeOrg?.orgRoleName === 'admin' ||
+    accountType === AccountType.MANAGER;
 
   return (
     <div className="space-y-6">
       <DeckFilters
         searchInput={searchInput}
         onSearchChange={setSearchInput}
+        canSeeGroup={canSeeGroup}
         owner={owner}
         onOwnerChange={(v) => {
           setOwner(v);
@@ -307,7 +334,6 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
           setSortOrder(so);
           persistFilters(owner, sb, so);
         }}
-        canSeeOrg={canSeeOrg}
         includeSuspended={includeSuspended}
         onIncludeSuspendedChange={setIncludeSuspended}
         onImport={() => setImportOpen(true)}
@@ -352,26 +378,11 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         emptyIcon={<FolderOpen className="h-10 w-10 text-muted-foreground" />}
         emptyTitle={t('no_decks')}
         emptyAction={
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!canCreateDeck.hasAccess}
-            onClick={
-              canCreateDeck.hasAccess
-                ? openCreate
-                : () => router.push('/checkout?plan_id=student_premium')
-            }
-          >
-            {canCreateDeck.hasAccess ? (
-              <>
-                <Plus className="mr-1.5 h-4 w-4" /> {t('new_deck')}
-              </>
-            ) : (
-              <>
-                <Lock className="size-3" /> Upgrade
-              </>
-            )}
-          </Button>
+          canCreateDeck && (
+            <Button variant="outline" size="sm" onClick={openCreate}>
+              <Plus className="mr-1.5 h-4 w-4" /> {t('new_deck')}
+            </Button>
+          )
         }
       >
         {decks.map((deck) => (
@@ -383,8 +394,8 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
             onToggleSelect={() => handleToggleSelect(deck.id)}
             basePath={basePath}
             t={t}
-            canUpdate={can(role, 'deck.update', deck.created_by, user?.id, activeOrg?.id)}
-            canDelete={can(role, 'deck.delete', deck.created_by, user?.id, activeOrg?.id)}
+            canUpdate={can('deck.update', deck.created_by)}
+            canDelete={can('deck.delete', deck.created_by)}
             onEdit={() => openEdit(deck)}
             onDelete={() => setDeleteId(deck.id)}
             onExport={() =>
@@ -414,6 +425,12 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         descriptionPlaceholder={t('description_placeholder')}
         cancelLabel={t('common_cancel')}
         submitLabel={editing ? t('common_update') : t('common_create')}
+        groups={groupsData}
+        visibilityLabel={t('visibility_label')}
+        visibilityPersonalLabel={t('visibility_personal')}
+        visibilityGroupLabel={t('visibility_group')}
+        groupsPlaceholder={t('groups_placeholder')}
+        groupsEmptyText={t('groups_empty')}
       />
 
       <DeleteConfirmDialog
@@ -450,13 +467,15 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         <div className="sm:hidden">
           <SpeedDial
             items={[
-              {
-                icon: SquarePen,
-                label: t('new_deck'),
-                onClick: canCreateDeck.hasAccess
-                  ? openCreate
-                  : () => router.push('/checkout?plan_id=student_premium'),
-              },
+              ...(canCreateDeck
+                ? [
+                    {
+                      icon: SquarePen,
+                      label: t('new_deck'),
+                      onClick: openCreate,
+                    },
+                  ]
+                : []),
               { icon: Upload, label: t('common_import'), onClick: () => setImportOpen(true) },
               {
                 icon: CheckSquare,

@@ -4,7 +4,7 @@ import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { CreateInviteInput } from '@/server/models';
-import { UserRole } from '@/types';
+import { AccountType } from '@/types';
 
 export class InvitationService {
   async createInvitation(ctx: RequestContext, data: CreateInviteInput) {
@@ -12,17 +12,14 @@ export class InvitationService {
 
     let targetOrganizationId: string | undefined;
 
-    if (ctx.role === UserRole.SYS_ADMIN) {
-      if (!data.organizationId) throw new AppError('NOT_FOUND');
-      targetOrganizationId = data.organizationId;
-    } else if (ctx.role === UserRole.UNIVERSITY_ADMIN) {
+    if (ctx.accountType === AccountType.MANAGER) {
+      targetOrganizationId = data.organizationId ?? ctx.activeOrgId ?? undefined;
+      if (!targetOrganizationId) throw new AppError('NOT_FOUND');
+    } else if (ctx.accountType === AccountType.EDUCATOR) {
       targetOrganizationId = ctx.activeOrgId ?? undefined;
-    } else if (ctx.role === UserRole.TEACHER) {
-      targetOrganizationId = ctx.activeOrgId ?? undefined;
-      if (data.role !== UserRole.STUDENT) throw new AppError('FORBIDDEN');
     }
 
-    if (!targetOrganizationId && ctx.role !== UserRole.SYS_ADMIN) {
+    if (!targetOrganizationId) {
       throw new AppError('FORBIDDEN');
     }
 
@@ -33,8 +30,7 @@ export class InvitationService {
       .from('invitations')
       .insert({
         email: data.email,
-        name: data.name,
-        target_role: data.role,
+        target_org_role_id: data.targetOrgRoleId,
         organization_id: targetOrganizationId,
         inviter_id: ctx.userId,
         expires_at: expiresAt.toISOString(),
@@ -63,7 +59,9 @@ export class InvitationService {
 
     const { data, error } = await supabase
       .from('invitations')
-      .select('email, name, expires_at, organization_id, target_role')
+      .select(
+        'email, expires_at, organization_id, target_org_role_id, organizations!inner(name, slug), org_roles!inner(name)',
+      )
       .eq('token', token)
       .single();
 
@@ -75,11 +73,16 @@ export class InvitationService {
       throw new AppError('GONE');
     }
 
+    const org = data.organizations as unknown as { name: string; slug: string };
+    const role = data.org_roles as unknown as { name: string };
+
     return {
       email: data.email,
-      name: data.name,
       organizationId: data.organization_id,
-      targetRole: data.target_role,
+      organizationName: org?.name ?? '',
+      organizationSlug: org?.slug ?? '',
+      targetRole: data.target_org_role_id,
+      orgRoleName: role?.name ?? '',
     };
   }
 
@@ -87,10 +90,6 @@ export class InvitationService {
     const supabase = await createClient();
 
     const invite = await this.getInvitationByToken(token);
-
-    if (invite.targetRole !== ctx.role) {
-      throw new AppError('FORBIDDEN');
-    }
 
     const { data: org, error: orgError } = await supabase
       .from('organizations')
@@ -105,16 +104,100 @@ export class InvitationService {
       .upsert({
         organization_id: invite.organizationId,
         user_id: ctx.userId,
-        role: invite.targetRole,
+        org_role_id: invite.targetRole,
       })
       .select()
       .single();
 
     if (memberError) throw mapSupabaseError(memberError);
 
+    const { data: defaultGroup } = await supabase
+      .from('groups')
+      .select('id')
+      .eq('organization_id', invite.organizationId)
+      .eq('is_default', true)
+      .single();
+
+    if (defaultGroup) {
+      const { error: me } = await supabase.from('group_members').insert({
+        group_id: defaultGroup.id,
+        user_id: ctx.userId,
+        role: 'member',
+      });
+      if (me) throw mapSupabaseError(me);
+    }
+
     await supabase.from('invitations').update({ is_accepted: true }).eq('token', token);
 
-    return { id: org.id, name: org.name, slug: org.slug, role: invite.targetRole };
+    return { id: org.id, name: org.name, slug: org.slug, orgRoleId: invite.targetRole };
+  }
+
+  async listInvitations(ctx: RequestContext, isAccepted = false) {
+    const supabase = await createClient();
+    if (!ctx.activeOrgId) throw new AppError('FORBIDDEN');
+
+    let query = supabase
+      .from('invitations')
+      .select('*, org_roles!inner(name)')
+      .eq('organization_id', ctx.activeOrgId)
+      .order('created_at', { ascending: false });
+
+    if (!isAccepted) query = query.eq('is_accepted', false);
+
+    const { data, error } = await query;
+    if (error) throw mapSupabaseError(error);
+
+    return (data ?? []).map((inv) => {
+      const role = inv.org_roles as unknown as { name: string } | null;
+      return {
+        id: inv.id,
+        email: inv.email,
+        targetOrgRoleId: inv.target_org_role_id,
+        orgRoleName: role?.name ?? '',
+        isAccepted: inv.is_accepted,
+        expiresAt: inv.expires_at,
+        createdAt: inv.created_at,
+      };
+    });
+  }
+
+  async updateInvitation(_ctx: RequestContext, id: string, data: { targetOrgRoleId?: string }) {
+    const supabase = await createClient();
+
+    const { data: invite, error: fetchError } = await supabase
+      .from('invitations')
+      .select('id, is_accepted')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !invite) throw new AppError('NOT_FOUND');
+    if (invite.is_accepted) throw new AppError('FORBIDDEN');
+
+    const updateData: Record<string, string> = {};
+    if (data.targetOrgRoleId) updateData.target_org_role_id = data.targetOrgRoleId;
+
+    const { error } = await supabase.from('invitations').update(updateData).eq('id', id);
+    if (error) throw mapSupabaseError(error);
+
+    return { success: true };
+  }
+
+  async deleteInvitation(_ctx: RequestContext, id: string) {
+    const supabase = await createClient();
+
+    const { data: invite, error: fetchError } = await supabase
+      .from('invitations')
+      .select('id, is_accepted')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !invite) throw new AppError('NOT_FOUND');
+    if (invite.is_accepted) throw new AppError('FORBIDDEN');
+
+    const { error } = await supabase.from('invitations').delete().eq('id', id);
+    if (error) throw mapSupabaseError(error);
+
+    return { success: true };
   }
 }
 

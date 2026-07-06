@@ -61,6 +61,7 @@ export const UpdateFlashcardSchema = registry.register(
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
       .max(5000, { error: ValidationErrorCode.TOO_LONG })
       .optional(),
+    visibility: z.enum(['personal', 'group']).optional(),
   }),
 );
 
@@ -162,6 +163,7 @@ export const FlashcardSchema = registry.register(
     back: z.string(),
     created_by: z.string().uuid(),
     organization_id: z.string().uuid().nullable().optional(),
+    visibility: z.enum(['personal', 'group']).optional(),
     created_at: z.string().optional(),
   }),
 );

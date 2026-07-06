@@ -5,4 +5,4 @@
 -- ==========================================
 
 -- question_type and question_difficulty are now
--- created in 00_enums.sql alongside user_role.
+-- created in 00_enums.sql alongside account_type.

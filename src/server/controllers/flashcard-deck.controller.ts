@@ -16,7 +16,7 @@ import { flashcardDeckService } from '@/server/services';
 export class FlashcardDeckController {
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      if (!(await hasPermission(ctx, Permission.STUDY_CREATE))) throw new AppError('FORBIDDEN');
+      if (!(await hasPermission(ctx, Permission.DECK_CREATE))) throw new AppError('FORBIDDEN');
       const parsed = CreateDeckSchema.safeParse(body);
 
       if (!parsed.success) {

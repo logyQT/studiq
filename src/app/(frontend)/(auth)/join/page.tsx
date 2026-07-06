@@ -24,7 +24,7 @@ import { type RegisterInput, RegisterSchema } from '@/server/models/auth.model';
 
 function JoinSkeleton() {
   return (
-    <Card className="w-full max-w-md mx-auto">
+    <Card className="w-full max-w-md mx-auto shadow-lg border-sidebar-border bg-sidebar">
       <CardHeader className="space-y-2">
         <Skeleton className="h-6 w-1/2" />
         <Skeleton className="h-4 w-3/4" />
@@ -67,6 +67,7 @@ function JoinContent() {
       email: '',
       password: '',
       inviteToken: token || '',
+      accountType: 'student',
     },
   });
 
@@ -78,7 +79,7 @@ function JoinContent() {
 
     async function verifyToken() {
       try {
-        const res = await fetch(`/api/v1/organization/invitations?token=${token}`);
+        const res = await fetch(`/api/v1/organization/invites?token=${token}`);
         const result = await res.json();
 
         if (!res.ok || !result.success) {
@@ -129,7 +130,7 @@ function JoinContent() {
   }
 
   return (
-    <Card className="w-full max-w-md mx-auto">
+    <Card className="w-full max-w-md mx-auto shadow-lg border-sidebar-border bg-sidebar">
       <CardHeader>
         <CardTitle>{t('join_title')}</CardTitle>
         <CardDescription>{t('join_desc')}</CardDescription>
@@ -189,7 +190,7 @@ function JoinContent() {
 
 export default function JoinPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Suspense fallback={<JoinSkeleton />}>
         <JoinContent />
       </Suspense>

@@ -11,6 +11,8 @@ export const CreateDeckSchema = registry.register(
       .max(128, { error: ValidationErrorCode.TOO_LONG }),
     description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
     flashcardIds: z.array(z.uuid()).optional(),
+    groupIds: z.array(z.string().uuid()).optional(),
+    visibility: z.enum(['personal', 'group']).optional(),
   }),
 );
 
@@ -25,7 +27,9 @@ export const UpdateDeckSchema = registry.register(
       .optional(),
     description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
     flashcardIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+    groupIds: z.array(z.string().uuid()).optional(),
     suspended: z.boolean().optional(),
+    visibility: z.enum(['personal', 'group']).optional(),
   }),
 );
 
@@ -42,7 +46,7 @@ export const DeckListQuerySchema = registry.register(
   'DeckListQuery',
   z.object({
     q: z.string().optional(),
-    owner: z.enum(['all', 'mine', 'org', 'shared']).optional().default('all'),
+    owner: z.enum(['all', 'mine', 'group', 'shared']).optional().default('all'),
     sortBy: z.enum(['created_at', 'updated_at', 'name']).optional().default('created_at'),
     sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
     cursor: z.string().optional(),
@@ -63,6 +67,7 @@ export const BulkCreateDeckSchema = registry.register(
             .min(1, { error: ValidationErrorCode.TOO_SHORT })
             .max(128, { error: ValidationErrorCode.TOO_LONG }),
           description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
+          visibility: z.enum(['personal', 'group']).optional(),
         }),
       )
       .min(1, { error: ValidationErrorCode.TOO_FEW }),

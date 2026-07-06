@@ -1,15 +1,15 @@
-import { UserRole } from '@/types';
+import { AccountType } from '@/types';
 
 export type RouteRule = {
   /** The Regex pattern to match the pathname */
   matcher: RegExp;
   /** Does this route require the user to be authenticated? */
   requireAuth?: boolean;
-  /** Which roles are allowed to access this route? (If empty, all authenticated users) */
-  allowedRoles?: string[];
+  /** Which account types are allowed to access this route? (If empty, all authenticated users) */
+  allowedAccountTypes?: string[];
   /** If the user is ALREADY logged in, redirect them here (useful for /login, /register) */
   redirectIfAuthenticated?: string;
-  redirectIfAuthenticatedByRole?: Partial<Record<UserRole, string>>;
+  redirectIfAuthenticatedByAccountType?: Partial<Record<AccountType, string>>;
   /** Is this an API route? Determines if we return a JSON error (401/403) or a 302 Redirect */
   isApi?: boolean;
 };
@@ -17,21 +17,21 @@ export type RouteRule = {
 export const routeRules: RouteRule[] = [
   // --- API ROUTES ---
   {
-    matcher: /^\/api\/v1\/admin(\/.*)?$/, // Matches /api/v1/admin and anything after it
+    matcher: /^\/api\/v1\/admin(\/.*)?$/,
     requireAuth: true,
-    allowedRoles: [UserRole.SYS_ADMIN],
+    allowedAccountTypes: [AccountType.MANAGER],
     isApi: true,
   },
   {
     matcher: /^\/api\/v1\/teacher(\/.*)?$/,
     requireAuth: true,
-    allowedRoles: [UserRole.TEACHER, UserRole.SYS_ADMIN],
+    allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER],
     isApi: true,
   },
   {
     matcher: /^\/api\/v1\/ai(\/.*)?$/,
     requireAuth: true,
-    allowedRoles: [UserRole.PREMIUM, UserRole.STUDENT, UserRole.TEACHER],
+    allowedAccountTypes: [AccountType.STUDENT, AccountType.EDUCATOR],
     isApi: true,
   },
   // Stripe webhook is public (signature-verified in production)
@@ -49,35 +49,44 @@ export const routeRules: RouteRule[] = [
   // --- AUTH ROUTES ---
   {
     matcher: /^\/(login|register)(\/.*)?$/,
-    redirectIfAuthenticatedByRole: {
-      [UserRole.SYS_ADMIN]: '/admin',
-      [UserRole.TEACHER]: '/edu',
-      [UserRole.UNIVERSITY_ADMIN]: '/manage',
-      [UserRole.STUDENT]: '/app',
-      [UserRole.FREE]: '/app',
-      [UserRole.PREMIUM]: '/app',
+    redirectIfAuthenticatedByAccountType: {
+      [AccountType.MANAGER]: '/manage',
+      [AccountType.EDUCATOR]: '/edu',
+      [AccountType.STUDENT]: '/app',
     },
+  },
+
+  // --- ONBOARDING ROUTES ---
+  {
+    matcher: /^\/setup(\/.*)?$/,
+    requireAuth: true,
+    allowedAccountTypes: [AccountType.EDUCATOR],
+  },
+  {
+    matcher: /^\/manage\/onboarding(\/.*)?$/,
+    requireAuth: true,
+    allowedAccountTypes: [AccountType.MANAGER],
   },
 
   // --- UI DASHBOARD ROUTES ---
   {
     matcher: /^\/admin(\/.*)?$/,
     requireAuth: true,
-    allowedRoles: [UserRole.SYS_ADMIN],
+    allowedAccountTypes: [AccountType.MANAGER],
   },
   {
     matcher: /^\/manage(\/.*)?$/,
     requireAuth: true,
-    allowedRoles: [UserRole.UNIVERSITY_ADMIN],
+    allowedAccountTypes: [AccountType.MANAGER],
   },
   {
     matcher: /^\/edu(\/.*)?$/,
     requireAuth: true,
-    allowedRoles: [UserRole.TEACHER],
+    allowedAccountTypes: [AccountType.EDUCATOR],
   },
   {
     matcher: /^\/app(\/.*)?$/,
     requireAuth: true,
-    allowedRoles: [UserRole.STUDENT, UserRole.FREE, UserRole.PREMIUM],
+    allowedAccountTypes: [AccountType.STUDENT],
   },
 ];

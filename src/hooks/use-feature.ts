@@ -1,21 +1,12 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { apiGet } from '@/lib/api';
+import { usePermissions } from '@/hooks/use-permissions';
 
 export function useFeature(featureKey: string): { hasAccess: boolean; isLoading: boolean } {
-  const { user } = useAuth();
+  const { data, isLoading } = usePermissions();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['feature', featureKey],
-    queryFn: async () => {
-      const res = await apiGet<{ hasAccess: boolean }>(`/api/v1/me/features/${featureKey}`);
-      return res.hasAccess;
-    },
-    enabled: !!user,
-    staleTime: 60 * 1000,
-  });
-
-  return { hasAccess: data ?? false, isLoading };
+  return {
+    hasAccess: data?.features?.includes(featureKey) ?? false,
+    isLoading,
+  };
 }

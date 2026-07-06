@@ -4,9 +4,9 @@ import { APP_ERRORS } from '@/lib/errors';
 import { log } from '@/lib/logger';
 import { createClient } from '@/lib/supabase/server';
 
-export async function GET(req: NextRequest) {
-  const FALLBACK_REDIRECT = '/';
+const FALLBACK_REDIRECT = '/';
 
+export async function GET(req: NextRequest) {
   const { searchParams, origin } = req.nextUrl;
 
   const token_hash = searchParams.get('token_hash');

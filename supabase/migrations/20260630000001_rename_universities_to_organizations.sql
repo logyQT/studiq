@@ -97,8 +97,9 @@ CREATE TRIGGER on_org_id_update
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
-  passed_token  text   := NEW.raw_user_meta_data->>'invite_token';
-  invite_record record;
+  passed_token     text   := NEW.raw_user_meta_data->>'invite_token';
+  invite_record    record;
+  personal_org_id  uuid;
 BEGIN
   IF passed_token IS NOT NULL THEN
     SELECT * INTO invite_record
@@ -133,6 +134,19 @@ BEGIN
   -- Fallback: standard free signup
   INSERT INTO public.profiles (id, email, full_name, role)
   VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data->>'name', 'free');
+
+  -- Create personal org and membership
+  INSERT INTO public.organizations (name, slug)
+  VALUES ('Personal', 'personal-' || NEW.id::text)
+  RETURNING id INTO personal_org_id;
+
+  UPDATE public.profiles
+  SET organization_id = personal_org_id
+  WHERE id = NEW.id;
+
+  INSERT INTO public.org_members (organization_id, user_id, role)
+  VALUES (personal_org_id, NEW.id, 'free')
+  ON CONFLICT DO NOTHING;
 
   RETURN NEW;
 END;

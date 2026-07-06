@@ -1,8 +1,8 @@
 'use client';
 
-import { Lock, Plus, Search, Sparkles, X } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { Plus, Search, Sparkles, X } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useCan } from '@/hooks/use-can';
 import { useFeature } from '@/hooks/use-feature';
 import type { Topic } from '@/types/flashcards';
 
@@ -44,10 +45,11 @@ export function FlashcardToolbar({
   onCreateNew,
   t,
 }: FlashcardToolbarProps) {
-  const router = useRouter();
-  const { hasAccess: hasStudyAccess } = useFeature('study.create');
+  const { user } = useAuth();
+  const can = useCan();
+  const canCreate = can('flashcard.create', user?.id);
   const { hasAccess: hasAiAccess } = useFeature('ai.chat');
-  const hasAccessGenerate = hasStudyAccess && hasAiAccess;
+  const hasAccessGenerate = canCreate && hasAiAccess;
 
   return (
     <div className="flex flex-wrap items-center gap-3 max-sm:hidden">
@@ -101,47 +103,16 @@ export function FlashcardToolbar({
         </SelectContent>
       </Select>
       <div className="flex items-center gap-2 sm:ml-auto">
-        {canGenerate && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            disabled={!hasAccessGenerate}
-            onClick={
-              hasAccessGenerate
-                ? onGenerate
-                : () => router.push('/checkout?plan_id=student_premium')
-            }
-          >
-            {hasAccessGenerate ? (
-              <>
-                <Sparkles className="h-4 w-4" /> {t('generate')}
-              </>
-            ) : (
-              <>
-                <Lock className="size-3" /> Upgrade
-              </>
-            )}
+        {canGenerate && hasAccessGenerate && (
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={onGenerate}>
+            <Sparkles className="h-4 w-4" /> {t('generate')}
           </Button>
         )}
-        <Button
-          size="sm"
-          className="gap-1.5"
-          disabled={!hasStudyAccess}
-          onClick={
-            hasStudyAccess ? onCreateNew : () => router.push('/checkout?plan_id=student_premium')
-          }
-        >
-          {hasStudyAccess ? (
-            <>
-              <Plus className="h-4 w-4" /> {t('new_flashcard')}
-            </>
-          ) : (
-            <>
-              <Lock className="size-3" /> Upgrade
-            </>
-          )}
-        </Button>
+        {canCreate && (
+          <Button size="sm" className="gap-1.5" onClick={onCreateNew}>
+            <Plus className="h-4 w-4" /> {t('new_flashcard')}
+          </Button>
+        )}
       </div>
     </div>
   );

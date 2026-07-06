@@ -23,12 +23,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useOrgs } from '@/hooks/use-orgs';
 
 const ROLE_LABEL_MAP: Record<string, string> = {
-  teacher: 'role_teacher',
   student: 'role_student',
-  university_admin: 'role_uni_admin',
-  sys_admin: 'role_sys_admin',
-  free: 'role_free',
-  premium: 'role_premium',
+  educator: 'role_educator',
+  manager: 'role_manager',
 };
 
 export function OrgSwitcher() {
@@ -58,7 +55,7 @@ export function OrgSwitcher() {
   }
 
   const displayName = activeOrg?.name || 'StudiQ';
-  const roleKey = ROLE_LABEL_MAP[activeOrg?.role || ''] || 'role_free';
+  const roleKey = ROLE_LABEL_MAP[activeOrg?.orgRoleName || ''] || 'role_student';
 
   return (
     <SidebarMenu>
@@ -107,16 +104,15 @@ export function OrgSwitcher() {
                 <div className="flex flex-col flex-1 min-w-0">
                   <span className="truncate text-sm font-medium">{org.name}</span>
                   <span className="truncate text-xs text-muted-foreground">
-                    {t(ROLE_LABEL_MAP[org.role] || 'role_free')}
+                    {t(ROLE_LABEL_MAP[org.orgRoleName] || 'role_student')}
                   </span>
                 </div>
                 {org.isActive && <Check className="ml-auto size-4 text-primary" />}
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
-            {user?.app_metadata?.role === 'teacher' ||
-            user?.app_metadata?.role === 'university_admin' ||
-            user?.app_metadata?.role === 'sys_admin' ? (
+            {(activeOrg?.orgRoleName ?? user?.app_metadata?.account_type) === 'educator' ||
+            (activeOrg?.orgRoleName ?? user?.app_metadata?.account_type) === 'manager' ? (
               <DropdownMenuItem
                 className="gap-2 p-2 text-muted-foreground"
                 onClick={() => router.push('/edu/classroom/new')}

@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { z } from '@/lib/zod';
-import { UserRole } from '@/types';
+import { AccountType } from '@/types';
 
 const InviteFormSchema = z.object({
   name: z.string().nonempty().min(1).max(100),
@@ -40,10 +40,10 @@ export default function ClassroomInvitePage() {
     setIsPending(true);
     setInviteLink(null);
     try {
-      const res = await fetch('/api/v1/organization/invitations', {
+      const res = await fetch('/api/v1/organization/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...values, role: UserRole.STUDENT }),
+        body: JSON.stringify({ ...values, role: AccountType.STUDENT }),
       });
 
       if (!res.ok) throw new Error('Failed to send invitation');

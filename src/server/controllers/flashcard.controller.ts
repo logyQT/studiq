@@ -23,7 +23,7 @@ import { flashcardService } from '@/server/services';
 export class FlashcardController {
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      if (!(await hasPermission(ctx, Permission.STUDY_CREATE))) throw new AppError('FORBIDDEN');
+      if (!(await hasPermission(ctx, Permission.FLASHCARD_CREATE))) throw new AppError('FORBIDDEN');
       const parsed = CreateFlashcardSchema.safeParse(body);
 
       if (!parsed.success) {
@@ -62,7 +62,7 @@ export class FlashcardController {
 
   async bulkCreate(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      if (!(await hasPermission(ctx, Permission.STUDY_CREATE))) throw new AppError('FORBIDDEN');
+      if (!(await hasPermission(ctx, Permission.FLASHCARD_CREATE))) throw new AppError('FORBIDDEN');
       const parsed = BulkCreateFlashcardsSchema.safeParse(body);
       const t0 = performance.now();
 

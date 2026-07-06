@@ -5,10 +5,7 @@ import { BulkDialogs } from '@/components/flashcards/dialogs/bulk-dialogs';
 import { DeckDialogs } from '@/components/flashcards/dialogs/deck-dialogs';
 import { SingleCardDialogs } from '@/components/flashcards/dialogs/single-card-dialogs';
 import { TopicDialogs } from '@/components/flashcards/dialogs/topic-dialogs';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { useOrgs } from '@/hooks/use-orgs';
-import { can } from '@/lib/frontend-rbac';
-import type { UserRole } from '@/types';
+import { useCan } from '@/hooks/use-can';
 import type { Deck, Flashcard, Topic } from '@/types/flashcards';
 
 export interface DialogsState {
@@ -95,13 +92,9 @@ export function DeckDetailDialogs({
   t,
   basePath,
 }: DeckDetailDialogsProps) {
-  const { user } = useAuth();
-  const role = user?.app_metadata?.role as UserRole | undefined;
-  const { activeOrg } = useOrgs();
+  const can = useCan();
 
-  const ownedDecks = allDecks.filter((d) =>
-    can(role, 'deck.update', d.created_by, user?.id, activeOrg?.id),
-  );
+  const ownedDecks = allDecks.filter((d) => can('deck.update', d.created_by));
 
   return (
     <>

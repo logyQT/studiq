@@ -1,8 +1,6 @@
 'use client';
 
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { useEffect, useMemo, useRef } from 'react';
-import { createClient } from '@/lib/supabase/client';
 
 type RealtimeEvent = 'INSERT' | 'UPDATE' | 'DELETE' | '*';
 
@@ -11,7 +9,17 @@ interface ListenOptions {
   filter?: string;
 }
 
-type Handler = (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void;
+interface PostgresChangesPayload {
+  event_type: 'INSERT' | 'UPDATE' | 'DELETE';
+  schema: string;
+  table: string;
+  new: Record<string, unknown>;
+  old: Record<string, unknown>;
+  commit_timestamp: string;
+  errors: string[] | null;
+}
+
+type Handler = (payload: PostgresChangesPayload) => void;
 
 class RealtimeBuilder {
   readonly name: string;
@@ -44,39 +52,46 @@ function channel(name: string): RealtimeBuilder {
 function useRealtimeChannel(builder: RealtimeBuilder): void {
   const handlersRef = useRef<Handler[]>([]);
 
-  const _subKey = useMemo(
-    () => builder.subscriptions.map((s) => `${s.table}:${s.event}:${s.filter}`).join(','),
-    [builder.subscriptions],
-  );
+  const { tables, events, filters } = useMemo(() => {
+    const tables: string[] = [];
+    const events: string[] = [];
+    const filters: (string | undefined)[] = [];
+    for (const s of builder.subscriptions) {
+      tables.push(s.table);
+      events.push(s.event);
+      filters.push(s.filter);
+    }
+    return { tables, events, filters };
+  }, [builder.subscriptions]);
+
+  handlersRef.current = builder.subscriptions.map((s) => s.handler);
 
   useEffect(() => {
-    handlersRef.current = builder.subscriptions.map((s) => s.handler);
-
-    const supabase = createClient();
-    const ch = supabase.channel(builder.name);
-
-    for (let i = 0; i < builder.subscriptions.length; i++) {
-      const sub = builder.subscriptions[i];
-      const idx = i;
-      ch.on(
-        'postgres_changes',
-        {
-          event: sub.event,
-          schema: 'public',
-          table: sub.table,
-          ...(sub.filter ? { filter: sub.filter } : {}),
-        },
-        (payload) => {
-          handlersRef.current[idx](payload);
-        },
-      );
+    const params = new URLSearchParams();
+    params.set('channel', builder.name);
+    for (let i = 0; i < tables.length; i++) {
+      params.append('table', tables[i]);
+      params.append('event', events[i]);
+      if (filters[i]) params.append('filter', filters[i]!);
     }
 
-    ch.subscribe();
-    return () => {
-      supabase.removeChannel(ch);
+    const eventSource = new EventSource(`/api/v1/realtime/subscribe?${params}`);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const { index, payload } = JSON.parse(event.data);
+        if (typeof index === 'number' && handlersRef.current[index]) {
+          handlersRef.current[index](payload);
+        }
+      } catch {
+        // Ignore malformed events
+      }
     };
-  }, [builder.name, builder.subscriptions]);
+
+    return () => {
+      eventSource.close();
+    };
+  }, [builder.name, tables, events, filters]);
 }
 
 export type { Handler, ListenOptions, RealtimeEvent };

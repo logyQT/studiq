@@ -9,7 +9,7 @@ import { questionService } from '@/server/services';
 export class QuestionController {
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
-      if (!(await hasPermission(ctx, Permission.TEST_CREATE))) throw new AppError('FORBIDDEN');
+      if (!(await hasPermission(ctx, Permission.QUESTION_CREATE))) throw new AppError('FORBIDDEN');
       const parsed = CreateQuestionSchema.safeParse(body);
 
       if (!parsed.success) {

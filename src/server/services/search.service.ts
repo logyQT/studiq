@@ -3,7 +3,7 @@ import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { SearchResult } from '@/server/models';
-import { UserRole } from '@/types';
+import { AccountType } from '@/types';
 
 type RpcRow = {
   id: string;
@@ -43,7 +43,7 @@ export class SearchService {
     const rows = data as RpcRow[] | null;
     if (!rows || rows.length === 0) return [];
 
-    const basePath = ctx.role === UserRole.TEACHER ? '/edu' : '/app';
+    const basePath = ctx.accountType === AccountType.EDUCATOR ? '/edu' : '/app';
 
     const grouped = new Map<string, SearchResult>();
 

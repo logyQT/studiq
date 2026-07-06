@@ -186,7 +186,7 @@ describe('Flashcards Integration', () => {
       expect(body.data[0].front).toBe('fc-Filtered Card');
     });
 
-    it('returns only own flashcards for free user', async () => {
+    it('returns only own flashcards for student', async () => {
       mockUser(TEST_USERS.FREE);
 
       const supabase = createServiceClient();

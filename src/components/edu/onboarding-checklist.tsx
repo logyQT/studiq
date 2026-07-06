@@ -21,7 +21,7 @@ type ChecklistItem = {
 export function OnboardingChecklist() {
   const t = useTranslations('OnboardingChecklist');
   const { user } = useAuth();
-  const { orgs } = useOrgs();
+  const { orgs, activeOrg } = useOrgs();
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -34,13 +34,16 @@ export function OnboardingChecklist() {
 
   useEffect(() => {
     if (orgs.length === 0) return;
-    if (user?.app_metadata?.role !== 'teacher' && user?.app_metadata?.role !== 'university_admin')
+    if (
+      (activeOrg?.orgRoleName ?? user?.app_metadata?.account_type) !== 'educator' &&
+      (activeOrg?.orgRoleName ?? user?.app_metadata?.account_type) !== 'manager'
+    )
       return;
     fetch('/api/v1/organization/members')
       .then((r) => r.json())
       .then((d) => setMemberCount(d.data?.length || 0))
       .catch(() => {});
-  }, [orgs, user]);
+  }, [orgs, user, activeOrg?.orgRoleName]);
 
   if (dismissed || orgs.length === 0) return null;
 

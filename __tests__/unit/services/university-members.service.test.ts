@@ -16,7 +16,7 @@ describe('OrganizationMemberService', () => {
       const profile = {
         id: userId,
         email: 'test@test.com',
-        role: 'student',
+        account_type: 'student',
         organization_id: 'uni-1',
       };
       mock.from.mockReturnValue({
@@ -47,7 +47,7 @@ describe('OrganizationMemberService', () => {
 
   describe('listMembers', () => {
     it('returns members for organization', async () => {
-      const members = [{ id: 'user-1', role: 'student', organization_id: 'uni-1' }];
+      const members = [{ id: 'user-1', account_type: 'student', organization_id: 'uni-1' }];
       mock.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
@@ -62,7 +62,7 @@ describe('OrganizationMemberService', () => {
     });
 
     it('filters by role when roleFilter provided', async () => {
-      const members = [{ id: 'user-1', role: 'student', organization_id: 'uni-1' }];
+      const members = [{ id: 'user-1', account_type: 'student', organization_id: 'uni-1' }];
       const eqChain = vi.fn();
       const eqFirst = vi.fn().mockReturnValue({
         eq: eqChain.mockReturnValue({
@@ -102,13 +102,13 @@ describe('OrganizationMemberService', () => {
       const result = await organizationMemberService.changeRole(
         userId,
         'user-123',
-        'university_admin',
+        '00000000-0000-4000-8000-000000000001',
       );
 
       expect(result).toEqual({ success: true });
       expect(mock.rpc).toHaveBeenCalledWith('admin_change_role', {
         p_target_user: 'user-123',
-        p_new_role: 'university_admin',
+        p_new_org_role_id: '00000000-0000-4000-8000-000000000001',
       });
     });
 
@@ -116,7 +116,7 @@ describe('OrganizationMemberService', () => {
       mock.rpc.mockResolvedValue({ error: { message: 'Unauthorized' } });
 
       await expect(
-        organizationMemberService.changeRole(userId, 'user-123', 'university_admin'),
+        organizationMemberService.changeRole(userId, 'user-123', '00000000-0000-4000-8000-000000000001'),
       ).rejects.toThrow('ERROR_FORBIDDEN');
     });
 
@@ -124,7 +124,7 @@ describe('OrganizationMemberService', () => {
       mock.rpc.mockResolvedValue({ error: { message: 'Some other error' } });
 
       await expect(
-        organizationMemberService.changeRole(userId, 'user-123', 'university_admin'),
+        organizationMemberService.changeRole(userId, 'user-123', '00000000-0000-4000-8000-000000000001'),
       ).rejects.toThrow('ERROR_INTERNAL_SERVER');
     });
   });

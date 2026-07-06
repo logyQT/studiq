@@ -17,12 +17,12 @@ import { SpeedDial } from '@/components/shared/speed-dial';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useApiMutation } from '@/hooks/use-api';
+import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useCan } from '@/hooks/use-can';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
-import { can } from '@/lib/frontend-rbac';
-import { questionKeys } from '@/lib/query-keys';
-import { UserRole } from '@/types';
+import { groupKeys, questionKeys } from '@/lib/query-keys';
+import { AccountType } from '@/types';
 import type { QuestionBank } from '@/types/questions';
 
 interface QuestionBankManagementScreenProps {
@@ -48,8 +48,15 @@ function loadPersistedFilters() {
 export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManagementScreenProps) {
   const _router = useRouter();
   const { user } = useAuth();
-  const role = user?.app_metadata?.role as UserRole | undefined;
   const { activeOrg } = useOrgs();
+  const can = useCan();
+
+  const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
+    queryKey: groupKeys.list(activeOrg?.id),
+    url: '/api/v1/organization/groups',
+    enabled: !!activeOrg?.id && can('org.manage'),
+  });
+  const accountType = user?.app_metadata?.account_type as AccountType | undefined;
 
   const persisted = loadPersistedFilters();
 
@@ -141,13 +148,25 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
   }, [isSelecting]);
 
   const createBank = useApiMutation({
-    mutationFn: (data: { name: string; description?: string }) =>
-      apiPost<QuestionBank>('/api/v1/questions/banks', data),
+    mutationFn: (data: {
+      name: string;
+      description?: string;
+      visibility?: string;
+      groupIds?: string[];
+    }) => apiPost<QuestionBank>('/api/v1/questions/banks', data),
     invalidateKeys: [questionKeys.banks.all],
   });
   const updateBank = useApiMutation({
-    mutationFn: ({ id, ...data }: { id: string; name: string; description?: string }) =>
-      apiPut<QuestionBank>(`/api/v1/questions/banks/${id}`, data),
+    mutationFn: ({
+      id,
+      ...data
+    }: {
+      id: string;
+      name: string;
+      description?: string;
+      visibility?: string;
+      groupIds?: string[];
+    }) => apiPut<QuestionBank>(`/api/v1/questions/banks/${id}`, data),
     invalidateKeys: [questionKeys.banks.all],
   });
   const deleteBank = useApiMutation({
@@ -169,7 +188,12 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     setDialogOpen(true);
   }
 
-  async function handleSubmit(data: { name: string; description: string }) {
+  async function handleSubmit(data: {
+    name: string;
+    description: string;
+    visibility?: 'personal' | 'group';
+    groupIds?: string[];
+  }) {
     if (!data.name.trim()) {
       toast.error(t('common_error'));
       return;
@@ -180,12 +204,16 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
           id: editing.id,
           name: data.name,
           description: data.description || undefined,
+          visibility: data.visibility,
+          groupIds: data.visibility === 'group' ? data.groupIds : undefined,
         });
         toast.success(t('bank_updated'));
       } else {
         await createBank.mutateAsync({
           name: data.name,
           description: data.description || undefined,
+          visibility: data.visibility,
+          groupIds: data.visibility === 'group' ? data.groupIds : undefined,
         });
         toast.success(t('bank_created'));
       }
@@ -233,12 +261,15 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     }
   }
 
-  const canSeeOrg =
-    role === UserRole.TEACHER || role === UserRole.UNIVERSITY_ADMIN || role === UserRole.SYS_ADMIN;
+  const canSeeGroup =
+    activeOrg?.orgRoleName === 'teacher' ||
+    activeOrg?.orgRoleName === 'admin' ||
+    accountType === AccountType.MANAGER;
 
   return (
     <div className="space-y-6">
       <QuestionBankFilters
+        canSeeGroup={canSeeGroup}
         searchInput={searchInput}
         onSearchChange={setSearchInput}
         owner={owner}
@@ -253,7 +284,6 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
           setSortOrder(so);
           persistFilters(owner, sb, so);
         }}
-        canSeeOrg={canSeeOrg}
         onCreateNew={openCreate}
         t={t}
       />
@@ -309,8 +339,8 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
             onToggleSelect={() => handleToggleSelect(bank.id)}
             basePath={basePath}
             t={t}
-            canUpdate={can(role, 'question_bank.update', bank.created_by, user?.id, activeOrg?.id)}
-            canDelete={can(role, 'question_bank.delete', bank.created_by, user?.id, activeOrg?.id)}
+            canUpdate={can('question_bank.update', bank.created_by)}
+            canDelete={can('question_bank.delete', bank.created_by)}
             onEdit={() => openEdit(bank)}
             onDelete={() => setDeleteId(bank.id)}
             onSelect={() => setIsSelecting(true)}
@@ -336,6 +366,12 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
         descriptionPlaceholder={t('description_placeholder')}
         cancelLabel={t('common_cancel')}
         submitLabel={editing ? t('common_update') : t('common_create')}
+        groups={groupsData}
+        visibilityLabel={t('visibility_label')}
+        visibilityPersonalLabel={t('visibility_personal')}
+        visibilityGroupLabel={t('visibility_group')}
+        groupsPlaceholder={t('groups_placeholder')}
+        groupsEmptyText={t('groups_empty')}
       />
 
       <DeleteConfirmDialog

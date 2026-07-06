@@ -1,7 +1,6 @@
 'use client';
 
-import { Lock, Plus, Search, X } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { Plus, Search, X } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useFeature } from '@/hooks/use-feature';
 
 interface QuestionBankFiltersProps {
   searchInput: string;
@@ -22,7 +20,7 @@ interface QuestionBankFiltersProps {
   sortBy: string;
   sortOrder: string;
   onSortChange: (sortBy: string, sortOrder: string) => void;
-  canSeeOrg: boolean;
+  canSeeGroup: boolean;
   onCreateNew: () => void;
   t: ReturnType<typeof useTranslations>;
 }
@@ -35,13 +33,10 @@ export function QuestionBankFilters({
   sortBy,
   sortOrder,
   onSortChange,
-  canSeeOrg,
+  canSeeGroup,
   onCreateNew,
   t,
 }: QuestionBankFiltersProps) {
-  const { hasAccess } = useFeature('study.create');
-  const router = useRouter();
-
   return (
     <div className="flex flex-wrap items-center gap-3 max-sm:hidden">
       <div className="relative flex-1 basis-full lg:basis-auto lg:max-w-md">
@@ -68,7 +63,7 @@ export function QuestionBankFilters({
         <SelectContent>
           <SelectItem value="all">{t('owner_all')}</SelectItem>
           <SelectItem value="mine">{t('owner_mine')}</SelectItem>
-          {canSeeOrg && <SelectItem value="org">{t('owner_all')}</SelectItem>}
+          {canSeeGroup && <SelectItem value="group">{t('owner_group')}</SelectItem>}
         </SelectContent>
       </Select>
       <Select
@@ -90,20 +85,8 @@ export function QuestionBankFilters({
         </SelectContent>
       </Select>
       <div className="flex items-center gap-2 sm:ml-auto">
-        <Button
-          className="justify-start"
-          disabled={!hasAccess}
-          onClick={hasAccess ? onCreateNew : () => router.push('/checkout?plan_id=student_premium')}
-        >
-          {hasAccess ? (
-            <>
-              <Plus className="h-4 w-4" /> {t('new_bank')}
-            </>
-          ) : (
-            <>
-              <Lock className="size-3" /> Upgrade
-            </>
-          )}
+        <Button className="justify-start" onClick={onCreateNew}>
+          <Plus className="h-4 w-4" /> {t('new_bank')}
         </Button>
       </div>
     </div>

@@ -3,13 +3,23 @@ import { APP_ERRORS } from '@/lib/errors';
 import { updateSession } from '@/lib/supabase/session';
 import { routeRules } from '@/server/config/routes.config';
 import { authGuard, roleGuard } from '@/server/guards';
-import { UserRole } from '@/types';
+import { AccountType } from '@/types';
+
+const ACCOUNT_TYPE_REDIRECTS: Record<string, string> = {
+  [AccountType.MANAGER]: '/manage',
+  [AccountType.EDUCATOR]: '/edu',
+  [AccountType.STUDENT]: '/app',
+};
 
 function preserveCookies(originalResponse: NextResponse, newResponse: NextResponse) {
   originalResponse.cookies.getAll().forEach((cookie) => {
     newResponse.cookies.set(cookie.name, cookie.value);
   });
   return newResponse;
+}
+
+function resolveAccountType(jwtAccountType: AccountType | undefined): AccountType {
+  return jwtAccountType ?? AccountType.STUDENT;
 }
 
 export async function proxy(request: NextRequest) {
@@ -28,12 +38,14 @@ export async function proxy(request: NextRequest) {
     return supabaseResponse;
   }
 
+  const accountType = resolveAccountType(
+    user?.app_metadata?.account_type as AccountType | undefined,
+  );
+
   // 2. Handle "Redirect if Authenticated" (e.g., /login -> /dashboard)
   if (user) {
-    // Role-based redirect takes priority over the generic one
-    if (matchedRule.redirectIfAuthenticatedByRole) {
-      const userRole = user.app_metadata.role as UserRole;
-      const destination = matchedRule.redirectIfAuthenticatedByRole[userRole];
+    if (matchedRule.redirectIfAuthenticatedByAccountType) {
+      const destination = matchedRule.redirectIfAuthenticatedByAccountType[accountType];
 
       if (destination) {
         const url = new URL(destination, request.url);
@@ -62,9 +74,9 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // 4. Handle RBAC (Role-Based Access Control) Requirement
-  if (matchedRule.allowedRoles && matchedRule.allowedRoles.length > 0) {
-    if (!roleGuard(user, matchedRule.allowedRoles)) {
+  // 4. Handle Account Type Access Control
+  if (matchedRule.allowedAccountTypes && matchedRule.allowedAccountTypes.length > 0) {
+    if (!roleGuard(accountType, matchedRule.allowedAccountTypes)) {
       if (matchedRule.isApi) {
         const res = NextResponse.json(
           { success: false, error: APP_ERRORS.FORBIDDEN.code },
@@ -72,16 +84,7 @@ export async function proxy(request: NextRequest) {
         );
         return preserveCookies(supabaseResponse, res);
       } else {
-        const roleRedirects: Record<string, string> = {
-          [UserRole.SYS_ADMIN]: '/admin',
-          [UserRole.TEACHER]: '/edu',
-          [UserRole.UNIVERSITY_ADMIN]: '/manage',
-          [UserRole.STUDENT]: '/app',
-          [UserRole.FREE]: '/app',
-          [UserRole.PREMIUM]: '/app',
-        };
-        const userRole = (user?.app_metadata?.role as string) || 'free';
-        const fallbackUrl = new URL(roleRedirects[userRole] || '/login', request.url);
+        const fallbackUrl = new URL(ACCOUNT_TYPE_REDIRECTS[accountType] || '/login', request.url);
         return preserveCookies(supabaseResponse, NextResponse.redirect(fallbackUrl));
       }
     }

@@ -12,10 +12,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { UserAvatar } from '@/components/ui/user-avatar';
+import { useOrgs } from '@/hooks/use-orgs';
+import { apiPost, apiPut } from '@/lib/api';
 
 export function AccountPageContent() {
   const t = useTranslations('AccountPage');
   const { user } = useAuth();
+  const { activeOrg } = useOrgs();
 
   const [name, setName] = useState(user?.user_metadata?.name || '');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -25,17 +28,14 @@ export function AccountPageContent() {
   const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || '';
-  const role = user?.app_metadata?.role as string;
+  const role = (activeOrg?.orgRoleName ?? user?.app_metadata?.account_type) as string;
   const createdAt = user?.created_at ? new Date(user.created_at).toLocaleDateString() : '';
 
   async function handleSaveName() {
     if (!name.trim() || name === user?.user_metadata?.name) return;
     setIsSavingName(true);
     try {
-      const { error } = await (await import('@/lib/supabase/client'))
-        .createClient()
-        .auth.updateUser({ data: { name: name.trim() } });
-      if (error) throw error;
+      await apiPut('/api/v1/auth/profile', { name: name.trim() });
       toast.success(t('name_saved'));
     } catch {
       toast.error(t('name_saved'));
@@ -52,10 +52,10 @@ export function AccountPageContent() {
     if (!currentPassword || !newPassword || !confirmPassword) return;
     setIsSavingPassword(true);
     try {
-      const { error } = await (await import('@/lib/supabase/client'))
-        .createClient()
-        .auth.updateUser({ password: newPassword });
-      if (error) throw error;
+      await apiPost('/api/v1/auth/password/update', {
+        password: newPassword,
+        confirmPassword,
+      });
       toast.success(t('password_updated'));
       setCurrentPassword('');
       setNewPassword('');

@@ -10,6 +10,7 @@ CREATE TABLE public.flashcard_decks (
   created_by      uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
   name            text NOT NULL,
   description     text,
+  visibility      visibility_type NOT NULL DEFAULT 'personal',
   search_vector   tsvector
                   GENERATED ALWAYS AS (
                     to_tsvector('english', coalesce(name, '')) ||
@@ -24,3 +25,4 @@ CREATE TABLE public.flashcard_decks (
 CREATE INDEX idx_flashcard_decks_search_vector ON public.flashcard_decks USING GIN (search_vector);
 CREATE INDEX idx_flashcard_decks_created_by ON public.flashcard_decks(created_by);
 CREATE INDEX idx_flashcard_decks_organization ON public.flashcard_decks(organization_id);
+CREATE INDEX idx_flashcard_decks_visibility ON public.flashcard_decks (organization_id, visibility);

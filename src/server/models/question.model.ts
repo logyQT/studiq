@@ -60,6 +60,7 @@ export const UpdateQuestionSchema = registry.register(
         }),
       )
       .optional(),
+    visibility: z.enum(['personal', 'group']).optional(),
   }),
 );
 

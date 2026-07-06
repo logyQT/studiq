@@ -5,10 +5,10 @@ import { log } from '@/lib/logger';
 import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { errorLogService } from '@/server/services';
-import type { UserRole } from '@/types';
+import type { AccountType } from '@/types';
 
 export interface WithAuthOptions {
-  allowedRoles?: UserRole[];
+  allowedAccountTypes?: AccountType[];
 }
 
 export async function withAuth(
@@ -26,19 +26,31 @@ export async function withAuth(
     return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
   }
 
-  const role = user.app_metadata?.role as UserRole;
+  const traceId = crypto.randomUUID();
+  const accountType = user.app_metadata?.account_type as AccountType;
+  const cookieOrgId = req.cookies.get('active_org_id')?.value ?? null;
+  let orgRoleId: string | null = null;
 
-  if (options?.allowedRoles && !options.allowedRoles.includes(role)) {
+  if (cookieOrgId) {
+    const { data: membership } = await supabase
+      .from('org_members')
+      .select('org_role_id')
+      .eq('organization_id', cookieOrgId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    orgRoleId = membership?.org_role_id ?? null;
+  }
+
+  if (options?.allowedAccountTypes && !options.allowedAccountTypes.includes(accountType)) {
     return toNextResponse({ success: false, statusCode: 403, error: 'FORBIDDEN' });
   }
 
-  const traceId = crypto.randomUUID();
-  const cookieOrgId = req.cookies.get('active_org_id')?.value ?? null;
   const ctx: RequestContext = {
     traceId,
     userId: user.id,
+    accountType,
+    orgRoleId,
     activeOrgId: cookieOrgId,
-    role,
     url: req.url,
     method: req.method,
   };

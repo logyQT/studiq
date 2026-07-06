@@ -1,16 +1,17 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Lock } from 'lucide-react';
+
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { FlashcardEditor } from '@/components/flashcards';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { useApiQuery } from '@/hooks/use-api';
-import { useFeature } from '@/hooks/use-feature';
+import { useCan } from '@/hooks/use-can';
 import { apiPost } from '@/lib/api';
 import { formatMarkdown } from '@/lib/markdown-utils';
 import { flashcardKeys, topicKeys } from '@/lib/query-keys';
@@ -24,7 +25,8 @@ export default function NewCardClient({ deckId }: NewCardClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const t = useTranslations('AppFlashcardDeckViewPage');
-  const { hasAccess } = useFeature('study.create');
+  const { user } = useAuth();
+  const can = useCan();
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
   const [topicIds, setTopicIds] = useState<string[]>([]);
@@ -93,23 +95,8 @@ export default function NewCardClient({ deckId }: NewCardClientProps) {
           <Button variant="outline" onClick={() => router.back()} disabled={isSaving}>
             {t('cancel')}
           </Button>
-          <Button
-            disabled={!hasAccess || isSaving}
-            onClick={
-              hasAccess ? handleSave : () => router.push('/checkout?plan_id=student_premium')
-            }
-          >
-            {hasAccess ? (
-              isSaving ? (
-                t('saving')
-              ) : (
-                t('create')
-              )
-            ) : (
-              <>
-                <Lock className="size-3" /> Upgrade
-              </>
-            )}
+          <Button disabled={!can('flashcard.create', user?.id) || isSaving} onClick={handleSave}>
+            {isSaving ? t('saving') : t('create')}
           </Button>
         </div>
       </div>

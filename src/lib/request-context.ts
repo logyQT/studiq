@@ -1,10 +1,11 @@
-import type { Nullable, UserRole } from '@/types';
+import type { AccountType, Nullable } from '@/types';
 
 export interface RequestContext {
   traceId: string;
   userId: string;
+  accountType: AccountType;
+  orgRoleId: string | null;
   activeOrgId: Nullable<string>;
-  role: UserRole;
   url: string;
   method: string;
 }

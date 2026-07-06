@@ -1,6 +1,6 @@
 import { AppError } from '@/lib/errors';
 import { log } from '@/lib/logger';
-import { buildQueryFilter, checkPermission, Permission, shouldSetUniversityId } from '@/lib/rbac';
+import { buildQueryFilter, checkPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
@@ -16,23 +16,39 @@ import type { Deck } from '@/types/flashcards';
 export class FlashcardDeckService {
   async create(data: CreateDeckInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const organizationId = (await shouldSetUniversityId(ctx, Permission.DECK_CREATE))
-      ? ctx.activeOrgId
-      : null;
-
     const { data: deck, error } = await supabase
       .from('flashcard_decks')
       .insert({
         name: data.name,
         description: data.description ?? null,
         created_by: ctx.userId,
-        organization_id: organizationId,
+        organization_id: ctx.activeOrgId,
+        visibility: data.visibility ?? 'personal',
       })
       .select()
       .single();
 
     if (error) throw mapSupabaseError(error);
     if (!deck) throw new AppError('NOT_FOUND');
+
+    if ((data as any).visibility === 'group' && (data as any).groupIds?.length) {
+      const { groupService } = await import('@/server/services/group.service');
+      let authorized = false;
+      for (const gid of (data as any).groupIds) {
+        if (await groupService.isTeacherInGroup(ctx, gid)) {
+          authorized = true;
+          break;
+        }
+      }
+      if (!authorized) throw new AppError('FORBIDDEN');
+
+      const rows = (data as any).groupIds.map((gid: string) => ({
+        deck_id: deck.id,
+        group_id: gid,
+      }));
+      const { error: ae } = await supabase.from('deck_groups').insert(rows);
+      if (ae) throw mapSupabaseError(ae);
+    }
 
     if (data.flashcardIds && data.flashcardIds.length > 0) {
       const assignments = data.flashcardIds.map((flashcardId) => ({
@@ -66,16 +82,51 @@ export class FlashcardDeckService {
     const suspendedIds = await this.getSuspendedDeckIds(ctx);
     const includeSuspended = queryParams?.includeSuspended ?? false;
 
+    if (filter._useRpc) {
+      let rpcQuery = supabase.rpc('get_accessible_flashcard_decks', {
+        p_user_id: ctx.userId,
+        p_org_id: ctx.activeOrgId,
+      });
+
+      // Apply search
+      if (queryParams?.q) {
+        rpcQuery = rpcQuery.or(
+          `name.ilike.%${queryParams.q}%,description.ilike.%${queryParams.q}%`,
+        );
+      }
+
+      // Apply sorting
+      const sortBy = queryParams?.sortBy ?? 'created_at';
+      const sortOrder = queryParams?.sortOrder ?? 'desc';
+      rpcQuery = rpcQuery.order(sortBy, { ascending: sortOrder === 'asc' }).order('id');
+
+      // Pagination (no cursor for RPC path)
+      const pageSize = Math.min(queryParams?.limit ?? 24, 100);
+      rpcQuery = rpcQuery.limit(pageSize + 1);
+
+      const { data, error } = await rpcQuery;
+      if (error) throw mapSupabaseError(error);
+
+      const rows = data as Array<Record<string, unknown>> | null;
+      const hasMore = (rows?.length ?? 0) > pageSize;
+      const sliced = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
+      const items = sliced.map((item) => ({
+        ...item,
+        flashcard_count: 0,
+        suspended: suspendedIds.has(item.id as string),
+      }));
+
+      return { items: items as unknown as Deck[], nextCursor: null, hasMore };
+    }
+
     let query = supabase
       .from('flashcard_decks')
       .select('*, flashcard_count:flashcard_deck_assignments(count)');
 
     // Apply RBAC filter
-    if (filter.or) {
-      query = query.or(filter.or);
-    } else if (filter.created_by) {
-      query = query.eq('created_by', filter.created_by);
-    }
+    if (filter._impossible) return { items: [], nextCursor: null, hasMore: false };
+    if (filter.created_by) query = query.eq('created_by', filter.created_by);
+    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
     // Exclude suspended decks by default
     if (!includeSuspended && suspendedIds.size > 0) {
@@ -86,15 +137,15 @@ export class FlashcardDeckService {
     if (queryParams?.owner && queryParams.owner !== 'all') {
       if (queryParams.owner === 'mine') {
         query = query.eq('created_by', ctx.userId);
-      } else if (queryParams.owner === 'org') {
-        const hasOrgScope = filter.or || !filter.created_by;
-        if (hasOrgScope && ctx.activeOrgId) {
-          query = query.neq('created_by', ctx.userId).eq('organization_id', ctx.activeOrgId);
+      } else if (queryParams.owner === 'group') {
+        if (ctx.activeOrgId) {
+          query = query
+            .neq('created_by', ctx.userId)
+            .eq('organization_id', ctx.activeOrgId)
+            .eq('visibility', 'group');
         } else {
           return { items: [], nextCursor: null, hasMore: false };
         }
-      } else if (queryParams.owner === 'shared') {
-        return { items: [], nextCursor: null, hasMore: false };
       }
     }
 
@@ -161,17 +212,36 @@ export class FlashcardDeckService {
     const suspendedIds = await this.getSuspendedDeckIds(ctx);
 
     const filter = await buildQueryFilter(ctx, Permission.DECK_READ, 'deck');
+    if (filter._useRpc) {
+      const { data: deck, error } = await supabase
+        .rpc('get_accessible_flashcard_decks', {
+          p_user_id: ctx.userId,
+          p_org_id: ctx.activeOrgId,
+        })
+        .eq('id', id)
+        .single();
+      log.trace.info('getById/result', {
+        metadata: { traceId: ctx.traceId, found: !!deck, errorCode: error?.code },
+      });
+      if (error || !deck) throw new AppError('NOT_FOUND');
+      const countArr = (deck as Record<string, unknown>).flashcard_count as
+        | { count: number }[]
+        | undefined;
+      return {
+        ...(deck as unknown as Deck),
+        flashcard_count: countArr?.[0]?.count ?? 0,
+        suspended: suspendedIds.has(id),
+      };
+    }
+
     let query = supabase
       .from('flashcard_decks')
       .select('*, flashcard_count:flashcard_deck_assignments(count)')
       .eq('id', id);
 
     if (filter._impossible) throw new AppError('NOT_FOUND');
-    if (filter.or) {
-      query = query.or(filter.or);
-    } else if (filter.created_by) {
-      query = query.eq('created_by', filter.created_by);
-    }
+    if (filter.created_by) query = query.eq('created_by', filter.created_by);
+    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
     const { data: deck, error } = await query.single();
     log.trace.info('getById/result', {
@@ -209,11 +279,12 @@ export class FlashcardDeckService {
     await checkPermission(ctx, Permission.DECK_UPDATE, existing);
     log.trace.info('update/permission_ok', { metadata: { traceId: ctx.traceId } });
 
-    if (data.name !== undefined || data.description !== undefined) {
-      const updateFields: Record<string, unknown> = {};
-      if (data.name !== undefined) updateFields.name = data.name;
-      if (data.description !== undefined) updateFields.description = data.description;
+    const updateFields: Record<string, unknown> = {};
+    if (data.name !== undefined) updateFields.name = data.name;
+    if (data.description !== undefined) updateFields.description = data.description;
+    if (data.visibility !== undefined) updateFields.visibility = data.visibility;
 
+    if (Object.keys(updateFields).length > 0) {
       const { data: deck, error } = await supabase
         .from('flashcard_decks')
         .update(updateFields)
@@ -226,6 +297,31 @@ export class FlashcardDeckService {
       });
       if (error) throw mapSupabaseError(error);
       if (!deck) throw new AppError('NOT_FOUND');
+
+      if (data.visibility !== undefined && data.visibility !== existing.visibility) {
+        const { data: assignedFlashcardIds } = await supabase
+          .from('flashcard_deck_assignments')
+          .select('flashcard_id')
+          .eq('deck_id', id);
+
+        const flashcardIds = assignedFlashcardIds?.map((a) => a.flashcard_id) ?? [];
+        if (flashcardIds.length > 0) {
+          await supabase
+            .from('flashcards')
+            .update({ visibility: data.visibility })
+            .in('id', flashcardIds);
+        }
+      }
+    }
+
+    if ((data as any).groupIds !== undefined) {
+      const { error: de } = await supabase.from('deck_groups').delete().eq('deck_id', id);
+      if (de) throw mapSupabaseError(de);
+      if ((data as any).groupIds.length > 0) {
+        const rows = (data as any).groupIds.map((gid: string) => ({ deck_id: id, group_id: gid }));
+        const { error: ae } = await supabase.from('deck_groups').insert(rows);
+        if (ae) throw mapSupabaseError(ae);
+      }
     }
 
     if (data.flashcardIds !== undefined) {
@@ -272,15 +368,12 @@ export class FlashcardDeckService {
 
   async bulkCreate(data: BulkCreateDeckInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const organizationId = (await shouldSetUniversityId(ctx, Permission.DECK_CREATE))
-      ? ctx.activeOrgId
-      : null;
-
     const decks = data.decks.map((d) => ({
       name: d.name,
       description: d.description ?? null,
       created_by: ctx.userId,
-      organization_id: organizationId,
+      organization_id: ctx.activeOrgId,
+      visibility: d.visibility ?? 'personal',
     }));
 
     const { data: created, error } = await supabase

@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { flashcardService } from '@/server/services/flashcard.service';
 
-const mockProfile = { role: 'free', organization_id: null };
-const mockTeacherProfile = { role: 'teacher', organization_id: 'uni-1' };
+const mockProfile = { account_type: 'student', organization_id: null };
+const mockTeacherProfile = { account_type: 'educator', organization_id: 'uni-1' };
 
 function mockProfileLookup(profile: typeof mockProfile) {
   return {

@@ -8,41 +8,23 @@ import * as supabaseModule from '@/lib/supabase/server';
 // Password for all accounts: 'pass'
 // ============================================================
 export const TEST_USERS = {
-  SYS_ADMIN: {
+  MANAGER: {
     id: '00000000-0000-4000-8001-000000000001',
     email: 'admin@dev.local',
     password: 'pass',
-    role: 'sys_admin',
-  },
-  UNIVERSITY_ADMIN: {
-    id: '00000000-0000-4000-8001-000000000002',
-    email: 'uadmin@dev.local',
-    password: 'pass',
-    role: 'university_admin',
+    role: 'manager',
   },
   TEACHER: {
     id: '00000000-0000-4000-8001-000000000003',
     email: 'teacher@dev.local',
     password: 'pass',
-    role: 'teacher',
+    role: 'educator',
   },
   STUDENT: {
     id: '00000000-0000-4000-8001-000000000004',
     email: 'student@dev.local',
     password: 'pass',
     role: 'student',
-  },
-  PREMIUM: {
-    id: '00000000-0000-4000-8001-000000000005',
-    email: 'premium@dev.local',
-    password: 'pass',
-    role: 'premium',
-  },
-  FREE: {
-    id: '00000000-0000-4000-8001-000000000006',
-    email: 'user@dev.local',
-    password: 'pass',
-    role: 'free',
   },
 } as const;
 
@@ -93,14 +75,14 @@ export function useRealSupabase() {
 
 // ============================================================
 // Auth Mocking
-// Combines mocked getUser() with real Supabase DB operations
+// Combines mocked getUser() with real Supabase DB operations (app_metadata uses account_type)
 // ============================================================
 export function mockUser(user: { id: string; role: string } | null) {
   const mockUserObj = user
     ? {
         id: user.id,
         email: 'test@test.com',
-        app_metadata: { role: user.role },
+        app_metadata: { account_type: user.role },
         user_metadata: {},
         aud: 'authenticated' as const,
         created_at: new Date().toISOString(),

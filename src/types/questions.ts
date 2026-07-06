@@ -7,6 +7,7 @@ export interface QuestionBank {
   organization_id: string | null;
   created_at: string;
   updated_at: string;
+  visibility?: 'personal' | 'group';
 }
 
 export interface QuestionAnswer {
@@ -24,6 +25,7 @@ export interface Question {
   type: 'mcq' | 'true_false' | 'open';
   content: string;
   explanation: string | null;
+  visibility?: 'personal' | 'group';
   difficulty: 'easy' | 'medium' | 'hard';
   created_at: string;
   updated_at: string;

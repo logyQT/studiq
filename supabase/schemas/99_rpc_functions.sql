@@ -36,8 +36,8 @@ BEGIN
       CASE p_filter_type
         WHEN 'impossible' THEN FALSE
         WHEN 'any' THEN TRUE
-        WHEN 'own' THEN f.created_by = p_user_id
-        WHEN 'university' THEN f.created_by = p_user_id OR f.organization_id = p_organization_id
+        WHEN 'own' THEN f.created_by = p_user_id AND f.organization_id = p_organization_id
+        WHEN 'university' THEN f.organization_id = p_organization_id AND f.visibility = 'org'
         ELSE FALSE
       END
       AND (p_deck_ids IS NULL OR f.id IN (
@@ -157,9 +157,9 @@ BEGIN
     )
     AND (
       (p_created_by IS NULL AND p_organization_id IS NULL)
-      OR (p_created_by IS NOT NULL AND p_organization_id IS NULL AND f.created_by = p_created_by)
-      OR (p_created_by IS NULL AND p_organization_id IS NOT NULL AND (f.created_by = p_created_by OR f.organization_id = p_organization_id))
-      OR (p_created_by IS NOT NULL AND p_organization_id IS NOT NULL AND (f.created_by = p_created_by OR f.organization_id = p_organization_id))
+      OR (p_created_by IS NOT NULL AND p_organization_id IS NOT NULL AND f.created_by = p_created_by AND f.organization_id = p_organization_id)
+      OR (p_created_by IS NULL AND p_organization_id IS NOT NULL AND f.organization_id = p_organization_id AND f.visibility = 'org')
+      OR (p_created_by IS NOT NULL AND p_organization_id IS NULL AND f.created_by = p_created_by AND f.organization_id = p_organization_id)
     );
 
   CREATE TEMP TABLE _filtered ON COMMIT DROP AS
@@ -177,9 +177,9 @@ BEGIN
   SELECT f.id
   FROM public.flashcards f
   WHERE ( (p_created_by IS NULL AND p_organization_id IS NULL)
-    OR (p_created_by IS NOT NULL AND p_organization_id IS NULL AND f.created_by = p_created_by)
-    OR (p_created_by IS NULL AND p_organization_id IS NOT NULL AND (f.created_by = p_created_by OR f.organization_id = p_organization_id))
-    OR (p_created_by IS NOT NULL AND p_organization_id IS NOT NULL AND (f.created_by = p_created_by OR f.organization_id = p_organization_id)) )
+    OR (p_created_by IS NOT NULL AND p_organization_id IS NOT NULL AND f.created_by = p_created_by AND f.organization_id = p_organization_id)
+    OR (p_created_by IS NULL AND p_organization_id IS NOT NULL AND f.organization_id = p_organization_id AND f.visibility = 'org')
+    OR (p_created_by IS NOT NULL AND p_organization_id IS NULL AND f.created_by = p_created_by AND f.organization_id = p_organization_id) )
     AND NOT EXISTS (
       SELECT 1 FROM public.flashcard_deck_assignments fda
       JOIN public.suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id
@@ -244,7 +244,7 @@ BEGIN
   IF p_created_by IS NOT NULL AND p_organization_id IS NOT NULL THEN
     SELECT COUNT(*) INTO total
     FROM public.flashcards f
-    WHERE (f.created_by = p_created_by OR f.organization_id = p_organization_id)
+    WHERE f.created_by = p_created_by AND f.organization_id = p_organization_id
       AND NOT EXISTS (
         SELECT 1 FROM public.flashcard_deck_assignments fda
         JOIN public.suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id
@@ -261,7 +261,34 @@ BEGIN
     FROM public.flashcards f
     LEFT JOIN public.flashcard_review_state rs
       ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
-    WHERE (f.created_by = p_created_by OR f.organization_id = p_organization_id)
+    WHERE f.created_by = p_created_by AND f.organization_id = p_organization_id
+      AND NOT EXISTS (
+        SELECT 1 FROM public.flashcard_deck_assignments fda
+        JOIN public.suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id
+        WHERE fda.flashcard_id = f.id
+      );
+
+  ELSIF p_organization_id IS NOT NULL THEN
+    SELECT COUNT(*) INTO total
+    FROM public.flashcards f
+    WHERE f.organization_id = p_organization_id AND f.visibility = 'org'
+      AND NOT EXISTS (
+        SELECT 1 FROM public.flashcard_deck_assignments fda
+        JOIN public.suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id
+        WHERE fda.flashcard_id = f.id
+      );
+
+    SELECT
+      COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
+      COUNT(*) FILTER (WHERE rs.learning_state = 'learning' AND NOT rs.is_leech) AS learning,
+      COUNT(*) FILTER (WHERE rs.learning_state = 'review' AND NOT rs.is_leech) AS review,
+      COUNT(*) FILTER (WHERE rs.learning_state = 'relearning' AND NOT rs.is_leech) AS relearning,
+      COUNT(*) FILTER (WHERE rs.is_leech) AS leeched
+    INTO never_practiced, learning_count, review_count, relearning_count, leeched_count
+    FROM public.flashcards f
+    LEFT JOIN public.flashcard_review_state rs
+      ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
+    WHERE f.organization_id = p_organization_id AND f.visibility = 'org'
       AND NOT EXISTS (
         SELECT 1 FROM public.flashcard_deck_assignments fda
         JOIN public.suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id
@@ -377,7 +404,8 @@ BEGIN
   LEFT JOIN public.flashcard_deck_assignments fda ON fda.flashcard_id = f.id
   LEFT JOIN public.flashcard_decks d ON d.id = fda.deck_id
   WHERE (f.search_vector @@ en_query OR f.search_vector @@ pl_query)
-    AND (p_user_id IS NULL OR f.created_by = p_user_id OR (p_organization_id IS NOT NULL AND f.organization_id = p_organization_id))
+    AND (p_organization_id IS NULL OR f.organization_id = p_organization_id)
+    AND (p_user_id IS NULL OR f.created_by = p_user_id)
   ORDER BY rank DESC
   LIMIT result_limit;
 END;
@@ -641,8 +669,8 @@ BEGIN
     CASE p_filter_type
       WHEN 'impossible' THEN FALSE
       WHEN 'any' THEN TRUE
-      WHEN 'own' THEN f.created_by = p_user_id
-      WHEN 'university' THEN f.created_by = p_user_id OR f.organization_id = p_organization_id
+      WHEN 'own' THEN f.created_by = p_user_id AND f.organization_id = p_organization_id
+      WHEN 'university' THEN f.organization_id = p_organization_id AND f.visibility = 'org'
       ELSE FALSE
     END
     AND NOT EXISTS (

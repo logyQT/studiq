@@ -3,6 +3,8 @@ import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
 import { orgController } from '@/server/controllers';
 
+const COOKIE_OPTIONS = { path: '/', maxAge: 60 * 60 * 24 * 365, sameSite: 'lax' as const };
+
 export async function POST(req: NextRequest) {
   return withAuth(req, async (ctx) => {
     const body = await req.json();
@@ -10,11 +12,8 @@ export async function POST(req: NextRequest) {
 
     if (result.success && result.data) {
       const res = toNextResponse(result);
-      res.cookies.set('active_org_id', (result.data as { orgId: string }).orgId, {
-        path: '/',
-        maxAge: 60 * 60 * 24 * 365,
-        sameSite: 'lax',
-      });
+      const orgId = (result.data as { orgId: string }).orgId;
+      res.cookies.set('active_org_id', orgId, COOKIE_OPTIONS);
       return res;
     }
 

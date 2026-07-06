@@ -146,14 +146,7 @@ export class FlashcardPracticeService {
     const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (filter._impossible) return 0;
 
-    let filterType = 'own';
-    let organizationId: string | null = null;
-    if (filter.or) {
-      filterType = 'university';
-      organizationId = ctx.activeOrgId ?? null;
-    } else if (!filter.created_by) {
-      filterType = 'any';
-    }
+    const { filterType, organizationId } = resolveFilterType(filter, ctx);
 
     const supabase = await createClient();
     const { data, error } = await supabase.rpc('count_new_cards', {
@@ -241,18 +234,7 @@ export class FlashcardPracticeService {
     const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (filter._impossible) return [];
 
-    let filterType: string;
-    let organizationId: string | null;
-    if (filter.or) {
-      filterType = 'university';
-      organizationId = ctx.activeOrgId ?? null;
-    } else if (filter.created_by) {
-      filterType = 'own';
-      organizationId = null;
-    } else {
-      filterType = 'any';
-      organizationId = null;
-    }
+    const { filterType, organizationId } = resolveFilterType(filter, ctx);
 
     const settings = await this.resetDailyIfNeeded(ctx);
     const newCardLimit = Math.max(0, settings.new_cards_per_day - settings.new_cards_introduced);
@@ -291,7 +273,7 @@ export class FlashcardPracticeService {
 
     const { data, error } = await supabase.rpc('get_due_breakdown', {
       p_user_id: ctx.userId,
-      p_created_by: filter.created_by ?? (filter.or ? ctx.userId : null),
+      p_created_by: filter.created_by ?? null,
       p_organization_id: ctx.activeOrgId ?? null,
       p_topic_ids: null,
       p_deck_ids: null,
@@ -323,7 +305,7 @@ export class FlashcardPracticeService {
 
     const { data, error } = await supabase.rpc('get_due_breakdown', {
       p_user_id: ctx.userId,
-      p_created_by: rbac.created_by ?? (rbac.or ? ctx.userId : null),
+      p_created_by: rbac.created_by ?? null,
       p_organization_id: ctx.activeOrgId ?? null,
       p_topic_ids: filters.topicIds?.length ? filters.topicIds : null,
       p_deck_ids: filters.deckIds?.length ? filters.deckIds : null,
@@ -396,7 +378,7 @@ export class FlashcardPracticeService {
 
     const { data, error } = await supabase.rpc('get_practice_state_breakdown', {
       p_user_id: ctx.userId,
-      p_created_by: filter.created_by ?? (filter.or ? ctx.userId : null),
+      p_created_by: filter.created_by ?? null,
       p_organization_id: ctx.activeOrgId ?? null,
     });
 
@@ -488,9 +470,10 @@ export class FlashcardPracticeService {
     let query = supabase.from('flashcards').select('id, front, back, created_at');
 
     if (cardFilter._impossible) return { items: [], nextCursor: null, hasMore: false };
-    if (cardFilter.or) {
-      query = query.or(cardFilter.or);
-    } else if (cardFilter.created_by) {
+    if (cardFilter.organization_id) {
+      query = query.eq('organization_id', cardFilter.organization_id);
+    }
+    if (cardFilter.created_by) {
       query = query.eq('created_by', cardFilter.created_by);
     }
 
@@ -612,9 +595,10 @@ export class FlashcardPracticeService {
     let query = supabase.from('flashcards').select('id');
 
     if (filter._impossible) return [];
-    if (filter.or) {
-      query = query.or(filter.or);
-    } else if (filter.created_by) {
+    if (filter.organization_id) {
+      query = query.eq('organization_id', filter.organization_id);
+    }
+    if (filter.created_by) {
       query = query.eq('created_by', filter.created_by);
     }
 
@@ -763,3 +747,24 @@ export class FlashcardPracticeService {
 }
 
 export const flashcardPracticeService = new FlashcardPracticeService();
+
+/**
+ * Maps the compound filter from buildQueryFilter to the RPC
+ * parameter format expected by practice functions.
+ *
+ *   visibility = 'org'  → university scope (shared org content)
+ *   created_by present   → own scope (user's content in current org)
+ *   empty filter         → any scope (no filtering)
+ */
+function resolveFilterType(
+  filter: Record<string, unknown>,
+  ctx: RequestContext,
+): { filterType: string; organizationId: string | null } {
+  if (filter._useRpc) {
+    return { filterType: 'university', organizationId: ctx.activeOrgId ?? null };
+  }
+  if (filter.created_by) {
+    return { filterType: 'own', organizationId: ctx.activeOrgId ?? null };
+  }
+  return { filterType: 'any', organizationId: null };
+}

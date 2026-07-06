@@ -1,7 +1,7 @@
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import { createClient } from '@/lib/supabase/server';
 import { withErrorHandling } from '@/lib/with-error-handling';
-import { UserRole } from '@/types';
+import { AccountType } from '@/types';
 
 export class PermissionController {
   async getMatrix(): Promise<ControllerResponse> {
@@ -29,7 +29,7 @@ export class PermissionController {
 
       const actions = ['create', 'read', 'update', 'delete'] as const;
       const resources = ['flashcard', 'topic', 'deck'] as const;
-      const roles: string[] = Object.values(UserRole);
+      const roles: string[] = Object.values(AccountType);
 
       const matrix: Record<string, Record<string, Record<string, string>>> = {};
 

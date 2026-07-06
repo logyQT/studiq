@@ -1,4 +1,5 @@
 import type { ControllerResponse } from '@/lib/controller-response';
+import type { RequestContext } from '@/lib/request-context';
 import { withErrorHandling } from '@/lib/with-error-handling';
 import {
   CreateOrganizationSchema,
@@ -8,7 +9,7 @@ import {
 import { organizationService } from '@/server/services';
 
 export class OrganizationController {
-  async create(body: unknown): Promise<ControllerResponse> {
+  async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
       const parsedData = CreateOrganizationSchema.safeParse(body);
 
@@ -21,7 +22,7 @@ export class OrganizationController {
         };
       }
 
-      const result = await organizationService.create(parsedData.data);
+      const result = await organizationService.create(ctx, parsedData.data);
 
       return { success: true, statusCode: 201, data: result };
     });

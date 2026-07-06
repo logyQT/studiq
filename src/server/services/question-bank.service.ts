@@ -1,5 +1,5 @@
 import { AppError } from '@/lib/errors';
-import { buildQueryFilter, checkPermission, Permission, shouldSetUniversityId } from '@/lib/rbac';
+import { buildQueryFilter, checkPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
@@ -15,23 +15,39 @@ import type { QuestionBank } from '@/types/questions';
 export class QuestionBankService {
   async create(data: CreateQuestionBankInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const organizationId = (await shouldSetUniversityId(ctx, Permission.QUESTION_BANK_CREATE))
-      ? ctx.activeOrgId
-      : null;
-
     const { data: bank, error } = await supabase
       .from('question_banks')
       .insert({
         name: data.name,
         description: data.description ?? null,
         created_by: ctx.userId,
-        organization_id: organizationId,
+        organization_id: ctx.activeOrgId,
+        visibility: data.visibility ?? 'personal',
       })
       .select()
       .single();
 
     if (error) throw mapSupabaseError(error);
     if (!bank) throw new AppError('NOT_FOUND');
+
+    if ((data as any).visibility === 'group' && (data as any).groupIds?.length) {
+      const { groupService } = await import('@/server/services/group.service');
+      let authorized = false;
+      for (const gid of (data as any).groupIds) {
+        if (await groupService.isTeacherInGroup(ctx, gid)) {
+          authorized = true;
+          break;
+        }
+      }
+      if (!authorized) throw new AppError('FORBIDDEN');
+
+      const rows = (data as any).groupIds.map((gid: string) => ({
+        bank_id: bank.id,
+        group_id: gid,
+      }));
+      const { error: ae } = await supabase.from('bank_groups').insert(rows);
+      if (ae) throw mapSupabaseError(ae);
+    }
 
     if (data.questionIds && data.questionIds.length > 0) {
       const assignments = data.questionIds.map((questionId) => ({
@@ -53,18 +69,62 @@ export class QuestionBankService {
     const filter = await buildQueryFilter(ctx, Permission.QUESTION_BANK_READ, 'question_bank');
     if (filter._impossible) return { items: [], nextCursor: null, hasMore: false };
 
+    if (filter._useRpc) {
+      const rpcQuery = supabase.rpc('get_accessible_question_banks', {
+        p_user_id: ctx.userId,
+        p_org_id: ctx.activeOrgId,
+      });
+      const sortBy = queryParams?.sortBy ?? 'created_at';
+      const sortOrder = queryParams?.sortOrder ?? 'desc';
+      const sortAsc = sortOrder === 'asc';
+      const pageSize = Math.min(queryParams?.limit ?? 24, 100);
+      if (queryParams?.q) {
+        void rpcQuery.ilike('name', `%${queryParams.q}%`);
+      }
+      void rpcQuery.order(sortBy, { ascending: sortAsc }).order('id');
+      void rpcQuery.limit(pageSize + 1);
+      if (queryParams?.cursor) {
+        const decoded = JSON.parse(Buffer.from(queryParams.cursor, 'base64').toString('utf-8'));
+        const cursorVal = decoded.v;
+        const cursorId = decoded.id;
+        const op = sortAsc ? 'gt' : 'lt';
+        void rpcQuery.or(
+          `${sortBy}.${op}.${cursorVal},and(${sortBy}.eq.${cursorVal},id.gt.${cursorId})`,
+        );
+      }
+      const { data, error } = await rpcQuery;
+      if (error) throw mapSupabaseError(error);
+      const rows = data as unknown as Array<{ id: string; [key: string]: unknown }>;
+      const hasMore = (rows?.length ?? 0) > pageSize;
+      const items = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
+      const nextCursor = hasMore
+        ? Buffer.from(
+            JSON.stringify({ v: items[items.length - 1][sortBy], id: items[items.length - 1].id }),
+          ).toString('base64')
+        : null;
+      return { items, nextCursor, hasMore };
+    }
+
     let query = supabase
       .from('question_banks')
       .select('*, question_count:question_bank_assignments(count)');
 
-    if (filter.or) {
-      query = query.or(filter.or);
-    } else if (filter.created_by) {
-      query = query.eq('created_by', filter.created_by);
-    }
+    if (filter.created_by) query = query.eq('created_by', filter.created_by);
+    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
-    if (queryParams?.owner === 'mine') {
-      query = query.eq('created_by', ctx.userId);
+    if (queryParams?.owner && queryParams.owner !== 'all') {
+      if (queryParams.owner === 'mine') {
+        query = query.eq('created_by', ctx.userId);
+      } else if (queryParams.owner === 'group') {
+        if (ctx.activeOrgId) {
+          query = query
+            .neq('created_by', ctx.userId)
+            .eq('organization_id', ctx.activeOrgId)
+            .eq('visibility', 'group');
+        } else {
+          return { items: [], nextCursor: null, hasMore: false };
+        }
+      }
     }
 
     if (queryParams?.q) {
@@ -125,11 +185,19 @@ export class QuestionBankService {
       .eq('id', id);
 
     if (filter._impossible) throw new AppError('NOT_FOUND');
-    if (filter.or) {
-      query = query.or(filter.or);
-    } else if (filter.created_by) {
-      query = query.eq('created_by', filter.created_by);
+    if (filter._useRpc) {
+      const { data, error } = await supabase
+        .rpc('get_accessible_question_banks', {
+          p_user_id: ctx.userId,
+          p_org_id: ctx.activeOrgId,
+        })
+        .eq('id', id)
+        .single();
+      if (error) throw mapSupabaseError(error);
+      return data;
     }
+    if (filter.created_by) query = query.eq('created_by', filter.created_by);
+    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
     const { data: bank, error } = await query.single();
     if (error || !bank) throw new AppError('NOT_FOUND');
@@ -155,11 +223,12 @@ export class QuestionBankService {
     if (fetchError || !existing) throw new AppError('NOT_FOUND');
     await checkPermission(ctx, Permission.QUESTION_BANK_UPDATE, existing);
 
-    if (data.name !== undefined || data.description !== undefined) {
-      const updateFields: Record<string, unknown> = {};
-      if (data.name !== undefined) updateFields.name = data.name;
-      if (data.description !== undefined) updateFields.description = data.description;
+    const updateFields: Record<string, unknown> = {};
+    if (data.name !== undefined) updateFields.name = data.name;
+    if (data.description !== undefined) updateFields.description = data.description;
+    if (data.visibility !== undefined) updateFields.visibility = data.visibility;
 
+    if (Object.keys(updateFields).length > 0) {
       const { data: bank, error } = await supabase
         .from('question_banks')
         .update(updateFields)
@@ -169,6 +238,31 @@ export class QuestionBankService {
 
       if (error) throw mapSupabaseError(error);
       if (!bank) throw new AppError('NOT_FOUND');
+
+      if (data.visibility !== undefined && data.visibility !== existing.visibility) {
+        const { data: assignedQuestionIds } = await supabase
+          .from('question_bank_assignments')
+          .select('question_id')
+          .eq('bank_id', id);
+
+        const questionIds = assignedQuestionIds?.map((a) => a.question_id) ?? [];
+        if (questionIds.length > 0) {
+          await supabase
+            .from('questions')
+            .update({ visibility: data.visibility })
+            .in('id', questionIds);
+        }
+      }
+    }
+
+    if ((data as any).groupIds !== undefined) {
+      const { error: de } = await supabase.from('bank_groups').delete().eq('bank_id', id);
+      if (de) throw mapSupabaseError(de);
+      if ((data as any).groupIds.length > 0) {
+        const rows = (data as any).groupIds.map((gid: string) => ({ bank_id: id, group_id: gid }));
+        const { error: ae } = await supabase.from('bank_groups').insert(rows);
+        if (ae) throw mapSupabaseError(ae);
+      }
     }
 
     if (data.questionIds !== undefined) {
@@ -203,15 +297,12 @@ export class QuestionBankService {
 
   async bulkCreate(data: BulkCreateQuestionBankInput, ctx: RequestContext) {
     const supabase = await createClient();
-    const organizationId = (await shouldSetUniversityId(ctx, Permission.QUESTION_BANK_CREATE))
-      ? ctx.activeOrgId
-      : null;
-
     const banks = data.banks.map((b) => ({
       name: b.name,
       description: b.description ?? null,
       created_by: ctx.userId,
-      organization_id: organizationId,
+      organization_id: ctx.activeOrgId,
+      visibility: b.visibility ?? 'personal',
     }));
 
     const { data: created, error } = await supabase

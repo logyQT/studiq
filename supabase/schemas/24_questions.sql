@@ -10,6 +10,7 @@ CREATE TABLE public.questions (
   type            question_type NOT NULL DEFAULT 'mcq',
   content         text NOT NULL,
   explanation     text,
+  visibility      visibility_type NOT NULL DEFAULT 'personal',
   search_vector   tsvector
                   GENERATED ALWAYS AS (
                     to_tsvector('english', coalesce(content, '')) ||
@@ -23,3 +24,4 @@ CREATE TABLE public.questions (
 
 CREATE INDEX idx_questions_search_vector ON public.questions USING GIN (search_vector);
 CREATE INDEX idx_questions_created_by ON public.questions(created_by);
+CREATE INDEX idx_questions_visibility ON public.questions (organization_id, visibility);

@@ -6,7 +6,7 @@ describe('ChangeRoleSchema', () => {
   it('passes with valid input', () => {
     const result = ChangeRoleSchema.safeParse({
       targetUserId: 'user-123',
-      newRole: 'university_admin',
+      newOrgRoleId: '00000000-0000-4000-8000-000000000001',
     });
     expect(result.success).toBe(true);
   });
@@ -14,15 +14,15 @@ describe('ChangeRoleSchema', () => {
   it('fails when targetUserId is empty', () => {
     const result = ChangeRoleSchema.safeParse({
       targetUserId: '',
-      newRole: 'university_admin',
+      newOrgRoleId: '00000000-0000-4000-8000-000000000001',
     });
     expect(result.success).toBe(false);
   });
 
-  it('fails when newRole is invalid', () => {
+  it('fails when newOrgRoleId is invalid', () => {
     const result = ChangeRoleSchema.safeParse({
       targetUserId: 'user-123',
-      newRole: 'invalid_role',
+      newOrgRoleId: 'not-a-uuid',
     });
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -31,11 +31,11 @@ describe('ChangeRoleSchema', () => {
   });
 
   it('fails when targetUserId is missing', () => {
-    const result = ChangeRoleSchema.safeParse({ newRole: 'university_admin' });
+    const result = ChangeRoleSchema.safeParse({ newOrgRoleId: '00000000-0000-4000-8000-000000000001' });
     expect(result.success).toBe(false);
   });
 
-  it('fails when newRole is missing', () => {
+  it('fails when newOrgRoleId is missing', () => {
     const result = ChangeRoleSchema.safeParse({ targetUserId: 'user-123' });
     expect(result.success).toBe(false);
   });

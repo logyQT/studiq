@@ -36,9 +36,10 @@ export class FlashcardStatsService {
     }
 
     let flashcardQuery = supabase.from('flashcards').select('id');
-    if (filter.or) {
-      flashcardQuery = flashcardQuery.or(filter.or);
-    } else if (filter.created_by) {
+    if (filter.organization_id) {
+      flashcardQuery = flashcardQuery.eq('organization_id', filter.organization_id);
+    }
+    if (filter.created_by) {
       flashcardQuery = flashcardQuery.eq('created_by', filter.created_by);
     }
 
@@ -70,9 +71,10 @@ export class FlashcardStatsService {
     if (filter._impossible) return [];
 
     let flashcardQuery = supabase.from('flashcards').select('id, front, back');
-    if (filter.or) {
-      flashcardQuery = flashcardQuery.or(filter.or);
-    } else if (filter.created_by) {
+    if (filter.organization_id) {
+      flashcardQuery = flashcardQuery.eq('organization_id', filter.organization_id);
+    }
+    if (filter.created_by) {
       flashcardQuery = flashcardQuery.eq('created_by', filter.created_by);
     }
 

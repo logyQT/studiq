@@ -9,6 +9,8 @@ export const CreateTopicSchema = registry.register(
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
       .max(64, { error: ValidationErrorCode.TOO_LONG }),
+    visibility: z.enum(['personal', 'group']).optional(),
+    groupIds: z.array(z.string().uuid()).optional(),
   }),
 );
 
@@ -21,6 +23,8 @@ export const UpdateTopicSchema = registry.register(
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
       .max(64, { error: ValidationErrorCode.TOO_LONG })
       .optional(),
+    visibility: z.enum(['personal', 'group']).optional(),
+    groupIds: z.array(z.string().uuid()).optional(),
   }),
 );
 
@@ -37,7 +41,7 @@ export const TopicListQuerySchema = registry.register(
   'TopicListQuery',
   z.object({
     q: z.string().optional(),
-    owner: z.enum(['all', 'mine', 'shared']).optional().default('all'),
+    owner: z.enum(['all', 'mine', 'shared', 'group']).optional().default('all'),
     sortBy: z.enum(['created_at', 'name']).optional().default('created_at'),
     sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
     cursor: z.string().optional(),
@@ -56,6 +60,7 @@ export const BulkCreateTopicSchema = registry.register(
             .nonempty({ error: ValidationErrorCode.REQUIRED })
             .min(1, { error: ValidationErrorCode.TOO_SHORT })
             .max(64, { error: ValidationErrorCode.TOO_LONG }),
+          visibility: z.enum(['personal', 'group']).optional(),
         }),
       )
       .min(1, { error: ValidationErrorCode.TOO_FEW }),

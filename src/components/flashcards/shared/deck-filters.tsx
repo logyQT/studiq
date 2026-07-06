@@ -1,7 +1,6 @@
 'use client';
 
-import { EyeOff, FileUp, Lock, Plus, Search, X } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { EyeOff, FileUp, Plus, Search, X } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useFeature } from '@/hooks/use-feature';
 
 interface DeckFiltersProps {
   searchInput: string;
@@ -22,7 +20,7 @@ interface DeckFiltersProps {
   sortBy: string;
   sortOrder: string;
   onSortChange: (sortBy: string, sortOrder: string) => void;
-  canSeeOrg: boolean;
+  canSeeGroup: boolean;
   includeSuspended: boolean;
   onIncludeSuspendedChange: (value: boolean) => void;
   onImport: () => void;
@@ -38,16 +36,13 @@ export function DeckFilters({
   sortBy,
   sortOrder,
   onSortChange,
-  canSeeOrg,
+  canSeeGroup,
   includeSuspended,
   onIncludeSuspendedChange,
   onImport,
   onCreateNew,
   t,
 }: DeckFiltersProps) {
-  const { hasAccess } = useFeature('study.create');
-  const router = useRouter();
-
   return (
     <div className="flex flex-wrap items-center gap-3 max-sm:hidden">
       <div className="relative flex-1 basis-full lg:basis-auto lg:max-w-md">
@@ -79,7 +74,7 @@ export function DeckFilters({
         <SelectContent>
           <SelectItem value="all">{t('owner_all')}</SelectItem>
           <SelectItem value="mine">{t('owner_mine')}</SelectItem>
-          {canSeeOrg && <SelectItem value="org">{t('owner_org')}</SelectItem>}
+          {canSeeGroup && <SelectItem value="group">{t('owner_group')}</SelectItem>}
           <SelectItem value="shared">{t('owner_shared')}</SelectItem>
         </SelectContent>
       </Select>
@@ -114,20 +109,8 @@ export function DeckFilters({
         <Button variant="outline" className="justify-start" onClick={onImport}>
           <FileUp className="h-4 w-4" /> {t('common_import')}
         </Button>
-        <Button
-          className="justify-start"
-          disabled={!hasAccess}
-          onClick={hasAccess ? onCreateNew : () => router.push('/checkout?plan_id=student_premium')}
-        >
-          {hasAccess ? (
-            <>
-              <Plus className="h-4 w-4" /> {t('new_deck')}
-            </>
-          ) : (
-            <>
-              <Lock className="size-3" /> Upgrade
-            </>
-          )}
+        <Button className="justify-start" onClick={onCreateNew}>
+          <Plus className="h-4 w-4" /> {t('new_deck')}
         </Button>
       </div>
     </div>

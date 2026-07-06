@@ -24,7 +24,7 @@ describe('OrganizationMemberController', () => {
   describe('listMembers', () => {
     it('returns members when user has university', async () => {
       mockService.getProfile.mockResolvedValueOnce({ id: userId, organization_id: 'uni-1' } as any);
-      const members = [{ id: 'user-1', role: 'student' }];
+      const members = [{ id: 'user-1', account_type: 'student' }];
       mockService.listMembers.mockResolvedValueOnce(members as any);
 
       const response = await organizationMemberController.listMembers(userId);
@@ -61,7 +61,7 @@ describe('OrganizationMemberController', () => {
 
   describe('changeRole', () => {
     it('returns success when service changes role successfully', async () => {
-      const body = { targetUserId: 'user-123', newRole: 'university_admin' };
+      const body = { targetUserId: 'user-123', newOrgRoleId: '00000000-0000-4000-8000-000000000001' };
       mockService.changeRole.mockResolvedValueOnce({ success: true });
 
       const response = await organizationMemberController.changeRole(userId, body);
@@ -72,7 +72,7 @@ describe('OrganizationMemberController', () => {
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
       const response = await organizationMemberController.changeRole(userId, {
         targetUserId: '',
-        newRole: 'invalid',
+        newOrgRoleId: 'invalid',
       });
 
       expect(response.success).toBe(false);
@@ -85,7 +85,7 @@ describe('OrganizationMemberController', () => {
 
       const response = await organizationMemberController.changeRole(userId, {
         targetUserId: 'user-123',
-        newRole: 'university_admin',
+        newOrgRoleId: '00000000-0000-4000-8000-000000000001',
       });
 
       expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
@@ -96,7 +96,7 @@ describe('OrganizationMemberController', () => {
 
       const response = await organizationMemberController.changeRole(userId, {
         targetUserId: 'user-123',
-        newRole: 'university_admin',
+        newOrgRoleId: '00000000-0000-4000-8000-000000000001',
       });
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });

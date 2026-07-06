@@ -1,5 +1,5 @@
 import { AppError } from '@/lib/errors';
-import { checkPermission, Permission, shouldSetUniversityId } from '@/lib/rbac';
+import { checkPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
@@ -35,10 +35,6 @@ export class FlashcardImportService {
       }
     }
 
-    const universityId = (await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE))
-      ? ctx.activeOrgId
-      : null;
-
     const topicNames = new Set<string>();
     const deckNames = new Set<string>();
 
@@ -72,7 +68,8 @@ export class FlashcardImportService {
             toCreate.map((name) => ({
               name,
               created_by: ctx.userId,
-              organization_id: universityId,
+              organization_id: ctx.activeOrgId,
+              visibility: 'personal',
             })),
           )
           .select('id, name');
@@ -108,7 +105,8 @@ export class FlashcardImportService {
               name,
               description: `Auto-created from CSV import`,
               created_by: ctx.userId,
-              organization_id: universityId,
+              organization_id: ctx.activeOrgId,
+              visibility: 'personal',
             })),
           )
           .select('id, name');
@@ -131,7 +129,8 @@ export class FlashcardImportService {
       front: c.front,
       back: c.back,
       created_by: ctx.userId,
-      organization_id: universityId,
+      organization_id: ctx.activeOrgId,
+      visibility: 'personal',
     }));
 
     const { data: flashcards, error: insertError } = await supabase

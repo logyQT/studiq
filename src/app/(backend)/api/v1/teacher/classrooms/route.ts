@@ -2,7 +2,9 @@ import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
 import { classroomController } from '@/server/controllers/classroom.controller';
-import { UserRole } from '@/types';
+import { AccountType } from '@/types';
+
+const COOKIE_OPTIONS = { path: '/', maxAge: 60 * 60 * 24 * 365, sameSite: 'lax' as const };
 
 export async function POST(req: NextRequest) {
   return withAuth(
@@ -13,16 +15,13 @@ export async function POST(req: NextRequest) {
 
       if (result.success && result.data) {
         const res = toNextResponse(result);
-        res.cookies.set('active_org_id', (result.data as { id: string }).id, {
-          path: '/',
-          maxAge: 60 * 60 * 24 * 365,
-          sameSite: 'lax',
-        });
+        const orgId = (result.data as { id: string }).id;
+        res.cookies.set('active_org_id', orgId, COOKIE_OPTIONS);
         return res;
       }
 
       return toNextResponse(result);
     },
-    { allowedRoles: [UserRole.TEACHER, UserRole.SYS_ADMIN] },
+    { allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER] },
   );
 }

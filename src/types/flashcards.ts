@@ -6,6 +6,7 @@ export interface Deck {
   created_by: string;
   updated_at?: string;
   suspended?: boolean;
+  visibility?: 'personal' | 'group';
 }
 
 export interface Topic {
@@ -14,6 +15,7 @@ export interface Topic {
   flashcard_count: number;
   created_by: string;
   created_at?: string;
+  visibility?: 'personal' | 'group';
 }
 
 export interface Flashcard {
@@ -23,4 +25,5 @@ export interface Flashcard {
   created_by: string;
   flashcard_topic_assignments?: Array<{ topic_id: string }>;
   flashcard_deck_assignments?: Array<{ deck_id: string }>;
+  visibility?: 'personal' | 'group';
 }

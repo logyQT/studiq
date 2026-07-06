@@ -1,11 +1,6 @@
-import type { User } from '@/server/models';
-import type { UserRole } from '@/types';
+import type { AccountType } from '@/types';
 
-export function roleGuard(user: User | null, allowedRoles: string[]): boolean {
-  if (!user) return false;
-
-  const userRole = user.app_metadata.role as UserRole;
-
-  if (!userRole) return false;
-  return allowedRoles.includes(userRole);
+export function roleGuard(accountType: AccountType | undefined, allowedTypes: string[]): boolean {
+  if (!accountType) return false;
+  return allowedTypes.includes(accountType);
 }

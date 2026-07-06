@@ -2,16 +2,18 @@ import type { Session } from '@supabase/supabase-js';
 import { AppError } from '@/lib/errors';
 import { log } from '@/lib/logger';
 import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import type { LoginInput, RegisterInput, User } from '@/server/models';
 
 export class AuthService {
   async register(data: RegisterInput): Promise<void> {
     const supabase = await createClient();
+    const role: string = data.accountType; // stored as account_type in app_metadata
 
     if (data.inviteToken) {
       const { data: invite, error: inviteError } = await supabase
         .from('invitations')
-        .select('email, name, expires_at')
+        .select('email, name, expires_at, target_org_role_id')
         .eq('token', data.inviteToken)
         .single();
 
@@ -36,12 +38,13 @@ export class AuthService {
       }
     }
 
-    const { error } = await supabase.auth.signUp({
+    const { data: signUpData, error } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
       options: {
         data: {
           name: data.name,
+          account_type: role,
           invite_token: data.inviteToken,
         },
       },
@@ -58,6 +61,20 @@ export class AuthService {
       }
 
       throw new AppError('INTERNAL_SERVER');
+    }
+
+    if (signUpData.user) {
+      const serviceSupabase = createServiceClient();
+      const { error: updateError } = await serviceSupabase.auth.admin.updateUserById(
+        signUpData.user.id,
+        { app_metadata: { account_type: role } },
+      );
+
+      if (updateError) {
+        log.auth.error('Failed to set app_metadata account_type', {
+          metadata: { userId: signUpData.user.id, role, error: updateError.message },
+        });
+      }
     }
   }
 
@@ -98,6 +115,20 @@ export class AuthService {
     if (error) {
       throw new AppError('BAD_REQUEST');
     }
+  }
+
+  async updateProfile(data: { name: string }): Promise<User> {
+    const supabase = await createClient();
+
+    const { data: updatedUser, error } = await supabase.auth.updateUser({
+      data: { name: data.name },
+    });
+
+    if (error) {
+      throw new AppError('BAD_REQUEST');
+    }
+
+    return updatedUser.user as User;
   }
 
   async updatePassword(password: string): Promise<void> {

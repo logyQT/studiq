@@ -9,6 +9,7 @@ CREATE TABLE public.flashcards (
   created_by      uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
   front           text NOT NULL,
   back            text NOT NULL,
+  visibility      visibility_type NOT NULL DEFAULT 'personal',
   search_vector   tsvector
                   GENERATED ALWAYS AS (
                     to_tsvector('english', coalesce(front, '')) ||
@@ -28,3 +29,4 @@ CREATE INDEX idx_flashcards_organization ON public.flashcards(organization_id);
 CREATE INDEX idx_flashcards_created_at_id ON public.flashcards (created_at DESC, id);
 CREATE INDEX idx_flashcards_owner_time ON public.flashcards (created_by, created_at DESC, id);
 CREATE INDEX idx_flashcards_org_time ON public.flashcards (organization_id, created_at DESC, id);
+CREATE INDEX idx_flashcards_visibility ON public.flashcards (organization_id, visibility);

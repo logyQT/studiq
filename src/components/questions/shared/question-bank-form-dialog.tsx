@@ -12,13 +12,30 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { MultiSelect } from '@/components/ui/multi-select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
+
+interface GroupOption {
+  id: string;
+  name: string;
+}
 
 interface QuestionBankFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  initialValues: { name: string; description: string } | null;
-  onSubmit: (data: { name: string; description: string }) => void;
+  initialValues: {
+    name: string;
+    description: string;
+    visibility?: 'personal' | 'group';
+    groupIds?: string[];
+  } | null;
+  onSubmit: (data: {
+    name: string;
+    description: string;
+    visibility?: 'personal' | 'group';
+    groupIds?: string[];
+  }) => void;
   title: string;
   description: string;
   nameLabel: string;
@@ -27,6 +44,12 @@ interface QuestionBankFormDialogProps {
   descriptionPlaceholder: string;
   cancelLabel: string;
   submitLabel: string;
+  groups?: GroupOption[];
+  visibilityLabel?: string;
+  visibilityPersonalLabel?: string;
+  visibilityGroupLabel?: string;
+  groupsPlaceholder?: string;
+  groupsEmptyText?: string;
 }
 
 export function QuestionBankFormDialog({
@@ -42,20 +65,30 @@ export function QuestionBankFormDialog({
   descriptionPlaceholder,
   cancelLabel,
   submitLabel,
+  groups,
+  visibilityLabel,
+  visibilityPersonalLabel,
+  visibilityGroupLabel,
+  groupsPlaceholder,
+  groupsEmptyText,
 }: QuestionBankFormDialogProps) {
   const [name, setName] = useState('');
   const [bankDescription, setBankDescription] = useState('');
+  const [visibility, setVisibility] = useState<'personal' | 'group'>('personal');
+  const [groupIds, setGroupIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (open) {
       setName(initialValues?.name ?? '');
       setBankDescription(initialValues?.description ?? '');
+      setVisibility(initialValues?.visibility ?? 'personal');
+      setGroupIds(initialValues?.groupIds ?? []);
     }
   }, [open, initialValues]);
 
   function handleSubmit() {
     if (!name.trim()) return;
-    onSubmit({ name: name.trim(), description: bankDescription.trim() });
+    onSubmit({ name: name.trim(), description: bankDescription.trim(), visibility, groupIds });
   }
 
   return (
@@ -85,6 +118,40 @@ export function QuestionBankFormDialog({
               rows={3}
             />
           </div>
+          {groups && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">{visibilityLabel}</Label>
+                <RadioGroup
+                  value={visibility}
+                  onValueChange={(v: 'personal' | 'group') => setVisibility(v)}
+                  className="flex gap-4"
+                >
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="personal" id="qb-visibility-personal" />
+                    <Label htmlFor="qb-visibility-personal" className="text-sm cursor-pointer">
+                      {visibilityPersonalLabel}
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="group" id="qb-visibility-group" />
+                    <Label htmlFor="qb-visibility-group" className="text-sm cursor-pointer">
+                      {visibilityGroupLabel}
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+              {visibility === 'group' && (
+                <MultiSelect
+                  options={groups.map((g) => ({ label: g.name, value: g.id }))}
+                  selected={groupIds}
+                  onChange={setGroupIds}
+                  placeholder={groupsPlaceholder}
+                  emptyText={groupsEmptyText}
+                />
+              )}
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

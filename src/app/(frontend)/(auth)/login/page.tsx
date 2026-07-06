@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { DevQuickLogin } from '@/components/dev/dev-quick-login';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,7 +22,6 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { APP_ERRORS } from '@/lib/errors';
-import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import { type LoginInput, LoginSchema } from '@/server/models/auth.model';
 
@@ -30,6 +30,7 @@ export default function LoginPage() {
   const tErr = useTranslations('Errors');
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { refresh } = useAuth();
 
   const errorParam = searchParams.get('error');
 
@@ -68,8 +69,7 @@ export default function LoginPage() {
         return;
       }
 
-      const supabase = createClient();
-      await supabase.auth.setSession(result.data.session);
+      await refresh();
 
       if (nextParam) {
         router.push(nextParam);
@@ -82,8 +82,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center gap-6 bg-muted/50 p-6">
-      <Card className="w-full max-w-md shadow-lg border">
+    <div className="flex min-h-screen items-center justify-center gap-6 bg-background p-6">
+      <Card className="w-full max-w-md shadow-lg border-sidebar-border bg-sidebar">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl text-center">{t('header')}</CardTitle>
           <CardDescription className="text-center">{t('sub_header')}</CardDescription>

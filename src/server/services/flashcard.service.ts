@@ -1,6 +1,6 @@
 import { AppError } from '@/lib/errors';
 import { log } from '@/lib/logger';
-import { buildQueryFilter, checkPermission, Permission, shouldSetUniversityId } from '@/lib/rbac';
+import { buildQueryFilter, checkPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
@@ -24,6 +24,7 @@ export class FlashcardService {
   async create(data: CreateFlashcardInput, ctx: RequestContext) {
     const supabase = await createClient();
 
+    let deckVisibility: string | undefined;
     if (data.deckId) {
       const { data: deck } = await supabase
         .from('flashcard_decks')
@@ -32,11 +33,8 @@ export class FlashcardService {
         .single();
       if (!deck) throw new AppError('NOT_FOUND');
       await checkPermission(ctx, Permission.DECK_UPDATE, deck);
+      deckVisibility = deck.visibility;
     }
-
-    const organizationId = (await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE))
-      ? ctx.activeOrgId
-      : null;
 
     const { data: flashcard, error } = await supabase
       .from('flashcards')
@@ -44,7 +42,8 @@ export class FlashcardService {
         front: data.front,
         back: data.back,
         created_by: ctx.userId,
-        organization_id: organizationId,
+        organization_id: ctx.activeOrgId,
+        visibility: deckVisibility,
       })
       .select()
       .single();
@@ -84,11 +83,13 @@ export class FlashcardService {
       },
     });
 
+    let bulkDeckVisibilities: string[] = [];
     if (data.deckIds && data.deckIds.length > 0) {
       const { data: decks } = await supabase
         .from('flashcard_decks')
         .select('*')
         .in('id', data.deckIds);
+      bulkDeckVisibilities = decks?.map((d) => d.visibility) ?? [];
       const deckMap = new Map(decks?.map((d) => [d.id, d]) ?? []);
       for (const deckId of data.deckIds) {
         const deck = deckMap.get(deckId);
@@ -97,14 +98,13 @@ export class FlashcardService {
       }
     }
 
-    const organizationId = (await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE))
-      ? ctx.activeOrgId
-      : null;
+    const visibility = bulkDeckVisibilities.includes('group') ? 'group' : 'personal';
 
     const { data: flashcards, error } = await supabase.rpc('bulk_create_flashcards', {
       p_cards: data.cards.map((c) => ({ front: c.front, back: c.back })),
       p_user_id: ctx.userId,
-      p_organization_id: organizationId ?? null,
+      p_organization_id: ctx.activeOrgId,
+      p_visibility: visibility,
       p_deck_ids: data.deckIds ?? [],
       p_topic_ids: data.topicIds ?? [],
     });
@@ -154,6 +154,45 @@ export class FlashcardService {
     const sortAsc = (filters?.sortOrder || 'desc') === 'asc';
 
     const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+
+    if (filter._impossible) return { items: [], nextCursor: null, hasMore: false };
+
+    if (filter._useRpc) {
+      const rpcParams: Record<string, unknown> = {
+        p_user_id: ctx.userId,
+        p_org_id: ctx.activeOrgId,
+      };
+      if (hasDeckFilter) rpcParams.p_deck_ids = filters!.deckIds;
+      if (hasTopicFilter) rpcParams.p_topic_ids = filters!.topicIds;
+      const rpcQuery = supabase.rpc('get_accessible_flashcards', rpcParams);
+      if (hasSearch) {
+        const searchTerm = `%${filters!.q}%`;
+        void rpcQuery.or(`front.ilike.${searchTerm},back.ilike.${searchTerm}`);
+      }
+      void rpcQuery.order(sortCol, { ascending: sortAsc }).order('id');
+      void rpcQuery.limit(pageSize + 1);
+      if (filters?.cursor) {
+        const decoded = JSON.parse(Buffer.from(filters.cursor, 'base64').toString('utf-8'));
+        const cursorVal = decoded.v;
+        const cursorId = decoded.id;
+        const op = sortAsc ? 'gt' : 'lt';
+        void rpcQuery.or(
+          `${sortCol}.${op}.${cursorVal},and(${sortCol}.eq.${cursorVal},id.gt.${cursorId})`,
+        );
+      }
+      const { data, error } = await rpcQuery;
+      if (error) throw mapSupabaseError(error);
+      const rows = data as unknown as Array<{ id: string; [key: string]: unknown }>;
+      const hasMore = (rows?.length ?? 0) > pageSize;
+      const items = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
+      const nextCursor = hasMore
+        ? Buffer.from(
+            JSON.stringify({ v: items[items.length - 1][sortCol], id: items[items.length - 1].id }),
+          ).toString('base64')
+        : null;
+      return { items, nextCursor, hasMore };
+    }
+
     let query = supabase
       .from('flashcards')
       .select(
@@ -162,12 +201,8 @@ export class FlashcardService {
           `flashcard_deck_assignments${hasDeckFilter ? '!inner' : ''}(deck_id)`,
       );
 
-    if (filter._impossible) return { items: [], nextCursor: null, hasMore: false };
-    if (filter.or) {
-      query = query.or(filter.or);
-    } else if (filter.created_by) {
-      query = query.eq('created_by', filter.created_by);
-    }
+    if (filter.created_by) query = query.eq('created_by', filter.created_by);
+    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
     if (hasTopicFilter) {
       if (filters!.topicIds!.length === 1) {
@@ -227,21 +262,70 @@ export class FlashcardService {
     return { items, nextCursor, hasMore };
   }
 
+  async listByDeck(deckIds: string[], ctx: RequestContext) {
+    const supabase = await createClient();
+
+    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+
+    if (filter._impossible) return [];
+    if (filter._useRpc) {
+      const rpcQuery = supabase.rpc('get_accessible_flashcards', {
+        p_user_id: ctx.userId,
+        p_org_id: ctx.activeOrgId,
+      });
+      if (deckIds.length > 0) {
+        const { data, error } = await rpcQuery.in('id', deckIds);
+        if (error) throw mapSupabaseError(error);
+        return (data ?? []) as unknown as Flashcard[];
+      }
+      return [];
+    }
+
+    let query = supabase
+      .from('flashcards')
+      .select('*, flashcard_topic_assignments(topic_id), flashcard_deck_assignments(deck_id)');
+
+    if (filter.created_by) query = query.eq('created_by', filter.created_by);
+    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
+
+    if (deckIds.length > 0) {
+      if (deckIds.length === 1) {
+        query = query.filter('flashcard_deck_assignments.deck_id', 'eq', deckIds[0]);
+      } else {
+        query = query.filter('flashcard_deck_assignments.deck_id', 'in', `(${deckIds.join(',')})`);
+      }
+    }
+
+    const { data, error } = await query;
+    if (error) throw mapSupabaseError(error);
+    return (data ?? []) as unknown as Flashcard[];
+  }
+
   async getById(id: string, ctx: RequestContext) {
     const supabase = await createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+
+    if (filter._impossible) throw new AppError('NOT_FOUND');
+    if (filter._useRpc) {
+      const { data, error } = await supabase
+        .rpc('get_accessible_flashcards', {
+          p_user_id: ctx.userId,
+          p_org_id: ctx.activeOrgId,
+        })
+        .eq('id', id)
+        .single();
+      if (error) throw mapSupabaseError(error);
+      return data as unknown as Flashcard;
+    }
+
     let query = supabase
       .from('flashcards')
       .select('*, flashcard_topic_assignments(topic_id), flashcard_deck_assignments(deck_id)')
       .eq('id', id);
 
-    if (filter._impossible) throw new AppError('NOT_FOUND');
-    if (filter.or) {
-      query = query.or(filter.or);
-    } else if (filter.created_by) {
-      query = query.eq('created_by', filter.created_by);
-    }
+    if (filter.created_by) query = query.eq('created_by', filter.created_by);
+    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
     const { data, error } = await query.single();
 
@@ -389,17 +473,14 @@ export class FlashcardService {
     if (deckError || !deck) throw new AppError('NOT_FOUND');
     await checkPermission(ctx, Permission.DECK_UPDATE, deck);
 
-    const orgId = (await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE))
-      ? ctx.activeOrgId
-      : null;
-
     const { data: newFlashcard, error: insertError } = await supabase
       .from('flashcards')
       .insert({
         front: original.front,
         back: original.back,
         created_by: ctx.userId,
-        organization_id: orgId,
+        organization_id: ctx.activeOrgId,
+        visibility: deck.visibility ?? 'personal',
       })
       .select()
       .single();
@@ -683,15 +764,12 @@ export class FlashcardService {
     if (!deck) throw new AppError('NOT_FOUND');
     await checkPermission(ctx, Permission.DECK_UPDATE, deck);
 
-    const batchOrgId = (await shouldSetUniversityId(ctx, Permission.FLASHCARD_CREATE))
-      ? ctx.activeOrgId
-      : null;
-
     const cardsToInsert = originals.map((fc) => ({
       front: fc.front,
       back: fc.back,
       created_by: ctx.userId,
-      organization_id: batchOrgId,
+      organization_id: ctx.activeOrgId,
+      visibility: deck.visibility ?? 'personal',
     }));
 
     const { data: newFlashcards, error: insertError } = await supabase

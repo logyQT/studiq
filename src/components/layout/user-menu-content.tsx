@@ -16,7 +16,7 @@ import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { UserAvatar } from '@/components/ui/user-avatar';
-import { UserRole } from '@/types';
+import { AccountType } from '@/types';
 
 type Locale = 'pl' | 'en';
 
@@ -54,15 +54,13 @@ export function UserMenuItems({ onItemClick }: { onItemClick?: () => void }) {
   const locale = getLocale();
   const { setTheme } = useTheme();
 
-  const role = user?.app_metadata?.role as UserRole | undefined;
+  const accountType = user?.app_metadata?.account_type as AccountType | undefined;
   const dashboardPrefix = (() => {
-    switch (role) {
-      case UserRole.TEACHER:
+    switch (accountType) {
+      case AccountType.EDUCATOR:
         return '/edu';
-      case UserRole.UNIVERSITY_ADMIN:
+      case AccountType.MANAGER:
         return '/manage';
-      case UserRole.SYS_ADMIN:
-        return '/admin';
       default:
         return '/app';
     }

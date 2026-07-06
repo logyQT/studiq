@@ -20,7 +20,7 @@ export default function AppJoinPage() {
 
     setIsPending(true);
     try {
-      const res = await fetch('/api/v1/organization/invitations/accept', {
+      const res = await fetch('/api/v1/organization/invites/accept', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: token.trim() }),

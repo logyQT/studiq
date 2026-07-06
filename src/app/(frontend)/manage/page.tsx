@@ -6,15 +6,13 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { RoleBadge } from '@/components/ui/role-badge';
 import { StatCard } from '@/components/ui/stat-card';
-import { UserRole } from '@/types';
 
 interface Member {
   id: string;
   email: string;
   full_name: string | null;
-  role: string;
+  orgRoleName: string;
   created_at: string;
 }
 
@@ -26,16 +24,17 @@ export default function ManageOverviewPage() {
   useEffect(() => {
     fetch('/api/v1/organization/members')
       .then((r) => r.json())
-      .then((data) => {
-        setMembers(data);
+      .then((res) => {
+        if (res.success && Array.isArray(res.data)) {
+          setMembers(res.data);
+        }
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, []);
 
-  const teachers = members.filter((m) => m.role === UserRole.TEACHER);
-  const students = members.filter((m) => m.role === UserRole.STUDENT);
-  const admins = members.filter((m) => m.role === UserRole.UNIVERSITY_ADMIN);
+  const teachers = members.filter((m) => m.orgRoleName === 'teacher');
+  const students = members.filter((m) => m.orgRoleName === 'member');
   const recentMembers = [...members]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 5);
@@ -58,7 +57,6 @@ export default function ManageOverviewPage() {
           value={loading ? '...' : students.length}
           icon={UserCheck}
         />
-        <StatCard title={t('admins')} value={loading ? '...' : admins.length} icon={Users} />
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -103,7 +101,7 @@ export default function ManageOverviewPage() {
                       <p className="text-sm font-medium">{m.full_name || m.email}</p>
                       {m.full_name && <p className="text-xs text-muted-foreground">{m.email}</p>}
                     </div>
-                    <RoleBadge role={m.role as UserRole} />
+                    <span className="text-sm text-muted-foreground">{m.orgRoleName}</span>
                   </div>
                 ))}
               </div>

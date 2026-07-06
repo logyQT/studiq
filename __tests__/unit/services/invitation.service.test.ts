@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { invitationService } from '@/server/services/invitation.service';
-import { UserRole } from '@/types';
+import { AccountType } from '@/types';
 
 describe('InvitationService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
@@ -27,7 +27,7 @@ describe('InvitationService', () => {
         invitationService.createInvitation(userId, {
           name: 'John Doe',
           email: 'john@example.com',
-          role: UserRole.STUDENT,
+          targetOrgRoleId: 'member',
         }),
       ).rejects.toThrow('ERROR_NOT_FOUND');
     });
@@ -49,7 +49,7 @@ describe('InvitationService', () => {
         invitationService.createInvitation(userId, {
           name: 'John Doe',
           email: 'john@example.com',
-          role: UserRole.STUDENT,
+          targetOrgRoleId: 'member',
         }),
       ).rejects.toThrow('ERROR_FORBIDDEN');
     });
@@ -71,7 +71,7 @@ describe('InvitationService', () => {
         invitationService.createInvitation(userId, {
           name: 'John Doe',
           email: 'john@example.com',
-          role: UserRole.STUDENT,
+          targetOrgRoleId: 'member',
         }),
       ).rejects.toThrow('ERROR_NOT_FOUND');
     });
@@ -103,7 +103,7 @@ describe('InvitationService', () => {
       const result = await invitationService.createInvitation(userId, {
         name: 'John Doe',
         email: 'john@example.com',
-        role: UserRole.STUDENT,
+        targetOrgRoleId: 'member',
         organizationId: 'uni-1',
       });
 
@@ -140,7 +140,7 @@ describe('InvitationService', () => {
       const result = await invitationService.createInvitation(userId, {
         name: 'John Doe',
         email: 'john@example.com',
-        role: UserRole.STUDENT,
+        targetOrgRoleId: 'member',
       });
 
       expect(result.success).toBe(true);
@@ -175,7 +175,7 @@ describe('InvitationService', () => {
         invitationService.createInvitation(userId, {
           name: 'John Doe',
           email: 'john@example.com',
-          role: UserRole.STUDENT,
+          targetOrgRoleId: 'member',
         }),
       ).rejects.toThrow('ERROR_INTERNAL_SERVER');
 
@@ -207,7 +207,7 @@ describe('InvitationService', () => {
         invitationService.createInvitation(userId, {
           name: 'John Doe',
           email: 'john@example.com',
-          role: UserRole.STUDENT,
+          targetOrgRoleId: 'member',
         }),
       ).rejects.toThrow('ERROR_INTERNAL_SERVER');
     });

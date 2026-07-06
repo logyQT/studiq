@@ -12,18 +12,31 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { MultiSelect } from '@/components/ui/multi-select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { DIALOG_GRADIENT_HEX } from '@/lib/color-utils';
 import type { Topic } from '@/types/flashcards';
+
+interface GroupOption {
+  id: string;
+  name: string;
+}
 
 interface TopicFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editing: Topic | null;
-  formData: { name: string };
-  onFormDataChange: (data: { name: string }) => void;
+  formData: { name: string; visibility?: 'personal' | 'group'; groupIds?: string[] };
+  onFormDataChange: (data: {
+    name: string;
+    visibility?: 'personal' | 'group';
+    groupIds?: string[];
+  }) => void;
   onSubmit: () => void;
   onCancel: () => void;
   t: ReturnType<typeof useTranslations>;
+  groups?: GroupOption[];
 }
 
 export function TopicFormDialog({
@@ -35,6 +48,7 @@ export function TopicFormDialog({
   onSubmit,
   onCancel,
   t,
+  groups,
 }: TopicFormDialogProps) {
   const gradient = DIALOG_GRADIENT_HEX;
 
@@ -70,13 +84,49 @@ export function TopicFormDialog({
                 <label className="sr-only">{t('topic_name_label')}</label>
                 <Input
                   value={formData.name}
-                  onChange={(e) => onFormDataChange({ name: e.target.value })}
+                  onChange={(e) => onFormDataChange({ ...formData, name: e.target.value })}
                   placeholder={t('topic_name_placeholder')}
                   className="text-lg font-bold tracking-tight h-auto py-0 px-0 border-0 border-b rounded-none focus-visible:ring-0 focus-visible:border-primary"
                 />
               </div>
             </div>
           </Card>
+          {groups && (
+            <div className="mt-4 space-y-3">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">{t('visibility_label')}</Label>
+                <RadioGroup
+                  value={formData.visibility ?? 'personal'}
+                  onValueChange={(v: 'personal' | 'group') =>
+                    onFormDataChange({ ...formData, visibility: v })
+                  }
+                  className="flex gap-4"
+                >
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="personal" id="topic-visibility-personal" />
+                    <Label htmlFor="topic-visibility-personal" className="text-sm cursor-pointer">
+                      {t('visibility_personal')}
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="group" id="topic-visibility-group" />
+                    <Label htmlFor="topic-visibility-group" className="text-sm cursor-pointer">
+                      {t('visibility_group')}
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+              {formData.visibility === 'group' && (
+                <MultiSelect
+                  options={groups.map((g) => ({ label: g.name, value: g.id }))}
+                  selected={formData.groupIds ?? []}
+                  onChange={(ids) => onFormDataChange({ ...formData, groupIds: ids })}
+                  placeholder={t('groups_placeholder')}
+                  emptyText={t('groups_empty')}
+                />
+              )}
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onCancel}>

@@ -9,7 +9,7 @@ export class OrgService {
 
     const { data: memberships, error: mError } = await supabase
       .from('org_members')
-      .select('organization_id, role')
+      .select('organization_id, org_role_id, org_roles(name)')
       .eq('user_id', ctx.userId);
 
     if (mError) throw mapSupabaseError(mError);
@@ -31,16 +31,19 @@ export class OrgService {
       (orgs || []).map((o: { id: string; name: string; slug: string }) => [o.id, o]),
     );
 
-    return memberships.map((m: { organization_id: string; role: string }) => {
-      const org = orgMap.get(m.organization_id);
-      return {
-        id: m.organization_id,
-        name: org?.name ?? 'Unknown',
-        slug: org?.slug ?? '',
-        role: m.role,
-        isActive: m.organization_id === ctx.activeOrgId,
-      };
-    });
+    return memberships.map(
+      (m: { organization_id: string; org_role_id: string; org_roles: { name: string }[] }) => {
+        const org = orgMap.get(m.organization_id);
+        return {
+          id: m.organization_id,
+          name: org?.name ?? 'Unknown',
+          slug: org?.slug ?? '',
+          orgRoleName: m.org_roles?.[0]?.name ?? 'member',
+          orgRoleId: m.org_role_id,
+          isActive: m.organization_id === ctx.activeOrgId,
+        };
+      },
+    );
   }
 
   async verifyMembership(userId: string, orgId: string) {

@@ -1,10 +1,11 @@
 import { AppError } from '@/lib/errors';
+import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { CreateOrganizationInput, UpdateOrganizationInput } from '@/server/models';
 
 export class OrganizationService {
-  async create(data: CreateOrganizationInput) {
+  async create(ctx: RequestContext, data: CreateOrganizationInput) {
     const supabase = await createClient();
 
     const { data: organization, error } = await supabase
@@ -18,7 +19,33 @@ export class OrganizationService {
 
     if (error) throw mapSupabaseError(error);
 
-    return organization;
+    const newOrg = organization;
+
+    const defaultGroupName = 'Członkowie';
+    const { error: ge } = await supabase.from('groups').insert({
+      organization_id: newOrg.id,
+      name: defaultGroupName,
+      description: null,
+      is_default: true,
+    });
+    if (ge) throw mapSupabaseError(ge);
+
+    const { data: defaultGroup } = await supabase
+      .from('groups')
+      .select('id')
+      .eq('organization_id', newOrg.id)
+      .eq('is_default', true)
+      .single();
+    if (defaultGroup) {
+      const { error: me } = await supabase.from('group_members').insert({
+        group_id: defaultGroup.id,
+        user_id: ctx.userId,
+        role: 'teacher',
+      });
+      if (me) throw mapSupabaseError(me);
+    }
+
+    return newOrg;
   }
 
   async getAll() {
