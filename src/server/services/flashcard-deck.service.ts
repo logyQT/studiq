@@ -112,7 +112,6 @@ export class FlashcardDeckService {
       const sliced = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
       const items = sliced.map((item) => ({
         ...item,
-        flashcard_count: 0,
         suspended: suspendedIds.has(item.id as string),
       }));
 

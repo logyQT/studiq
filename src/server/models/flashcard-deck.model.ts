@@ -97,6 +97,7 @@ export interface Deck {
   description: string | null;
   flashcard_count: number;
   created_by: string;
+  organization_id: string;
   updated_at?: string;
   suspended?: boolean;
   visibility?: 'personal' | 'group';

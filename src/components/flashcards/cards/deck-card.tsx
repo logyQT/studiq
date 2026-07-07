@@ -278,6 +278,8 @@ export const DeckCard = memo(
       prev.deck.name === next.deck.name &&
       prev.deck.description === next.deck.description &&
       prev.deck.suspended === next.deck.suspended &&
+      prev.canUpdate === next.canUpdate &&
+      prev.canDelete === next.canDelete &&
       prev.isSelecting === next.isSelecting &&
       prev.isSelected === next.isSelected
     );

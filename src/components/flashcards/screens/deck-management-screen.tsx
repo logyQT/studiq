@@ -119,6 +119,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     initialPageParam: '',
     staleTime: Infinity,
     refetchOnMount: false,
+    placeholderData: (prev) => prev,
   });
 
   const decks = decksData?.pages.flatMap((page) => page.items) ?? [];
@@ -394,8 +395,16 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
             onToggleSelect={() => handleToggleSelect(deck.id)}
             basePath={basePath}
             t={t}
-            canUpdate={can({ permissions: ['deck.update'], createdBy: deck.created_by })}
-            canDelete={can({ permissions: ['deck.delete'], createdBy: deck.created_by })}
+            canUpdate={can({
+              permissions: ['deck.update'],
+              createdBy: deck.created_by,
+              orgId: deck.organization_id,
+            })}
+            canDelete={can({
+              permissions: ['deck.delete'],
+              createdBy: deck.created_by,
+              orgId: deck.organization_id,
+            })}
             onEdit={() => openEdit(deck)}
             onDelete={() => setDeleteId(deck.id)}
             onExport={() =>
