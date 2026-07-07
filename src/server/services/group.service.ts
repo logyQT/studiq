@@ -3,6 +3,7 @@ import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { CreateGroupInput, SetGroupMembersInput, UpdateGroupInput } from '@/server/models';
+import { checkLimit } from '@/server/services/plan.resolver';
 
 export class GroupService {
   async listGroups(ctx: RequestContext) {
@@ -47,6 +48,12 @@ export class GroupService {
     if (!ctx.activeOrgId) {
       throw new AppError('FORBIDDEN');
     }
+
+    const { count: groupCount } = await supabase
+      .from('groups')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', ctx.activeOrgId);
+    await checkLimit(ctx, 'max_groups', groupCount ?? 0);
 
     const { data: group, error } = await supabase
       .from('groups')

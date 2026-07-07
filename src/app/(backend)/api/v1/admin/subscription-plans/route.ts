@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
       const response = await subscriptionPlanAdminController.getAll();
       return toNextResponse(response);
     },
-    { allowedAccountTypes: [AccountType.MANAGER] },
+    { allowedAccountTypes: [AccountType.SYS_ADMIN] },
   );
 }
 
@@ -23,6 +23,6 @@ export async function POST(req: NextRequest) {
       const response = await subscriptionPlanAdminController.create(body);
       return toNextResponse(response);
     },
-    { allowedAccountTypes: [AccountType.MANAGER] },
+    { allowedAccountTypes: [AccountType.SYS_ADMIN] },
   );
 }

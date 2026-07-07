@@ -4,6 +4,7 @@ import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { CreateInviteInput } from '@/server/models';
+import { checkLimit } from '@/server/services/plan.resolver';
 import { AccountType } from '@/types';
 
 export class InvitationService {
@@ -89,6 +90,12 @@ export class InvitationService {
     const supabase = await createClient();
 
     const invite = await this.getInvitationByToken(token);
+
+    const { count: memberCount } = await supabase
+      .from('org_members')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', invite.organizationId);
+    await checkLimit(ctx, 'max_students', memberCount ?? 0);
 
     const { data: org, error: orgError } = await supabase
       .from('organizations')

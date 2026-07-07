@@ -12,6 +12,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const response = await errorLogController.getById(id);
       return toNextResponse(response);
     },
-    { allowedAccountTypes: [AccountType.MANAGER] },
+    { allowedAccountTypes: [AccountType.SYS_ADMIN] },
   );
 }

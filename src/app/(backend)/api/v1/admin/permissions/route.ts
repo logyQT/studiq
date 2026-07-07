@@ -11,6 +11,6 @@ export async function GET(req: NextRequest) {
       const response = await permissionController.getMatrix();
       return toNextResponse(response);
     },
-    { allowedAccountTypes: [AccountType.MANAGER] },
+    { allowedAccountTypes: [AccountType.SYS_ADMIN] },
   );
 }

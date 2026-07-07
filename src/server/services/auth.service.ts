@@ -75,6 +75,23 @@ export class AuthService {
           metadata: { userId: signUpData.user.id, role, error: updateError.message },
         });
       }
+
+      const personalPlan =
+        role === 'educator' || role === 'manager'
+          ? 'free_educator'
+          : role === 'sys_admin'
+            ? 'sysadmin'
+            : 'free';
+      const { error: profileError } = await serviceSupabase
+        .from('profiles')
+        .update({ personal_plan_key: personalPlan })
+        .eq('id', signUpData.user.id);
+
+      if (profileError) {
+        log.auth.error('Failed to set personal_plan_key', {
+          metadata: { userId: signUpData.user.id, personalPlan, error: profileError.message },
+        });
+      }
     }
   }
 

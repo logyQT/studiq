@@ -4,10 +4,17 @@ import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type { CreateQuestionInput, UpdateQuestionInput } from '@/server/models';
+import { checkLimit } from '@/server/services/plan.resolver';
 
 export class QuestionService {
   async create(data: CreateQuestionInput, ctx: RequestContext) {
     const supabase = await createClient();
+
+    const { count: questionCount } = await supabase
+      .from('questions')
+      .select('*', { count: 'exact', head: true })
+      .eq('created_by', ctx.userId);
+    await checkLimit(ctx, 'max_questions', questionCount ?? 0);
 
     const bankVisibility =
       data.bankIds && data.bankIds.length > 0

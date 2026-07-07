@@ -12,10 +12,18 @@ import type {
   DeckListQuery,
   UpdateDeckInput,
 } from '@/server/models';
+import { checkLimit } from '@/server/services/plan.resolver';
 
 export class FlashcardDeckService {
   async create(data: CreateDeckInput, ctx: RequestContext) {
     const supabase = await createClient();
+
+    const { count: deckCount } = await supabase
+      .from('flashcard_decks')
+      .select('*', { count: 'exact', head: true })
+      .eq('created_by', ctx.userId);
+    await checkLimit(ctx, 'max_decks', deckCount ?? 0);
+
     const { data: deck, error } = await supabase
       .from('flashcard_decks')
       .insert({

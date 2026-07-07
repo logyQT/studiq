@@ -37,5 +37,13 @@ export const PlanFeatureParamsSchema = registry.register(
   }),
 );
 
+export const PlanFeatureIdParamsSchema = registry.register(
+  'PlanFeatureIdParams',
+  z.object({
+    id: z.uuid({ error: ValidationErrorCode.INVALID_INPUT }),
+  }),
+);
+
 export type CreatePlanFeatureInput = z.infer<typeof CreatePlanFeatureSchema>;
 export type DeletePlanFeatureInput = z.infer<typeof DeletePlanFeatureSchema>;
+export type PlanFeatureIdParams = z.infer<typeof PlanFeatureIdParamsSchema>;

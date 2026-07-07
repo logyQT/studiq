@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     async () => {
       return toNextResponse(await organizationController.getAll());
     },
-    { allowedAccountTypes: [AccountType.MANAGER] },
+    { allowedAccountTypes: [AccountType.SYS_ADMIN] },
   );
 }
 
@@ -37,6 +37,6 @@ export async function POST(req: NextRequest) {
 
       return toNextResponse(result);
     },
-    { allowedAccountTypes: [AccountType.MANAGER] },
+    { allowedAccountTypes: [AccountType.SYS_ADMIN] },
   );
 }

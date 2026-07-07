@@ -73,6 +73,8 @@ export function Navbar() {
       case AccountType.EDUCATOR:
         return [...teacherLinks, ...adminLinks];
       case AccountType.MANAGER:
+        return adminLinks;
+      case AccountType.SYS_ADMIN:
         return sysAdminLinks;
       default:
         return studentLinks;

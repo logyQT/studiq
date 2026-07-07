@@ -6,6 +6,7 @@ import { authGuard, roleGuard } from '@/server/guards';
 import { AccountType } from '@/types';
 
 const ACCOUNT_TYPE_REDIRECTS: Record<string, string> = {
+  [AccountType.SYS_ADMIN]: '/admin',
   [AccountType.MANAGER]: '/manage',
   [AccountType.EDUCATOR]: '/edu',
   [AccountType.STUDENT]: '/app',

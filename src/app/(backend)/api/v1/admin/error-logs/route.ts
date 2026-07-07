@@ -11,6 +11,6 @@ export async function GET(req: NextRequest) {
       const response = await errorLogController.list(new URL(req.url).searchParams);
       return toNextResponse(response);
     },
-    { allowedAccountTypes: [AccountType.MANAGER] },
+    { allowedAccountTypes: [AccountType.SYS_ADMIN] },
   );
 }

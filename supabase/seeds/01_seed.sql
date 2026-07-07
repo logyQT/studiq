@@ -38,7 +38,7 @@ INSERT INTO "auth"."users" (
     'authenticated', 'authenticated', 'admin@dev.local',
     crypt('pass', gen_salt('bf')),
     now(), NULL, '', NULL, '', NULL, '', '', NULL, NULL,
-    '{"account_type": "manager", "provider": "email", "providers": ["email"]}',
+    '{"account_type": "sys_admin", "provider": "email", "providers": ["email"]}',
     '{"name": "Sys Admin", "email_verified": true}',
     NULL, now(), now(), NULL, NULL, '', '', NULL, '', 0, NULL, '', NULL, false, NULL, false ),
 

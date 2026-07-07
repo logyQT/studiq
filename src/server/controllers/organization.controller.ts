@@ -77,6 +77,22 @@ export class OrganizationController {
     });
   }
 
+  async getDetails(id: string): Promise<ControllerResponse> {
+    return withErrorHandling(async () => {
+      const parsedId = OrganizationIdParamsSchema.safeParse({ id });
+      if (!parsedId.success) {
+        return {
+          success: false,
+          statusCode: 400,
+          error: 'BAD_REQUEST',
+        };
+      }
+
+      const detail = await organizationService.getByIdWithDetails(parsedId.data.id);
+      return { success: true, statusCode: 200, data: detail };
+    });
+  }
+
   async delete(id: string): Promise<ControllerResponse> {
     return withErrorHandling(async () => {
       const parsedId = OrganizationIdParamsSchema.safeParse({ id });

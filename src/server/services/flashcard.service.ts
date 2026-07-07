@@ -19,10 +19,17 @@ import type {
   UnlinkFlashcardInput,
   UpdateFlashcardInput,
 } from '@/server/models';
+import { checkLimit } from '@/server/services/plan.resolver';
 
 export class FlashcardService {
   async create(data: CreateFlashcardInput, ctx: RequestContext) {
     const supabase = await createClient();
+
+    const { count: flashcardCount } = await supabase
+      .from('flashcards')
+      .select('*', { count: 'exact', head: true })
+      .eq('created_by', ctx.userId);
+    await checkLimit(ctx, 'max_flashcards', flashcardCount ?? 0);
 
     let deckVisibility: string | undefined;
     if (data.deckId) {
@@ -73,6 +80,12 @@ export class FlashcardService {
     const t0 = performance.now();
     const supabase = await createClient();
     const cardCount = data.cards.length;
+
+    const { count: bulkFlashcardCount } = await supabase
+      .from('flashcards')
+      .select('*', { count: 'exact', head: true })
+      .eq('created_by', ctx.userId);
+    await checkLimit(ctx, 'max_flashcards', bulkFlashcardCount ?? 0, cardCount);
 
     log.trace.info('bulkCreate:service:start', {
       metadata: {

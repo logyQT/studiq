@@ -130,13 +130,13 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
       label: 'sidebar_main',
       items: [
         { titleKey: 'admin_overview', href: '/admin', icon: LayoutDashboard },
+        { titleKey: 'admin_orgs', href: '/admin/orgs', icon: GraduationCap },
         { titleKey: 'ai_chat', href: '/admin/ai', icon: Sparkles },
       ],
     },
     {
       label: 'sidebar_system',
       items: [
-        { titleKey: 'admin_universities', href: '/admin', icon: GraduationCap },
         { titleKey: 'admin_error_logs', href: '/admin/logs', icon: AlertTriangle },
         { titleKey: 'admin_permissions', href: '/admin/permissions', icon: ShieldCheck },
         { titleKey: 'admin_feature_flags', href: '/admin/feature-flags', icon: Flag },

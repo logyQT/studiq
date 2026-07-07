@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const response = await subscriptionPlanAdminController.getById(id);
       return toNextResponse(response);
     },
-    { allowedAccountTypes: [AccountType.MANAGER] },
+    { allowedAccountTypes: [AccountType.SYS_ADMIN] },
   );
 }
 
@@ -25,7 +25,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       const response = await subscriptionPlanAdminController.update(id, body);
       return toNextResponse(response);
     },
-    { allowedAccountTypes: [AccountType.MANAGER] },
+    { allowedAccountTypes: [AccountType.SYS_ADMIN] },
   );
 }
 
@@ -37,6 +37,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       const response = await subscriptionPlanAdminController.delete(id);
       return toNextResponse(response);
     },
-    { allowedAccountTypes: [AccountType.MANAGER] },
+    { allowedAccountTypes: [AccountType.SYS_ADMIN] },
   );
 }
