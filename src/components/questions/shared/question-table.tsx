@@ -21,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import type { Question } from '@/types/questions';
+import type { Question } from '@/server/models';
 
 interface QuestionTableProps {
   questions: Question[];

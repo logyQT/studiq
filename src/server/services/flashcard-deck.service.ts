@@ -8,10 +8,10 @@ import type {
   BatchDeleteDeckInput,
   BulkCreateDeckInput,
   CreateDeckInput,
+  Deck,
   DeckListQuery,
   UpdateDeckInput,
 } from '@/server/models';
-import type { Deck } from '@/types/flashcards';
 
 export class FlashcardDeckService {
   async create(data: CreateDeckInput, ctx: RequestContext) {

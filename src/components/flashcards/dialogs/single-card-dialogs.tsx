@@ -8,7 +8,7 @@ import { DeckRadioSelector } from '@/components/flashcards/shared/deck-radio-sel
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import type { Deck } from '@/types/flashcards';
+import type { Deck } from '@/server/models';
 
 interface SingleCardDialogsProps {
   t: ReturnType<typeof useTranslations>;

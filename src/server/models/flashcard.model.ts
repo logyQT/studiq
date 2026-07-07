@@ -168,7 +168,20 @@ export const FlashcardSchema = registry.register(
   }),
 );
 
-export type Flashcard = z.infer<typeof FlashcardSchema>;
+export type FlashcardData = z.infer<typeof FlashcardSchema>;
+
+export interface FlashcardWithAssignments {
+  id: string;
+  front: string;
+  back: string;
+  created_by: string;
+  flashcard_topic_assignments?: Array<{ topic_id: string }>;
+  flashcard_deck_assignments?: Array<{ deck_id: string }>;
+  visibility?: 'personal' | 'group';
+}
+
+export type Flashcard = FlashcardWithAssignments;
+
 export type LinkFlashcardInput = z.infer<typeof LinkFlashcardSchema>;
 export type CopyFlashcardInput = z.infer<typeof CopyFlashcardSchema>;
 export type BatchDeleteInput = z.infer<typeof BatchDeleteSchema>;

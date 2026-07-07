@@ -2,12 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
-
-interface WeakItem {
-  name: string;
-  accuracy: number;
-  totalAttempts: number;
-}
+import type { WeakItem } from '@/server/models/stats.model';
 
 interface WeakPointsListProps {
   items: WeakItem[];

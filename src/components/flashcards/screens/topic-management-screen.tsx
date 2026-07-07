@@ -31,7 +31,7 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { useSelection } from '@/hooks/use-selection';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { flashcardKeys, groupKeys, topicKeys } from '@/lib/query-keys';
-import type { Flashcard, Topic } from '@/types/flashcards';
+import type { Flashcard, Topic } from '@/server/models';
 
 interface TopicManagementScreenProps {
   apiBase: string;

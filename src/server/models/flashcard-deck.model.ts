@@ -90,3 +90,15 @@ export const BatchToggleSuspendSchema = registry.register(
 
 export type BatchToggleSuspendInput = z.infer<typeof BatchToggleSuspendSchema>;
 export type DeckListQuery = z.infer<typeof DeckListQuerySchema>;
+
+export interface Deck {
+  id: string;
+  name: string;
+  description: string | null;
+  flashcard_count: number;
+  created_by: string;
+  updated_at?: string;
+  suspended?: boolean;
+  visibility?: 'personal' | 'group';
+  groupIds?: string[];
+}

@@ -9,7 +9,7 @@ import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empt
 import { Skeleton } from '@/components/ui/skeleton';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
-import type { Deck } from '@/types/flashcards';
+import type { Deck } from '@/server/models';
 
 export function CramContent() {
   const t = useTranslations('AppFlashcardStudyPage');

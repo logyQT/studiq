@@ -15,7 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { getGradientHex } from '@/lib/color-utils';
-import type { QuestionBank } from '@/types/questions';
+import type { QuestionBank } from '@/server/models';
 
 interface QuestionBankCardProps {
   bank: QuestionBank;

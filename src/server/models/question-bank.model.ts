@@ -77,3 +77,15 @@ export type UpdateQuestionBankInput = z.infer<typeof UpdateQuestionBankSchema>;
 export type BatchDeleteQuestionBankInput = z.infer<typeof BatchDeleteQuestionBankSchema>;
 export type BulkCreateQuestionBankInput = z.infer<typeof BulkCreateQuestionBankSchema>;
 export type QuestionBankListQuery = z.infer<typeof QuestionBankListQuerySchema>;
+
+export interface QuestionBank {
+  id: string;
+  name: string;
+  description: string | null;
+  question_count: number;
+  created_by: string;
+  organization_id: string | null;
+  created_at: string;
+  updated_at: string;
+  visibility?: 'personal' | 'group';
+}

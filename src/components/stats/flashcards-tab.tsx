@@ -21,39 +21,7 @@ import { StatCard } from '@/components/ui/stat-card';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
-
-interface CardStatsItem {
-  id: string;
-  front: string;
-  back: string;
-  createdAt: string;
-  state: 'new' | 'learning' | 'review' | 'relearning' | 'leech';
-  totalAttempts: number;
-  correctRate: number;
-  lastPracticedAt: string | null;
-  easinessFactor: number | null;
-  intervalDays: number | null;
-  nextReviewAt: string | null;
-  repetitions: number | null;
-  isLeech: boolean;
-  learningStep: number | null;
-  lapseCount: number | null;
-}
-
-interface CardStatsResponse {
-  items: CardStatsItem[];
-  nextCursor: string | null;
-  hasMore: boolean;
-}
-
-interface StateBreakdown {
-  totalCards: number;
-  neverPracticed: number;
-  learning: number;
-  review: number;
-  relearning: number;
-  leeched: number;
-}
+import type { CardStatsItem, CardStatsResponse, StateBreakdown } from '@/server/models';
 
 const STATE_FILTERS = ['all', 'new', 'learning', 'review', 'relearning', 'leech'] as const;
 

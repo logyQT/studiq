@@ -19,7 +19,7 @@ import { MultiSelect } from '@/components/ui/multi-select';
 import { apiPost, apiPut } from '@/lib/api';
 import { getGradientHex } from '@/lib/color-utils';
 import { flashcardKeys, topicKeys } from '@/lib/query-keys';
-import type { Flashcard, Topic } from '@/types/flashcards';
+import type { Flashcard, Topic } from '@/server/models';
 
 interface TopicDialogsProps {
   t: ReturnType<typeof useTranslations>;

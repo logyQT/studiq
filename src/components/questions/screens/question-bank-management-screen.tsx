@@ -22,8 +22,8 @@ import { useCan } from '@/hooks/use-can';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { groupKeys, questionKeys } from '@/lib/query-keys';
+import type { QuestionBank } from '@/server/models';
 import { AccountType } from '@/types';
-import type { QuestionBank } from '@/types/questions';
 
 interface QuestionBankManagementScreenProps {
   apiBase: string;

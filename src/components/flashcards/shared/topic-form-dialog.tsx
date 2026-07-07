@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { DIALOG_GRADIENT_HEX } from '@/lib/color-utils';
-import type { Topic } from '@/types/flashcards';
+import type { Topic } from '@/server/models';
 
 interface GroupOption {
   id: string;

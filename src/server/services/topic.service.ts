@@ -7,11 +7,11 @@ import type {
   BatchDeleteTopicInput,
   BulkCreateTopicInput,
   CreateTopicInput,
+  Topic,
   TopicListQuery,
   UpdateTopicInput,
 } from '@/server/models';
 import { AccountType } from '@/types';
-import type { Topic } from '@/types/flashcards';
 
 export class TopicService {
   async create(data: CreateTopicInput, ctx: RequestContext) {

@@ -14,7 +14,7 @@ import type {
   BulkCreateFlashcardsInput,
   CopyFlashcardInput,
   CreateFlashcardInput,
-  Flashcard,
+  FlashcardData,
   LinkFlashcardInput,
   UnlinkFlashcardInput,
   UpdateFlashcardInput,
@@ -128,7 +128,7 @@ export class FlashcardService {
       durationMs: performance.now() - t0,
     });
 
-    return flashcards as unknown as Flashcard[];
+    return flashcards as unknown as FlashcardData[];
   }
 
   async list(
@@ -276,7 +276,7 @@ export class FlashcardService {
       if (deckIds.length > 0) {
         const { data, error } = await rpcQuery.in('id', deckIds);
         if (error) throw mapSupabaseError(error);
-        return (data ?? []) as unknown as Flashcard[];
+        return (data ?? []) as unknown as FlashcardData[];
       }
       return [];
     }
@@ -298,7 +298,7 @@ export class FlashcardService {
 
     const { data, error } = await query;
     if (error) throw mapSupabaseError(error);
-    return (data ?? []) as unknown as Flashcard[];
+    return (data ?? []) as unknown as FlashcardData[];
   }
 
   async getById(id: string, ctx: RequestContext) {
@@ -316,7 +316,7 @@ export class FlashcardService {
         .eq('id', id)
         .single();
       if (error) throw mapSupabaseError(error);
-      return data as unknown as Flashcard;
+      return data as unknown as FlashcardData;
     }
 
     let query = supabase

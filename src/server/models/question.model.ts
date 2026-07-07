@@ -66,3 +66,26 @@ export const UpdateQuestionSchema = registry.register(
 
 export type CreateQuestionInput = z.infer<typeof CreateQuestionSchema>;
 export type UpdateQuestionInput = z.infer<typeof UpdateQuestionSchema>;
+
+export interface QuestionAnswer {
+  id: string;
+  question_id: string;
+  content: string;
+  is_correct: boolean;
+  order_index: number;
+}
+
+export interface Question {
+  id: string;
+  organization_id: string | null;
+  created_by: string;
+  type: 'mcq' | 'true_false' | 'open';
+  content: string;
+  explanation: string | null;
+  visibility?: 'personal' | 'group';
+  difficulty: 'easy' | 'medium' | 'hard';
+  created_at: string;
+  updated_at: string;
+  question_answers: QuestionAnswer[];
+  topics?: Array<{ id: string; name: string }>;
+}

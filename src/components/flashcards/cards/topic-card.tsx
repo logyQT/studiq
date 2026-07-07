@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { getGradientHex } from '@/lib/color-utils';
-import type { Topic } from '@/types/flashcards';
+import type { Topic } from '@/server/models';
 
 interface TopicCardProps {
   topic: Topic;

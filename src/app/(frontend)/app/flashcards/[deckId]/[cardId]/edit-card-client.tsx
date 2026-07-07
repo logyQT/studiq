@@ -14,7 +14,7 @@ import { useApiQuery } from '@/hooks/use-api';
 import { apiPut } from '@/lib/api';
 import { formatMarkdown } from '@/lib/markdown-utils';
 import { flashcardKeys, topicKeys } from '@/lib/query-keys';
-import type { Flashcard, Topic } from '@/types/flashcards';
+import type { Flashcard, Topic } from '@/server/models';
 
 interface EditCardClientProps {
   deckId: string;

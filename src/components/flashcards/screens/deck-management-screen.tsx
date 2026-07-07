@@ -30,8 +30,8 @@ import { useCan } from '@/hooks/use-can';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { flashcardKeys, groupKeys } from '@/lib/query-keys';
+import type { Deck } from '@/server/models';
 import { AccountType } from '@/types';
-import type { Deck } from '@/types/flashcards';
 
 const ImportDialog = dynamic(
   () =>

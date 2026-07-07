@@ -5,8 +5,14 @@ import { createClient } from '@/lib/supabase/server';
 import { mapSupabaseError } from '@/lib/supabase-errors';
 import type {
   BatchPracticeInput,
+  CardStatsItem,
   CompleteSessionInput,
+  DueBreakdownResponse,
+  DueCountResponse,
+  DueFlashcardItem,
+  FlashcardRow,
   PracticeCardData,
+  PracticeSummary,
   Rating,
 } from '@/server/models';
 import { flashcardSpacedRepetitionService } from './flashcard-spaced-repetition.service';
@@ -251,16 +257,7 @@ export class FlashcardPracticeService {
     });
 
     if (rpcError) throw mapSupabaseError(rpcError);
-    const cards =
-      (rpcResult as unknown as Array<{
-        id: string;
-        front: string;
-        back: string;
-        createdAt: string;
-        reviewState: Record<string, unknown> | null;
-        deckName: string | null;
-        topicNames: string[];
-      }>) ?? [];
+    const cards = (rpcResult as unknown as DueFlashcardItem[]) ?? [];
 
     return cards;
   }
@@ -281,12 +278,7 @@ export class FlashcardPracticeService {
 
     if (error) throw mapSupabaseError(error);
 
-    const rpcResult = data as {
-      total: number;
-      nextReviewAt: string | null;
-      byTopic: Array<{ topic_id: string; count: number }>;
-      byDeck: Array<{ deck_id: string; count: number }>;
-    };
+    const rpcResult = data as DueBreakdownResponse;
 
     const byTopic: Record<string, number> = {};
     for (const t of rpcResult.byTopic ?? []) byTopic[t.topic_id] = t.count;
@@ -312,7 +304,7 @@ export class FlashcardPracticeService {
     });
 
     if (error) throw mapSupabaseError(error);
-    return { count: (data as { total: number }).total };
+    return { count: (data as DueCountResponse).total };
   }
 
   async getStatsAll(ctx: RequestContext) {
@@ -446,24 +438,6 @@ export class FlashcardPracticeService {
   ) {
     const supabase = await createClient();
 
-    interface CardStatsItem {
-      id: string;
-      front: string;
-      back: string;
-      createdAt: string;
-      state: string;
-      totalAttempts: number;
-      correctRate: number;
-      lastPracticedAt: string | null;
-      easinessFactor: number | null;
-      intervalDays: number | null;
-      nextReviewAt: string | null;
-      repetitions: number | null;
-      isLeech: boolean;
-      learningStep: number | null;
-      lapseCount: number | null;
-    }
-
     const cardFilter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     const suspendedCardIds = await this.getSuspendedCardIds(ctx);
 
@@ -518,10 +492,7 @@ export class FlashcardPracticeService {
       .in('flashcard_id', flashcardIds)
       .order('practiced_at', { ascending: false });
 
-    const practiceByCard = new Map<
-      string,
-      { total: number; correct: number; lastPracticedAt: string | null }
-    >();
+    const practiceByCard = new Map<string, PracticeSummary>();
     for (const row of practiceRows ?? []) {
       const entry = practiceByCard.get(row.flashcard_id) ?? {
         total: 0,
@@ -699,21 +670,6 @@ export class FlashcardPracticeService {
       .in('id', matchingIds);
     if (error) throw mapSupabaseError(error);
 
-    interface FlashcardRow {
-      id: string;
-      front: string;
-      back: string;
-      created_at: string;
-      flashcard_deck_assignments?: Array<{
-        deck_id: string;
-        flashcard_decks?: Array<{ name: string }>;
-      }>;
-      flashcard_topic_assignments?: Array<{
-        topic_id: string;
-        topics?: Array<{ name: string }>;
-      }>;
-    }
-
     return (flashcards ?? []).map((fc: FlashcardRow) => {
       const state = stateByCard.get(fc.id);
       return {
@@ -724,7 +680,7 @@ export class FlashcardPracticeService {
         deckName: fc.flashcard_deck_assignments?.[0]?.flashcard_decks?.[0]?.name ?? null,
         topicNames:
           fc.flashcard_topic_assignments?.flatMap((a) => {
-            const name = (a.topics as unknown as { name: string } | undefined)?.name;
+            const name = a.topics?.[0]?.name;
             return name ? [name] : [];
           }) ?? [],
         reviewState: state

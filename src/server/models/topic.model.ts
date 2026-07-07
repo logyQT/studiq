@@ -72,3 +72,12 @@ export type UpdateTopicInput = z.infer<typeof UpdateTopicSchema>;
 export type BatchDeleteTopicInput = z.infer<typeof BatchDeleteTopicSchema>;
 export type BulkCreateTopicInput = z.infer<typeof BulkCreateTopicSchema>;
 export type TopicListQuery = z.infer<typeof TopicListQuerySchema>;
+
+export interface Topic {
+  id: string;
+  name: string;
+  flashcard_count: number;
+  created_by: string;
+  created_at?: string;
+  visibility?: 'personal' | 'group';
+}

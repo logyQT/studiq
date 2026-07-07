@@ -7,10 +7,10 @@ import type {
   BatchDeleteQuestionBankInput,
   BulkCreateQuestionBankInput,
   CreateQuestionBankInput,
+  QuestionBank,
   QuestionBankListQuery,
   UpdateQuestionBankInput,
 } from '@/server/models';
-import type { QuestionBank } from '@/types/questions';
 
 export class QuestionBankService {
   async create(data: CreateQuestionBankInput, ctx: RequestContext) {

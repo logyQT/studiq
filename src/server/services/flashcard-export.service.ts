@@ -1,7 +1,7 @@
 import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
+import type { Flashcard } from '@/server/models';
 import { flashcardService } from '@/server/services';
-import type { Flashcard } from '@/types/flashcards';
 
 type FlashcardWithAssignments = Flashcard & {
   flashcard_topic_assignments: Array<{ topic_id: string }>;

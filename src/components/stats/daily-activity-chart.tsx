@@ -14,15 +14,10 @@ import {
 } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
-
-interface DailyActivity {
-  date: string;
-  reviews_count: number;
-  reviews_correct: number;
-}
+import type { DailyActivityItem } from '@/server/models/stats.model';
 
 interface DailyActivityChartProps {
-  data: DailyActivity[];
+  data: DailyActivityItem[];
   goal: number;
   range: string;
   onRangeChange: (range: string) => void;

@@ -15,7 +15,7 @@ import { useCan } from '@/hooks/use-can';
 import { apiPost } from '@/lib/api';
 import { formatMarkdown } from '@/lib/markdown-utils';
 import { flashcardKeys, topicKeys } from '@/lib/query-keys';
-import type { Topic } from '@/types/flashcards';
+import type { Topic } from '@/server/models';
 
 interface NewCardClientProps {
   deckId: string;

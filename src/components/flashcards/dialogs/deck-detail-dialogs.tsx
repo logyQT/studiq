@@ -6,7 +6,7 @@ import { DeckDialogs } from '@/components/flashcards/dialogs/deck-dialogs';
 import { SingleCardDialogs } from '@/components/flashcards/dialogs/single-card-dialogs';
 import { TopicDialogs } from '@/components/flashcards/dialogs/topic-dialogs';
 import { useCan } from '@/hooks/use-can';
-import type { Deck, Flashcard, Topic } from '@/types/flashcards';
+import type { Deck, Flashcard, Topic } from '@/server/models';
 
 export interface DialogsState {
   deleteId: string | null;

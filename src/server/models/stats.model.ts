@@ -49,3 +49,5 @@ export interface WeakPointsResponse {
   weakDecks: WeakDeckItem[];
   weakTopics: WeakTopicItem[];
 }
+
+export type WeakItem = Pick<WeakDeckItem, 'name' | 'accuracy' | 'totalAttempts'>;

@@ -3,14 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 
-interface StateBreakdown {
-  totalCards: number;
-  neverPracticed: number;
-  learning: number;
-  review: number;
-  relearning: number;
-  leeched: number;
-}
+import type { StateBreakdown } from '@/server/models';
 
 interface StateBreakdownChartProps {
   states: StateBreakdown;

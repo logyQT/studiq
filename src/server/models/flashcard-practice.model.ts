@@ -112,3 +112,88 @@ export type BatchPracticeInput = z.infer<typeof BatchPracticeSchema>;
 export type CompleteSessionInput = z.infer<typeof CompleteSessionSchema>;
 export type PracticeCardData = z.infer<typeof PracticeCardSchema>;
 export type PreparePracticeInput = z.infer<typeof PreparePracticeSchema>;
+
+export interface DueBreakdownTopic {
+  topic_id: string;
+  count: number;
+}
+
+export interface DueBreakdownDeck {
+  deck_id: string;
+  count: number;
+}
+
+export interface DueBreakdownResponse {
+  total: number;
+  nextReviewAt: string | null;
+  byTopic: DueBreakdownTopic[];
+  byDeck: DueBreakdownDeck[];
+}
+
+export interface DueCountResponse {
+  total: number;
+}
+
+export interface PracticeSummary {
+  total: number;
+  correct: number;
+  lastPracticedAt: string | null;
+}
+
+export interface CardStatsItem {
+  id: string;
+  front: string;
+  back: string;
+  createdAt: string;
+  state: 'new' | 'learning' | 'review' | 'relearning' | 'leech' | string;
+  totalAttempts: number;
+  correctRate: number;
+  lastPracticedAt: string | null;
+  easinessFactor: number | null;
+  intervalDays: number | null;
+  nextReviewAt: string | null;
+  repetitions: number | null;
+  isLeech: boolean;
+  learningStep: number | null;
+  lapseCount: number | null;
+}
+
+export interface FlashcardRow {
+  id: string;
+  front: string;
+  back: string;
+  created_at: string;
+  flashcard_deck_assignments?: Array<{
+    deck_id: string;
+    flashcard_decks?: Array<{ name: string }>;
+  }>;
+  flashcard_topic_assignments?: Array<{
+    topic_id: string;
+    topics?: Array<{ name: string }>;
+  }>;
+}
+
+export interface DueFlashcardItem {
+  id: string;
+  front: string;
+  back: string;
+  createdAt: string;
+  reviewState: Record<string, unknown> | null;
+  deckName: string | null;
+  topicNames: string[];
+}
+
+export interface StateBreakdown {
+  totalCards: number;
+  neverPracticed: number;
+  learning: number;
+  review: number;
+  relearning: number;
+  leeched: number;
+}
+
+export interface CardStatsResponse {
+  items: CardStatsItem[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}

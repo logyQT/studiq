@@ -15,7 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { getGradientHex } from '@/lib/color-utils';
-import type { Deck } from '@/types/flashcards';
+import type { Deck } from '@/server/models';
 
 interface DeckCardProps {
   deck: Deck;

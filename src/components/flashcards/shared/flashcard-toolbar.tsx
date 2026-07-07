@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useCan } from '@/hooks/use-can';
-import type { Topic } from '@/types/flashcards';
+import type { Topic } from '@/server/models';
 
 interface FlashcardToolbarProps {
   searchInput: string;

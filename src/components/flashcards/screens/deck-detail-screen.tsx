@@ -63,7 +63,7 @@ import { SpeedDial } from '@/components/shared/speed-dial';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useSelection } from '@/hooks/use-selection';
 import { getGradientHex } from '@/lib/color-utils';
-import type { Deck, Flashcard, Topic } from '@/types/flashcards';
+import type { Deck, Flashcard, Topic } from '@/server/models';
 
 interface DeckDetailScreenProps {
   deckId: string;

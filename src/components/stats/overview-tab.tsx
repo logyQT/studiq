@@ -11,48 +11,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { StatCard } from '@/components/ui/stat-card';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
-
-interface StateBreakdown {
-  totalCards: number;
-  neverPracticed: number;
-  learning: number;
-  review: number;
-  relearning: number;
-  leeched: number;
-}
-
-interface DailyActivityItem {
-  date: string;
-  reviews_count: number;
-  reviews_correct: number;
-  quizzes_count: number;
-  quizzes_score: number;
-  quizzes_total: number;
-}
-
-interface ActivityResponse {
-  items: DailyActivityItem[];
-  dailyReviewGoal: number;
-}
-
-interface WeakDeckItem {
-  deckId: string;
-  name: string;
-  accuracy: number;
-  totalAttempts: number;
-}
-
-interface WeakTopicItem {
-  topicId: string;
-  name: string;
-  accuracy: number;
-  totalAttempts: number;
-}
-
-interface WeakPointsResponse {
-  weakDecks: WeakDeckItem[];
-  weakTopics: WeakTopicItem[];
-}
+import type { StateBreakdown } from '@/server/models';
+import type { ActivityResponse, WeakPointsResponse } from '@/server/models/stats.model';
 
 export function OverviewTab() {
   const t = useTranslations('AppStatsPage');

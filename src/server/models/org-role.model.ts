@@ -55,3 +55,11 @@ export type UpdateOrgRoleInput = z.infer<typeof UpdateOrgRoleSchema>;
 export type RolePermissionEntry = z.infer<typeof RolePermissionEntrySchema>;
 export type SetRolePermissionsInput = z.infer<typeof SetRolePermissionsSchema>;
 export type OrgRoleIdParams = z.infer<typeof OrgRoleIdParamsSchema>;
+
+export interface OrgRole {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string | null;
+  is_system: boolean;
+}
