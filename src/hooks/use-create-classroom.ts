@@ -9,11 +9,8 @@ export function useCreateClassroom() {
   const router = useRouter();
 
   return useMutation({
-    mutationFn: async (data: { name: string; slug?: string }) => {
-      return apiPost<{ id: string; name: string; slug: string }>(
-        '/api/v1/teacher/classrooms',
-        data,
-      );
+    mutationFn: async (data: { name: string }) => {
+      return apiPost<{ id: string; name: string }>('/api/v1/teacher/classrooms', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orgs'] });

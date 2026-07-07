@@ -15,18 +15,7 @@ export default function OrgSetupPage() {
   const t = useTranslations('Onboarding');
   const router = useRouter();
   const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
   const [loading, setLoading] = useState(false);
-
-  function handleNameChange(value: string) {
-    setName(value);
-    setSlug(
-      value
-        .toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/[^a-z0-9-]/g, ''),
-    );
-  }
 
   async function handleCreate() {
     if (!name) return;
@@ -35,7 +24,7 @@ export default function OrgSetupPage() {
       const res = await fetch('/api/v1/admin/organizations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, slug }),
+        body: JSON.stringify({ name }),
       });
 
       if (!res.ok) {
@@ -74,17 +63,8 @@ export default function OrgSetupPage() {
               <Input
                 id="name"
                 value={name}
-                onChange={(e) => handleNameChange(e.target.value)}
+                onChange={(e) => setName(e.target.value)}
                 placeholder={t('org_name_placeholder')}
-              />
-            </div>
-            <div>
-              <Label htmlFor="slug">{t('slug_label')}</Label>
-              <Input
-                id="slug"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                placeholder={t('slug_placeholder')}
               />
             </div>
             <Button onClick={handleCreate} className="w-full" disabled={loading || !name}>

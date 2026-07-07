@@ -9,7 +9,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 interface Organization {
   id: string;
   name: string;
-  slug: string;
   created_at: string;
 }
 
@@ -26,7 +25,6 @@ export default function SettingsPage() {
           setOrganization({
             id: members[0].organization_id,
             name: 'Loading...',
-            slug: '',
             created_at: '',
           });
           setLoading(false);
@@ -57,13 +55,6 @@ export default function SettingsPage() {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{t('name_label')}</p>
                 <p className="text-lg font-semibold">{organization.name}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">{t('slug_label')}</p>
-                <div className="flex items-center gap-2">
-                  <code className="bg-muted px-2 py-1 rounded text-sm">{organization.slug}</code>
-                  <Badge variant="outline">{t('read_only')}</Badge>
-                </div>
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{t('created_label')}</p>

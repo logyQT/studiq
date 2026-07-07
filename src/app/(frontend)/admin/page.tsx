@@ -28,7 +28,7 @@ export default function SysAdminDashboard() {
 
   const formOrganization = useForm<z.infer<typeof CreateOrganizationSchema>>({
     resolver: zodResolver(CreateOrganizationSchema),
-    defaultValues: { name: '', slug: '' },
+    defaultValues: { name: '' },
   });
 
   const formInvite = useForm<z.infer<typeof CreateInviteSchema>>({
@@ -131,19 +131,6 @@ export default function SysAdminDashboard() {
                       <FormLabel>{t('name_label')}</FormLabel>
                       <FormControl>
                         <Input placeholder={t('name_placeholder')} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={formOrganization.control}
-                  name="slug"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('slug_label')}</FormLabel>
-                      <FormControl>
-                        <Input placeholder={t('slug_placeholder')} {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

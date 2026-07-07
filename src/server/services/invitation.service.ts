@@ -60,7 +60,7 @@ export class InvitationService {
     const { data, error } = await supabase
       .from('invitations')
       .select(
-        'email, expires_at, organization_id, target_org_role_id, organizations!inner(name, slug), org_roles!inner(name)',
+        'email, expires_at, organization_id, target_org_role_id, organizations!inner(name), org_roles!inner(name)',
       )
       .eq('token', token)
       .single();
@@ -73,14 +73,13 @@ export class InvitationService {
       throw new AppError('GONE');
     }
 
-    const org = data.organizations as unknown as { name: string; slug: string };
+    const org = data.organizations as unknown as { name: string };
     const role = data.org_roles as unknown as { name: string };
 
     return {
       email: data.email,
       organizationId: data.organization_id,
       organizationName: org?.name ?? '',
-      organizationSlug: org?.slug ?? '',
       targetRole: data.target_org_role_id,
       orgRoleName: role?.name ?? '',
     };
@@ -93,7 +92,7 @@ export class InvitationService {
 
     const { data: org, error: orgError } = await supabase
       .from('organizations')
-      .select('id, name, slug')
+      .select('id, name')
       .eq('id', invite.organizationId)
       .single();
 
@@ -129,7 +128,7 @@ export class InvitationService {
 
     await supabase.from('invitations').update({ is_accepted: true }).eq('token', token);
 
-    return { id: org.id, name: org.name, slug: org.slug, orgRoleId: invite.targetRole };
+    return { id: org.id, name: org.name, orgRoleId: invite.targetRole };
   }
 
   async listInvitations(ctx: RequestContext, isAccepted = false) {

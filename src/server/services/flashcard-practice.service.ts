@@ -752,7 +752,7 @@ export const flashcardPracticeService = new FlashcardPracticeService();
  * Maps the compound filter from buildQueryFilter to the RPC
  * parameter format expected by practice functions.
  *
- *   visibility = 'org'  → university scope (shared org content)
+ *   visibility = 'group'  → university scope (shared group content)
  *   created_by present   → own scope (user's content in current org)
  *   empty filter         → any scope (no filtering)
  */

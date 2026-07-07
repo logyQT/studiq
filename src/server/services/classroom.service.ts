@@ -64,16 +64,9 @@ export class ClassroomService {
   async create(ctx: RequestContext, data: CreateClassroomInput) {
     const supabase = await createClient();
 
-    const slug =
-      data.slug ??
-      data.name
-        .toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/[^a-z0-9-]/g, '');
-
     const { data: org, error: orgError } = await supabase
       .from('organizations')
-      .insert({ name: data.name, slug })
+      .insert({ name: data.name })
       .select()
       .single();
 

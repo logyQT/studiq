@@ -22,14 +22,12 @@ export class OrgService {
 
     const { data: orgs, error: oError } = await supabase
       .from('organizations')
-      .select('id, name, slug')
+      .select('id, name')
       .in('id', orgIds);
 
     if (oError) throw mapSupabaseError(oError);
 
-    const orgMap = new Map(
-      (orgs || []).map((o: { id: string; name: string; slug: string }) => [o.id, o]),
-    );
+    const orgMap = new Map((orgs || []).map((o: { id: string; name: string }) => [o.id, o]));
 
     return memberships.map(
       (m: {
@@ -42,7 +40,6 @@ export class OrgService {
         return {
           id: m.organization_id,
           name: org?.name ?? 'Unknown',
-          slug: org?.slug ?? '',
           orgRoleName: roles[0]?.name ?? 'member',
           orgRoleId: m.org_role_id,
           isActive: m.organization_id === ctx.activeOrgId,

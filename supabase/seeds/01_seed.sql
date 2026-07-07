@@ -10,8 +10,8 @@
 -- ==========================================================
 
 -- Org
-INSERT INTO "public"."organizations" ("id", "name", "slug") VALUES
-  ('00000000-0000-4000-8000-000000000001', 'Dev University', 'dev-university')
+INSERT INTO "public"."organizations" ("id", "name") VALUES
+  ('00000000-0000-4000-8000-000000000001', 'WSB Merito')
 ON CONFLICT DO NOTHING;
 
 -- Seed default roles for the dev org

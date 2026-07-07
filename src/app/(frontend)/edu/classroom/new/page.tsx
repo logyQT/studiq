@@ -21,13 +21,6 @@ import { z } from '@/lib/zod';
 
 const CreateClassroomFormSchema = z.object({
   name: z.string().nonempty().min(2).max(64),
-  slug: z
-    .string()
-    .regex(/^[a-z0-9-]+$/)
-    .min(2)
-    .max(24)
-    .optional()
-    .or(z.literal('')),
 });
 
 export default function NewClassroomPage() {
@@ -36,13 +29,12 @@ export default function NewClassroomPage() {
 
   const form = useForm<z.infer<typeof CreateClassroomFormSchema>>({
     resolver: zodResolver(CreateClassroomFormSchema),
-    defaultValues: { name: '', slug: '' },
+    defaultValues: { name: '' },
   });
 
   async function onSubmit(values: z.infer<typeof CreateClassroomFormSchema>) {
     await createClassroom.mutateAsync({
       name: values.name,
-      slug: values.slug || undefined,
     });
   }
 
@@ -79,19 +71,6 @@ export default function NewClassroomPage() {
                     <FormLabel>{t('name_label')}</FormLabel>
                     <FormControl>
                       <Input placeholder={t('name_placeholder')} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="slug"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('slug_label')}</FormLabel>
-                    <FormControl>
-                      <Input placeholder={t('slug_placeholder')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

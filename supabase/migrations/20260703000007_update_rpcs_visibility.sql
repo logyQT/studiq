@@ -3,7 +3,7 @@
 -- 
 -- All RPCs now use compound filters:
 --   'own':        created_by = p_user_id AND organization_id = p_organization_id
---   'university': organization_id = p_organization_id AND visibility = 'org'
+--   'university': organization_id = p_organization_id AND visibility = 'group'
 --   'any':        no filter
 --   'impossible': FALSE
 -- ==========================================
@@ -37,7 +37,7 @@ BEGIN
         WHEN 'impossible' THEN FALSE
         WHEN 'any' THEN TRUE
         WHEN 'own' THEN f.created_by = p_user_id AND f.organization_id = p_organization_id
-        WHEN 'university' THEN f.organization_id = p_organization_id AND f.visibility = 'org'
+        WHEN 'university' THEN f.organization_id = p_organization_id AND f.visibility = 'group'
         ELSE FALSE
       END
       AND (p_deck_ids IS NULL OR f.id IN (
@@ -145,7 +145,7 @@ BEGIN
       WHEN 'impossible' THEN FALSE
       WHEN 'any' THEN TRUE
       WHEN 'own' THEN f.created_by = p_user_id AND f.organization_id = p_organization_id
-      WHEN 'university' THEN f.organization_id = p_organization_id AND f.visibility = 'org'
+      WHEN 'university' THEN f.organization_id = p_organization_id AND f.visibility = 'group'
       ELSE FALSE
     END
     AND NOT EXISTS (
@@ -196,7 +196,7 @@ BEGIN
     AND (
       (p_created_by IS NULL AND p_organization_id IS NULL)
       OR (p_created_by IS NOT NULL AND p_organization_id IS NOT NULL AND f.created_by = p_created_by AND f.organization_id = p_organization_id)
-      OR (p_created_by IS NULL AND p_organization_id IS NOT NULL AND f.organization_id = p_organization_id AND f.visibility = 'org')
+      OR (p_created_by IS NULL AND p_organization_id IS NOT NULL AND f.organization_id = p_organization_id AND f.visibility = 'group')
       OR (p_created_by IS NOT NULL AND p_organization_id IS NULL AND f.created_by = p_created_by AND f.organization_id = p_organization_id)
     );
 
@@ -216,7 +216,7 @@ BEGIN
   FROM public.flashcards f
   WHERE ( (p_created_by IS NULL AND p_organization_id IS NULL)
     OR (p_created_by IS NOT NULL AND p_organization_id IS NOT NULL AND f.created_by = p_created_by AND f.organization_id = p_organization_id)
-    OR (p_created_by IS NULL AND p_organization_id IS NOT NULL AND f.organization_id = p_organization_id AND f.visibility = 'org')
+    OR (p_created_by IS NULL AND p_organization_id IS NOT NULL AND f.organization_id = p_organization_id AND f.visibility = 'group')
     OR (p_created_by IS NOT NULL AND p_organization_id IS NULL AND f.created_by = p_created_by AND f.organization_id = p_organization_id) )
     AND NOT EXISTS (
       SELECT 1 FROM public.flashcard_deck_assignments fda
@@ -306,7 +306,7 @@ BEGIN
   ELSIF p_organization_id IS NOT NULL THEN
     SELECT COUNT(*) INTO total
     FROM public.flashcards f
-    WHERE f.organization_id = p_organization_id AND f.visibility = 'org'
+    WHERE f.organization_id = p_organization_id AND f.visibility = 'group'
       AND NOT EXISTS (
         SELECT 1 FROM public.flashcard_deck_assignments fda
         JOIN public.suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id
@@ -323,7 +323,7 @@ BEGIN
     FROM public.flashcards f
     LEFT JOIN public.flashcard_review_state rs
       ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
-    WHERE f.organization_id = p_organization_id AND f.visibility = 'org'
+    WHERE f.organization_id = p_organization_id AND f.visibility = 'group'
       AND NOT EXISTS (
         SELECT 1 FROM public.flashcard_deck_assignments fda
         JOIN public.suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id

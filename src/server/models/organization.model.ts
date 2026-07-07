@@ -9,36 +9,19 @@ export const CreateOrganizationSchema = registry.register(
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(3, { error: ValidationErrorCode.TOO_SHORT })
       .max(64, { error: ValidationErrorCode.TOO_LONG }),
-    slug: z
-      .string({ error: ValidationErrorCode.REQUIRED })
-      .regex(/^[a-z0-9-]+$/, { error: ValidationErrorCode.NAME_INVALID_FORMAT })
-      .nonempty({ error: ValidationErrorCode.REQUIRED })
-      .min(2, { error: ValidationErrorCode.TOO_SHORT })
-      .max(16, { error: ValidationErrorCode.TOO_LONG }),
   }),
 );
 
 export const UpdateOrganizationSchema = registry.register(
   'UpdateOrganizationRequest',
-  z
-    .object({
-      name: z
-        .string({ error: ValidationErrorCode.REQUIRED })
-        .nonempty({ error: ValidationErrorCode.REQUIRED })
-        .min(3, { error: ValidationErrorCode.TOO_SHORT })
-        .max(64, { error: ValidationErrorCode.TOO_LONG })
-        .optional(),
-      slug: z
-        .string({ error: ValidationErrorCode.REQUIRED })
-        .regex(/^[a-z0-9-]+$/, { error: ValidationErrorCode.NAME_INVALID_FORMAT })
-        .nonempty({ error: ValidationErrorCode.REQUIRED })
-        .min(2, { error: ValidationErrorCode.TOO_SHORT })
-        .max(16, { error: ValidationErrorCode.TOO_LONG })
-        .optional(),
-    })
-    .refine((data) => data.name !== undefined || data.slug !== undefined, {
-      message: ValidationErrorCode.INVALID_INPUT,
-    }),
+  z.object({
+    name: z
+      .string({ error: ValidationErrorCode.REQUIRED })
+      .nonempty({ error: ValidationErrorCode.REQUIRED })
+      .min(3, { error: ValidationErrorCode.TOO_SHORT })
+      .max(64, { error: ValidationErrorCode.TOO_LONG })
+      .optional(),
+  }),
 );
 
 export const OrganizationIdParamsSchema = registry.register(
@@ -57,12 +40,6 @@ export const OrganizationResponseSchema = registry.register(
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(3, { error: ValidationErrorCode.TOO_SHORT })
       .max(64, { error: ValidationErrorCode.TOO_LONG }),
-    slug: z
-      .string({ error: ValidationErrorCode.REQUIRED })
-      .regex(/^[a-z0-9-]+$/, { error: ValidationErrorCode.NAME_INVALID_FORMAT })
-      .nonempty({ error: ValidationErrorCode.REQUIRED })
-      .min(2, { error: ValidationErrorCode.TOO_SHORT })
-      .max(16, { error: ValidationErrorCode.TOO_LONG }),
     created_at: z.iso.datetime(),
   }),
 );

@@ -9,13 +9,6 @@ export const CreateClassroomSchema = registry.register(
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(2, { error: ValidationErrorCode.TOO_SHORT })
       .max(64, { error: ValidationErrorCode.TOO_LONG }),
-    slug: z
-      .string({ error: ValidationErrorCode.REQUIRED })
-      .regex(/^[a-z0-9-]+$/, { error: ValidationErrorCode.NAME_INVALID_FORMAT })
-      .nonempty({ error: ValidationErrorCode.REQUIRED })
-      .min(2, { error: ValidationErrorCode.TOO_SHORT })
-      .max(24, { error: ValidationErrorCode.TOO_LONG })
-      .optional(),
   }),
 );
 

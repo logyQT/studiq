@@ -10,10 +10,7 @@ export class OrganizationService {
 
     const { data: organization, error } = await supabase
       .from('organizations')
-      .insert({
-        name: data.name,
-        slug: data.slug,
-      })
+      .insert({ name: data.name })
       .select()
       .single();
 
@@ -84,7 +81,6 @@ export class OrganizationService {
 
     const updateData: Partial<CreateOrganizationInput> = {};
     if (data.name !== undefined) updateData.name = data.name;
-    if (data.slug !== undefined) updateData.slug = data.slug;
 
     const { data: organization, error } = await supabase
       .from('organizations')
