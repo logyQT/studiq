@@ -1,59 +1,50 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AppError } from '@/lib/errors';
-import { statsController } from '@/server/controllers/stats.controller';
-import { statsService } from '@/server/services';
+import { success, failure } from '@/lib/service-result';
+import { StatsController } from '@/server/controllers/stats.controller';
+import type { ControllerResponse } from '@/lib/controller-response';
+import type { RequestContext } from '@/lib/request-context';
 
-vi.mock('@/server/services', () => ({
-  statsService: {
+function createMockStatsService() {
+  return {
     getTeacherStats: vi.fn(),
     getStudentStats: vi.fn(),
-  },
-}));
+  };
+}
 
-const mockService = vi.mocked(statsService);
+const mockCtx: RequestContext = {
+  traceId: 'test-trace',
+  userId: 'test-user-id',
+  accountType: 'student',
+  orgRoleId: null,
+  activeOrgId: null,
+  url: '/test',
+  method: 'GET',
+};
 
 describe('StatsController', () => {
-  const userId = 'test-user-id';
+  let mockService: ReturnType<typeof createMockStatsService>;
+  let controller: StatsController;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockService = createMockStatsService();
+    controller = new StatsController(mockService as any);
   });
 
   describe('getTeacherStats', () => {
-    it('returns teacher stats without subjectId', async () => {
+    it('returns teacher stats', async () => {
       const stats = { totalQuestions: 10, totalFlashcards: 5 };
-      mockService.getTeacherStats.mockResolvedValueOnce(stats);
+      mockService.getTeacherStats.mockResolvedValueOnce(success(stats));
 
-      const response = await statsController.getTeacherStats(userId);
-
-      expect(response).toEqual({ success: true, statusCode: 200, data: stats });
-    });
-
-    it('returns teacher stats with subjectId', async () => {
-      const stats = {
-        totalQuestions: 10,
-        totalFlashcards: 5,
-        subject: { totalQuestions: 5, byType: {}, byDifficulty: {}, problematicQuestions: [] },
-      };
-      mockService.getTeacherStats.mockResolvedValueOnce(stats);
-
-      const response = await statsController.getTeacherStats(userId, 'sub-1');
+      const response = await controller.getTeacherStats(mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: stats });
     });
 
-    it('returns error when service throws', async () => {
-      mockService.getTeacherStats.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
+    it('returns error when service returns failure', async () => {
+      mockService.getTeacherStats.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-      const response = await statsController.getTeacherStats(userId);
-
-      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
-    });
-
-    it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.getTeacherStats.mockRejectedValueOnce(new Error('unexpected'));
-
-      const response = await statsController.getTeacherStats(userId);
+      const response = await controller.getTeacherStats(mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
@@ -69,25 +60,17 @@ describe('StatsController', () => {
         flashcardAccuracy: 75,
         attemptsOverTime: [],
       };
-      mockService.getStudentStats.mockResolvedValueOnce(stats);
+      mockService.getStudentStats.mockResolvedValueOnce(success(stats));
 
-      const response = await statsController.getStudentStats(userId);
+      const response = await controller.getStudentStats(mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: stats });
     });
 
-    it('returns error when service throws', async () => {
-      mockService.getStudentStats.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
+    it('returns error when service returns failure', async () => {
+      mockService.getStudentStats.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-      const response = await statsController.getStudentStats(userId);
-
-      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
-    });
-
-    it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.getStudentStats.mockRejectedValueOnce(new Error('unexpected'));
-
-      const response = await statsController.getStudentStats(userId);
+      const response = await controller.getStudentStats(mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });

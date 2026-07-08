@@ -1,27 +1,31 @@
-import { AppError } from '@/lib/errors';
-import { log } from '@/lib/logger';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type { CreateInviteInput } from '@/server/models';
-import { checkLimit } from '@/server/services/plan.resolver';
+import { planResolver } from '@/server/services';
 import { AccountType } from '@/types';
 
 export class InvitationService {
-  async createInvitation(ctx: RequestContext, data: CreateInviteInput) {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
+  async createInvitation(
+    ctx: RequestContext,
+    data: CreateInviteInput,
+  ): Promise<ServiceResult<{ success: boolean; inviteLink: string | undefined }>> {
+    const supabase = await this.createClient();
 
     let targetOrganizationId: string | undefined;
 
     if (ctx.accountType === AccountType.MANAGER) {
       targetOrganizationId = data.organizationId ?? ctx.activeOrgId ?? undefined;
-      if (!targetOrganizationId) throw new AppError('NOT_FOUND');
+      if (!targetOrganizationId) return failure('NOT_FOUND');
     } else if (ctx.accountType === AccountType.EDUCATOR) {
       targetOrganizationId = ctx.activeOrgId ?? undefined;
     }
 
     if (!targetOrganizationId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const expiresAt = new Date();
@@ -39,24 +43,30 @@ export class InvitationService {
       .select('token')
       .single();
 
-    if (insertError) throw mapSupabaseError(insertError);
+    if (insertError) return toDbFailure(insertError);
 
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
     if (!baseUrl) {
-      throw new AppError('INTERNAL_SERVER');
+      return failure('INTERNAL_SERVER');
     }
     const inviteLink = `${baseUrl}/join?token=${invitation.token}`;
 
-    log.auth.warn(`[DEV] Generated invite link for ${data.email}: ${inviteLink}`);
-
-    return {
+    return success({
       success: true,
       inviteLink: process.env.NODE_ENV === 'development' ? inviteLink : undefined,
-    };
+    });
   }
 
-  async getInvitationByToken(token: string) {
-    const supabase = await createClient();
+  async getInvitationByToken(token: string): Promise<
+    ServiceResult<{
+      email: string;
+      organizationId: string;
+      organizationName: string;
+      targetRole: string;
+      orgRoleName: string;
+    }>
+  > {
+    const supabase = await this.createClient();
 
     const { data, error } = await supabase
       .from('invitations')
@@ -67,35 +77,40 @@ export class InvitationService {
       .single();
 
     if (error || !data) {
-      throw new AppError('NOT_FOUND');
+      return failure('NOT_FOUND');
     }
 
     if (new Date(data.expires_at) < new Date()) {
-      throw new AppError('GONE');
+      return failure('GONE');
     }
 
     const org = data.organizations as unknown as { name: string };
     const role = data.org_roles as unknown as { name: string };
 
-    return {
+    return success({
       email: data.email,
       organizationId: data.organization_id,
       organizationName: org?.name ?? '',
       targetRole: data.target_org_role_id,
       orgRoleName: role?.name ?? '',
-    };
+    });
   }
 
-  async acceptInvitation(ctx: RequestContext, token: string) {
-    const supabase = await createClient();
+  async acceptInvitation(
+    ctx: RequestContext,
+    token: string,
+  ): Promise<ServiceResult<{ id: string; name: string; orgRoleId: string }>> {
+    const supabase = await this.createClient();
 
-    const invite = await this.getInvitationByToken(token);
+    const inviteResult = await this.getInvitationByToken(token);
+    if (!inviteResult.success) return inviteResult;
+    const invite = inviteResult.data;
 
     const { count: memberCount } = await supabase
       .from('org_members')
       .select('*', { count: 'exact', head: true })
       .eq('organization_id', invite.organizationId);
-    await checkLimit(ctx, 'max_students', memberCount ?? 0);
+    await planResolver.checkLimit(ctx, 'max_students', memberCount ?? 0);
 
     const { data: org, error: orgError } = await supabase
       .from('organizations')
@@ -103,7 +118,7 @@ export class InvitationService {
       .eq('id', invite.organizationId)
       .single();
 
-    if (orgError || !org) throw new AppError('GONE');
+    if (orgError || !org) return failure('GONE');
 
     const { error: memberError } = await supabase
       .from('org_members')
@@ -115,7 +130,7 @@ export class InvitationService {
       .select()
       .single();
 
-    if (memberError) throw mapSupabaseError(memberError);
+    if (memberError) return toDbFailure(memberError);
 
     const { data: defaultGroup } = await supabase
       .from('groups')
@@ -130,17 +145,32 @@ export class InvitationService {
         user_id: ctx.userId,
         role: 'member',
       });
-      if (me) throw mapSupabaseError(me);
+      if (me) return toDbFailure(me);
     }
 
     await supabase.from('invitations').update({ is_accepted: true }).eq('token', token);
 
-    return { id: org.id, name: org.name, orgRoleId: invite.targetRole };
+    return success({ id: org.id, name: org.name, orgRoleId: invite.targetRole });
   }
 
-  async listInvitations(ctx: RequestContext, isAccepted = false) {
-    const supabase = await createClient();
-    if (!ctx.activeOrgId) throw new AppError('FORBIDDEN');
+  async listInvitations(
+    ctx: RequestContext,
+    isAccepted = false,
+  ): Promise<
+    ServiceResult<
+      Array<{
+        id: string;
+        email: string;
+        targetOrgRoleId: string;
+        orgRoleName: string;
+        isAccepted: boolean;
+        expiresAt: string;
+        createdAt: string;
+      }>
+    >
+  > {
+    const supabase = await this.createClient();
+    if (!ctx.activeOrgId) return failure('FORBIDDEN');
 
     let query = supabase
       .from('invitations')
@@ -151,24 +181,30 @@ export class InvitationService {
     if (!isAccepted) query = query.eq('is_accepted', false);
 
     const { data, error } = await query;
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return (data ?? []).map((inv) => {
-      const role = inv.org_roles as unknown as { name: string } | null;
-      return {
-        id: inv.id,
-        email: inv.email,
-        targetOrgRoleId: inv.target_org_role_id,
-        orgRoleName: role?.name ?? '',
-        isAccepted: inv.is_accepted,
-        expiresAt: inv.expires_at,
-        createdAt: inv.created_at,
-      };
-    });
+    return success(
+      (data ?? []).map((inv) => {
+        const role = inv.org_roles as unknown as { name: string } | null;
+        return {
+          id: inv.id,
+          email: inv.email,
+          targetOrgRoleId: inv.target_org_role_id,
+          orgRoleName: role?.name ?? '',
+          isAccepted: inv.is_accepted,
+          expiresAt: inv.expires_at,
+          createdAt: inv.created_at,
+        };
+      }),
+    );
   }
 
-  async updateInvitation(_ctx: RequestContext, id: string, data: { targetOrgRoleId?: string }) {
-    const supabase = await createClient();
+  async updateInvitation(
+    _ctx: RequestContext,
+    id: string,
+    data: { targetOrgRoleId?: string },
+  ): Promise<ServiceResult<void>> {
+    const supabase = await this.createClient();
 
     const { data: invite, error: fetchError } = await supabase
       .from('invitations')
@@ -176,20 +212,20 @@ export class InvitationService {
       .eq('id', id)
       .single();
 
-    if (fetchError || !invite) throw new AppError('NOT_FOUND');
-    if (invite.is_accepted) throw new AppError('FORBIDDEN');
+    if (fetchError || !invite) return failure('NOT_FOUND');
+    if (invite.is_accepted) return failure('FORBIDDEN');
 
     const updateData: Record<string, string> = {};
     if (data.targetOrgRoleId) updateData.target_org_role_id = data.targetOrgRoleId;
 
     const { error } = await supabase.from('invitations').update(updateData).eq('id', id);
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return { success: true };
+    return success(undefined);
   }
 
-  async deleteInvitation(_ctx: RequestContext, id: string) {
-    const supabase = await createClient();
+  async deleteInvitation(_ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
+    const supabase = await this.createClient();
 
     const { data: invite, error: fetchError } = await supabase
       .from('invitations')
@@ -197,14 +233,12 @@ export class InvitationService {
       .eq('id', id)
       .single();
 
-    if (fetchError || !invite) throw new AppError('NOT_FOUND');
-    if (invite.is_accepted) throw new AppError('FORBIDDEN');
+    if (fetchError || !invite) return failure('NOT_FOUND');
+    if (invite.is_accepted) return failure('FORBIDDEN');
 
     const { error } = await supabase.from('invitations').delete().eq('id', id);
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return { success: true };
+    return success(undefined);
   }
 }
-
-export const invitationService = new InvitationService();

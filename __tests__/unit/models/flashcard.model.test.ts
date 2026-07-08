@@ -7,16 +7,16 @@ import {
 
 describe('CreateFlashcardSchema', () => {
   it('passes with valid input', () => {
-    const result = CreateFlashcardSchema.safeParse({ front: 'Q', back: 'A' });
+    const result = CreateFlashcardSchema.safeParse({ front: 'Q', back: 'A', deckId: '550e8400-e29b-41d4-a716-446655440000' });
     expect(result.success).toBe(true);
   });
 
-  it('passes with optional topicIds and deckIds', () => {
+  it('passes with optional topicIds and deckId', () => {
     const result = CreateFlashcardSchema.safeParse({
       front: 'Q',
       back: 'A',
       topicIds: ['550e8400-e29b-41d4-a716-446655440000'],
-      deckIds: ['550e8400-e29b-41d4-a716-446655440001'],
+      deckId: '550e8400-e29b-41d4-a716-446655440001',
     });
     expect(result.success).toBe(true);
   });

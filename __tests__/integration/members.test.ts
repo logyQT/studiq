@@ -1,18 +1,52 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/organization/members/route';
-import { mockUser, TEST_USERS } from './helpers';
-import { createNextRequest } from './test-utils';
+import {
+  cleanupOrganizationByName,
+  mockUser,
+  seedOrgMembership,
+  seedOrganization,
+  TEST_USERS,
+} from './helpers';
+import { createNextRequest, createNextRequestWithParams } from './test-utils';
+
+const ORG_PREFIX = 'members-test-';
 
 describe('Members Integration', () => {
-  beforeEach(() => {
+  let orgId: string;
+  let adminRoleId: string;
+  let memberRoleId: string;
+
+  beforeEach(async () => {
     vi.clearAllMocks();
+
+    const seeded = await seedOrganization(`${ORG_PREFIX}${Date.now()}`);
+    orgId = seeded.org.id;
+    adminRoleId = seeded.adminRoleId;
+    memberRoleId = seeded.memberRoleId;
+
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: TEST_USERS.UNIVERSITY_ADMIN.id,
+      orgRoleId: adminRoleId,
+    });
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: TEST_USERS.STUDENT.id,
+      orgRoleId: memberRoleId,
+    });
+  });
+
+  afterAll(async () => {
+    await cleanupOrganizationByName(ORG_PREFIX);
   });
 
   describe('GET /api/v1/organization/members', () => {
     it('lists members for university_admin', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = createNextRequest('http://localhost/api/v1/organization/members');
+      const req = createNextRequest('http://localhost/api/v1/organization/members', undefined, {
+        active_org_id: orgId,
+      });
       const response = await GET(req);
       const body = await response.json();
 
@@ -23,7 +57,9 @@ describe('Members Integration', () => {
     it('filters members by role', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const req = createNextRequest('http://localhost/api/v1/organization/members?role=student');
+      const req = createNextRequest('http://localhost/api/v1/organization/members?role=student', undefined, {
+        active_org_id: orgId,
+      });
       const response = await GET(req);
       const body = await response.json();
 
@@ -32,7 +68,7 @@ describe('Members Integration', () => {
     });
 
     it('returns 403 when user has no organization', async () => {
-      mockUser(TEST_USERS.FREE);
+      mockUser(TEST_USERS.STUDENT);
 
       const req = createNextRequest('http://localhost/api/v1/organization/members');
       const response = await GET(req);
@@ -55,7 +91,7 @@ describe('Members Integration', () => {
   });
 
   describe('PUT /api/v1/organization/members', () => {
-    it.skip('changes role successfully', async () => {
+    it('changes role successfully', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
       const req = createNextRequest('http://localhost/api/v1/organization/members', {
@@ -63,9 +99,9 @@ describe('Members Integration', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetUserId: TEST_USERS.STUDENT.id,
-          newOrgRoleId: '00000000-0000-4000-8000-000000000001',
+          newOrgRoleId: adminRoleId,
         }),
-      });
+      }, { active_org_id: orgId });
 
       const response = await PUT(req);
       const body = await response.json();
@@ -82,9 +118,9 @@ describe('Members Integration', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetUserId: '',
-          newOrgRoleId: 'invalid_role',
+          newOrgRoleId: 'invalid-uuid',
         }),
-      });
+      }, { active_org_id: orgId });
 
       const response = await PUT(req);
       const body = await response.json();
@@ -101,7 +137,7 @@ describe('Members Integration', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetUserId: TEST_USERS.STUDENT.id,
-          newOrgRoleId: '00000000-0000-4000-8000-000000000001',
+          newOrgRoleId: adminRoleId,
         }),
       });
 
@@ -114,14 +150,13 @@ describe('Members Integration', () => {
   });
 
   describe('DELETE /api/v1/organization/members', () => {
-    it.skip('removes member successfully', async () => {
+    it('removes member successfully', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
       const req = createNextRequest(
         `http://localhost/api/v1/organization/members?userId=${TEST_USERS.STUDENT.id}`,
-        {
-          method: 'DELETE',
-        },
+        { method: 'DELETE' },
+        { active_org_id: orgId },
       );
 
       const response = await DELETE(req);
@@ -136,7 +171,7 @@ describe('Members Integration', () => {
 
       const req = createNextRequest('http://localhost/api/v1/organization/members?userId=', {
         method: 'DELETE',
-      });
+      }, { active_org_id: orgId });
 
       const response = await DELETE(req);
       const body = await response.json();
@@ -150,9 +185,7 @@ describe('Members Integration', () => {
 
       const req = createNextRequest(
         `http://localhost/api/v1/organization/members?userId=${TEST_USERS.STUDENT.id}`,
-        {
-          method: 'DELETE',
-        },
+        { method: 'DELETE' },
       );
 
       const response = await DELETE(req);

@@ -1,7 +1,7 @@
-import { AppError } from '@/lib/errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   ActivityQuery,
   ClassActivityResponse,
@@ -12,14 +12,16 @@ import type {
 } from '@/server/models/activity.model';
 
 export class ActivityService {
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
   async getClassActivity(
     ctx: RequestContext,
     query: ActivityQuery,
-  ): Promise<ClassActivityResponse> {
-    const supabase = await createClient();
+  ): Promise<ServiceResult<ClassActivityResponse>> {
+    const supabase = await this.createClient();
     const orgId = ctx.activeOrgId;
 
-    if (!orgId) throw new AppError('FORBIDDEN');
+    if (!orgId) return failure('FORBIDDEN');
 
     const rangeDays = query.range === '7d' ? 7 : query.range === '30d' ? 30 : 90;
     const now = new Date();
@@ -32,10 +34,15 @@ export class ActivityService {
       .eq('organization_id', orgId)
       .eq('org_roles.name', 'student');
 
-    if (memberError) throw mapSupabaseError(memberError);
+    if (memberError) return toDbFailure(memberError);
     const studentIds = (studentMembers || []).map((m: { user_id: string }) => m.user_id);
     if (studentIds.length === 0) {
-      return { summary: this.emptySummary(), dailyActivity: [], students: [], quizzes: [] };
+      return success({
+        summary: this.emptySummary(),
+        dailyActivity: [],
+        students: [],
+        quizzes: [],
+      });
     }
 
     const studentIdSet = studentIds;
@@ -90,7 +97,7 @@ export class ActivityService {
 
     const quizzes = await this.computeQuizActivity(supabase, studentIds, rangeStart);
 
-    return { summary, dailyActivity, students, quizzes };
+    return success({ summary, dailyActivity, students, quizzes });
   }
 
   private emptySummary() {
@@ -174,7 +181,7 @@ export class ActivityService {
   }
 
   private async computeStudentActivity(
-    supabase: Awaited<ReturnType<typeof createClient>>,
+    supabase: SupabaseClient,
     studentIds: string[],
     profileMap: Map<string, { id: string; email: string; full_name: string | null }>,
     currentRows: Array<{
@@ -244,7 +251,7 @@ export class ActivityService {
   }
 
   private async computeQuizActivity(
-    supabase: Awaited<ReturnType<typeof createClient>>,
+    supabase: SupabaseClient,
     studentIds: string[],
     rangeStart: Date,
   ): Promise<QuizActivityItem[]> {
@@ -281,5 +288,3 @@ export class ActivityService {
     });
   }
 }
-
-export const activityService = new ActivityService();

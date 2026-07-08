@@ -6,7 +6,7 @@ import {
   cleanupQuestions,
   cleanupQuizAttempts,
   cleanupSubjects,
-  createRealClient,
+  createServiceClient,
   mockUser,
   TEST_USERS,
 } from './helpers';
@@ -37,39 +37,25 @@ describe('Stats Integration', () => {
       expect(body.data.totalFlashcards).toBeDefined();
     });
 
-    it('returns teacher stats with subject details', async () => {
+    it('returns teacher stats with question details', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = createRealClient();
-      const { data: subject, error: subjectError } = await supabase
-        .from('subjects')
-        .insert({ name: 'stats-Stats Subject', created_by: TEST_USERS.TEACHER.id })
-        .select()
-        .single();
-      if (subjectError || !subject)
-        throw new Error(`Failed to create subject: ${subjectError?.message}`);
-
+      const supabase = createServiceClient();
       for (let i = 0; i < 3; i++) {
-        const { error: questionError } = await supabase.from('questions').insert({
-          subject_id: subject.id,
+        const { error } = await supabase.from('questions').insert({
           type: 'mcq',
-          content: `Stats Question ${i}`,
-          difficulty: 'easy',
+          content: `stats-Stats Question ${i}`,
           created_by: TEST_USERS.TEACHER.id,
         });
-        if (questionError)
-          throw new Error(`Failed to create question ${i}: ${questionError.message}`);
+        if (error) throw new Error(`Failed to create question ${i}: ${error.message}`);
       }
 
-      const req = createNextRequest(
-        `http://localhost/api/v1/stats/teacher?subjectId=${subject.id}`,
-      );
+      const req = createNextRequest('http://localhost/api/v1/stats/teacher');
       const response = await teacherGet(req);
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.data.subject).toBeDefined();
-      expect(body.data.subject.totalQuestions).toBe(3);
+      expect(body.data.totalQuestions).toBe(3);
     });
 
     it('returns 401 when not authenticated', async () => {
@@ -88,7 +74,8 @@ describe('Stats Integration', () => {
     it('returns student stats', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const response = await studentGet();
+      const req = createNextRequest('http://localhost/api/v1/stats/student');
+      const response = await studentGet(req);
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -99,9 +86,10 @@ describe('Stats Integration', () => {
     });
 
     it('returns zero stats when no data exists', async () => {
-      mockUser(TEST_USERS.PREMIUM);
+      mockUser(TEST_USERS.STUDENT);
 
-      const response = await studentGet();
+      const req = createNextRequest('http://localhost/api/v1/stats/student');
+      const response = await studentGet(req);
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -113,7 +101,8 @@ describe('Stats Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const response = await studentGet();
+      const req = createNextRequest('http://localhost/api/v1/stats/student');
+      const response = await studentGet(req);
       const body = await response.json();
 
       expect(response.status).toBe(401);

@@ -1,22 +1,21 @@
 import type { ControllerResponse } from '@/lib/controller-response';
+import { controllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
-import { withErrorHandling } from '@/lib/with-error-handling';
-import { subscriptionPlanService } from '@/server/services';
+import { isFailure } from '@/lib/service-result';
+import type { SubscriptionPlanService } from '@/server/services/subscription-plan.service';
 
 export class SubscriptionPlanController {
+  constructor(private subscriptionPlanService: SubscriptionPlanService) {}
+
   async listPublic(): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const plans = await subscriptionPlanService.listActive();
-      return { success: true, statusCode: 200, data: plans };
-    });
+    const result = await this.subscriptionPlanService.listActive();
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
   }
 
   async getMyPlan(ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const plan = await subscriptionPlanService.getMyPlan(ctx);
-      return { success: true, statusCode: 200, data: plan };
-    }, ctx);
+    const result = await this.subscriptionPlanService.getMyPlan(ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
   }
 }
-
-export const subscriptionPlanController = new SubscriptionPlanController();

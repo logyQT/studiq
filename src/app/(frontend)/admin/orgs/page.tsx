@@ -1,6 +1,6 @@
 'use client';
 
-import { Loader2, Pencil, Trash2 } from 'lucide-react';
+import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -12,6 +12,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -39,6 +40,9 @@ export default function AdminOrgsListPage() {
   const t = useTranslations('AdminOrgsListPage');
   const [orgs, setOrgs] = useState<OrgRow[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [creatingSaving, setCreatingSaving] = useState(false);
   const [editing, setEditing] = useState<OrgRow | null>(null);
   const [editName, setEditName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -87,6 +91,31 @@ export default function AdminOrgsListPage() {
     }
   }
 
+  async function handleCreate() {
+    if (!createName.trim()) return;
+    setCreatingSaving(true);
+    try {
+      const res = await fetch('/api/v1/admin/organizations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: createName.trim() }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(t('create_success'));
+        setCreating(false);
+        setCreateName('');
+        load();
+      } else {
+        toast.error(t('create_error'));
+      }
+    } catch {
+      toast.error(t('create_error'));
+    } finally {
+      setCreatingSaving(false);
+    }
+  }
+
   async function handleDelete() {
     if (!deleting) return;
     setDeletingId(deleting.id);
@@ -119,9 +148,42 @@ export default function AdminOrgsListPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
-        <p className="text-muted-foreground mt-2">{t('description')}</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-muted-foreground mt-2">{t('description')}</p>
+        </div>
+        <Dialog open={creating} onOpenChange={setCreating}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="w-4 h-4 mr-2" />
+              {t('create')}
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t('create_title')}</DialogTitle>
+              <DialogDescription>{t('create_desc')}</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Label htmlFor="create-name">{t('create_label')}</Label>
+              <Input
+                id="create-name"
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCreating(false)}>
+                {t('cancel')}
+              </Button>
+              <Button onClick={handleCreate} disabled={creatingSaving || !createName.trim()}>
+                {creatingSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {t('save')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="rounded-md border">

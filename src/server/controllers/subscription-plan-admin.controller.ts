@@ -1,82 +1,78 @@
 import type { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import { controllerResponse } from '@/lib/controller-response';
+import { isFailure } from '@/lib/service-result';
 import {
   CreateSubscriptionPlanSchema,
   SubscriptionPlanIdParamsSchema,
   UpdateSubscriptionPlanSchema,
 } from '@/server/models';
-import { subscriptionPlanService } from '@/server/services';
+import type { SubscriptionPlanService } from '@/server/services/subscription-plan.service';
 
 export class SubscriptionPlanAdminController {
+  constructor(private subscriptionPlanService: SubscriptionPlanService) {}
+
   async getAll(): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const data = await subscriptionPlanService.getAllAdmin();
-      return { success: true, statusCode: 200, data };
-    });
+    const result = await this.subscriptionPlanService.getAllAdmin();
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
   }
 
   async getById(id: string): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsedId = SubscriptionPlanIdParamsSchema.safeParse({ id });
-      if (!parsedId.success) {
-        return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
-      }
+    const parsedId = SubscriptionPlanIdParamsSchema.safeParse({ id });
+    if (!parsedId.success) {
+      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
+    }
 
-      const data = await subscriptionPlanService.getById(parsedId.data.id);
-      return { success: true, statusCode: 200, data };
-    });
+    const result = await this.subscriptionPlanService.getById(parsedId.data.id);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
   }
 
   async create(body: unknown): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = CreateSubscriptionPlanSchema.safeParse(body);
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    const parsed = CreateSubscriptionPlanSchema.safeParse(body);
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
 
-      const data = await subscriptionPlanService.create(parsed.data);
-      return { success: true, statusCode: 201, data };
-    });
+    const result = await this.subscriptionPlanService.create(parsed.data);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.created(result.data);
   }
 
   async update(id: string, body: unknown): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsedId = SubscriptionPlanIdParamsSchema.safeParse({ id });
-      if (!parsedId.success) {
-        return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
-      }
+    const parsedId = SubscriptionPlanIdParamsSchema.safeParse({ id });
+    if (!parsedId.success) {
+      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
+    }
 
-      const parsed = UpdateSubscriptionPlanSchema.safeParse(body);
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    const parsed = UpdateSubscriptionPlanSchema.safeParse(body);
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
 
-      const data = await subscriptionPlanService.update(parsedId.data.id, parsed.data);
-      return { success: true, statusCode: 200, data };
-    });
+    const result = await this.subscriptionPlanService.update(parsedId.data.id, parsed.data);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
   }
 
   async delete(id: string): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsedId = SubscriptionPlanIdParamsSchema.safeParse({ id });
-      if (!parsedId.success) {
-        return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
-      }
+    const parsedId = SubscriptionPlanIdParamsSchema.safeParse({ id });
+    if (!parsedId.success) {
+      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
+    }
 
-      await subscriptionPlanService.delete(parsedId.data.id);
-      return { success: true, statusCode: 200, data: { success: true } };
-    });
+    const result = await this.subscriptionPlanService.delete(parsedId.data.id);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return { success: true, statusCode: 200, data: { success: true } };
   }
 }
-
-export const subscriptionPlanAdminController = new SubscriptionPlanAdminController();

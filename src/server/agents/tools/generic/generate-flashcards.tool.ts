@@ -1,6 +1,5 @@
 import { tool } from 'ai';
 import { conversationStorage } from '@/lib/conversation-context';
-import { log } from '@/lib/logger';
 import { enqueueTrace } from '@/lib/trace-queue';
 import { z } from '@/lib/zod';
 import { parseFlashcards } from '@/server/services/ai-utils';
@@ -34,15 +33,7 @@ export const generateFlashcardsTool = tool({
         data: { task: task?.slice(0, 100), inputCount: flashcards?.length, deckName: deck_name },
       });
 
-      log.ai.info('generate_flashcards called', {
-        metadata: { task: task?.slice(0, 100), count: flashcards?.length, deckName: deck_name },
-      });
-
       const parsed = parseFlashcards(flashcards);
-
-      log.ai.info('generate_flashcards completed', {
-        metadata: { count: parsed.length, deckName: deck_name || 'Generated Flashcards' },
-      });
 
       enqueueTrace({
         conversationId: cid,
@@ -59,7 +50,6 @@ export const generateFlashcardsTool = tool({
         summary: `Generated ${parsed.length} flashcards`,
       };
     } catch (error) {
-      log.ai.error('generate_flashcards failed', { metadata: { error: String(error) } });
       return { type: 'error' as const, error: String(error) };
     }
   },

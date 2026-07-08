@@ -1,35 +1,43 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/questions/[id]/route';
 import { GET as GET_LIST, POST } from '@/app/(backend)/api/v1/questions/route';
 import {
+  cleanupOrganizationByName,
   cleanupQuestions,
-  cleanupSubjects,
-  createRealClient,
+  createServiceClient,
   mockUser,
+  seedOrgMembership,
+  seedOrganization,
   TEST_USERS,
 } from './helpers';
 import { createNextRequest, createNextRequestWithParams } from './test-utils';
 
+const ORG_PREFIX = 'q-test-';
+
 describe('Questions Integration', () => {
-  let subjectId: string;
+  let orgId: string;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     for (const user of Object.values(TEST_USERS)) {
       await cleanupQuestions(user.id);
-      await cleanupSubjects(user.id, 'question-');
     }
 
-    const supabase = createRealClient();
-    const { data: subject, error: subjectError } = await supabase
-      .from('subjects')
-      .insert({ name: 'question-Question Test Subject', created_by: TEST_USERS.TEACHER.id })
-      .select()
-      .single();
-    if (subjectError || !subject)
-      throw new Error(`Failed to create subject: ${subjectError?.message}`);
-    subjectId = subject.id;
+    const seeded = await seedOrganization(`${ORG_PREFIX}${Date.now()}`);
+    orgId = seeded.org.id;
+
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: TEST_USERS.TEACHER.id,
+      orgRoleId: seeded.teacherRoleId,
+    });
   });
+
+  afterAll(async () => {
+    await cleanupOrganizationByName(ORG_PREFIX);
+  });
+
+  const orgCookies = () => ({ active_org_id: orgId });
 
   describe('POST /api/v1/questions', () => {
     it('creates a question and returns 201', async () => {
@@ -39,16 +47,14 @@ describe('Questions Integration', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          subjectId,
           type: 'mcq',
           content: 'What is 2+2?',
-          difficulty: 'easy',
           answers: [
             { content: '4', isCorrect: true, orderIndex: 0 },
             { content: '5', isCorrect: false, orderIndex: 1 },
           ],
         }),
-      });
+      }, orgCookies());
 
       const response = await POST(req);
       const body = await response.json();
@@ -70,7 +76,7 @@ describe('Questions Integration', () => {
           content: '',
           answers: [{ content: 'Answer', isCorrect: true }],
         }),
-      });
+      }, orgCookies());
 
       const response = await POST(req);
       const body = await response.json();
@@ -90,7 +96,7 @@ describe('Questions Integration', () => {
           content: 'Question',
           answers: [],
         }),
-      });
+      }, orgCookies());
 
       const response = await POST(req);
       const body = await response.json();
@@ -124,7 +130,7 @@ describe('Questions Integration', () => {
     it('returns questions list', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const req = createNextRequest('http://localhost/api/v1/questions');
+      const req = createNextRequest('http://localhost/api/v1/questions', undefined, orgCookies());
       const response = await GET_LIST(req);
       const body = await response.json();
 
@@ -132,40 +138,18 @@ describe('Questions Integration', () => {
       expect(Array.isArray(body.data)).toBe(true);
     });
 
-    it('filters by subjectId', async () => {
-      mockUser(TEST_USERS.TEACHER);
-
-      const supabase = createRealClient();
-      const { error: insertError } = await supabase.from('questions').insert({
-        subject_id: subjectId,
-        type: 'mcq',
-        content: 'Filtered Question',
-        difficulty: 'medium',
-        created_by: TEST_USERS.TEACHER.id,
-      });
-      if (insertError) throw new Error(`Failed to insert question: ${insertError.message}`);
-
-      const req = createNextRequest(`http://localhost/api/v1/questions?subjectId=${subjectId}`);
-      const response = await GET_LIST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.data.length).toBe(1);
-      expect(body.data[0].content).toBe('Filtered Question');
-    });
-
     it('filters by type', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = createRealClient();
+      const supabase = createServiceClient();
       await supabase.from('questions').insert({
         type: 'true_false',
         content: 'True or False?',
-        difficulty: 'easy',
         created_by: TEST_USERS.TEACHER.id,
+        organization_id: orgId,
       });
 
-      const req = createNextRequest('http://localhost/api/v1/questions?type=true_false');
+      const req = createNextRequest('http://localhost/api/v1/questions?type=true_false', undefined, orgCookies());
       const response = await GET_LIST(req);
       const body = await response.json();
 
@@ -179,14 +163,14 @@ describe('Questions Integration', () => {
     it('returns question when found', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = createRealClient();
+      const supabase = createServiceClient();
       const { data: question } = await supabase
         .from('questions')
         .insert({
           type: 'mcq',
           content: 'Get Me',
-          difficulty: 'easy',
           created_by: TEST_USERS.TEACHER.id,
+          organization_id: orgId,
         })
         .select()
         .single();
@@ -194,6 +178,8 @@ describe('Questions Integration', () => {
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/questions/${question.id}`,
         { id: question.id },
+        undefined,
+        orgCookies(),
       );
       const response = await GET(request, { params });
       const body = await response.json();
@@ -209,6 +195,8 @@ describe('Questions Integration', () => {
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/questions/${fakeId}`,
         { id: fakeId },
+        undefined,
+        orgCookies(),
       );
       const response = await GET(request, { params });
       const body = await response.json();
@@ -222,14 +210,14 @@ describe('Questions Integration', () => {
     it('updates own question and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = createRealClient();
+      const supabase = createServiceClient();
       const { data: question } = await supabase
         .from('questions')
         .insert({
           type: 'mcq',
           content: 'Original',
-          difficulty: 'easy',
           created_by: TEST_USERS.TEACHER.id,
+          organization_id: orgId,
         })
         .select()
         .single();
@@ -242,6 +230,7 @@ describe('Questions Integration', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content: 'Updated' }),
         },
+        orgCookies(),
       );
       const response = await PUT(request, { params });
       const body = await response.json();
@@ -253,14 +242,14 @@ describe('Questions Integration', () => {
     it('returns 403 when updating another user question', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = createRealClient();
+      const supabase = createServiceClient();
       const { data: question } = await supabase
         .from('questions')
         .insert({
           type: 'mcq',
           content: 'Teacher Question',
-          difficulty: 'easy',
           created_by: TEST_USERS.TEACHER.id,
+          organization_id: orgId,
         })
         .select()
         .single();
@@ -273,6 +262,7 @@ describe('Questions Integration', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content: 'Hacked' }),
         },
+        orgCookies(),
       );
       const response = await PUT(request, { params });
       const body = await response.json();
@@ -286,14 +276,14 @@ describe('Questions Integration', () => {
     it('deletes own question and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = createRealClient();
+      const supabase = createServiceClient();
       const { data: question } = await supabase
         .from('questions')
         .insert({
           type: 'mcq',
           content: 'To Delete',
-          difficulty: 'easy',
           created_by: TEST_USERS.TEACHER.id,
+          organization_id: orgId,
         })
         .select()
         .single();
@@ -302,6 +292,7 @@ describe('Questions Integration', () => {
         `http://localhost/api/v1/questions/${question.id}`,
         { id: question.id },
         { method: 'DELETE' },
+        orgCookies(),
       );
       const response = await DELETE(request, { params });
       const body = await response.json();
@@ -313,14 +304,14 @@ describe('Questions Integration', () => {
     it('returns 403 when deleting another user question', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = createRealClient();
+      const supabase = createServiceClient();
       const { data: question } = await supabase
         .from('questions')
         .insert({
           type: 'mcq',
           content: 'Teacher Question',
-          difficulty: 'easy',
           created_by: TEST_USERS.TEACHER.id,
+          organization_id: orgId,
         })
         .select()
         .single();
@@ -329,6 +320,7 @@ describe('Questions Integration', () => {
         `http://localhost/api/v1/questions/${question.id}`,
         { id: question.id },
         { method: 'DELETE' },
+        orgCookies(),
       );
       const response = await DELETE(request, { params });
       const body = await response.json();

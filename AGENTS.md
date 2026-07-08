@@ -25,7 +25,7 @@
 | `bun run format:check` | `biome ci src/` (check only) |
 | `bun run clean` | Remove `.next`, `coverage`, cache |
 | `bun test` | `vitest run` — runs all tests (unit + integration) |
-| `bun test:unit` | **BROKEN** — script glob is `src/server`, should be `__tests__/unit/`. Run directly: `bunx vitest run __tests__/unit/services/question.service.test.ts` |
+| `bun test:unit` | `vitest run __tests__/unit/` |
 | `bun test:integration` | `vitest run __tests__/integration` |
 | `bun test:watch` | `vitest` (watch mode) |
 | `bun test:coverage` | `vitest run --coverage` |
@@ -240,7 +240,7 @@ UI dashboards: `/admin` (SYS_ADMIN), `/manage` (UNIVERSITY_ADMIN), `/edu` (TEACH
 
 ## Key Gotchas
 
-- **`bun test:unit` is broken**: the script uses glob `src/server` but tests are in `__tests__/unit/`. Use direct paths: `bunx vitest run __tests__/unit/services/foo.test.ts`
+- **`bun test:unit`** runs `vitest run __tests__/unit/`
 - **`proxy.ts`**: Next.js 16 uses `src/proxy.ts` (not `middleware.ts`). Do not rename.
 - **`@/lib/zod`**: Always import `{ z, registry }` from here, not from `'zod'` — enables OpenAPI schema registration
 - **No backward compatibility layers**: Pre-market app. Delete old code paths and deprecated keys cleanly, never keep them "just in case"

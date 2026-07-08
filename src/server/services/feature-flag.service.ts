@@ -1,33 +1,35 @@
-import { AppError } from '@/lib/errors';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { failure, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type { CreateFeatureFlagInput, UpdateFeatureFlagInput } from '@/server/models';
 
 export class FeatureFlagService {
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
   async getAll() {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
     const { data, error } = await supabase
       .from('feature_flags')
       .select('*')
       .order('key', { ascending: true });
-    if (error) throw mapSupabaseError(error);
-    return data;
+    if (error) return toDbFailure(error);
+    return success(data);
   }
 
   async getById(id: string) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
     const { data, error } = await supabase
       .from('feature_flags')
       .select('*')
       .eq('id', id)
       .maybeSingle();
-    if (error) throw mapSupabaseError(error);
-    if (!data) throw new AppError('NOT_FOUND');
-    return data;
+    if (error) return toDbFailure(error);
+    if (!data) return failure('NOT_FOUND');
+    return success(data);
   }
 
   async create(input: CreateFeatureFlagInput) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
     const { data, error } = await supabase
       .from('feature_flags')
       .insert({
@@ -39,12 +41,12 @@ export class FeatureFlagService {
       })
       .select()
       .single();
-    if (error) throw mapSupabaseError(error);
-    return data;
+    if (error) return toDbFailure(error);
+    return success(data);
   }
 
   async update(id: string, input: UpdateFeatureFlagInput) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
     const updateData: Record<string, unknown> = {};
     if (input.key !== undefined) updateData.key = input.key;
     if (input.name !== undefined) updateData.name = input.name;
@@ -59,16 +61,14 @@ export class FeatureFlagService {
       .eq('id', id)
       .select()
       .single();
-    if (error) throw mapSupabaseError(error);
-    return data;
+    if (error) return toDbFailure(error);
+    return success(data);
   }
 
   async delete(id: string) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
     const { error } = await supabase.from('feature_flags').delete().eq('id', id);
-    if (error) throw mapSupabaseError(error);
-    return { success: true };
+    if (error) return toDbFailure(error);
+    return success({ success: true });
   }
 }
-
-export const featureFlagService = new FeatureFlagService();

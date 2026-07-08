@@ -1,13 +1,18 @@
-import { AppError } from '@/lib/errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { checkPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type { CsvImportInput, CsvImportResult } from '@/server/models';
 
 export class FlashcardImportService {
-  async importCsv(data: CsvImportInput, ctx: RequestContext): Promise<CsvImportResult> {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
+  async importCsv(
+    data: CsvImportInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<CsvImportResult>> {
+    const supabase = await this.createClient();
 
     let defaultDeckId: string | undefined = data.deckId;
 
@@ -18,7 +23,7 @@ export class FlashcardImportService {
         .eq('id', data.deckId)
         .single();
 
-      if (!deck) throw new AppError('NOT_FOUND');
+      if (!deck) return failure('NOT_FOUND');
       await checkPermission(ctx, Permission.DECK_UPDATE, deck);
     } else {
       const hasDeckColumn = data.cards.some((c) => c.deck);
@@ -30,7 +35,7 @@ export class FlashcardImportService {
           .select('id')
           .single();
 
-        if (error) throw mapSupabaseError(error);
+        if (error) return toDbFailure(error);
         defaultDeckId = newDeck.id;
       }
     }
@@ -74,7 +79,7 @@ export class FlashcardImportService {
           )
           .select('id, name');
 
-        if (error) throw mapSupabaseError(error);
+        if (error) return toDbFailure(error);
 
         for (const t of newTopics ?? []) {
           topicNameToId.set(t.name.toLowerCase(), t.id);
@@ -111,7 +116,7 @@ export class FlashcardImportService {
           )
           .select('id, name');
 
-        if (error) throw mapSupabaseError(error);
+        if (error) return toDbFailure(error);
 
         for (const d of newDecks ?? []) {
           deckNameToId.set(d.name.toLowerCase(), d.id);
@@ -138,12 +143,12 @@ export class FlashcardImportService {
       .insert(cardsToInsert)
       .select('id');
 
-    if (insertError) throw mapSupabaseError(insertError);
+    if (insertError) return toDbFailure(insertError);
 
     const errors: { row: number; error: string }[] = [];
 
     if (!flashcards || flashcards.length === 0) {
-      throw new AppError('INTERNAL_SERVER');
+      return failure('INTERNAL_SERVER');
     }
 
     const deckAssignments: { flashcard_id: string; deck_id: string }[] = [];
@@ -182,7 +187,7 @@ export class FlashcardImportService {
         .from('flashcard_deck_assignments')
         .insert(deckAssignments);
 
-      if (daError) throw mapSupabaseError(daError);
+      if (daError) return toDbFailure(daError);
     }
 
     if (topicAssignments.length > 0) {
@@ -190,15 +195,13 @@ export class FlashcardImportService {
         .from('flashcard_topic_assignments')
         .insert(topicAssignments);
 
-      if (taError) throw mapSupabaseError(taError);
+      if (taError) return toDbFailure(taError);
     }
 
-    return {
+    return success({
       total: data.cards.length,
       imported: data.cards.length - errors.length,
       errors,
-    };
+    });
   }
 }
-
-export const flashcardImportService = new FlashcardImportService();

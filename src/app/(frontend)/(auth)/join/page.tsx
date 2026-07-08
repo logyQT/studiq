@@ -66,7 +66,6 @@ function JoinContent() {
       name: '',
       email: '',
       password: '',
-      inviteToken: token || '',
       accountType: 'student',
     },
   });

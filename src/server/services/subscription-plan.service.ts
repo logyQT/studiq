@@ -1,7 +1,7 @@
-import { AppError } from '@/lib/errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type { CreateSubscriptionPlanInput, UpdateSubscriptionPlanInput } from '@/server/models';
 
 export interface PlanInfo {
@@ -14,8 +14,10 @@ export interface PlanInfo {
 }
 
 export class SubscriptionPlanService {
-  async listActive(): Promise<PlanInfo[]> {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
+  async listActive(): Promise<ServiceResult<PlanInfo[]>> {
+    const supabase = await this.createClient();
 
     const { data: plans, error } = await supabase
       .from('subscription_plans')
@@ -24,7 +26,7 @@ export class SubscriptionPlanService {
       .neq('key', 'sysadmin')
       .order('sort_order', { ascending: true });
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
     const planKeys = plans.map((p) => p.key);
 
@@ -33,7 +35,7 @@ export class SubscriptionPlanService {
       .select('plan_key, feature_key')
       .in('plan_key', planKeys);
 
-    if (pfError) throw mapSupabaseError(pfError);
+    if (pfError) return toDbFailure(pfError);
 
     const featuresByPlan = new Map<string, string[]>();
     for (const pf of planFeatures ?? []) {
@@ -43,21 +45,23 @@ export class SubscriptionPlanService {
       featuresByPlan.get(pf.plan_key)!.push(pf.feature_key);
     }
 
-    return plans.map((p) => ({
-      id: p.id,
-      key: p.key,
-      name: p.name,
-      description: p.description,
-      priceMonthly: p.price_monthly,
-      features: featuresByPlan.get(p.key) ?? [],
-    }));
+    return success(
+      plans.map((p) => ({
+        id: p.id,
+        key: p.key,
+        name: p.name,
+        description: p.description,
+        priceMonthly: p.price_monthly,
+        features: featuresByPlan.get(p.key) ?? [],
+      })),
+    );
   }
 
-  async getMyPlan(ctx: RequestContext): Promise<PlanInfo> {
-    const supabase = await createClient();
+  async getMyPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('NOT_FOUND');
+      return failure('NOT_FOUND');
     }
 
     const { data: org, error: orgError } = await supabase
@@ -66,8 +70,8 @@ export class SubscriptionPlanService {
       .eq('id', ctx.activeOrgId)
       .maybeSingle();
 
-    if (orgError) throw mapSupabaseError(orgError);
-    if (!org) throw new AppError('NOT_FOUND');
+    if (orgError) return toDbFailure(orgError);
+    if (!org) return failure('NOT_FOUND');
 
     const { data: plan, error: planError } = await supabase
       .from('subscription_plans')
@@ -75,35 +79,35 @@ export class SubscriptionPlanService {
       .eq('key', org.plan)
       .maybeSingle();
 
-    if (planError) throw mapSupabaseError(planError);
-    if (!plan) throw new AppError('NOT_FOUND');
+    if (planError) return toDbFailure(planError);
+    if (!plan) return failure('NOT_FOUND');
 
     const { data: planFeatures, error: pfError } = await supabase
       .from('plan_features')
       .select('feature_key')
       .eq('plan_key', plan.key);
 
-    if (pfError) throw mapSupabaseError(pfError);
+    if (pfError) return toDbFailure(pfError);
 
-    return {
+    return success({
       id: plan.id,
       key: plan.key,
       name: plan.name,
       description: plan.description,
       priceMonthly: plan.price_monthly,
       features: planFeatures?.map((pf) => pf.feature_key) ?? [],
-    };
+    });
   }
 
-  async getAllAdmin(): Promise<PlanInfo[]> {
-    const supabase = await createClient();
+  async getAllAdmin(): Promise<ServiceResult<PlanInfo[]>> {
+    const supabase = await this.createClient();
 
     const { data: plans, error } = await supabase
       .from('subscription_plans')
       .select('*')
       .order('sort_order', { ascending: true });
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
     const planKeys = plans.map((p) => p.key);
 
@@ -112,7 +116,7 @@ export class SubscriptionPlanService {
       .select('plan_key, feature_key')
       .in('plan_key', planKeys);
 
-    if (pfError) throw mapSupabaseError(pfError);
+    if (pfError) return toDbFailure(pfError);
 
     const featuresByPlan = new Map<string, string[]>();
     for (const pf of planFeatures ?? []) {
@@ -122,18 +126,20 @@ export class SubscriptionPlanService {
       featuresByPlan.get(pf.plan_key)!.push(pf.feature_key);
     }
 
-    return plans.map((p) => ({
-      id: p.id,
-      key: p.key,
-      name: p.name,
-      description: p.description,
-      priceMonthly: p.price_monthly,
-      features: featuresByPlan.get(p.key) ?? [],
-    }));
+    return success(
+      plans.map((p) => ({
+        id: p.id,
+        key: p.key,
+        name: p.name,
+        description: p.description,
+        priceMonthly: p.price_monthly,
+        features: featuresByPlan.get(p.key) ?? [],
+      })),
+    );
   }
 
   async getById(id: string) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
 
     const { data, error } = await supabase
       .from('subscription_plans')
@@ -141,14 +147,14 @@ export class SubscriptionPlanService {
       .eq('id', id)
       .maybeSingle();
 
-    if (error) throw mapSupabaseError(error);
-    if (!data) throw new AppError('NOT_FOUND');
+    if (error) return toDbFailure(error);
+    if (!data) return failure('NOT_FOUND');
 
-    return data;
+    return success(data);
   }
 
   async create(input: CreateSubscriptionPlanInput) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
 
     const { data, error } = await supabase
       .from('subscription_plans')
@@ -164,13 +170,13 @@ export class SubscriptionPlanService {
       .select()
       .single();
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return data;
+    return success(data);
   }
 
   async update(id: string, input: UpdateSubscriptionPlanInput) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
 
     const updateData: Record<string, unknown> = {};
     if (input.key !== undefined) updateData.key = input.key;
@@ -188,13 +194,13 @@ export class SubscriptionPlanService {
       .select()
       .single();
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return data;
+    return success(data);
   }
 
   async delete(id: string) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
 
     const { data: exists } = await supabase
       .from('subscription_plans')
@@ -202,14 +208,12 @@ export class SubscriptionPlanService {
       .eq('id', id)
       .maybeSingle();
 
-    if (!exists) throw new AppError('NOT_FOUND');
+    if (!exists) return failure('NOT_FOUND');
 
     const { error } = await supabase.from('subscription_plans').delete().eq('id', id);
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return { success: true };
+    return success({ success: true });
   }
 }
-
-export const subscriptionPlanService = new SubscriptionPlanService();

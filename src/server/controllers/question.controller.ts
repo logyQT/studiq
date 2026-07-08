@@ -1,30 +1,34 @@
-import type { ControllerResponse } from '@/lib/controller-response';
+import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import { AppError } from '@/lib/errors';
 import { hasPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import { isFailure } from '@/lib/service-result';
 import { CreateQuestionSchema, UpdateQuestionSchema } from '@/server/models';
-import { questionService } from '@/server/services';
+import type { QuestionService } from '@/server/services/question.service';
 
 export class QuestionController {
+  constructor(private questionService: QuestionService) {}
+
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      if (!(await hasPermission(ctx, Permission.QUESTION_CREATE))) throw new AppError('FORBIDDEN');
-      const parsed = CreateQuestionSchema.safeParse(body);
+    if (!(await hasPermission(ctx, Permission.QUESTION_CREATE))) throw new AppError('FORBIDDEN');
+    const parsed = CreateQuestionSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
 
-      const question = await questionService.create(parsed.data, ctx);
+    const question = await this.questionService.create(parsed.data, ctx);
 
-      return { success: true, statusCode: 201, data: question };
-    }, ctx);
+    if (isFailure(question)) {
+      return controllerResponse.error(question.error);
+    }
+
+    return controllerResponse.created(question.data);
   }
 
   async list(
@@ -35,47 +39,53 @@ export class QuestionController {
       type?: string;
     },
   ): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const questions = await questionService.list(ctx, filters);
+    const questions = await this.questionService.list(ctx, filters);
 
-      return { success: true, statusCode: 200, data: questions };
-    }, ctx);
+    if (isFailure(questions)) {
+      return controllerResponse.error(questions.error);
+    }
+
+    return controllerResponse.success(questions.data);
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const question = await questionService.getById(id, ctx);
+    const question = await this.questionService.getById(id, ctx);
 
-      return { success: true, statusCode: 200, data: question };
-    }, ctx);
+    if (isFailure(question)) {
+      return controllerResponse.error(question.error);
+    }
+
+    return controllerResponse.success(question.data);
   }
 
   async update(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = UpdateQuestionSchema.safeParse(body);
+    const parsed = UpdateQuestionSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
 
-      const question = await questionService.update(id, parsed.data, ctx);
+    const question = await this.questionService.update(id, parsed.data, ctx);
 
-      return { success: true, statusCode: 200, data: question };
-    }, ctx);
+    if (isFailure(question)) {
+      return controllerResponse.error(question.error);
+    }
+
+    return controllerResponse.success(question.data);
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      await questionService.delete(id, ctx);
+    const result = await this.questionService.delete(id, ctx);
 
-      return { success: true, statusCode: 200, data: { success: true } };
-    }, ctx);
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success({ success: true });
   }
 }
-
-export const questionController = new QuestionController();

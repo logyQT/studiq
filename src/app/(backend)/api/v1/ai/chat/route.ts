@@ -3,7 +3,6 @@ import { convertToModelMessages, hasToolCall, stepCountIs, streamText } from 'ai
 import type { NextRequest } from 'next/server';
 import { conversationStorage } from '@/lib/conversation-context';
 import { toNextResponse } from '@/lib/http-utils';
-import { log } from '@/lib/logger';
 import { createClient } from '@/lib/supabase/server';
 import { enqueueTrace } from '@/lib/trace-queue';
 import { systemPrompt } from '@/server/agents/system';
@@ -43,18 +42,6 @@ export async function POST(req: NextRequest) {
 
   const conversationId =
     ((messages[0] as Record<string, unknown>)?.id as string) || crypto.randomUUID();
-
-  log.api.info('streamText start', {
-    metadata: {
-      conversationId,
-      messageCount: messages.length,
-      lastRole: messages[messages.length - 1]?.role,
-      tools:
-        'create_plan,ask_user,fetch_material,webfetch,extract_concepts,evaluate_quality,generate_flashcards,finish',
-      stopWhen: 'finish,ask_user,generate_flashcards,stepCountIs(30)',
-      reasoningEffort: reasoningEffort ?? 'default',
-    },
-  });
 
   enqueueTrace({
     conversationId,

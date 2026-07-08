@@ -1,20 +1,22 @@
-import { AppError } from '@/lib/errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildQueryFilter, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type { CreateQuestionInput, UpdateQuestionInput } from '@/server/models';
-import { checkLimit } from '@/server/services/plan.resolver';
+import { planResolver } from '@/server/services';
 
 export class QuestionService {
-  async create(data: CreateQuestionInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
+  async create(data: CreateQuestionInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const { count: questionCount } = await supabase
       .from('questions')
       .select('*', { count: 'exact', head: true })
       .eq('created_by', ctx.userId);
-    await checkLimit(ctx, 'max_questions', questionCount ?? 0);
+    await planResolver.checkLimit(ctx, 'max_questions', questionCount ?? 0);
 
     const bankVisibility =
       data.bankIds && data.bankIds.length > 0
@@ -40,8 +42,8 @@ export class QuestionService {
       .select()
       .single();
 
-    if (qError) throw mapSupabaseError(qError);
-    if (!question) throw new AppError('NOT_FOUND');
+    if (qError) return toDbFailure(qError);
+    if (!question) return failure('NOT_FOUND');
 
     const answersToInsert = data.answers.map((a, i) => ({
       question_id: question.id,
@@ -51,7 +53,7 @@ export class QuestionService {
     }));
 
     const { error: aError } = await supabase.from('question_answers').insert(answersToInsert);
-    if (aError) throw mapSupabaseError(aError);
+    if (aError) return toDbFailure(aError);
 
     if (data.bankIds && data.bankIds.length > 0) {
       const bankAssignments = data.bankIds.map((bankId) => ({
@@ -61,7 +63,7 @@ export class QuestionService {
       const { error: bError } = await supabase
         .from('question_bank_assignments')
         .insert(bankAssignments);
-      if (bError) throw mapSupabaseError(bError);
+      if (bError) return toDbFailure(bError);
     }
 
     if (data.topicIds && data.topicIds.length > 0) {
@@ -72,14 +74,17 @@ export class QuestionService {
       const { error: tError } = await supabase
         .from('question_topic_assignments')
         .insert(topicAssignments);
-      if (tError) throw mapSupabaseError(tError);
+      if (tError) return toDbFailure(tError);
     }
 
     return this.getById(question.id, ctx);
   }
 
-  async list(ctx: RequestContext, filters?: { bankId?: string; topicIds?: string; type?: string }) {
-    const supabase = await createClient();
+  async list(
+    ctx: RequestContext,
+    filters?: { bankId?: string; topicIds?: string; type?: string },
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.QUESTION_READ, 'question');
 
@@ -91,8 +96,8 @@ export class QuestionService {
       if (filters?.bankId) rpcParams.p_bank_ids = [filters.bankId];
       if (filters?.topicIds) rpcParams.p_topic_ids = filters.topicIds.split(',');
       const { data, error } = await supabase.rpc('get_accessible_questions', rpcParams);
-      if (error) throw mapSupabaseError(error);
-      return data ?? [];
+      if (error) return toDbFailure(error);
+      return success(data ?? []);
     }
 
     let query = supabase
@@ -100,7 +105,7 @@ export class QuestionService {
       .select('*, question_answers(*)')
       .order('created_at', { ascending: false });
 
-    if (filter._impossible) return [];
+    if (filter._impossible) return success([]);
     if (filter.created_by) query = query.eq('created_by', filter.created_by);
     if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
@@ -111,7 +116,7 @@ export class QuestionService {
         .eq('bank_id', filters.bankId);
 
       const questionIds = bankAssignments?.map((a) => a.question_id) ?? [];
-      if (questionIds.length === 0) return [];
+      if (questionIds.length === 0) return success([]);
       query = query.in('id', questionIds);
     }
 
@@ -123,7 +128,7 @@ export class QuestionService {
         .in('topic_id', topicIdArray);
 
       const questionIds = topicAssignments?.map((a) => a.question_id) ?? [];
-      if (questionIds.length === 0) return [];
+      if (questionIds.length === 0) return success([]);
       query = query.in('id', questionIds);
     }
 
@@ -131,15 +136,15 @@ export class QuestionService {
 
     const { data, error } = await query;
 
-    if (error) throw mapSupabaseError(error);
-    return data;
+    if (error) return toDbFailure(error);
+    return success(data);
   }
 
-  async getById(id: string, ctx: RequestContext) {
-    const supabase = await createClient();
+  async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.QUESTION_READ, 'question');
-    if (filter._impossible) throw new AppError('NOT_FOUND');
+    if (filter._impossible) return failure('NOT_FOUND');
 
     if (filter._useRpc) {
       const { data, error } = await supabase
@@ -149,8 +154,8 @@ export class QuestionService {
         })
         .eq('id', id)
         .single();
-      if (error) throw new AppError('NOT_FOUND');
-      return data;
+      if (error) return failure('NOT_FOUND');
+      return success(data);
     }
 
     const { data, error } = await supabase
@@ -159,12 +164,16 @@ export class QuestionService {
       .eq('id', id)
       .single();
 
-    if (error || !data) throw new AppError('NOT_FOUND');
-    return data;
+    if (error || !data) return failure('NOT_FOUND');
+    return success(data);
   }
 
-  async update(id: string, data: UpdateQuestionInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  async update(
+    id: string,
+    data: UpdateQuestionInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const updateFields: Record<string, unknown> = {};
     if (data.type) updateFields.type = data.type;
@@ -180,9 +189,9 @@ export class QuestionService {
       .select()
       .single();
 
-    if (qError && qError.code !== 'PGRST116') throw mapSupabaseError(qError);
+    if (qError && qError.code !== 'PGRST116') return toDbFailure(qError);
     if (!question || (Array.isArray(question) && question.length === 0))
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
 
     if (data.answers) {
       await supabase.from('question_answers').delete().eq('question_id', id);
@@ -220,8 +229,8 @@ export class QuestionService {
     return this.getById(id, ctx);
   }
 
-  async delete(id: string, ctx: RequestContext) {
-    const supabase = await createClient();
+  async delete(id: string, ctx: RequestContext): Promise<ServiceResult<void>> {
+    const supabase = await this.createClient();
 
     const { data, error } = await supabase
       .from('questions')
@@ -231,9 +240,9 @@ export class QuestionService {
       .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
-    if (!data || (Array.isArray(data) && data.length === 0)) throw new AppError('FORBIDDEN');
+    if (error && error.code !== 'PGRST116') return toDbFailure(error);
+    if (!data || (Array.isArray(data) && data.length === 0)) return failure('FORBIDDEN');
+
+    return success(undefined);
   }
 }
-
-export const questionService = new QuestionService();

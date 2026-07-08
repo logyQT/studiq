@@ -1,51 +1,20 @@
-import type { Session } from '@supabase/supabase-js';
-import { AppError } from '@/lib/errors';
-import { log } from '@/lib/logger';
-import { createClient } from '@/lib/supabase/server';
-import { createServiceClient } from '@/lib/supabase/service';
+import type { Session, SupabaseClient } from '@supabase/supabase-js';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
 import type { LoginInput, RegisterInput, User } from '@/server/models';
 
 export class AuthService {
-  async register(data: RegisterInput): Promise<void> {
-    const supabase = await createClient();
-    const role: string = data.accountType; // stored as account_type in app_metadata
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
 
-    if (data.inviteToken) {
-      const { data: invite, error: inviteError } = await supabase
-        .from('invitations')
-        .select('email, name, expires_at, target_org_role_id')
-        .eq('token', data.inviteToken)
-        .single();
+  async register(data: RegisterInput): Promise<ServiceResult<void, 'INTERNAL_SERVER'>> {
+    const supabase = await this.createClient();
 
-      if (inviteError || !invite) {
-        throw new AppError('BAD_REQUEST');
-      }
-
-      if (invite.email !== data.email || invite.name !== data.name) {
-        log.auth.error('Invite token does not match email or name', {
-          metadata: {
-            tokenEmail: invite.email,
-            tokenName: invite.name,
-            inputEmail: data.email,
-            inputName: data.name,
-          },
-        });
-        throw new AppError('UNPROCESSABLE_ENTITY');
-      }
-
-      if (new Date(invite.expires_at) < new Date()) {
-        throw new AppError('GONE');
-      }
-    }
-
-    const { data: signUpData, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
       options: {
         data: {
           name: data.name,
-          account_type: role,
-          invite_token: data.inviteToken,
+          account_type: data.accountType,
         },
       },
     });
@@ -57,46 +26,19 @@ export class AuthService {
           error.code === 'user_already_exists' ||
           error.message.includes('already registered'))
       ) {
-        return;
+        return success(undefined);
       }
 
-      throw new AppError('INTERNAL_SERVER');
+      return failure('INTERNAL_SERVER');
     }
 
-    if (signUpData.user) {
-      const serviceSupabase = createServiceClient();
-      const { error: updateError } = await serviceSupabase.auth.admin.updateUserById(
-        signUpData.user.id,
-        { app_metadata: { account_type: role } },
-      );
-
-      if (updateError) {
-        log.auth.error('Failed to set app_metadata account_type', {
-          metadata: { userId: signUpData.user.id, role, error: updateError.message },
-        });
-      }
-
-      const personalPlan =
-        role === 'educator' || role === 'manager'
-          ? 'free_educator'
-          : role === 'sys_admin'
-            ? 'sysadmin'
-            : 'free';
-      const { error: profileError } = await serviceSupabase
-        .from('profiles')
-        .update({ personal_plan_key: personalPlan })
-        .eq('id', signUpData.user.id);
-
-      if (profileError) {
-        log.auth.error('Failed to set personal_plan_key', {
-          metadata: { userId: signUpData.user.id, personalPlan, error: profileError.message },
-        });
-      }
-    }
+    return success(undefined);
   }
 
-  async login(data: LoginInput): Promise<{ user: User; session: Session }> {
-    const supabase = await createClient();
+  async login(
+    data: LoginInput,
+  ): Promise<ServiceResult<{ user: User; session: Session }, 'UNAUTHORIZED' | 'INTERNAL_SERVER'>> {
+    const supabase = await this.createClient();
 
     const { data: authData, error } = await supabase.auth.signInWithPassword({
       email: data.email,
@@ -104,63 +46,69 @@ export class AuthService {
     });
 
     if (error) {
-      throw new AppError('UNAUTHORIZED');
+      return failure('UNAUTHORIZED');
     }
 
     if (!authData.user || !authData.session) {
-      throw new AppError('INTERNAL_SERVER');
+      return failure('INTERNAL_SERVER');
     }
 
-    return { user: authData.user, session: authData.session };
+    return success({ user: authData.user, session: authData.session });
   }
 
-  async logout(): Promise<void> {
-    const supabase = await createClient();
+  async logout(): Promise<ServiceResult<void, 'INTERNAL_SERVER'>> {
+    const supabase = await this.createClient();
 
     const { error } = await supabase.auth.signOut({ scope: 'local' });
 
     if (error) {
-      throw new AppError('INTERNAL_SERVER');
+      return failure('INTERNAL_SERVER');
     }
+
+    return success(undefined);
   }
 
-  async requestPasswordReset(email: string): Promise<void> {
-    const supabase = await createClient();
+  async requestPasswordReset(email: string): Promise<ServiceResult<void, 'BAD_REQUEST'>> {
+    const supabase = await this.createClient();
 
     const { error } = await supabase.auth.resetPasswordForEmail(email);
 
     if (error) {
-      throw new AppError('BAD_REQUEST');
+      return failure('BAD_REQUEST');
     }
+
+    return success(undefined);
   }
 
-  async updateProfile(data: { name: string }): Promise<User> {
-    const supabase = await createClient();
+  async updateProfile(data: { name: string }): Promise<ServiceResult<User, 'BAD_REQUEST'>> {
+    const supabase = await this.createClient();
 
     const { data: updatedUser, error } = await supabase.auth.updateUser({
       data: { name: data.name },
     });
 
     if (error) {
-      throw new AppError('BAD_REQUEST');
+      return failure('BAD_REQUEST');
     }
 
-    return updatedUser.user as User;
+    return success(updatedUser.user as User);
   }
 
-  async updatePassword(password: string): Promise<void> {
-    const supabase = await createClient();
+  async updatePassword(
+    password: string,
+  ): Promise<ServiceResult<void, 'UNPROCESSABLE_ENTITY' | 'BAD_REQUEST'>> {
+    const supabase = await this.createClient();
 
     const { error } = await supabase.auth.updateUser({ password });
 
     if (error) {
       if (error.code === 'same_password') {
-        throw new AppError('UNPROCESSABLE_ENTITY');
+        return failure('UNPROCESSABLE_ENTITY');
       }
 
-      throw new AppError('BAD_REQUEST');
+      return failure('BAD_REQUEST');
     }
+
+    return success(undefined);
   }
 }
-
-export const authService = new AuthService();

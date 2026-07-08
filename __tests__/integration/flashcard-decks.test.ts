@@ -12,7 +12,13 @@ describe('Flashcard Decks Integration', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     for (const user of Object.values(TEST_USERS)) {
-      await cleanupFlashcardDecks(user.id, 'deck-');
+      await cleanupFlashcardDecks(user.id);
+    }
+  });
+
+  afterEach(async () => {
+    for (const user of Object.values(TEST_USERS)) {
+      await cleanupFlashcardDecks(user.id);
     }
   });
 
@@ -71,17 +77,19 @@ describe('Flashcard Decks Integration', () => {
     it('lists decks for user', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const response = await GET();
+      const req = createNextRequest('http://localhost/api/v1/flashcards/decks');
+      const response = await GET(req);
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(body.data)).toBe(true);
+      expect(Array.isArray(body.data?.items)).toBe(true);
     });
 
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const response = await GET();
+      const req = createNextRequest('http://localhost/api/v1/flashcards/decks');
+      const response = await GET(req);
       const body = await response.json();
 
       expect(response.status).toBe(401);
@@ -138,12 +146,11 @@ describe('Flashcard Decks Integration', () => {
       mockUser(TEST_USERS.TEACHER);
 
       const supabase = createServiceClient();
-      const { data: deck, error: insertError } = await supabase
+      const { data: deck } = await supabase
         .from('flashcard_decks')
         .insert({ name: 'deck-Original', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
-      if (insertError || !deck) throw new Error(`Failed to create deck: ${insertError?.message}`);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/decks/${deck.id}`,
@@ -193,12 +200,11 @@ describe('Flashcard Decks Integration', () => {
       mockUser(TEST_USERS.TEACHER);
 
       const supabase = createServiceClient();
-      const { data: deck, error: insertError } = await supabase
+      const { data: deck } = await supabase
         .from('flashcard_decks')
         .insert({ name: 'deck-To Delete', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
-      if (insertError || !deck) throw new Error(`Failed to create deck: ${insertError?.message}`);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/decks/${deck.id}`,

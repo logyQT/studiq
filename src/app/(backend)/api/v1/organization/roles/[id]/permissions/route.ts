@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
-import { orgRoleController } from '@/server/controllers/org-role.controller';
+import { orgRoleController } from '@/server/controllers';
 import { AccountType } from '@/types';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

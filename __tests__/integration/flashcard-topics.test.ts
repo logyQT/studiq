@@ -11,6 +11,9 @@ import { createNextRequest, createNextRequestWithParams } from './test-utils';
 describe('Flashcard Topics Integration', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
     for (const user of Object.values(TEST_USERS)) {
       await cleanupFlashcardTopics(user.id, 'topic-');
     }
@@ -71,17 +74,19 @@ describe('Flashcard Topics Integration', () => {
     it('lists topics for user', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const response = await GET();
+      const req = createNextRequest('http://localhost/api/v1/flashcards/topics');
+      const response = await GET(req);
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(body.data)).toBe(true);
+      expect(Array.isArray(body.data?.items)).toBe(true);
     });
 
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const response = await GET();
+      const req = createNextRequest('http://localhost/api/v1/flashcards/topics');
+      const response = await GET(req);
       const body = await response.json();
 
       expect(response.status).toBe(401);
@@ -95,7 +100,7 @@ describe('Flashcard Topics Integration', () => {
 
       const supabase = createServiceClient();
       const { data: topic } = await supabase
-        .from('flashcard_topics')
+        .from('topics')
         .insert({ name: 'topic-Get Me', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
@@ -133,7 +138,7 @@ describe('Flashcard Topics Integration', () => {
 
       const supabase = createServiceClient();
       const { data: topic } = await supabase
-        .from('flashcard_topics')
+        .from('topics')
         .insert({ name: 'topic-Original', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
@@ -159,7 +164,7 @@ describe('Flashcard Topics Integration', () => {
 
       const supabase = createServiceClient();
       const { data: topic } = await supabase
-        .from('flashcard_topics')
+        .from('topics')
         .insert({ name: 'topic-Teacher Topic', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
@@ -187,7 +192,7 @@ describe('Flashcard Topics Integration', () => {
 
       const supabase = createServiceClient();
       const { data: topic } = await supabase
-        .from('flashcard_topics')
+        .from('topics')
         .insert({ name: 'topic-To Delete', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();
@@ -209,7 +214,7 @@ describe('Flashcard Topics Integration', () => {
 
       const supabase = createServiceClient();
       const { data: topic } = await supabase
-        .from('flashcard_topics')
+        .from('topics')
         .insert({ name: 'topic-Teacher Topic', created_by: TEST_USERS.TEACHER.id })
         .select()
         .single();

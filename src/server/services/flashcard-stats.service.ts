@@ -1,7 +1,8 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildQueryFilter, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   DifficultyBucket,
   DifficultyFlashcardDetail,
@@ -9,30 +10,18 @@ import type {
   TeacherFlashcardStatsResponse,
 } from '@/server/models';
 
-const emptyResponse: TeacherFlashcardStatsResponse = {
-  summary: {
-    totalDecks: 0,
-    totalFlashcards: 0,
-    totalPractices: 0,
-    totalStudents: 0,
-    overallAccuracy: 0,
-    averageEasinessFactor: 0,
-    difficultyBreakdown: { easy: 0, medium: 0, hard: 0, new: 0 },
-  },
-  byDeck: [],
-  byTopic: [],
-};
-
 export class FlashcardStatsService {
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
   async getTeacherStats(
     ctx: RequestContext,
     filters?: TeacherFlashcardStatsQuery,
-  ): Promise<TeacherFlashcardStatsResponse> {
-    const supabase = await createClient();
+  ): Promise<ServiceResult<TeacherFlashcardStatsResponse>> {
+    const supabase = await this.createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (filter._impossible) {
-      return emptyResponse;
+      return success(emptyResponse);
     }
 
     let flashcardQuery = supabase.from('flashcards').select('id');
@@ -44,11 +33,11 @@ export class FlashcardStatsService {
     }
 
     const { data: flashcards, error: fcError } = await flashcardQuery;
-    if (fcError) throw mapSupabaseError(fcError);
+    if (fcError) return toDbFailure(fcError);
 
     const flashcardIds = (flashcards ?? []).map((f) => f.id);
     if (flashcardIds.length === 0) {
-      return emptyResponse;
+      return success(emptyResponse);
     }
 
     const { data: rpcResult, error: rpcError } = await supabase.rpc('get_teacher_stats', {
@@ -57,18 +46,19 @@ export class FlashcardStatsService {
       p_deck_id: filters?.deckId ?? null,
     });
 
-    if (rpcError) throw mapSupabaseError(rpcError);
+    if (rpcError) return toDbFailure(rpcError);
 
-    return rpcResult as unknown as TeacherFlashcardStatsResponse;
+    return success(rpcResult as unknown as TeacherFlashcardStatsResponse);
   }
+
   async getDifficultyCards(
     ctx: RequestContext,
     bucket: DifficultyBucket,
-  ): Promise<DifficultyFlashcardDetail[]> {
-    const supabase = await createClient();
+  ): Promise<ServiceResult<DifficultyFlashcardDetail[]>> {
+    const supabase = await this.createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return [];
+    if (filter._impossible) return success([]);
 
     let flashcardQuery = supabase.from('flashcards').select('id, front, back');
     if (filter.organization_id) {
@@ -79,8 +69,8 @@ export class FlashcardStatsService {
     }
 
     const { data: flashcards, error: fcError } = await flashcardQuery;
-    if (fcError) throw mapSupabaseError(fcError);
-    if (!flashcards || flashcards.length === 0) return [];
+    if (fcError) return toDbFailure(fcError);
+    if (!flashcards || flashcards.length === 0) return success([]);
 
     const flashcardIds = flashcards.map((f) => f.id);
     const flashcardMap = new Map(flashcards.map((f) => [f.id, f]));
@@ -223,8 +213,20 @@ export class FlashcardStatsService {
       });
     }
 
-    return result;
+    return success(result);
   }
 }
 
-export const flashcardStatsService = new FlashcardStatsService();
+const emptyResponse: TeacherFlashcardStatsResponse = {
+  summary: {
+    totalDecks: 0,
+    totalFlashcards: 0,
+    totalPractices: 0,
+    totalStudents: 0,
+    overallAccuracy: 0,
+    averageEasinessFactor: 0,
+    difficultyBreakdown: { easy: 0, medium: 0, hard: 0, new: 0 },
+  },
+  byDeck: [],
+  byTopic: [],
+};

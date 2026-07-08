@@ -1,7 +1,7 @@
-import { AppError } from '@/lib/errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   CreateOrgRoleInput,
   SetRolePermissionsInput,
@@ -9,11 +9,24 @@ import type {
 } from '@/server/models';
 
 export class OrgRoleService {
-  async listRoles(ctx: RequestContext) {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
+  async listRoles(ctx: RequestContext): Promise<
+    ServiceResult<
+      {
+        id: string;
+        name: string;
+        description: string | null;
+        isSystem: boolean;
+        memberCount: number;
+        permissionCount: number;
+      }[]
+    >
+  > {
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const { data, error } = await supabase
@@ -28,28 +41,41 @@ export class OrgRoleService {
       .eq('organization_id', ctx.activeOrgId)
       .order('name');
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return (data ?? []).map((r) => {
-      const memberCount = (r.org_members as unknown as { count: number }[])?.[0]?.count ?? 0;
-      const permissionCount =
-        (r.org_role_permissions as unknown as { count: number }[])?.[0]?.count ?? 0;
-      return {
-        id: r.id,
-        name: r.name,
-        description: r.description,
-        isSystem: r.is_system,
-        memberCount,
-        permissionCount,
-      };
-    });
+    return success(
+      (data ?? []).map((r) => {
+        const memberCount = (r.org_members as unknown as { count: number }[])?.[0]?.count ?? 0;
+        const permissionCount =
+          (r.org_role_permissions as unknown as { count: number }[])?.[0]?.count ?? 0;
+        return {
+          id: r.id,
+          name: r.name,
+          description: r.description,
+          isSystem: r.is_system,
+          memberCount,
+          permissionCount,
+        };
+      }),
+    );
   }
 
-  async getRole(ctx: RequestContext, id: string) {
-    const supabase = await createClient();
+  async getRole(
+    ctx: RequestContext,
+    id: string,
+  ): Promise<
+    ServiceResult<{
+      id: string;
+      name: string;
+      description: string | null;
+      isSystem: boolean;
+      permissions: { permissionName: string; scope: string }[];
+    }>
+  > {
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const { data, error } = await supabase
@@ -64,9 +90,9 @@ export class OrgRoleService {
       .eq('organization_id', ctx.activeOrgId)
       .single();
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return {
+    return success({
       id: data.id,
       name: data.name,
       description: data.description,
@@ -75,14 +101,19 @@ export class OrgRoleService {
         (data.org_role_permissions as unknown as { permission_name: string; scope: string }[])?.map(
           (p) => ({ permissionName: p.permission_name, scope: p.scope }),
         ) ?? [],
-    };
+    });
   }
 
-  async createRole(ctx: RequestContext, data: CreateOrgRoleInput) {
-    const supabase = await createClient();
+  async createRole(
+    ctx: RequestContext,
+    data: CreateOrgRoleInput,
+  ): Promise<
+    ServiceResult<{ id: string; name: string; description: string | null; isSystem: boolean }>
+  > {
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const { data: role, error } = await supabase
@@ -96,16 +127,27 @@ export class OrgRoleService {
       .select('id, name, description, is_system')
       .single();
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return role;
+    return success({
+      id: role.id,
+      name: role.name,
+      description: role.description,
+      isSystem: role.is_system,
+    });
   }
 
-  async updateRole(ctx: RequestContext, id: string, data: UpdateOrgRoleInput) {
-    const supabase = await createClient();
+  async updateRole(
+    ctx: RequestContext,
+    id: string,
+    data: UpdateOrgRoleInput,
+  ): Promise<
+    ServiceResult<{ id: string; name: string; description: string | null; isSystem: boolean }>
+  > {
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const update: Record<string, string | null> = {};
@@ -113,7 +155,7 @@ export class OrgRoleService {
     if (data.description !== undefined) update.description = data.description;
 
     if (Object.keys(update).length === 0) {
-      throw new AppError('BAD_REQUEST');
+      return failure('BAD_REQUEST');
     }
 
     const { data: role, error } = await supabase
@@ -124,16 +166,21 @@ export class OrgRoleService {
       .select('id, name, description, is_system')
       .single();
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return role;
+    return success({
+      id: role.id,
+      name: role.name,
+      description: role.description,
+      isSystem: role.is_system,
+    });
   }
 
-  async deleteRole(ctx: RequestContext, id: string) {
-    const supabase = await createClient();
+  async deleteRole(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const { data: role, error: fetchError } = await supabase
@@ -143,10 +190,10 @@ export class OrgRoleService {
       .eq('organization_id', ctx.activeOrgId)
       .single();
 
-    if (fetchError) throw mapSupabaseError(fetchError);
+    if (fetchError) return toDbFailure(fetchError);
 
     if (role.is_system) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const { count } = await supabase
@@ -156,7 +203,7 @@ export class OrgRoleService {
       .eq('organization_id', ctx.activeOrgId);
 
     if (count && count > 0) {
-      throw new AppError('CONFLICT');
+      return failure('CONFLICT');
     }
 
     const { error } = await supabase
@@ -165,14 +212,20 @@ export class OrgRoleService {
       .eq('id', id)
       .eq('organization_id', ctx.activeOrgId);
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
+
+    return success(undefined);
   }
 
-  async setPermissions(ctx: RequestContext, id: string, data: SetRolePermissionsInput) {
-    const supabase = await createClient();
+  async setPermissions(
+    ctx: RequestContext,
+    id: string,
+    data: SetRolePermissionsInput,
+  ): Promise<ServiceResult<void>> {
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const { error: deleteError } = await supabase
@@ -180,7 +233,7 @@ export class OrgRoleService {
       .delete()
       .eq('org_role_id', id);
 
-    if (deleteError) throw mapSupabaseError(deleteError);
+    if (deleteError) return toDbFailure(deleteError);
 
     if (data.permissions.length > 0) {
       const rows = data.permissions.map((p) => ({
@@ -191,9 +244,9 @@ export class OrgRoleService {
 
       const { error: insertError } = await supabase.from('org_role_permissions').insert(rows);
 
-      if (insertError) throw mapSupabaseError(insertError);
+      if (insertError) return toDbFailure(insertError);
     }
+
+    return success(undefined);
   }
 }
-
-export const orgRoleService = new OrgRoleService();

@@ -9,7 +9,7 @@ export default function SetupLandingPage() {
   const router = useRouter();
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-lg mx-auto space-y-4">
       <h1 className="text-2xl font-bold">{t('title')}</h1>
       <p className="text-muted-foreground">{t('desc')}</p>
       <div className="pt-4 space-y-3">

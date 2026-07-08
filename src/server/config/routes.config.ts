@@ -59,14 +59,14 @@ export const routeRules: RouteRule[] = [
 
   // --- ONBOARDING ROUTES ---
   {
+    matcher: /^\/setup\/org$/,
+    requireAuth: true,
+    allowedAccountTypes: [AccountType.MANAGER],
+  },
+  {
     matcher: /^\/setup(\/.*)?$/,
     requireAuth: true,
     allowedAccountTypes: [AccountType.EDUCATOR],
-  },
-  {
-    matcher: /^\/manage\/onboarding(\/.*)?$/,
-    requireAuth: true,
-    allowedAccountTypes: [AccountType.MANAGER],
   },
 
   // --- UI DASHBOARD ROUTES ---

@@ -1,9 +1,7 @@
-import type { ControllerResponse } from '@/lib/controller-response';
-import { AppError } from '@/lib/errors';
-import { log } from '@/lib/logger';
+import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import { hasPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import { isFailure } from '@/lib/service-result';
 import {
   BatchCopySchema,
   BatchDeleteSchema,
@@ -18,27 +16,29 @@ import {
   UnlinkFlashcardSchema,
   UpdateFlashcardSchema,
 } from '@/server/models';
-import { flashcardService } from '@/server/services';
+import type { FlashcardService } from '@/server/services/flashcard.service';
 
 export class FlashcardController {
+  constructor(private flashcardService: FlashcardService) {}
+
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      if (!(await hasPermission(ctx, Permission.FLASHCARD_CREATE))) throw new AppError('FORBIDDEN');
-      const parsed = CreateFlashcardSchema.safeParse(body);
+    if (!(await hasPermission(ctx, Permission.FLASHCARD_CREATE))) {
+      return controllerResponse.error('FORBIDDEN');
+    }
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    const parsed = CreateFlashcardSchema.safeParse(body);
 
-      const flashcard = await flashcardService.create(parsed.data, ctx);
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      return { success: true, statusCode: 201, data: flashcard };
-    }, ctx);
+    const result = await this.flashcardService.create(parsed.data, ctx);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.created(result.data);
   }
 
   async list(
@@ -53,201 +53,165 @@ export class FlashcardController {
       limit?: number;
     },
   ): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const result = await flashcardService.list(ctx, filters);
+    const result = await this.flashcardService.list(ctx, filters);
 
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async bulkCreate(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      if (!(await hasPermission(ctx, Permission.FLASHCARD_CREATE))) throw new AppError('FORBIDDEN');
-      const parsed = BulkCreateFlashcardsSchema.safeParse(body);
-      const t0 = performance.now();
+    if (!(await hasPermission(ctx, Permission.FLASHCARD_CREATE))) {
+      return controllerResponse.error('FORBIDDEN');
+    }
 
-      if (!parsed.success) {
-        log.trace.warn('bulkCreate:validation_failed', {
-          metadata: { traceId: ctx.traceId, issues: parsed.error.issues },
-          durationMs: performance.now() - t0,
-        });
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    const parsed = BulkCreateFlashcardsSchema.safeParse(body);
 
-      const cardCount = parsed.data.cards.length;
-      log.trace.info('bulkCreate:validation_ok', {
-        metadata: {
-          traceId: ctx.traceId,
-          cardCount,
-          deckIds: parsed.data.deckIds?.length ?? 0,
-          topicIds: parsed.data.topicIds?.length ?? 0,
-        },
-        durationMs: performance.now() - t0,
-      });
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const flashcards = await flashcardService.bulkCreate(parsed.data, ctx);
+    const result = await this.flashcardService.bulkCreate(parsed.data, ctx);
 
-      log.trace.info('bulkCreate:success', {
-        metadata: { traceId: ctx.traceId, created: flashcards?.length },
-        durationMs: performance.now() - t0,
-      });
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
 
-      return { success: true, statusCode: 201, data: flashcards };
-    }, ctx);
+    return controllerResponse.created(result.data);
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const flashcard = await flashcardService.getById(id, ctx);
+    const result = await this.flashcardService.getById(id, ctx);
 
-      return { success: true, statusCode: 200, data: flashcard };
-    }, ctx);
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async update(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = UpdateFlashcardSchema.safeParse(body);
+    const parsed = UpdateFlashcardSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const flashcard = await flashcardService.update(id, parsed.data, ctx);
+    const result = await this.flashcardService.update(id, parsed.data, ctx);
 
-      return { success: true, statusCode: 200, data: flashcard };
-    }, ctx);
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      await flashcardService.delete(id, ctx);
+    const result = await this.flashcardService.delete(id, ctx);
 
-      return { success: true, statusCode: 200, data: { success: true } };
-    }, ctx);
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success({ success: true });
   }
 
   async link(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = LinkFlashcardSchema.safeParse(body);
+    const parsed = LinkFlashcardSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const flashcard = await flashcardService.link(id, parsed.data, ctx);
+    const result = await this.flashcardService.link(id, parsed.data, ctx);
 
-      return { success: true, statusCode: 200, data: flashcard };
-    }, ctx);
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async copy(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = CopyFlashcardSchema.safeParse(body);
+    const parsed = CopyFlashcardSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const flashcard = await flashcardService.copy(id, parsed.data, ctx);
+    const result = await this.flashcardService.copy(id, parsed.data, ctx);
 
-      return { success: true, statusCode: 201, data: flashcard };
-    }, ctx);
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.created(result.data);
   }
 
   async batchDelete(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = BatchDeleteSchema.safeParse(body);
+    const parsed = BatchDeleteSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const result = await flashcardService.batchDelete(parsed.data, ctx);
+    const result = await this.flashcardService.batchDelete(parsed.data, ctx);
 
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async batchLink(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = BatchLinkSchema.safeParse(body);
+    const parsed = BatchLinkSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const result = await flashcardService.batchLink(parsed.data, ctx);
+    const result = await this.flashcardService.batchLink(parsed.data, ctx);
 
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async batchTopics(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = BatchTopicsSchema.safeParse(body);
+    const parsed = BatchTopicsSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const result = await flashcardService.batchTopics(parsed.data, ctx);
+    const result = await this.flashcardService.batchTopics(parsed.data, ctx);
 
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async batchMove(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = BatchMoveSchema.safeParse(body);
+    const parsed = BatchMoveSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const result = await flashcardService.batchMove(parsed.data, ctx);
+    const result = await this.flashcardService.batchMove(parsed.data, ctx);
 
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async unlinkFromDeck(
@@ -255,61 +219,50 @@ export class FlashcardController {
     body: unknown,
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = UnlinkFlashcardSchema.safeParse(body);
+    const parsed = UnlinkFlashcardSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const result = await flashcardService.unlinkFromDeck(id, parsed.data, ctx);
+    const result = await this.flashcardService.unlinkFromDeck(id, parsed.data, ctx);
 
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async batchUnlink(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = BatchUnlinkSchema.safeParse(body);
+    const parsed = BatchUnlinkSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const result = await flashcardService.batchUnlinkFromDeck(parsed.data, ctx);
+    const result = await this.flashcardService.batchUnlinkFromDeck(parsed.data, ctx);
 
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async batchCopy(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = BatchCopySchema.safeParse(body);
+    const parsed = BatchCopySchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const result = await flashcardService.batchCopy(parsed.data, ctx);
+    const result = await this.flashcardService.batchCopy(parsed.data, ctx);
 
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 }
-
-export const flashcardController = new FlashcardController();

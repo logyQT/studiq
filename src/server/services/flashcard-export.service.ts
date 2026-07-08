@@ -1,5 +1,6 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
 import type { Flashcard } from '@/server/models';
 import { flashcardService } from '@/server/services';
 
@@ -9,11 +10,13 @@ type FlashcardWithAssignments = Flashcard & {
 };
 
 export class FlashcardExportService {
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
   async exportCsv(
     ctx: RequestContext,
     filters?: { deckIds?: string[]; ids?: string[] },
-  ): Promise<string> {
-    const supabase = await createClient();
+  ): Promise<ServiceResult<string>> {
+    const supabase = await this.createClient();
 
     const listFilters: { deckIds?: string[] } = {};
     if (filters?.deckIds && filters.deckIds.length > 0) {
@@ -24,12 +27,18 @@ export class FlashcardExportService {
     let cursor: string | undefined;
 
     do {
-      const result = await flashcardService.list(ctx, {
+      const serviceResult = await flashcardService.list(ctx, {
         ...listFilters,
         limit: 100,
         cursor,
       });
-      allFlashcards.push(...(result.items as unknown as FlashcardWithAssignments[]));
+      if (!serviceResult.success) return failure(serviceResult.error);
+      const result = serviceResult.data as {
+        items: FlashcardWithAssignments[];
+        hasMore: boolean;
+        nextCursor: string | null;
+      };
+      allFlashcards.push(...result.items);
       cursor = result.hasMore && result.nextCursor ? result.nextCursor : undefined;
     } while (cursor);
 
@@ -83,7 +92,7 @@ export class FlashcardExportService {
       return `${front},${back},${topic},${deck}`;
     });
 
-    return `\uFEFF${header}\n${rows.join('\n')}`;
+    return success(`\uFEFF${header}\n${rows.join('\n')}`);
   }
 
   private escapeCsv(value: string): string {
@@ -98,5 +107,3 @@ export class FlashcardExportService {
     return value;
   }
 }
-
-export const flashcardExportService = new FlashcardExportService();

@@ -8,9 +8,15 @@ import * as supabaseModule from '@/lib/supabase/server';
 // Password for all accounts: 'pass'
 // ============================================================
 export const TEST_USERS = {
-  MANAGER: {
+  SYS_ADMIN: {
     id: '00000000-0000-4000-8001-000000000001',
     email: 'admin@dev.local',
+    password: 'pass',
+    role: 'sys_admin',
+  },
+  UNIVERSITY_ADMIN: {
+    id: '00000000-0000-4000-8001-000000000002',
+    email: 'manager@dev.local',
     password: 'pass',
     role: 'manager',
   },
@@ -22,13 +28,23 @@ export const TEST_USERS = {
   },
   STUDENT: {
     id: '00000000-0000-4000-8001-000000000004',
-    email: 'student@dev.local',
+    email: 'student1@classroom.dev',
+    password: 'pass',
+    role: 'student',
+  },
+  FREE: {
+    id: '00000000-0000-4000-8001-000000000005',
+    email: 'student2@classroom.dev',
+    password: 'pass',
+    role: 'student',
+  },
+  PREMIUM: {
+    id: '00000000-0000-4000-8001-000000000006',
+    email: 'student3@classroom.dev',
     password: 'pass',
     role: 'student',
   },
 } as const;
-
-export const TEST_ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001';
 
 // ============================================================
 // Real Supabase Client (bypasses the global mock)
@@ -90,10 +106,120 @@ export function mockUser(user: { id: string; role: string } | null) {
     : null;
 
   vi.mocked(supabaseModule.createClient).mockImplementation(async () => {
-    const realClient = createRealClient();
-    realClient.auth.getUser = async () => ({ data: { user: mockUserObj as any }, error: null });
-    return realClient;
+    // Use service_role client to bypass RLS — services use explicit permission
+    // checks (eq 'created_by', etc.) instead of relying on RLS.
+    const serviceClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false } },
+    );
+    serviceClient.auth.getUser = async () => ({ data: { user: mockUserObj as any }, error: null });
+    return serviceClient;
   });
+}
+
+// ============================================================
+// Organization seeding & cleanup
+// ============================================================
+
+/** Creates a fresh org, default roles, default group. Returns IDs. */
+export async function seedOrganization(name: string) {
+  const supabase = createServiceClient();
+
+  const { data: org, error } = await supabase
+    .from('organizations')
+    .insert({ name })
+    .select()
+    .single();
+  if (error || !org) throw new Error(`Failed to create org: ${error?.message}`);
+
+  // Trigger handle_new_organization already created roles — query them
+  const { data: roles } = await supabase
+    .from('org_roles')
+    .select('id, name')
+    .eq('organization_id', org.id);
+  if (!roles || roles.length < 3) throw new Error('Trigger did not create default roles');
+
+  const roleIds: Record<string, string> = {};
+  for (const r of roles) {
+    roleIds[r.name] = r.id;
+  }
+
+  const { data: group } = await supabase
+    .from('groups')
+    .insert({ organization_id: org.id, name: 'Członkowie', description: null, is_default: true })
+    .select('id')
+    .single();
+  if (!group) throw new Error('Failed to create default group');
+
+  return {
+    org,
+    adminRoleId: roleIds.admin,
+    teacherRoleId: roleIds.teacher,
+    memberRoleId: roleIds.member,
+    defaultGroupId: group.id,
+  };
+}
+
+/** Adds or updates an org membership for a user. */
+export async function seedOrgMembership(data: {
+  organizationId: string;
+  userId: string;
+  orgRoleId: string;
+}) {
+  const supabase = createServiceClient();
+  const { error } = await supabase.from('org_members').upsert(
+    {
+      organization_id: data.organizationId,
+      user_id: data.userId,
+      org_role_id: data.orgRoleId,
+    },
+    { onConflict: 'organization_id,user_id' },
+  );
+  if (error) throw new Error(`Failed to create org membership: ${error.message}`);
+}
+
+export async function seedGroupMembership(data: {
+  groupId: string;
+  userId: string;
+  role: string;
+}) {
+  const supabase = createServiceClient();
+  const { error } = await supabase.from('group_members').upsert(
+    {
+      group_id: data.groupId,
+      user_id: data.userId,
+      role: data.role,
+    },
+    { onConflict: 'group_id,user_id' },
+  );
+  if (error) throw new Error(`Failed to create group membership: ${error.message}`);
+}
+
+/** Deep-clean an org: deletes all related rows + the org itself. */
+export async function cleanupOrganizationDeep(orgId: string) {
+  const supabase = createServiceClient();
+  const roleIds = (await supabase.from('org_roles').select('id').eq('organization_id', orgId)).data?.map(r => r.id) ?? [];
+
+  await supabase.from('org_members').delete().eq('organization_id', orgId);
+  await supabase.from('group_members').delete().in('group_id', (await supabase.from('groups').select('id').eq('organization_id', orgId)).data?.map(g => g.id) ?? []);
+  await supabase.from('groups').delete().eq('organization_id', orgId);
+  if (roleIds.length > 0) {
+    await supabase.from('org_role_features').delete().in('org_role_id', roleIds);
+    await supabase.from('org_role_permissions').delete().in('org_role_id', roleIds);
+  }
+  await supabase.from('org_roles').delete().eq('organization_id', orgId);
+  await supabase.from('org_limits').delete().eq('organization_id', orgId);
+  await supabase.from('organizations').delete().eq('id', orgId);
+}
+
+/** Cleanup orgs created during tests by name prefix. */
+export async function cleanupOrganizationByName(namePrefix: string) {
+  const supabase = createServiceClient();
+  const { data: orgs } = await supabase.from('organizations').select('id').ilike('name', `${namePrefix}%`);
+  for (const org of orgs ?? []) {
+    await cleanupOrganizationDeep(org.id);
+  }
 }
 
 // ============================================================
@@ -142,7 +268,7 @@ export async function cleanupFlashcards(userId: string, frontPrefix?: string) {
 
 export async function cleanupFlashcardTopics(userId: string, namePrefix?: string) {
   const supabase = createServiceClient();
-  let query = supabase.from('flashcard_topics').delete().eq('created_by', userId);
+  let query = supabase.from('topics').delete().eq('created_by', userId);
   if (namePrefix) {
     query = query.ilike('name', `${namePrefix}%`);
   }
@@ -188,17 +314,6 @@ export async function cleanupInvitations(userId: string) {
   await supabase.from('invitations').delete().eq('inviter_id', userId);
 }
 
-export async function cleanupOrganization(slugPrefix?: string) {
-  const supabase = createServiceClient();
-  let query = supabase.from('organizations').delete();
-  if (slugPrefix) {
-    query = query.ilike('slug', `${slugPrefix}%`);
-  } else {
-    query = query.neq('id', '00000000-0000-4000-8000-000000000001');
-  }
-  await query;
-}
-
 // ============================================================
 // Seed Functions (use service role client to bypass RLS)
 // ============================================================
@@ -224,9 +339,7 @@ export async function seedSubject(data: {
 export async function seedQuestion(data: {
   type: string;
   content: string;
-  difficulty: string;
   created_by: string;
-  subject_id?: string;
 }) {
   const supabase = createServiceClient();
   const { data: question, error } = await supabase
@@ -234,9 +347,7 @@ export async function seedQuestion(data: {
     .insert({
       type: data.type,
       content: data.content,
-      difficulty: data.difficulty,
       created_by: data.created_by,
-      subject_id: data.subject_id ?? null,
     })
     .select()
     .single();
@@ -258,7 +369,7 @@ export async function seedFlashcard(data: { front: string; back: string; created
 export async function seedTopic(data: { name: string; created_by: string }) {
   const supabase = createServiceClient();
   const { data: topic, error } = await supabase
-    .from('flashcard_topics')
+    .from('topics')
     .insert({ name: data.name, created_by: data.created_by })
     .select()
     .single();

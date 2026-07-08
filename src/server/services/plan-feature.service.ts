@@ -1,31 +1,33 @@
-import { AppError } from '@/lib/errors';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type { CreatePlanFeatureInput } from '@/server/models';
 
 export class PlanFeatureService {
-  async getAll() {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
+  async getAll(): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
     const { data, error } = await supabase
       .from('plan_features')
       .select('*')
       .order('plan_key', { ascending: true });
-    if (error) throw mapSupabaseError(error);
-    return data;
+    if (error) return toDbFailure(error);
+    return success(data);
   }
 
-  async getByPlanKey(planKey: string) {
-    const supabase = await createClient();
+  async getByPlanKey(planKey: string): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
     const { data, error } = await supabase
       .from('plan_features')
       .select('*')
       .eq('plan_key', planKey);
-    if (error) throw mapSupabaseError(error);
-    return data;
+    if (error) return toDbFailure(error);
+    return success(data);
   }
 
-  async create(input: CreatePlanFeatureInput) {
-    const supabase = await createClient();
+  async create(input: CreatePlanFeatureInput): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
     const { data, error } = await supabase
       .from('plan_features')
       .insert({
@@ -34,22 +36,20 @@ export class PlanFeatureService {
       })
       .select()
       .single();
-    if (error) throw mapSupabaseError(error);
-    return data;
+    if (error) return toDbFailure(error);
+    return success(data);
   }
 
-  async delete(id: string) {
-    const supabase = await createClient();
+  async delete(id: string): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
     const { data: exists } = await supabase
       .from('plan_features')
       .select('id')
       .eq('id', id)
       .maybeSingle();
-    if (!exists) throw new AppError('NOT_FOUND');
+    if (!exists) return failure('NOT_FOUND');
     const { error } = await supabase.from('plan_features').delete().eq('id', id);
-    if (error) throw mapSupabaseError(error);
-    return { success: true };
+    if (error) return toDbFailure(error);
+    return success(undefined);
   }
 }
-
-export const planFeatureService = new PlanFeatureService();

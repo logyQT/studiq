@@ -1,21 +1,29 @@
-import { AppError } from '@/lib/errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 
 export class OrgService {
-  async listOrgs(ctx: RequestContext) {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
+  async listOrgs(
+    ctx: RequestContext,
+  ): Promise<
+    ServiceResult<
+      { id: string; name: string; orgRoleName: string; orgRoleId: string; isActive: boolean }[]
+    >
+  > {
+    const supabase = await this.createClient();
 
     const { data: memberships, error: mError } = await supabase
       .from('org_members')
       .select('organization_id, org_role_id, org_roles(name)')
       .eq('user_id', ctx.userId);
 
-    if (mError) throw mapSupabaseError(mError);
+    if (mError) return toDbFailure(mError);
 
     if (!memberships || memberships.length === 0) {
-      return [];
+      return success([]);
     }
 
     const orgIds = memberships.map((m) => m.organization_id);
@@ -25,25 +33,30 @@ export class OrgService {
       .select('id, name')
       .in('id', orgIds);
 
-    if (oError) throw mapSupabaseError(oError);
+    if (oError) return toDbFailure(oError);
 
     const orgMap = new Map((orgs || []).map((o) => [o.id, o]));
 
-    return memberships.map((m) => {
-      const roles = Array.isArray(m.org_roles) ? m.org_roles : [m.org_roles];
-      const org = orgMap.get(m.organization_id);
-      return {
-        id: m.organization_id,
-        name: org?.name ?? 'Unknown',
-        orgRoleName: roles[0]?.name ?? 'member',
-        orgRoleId: m.org_role_id,
-        isActive: m.organization_id === ctx.activeOrgId,
-      };
-    });
+    return success(
+      memberships.map((m) => {
+        const roles = Array.isArray(m.org_roles) ? m.org_roles : [m.org_roles];
+        const org = orgMap.get(m.organization_id);
+        return {
+          id: m.organization_id,
+          name: org?.name ?? 'Unknown',
+          orgRoleName: roles[0]?.name ?? 'member',
+          orgRoleId: m.org_role_id,
+          isActive: m.organization_id === ctx.activeOrgId,
+        };
+      }),
+    );
   }
 
-  async verifyMembership(userId: string, orgId: string) {
-    const supabase = await createClient();
+  async verifyMembership(
+    userId: string,
+    orgId: string,
+  ): Promise<ServiceResult<{ organization_id: string }>> {
+    const supabase = await this.createClient();
 
     const { data, error } = await supabase
       .from('org_members')
@@ -52,11 +65,9 @@ export class OrgService {
       .eq('organization_id', orgId)
       .maybeSingle();
 
-    if (error) throw mapSupabaseError(error);
-    if (!data) throw new AppError('NOT_FOUND');
+    if (error) return toDbFailure(error);
+    if (!data) return failure('NOT_FOUND');
 
-    return data;
+    return success(data);
   }
 }
-
-export const orgService = new OrgService();

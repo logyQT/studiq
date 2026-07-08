@@ -1,8 +1,8 @@
-import { AppError } from '@/lib/errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildQueryFilter, checkPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   BatchDeleteQuestionBankInput,
   BulkCreateQuestionBankInput,
@@ -13,8 +13,13 @@ import type {
 } from '@/server/models';
 
 export class QuestionBankService {
-  async create(data: CreateQuestionBankInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
+  async create(
+    data: CreateQuestionBankInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
     const { data: bank, error } = await supabase
       .from('question_banks')
       .insert({
@@ -27,11 +32,11 @@ export class QuestionBankService {
       .select()
       .single();
 
-    if (error) throw mapSupabaseError(error);
-    if (!bank) throw new AppError('NOT_FOUND');
+    if (error) return toDbFailure(error);
+    if (!bank) return failure('NOT_FOUND');
 
     if ((data as any).visibility === 'group' && (data as any).groupIds?.length) {
-      const { groupService } = await import('@/server/services/group.service');
+      const { groupService } = await import('@/server/services');
       let authorized = false;
       for (const gid of (data as any).groupIds) {
         if (await groupService.isTeacherInGroup(ctx, gid)) {
@@ -39,14 +44,14 @@ export class QuestionBankService {
           break;
         }
       }
-      if (!authorized) throw new AppError('FORBIDDEN');
+      if (!authorized) return failure('FORBIDDEN');
 
       const rows = (data as any).groupIds.map((gid: string) => ({
         bank_id: bank.id,
         group_id: gid,
       }));
       const { error: ae } = await supabase.from('bank_groups').insert(rows);
-      if (ae) throw mapSupabaseError(ae);
+      if (ae) return toDbFailure(ae);
     }
 
     if (data.questionIds && data.questionIds.length > 0) {
@@ -57,17 +62,20 @@ export class QuestionBankService {
       const { error: aError } = await supabase
         .from('question_bank_assignments')
         .insert(assignments);
-      if (aError) throw mapSupabaseError(aError);
+      if (aError) return toDbFailure(aError);
     }
 
     return this.getById(bank.id, ctx);
   }
 
-  async list(ctx: RequestContext, queryParams?: Partial<QuestionBankListQuery>) {
-    const supabase = await createClient();
+  async list(
+    ctx: RequestContext,
+    queryParams?: Partial<QuestionBankListQuery>,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.QUESTION_BANK_READ, 'question_bank');
-    if (filter._impossible) return { items: [], nextCursor: null, hasMore: false };
+    if (filter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
 
     if (filter._useRpc) {
       const rpcQuery = supabase.rpc('get_accessible_question_banks', {
@@ -93,7 +101,7 @@ export class QuestionBankService {
         );
       }
       const { data, error } = await rpcQuery;
-      if (error) throw mapSupabaseError(error);
+      if (error) return toDbFailure(error);
       const rows = data as unknown as Array<{ id: string; [key: string]: unknown }>;
       const hasMore = (rows?.length ?? 0) > pageSize;
       const items = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
@@ -102,7 +110,7 @@ export class QuestionBankService {
             JSON.stringify({ v: items[items.length - 1][sortBy], id: items[items.length - 1].id }),
           ).toString('base64')
         : null;
-      return { items, nextCursor, hasMore };
+      return success({ items, nextCursor, hasMore });
     }
 
     let query = supabase
@@ -122,7 +130,7 @@ export class QuestionBankService {
             .eq('organization_id', ctx.activeOrgId)
             .eq('visibility', 'group');
         } else {
-          return { items: [], nextCursor: null, hasMore: false };
+          return success({ items: [], nextCursor: null, hasMore: false });
         }
       }
     }
@@ -150,7 +158,7 @@ export class QuestionBankService {
     }
 
     const { data, error } = await query;
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
     const rows = data as Array<Record<string, unknown>> | null;
     const hasMore = (rows?.length ?? 0) > pageSize;
@@ -168,15 +176,15 @@ export class QuestionBankService {
         ).toString('base64')
       : null;
 
-    return {
+    return success({
       items: items as unknown as QuestionBank[],
       nextCursor,
       hasMore,
-    } as { items: QuestionBank[]; nextCursor: string | null; hasMore: boolean };
+    } as { items: QuestionBank[]; nextCursor: string | null; hasMore: boolean });
   }
 
-  async getById(id: string, ctx: RequestContext) {
-    const supabase = await createClient();
+  async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.QUESTION_BANK_READ, 'question_bank');
     let query = supabase
@@ -184,7 +192,7 @@ export class QuestionBankService {
       .select('*, question_count:question_bank_assignments(count)')
       .eq('id', id);
 
-    if (filter._impossible) throw new AppError('NOT_FOUND');
+    if (filter._impossible) return failure('NOT_FOUND');
     if (filter._useRpc) {
       const { data, error } = await supabase
         .rpc('get_accessible_question_banks', {
@@ -193,26 +201,30 @@ export class QuestionBankService {
         })
         .eq('id', id)
         .single();
-      if (error) throw mapSupabaseError(error);
-      return data;
+      if (error) return toDbFailure(error);
+      return success(data);
     }
     if (filter.created_by) query = query.eq('created_by', filter.created_by);
     if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
     const { data: bank, error } = await query.single();
-    if (error || !bank) throw new AppError('NOT_FOUND');
+    if (error || !bank) return failure('NOT_FOUND');
 
     const countArr = (bank as Record<string, unknown>).question_count as
       | { count: number }[]
       | undefined;
-    return {
+    return success({
       ...bank,
       question_count: countArr?.[0]?.count ?? 0,
-    } as unknown as QuestionBank;
+    } as unknown as QuestionBank);
   }
 
-  async update(id: string, data: UpdateQuestionBankInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  async update(
+    id: string,
+    data: UpdateQuestionBankInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const { data: existing, error: fetchError } = await supabase
       .from('question_banks')
@@ -220,7 +232,7 @@ export class QuestionBankService {
       .eq('id', id)
       .single();
 
-    if (fetchError || !existing) throw new AppError('NOT_FOUND');
+    if (fetchError || !existing) return failure('NOT_FOUND');
     await checkPermission(ctx, Permission.QUESTION_BANK_UPDATE, existing);
 
     const updateFields: Record<string, unknown> = {};
@@ -236,8 +248,8 @@ export class QuestionBankService {
         .select()
         .single();
 
-      if (error) throw mapSupabaseError(error);
-      if (!bank) throw new AppError('NOT_FOUND');
+      if (error) return toDbFailure(error);
+      if (!bank) return failure('NOT_FOUND');
 
       if (data.visibility !== undefined && data.visibility !== existing.visibility) {
         const { data: assignedQuestionIds } = await supabase
@@ -257,11 +269,11 @@ export class QuestionBankService {
 
     if ((data as any).groupIds !== undefined) {
       const { error: de } = await supabase.from('bank_groups').delete().eq('bank_id', id);
-      if (de) throw mapSupabaseError(de);
+      if (de) return toDbFailure(de);
       if ((data as any).groupIds.length > 0) {
         const rows = (data as any).groupIds.map((gid: string) => ({ bank_id: id, group_id: gid }));
         const { error: ae } = await supabase.from('bank_groups').insert(rows);
-        if (ae) throw mapSupabaseError(ae);
+        if (ae) return toDbFailure(ae);
       }
     }
 
@@ -279,8 +291,8 @@ export class QuestionBankService {
     return this.getById(id, ctx);
   }
 
-  async delete(id: string, ctx: RequestContext) {
-    const supabase = await createClient();
+  async delete(id: string, ctx: RequestContext): Promise<ServiceResult<void>> {
+    const supabase = await this.createClient();
 
     const { data: existing, error: fetchError } = await supabase
       .from('question_banks')
@@ -288,15 +300,20 @@ export class QuestionBankService {
       .eq('id', id)
       .single();
 
-    if (fetchError || !existing) throw new AppError('NOT_FOUND');
+    if (fetchError || !existing) return failure('NOT_FOUND');
     await checkPermission(ctx, Permission.QUESTION_BANK_DELETE, existing);
 
     const { error } = await supabase.from('question_banks').delete().eq('id', id);
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
+
+    return success(undefined);
   }
 
-  async bulkCreate(data: BulkCreateQuestionBankInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  async bulkCreate(
+    data: BulkCreateQuestionBankInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
     const banks = data.banks.map((b) => ({
       name: b.name,
       description: b.description ?? null,
@@ -310,30 +327,31 @@ export class QuestionBankService {
       .insert(banks)
       .select('*');
 
-    if (error) throw mapSupabaseError(error);
-    return created;
+    if (error) return toDbFailure(error);
+    return success(created);
   }
 
-  async batchDelete(data: BatchDeleteQuestionBankInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  async batchDelete(
+    data: BatchDeleteQuestionBankInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const { data: banks, error: fetchError } = await supabase
       .from('question_banks')
       .select('*')
       .in('id', data.ids);
 
-    if (fetchError) throw mapSupabaseError(fetchError);
-    if (!banks || banks.length === 0) throw new AppError('NOT_FOUND');
+    if (fetchError) return toDbFailure(fetchError);
+    if (!banks || banks.length === 0) return failure('NOT_FOUND');
 
     for (const bank of banks) {
       await checkPermission(ctx, Permission.QUESTION_BANK_DELETE, bank);
     }
 
     const { error } = await supabase.from('question_banks').delete().in('id', data.ids);
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return { deleted: data.ids.length };
+    return success({ deleted: data.ids.length });
   }
 }
-
-export const questionBankService = new QuestionBankService();

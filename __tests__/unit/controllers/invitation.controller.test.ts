@@ -1,34 +1,44 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AppError } from '@/lib/errors';
-import { invitationController } from '@/server/controllers/invitation.controller';
-import { invitationService } from '@/server/services';
+import { success, failure } from '@/lib/service-result';
+import { InvitationController } from '@/server/controllers/invitation.controller';
+import type { ControllerResponse } from '@/lib/controller-response';
+import type { RequestContext } from '@/lib/request-context';
 
-vi.mock('@/server/services', () => ({
-  invitationService: {
+function createMockInvitationService() {
+  return {
     createInvitation: vi.fn(),
     getInvitationByToken: vi.fn(),
-    createInvitationBulk: vi.fn(),
-  },
-}));
+  };
+}
 
-const mockService = vi.mocked(invitationService);
+const mockCtx: RequestContext = {
+  traceId: 'test-trace',
+  userId: 'test-user-id',
+  accountType: 'student',
+  orgRoleId: null,
+  activeOrgId: null,
+  url: '/test',
+  method: 'GET',
+};
 
 describe('InvitationController', () => {
-  const userId = 'test-user-id';
+  let mockService: ReturnType<typeof createMockInvitationService>;
+  let controller: InvitationController;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockService = createMockInvitationService();
+    controller = new InvitationController(mockService as any);
   });
 
   describe('create', () => {
     it('returns success when invitation is created', async () => {
       const result = { success: true, inviteLink: 'http://example.com/join?token=abc' };
-      mockService.createInvitation.mockResolvedValueOnce(result);
+      mockService.createInvitation.mockResolvedValueOnce(success(result));
 
-      const response = await invitationController.create(userId, {
-        name: 'John Doe',
+      const response = await controller.create(mockCtx, {
         email: 'john@example.com',
-        role: 'student',
+        targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
       });
 
       expect(response).toEqual({
@@ -39,10 +49,9 @@ describe('InvitationController', () => {
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid input', async () => {
-      const response = await invitationController.create(userId, {
-        name: '',
-        email: 'bad',
-        role: 'invalid',
+      const response = await controller.create(mockCtx, {
+        email: 'not-an-email',
+        targetOrgRoleId: 'not-a-uuid',
       });
 
       expect(response.success).toBe(false);
@@ -51,12 +60,11 @@ describe('InvitationController', () => {
     });
 
     it('returns NOT_FOUND when inviter profile not found', async () => {
-      mockService.createInvitation.mockRejectedValueOnce(new AppError('NOT_FOUND'));
+      mockService.createInvitation.mockResolvedValueOnce(failure('NOT_FOUND'));
 
-      const response = await invitationController.create(userId, {
-        name: 'John Doe',
+      const response = await controller.create(mockCtx, {
         email: 'john@example.com',
-        role: 'student',
+        targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
       });
 
       expect(response).toEqual({
@@ -67,12 +75,11 @@ describe('InvitationController', () => {
     });
 
     it('returns FORBIDDEN when user lacks permissions', async () => {
-      mockService.createInvitation.mockRejectedValueOnce(new AppError('FORBIDDEN'));
+      mockService.createInvitation.mockResolvedValueOnce(failure('FORBIDDEN'));
 
-      const response = await invitationController.create(userId, {
-        name: 'John Doe',
+      const response = await controller.create(mockCtx, {
         email: 'john@example.com',
-        role: 'student',
+        targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440000',
       });
 
       expect(response).toEqual({
@@ -81,30 +88,14 @@ describe('InvitationController', () => {
         error: 'FORBIDDEN',
       });
     });
-
-    it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.createInvitation.mockRejectedValueOnce(new Error('unexpected'));
-
-      const response = await invitationController.create(userId, {
-        name: 'John Doe',
-        email: 'john@example.com',
-        role: 'student',
-      });
-
-      expect(response).toEqual({
-        success: false,
-        statusCode: 500,
-        error: 'INTERNAL_SERVER',
-      });
-    });
   });
 
   describe('getByToken', () => {
     it('returns invitation when found and valid', async () => {
       const invitation = { email: 'john@example.com', name: 'John Doe' };
-      mockService.getInvitationByToken.mockResolvedValueOnce(invitation);
+      mockService.getInvitationByToken.mockResolvedValueOnce(success(invitation));
 
-      const response = await invitationController.getByToken('valid-token');
+      const response = await controller.getByToken('valid-token');
 
       expect(response).toEqual({
         success: true,
@@ -114,9 +105,9 @@ describe('InvitationController', () => {
     });
 
     it('returns NOT_FOUND when token does not exist', async () => {
-      mockService.getInvitationByToken.mockRejectedValueOnce(new AppError('NOT_FOUND'));
+      mockService.getInvitationByToken.mockResolvedValueOnce(failure('NOT_FOUND'));
 
-      const response = await invitationController.getByToken('invalid-token');
+      const response = await controller.getByToken('invalid-token');
 
       expect(response).toEqual({
         success: false,
@@ -126,9 +117,9 @@ describe('InvitationController', () => {
     });
 
     it('returns GONE when token is expired', async () => {
-      mockService.getInvitationByToken.mockRejectedValueOnce(new AppError('GONE'));
+      mockService.getInvitationByToken.mockResolvedValueOnce(failure('GONE'));
 
-      const response = await invitationController.getByToken('expired-token');
+      const response = await controller.getByToken('expired-token');
 
       expect(response).toEqual({
         success: false,
@@ -138,7 +129,7 @@ describe('InvitationController', () => {
     });
 
     it('returns BAD_REQUEST when token is empty', async () => {
-      const response = await invitationController.getByToken('');
+      const response = await controller.getByToken('');
 
       expect(response).toEqual({
         success: false,
@@ -146,28 +137,16 @@ describe('InvitationController', () => {
         error: 'BAD_REQUEST',
       });
     });
-
-    it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.getInvitationByToken.mockRejectedValueOnce(new Error('unexpected'));
-
-      const response = await invitationController.getByToken('valid-token');
-
-      expect(response).toEqual({
-        success: false,
-        statusCode: 500,
-        error: 'INTERNAL_SERVER',
-      });
-    });
   });
 
   describe('createBulk', () => {
     it('returns results for each invitation', async () => {
-      mockService.createInvitation.mockResolvedValue({ success: true, inviteLink: undefined });
+      mockService.createInvitation.mockResolvedValue(success({ inviteLink: undefined }));
 
-      const response = await invitationController.createBulk(userId, {
+      const response = await controller.createBulk(mockCtx, {
         invitations: [
-          { name: 'John', email: 'john@example.com', role: 'student' },
-          { name: 'Jane', email: 'jane@example.com', role: 'teacher' },
+          { email: 'john@example.com', targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440001' },
+          { email: 'jane@example.com', targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440002' },
         ],
       });
 
@@ -178,17 +157,17 @@ describe('InvitationController', () => {
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid bulk input', async () => {
-      const response = await invitationController.createBulk(userId, { invitations: [] });
+      const response = await controller.createBulk(mockCtx, { invitations: [] });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
     });
 
-    it('returns INTERNAL_SERVER when service throws generic error during bulk', async () => {
-      mockService.createInvitation.mockRejectedValueOnce(new Error('unexpected'));
+    it('handles service failures gracefully during bulk', async () => {
+      mockService.createInvitation.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-      const response = await invitationController.createBulk(userId, {
-        invitations: [{ name: 'John', email: 'john@example.com', role: 'student' }],
+      const response = await controller.createBulk(mockCtx, {
+        invitations: [{ email: 'john@example.com', targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440001' }],
       });
 
       expect(response.success).toBe(true);

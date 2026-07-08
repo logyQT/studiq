@@ -1,34 +1,36 @@
-import { log } from '@/lib/logger';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 
 export class StatsService {
-  async getTeacherStats(ctx: RequestContext) {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
+  async getTeacherStats(ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const { data: questions, error: questionsError } = await supabase
       .from('questions')
       .select('id')
       .eq('created_by', ctx.userId);
 
-    if (questionsError) throw mapSupabaseError(questionsError);
+    if (questionsError) return toDbFailure(questionsError);
 
     const { data: flashcards, error: flashcardsError } = await supabase
       .from('flashcards')
       .select('id')
       .eq('created_by', ctx.userId);
 
-    if (flashcardsError) throw mapSupabaseError(flashcardsError);
+    if (flashcardsError) return toDbFailure(flashcardsError);
 
-    return {
+    return success({
       totalQuestions: questions?.length ?? 0,
       totalFlashcards: flashcards?.length ?? 0,
-    };
+    });
   }
 
-  async getStudentStats(ctx: RequestContext) {
-    const supabase = await createClient();
+  async getStudentStats(ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const { data: attempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
@@ -36,7 +38,7 @@ export class StatsService {
       .eq('user_id', ctx.userId)
       .order('started_at', { ascending: false });
 
-    if (attemptsError) throw mapSupabaseError(attemptsError);
+    if (attemptsError) return toDbFailure(attemptsError);
 
     const { data: practice, error: practiceError } = await supabase
       .from('flashcard_practice')
@@ -44,28 +46,28 @@ export class StatsService {
       .eq('user_id', ctx.userId)
       .order('practiced_at', { ascending: false });
 
-    if (practiceError) throw mapSupabaseError(practiceError);
+    if (practiceError) return toDbFailure(practiceError);
 
     const { data: questions, error: questionsError } = await supabase
       .from('questions')
       .select('id')
       .eq('created_by', ctx.userId);
 
-    if (questionsError) throw mapSupabaseError(questionsError);
+    if (questionsError) return toDbFailure(questionsError);
 
     const { count: decksCount, error: decksError } = await supabase
       .from('flashcard_decks')
       .select('*', { count: 'exact', head: true })
       .eq('created_by', ctx.userId);
 
-    if (decksError) throw mapSupabaseError(decksError);
+    if (decksError) return toDbFailure(decksError);
 
     const { count: flashcardsCount, error: flashcardsCountError } = await supabase
       .from('flashcards')
       .select('*', { count: 'exact', head: true })
       .eq('created_by', ctx.userId);
 
-    if (flashcardsCountError) throw mapSupabaseError(flashcardsCountError);
+    if (flashcardsCountError) return toDbFailure(flashcardsCountError);
 
     const { count: dueCount, error: dueError } = await supabase
       .from('flashcard_review_state')
@@ -73,7 +75,7 @@ export class StatsService {
       .eq('user_id', ctx.userId)
       .lte('next_review_at', new Date().toISOString());
 
-    if (dueError) throw mapSupabaseError(dueError);
+    if (dueError) return toDbFailure(dueError);
 
     const totalQuizzes = attempts?.length ?? 0;
     const avgScore =
@@ -88,7 +90,7 @@ export class StatsService {
     const flashcardCorrect = practice?.filter((p) => p.was_correct).length ?? 0;
     const flashcardTotal = practice?.length ?? 0;
 
-    return {
+    return success({
       totalQuizzes,
       avgScore,
       totalQuestionsCreated: questions?.length ?? 0,
@@ -105,11 +107,16 @@ export class StatsService {
           total: a.total_questions,
           percentage: Math.round((a.score / Math.max(a.total_questions, 1)) * 100),
         })) ?? [],
-    };
+    });
   }
 
-  async getActivity(ctx: RequestContext, range?: string, startDate?: string, endDate?: string) {
-    const supabase = await createClient();
+  async getActivity(
+    ctx: RequestContext,
+    range?: string,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     let start: string;
     const end: string = endDate ?? new Date().toISOString().split('T')[0];
@@ -132,10 +139,7 @@ export class StatsService {
       .lte('date', end)
       .order('date', { ascending: true });
 
-    if (error) {
-      log.system.error('[getActivity] query failed', { metadata: { traceId: ctx.traceId, error } });
-      throw mapSupabaseError(error);
-    }
+    if (error) return toDbFailure(error);
 
     const { data: settings } = await supabase
       .from('user_study_settings')
@@ -143,14 +147,14 @@ export class StatsService {
       .eq('user_id', ctx.userId)
       .maybeSingle();
 
-    return {
+    return success({
       items: items ?? [],
       dailyReviewGoal: settings?.daily_review_goal ?? 0,
-    };
+    });
   }
 
-  async getWeakPoints(ctx: RequestContext) {
-    const supabase = await createClient();
+  async getWeakPoints(ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     // Step 1: Get all practice records for this user
     const { data: practice, error: practiceError } = await supabase
@@ -158,21 +162,7 @@ export class StatsService {
       .select('flashcard_id, was_correct')
       .eq('user_id', ctx.userId);
 
-    if (practiceError) throw mapSupabaseError(practiceError);
-
-    if (practice && practice.length > 0) {
-      log.trace.info('weak_points/practice_sample', {
-        metadata: {
-          traceId: ctx.traceId,
-          count: practice.length,
-          first3: practice.slice(0, 3).map((p) => ({
-            fid: p.flashcard_id?.slice(0, 8),
-            correct: p.was_correct,
-            type: typeof p.was_correct,
-          })),
-        },
-      });
-    }
+    if (practiceError) return toDbFailure(practiceError);
 
     // Step 2: Build flashcard → deck lookup via flashcard_deck_assignments
     const { data: deckAssignments, error: daError } = await supabase
@@ -183,7 +173,7 @@ export class StatsService {
         flashcard_decks(name)
       `);
 
-    if (daError) throw mapSupabaseError(daError);
+    if (daError) return toDbFailure(daError);
 
     const cardToDecks = new Map<string, Array<{ deckId: string; name: string }>>();
     for (const a of deckAssignments ?? []) {
@@ -228,7 +218,7 @@ export class StatsService {
         topics(name)
       `);
 
-    if (taError) throw mapSupabaseError(taError);
+    if (taError) return toDbFailure(taError);
 
     const cardToTopics = new Map<string, Array<{ topicId: string; name: string }>>();
     for (const a of topicAssignments ?? []) {
@@ -264,16 +254,6 @@ export class StatsService {
       .sort((a, b) => a.accuracy - b.accuracy)
       .slice(0, 5);
 
-    log.trace.info('weak_points/result', {
-      metadata: {
-        traceId: ctx.traceId,
-        deckResults: weakDecksResult,
-        topicResults: weakTopicsResult,
-      },
-    });
-
-    return { weakDecks: weakDecksResult, weakTopics: weakTopicsResult };
+    return success({ weakDecks: weakDecksResult, weakTopics: weakTopicsResult });
   }
 }
-
-export const statsService = new StatsService();

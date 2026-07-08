@@ -1,10 +1,12 @@
-import { createClient } from '@/lib/supabase/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AppStatus, HealthStatusResponse, ServiceStatus } from '@/server/models/health.model';
 
 type HealthStatus = HealthStatusResponse;
 
 export class HealthService {
   private TIMEOUT_MS = 3000;
+
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
 
   async checkHealth(): Promise<HealthStatus> {
     const start = Date.now();
@@ -29,7 +31,7 @@ export class HealthService {
 
   private async checkSupabase(): Promise<boolean> {
     try {
-      const supabase = await createClient();
+      const supabase = await this.createClient();
 
       const { error } = await supabase.from('_health_check_').select('*').limit(1);
 
@@ -57,5 +59,3 @@ export class HealthService {
     return 'degraded';
   }
 }
-
-export const healthService = new HealthService();

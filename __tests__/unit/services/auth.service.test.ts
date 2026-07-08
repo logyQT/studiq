@@ -1,180 +1,55 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { authService } from '@/server/services/auth.service';
+import { AuthService } from '@/server/services/auth.service';
 
 describe('AuthService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
+  let service: AuthService;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
+    service = new AuthService(async () => mock as any);
   });
 
   describe('register', () => {
     it('calls signUp with correct data', async () => {
-      mock.auth.signUp.mockResolvedValueOnce({ error: null });
+      mock.auth.signUp.mockResolvedValueOnce({ data: { user: { id: '00000000-0000-0000-0000-000000000001' } }, error: null });
 
-      await authService.register({
+      const result = await service.register({
         name: 'John Doe',
         email: 'john@example.com',
         password: 'SecurePass1',
       });
 
+      expect(result.success).toBe(true);
       expect(mock.auth.signUp).toHaveBeenCalledWith({
         email: 'john@example.com',
         password: 'SecurePass1',
         options: {
           data: {
             name: 'John Doe',
-            invite_token: undefined,
+            account_type: undefined,
           },
         },
       });
-    });
-
-    it('validates invite token when provided', async () => {
-      const mockChain = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: null, error: { message: 'not found' } }),
-          }),
-        }),
-      };
-      mock.from.mockReturnValue(mockChain);
-
-      await expect(
-        authService.register({
-          name: 'John Doe',
-          email: 'john@example.com',
-          password: 'SecurePass1',
-          inviteToken: 'invalid-token',
-        }),
-      ).rejects.toThrow('ERROR_BAD_REQUEST');
-    });
-
-    it('throws UNPROCESSABLE_ENTITY when invite email does not match', async () => {
-      const mockChain = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: {
-                email: 'different@example.com',
-                name: 'John Doe',
-                expires_at: new Date(Date.now() + 86400000).toISOString(),
-              },
-              error: null,
-            }),
-          }),
-        }),
-      };
-      mock.from.mockReturnValue(mockChain);
-
-      await expect(
-        authService.register({
-          name: 'John Doe',
-          email: 'john@example.com',
-          password: 'SecurePass1',
-          inviteToken: 'valid-token',
-        }),
-      ).rejects.toThrow('ERROR_UNPROCESSABLE_ENTITY');
-    });
-
-    it('throws UNPROCESSABLE_ENTITY when invite name does not match', async () => {
-      const mockChain = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: {
-                email: 'john@example.com',
-                name: 'Different Name',
-                expires_at: new Date(Date.now() + 86400000).toISOString(),
-              },
-              error: null,
-            }),
-          }),
-        }),
-      };
-      mock.from.mockReturnValue(mockChain);
-
-      await expect(
-        authService.register({
-          name: 'John Doe',
-          email: 'john@example.com',
-          password: 'SecurePass1',
-          inviteToken: 'valid-token',
-        }),
-      ).rejects.toThrow('ERROR_UNPROCESSABLE_ENTITY');
-    });
-
-    it('throws GONE when invite token is expired', async () => {
-      const mockChain = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: {
-                email: 'john@example.com',
-                name: 'John Doe',
-                expires_at: new Date(Date.now() - 86400000).toISOString(),
-              },
-              error: null,
-            }),
-          }),
-        }),
-      };
-      mock.from.mockReturnValue(mockChain);
-
-      await expect(
-        authService.register({
-          name: 'John Doe',
-          email: 'john@example.com',
-          password: 'SecurePass1',
-          inviteToken: 'expired-token',
-        }),
-      ).rejects.toThrow('ERROR_GONE');
-    });
-
-    it('succeeds when invite token is valid', async () => {
-      const mockChain = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: {
-                email: 'john@example.com',
-                name: 'John Doe',
-                expires_at: new Date(Date.now() + 86400000).toISOString(),
-              },
-              error: null,
-            }),
-          }),
-        }),
-      };
-      mock.from.mockReturnValue(mockChain);
-      mock.auth.signUp.mockResolvedValueOnce({ error: null });
-
-      await expect(
-        authService.register({
-          name: 'John Doe',
-          email: 'john@example.com',
-          password: 'SecurePass1',
-          inviteToken: 'valid-token',
-        }),
-      ).resolves.toBeUndefined();
     });
 
     it('returns early in development when user already exists', async () => {
       vi.stubEnv('NODE_ENV', 'development');
 
       mock.auth.signUp.mockResolvedValueOnce({
+        data: {},
         error: { status: 422, code: 'user_already_exists', message: 'User already registered' },
       });
 
-      await expect(
-        authService.register({
-          name: 'John Doe',
-          email: 'john@example.com',
-          password: 'SecurePass1',
-        }),
-      ).resolves.toBeUndefined();
+      const result = await service.register({
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'SecurePass1',
+      });
+
+      expect(result.success).toBe(true);
 
       vi.unstubAllEnvs();
     });
@@ -183,16 +58,18 @@ describe('AuthService', () => {
       vi.stubEnv('NODE_ENV', 'production');
 
       mock.auth.signUp.mockResolvedValueOnce({
+        data: {},
         error: { message: 'Server error' },
       });
 
-      await expect(
-        authService.register({
-          name: 'John Doe',
-          email: 'john@example.com',
-          password: 'SecurePass1',
-        }),
-      ).rejects.toThrow('ERROR_INTERNAL_SERVER');
+      const result = await service.register({
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'SecurePass1',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
 
       vi.unstubAllEnvs();
     });
@@ -202,16 +79,19 @@ describe('AuthService', () => {
     it('returns user when credentials are valid', async () => {
       const mockUser = { id: 'user-1', email: 'john@example.com' };
       mock.auth.signInWithPassword.mockResolvedValueOnce({
-        data: { user: mockUser },
+        data: { user: mockUser, session: { access_token: 'token' } },
         error: null,
       });
 
-      const result = await authService.login({
+      const result = await service.login({
         email: 'john@example.com',
         password: 'SecurePass1',
       });
 
-      expect(result.user).toEqual(mockUser);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.user).toEqual(mockUser);
+      }
     });
 
     it('throws UNAUTHORIZED when credentials are invalid', async () => {
@@ -220,9 +100,10 @@ describe('AuthService', () => {
         error: { message: 'Invalid credentials' },
       });
 
-      await expect(
-        authService.login({ email: 'john@example.com', password: 'wrong' }),
-      ).rejects.toThrow('ERROR_UNAUTHORIZED');
+      const result = await service.login({ email: 'john@example.com', password: 'wrong' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNAUTHORIZED');
     });
 
     it('throws INTERNAL_SERVER when user is null after successful login', async () => {
@@ -231,9 +112,10 @@ describe('AuthService', () => {
         error: null,
       });
 
-      await expect(
-        authService.login({ email: 'john@example.com', password: 'SecurePass1' }),
-      ).rejects.toThrow('ERROR_INTERNAL_SERVER');
+      const result = await service.login({ email: 'john@example.com', password: 'SecurePass1' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -241,14 +123,19 @@ describe('AuthService', () => {
     it('calls signOut with local scope', async () => {
       mock.auth.signOut.mockResolvedValueOnce({ error: null });
 
-      await expect(authService.logout()).resolves.toBeUndefined();
+      const result = await service.logout();
+
+      expect(result.success).toBe(true);
       expect(mock.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
     });
 
     it('throws INTERNAL_SERVER when signOut fails', async () => {
       mock.auth.signOut.mockResolvedValueOnce({ error: { message: 'error' } });
 
-      await expect(authService.logout()).rejects.toThrow('ERROR_INTERNAL_SERVER');
+      const result = await service.logout();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
     });
   });
 
@@ -256,7 +143,9 @@ describe('AuthService', () => {
     it('calls resetPasswordForEmail', async () => {
       mock.auth.resetPasswordForEmail.mockResolvedValueOnce({ error: null });
 
-      await expect(authService.requestPasswordReset('john@example.com')).resolves.toBeUndefined();
+      const result = await service.requestPasswordReset('john@example.com');
+
+      expect(result.success).toBe(true);
     });
 
     it('throws BAD_REQUEST when reset fails', async () => {
@@ -264,9 +153,10 @@ describe('AuthService', () => {
         error: { message: 'error' },
       });
 
-      await expect(authService.requestPasswordReset('john@example.com')).rejects.toThrow(
-        'ERROR_BAD_REQUEST',
-      );
+      const result = await service.requestPasswordReset('john@example.com');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('BAD_REQUEST');
     });
   });
 
@@ -274,7 +164,9 @@ describe('AuthService', () => {
     it('calls updateUser with new password', async () => {
       mock.auth.updateUser.mockResolvedValueOnce({ error: null });
 
-      await expect(authService.updatePassword('NewSecure1')).resolves.toBeUndefined();
+      const result = await service.updatePassword('NewSecure1');
+
+      expect(result.success).toBe(true);
     });
 
     it('throws UNPROCESSABLE_ENTITY when same password', async () => {
@@ -282,9 +174,10 @@ describe('AuthService', () => {
         error: { code: 'same_password' },
       });
 
-      await expect(authService.updatePassword('OldSecure1')).rejects.toThrow(
-        'ERROR_UNPROCESSABLE_ENTITY',
-      );
+      const result = await service.updatePassword('OldSecure1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
     });
 
     it('throws BAD_REQUEST when update fails with generic error', async () => {
@@ -292,7 +185,10 @@ describe('AuthService', () => {
         error: { message: 'Generic error' },
       });
 
-      await expect(authService.updatePassword('NewSecure1')).rejects.toThrow('ERROR_BAD_REQUEST');
+      const result = await service.updatePassword('NewSecure1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('BAD_REQUEST');
     });
   });
 });

@@ -21,7 +21,7 @@ export default function OrgSetupPage() {
     if (!name) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/admin/organizations', {
+      const res = await fetch('/api/v1/organization', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
@@ -34,7 +34,6 @@ export default function OrgSetupPage() {
 
       const data = await res.json();
 
-      // Switch to the new org
       await fetch('/api/v1/me/orgs/switch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -50,8 +49,8 @@ export default function OrgSetupPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/50 p-6">
-      <Card className="w-full max-w-lg">
+    <div className="mx-auto max-w-lg py-12">
+      <Card>
         <CardHeader>
           <CardTitle>{t('org_title')}</CardTitle>
           <CardDescription>{t('org_desc')}</CardDescription>

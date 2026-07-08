@@ -1,36 +1,38 @@
-import { AppError } from '@/lib/errors';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { failure, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   CreateUserFeatureOverrideInput,
   UpdateUserFeatureOverrideInput,
 } from '@/server/models';
 
 export class UserOverrideService {
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
   async getAll() {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
     const { data, error } = await supabase
       .from('user_feature_overrides')
       .select('*')
       .order('created_at', { ascending: false });
-    if (error) throw mapSupabaseError(error);
-    return data;
+    if (error) return toDbFailure(error);
+    return success(data);
   }
 
   async getById(id: string) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
     const { data, error } = await supabase
       .from('user_feature_overrides')
       .select('*')
       .eq('id', id)
       .maybeSingle();
-    if (error) throw mapSupabaseError(error);
-    if (!data) throw new AppError('NOT_FOUND');
-    return data;
+    if (error) return toDbFailure(error);
+    if (!data) return failure('NOT_FOUND');
+    return success(data);
   }
 
   async create(input: CreateUserFeatureOverrideInput) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
     const { data, error } = await supabase
       .from('user_feature_overrides')
       .insert({
@@ -42,12 +44,12 @@ export class UserOverrideService {
       })
       .select()
       .single();
-    if (error) throw mapSupabaseError(error);
-    return data;
+    if (error) return toDbFailure(error);
+    return success(data);
   }
 
   async update(id: string, input: UpdateUserFeatureOverrideInput) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
     const updateData: Record<string, unknown> = {};
     if (input.isEnabled !== undefined) updateData.is_enabled = input.isEnabled;
     if (input.reason !== undefined) updateData.reason = input.reason;
@@ -59,22 +61,20 @@ export class UserOverrideService {
       .eq('id', id)
       .select()
       .single();
-    if (error) throw mapSupabaseError(error);
-    return data;
+    if (error) return toDbFailure(error);
+    return success(data);
   }
 
   async delete(id: string) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
     const { data: exists } = await supabase
       .from('user_feature_overrides')
       .select('id')
       .eq('id', id)
       .maybeSingle();
-    if (!exists) throw new AppError('NOT_FOUND');
+    if (!exists) return failure('NOT_FOUND');
     const { error } = await supabase.from('user_feature_overrides').delete().eq('id', id);
-    if (error) throw mapSupabaseError(error);
-    return { success: true };
+    if (error) return toDbFailure(error);
+    return success({ success: true });
   }
 }
-
-export const userOverrideService = new UserOverrideService();

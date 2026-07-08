@@ -3,7 +3,6 @@
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useCallback, useMemo } from 'react';
-import { log } from '@/lib/logger';
 
 interface ChatPart {
   type: string;
@@ -227,14 +226,12 @@ export function useAiChat(): UseAiChatReturn {
             const isComplete = state === 'output-available';
 
             if (process.env.NODE_ENV !== 'production') {
-              log.trace.debug('tool-generate-flashcards', {
-                metadata: {
-                  state,
-                  hasOutput: !!outputMap,
-                  hasInput: !!inputMap,
-                  outputCards: flashcardArray.length,
-                  inputCount: inputMap?.count,
-                },
+              console.info('tool-generate-flashcards', {
+                state,
+                hasOutput: !!outputMap,
+                hasInput: !!inputMap,
+                outputCards: flashcardArray.length,
+                inputCount: inputMap?.count,
               });
             }
 

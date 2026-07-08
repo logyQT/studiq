@@ -85,6 +85,7 @@ describe('RegisterSchema', () => {
       name: 'John Doe',
       email: 'john@example.com',
       password: 'SecurePass1',
+      accountType: 'student',
     });
     expect(result.success).toBe(true);
   });
@@ -107,6 +108,7 @@ describe('RegisterSchema', () => {
       name: 'John Doe',
       email: 'john@example.com',
       password: 'SecurePass1',
+      accountType: 'educator',
       inviteToken: 'some-token',
     });
     expect(result.success).toBe(true);

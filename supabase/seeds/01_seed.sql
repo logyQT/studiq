@@ -10,8 +10,8 @@
 -- ==========================================================
 
 -- Org
-INSERT INTO "public"."organizations" ("id", "name") VALUES
-  ('00000000-0000-4000-8000-000000000001', 'WSB Merito')
+INSERT INTO "public"."organizations" ("id", "name", "plan") VALUES
+  ('00000000-0000-4000-8000-000000000001', 'WSB Merito', 'launch')
 ON CONFLICT DO NOTHING;
 
 -- Seed default roles for the dev org
@@ -157,15 +157,15 @@ INSERT INTO "auth"."identities" (
 ON CONFLICT DO NOTHING;
 
 -- Profiles (auto-created by trigger, but seed explicitly)
-INSERT INTO "public"."profiles" ("id", "email", "full_name") VALUES
-  ('00000000-0000-4000-8001-000000000001', 'admin@dev.local',        'Sys Admin'),
-  ('00000000-0000-4000-8001-000000000002', 'manager@dev.local',      'Manager'),
-  ('00000000-0000-4000-8001-000000000003', 'teacher@dev.local',      'Teacher'),
-  ('00000000-0000-4000-8001-000000000004', 'student1@classroom.dev', 'Student 1'),
-  ('00000000-0000-4000-8001-000000000005', 'student2@classroom.dev', 'Student 2'),
-  ('00000000-0000-4000-8001-000000000006', 'student3@classroom.dev', 'Student 3'),
-  ('00000000-0000-4000-8001-000000000007', 'student4@classroom.dev', 'Student 4'),
-  ('00000000-0000-4000-8001-000000000008', 'student5@classroom.dev', 'Student 5')
+INSERT INTO "public"."profiles" ("id", "email", "full_name", "personal_plan_key") VALUES
+  ('00000000-0000-4000-8001-000000000001', 'admin@dev.local',        'Sys Admin',    'sysadmin'),
+  ('00000000-0000-4000-8001-000000000002', 'manager@dev.local',      'Manager',      'launch'),
+  ('00000000-0000-4000-8001-000000000003', 'teacher@dev.local',      'Teacher',      'lite'),
+  ('00000000-0000-4000-8001-000000000004', 'student1@classroom.dev', 'Student 1',    'base'),
+  ('00000000-0000-4000-8001-000000000005', 'student2@classroom.dev', 'Student 2',    'base'),
+  ('00000000-0000-4000-8001-000000000006', 'student3@classroom.dev', 'Student 3',    'base'),
+  ('00000000-0000-4000-8001-000000000007', 'student4@classroom.dev', 'Student 4',    'base'),
+  ('00000000-0000-4000-8001-000000000008', 'student5@classroom.dev', 'Student 5',    'base')
 ON CONFLICT DO NOTHING;
 
 -- Org memberships (admin/manager intentionally excluded — has no org membership)

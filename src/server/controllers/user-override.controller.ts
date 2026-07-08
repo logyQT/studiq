@@ -1,77 +1,73 @@
 import type { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import { controllerResponse } from '@/lib/controller-response';
+import { isFailure } from '@/lib/service-result';
 import {
   CreateUserFeatureOverrideSchema,
   UpdateUserFeatureOverrideSchema,
   UserFeatureOverrideIdParamsSchema,
 } from '@/server/models';
-import { userOverrideService } from '@/server/services';
+import type { UserOverrideService } from '@/server/services/user-override.service';
 
 export class UserOverrideController {
+  constructor(private userOverrideService: UserOverrideService) {}
+
   async getAll(): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const data = await userOverrideService.getAll();
-      return { success: true, statusCode: 200, data };
-    });
+    const result = await this.userOverrideService.getAll();
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
   }
 
   async getById(id: string): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = UserFeatureOverrideIdParamsSchema.safeParse({ id });
-      if (!parsed.success) {
-        return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
-      }
-      const data = await userOverrideService.getById(parsed.data.id);
-      return { success: true, statusCode: 200, data };
-    });
+    const parsed = UserFeatureOverrideIdParamsSchema.safeParse({ id });
+    if (!parsed.success) {
+      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
+    }
+    const result = await this.userOverrideService.getById(parsed.data.id);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
   }
 
   async create(body: unknown): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = CreateUserFeatureOverrideSchema.safeParse(body);
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
-      const data = await userOverrideService.create(parsed.data);
-      return { success: true, statusCode: 201, data };
-    });
+    const parsed = CreateUserFeatureOverrideSchema.safeParse(body);
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
+    const result = await this.userOverrideService.create(parsed.data);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.created(result.data);
   }
 
   async update(id: string, body: unknown): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsedId = UserFeatureOverrideIdParamsSchema.safeParse({ id });
-      if (!parsedId.success) {
-        return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
-      }
-      const parsed = UpdateUserFeatureOverrideSchema.safeParse(body);
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
-      const data = await userOverrideService.update(parsedId.data.id, parsed.data);
-      return { success: true, statusCode: 200, data };
-    });
+    const parsedId = UserFeatureOverrideIdParamsSchema.safeParse({ id });
+    if (!parsedId.success) {
+      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
+    }
+    const parsed = UpdateUserFeatureOverrideSchema.safeParse(body);
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
+    const result = await this.userOverrideService.update(parsedId.data.id, parsed.data);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
   }
 
   async delete(id: string): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = UserFeatureOverrideIdParamsSchema.safeParse({ id });
-      if (!parsed.success) {
-        return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
-      }
-      await userOverrideService.delete(parsed.data.id);
-      return { success: true, statusCode: 200, data: { success: true } };
-    });
+    const parsed = UserFeatureOverrideIdParamsSchema.safeParse({ id });
+    if (!parsed.success) {
+      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
+    }
+    const result = await this.userOverrideService.delete(parsed.data.id);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return { success: true, statusCode: 200, data: { success: true } };
   }
 }
-
-export const userOverrideController = new UserOverrideController();

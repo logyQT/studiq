@@ -1,27 +1,25 @@
-import type { ControllerResponse } from '@/lib/controller-response';
+import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import { isFailure } from '@/lib/service-result';
 import { CsvImportSchema } from '@/server/models';
-import { flashcardImportService } from '@/server/services';
+import type { FlashcardImportService } from '@/server/services/flashcard-import.service';
 
 export class FlashcardImportController {
+  constructor(private flashcardImportService: FlashcardImportService) {}
+
   async importCsv(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = CsvImportSchema.safeParse(body);
+    const parsed = CsvImportSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const result = await flashcardImportService.importCsv(parsed.data, ctx);
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    const result = await this.flashcardImportService.importCsv(parsed.data, ctx);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 }
-
-export const flashcardImportController = new FlashcardImportController();

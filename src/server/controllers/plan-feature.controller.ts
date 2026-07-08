@@ -1,42 +1,53 @@
-import type { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
+import { isFailure } from '@/lib/service-result';
 import { CreatePlanFeatureSchema, PlanFeatureIdParamsSchema } from '@/server/models';
-import { planFeatureService } from '@/server/services';
+import type { PlanFeatureService } from '@/server/services/plan-feature.service';
 
 export class PlanFeatureController {
+  constructor(private planFeatureService: PlanFeatureService) {}
+
   async getAll(): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const data = await planFeatureService.getAll();
-      return { success: true, statusCode: 200, data };
-    });
+    const data = await this.planFeatureService.getAll();
+
+    if (isFailure(data)) {
+      return controllerResponse.error(data.error);
+    }
+
+    return controllerResponse.success(data.data);
   }
 
   async create(body: unknown): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = CreatePlanFeatureSchema.safeParse(body);
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
-      const data = await planFeatureService.create(parsed.data);
-      return { success: true, statusCode: 201, data };
-    });
+    const parsed = CreatePlanFeatureSchema.safeParse(body);
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
+
+    const data = await this.planFeatureService.create(parsed.data);
+
+    if (isFailure(data)) {
+      return controllerResponse.error(data.error);
+    }
+
+    return controllerResponse.created(data.data);
   }
 
   async delete(id: string): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = PlanFeatureIdParamsSchema.safeParse({ id });
-      if (!parsed.success) {
-        return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
-      }
-      await planFeatureService.delete(parsed.data.id);
-      return { success: true, statusCode: 200, data: { success: true } };
-    });
+    const parsed = PlanFeatureIdParamsSchema.safeParse({ id });
+    if (!parsed.success) {
+      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
+    }
+
+    const result = await this.planFeatureService.delete(parsed.data.id);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success({ success: true });
   }
 }
-
-export const planFeatureController = new PlanFeatureController();

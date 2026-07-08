@@ -1,48 +1,44 @@
-import type { ControllerResponse } from '@/lib/controller-response';
+import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import { isFailure } from '@/lib/service-result';
 import { DifficultyBucketSchema, TeacherFlashcardStatsQuerySchema } from '@/server/models';
-import { flashcardStatsService } from '@/server/services';
+import type { FlashcardStatsService } from '@/server/services/flashcard-stats.service';
 
 export class FlashcardStatsController {
+  constructor(private flashcardStatsService: FlashcardStatsService) {}
+
   async getTeacherStats(query: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = TeacherFlashcardStatsQuerySchema.safeParse(query);
+    const parsed = TeacherFlashcardStatsQuerySchema.safeParse(query);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const stats = await flashcardStatsService.getTeacherStats(ctx, parsed.data);
-      return { success: true, statusCode: 200, data: stats };
-    }, ctx);
+    const result = await this.flashcardStatsService.getTeacherStats(ctx, parsed.data);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async getDifficultyCards(
     query: { bucket?: string },
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = DifficultyBucketSchema.safeParse(query.bucket);
+    const parsed = DifficultyBucketSchema.safeParse(query.bucket);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const cards = await flashcardStatsService.getDifficultyCards(ctx, parsed.data);
-      return { success: true, statusCode: 200, data: cards };
-    }, ctx);
+    const result = await this.flashcardStatsService.getDifficultyCards(ctx, parsed.data);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 }
-
-export const flashcardStatsController = new FlashcardStatsController();

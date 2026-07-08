@@ -1,7 +1,6 @@
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { type NextRequest, NextResponse } from 'next/server';
 import { APP_ERRORS } from '@/lib/errors';
-import { log } from '@/lib/logger';
 import { createClient } from '@/lib/supabase/server';
 
 const FALLBACK_REDIRECT = '/';
@@ -37,16 +36,12 @@ export async function GET(req: NextRequest) {
     if (!error) {
       return NextResponse.redirect(`${origin}${next}`);
     }
-
-    log.auth.error('Auth Callback Error (TokenHash)', { metadata: { message: error.message } });
   } else if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
       return NextResponse.redirect(`${origin}${next}`);
     }
-
-    log.auth.error('Auth Callback Error (PKCE)', { metadata: { message: error.message } });
   }
 
   return NextResponse.redirect(`${origin}/login?error=${APP_ERRORS.INTERNAL_SERVER.code}`);

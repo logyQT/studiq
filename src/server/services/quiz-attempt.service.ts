@@ -1,12 +1,14 @@
-import { AppError } from '@/lib/errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type { SubmitQuizAttemptInput } from '@/server/models';
 
 export class QuizAttemptService {
-  async list(ctx: RequestContext) {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
+  async list(ctx: RequestContext): Promise<ServiceResult<any[]>> {
+    const supabase = await this.createClient();
 
     const { data, error } = await supabase
       .from('quiz_attempts')
@@ -14,12 +16,15 @@ export class QuizAttemptService {
       .eq('user_id', ctx.userId)
       .order('started_at', { ascending: false });
 
-    if (error) throw mapSupabaseError(error);
-    return data;
+    if (error) return toDbFailure(error);
+    return success(data);
   }
 
-  async getById(attemptId: string, ctx: RequestContext) {
-    const supabase = await createClient();
+  async getById(
+    attemptId: string,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<Record<string, unknown>>> {
+    const supabase = await this.createClient();
 
     const { data: attempt, error: attemptError } = await supabase
       .from('quiz_attempts')
@@ -28,7 +33,7 @@ export class QuizAttemptService {
       .eq('user_id', ctx.userId)
       .single();
 
-    if (attemptError || !attempt) throw new AppError('NOT_FOUND');
+    if (attemptError || !attempt) return failure('NOT_FOUND');
 
     const { data: attemptQuestions, error: questionsError } = await supabase
       .from('quiz_attempt_questions')
@@ -36,14 +41,14 @@ export class QuizAttemptService {
       .eq('attempt_id', attemptId)
       .order('order_index', { ascending: true });
 
-    if (questionsError) throw mapSupabaseError(questionsError);
+    if (questionsError) return toDbFailure(questionsError);
 
     const { data: answers, error: answersError } = await supabase
       .from('quiz_answers')
       .select('*')
       .eq('attempt_id', attemptId);
 
-    if (answersError) throw mapSupabaseError(answersError);
+    if (answersError) return toDbFailure(answersError);
 
     const questions = (attemptQuestions ?? [])
       .sort((a, b) => a.order_index - b.order_index)
@@ -58,15 +63,18 @@ export class QuizAttemptService {
       };
     });
 
-    return {
+    return success({
       ...attempt,
       questions,
       answers: answerObj,
-    };
+    });
   }
 
-  async submit(data: SubmitQuizAttemptInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  async submit(
+    data: SubmitQuizAttemptInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<{ score: number; totalQuestions: number }>> {
+    const supabase = await this.createClient();
 
     const { data: attempt, error: attemptCheckError } = await supabase
       .from('quiz_attempts')
@@ -75,8 +83,8 @@ export class QuizAttemptService {
       .eq('user_id', ctx.userId)
       .single();
 
-    if (attemptCheckError || !attempt) throw new AppError('NOT_FOUND');
-    if (attempt.completed_at) throw new AppError('BAD_REQUEST');
+    if (attemptCheckError || !attempt) return failure('NOT_FOUND');
+    if (attempt.completed_at) return failure('BAD_REQUEST');
 
     let score = 0;
     const answerRecords = [];
@@ -108,14 +116,12 @@ export class QuizAttemptService {
       })
       .eq('id', data.attemptId);
 
-    if (updateError) throw mapSupabaseError(updateError);
+    if (updateError) return toDbFailure(updateError);
 
     const { error: answersError } = await supabase.from('quiz_answers').insert(answerRecords);
 
-    if (answersError) throw mapSupabaseError(answersError);
+    if (answersError) return toDbFailure(answersError);
 
-    return { score, totalQuestions: data.answers.length };
+    return success({ score, totalQuestions: data.answers.length });
   }
 }
-
-export const quizAttemptService = new QuizAttemptService();

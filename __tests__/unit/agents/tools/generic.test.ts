@@ -5,12 +5,21 @@ vi.mock('@/lib/zod', async (importOriginal) => {
   return { ...actual, registry: { register: vi.fn() } };
 });
 
+vi.mock('ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ai')>();
+  return {
+    ...actual,
+    generateText: vi.fn().mockResolvedValue({ text: 'Generated material content' }),
+  };
+});
+
 import { askUserTool } from '@/server/agents/tools/generic/ask-user.tool';
 import { createPlanTool } from '@/server/agents/tools/generic/create-plan.tool';
 import { evaluateQualityTool } from '@/server/agents/tools/generic/evaluate-quality.tool';
 import { extractConceptsTool } from '@/server/agents/tools/generic/extract-concepts.tool';
 import { fetchMaterialTool } from '@/server/agents/tools/generic/fetch-material.tool';
 import { finishTool } from '@/server/agents/tools/generic/finish.tool';
+import { generateText } from 'ai';
 import { webfetchTool } from '@/server/agents/tools/generic/webfetch.tool';
 
 function mockCtx(overrides?: Record<string, unknown>) {
@@ -40,7 +49,6 @@ function mockCtx(overrides?: Record<string, unknown>) {
       get: vi.fn(),
       getAll: vi.fn(),
     },
-    callLLM: vi.fn().mockResolvedValue({ content: 'ok' }),
   } as any;
 }
 
@@ -69,7 +77,7 @@ describe('askUserTool', () => {
 });
 
 describe('createPlanTool', () => {
-  it('stores plan in metadata', async () => {
+  it('returns the plan as-is', async () => {
     const ctx = mockCtx();
     const plan = {
       steps: [{ action: 'fetch', rationale: 'need data' }],
@@ -77,7 +85,6 @@ describe('createPlanTool', () => {
       needsClarification: false,
     };
     const result = await createPlanTool.execute(plan, ctx);
-    expect(ctx.state.metadata.plan).toEqual(plan);
     expect(result).toEqual(plan);
   });
 });
@@ -104,53 +111,40 @@ describe('evaluateQualityTool', () => {
 });
 
 describe('extractConceptsTool', () => {
-  it('returns error when no material in args or state', async () => {
-    const ctx = mockCtx({ material: undefined });
+  it('returns empty terms when no terms in args', async () => {
+    const ctx = mockCtx();
     const result = await extractConceptsTool.execute({}, ctx);
-    expect(result).toEqual({ terms: [], error: 'No material provided' });
+    expect(result.terms).toBeUndefined();
   });
 
-  it('calls callLLM and parses terms from tool call', async () => {
+  it('returns terms passed in args', async () => {
     const ctx = mockCtx();
-    ctx.callLLM = vi.fn().mockResolvedValue({
-      content: '',
-      toolCalls: [
-        {
-          function: {
-            name: 'extract_terms',
-            arguments: JSON.stringify({ terms: [{ term: 'T1', definition: 'D1' }] }),
-          },
-        },
-      ],
-    });
-    const result = await extractConceptsTool.execute({ material: 'some content' }, ctx);
+    const terms = [{ term: 'T1', definition: 'D1' }];
+    const result = await extractConceptsTool.execute({ terms }, ctx);
     expect(result.terms).toHaveLength(1);
-    expect(ctx.state.concepts).toHaveLength(1);
+    expect(result.terms![0].term).toBe('T1');
   });
 
-  it('returns empty terms when no tool call in response', async () => {
+  it('returns empty array when terms is empty', async () => {
     const ctx = mockCtx();
-    ctx.callLLM = vi.fn().mockResolvedValue({ content: 'no tool call' });
-    const result = await extractConceptsTool.execute({ material: 'content' }, ctx);
+    const result = await extractConceptsTool.execute({ terms: [] }, ctx);
     expect(result).toEqual({ terms: [] });
   });
 });
 
 describe('fetchMaterialTool', () => {
-  it('calls callLLM and stores material in state', async () => {
+  it('calls generateText and returns content', async () => {
     const ctx = mockCtx();
-    ctx.callLLM = vi.fn().mockResolvedValue({ content: 'Generated material content' });
     const result = await fetchMaterialTool.execute({ topic: 'History', depth: 'basic' }, ctx);
-    expect(ctx.state.material).toBe('Generated material content');
+    expect(generateText).toHaveBeenCalledOnce();
     expect(result.content).toBe('Generated material content');
     expect(result.length).toBe('Generated material content'.length);
   });
 
   it('includes focus areas in prompt when provided', async () => {
     const ctx = mockCtx();
-    ctx.callLLM = vi.fn().mockResolvedValue({ content: 'focused content' });
     await fetchMaterialTool.execute({ topic: 'Math', focusAreas: ['Algebra', 'Geometry'] }, ctx);
-    expect(ctx.callLLM).toHaveBeenCalledWith(
+    expect(generateText).toHaveBeenCalledWith(
       expect.objectContaining({
         prompt: expect.stringContaining('Algebra'),
       }),
@@ -163,14 +157,13 @@ describe('webfetchTool', () => {
     vi.stubGlobal('fetch', vi.fn());
   });
 
-  it('fetches URL and stores material in state', async () => {
+  it('fetches URL and returns content', async () => {
     const ctx = mockCtx();
     (global.fetch as any).mockResolvedValue({
       ok: true,
       text: () => Promise.resolve('Webpage content about biology.'),
     });
     const result = await webfetchTool.execute({ url: 'https://example.com/biology' }, ctx);
-    expect(ctx.state.material).toBe('Webpage content about biology.');
     expect(result.content).toBe('Webpage content about biology.');
     expect(result.url).toBe('https://example.com/biology');
     expect(result.length).toBe(30);
@@ -192,27 +185,33 @@ describe('webfetchTool', () => {
     expect(result.content).toBe('');
   });
 
-  it('stores sourceUrl in results', async () => {
+  it('stores sourceUrl in result', async () => {
     const ctx = mockCtx();
     (global.fetch as any).mockResolvedValue({ ok: true, text: () => Promise.resolve('content') });
-    await webfetchTool.execute({ url: 'https://example.com/article' }, ctx);
-    expect(ctx.state.results.sourceUrl).toBe('https://example.com/article');
+    const result = await webfetchTool.execute({ url: 'https://example.com/article' }, ctx);
+    expect(result.url).toBe('https://example.com/article');
   });
 });
 
 describe('finishTool', () => {
-  it('returns flashcards from state results', async () => {
-    const ctx = mockCtx({
-      results: { flashcards: [{ front: 'Q', back: 'A' }], deckName: 'Test Deck' },
-    });
-    const result = await finishTool.execute({ message: 'Done' }, ctx);
+  it('returns flashcards from input args', async () => {
+    const ctx = mockCtx();
+    const result = await finishTool.execute(
+      {
+        type: 'flashcards',
+        flashcards: [{ front: 'Q', back: 'A' }],
+        deckName: 'Test Deck',
+        message: 'Done',
+      },
+      ctx,
+    );
     expect(result.type).toBe('flashcards');
     expect(result.flashcards).toHaveLength(1);
     expect(result.deckName).toBe('Test Deck');
   });
 
   it('returns type chat with message when no flashcards', async () => {
-    const ctx = mockCtx({ results: {} });
+    const ctx = mockCtx();
     const result = await finishTool.execute({ message: 'Hello' }, ctx);
     expect(result.type).toBe('chat');
     expect(result.content).toBe('Hello');

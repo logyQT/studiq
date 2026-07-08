@@ -1,5 +1,3 @@
-import { log } from '@/lib/logger';
-
 const DEFAULT_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 const DEFAULT_MAX_ENTRIES = 1000;
 
@@ -35,47 +33,37 @@ export class PdfCacheService {
       extractedAt: new Date(),
       lastAccessed: new Date(),
     });
-    log.cache.info(
-      `Cached ${text.length} chars for conversation ${conversationId} (file: ${fileName})`,
-    );
   }
 
   get(conversationId: string): { text: string; fileName: string } | null {
     const entry = this.cache.get(conversationId);
     if (!entry) {
-      log.cache.info(`Cache miss for conversation ${conversationId}`);
       return null;
     }
 
     // Check TTL
     if (Date.now() - entry.extractedAt.getTime() > this.ttlMs) {
       this.cache.delete(conversationId);
-      log.cache.warn(`Cache expired for conversation ${conversationId}`);
       return null;
     }
 
     // Update access time for LRU
     entry.lastAccessed = new Date();
-    log.cache.info(`Cache hit for conversation ${conversationId} (${entry.text.length} chars)`);
     return { text: entry.text, fileName: entry.fileName };
   }
 
   delete(conversationId: string): void {
     this.cache.delete(conversationId);
-    log.cache.info(`Deleted cache for conversation ${conversationId}`);
   }
 
   private evictExpired(): void {
     const now = Date.now();
-    let evicted = 0;
+    let _evicted = 0;
     for (const [key, entry] of this.cache) {
       if (now - entry.extractedAt.getTime() > this.ttlMs) {
         this.cache.delete(key);
-        evicted++;
+        _evicted++;
       }
-    }
-    if (evicted > 0) {
-      log.cache.info(`Evicted ${evicted} expired entries, ${this.cache.size} remaining`);
     }
   }
 
@@ -92,7 +80,6 @@ export class PdfCacheService {
 
     if (oldestKey) {
       this.cache.delete(oldestKey);
-      log.cache.info(`LRU evicted conversation ${oldestKey}`);
     }
   }
 }

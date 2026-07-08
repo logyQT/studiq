@@ -1,18 +1,45 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST as bulkPost } from '@/app/(backend)/api/v1/organization/invites/bulk/route';
 import {
   GET as inviteGet,
   POST as invitePost,
 } from '@/app/(backend)/api/v1/organization/invites/route';
-import { cleanupInvitations, createRealClient, mockUser, TEST_USERS } from './helpers';
+import {
+  cleanupInvitations,
+  cleanupOrganizationByName,
+  createServiceClient,
+  mockUser,
+  seedOrgMembership,
+  seedOrganization,
+  TEST_USERS,
+} from './helpers';
 import { createNextRequest } from './test-utils';
 
+const ORG_PREFIX = 'invite-test-';
+
 describe('Invitations Integration', () => {
+  let orgId: string;
+  let adminRoleId: string;
+
   beforeEach(async () => {
     vi.clearAllMocks();
     for (const user of Object.values(TEST_USERS)) {
       await cleanupInvitations(user.id);
     }
+
+    const seeded = await seedOrganization(`${ORG_PREFIX}${Date.now()}`);
+    orgId = seeded.org.id;
+    adminRoleId = seeded.adminRoleId;
+
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: TEST_USERS.UNIVERSITY_ADMIN.id,
+      orgRoleId: adminRoleId,
+    });
+  });
+
+  afterAll(async () => {
+    await cleanupOrganizationByName(ORG_PREFIX);
   });
 
   describe('POST /api/v1/organization/invites', () => {
@@ -22,11 +49,11 @@ describe('Invitations Integration', () => {
       const req = createNextRequest('http://localhost/api/v1/organization/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: 'Invitee Name',
-            email: `invite-${Date.now()}@example.com`,
-            targetOrgRoleId: '00000000-0000-4000-8000-000000000001',
-          }),
+        body: JSON.stringify({
+          email: `invite-${Date.now()}@example.com`,
+          targetOrgRoleId: adminRoleId,
+          organizationId: orgId,
+        }),
       });
 
       const response = await invitePost(req);
@@ -42,7 +69,7 @@ describe('Invitations Integration', () => {
       const req = createNextRequest('http://localhost/api/v1/organization/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'not-an-email', targetOrgRoleId: '00000000-0000-4000-8000-000000000001' }),
+        body: JSON.stringify({ email: 'not-an-email', targetOrgRoleId: adminRoleId }),
       });
 
       const response = await invitePost(req);
@@ -58,7 +85,7 @@ describe('Invitations Integration', () => {
       const req = createNextRequest('http://localhost/api/v1/organization/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'test@example.com', targetOrgRoleId: '00000000-0000-4000-8000-000000000001' }),
+        body: JSON.stringify({ email: 'test@example.com', targetOrgRoleId: adminRoleId }),
       });
 
       const response = await invitePost(req);
@@ -74,7 +101,7 @@ describe('Invitations Integration', () => {
       const req = createNextRequest('http://localhost/api/v1/organization/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Invitee', email: 'test@example.com', targetOrgRoleId: '00000000-0000-4000-8000-000000000001' }),
+        body: JSON.stringify({ email: 'test@example.com', targetOrgRoleId: adminRoleId }),
       });
 
       const response = await invitePost(req);
@@ -87,24 +114,20 @@ describe('Invitations Integration', () => {
 
   describe('GET /api/v1/organization/invites?token=...', () => {
     it('returns invitation when token is valid', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
-
-      const supabase = createRealClient();
-      const { data: invitation, error: insertError } = await supabase
+      const supabase = createServiceClient();
+      const { data: invitation, error } = await supabase
         .from('invitations')
         .insert({
-          name: 'Valid Invitee',
           email: 'valid@example.com',
-          targetOrgRoleId: '00000000-0000-4000-8000-000000000001',
-          token: 'valid-token-123',
+          target_org_role_id: adminRoleId,
+          token: `valid-token-${Date.now()}`,
           expires_at: new Date(Date.now() + 86400000).toISOString(),
           inviter_id: TEST_USERS.UNIVERSITY_ADMIN.id,
-          organization_id: '00000000-0000-4000-8000-000000000001',
+          organization_id: orgId,
         })
         .select()
         .single();
-      if (insertError || !invitation)
-        throw new Error(`Failed to insert invitation: ${insertError?.message}`);
+      if (error || !invitation) throw new Error(`Failed to insert invitation: ${error?.message}`);
 
       const req = createNextRequest(
         `http://localhost/api/v1/organization/invites?token=${invitation.token}`,
@@ -128,17 +151,14 @@ describe('Invitations Integration', () => {
     });
 
     it('returns 410 when token is expired', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
-
-      const supabase = createRealClient();
+      const supabase = createServiceClient();
       await supabase.from('invitations').insert({
-        name: 'Expired Invitee',
         email: 'expired@example.com',
-        targetOrgRoleId: '00000000-0000-4000-8000-000000000001',
+        target_org_role_id: adminRoleId,
         token: 'expired-token-123',
         expires_at: new Date(Date.now() - 86400000).toISOString(),
         inviter_id: TEST_USERS.UNIVERSITY_ADMIN.id,
-        organization_id: '00000000-0000-4000-8000-000000000001',
+        organization_id: orgId,
       });
 
       const req = createNextRequest(
@@ -151,12 +171,13 @@ describe('Invitations Integration', () => {
       expect(body.success).toBe(false);
     });
 
-    it('returns 400 when token is empty', async () => {
+    it('returns 401 when token is empty (treated as no token, requires auth)', async () => {
+      mockUser(null);
       const req = createNextRequest('http://localhost/api/v1/organization/invites?token=');
       const response = await inviteGet(req);
       const body = await response.json();
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(401);
       expect(body.success).toBe(false);
     });
   });
@@ -170,8 +191,8 @@ describe('Invitations Integration', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           invitations: [
-            { name: 'Bulk User Alpha', email: `bulk1-${Date.now()}@example.com`, targetOrgRoleId: '00000000-0000-4000-8000-000000000001' },
-            { name: 'Bulk User Beta', email: `bulk2-${Date.now()}@example.com`, targetOrgRoleId: '00000000-0000-4000-8000-000000000001' },
+            { email: `bulk1-${Date.now()}@example.com`, targetOrgRoleId: adminRoleId },
+            { email: `bulk2-${Date.now()}@example.com`, targetOrgRoleId: adminRoleId },
           ],
         }),
       });
@@ -184,7 +205,7 @@ describe('Invitations Integration', () => {
       expect(Array.isArray(body.data.results)).toBe(true);
     });
 
-    it('returns 422 when emails array is empty', async () => {
+    it('returns 422 when invitations array is empty', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
       const req = createNextRequest('http://localhost/api/v1/organization/invites/bulk', {

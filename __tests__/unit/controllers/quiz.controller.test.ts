@@ -1,38 +1,50 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AppError } from '@/lib/errors';
-import { quizController } from '@/server/controllers/quiz.controller';
-import { quizService } from '@/server/services';
+import { success, failure } from '@/lib/service-result';
+import { QuizController } from '@/server/controllers/quiz.controller';
+import type { ControllerResponse } from '@/lib/controller-response';
+import type { RequestContext } from '@/lib/request-context';
 
-vi.mock('@/server/services', () => ({
-  quizService: {
+function createMockQuizService() {
+  return {
     generateQuiz: vi.fn(),
-  },
-}));
+  };
+}
 
-const mockService = vi.mocked(quizService);
+const mockCtx: RequestContext = {
+  traceId: 'test-trace',
+  userId: 'test-user-id',
+  accountType: 'student',
+  orgRoleId: null,
+  activeOrgId: null,
+  url: '/test',
+  method: 'GET',
+};
 
 describe('QuizController', () => {
-  const userId = 'test-user-id';
+  let mockService: ReturnType<typeof createMockQuizService>;
+  let controller: QuizController;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockService = createMockQuizService();
+    controller = new QuizController(mockService as any);
   });
 
   describe('generate', () => {
     it('returns success when service generates successfully', async () => {
       const body = { questionTypes: ['mcq'], questionCount: 10 };
       const result = { id: 'attempt-1', questions: [] };
-      mockService.generateQuiz.mockResolvedValueOnce(result);
+      mockService.generateQuiz.mockResolvedValueOnce(success(result));
 
-      const response = await quizController.generate(body, userId);
+      const response = await controller.generate(body, mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 201, data: result });
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
-      const response = await quizController.generate(
+      const response = await controller.generate(
         { questionTypes: [], questionCount: 0 },
-        userId,
+        mockCtx,
       );
 
       expect(response.success).toBe(false);
@@ -40,36 +52,23 @@ describe('QuizController', () => {
       expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
-    it('returns error when service throws AppError', async () => {
-      mockService.generateQuiz.mockRejectedValueOnce(new AppError('NOT_FOUND'));
+    it('returns error when service returns failure', async () => {
+      mockService.generateQuiz.mockResolvedValueOnce(failure('NOT_FOUND'));
 
-      const response = await quizController.generate(
+      const response = await controller.generate(
         { questionTypes: ['mcq'], questionCount: 10 },
-        userId,
+        mockCtx,
       );
 
       expect(response).toEqual({ success: false, statusCode: 404, error: 'NOT_FOUND' });
     });
 
-    it('returns INTERNAL_SERVER when service throws unknown error', async () => {
-      mockService.generateQuiz.mockRejectedValueOnce(new Error('db error'));
+    it('returns FORBIDDEN when service returns FORBIDDEN', async () => {
+      mockService.generateQuiz.mockResolvedValueOnce(failure('FORBIDDEN'));
 
-      const response = await quizController.generate(
+      const response = await controller.generate(
         { questionTypes: ['mcq'], questionCount: 10 },
-        userId,
-      );
-
-      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
-    });
-  });
-
-  describe('generate with FORBIDDEN error', () => {
-    it('returns FORBIDDEN when service throws FORBIDDEN', async () => {
-      mockService.generateQuiz.mockRejectedValueOnce(new AppError('FORBIDDEN'));
-
-      const response = await quizController.generate(
-        { questionTypes: ['mcq'], questionCount: 10 },
-        userId,
+        mockCtx,
       );
 
       expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });

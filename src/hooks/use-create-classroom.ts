@@ -10,7 +10,7 @@ export function useCreateClassroom() {
 
   return useMutation({
     mutationFn: async (data: { name: string }) => {
-      return apiPost<{ id: string; name: string }>('/api/v1/teacher/classrooms', data);
+      return apiPost<{ id: string; name: string }>('/api/v1/organization', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orgs'] });

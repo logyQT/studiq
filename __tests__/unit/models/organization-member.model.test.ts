@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { ValidationErrorCode } from '@/lib/validation-errors';
 import { ChangeRoleSchema, RemoveMemberSchema } from '@/server/models/organization-member.model';
 
+const VALID_UUID = '00000000-0000-4000-8000-000000000001';
+
 describe('ChangeRoleSchema', () => {
   it('passes with valid input', () => {
     const result = ChangeRoleSchema.safeParse({
-      targetUserId: 'user-123',
-      newOrgRoleId: '00000000-0000-4000-8000-000000000001',
+      targetUserId: VALID_UUID,
+      newOrgRoleId: VALID_UUID,
     });
     expect(result.success).toBe(true);
   });
@@ -14,36 +16,36 @@ describe('ChangeRoleSchema', () => {
   it('fails when targetUserId is empty', () => {
     const result = ChangeRoleSchema.safeParse({
       targetUserId: '',
-      newOrgRoleId: '00000000-0000-4000-8000-000000000001',
+      newOrgRoleId: VALID_UUID,
     });
     expect(result.success).toBe(false);
   });
 
   it('fails when newOrgRoleId is invalid', () => {
     const result = ChangeRoleSchema.safeParse({
-      targetUserId: 'user-123',
+      targetUserId: VALID_UUID,
       newOrgRoleId: 'not-a-uuid',
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe(ValidationErrorCode.INVALID_ROLE);
+      expect(result.error.issues[0].message).toBe(ValidationErrorCode.UUID_INVALID);
     }
   });
 
   it('fails when targetUserId is missing', () => {
-    const result = ChangeRoleSchema.safeParse({ newOrgRoleId: '00000000-0000-4000-8000-000000000001' });
+    const result = ChangeRoleSchema.safeParse({ newOrgRoleId: VALID_UUID });
     expect(result.success).toBe(false);
   });
 
   it('fails when newOrgRoleId is missing', () => {
-    const result = ChangeRoleSchema.safeParse({ targetUserId: 'user-123' });
+    const result = ChangeRoleSchema.safeParse({ targetUserId: VALID_UUID });
     expect(result.success).toBe(false);
   });
 });
 
 describe('RemoveMemberSchema', () => {
   it('passes with valid input', () => {
-    const result = RemoveMemberSchema.safeParse({ targetUserId: 'user-123' });
+    const result = RemoveMemberSchema.safeParse({ targetUserId: VALID_UUID });
     expect(result.success).toBe(true);
   });
 

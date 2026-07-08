@@ -1,8 +1,8 @@
-import { AppError } from '@/lib/errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildQueryFilter, checkPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   BatchDeleteTopicInput,
   BulkCreateTopicInput,
@@ -14,8 +14,10 @@ import type {
 import { AccountType } from '@/types';
 
 export class TopicService {
-  async create(data: CreateTopicInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
+  async create(data: CreateTopicInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
     const topicVisibility = ctx.accountType === AccountType.EDUCATOR ? 'group' : 'personal';
 
     const { data: topic, error } = await supabase
@@ -29,11 +31,11 @@ export class TopicService {
       .select()
       .single();
 
-    if (error) throw mapSupabaseError(error);
-    if (!topic) throw new AppError('NOT_FOUND');
+    if (error) return toDbFailure(error);
+    if (!topic) return failure('NOT_FOUND');
 
     if ((data as any).visibility === 'group' && (data as any).groupIds?.length) {
-      const { groupService } = await import('@/server/services/group.service');
+      const { groupService } = await import('@/server/services');
       let authorized = false;
       for (const gid of (data as any).groupIds) {
         if (await groupService.isTeacherInGroup(ctx, gid)) {
@@ -41,24 +43,27 @@ export class TopicService {
           break;
         }
       }
-      if (!authorized) throw new AppError('FORBIDDEN');
+      if (!authorized) return failure('FORBIDDEN');
 
       const rows = (data as any).groupIds.map((gid: string) => ({
         topic_id: topic.id,
         group_id: gid,
       }));
       const { error: ae } = await supabase.from('topic_groups').insert(rows);
-      if (ae) throw mapSupabaseError(ae);
+      if (ae) return toDbFailure(ae);
     }
 
-    return topic;
+    return success(topic);
   }
 
-  async list(ctx: RequestContext, queryParams?: Partial<TopicListQuery>) {
-    const supabase = await createClient();
+  async list(
+    ctx: RequestContext,
+    queryParams?: Partial<TopicListQuery>,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.TOPIC_READ, 'topic');
-    if (filter._impossible) return { items: [], nextCursor: null, hasMore: false };
+    if (filter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
 
     if (filter._useRpc) {
       const rpcQuery = supabase.rpc('get_accessible_topics', {
@@ -84,7 +89,7 @@ export class TopicService {
         );
       }
       const { data, error } = await rpcQuery;
-      if (error) throw mapSupabaseError(error);
+      if (error) return toDbFailure(error);
       const rows = data as unknown as Array<{ id: string; [key: string]: unknown }>;
       const hasMore = (rows?.length ?? 0) > pageSize;
       const items = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
@@ -93,7 +98,7 @@ export class TopicService {
             JSON.stringify({ v: items[items.length - 1][sortBy], id: items[items.length - 1].id }),
           ).toString('base64')
         : null;
-      return { items, nextCursor, hasMore };
+      return success({ items, nextCursor, hasMore });
     }
 
     let query = supabase
@@ -116,7 +121,7 @@ export class TopicService {
             .eq('organization_id', ctx.activeOrgId)
             .eq('visibility', 'group');
         } else {
-          return { items: [], nextCursor: null, hasMore: false };
+          return success({ items: [], nextCursor: null, hasMore: false });
         }
       }
     }
@@ -147,7 +152,7 @@ export class TopicService {
     }
 
     const { data, error } = await query;
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
     const rows = data as Array<Record<string, unknown>> | null;
     const hasMore = (rows?.length ?? 0) > pageSize;
@@ -165,18 +170,18 @@ export class TopicService {
         ).toString('base64')
       : null;
 
-    return {
+    return success({
       items: items as unknown as Topic[],
       nextCursor,
       hasMore,
-    } as { items: Topic[]; nextCursor: string | null; hasMore: boolean };
+    } as { items: Topic[]; nextCursor: string | null; hasMore: boolean });
   }
 
-  async getById(id: string, ctx: RequestContext) {
-    const supabase = await createClient();
+  async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.TOPIC_READ, 'topic');
-    if (filter._impossible) throw new AppError('NOT_FOUND');
+    if (filter._impossible) return failure('NOT_FOUND');
 
     if (filter._useRpc) {
       const { data, error } = await supabase
@@ -186,8 +191,8 @@ export class TopicService {
         })
         .eq('id', id)
         .single();
-      if (error) throw mapSupabaseError(error);
-      return data;
+      if (error) return toDbFailure(error);
+      return success(data);
     }
 
     let query = supabase.from('topics').select('*').eq('id', id);
@@ -199,12 +204,16 @@ export class TopicService {
     }
 
     const { data, error } = await query.single();
-    if (error || !data) throw new AppError('NOT_FOUND');
-    return data;
+    if (error || !data) return failure('NOT_FOUND');
+    return success(data);
   }
 
-  async update(id: string, data: UpdateTopicInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  async update(
+    id: string,
+    data: UpdateTopicInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const { data: existing, error: fetchError } = await supabase
       .from('topics')
@@ -212,7 +221,7 @@ export class TopicService {
       .eq('id', id)
       .single();
 
-    if (fetchError || !existing) throw new AppError('NOT_FOUND');
+    if (fetchError || !existing) return failure('NOT_FOUND');
     await checkPermission(ctx, Permission.TOPIC_UPDATE, existing);
 
     const updateFields: Record<string, unknown> = {};
@@ -227,25 +236,25 @@ export class TopicService {
         .select()
         .single();
 
-      if (error) throw mapSupabaseError(error);
-      if (!topic) throw new AppError('NOT_FOUND');
+      if (error) return toDbFailure(error);
+      if (!topic) return failure('NOT_FOUND');
     }
 
     if ((data as any).groupIds !== undefined) {
       const { error: de } = await supabase.from('topic_groups').delete().eq('topic_id', id);
-      if (de) throw mapSupabaseError(de);
+      if (de) return toDbFailure(de);
       if ((data as any).groupIds.length > 0) {
         const rows = (data as any).groupIds.map((gid: string) => ({ topic_id: id, group_id: gid }));
         const { error: ae } = await supabase.from('topic_groups').insert(rows);
-        if (ae) throw mapSupabaseError(ae);
+        if (ae) return toDbFailure(ae);
       }
     }
 
     return this.getById(id, ctx);
   }
 
-  async delete(id: string, ctx: RequestContext) {
-    const supabase = await createClient();
+  async delete(id: string, ctx: RequestContext): Promise<ServiceResult<undefined>> {
+    const supabase = await this.createClient();
 
     const { data: existing, error: fetchError } = await supabase
       .from('topics')
@@ -253,16 +262,20 @@ export class TopicService {
       .eq('id', id)
       .single();
 
-    if (fetchError || !existing) throw new AppError('NOT_FOUND');
+    if (fetchError || !existing) return failure('NOT_FOUND');
     await checkPermission(ctx, Permission.TOPIC_DELETE, existing);
 
     const { error } = await supabase.from('topics').delete().eq('id', id);
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
+    return success(undefined);
   }
 
-  async bulkCreate(data: BulkCreateTopicInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  async bulkCreate(
+    data: BulkCreateTopicInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
     const topicVisibility = ctx.accountType === AccountType.EDUCATOR ? 'group' : 'personal';
 
     const topics = data.topics.map((t) => ({
@@ -274,20 +287,23 @@ export class TopicService {
 
     const { data: created, error } = await supabase.from('topics').insert(topics).select('*');
 
-    if (error) throw mapSupabaseError(error);
-    return created;
+    if (error) return toDbFailure(error);
+    return success(created);
   }
 
-  async batchDelete(data: BatchDeleteTopicInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  async batchDelete(
+    data: BatchDeleteTopicInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<{ deleted: number }>> {
+    const supabase = await this.createClient();
 
     const { data: topics, error: fetchError } = await supabase
       .from('topics')
       .select('*')
       .in('id', data.ids);
 
-    if (fetchError) throw mapSupabaseError(fetchError);
-    if (!topics || topics.length === 0) throw new AppError('NOT_FOUND');
+    if (fetchError) return toDbFailure(fetchError);
+    if (!topics || topics.length === 0) return failure('NOT_FOUND');
 
     for (const topic of topics) {
       await checkPermission(ctx, Permission.TOPIC_DELETE, topic);
@@ -295,10 +311,8 @@ export class TopicService {
 
     const { error } = await supabase.from('topics').delete().in('id', data.ids);
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return { deleted: data.ids.length };
+    return success({ deleted: data.ids.length });
   }
 }
-
-export const topicService = new TopicService();

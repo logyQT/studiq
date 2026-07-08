@@ -1,4 +1,6 @@
 import { AppError, type AppErrorCode } from '@/lib/errors';
+import type { ServiceResult } from '@/lib/service-result';
+import { failure } from '@/lib/service-result';
 
 interface SupabaseError {
   code: string;
@@ -37,4 +39,9 @@ export function mapSupabaseError(error: SupabaseError): never {
   }
 
   throw new DatabaseError(error);
+}
+
+export function toDbFailure(error: SupabaseError): ServiceResult<never> {
+  const code = PG_ERROR_MAP[error.code];
+  return code ? failure(code) : failure('INTERNAL_SERVER');
 }

@@ -1,8 +1,8 @@
 import type { ControllerResponse } from '@/lib/controller-response';
-import { AppError } from '@/lib/errors';
+import { controllerResponse } from '@/lib/controller-response';
 import { hasPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import { isFailure } from '@/lib/service-result';
 import {
   BatchDeleteTopicSchema,
   BulkCreateTopicSchema,
@@ -10,119 +10,108 @@ import {
   TopicListQuerySchema,
   UpdateTopicSchema,
 } from '@/server/models';
-import { topicService } from '@/server/services';
+import type { TopicService } from '@/server/services/topic.service';
 
 export class TopicController {
+  constructor(private topicService: TopicService) {}
+
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      if (!(await hasPermission(ctx, Permission.TOPIC_CREATE))) throw new AppError('FORBIDDEN');
-      const parsed = CreateTopicSchema.safeParse(body);
+    if (!(await hasPermission(ctx, Permission.TOPIC_CREATE))) {
+      return controllerResponse.error('FORBIDDEN');
+    }
+    const parsed = CreateTopicSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
 
-      const topic = await topicService.create(parsed.data, ctx);
-
-      return { success: true, statusCode: 201, data: topic };
-    }, ctx);
+    const result = await this.topicService.create(parsed.data, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.created(result.data);
   }
 
   async list(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = TopicListQuerySchema.safeParse(body ?? {});
+    const parsed = TopicListQuerySchema.safeParse(body ?? {});
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
 
-      const result = await topicService.list(ctx, parsed.data);
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    const result = await this.topicService.list(ctx, parsed.data);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const topic = await topicService.getById(id, ctx);
-
-      return { success: true, statusCode: 200, data: topic };
-    }, ctx);
+    const result = await this.topicService.getById(id, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
   }
 
   async update(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = UpdateTopicSchema.safeParse(body);
+    const parsed = UpdateTopicSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
 
-      const topic = await topicService.update(id, parsed.data, ctx);
-
-      return { success: true, statusCode: 200, data: topic };
-    }, ctx);
+    const result = await this.topicService.update(id, parsed.data, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
   }
 
   async delete(id: string, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      await topicService.delete(id, ctx);
-
-      return { success: true, statusCode: 200, data: { success: true } };
-    }, ctx);
+    const result = await this.topicService.delete(id, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return { success: true, statusCode: 200, data: { success: true } };
   }
 
   async bulkCreate(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = BulkCreateTopicSchema.safeParse(body);
+    const parsed = BulkCreateTopicSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
 
-      const topics = await topicService.bulkCreate(parsed.data, ctx);
-
-      return { success: true, statusCode: 201, data: topics };
-    }, ctx);
+    const result = await this.topicService.bulkCreate(parsed.data, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.created(result.data);
   }
 
   async batchDelete(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = BatchDeleteTopicSchema.safeParse(body);
+    const parsed = BatchDeleteTopicSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
 
-      const result = await topicService.batchDelete(parsed.data, ctx);
-
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    const result = await this.topicService.batchDelete(parsed.data, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
   }
 }
-
-export const topicController = new TopicController();

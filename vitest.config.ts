@@ -14,6 +14,9 @@ export default defineConfig(({ mode }) => {
       'process.env.SUPABASE_SERVICE_ROLE_KEY': JSON.stringify(env.SUPABASE_SERVICE_ROLE_KEY || ''),
     },
     test: {
+      env: {
+        OTEL_SDK_DISABLED: 'true',
+      },
       globals: true,
       environment: 'node',
       setupFiles: ['./__tests__/setup.ts'],

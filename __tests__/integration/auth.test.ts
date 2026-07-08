@@ -4,7 +4,7 @@ import { POST as logoutPost } from '@/app/(backend)/api/v1/auth/logout/route';
 import { POST as resetPost } from '@/app/(backend)/api/v1/auth/password/reset/route';
 import { POST as updatePasswordPost } from '@/app/(backend)/api/v1/auth/password/update/route';
 import { POST as registerPost } from '@/app/(backend)/api/v1/auth/register/route';
-import { TEST_USERS, useRealSupabase } from './helpers';
+import { mockUser, TEST_USERS, useRealSupabase } from './helpers';
 import { createNextRequest } from './test-utils';
 
 describe('Auth Integration', () => {
@@ -14,7 +14,7 @@ describe('Auth Integration', () => {
   });
 
   describe('POST /api/v1/auth/register', () => {
-    it('registers a new user and returns 201', async () => {
+    it('registers a new user and returns 202', async () => {
       const uniqueEmail = `test-${Date.now()}@example.com`;
       const req = createNextRequest('http://localhost/api/v1/auth/register', {
         method: 'POST',
@@ -23,6 +23,7 @@ describe('Auth Integration', () => {
           email: uniqueEmail,
           password: 'TestPass123',
           name: 'Test User',
+          accountType: 'educator',
         }),
       });
 
@@ -41,6 +42,7 @@ describe('Auth Integration', () => {
           email: 'not-an-email',
           password: 'TestPass123',
           name: 'Test User',
+          accountType: 'educator',
         }),
       });
 
@@ -60,6 +62,7 @@ describe('Auth Integration', () => {
           email: 'test@example.com',
           password: 'short',
           name: 'Test User',
+          accountType: 'educator',
         }),
       });
 
@@ -68,6 +71,34 @@ describe('Auth Integration', () => {
 
       expect(response.status).toBe(422);
       expect(body.success).toBe(false);
+    });
+
+    it('assigns correct brand plan key via handle_new_user trigger', async () => {
+      const { createServiceClient } = await import('@/lib/supabase/service');
+      const serviceClient = createServiceClient();
+      const uniqueEmail = `plan-test-${Date.now()}@example.com`;
+
+      const req = createNextRequest('http://localhost/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: uniqueEmail,
+          password: 'TestPass123',
+          name: 'Plan Test',
+          accountType: 'educator',
+        }),
+      });
+
+      const response = await registerPost(req);
+      expect(response.status).toBe(202);
+
+      const { data: profile } = await serviceClient
+        .from('profiles')
+        .select('personal_plan_key')
+        .eq('email', uniqueEmail)
+        .single();
+
+      expect(profile?.personal_plan_key).toBe('lite');
     });
   });
 
@@ -123,7 +154,8 @@ describe('Auth Integration', () => {
 
   describe('POST /api/v1/auth/logout', () => {
     it('returns 200 on logout', async () => {
-      const response = await logoutPost();
+      const req = createNextRequest('http://localhost/api/v1/auth/logout', { method: 'POST' });
+      const response = await logoutPost(req);
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -163,6 +195,8 @@ describe('Auth Integration', () => {
 
   describe('POST /api/v1/auth/password/update', () => {
     it('returns 422 when passwords do not match', async () => {
+      mockUser(TEST_USERS.TEACHER);
+
       const req = createNextRequest('http://localhost/api/v1/auth/password/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

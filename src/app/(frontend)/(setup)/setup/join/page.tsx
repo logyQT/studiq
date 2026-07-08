@@ -84,7 +84,7 @@ export default function JoinPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="max-w-lg mx-auto space-y-8">
       <div className="space-y-2">
         <h1 className="text-2xl font-bold tracking-tight">{t('join_title')}</h1>
         <p className="text-muted-foreground">{t('join_desc')}</p>

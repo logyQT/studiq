@@ -11,7 +11,7 @@ export default function ManageLayout({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     if (needsOnboarding) {
-      router.replace('/manage/onboarding/org-setup');
+      router.replace('/setup/org');
     }
   }, [needsOnboarding, router]);
 

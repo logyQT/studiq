@@ -1,16 +1,29 @@
-import { AppError } from '@/lib/errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type { CreateGroupInput, SetGroupMembersInput, UpdateGroupInput } from '@/server/models';
-import { checkLimit } from '@/server/services/plan.resolver';
+import { planResolver } from '@/server/services';
 
 export class GroupService {
-  async listGroups(ctx: RequestContext) {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
+  async listGroups(ctx: RequestContext): Promise<
+    ServiceResult<
+      {
+        id: string;
+        name: string;
+        description: string | null;
+        created_at: string;
+        memberCount: number;
+        teacherCount: number;
+      }[]
+    >
+  > {
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const { data, error } = await supabase
@@ -25,35 +38,42 @@ export class GroupService {
       .eq('organization_id', ctx.activeOrgId)
       .order('created_at', { ascending: true });
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return data.map((g) => {
-      const total = (g.group_members as unknown as { count: number }[])?.[0]?.count ?? 0;
-      const teachers =
-        (g.group_members_teachers as unknown as { count: number }[])?.[0]?.count ?? 0;
-      return {
-        id: g.id,
-        name: g.name,
-        description: g.description,
-        created_at: g.created_at,
-        memberCount: total,
-        teacherCount: teachers,
-      };
-    });
+    return success(
+      data.map((g) => {
+        const total = (g.group_members as unknown as { count: number }[])?.[0]?.count ?? 0;
+        const teachers =
+          (g.group_members_teachers as unknown as { count: number }[])?.[0]?.count ?? 0;
+        return {
+          id: g.id,
+          name: g.name,
+          description: g.description,
+          created_at: g.created_at,
+          memberCount: total,
+          teacherCount: teachers,
+        };
+      }),
+    );
   }
 
-  async createGroup(ctx: RequestContext, data: CreateGroupInput) {
-    const supabase = await createClient();
+  async createGroup(
+    ctx: RequestContext,
+    data: CreateGroupInput,
+  ): Promise<
+    ServiceResult<{ id: string; name: string; description: string | null; created_at: string }>
+  > {
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const { count: groupCount } = await supabase
       .from('groups')
       .select('*', { count: 'exact', head: true })
       .eq('organization_id', ctx.activeOrgId);
-    await checkLimit(ctx, 'max_groups', groupCount ?? 0);
+    await planResolver.checkLimit(ctx, 'max_groups', groupCount ?? 0);
 
     const { data: group, error } = await supabase
       .from('groups')
@@ -61,16 +81,22 @@ export class GroupService {
       .select('id, name, description, created_at')
       .single();
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return group;
+    return success(group);
   }
 
-  async updateGroup(ctx: RequestContext, id: string, data: UpdateGroupInput) {
-    const supabase = await createClient();
+  async updateGroup(
+    ctx: RequestContext,
+    id: string,
+    data: UpdateGroupInput,
+  ): Promise<
+    ServiceResult<{ id: string; name: string; description: string | null; created_at: string }>
+  > {
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const { data: group, error } = await supabase
@@ -82,18 +108,18 @@ export class GroupService {
       .single();
 
     if (error) {
-      if (error.code === 'PGRST116') throw new AppError('NOT_FOUND');
-      throw mapSupabaseError(error);
+      if (error.code === 'PGRST116') return failure('NOT_FOUND');
+      return toDbFailure(error);
     }
 
-    return group;
+    return success(group);
   }
 
-  async deleteGroup(ctx: RequestContext, id: string) {
-    const supabase = await createClient();
+  async deleteGroup(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const { error } = await supabase
@@ -102,16 +128,19 @@ export class GroupService {
       .eq('id', id)
       .eq('organization_id', ctx.activeOrgId);
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return { success: true };
+    return success(undefined);
   }
 
-  async getGroupMembers(ctx: RequestContext, groupId: string) {
-    const supabase = await createClient();
+  async getGroupMembers(
+    ctx: RequestContext,
+    groupId: string,
+  ): Promise<ServiceResult<{ userId: string; role: string }[]>> {
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const { data: group } = await supabase
@@ -121,23 +150,27 @@ export class GroupService {
       .eq('organization_id', ctx.activeOrgId)
       .single();
 
-    if (!group) throw new AppError('NOT_FOUND');
+    if (!group) return failure('NOT_FOUND');
 
     const { data, error } = await supabase
       .from('group_members')
       .select('user_id, role')
       .eq('group_id', groupId);
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return data.map((m) => ({ userId: m.user_id, role: m.role }));
+    return success(data.map((m) => ({ userId: m.user_id, role: m.role })));
   }
 
-  async setGroupMembers(ctx: RequestContext, groupId: string, data: SetGroupMembersInput) {
-    const supabase = await createClient();
+  async setGroupMembers(
+    ctx: RequestContext,
+    groupId: string,
+    data: SetGroupMembersInput,
+  ): Promise<ServiceResult<void>> {
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const { data: group } = await supabase
@@ -147,14 +180,14 @@ export class GroupService {
       .eq('organization_id', ctx.activeOrgId)
       .single();
 
-    if (!group) throw new AppError('NOT_FOUND');
+    if (!group) return failure('NOT_FOUND');
 
     const { error: deleteError } = await supabase
       .from('group_members')
       .delete()
       .eq('group_id', groupId);
 
-    if (deleteError) throw mapSupabaseError(deleteError);
+    if (deleteError) return toDbFailure(deleteError);
 
     if (data.members.length > 0) {
       const rows = data.members.map((m) => ({
@@ -165,65 +198,74 @@ export class GroupService {
 
       const { error: insertError } = await supabase.from('group_members').insert(rows);
 
-      if (insertError) throw mapSupabaseError(insertError);
+      if (insertError) return toDbFailure(insertError);
     }
 
-    return { success: true };
+    return success(undefined);
   }
 
-  async getUserGroupIds(ctx: RequestContext): Promise<string[]> {
-    const supabase = await createClient();
-    const { data } = await supabase.rpc('get_user_group_ids', {
+  async getUserGroupIds(ctx: RequestContext): Promise<ServiceResult<string[]>> {
+    const supabase = await this.createClient();
+    const { data, error } = await supabase.rpc('get_user_group_ids', {
       p_user_id: ctx.userId,
       p_org_id: ctx.activeOrgId,
     });
-    return (data as { group_id: string }[] | null)?.map((r) => r.group_id) ?? [];
+    if (error) return toDbFailure(error);
+    return success((data as { group_id: string }[] | null)?.map((r) => r.group_id) ?? []);
   }
 
-  async isTeacherInGroup(ctx: RequestContext, groupId: string): Promise<boolean> {
-    const supabase = await createClient();
-    const { data } = await supabase
+  async isTeacherInGroup(ctx: RequestContext, groupId: string): Promise<ServiceResult<boolean>> {
+    const supabase = await this.createClient();
+    const { data, error } = await supabase
       .from('group_members')
       .select('id')
       .eq('group_id', groupId)
       .eq('user_id', ctx.userId)
       .eq('role', 'teacher')
       .maybeSingle();
-    return !!data;
+    if (error) return toDbFailure(error);
+    return success(!!data);
   }
 
-  async isUserInGroup(ctx: RequestContext, groupId: string): Promise<boolean> {
-    const supabase = await createClient();
-    const { data } = await supabase
+  async isUserInGroup(ctx: RequestContext, groupId: string): Promise<ServiceResult<boolean>> {
+    const supabase = await this.createClient();
+    const { data, error } = await supabase
       .from('group_members')
       .select('id')
       .eq('group_id', groupId)
       .eq('user_id', ctx.userId)
       .maybeSingle();
-    return !!data;
+    if (error) return toDbFailure(error);
+    return success(!!data);
   }
 
-  async listMyGroups(ctx: RequestContext) {
-    const supabase = await createClient();
+  async listMyGroups(
+    ctx: RequestContext,
+  ): Promise<
+    ServiceResult<
+      { id: string; name: string; organizationId: string; role: string; joinedAt: string }[]
+    >
+  > {
+    const supabase = await this.createClient();
 
     const { data, error } = await supabase
       .from('group_members')
       .select('role, joined_at, groups!inner(id, name, organization_id)')
       .eq('user_id', ctx.userId);
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return data.map((m) => {
-      const group = m.groups as unknown as { id: string; name: string; organization_id: string };
-      return {
-        id: group.id,
-        name: group.name,
-        organizationId: group.organization_id,
-        role: m.role,
-        joinedAt: m.joined_at,
-      };
-    });
+    return success(
+      data.map((m) => {
+        const group = m.groups as unknown as { id: string; name: string; organization_id: string };
+        return {
+          id: group.id,
+          name: group.name,
+          organizationId: group.organization_id,
+          role: m.role,
+          joinedAt: m.joined_at,
+        };
+      }),
+    );
   }
 }
-
-export const groupService = new GroupService();

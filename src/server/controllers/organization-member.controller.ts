@@ -1,52 +1,63 @@
-import type { ControllerResponse } from '@/lib/controller-response';
+import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
+import { requireFeature } from '@/lib/features';
 import type { RequestContext } from '@/lib/request-context';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import { isFailure } from '@/lib/service-result';
 import { ChangeRoleSchema } from '@/server/models/organization-member.model';
-import { organizationMemberService } from '@/server/services';
+import type { OrganizationMemberService } from '@/server/services/organization-member.service';
 
 export class OrganizationMemberController {
-  async listMembers(ctx: RequestContext, roleFilter?: string): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const members = await organizationMemberService.listMembers(ctx, roleFilter);
+  constructor(private organizationMemberService: OrganizationMemberService) {}
 
-      return { success: true, statusCode: 200, data: members };
-    }, ctx);
+  async listMembers(ctx: RequestContext, roleFilter?: string): Promise<ControllerResponse> {
+    const members = await this.organizationMemberService.listMembers(ctx, roleFilter);
+
+    if (isFailure(members)) {
+      return controllerResponse.error(members.error);
+    }
+
+    return controllerResponse.success(members.data);
   }
 
   async changeRole(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = ChangeRoleSchema.safeParse(body);
+    await requireFeature(ctx, 'member.manage');
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    const parsed = ChangeRoleSchema.safeParse(body);
 
-      await organizationMemberService.changeRole(
-        ctx,
-        parsed.data.targetUserId,
-        parsed.data.newOrgRoleId,
-      );
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
 
-      return { success: true, statusCode: 200, data: { success: true } };
-    }, ctx);
+    const result = await this.organizationMemberService.changeRole(
+      ctx,
+      parsed.data.targetUserId,
+      parsed.data.newOrgRoleId,
+    );
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success({ success: true });
   }
 
   async removeMember(ctx: RequestContext, targetUserId: string): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      if (!targetUserId) {
-        return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
-      }
+    await requireFeature(ctx, 'member.manage');
 
-      await organizationMemberService.removeMember(ctx, targetUserId);
+    if (!targetUserId) {
+      return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
+    }
 
-      return { success: true, statusCode: 200, data: { success: true } };
-    }, ctx);
+    const result = await this.organizationMemberService.removeMember(ctx, targetUserId);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success({ success: true });
   }
 }
-
-export const organizationMemberController = new OrganizationMemberController();

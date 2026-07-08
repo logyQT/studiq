@@ -1,7 +1,6 @@
 import type { NextRequest } from 'next/server';
 import type { ControllerResponse } from '@/lib/controller-response';
 import { toNextResponse } from '@/lib/http-utils';
-import { log } from '@/lib/logger';
 import type { RequestContext } from '@/lib/request-context';
 import { withAuth } from '@/lib/with-auth';
 import { flashcardController, flashcardPracticeController } from '@/server/controllers';
@@ -22,7 +21,6 @@ const actionHandlers: Record<string, ActionHandler> = {
 export async function POST(req: NextRequest, { params }: { params: Promise<{ action: string }> }) {
   return withAuth(req, async (ctx) => {
     const { action } = await params;
-    log.trace.info(`batch/${action}`, { metadata: { traceId: ctx.traceId } });
     const handler = actionHandlers[action];
     if (!handler) {
       return toNextResponse({

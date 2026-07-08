@@ -1,6 +1,5 @@
 import { tool } from 'ai';
 import { conversationStorage } from '@/lib/conversation-context';
-import { log } from '@/lib/logger';
 import { enqueueTrace } from '@/lib/trace-queue';
 import { z } from '@/lib/zod';
 
@@ -27,9 +26,6 @@ export const extractConceptsTool = tool({
       eventType: 'tool_call',
       label: 'extract_concepts',
       data: { termCount: terms?.length },
-    });
-    log.ai.info('extract_concepts called', {
-      metadata: { termCount: terms?.length },
     });
     return { terms };
   },

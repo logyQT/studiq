@@ -1,25 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AppError } from '@/lib/errors';
-import { questionController } from '@/server/controllers/question.controller';
-import { questionService } from '@/server/services';
+import { success, failure } from '@/lib/service-result';
+import { QuestionController } from '@/server/controllers/question.controller';
+import type { ControllerResponse } from '@/lib/controller-response';
+import type { RequestContext } from '@/lib/request-context';
 
-vi.mock('@/server/services', () => ({
-  questionService: {
+function createMockQuestionService() {
+  return {
     create: vi.fn(),
     list: vi.fn(),
     getById: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-  },
-}));
+  };
+}
 
-const mockService = vi.mocked(questionService);
+const mockCtx: RequestContext = {
+  traceId: 'test-trace',
+  userId: 'test-user-id',
+  accountType: 'student',
+  orgRoleId: null,
+  activeOrgId: null,
+  url: '/test',
+  method: 'GET',
+};
 
 describe('QuestionController', () => {
-  const userId = 'test-user-id';
+  let mockService: ReturnType<typeof createMockQuestionService>;
+  let controller: QuestionController;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockService = createMockQuestionService();
+    controller = new QuestionController(mockService as any);
   });
 
   describe('create', () => {
@@ -30,38 +42,27 @@ describe('QuestionController', () => {
         answers: [{ content: '4', isCorrect: true }],
       };
       const created = { id: 'q-1', ...body };
-      mockService.create.mockResolvedValueOnce(created);
+      mockService.create.mockResolvedValueOnce(success(created));
 
-      const response = await questionController.create(body, userId);
+      const response = await controller.create(body, mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 201, data: created });
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
-      const response = await questionController.create({ type: 'mcq', content: '' }, userId);
+      const response = await controller.create({ type: 'mcq', content: '' }, mockCtx);
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
       expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
-    it('returns error when service throws AppError', async () => {
-      mockService.create.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
+    it('returns error when service returns failure', async () => {
+      mockService.create.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-      const response = await questionController.create(
+      const response = await controller.create(
         { type: 'mcq', content: 'Q', answers: [{ content: 'A', isCorrect: true }] },
-        userId,
-      );
-
-      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
-    });
-
-    it('returns INTERNAL_SERVER when service throws unknown error', async () => {
-      mockService.create.mockRejectedValueOnce(new Error('db error'));
-
-      const response = await questionController.create(
-        { type: 'mcq', content: 'Q', answers: [{ content: 'A', isCorrect: true }] },
-        userId,
+        mockCtx,
       );
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
@@ -71,29 +72,28 @@ describe('QuestionController', () => {
   describe('list', () => {
     it('returns questions without filters', async () => {
       const questions = [{ id: 'q-1', content: 'Q1' }];
-      mockService.list.mockResolvedValueOnce(questions);
+      mockService.list.mockResolvedValueOnce(success(questions));
 
-      const response = await questionController.list();
+      const response = await controller.list(mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: questions });
     });
 
     it('passes filters to service', async () => {
-      mockService.list.mockResolvedValueOnce([]);
+      mockService.list.mockResolvedValueOnce(success([]));
 
-      await questionController.list({ subjectId: 'sub-1', type: 'mcq', difficulty: 'easy' });
+      await controller.list(mockCtx, { bankId: 'sub-1', type: 'mcq' });
 
-      expect(mockService.list).toHaveBeenCalledWith({
-        subjectId: 'sub-1',
+      expect(mockService.list).toHaveBeenCalledWith(mockCtx, {
+        bankId: 'sub-1',
         type: 'mcq',
-        difficulty: 'easy',
       });
     });
 
-    it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.list.mockRejectedValueOnce(new Error('unexpected'));
+    it('returns failure when service returns failure', async () => {
+      mockService.list.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-      const response = await questionController.list();
+      const response = await controller.list(mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
@@ -102,88 +102,64 @@ describe('QuestionController', () => {
   describe('getById', () => {
     it('returns question when found', async () => {
       const question = { id: 'q-1', content: 'Q1' };
-      mockService.getById.mockResolvedValueOnce(question);
+      mockService.getById.mockResolvedValueOnce(success(question));
 
-      const response = await questionController.getById('q-1');
+      const response = await controller.getById('q-1', mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: question });
     });
 
-    it('returns NOT_FOUND when service throws', async () => {
-      mockService.getById.mockRejectedValueOnce(new AppError('NOT_FOUND'));
+    it('returns NOT_FOUND when service returns failure', async () => {
+      mockService.getById.mockResolvedValueOnce(failure('NOT_FOUND'));
 
-      const response = await questionController.getById('nonexistent');
+      const response = await controller.getById('nonexistent', mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 404, error: 'NOT_FOUND' });
-    });
-
-    it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.getById.mockRejectedValueOnce(new Error('unexpected'));
-
-      const response = await questionController.getById('q-1');
-
-      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
   });
 
   describe('update', () => {
     it('returns success when service updates successfully', async () => {
       const updated = { id: 'q-1', content: 'Updated' };
-      mockService.update.mockResolvedValueOnce(updated);
+      mockService.update.mockResolvedValueOnce(success(updated));
 
-      const response = await questionController.update('q-1', { content: 'Updated' }, userId);
+      const response = await controller.update('q-1', { content: 'Updated' }, mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: updated });
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
-      const response = await questionController.update('q-1', { content: '' }, userId);
+      const response = await controller.update('q-1', { content: '' }, mockCtx);
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
       expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
-    it('returns FORBIDDEN when service throws FORBIDDEN', async () => {
-      mockService.update.mockRejectedValueOnce(new AppError('FORBIDDEN'));
+    it('returns FORBIDDEN when service returns failure', async () => {
+      mockService.update.mockResolvedValueOnce(failure('FORBIDDEN'));
 
-      const response = await questionController.update('q-1', { content: 'Updated' }, userId);
+      const response = await controller.update('q-1', { content: 'Updated' }, mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
-    });
-
-    it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.update.mockRejectedValueOnce(new Error('unexpected'));
-
-      const response = await questionController.update('q-1', { content: 'Updated' }, userId);
-
-      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
   });
 
   describe('delete', () => {
     it('returns success when service deletes successfully', async () => {
-      mockService.delete.mockResolvedValueOnce(undefined);
+      mockService.delete.mockResolvedValueOnce(success(undefined));
 
-      const response = await questionController.delete('q-1', userId);
+      const response = await controller.delete('q-1', mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: { success: true } });
     });
 
-    it('returns error when service throws', async () => {
-      mockService.delete.mockRejectedValueOnce(new AppError('FORBIDDEN'));
+    it('returns error when service returns failure', async () => {
+      mockService.delete.mockResolvedValueOnce(failure('FORBIDDEN'));
 
-      const response = await questionController.delete('q-1', userId);
+      const response = await controller.delete('q-1', mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
-    });
-
-    it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.delete.mockRejectedValueOnce(new Error('unexpected'));
-
-      const response = await questionController.delete('q-1', userId);
-
-      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
   });
 });

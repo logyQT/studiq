@@ -1,18 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { healthController } from '@/server/controllers/health.controller';
-import { HealthService } from '@/server/services';
+import { HealthController } from '@/server/controllers/health.controller';
+import type { ControllerResponse } from '@/lib/controller-response';
 
-vi.mock('@/server/services', () => ({
-  HealthService: {
+function createMockHealthService() {
+  return {
     checkHealth: vi.fn(),
-  },
-}));
-
-const mockHealthService = vi.mocked(HealthService);
+  };
+}
 
 describe('HealthController', () => {
+  let mockService: ReturnType<typeof createMockHealthService>;
+  let controller: HealthController;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mockService = createMockHealthService();
+    controller = new HealthController(mockService as any);
   });
 
   describe('getStatus', () => {
@@ -25,9 +28,9 @@ describe('HealthController', () => {
         services: { supabase: 'up' },
         responseTime: 50,
       };
-      mockHealthService.checkHealth.mockResolvedValueOnce(healthStatus as any);
+      mockService.checkHealth.mockResolvedValueOnce(healthStatus);
 
-      const response = await healthController.getStatus();
+      const response = await controller.getStatus();
 
       expect(response).toEqual({
         success: true,
@@ -45,9 +48,9 @@ describe('HealthController', () => {
         services: { supabase: 'up' },
         responseTime: 50,
       };
-      mockHealthService.checkHealth.mockResolvedValueOnce(healthStatus as any);
+      mockService.checkHealth.mockResolvedValueOnce(healthStatus);
 
-      const response = await healthController.getStatus();
+      const response = await controller.getStatus();
 
       expect(response).toEqual({
         success: true,
@@ -65,9 +68,9 @@ describe('HealthController', () => {
         services: { supabase: 'down' },
         responseTime: 50,
       };
-      mockHealthService.checkHealth.mockResolvedValueOnce(healthStatus as any);
+      mockService.checkHealth.mockResolvedValueOnce(healthStatus);
 
-      const response = await healthController.getStatus();
+      const response = await controller.getStatus();
 
       expect(response).toEqual({
         success: true,
@@ -85,9 +88,9 @@ describe('HealthController', () => {
         services: { supabase: 'unknown' },
         responseTime: 50,
       };
-      mockHealthService.checkHealth.mockResolvedValueOnce(healthStatus as any);
+      mockService.checkHealth.mockResolvedValueOnce(healthStatus);
 
-      const response = await healthController.getStatus();
+      const response = await controller.getStatus();
 
       expect(response).toEqual({
         success: true,

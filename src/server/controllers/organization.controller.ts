@@ -1,113 +1,151 @@
-import type { ControllerResponse } from '@/lib/controller-response';
+import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import { isFailure } from '@/lib/service-result';
 import {
   CreateOrganizationSchema,
   OrganizationIdParamsSchema,
   UpdateOrganizationSchema,
 } from '@/server/models';
-import { organizationService } from '@/server/services';
+import type { OrganizationService } from '@/server/services/organization.service';
 
 export class OrganizationController {
+  constructor(private organizationService: OrganizationService) {}
+
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsedData = CreateOrganizationSchema.safeParse(body);
+    const parsedData = CreateOrganizationSchema.safeParse(body);
 
-      if (!parsedData.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsedData.error.issues,
-        };
-      }
+    if (!parsedData.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsedData.error.issues,
+      };
+    }
 
-      const result = await organizationService.create(ctx, parsedData.data);
+    const result = await this.organizationService.create(ctx, parsedData.data);
 
-      return { success: true, statusCode: 201, data: result };
-    });
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.created(result.data);
+  }
+
+  async createAsMember(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    const parsedData = CreateOrganizationSchema.safeParse(body);
+
+    if (!parsedData.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsedData.error.issues,
+      };
+    }
+
+    const result = await this.organizationService.createAndJoin(ctx, parsedData.data);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.created(result.data);
   }
 
   async getAll(): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const organizations = await organizationService.getAll();
-      return { success: true, statusCode: 200, data: organizations };
-    });
+    const organizations = await this.organizationService.getAll();
+
+    if (isFailure(organizations)) {
+      return controllerResponse.error(organizations.error);
+    }
+
+    return controllerResponse.success(organizations.data);
   }
 
   async getById(id: string): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsedId = OrganizationIdParamsSchema.safeParse({ id });
-      if (!parsedId.success) {
-        return {
-          success: false,
-          statusCode: 400,
-          error: 'BAD_REQUEST',
-        };
-      }
+    const parsedId = OrganizationIdParamsSchema.safeParse({ id });
+    if (!parsedId.success) {
+      return {
+        success: false,
+        statusCode: 400,
+        error: 'BAD_REQUEST',
+      };
+    }
 
-      const organization = await organizationService.getById(parsedId.data.id);
-      return { success: true, statusCode: 200, data: organization };
-    });
+    const organization = await this.organizationService.getById(parsedId.data.id);
+
+    if (isFailure(organization)) {
+      return controllerResponse.error(organization.error);
+    }
+
+    return controllerResponse.success(organization.data);
   }
 
   async update(id: string, body: unknown): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsedId = OrganizationIdParamsSchema.safeParse({ id });
-      if (!parsedId.success) {
-        return {
-          success: false,
-          statusCode: 400,
-          error: 'BAD_REQUEST',
-        };
-      }
+    const parsedId = OrganizationIdParamsSchema.safeParse({ id });
+    if (!parsedId.success) {
+      return {
+        success: false,
+        statusCode: 400,
+        error: 'BAD_REQUEST',
+      };
+    }
 
-      const parsedData = UpdateOrganizationSchema.safeParse(body);
-      if (!parsedData.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsedData.error.issues,
-        };
-      }
+    const parsedData = UpdateOrganizationSchema.safeParse(body);
+    if (!parsedData.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsedData.error.issues,
+      };
+    }
 
-      const result = await organizationService.update(parsedId.data.id, parsedData.data);
-      return { success: true, statusCode: 200, data: result };
-    });
+    const result = await this.organizationService.update(parsedId.data.id, parsedData.data);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async getDetails(id: string): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsedId = OrganizationIdParamsSchema.safeParse({ id });
-      if (!parsedId.success) {
-        return {
-          success: false,
-          statusCode: 400,
-          error: 'BAD_REQUEST',
-        };
-      }
+    const parsedId = OrganizationIdParamsSchema.safeParse({ id });
+    if (!parsedId.success) {
+      return {
+        success: false,
+        statusCode: 400,
+        error: 'BAD_REQUEST',
+      };
+    }
 
-      const detail = await organizationService.getByIdWithDetails(parsedId.data.id);
-      return { success: true, statusCode: 200, data: detail };
-    });
+    const detail = await this.organizationService.getByIdWithDetails(parsedId.data.id);
+
+    if (isFailure(detail)) {
+      return controllerResponse.error(detail.error);
+    }
+
+    return controllerResponse.success(detail.data);
   }
 
   async delete(id: string): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsedId = OrganizationIdParamsSchema.safeParse({ id });
-      if (!parsedId.success) {
-        return {
-          success: false,
-          statusCode: 400,
-          error: 'BAD_REQUEST',
-        };
-      }
+    const parsedId = OrganizationIdParamsSchema.safeParse({ id });
+    if (!parsedId.success) {
+      return {
+        success: false,
+        statusCode: 400,
+        error: 'BAD_REQUEST',
+      };
+    }
 
-      await organizationService.delete(parsedId.data.id);
-      return { success: true, statusCode: 200, data: { success: true } };
-    });
+    const result = await this.organizationService.delete(parsedId.data.id);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success({ success: true });
   }
 }
-
-export const organizationController = new OrganizationController();

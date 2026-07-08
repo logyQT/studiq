@@ -1,23 +1,26 @@
 import type { ControllerResponse } from '@/lib/controller-response';
+import { controllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
-import { withErrorHandling } from '@/lib/with-error-handling';
-import { statsService } from '@/server/services';
+import { isFailure } from '@/lib/service-result';
+import type { StatsService } from '@/server/services/stats.service';
 
 export class StatsController {
-  async getTeacherStats(ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const stats = await statsService.getTeacherStats(ctx);
+  constructor(private statsService: StatsService) {}
 
-      return { success: true, statusCode: 200, data: stats };
-    }, ctx);
+  async getTeacherStats(ctx: RequestContext): Promise<ControllerResponse> {
+    const result = await this.statsService.getTeacherStats(ctx);
+
+    if (isFailure(result)) return controllerResponse.error(result.error);
+
+    return controllerResponse.success(result.data);
   }
 
   async getStudentStats(ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const stats = await statsService.getStudentStats(ctx);
+    const result = await this.statsService.getStudentStats(ctx);
 
-      return { success: true, statusCode: 200, data: stats };
-    }, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+
+    return controllerResponse.success(result.data);
   }
 
   async getActivity(
@@ -26,18 +29,18 @@ export class StatsController {
     startDate?: string,
     endDate?: string,
   ): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const data = await statsService.getActivity(ctx, range, startDate, endDate);
-      return { success: true, statusCode: 200, data };
-    }, ctx);
+    const result = await this.statsService.getActivity(ctx, range, startDate, endDate);
+
+    if (isFailure(result)) return controllerResponse.error(result.error);
+
+    return controllerResponse.success(result.data);
   }
 
   async getWeakPoints(ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const data = await statsService.getWeakPoints(ctx);
-      return { success: true, statusCode: 200, data };
-    }, ctx);
+    const result = await this.statsService.getWeakPoints(ctx);
+
+    if (isFailure(result)) return controllerResponse.error(result.error);
+
+    return controllerResponse.success(result.data);
   }
 }
-
-export const statsController = new StatsController();

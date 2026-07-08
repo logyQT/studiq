@@ -25,7 +25,6 @@ export const RegisterSchema = registry.register(
       .email({ error: ValidationErrorCode.EMAIL_INVALID })
       .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED }),
     password: passwordSchema,
-    inviteToken: z.string().optional(),
     accountType: z.enum(['student', 'educator', 'manager'], {
       error: ValidationErrorCode.INVALID_INPUT,
     }),

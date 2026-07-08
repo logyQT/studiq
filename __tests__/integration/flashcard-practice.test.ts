@@ -3,7 +3,7 @@ import { POST as logPractice } from '@/app/(backend)/api/v1/flashcards/[id]/prac
 import { GET as getStatsForCard } from '@/app/(backend)/api/v1/flashcards/[id]/practice/stats/route';
 import { GET as getDueBreakdown } from '@/app/(backend)/api/v1/flashcards/practice/due/breakdown/route';
 import { GET as getDueCount } from '@/app/(backend)/api/v1/flashcards/practice/due/count/route';
-import { GET as getDueCards } from '@/app/(backend)/api/v1/flashcards/practice/due/route';
+import { GET as getDueCards } from '@/app/(backend)/api/v1/flashcards/practice/new/route';
 import { GET as getStatsAll } from '@/app/(backend)/api/v1/flashcards/practice/stats/route';
 import {
   cleanupFlashcardPractice,
@@ -134,76 +134,13 @@ describe('Flashcard Practice Integration', () => {
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
     });
-
-    it('increments interval on consecutive correct answers (SM-2)', async () => {
-      mockUser(TEST_USERS.STUDENT);
-
-      // First correct review
-      const { request: req1, params: params1 } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
-        { id: flashcardId },
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wasCorrect: true, confidenceLevel: 4 }),
-        },
-      );
-      const res1 = await logPractice(req1, { params: params1 });
-      const body1 = await res1.json();
-      expect(body1.data.reviewState.interval_days).toBe(1);
-      expect(body1.data.reviewState.repetitions).toBe(1);
-
-      // Second correct review -> interval=6
-      const { request: req2, params: params2 } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
-        { id: flashcardId },
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wasCorrect: true, confidenceLevel: 4 }),
-        },
-      );
-      const res2 = await logPractice(req2, { params: params2 });
-      const body2 = await res2.json();
-      expect(body2.data.reviewState.interval_days).toBe(6);
-      expect(body2.data.reviewState.repetitions).toBe(2);
-
-      // Incorrect review -> resets
-      const { request: req3, params: params3 } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
-        { id: flashcardId },
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wasCorrect: false }),
-        },
-      );
-      const res3 = await logPractice(req3, { params: params3 });
-      const body3 = await res3.json();
-      expect(body3.data.reviewState.interval_days).toBe(1);
-      expect(body3.data.reviewState.repetitions).toBe(0);
-    });
   });
 
-  describe('GET /api/v1/flashcards/practice/due', () => {
-    it('returns due flashcards for user', async () => {
+  describe('GET /api/v1/flashcards/practice/new', () => {
+    it('returns new flashcards for user', async () => {
       mockUser(TEST_USERS.STUDENT);
 
-      const request = createNextRequest(`http://localhost/api/v1/flashcards/practice/due?limit=10`);
-
-      const response = await getDueCards(request);
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(Array.isArray(body.data)).toBe(true);
-    });
-
-    it('filters by topicIds', async () => {
-      mockUser(TEST_USERS.STUDENT);
-
-      const request = createNextRequest(
-        `http://localhost/api/v1/flashcards/practice/due?topicIds=00000000-0000-4000-8000-000000000001`,
-      );
+      const request = createNextRequest(`http://localhost/api/v1/flashcards/practice/new?limit=10`);
 
       const response = await getDueCards(request);
       const body = await response.json();
@@ -215,7 +152,7 @@ describe('Flashcard Practice Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const request = createNextRequest(`http://localhost/api/v1/flashcards/practice/due`);
+      const request = createNextRequest(`http://localhost/api/v1/flashcards/practice/new`);
 
       const response = await getDueCards(request);
       const body = await response.json();
@@ -322,7 +259,8 @@ describe('Flashcard Practice Integration', () => {
     it('returns aggregate stats', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const response = await getStatsAll();
+      const req = createNextRequest('http://localhost/api/v1/flashcards/practice/stats');
+      const response = await getStatsAll(req);
       const body = await response.json();
 
       expect(response.status).toBe(200);
@@ -335,7 +273,8 @@ describe('Flashcard Practice Integration', () => {
     it('returns 401 when not authenticated', async () => {
       mockUser(null);
 
-      const response = await getStatsAll();
+      const req = createNextRequest('http://localhost/api/v1/flashcards/practice/stats');
+      const response = await getStatsAll(req);
       const body = await response.json();
 
       expect(response.status).toBe(401);

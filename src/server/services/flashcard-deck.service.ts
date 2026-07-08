@@ -1,9 +1,8 @@
-import { AppError } from '@/lib/errors';
-import { log } from '@/lib/logger';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildQueryFilter, checkPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   BatchDeleteDeckInput,
   BulkCreateDeckInput,
@@ -12,17 +11,19 @@ import type {
   DeckListQuery,
   UpdateDeckInput,
 } from '@/server/models';
-import { checkLimit } from '@/server/services/plan.resolver';
+import { planResolver } from '@/server/services';
 
 export class FlashcardDeckService {
-  async create(data: CreateDeckInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
+  async create(data: CreateDeckInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const { count: deckCount } = await supabase
       .from('flashcard_decks')
       .select('*', { count: 'exact', head: true })
       .eq('created_by', ctx.userId);
-    await checkLimit(ctx, 'max_decks', deckCount ?? 0);
+    await planResolver.checkLimit(ctx, 'max_decks', deckCount ?? 0);
 
     const { data: deck, error } = await supabase
       .from('flashcard_decks')
@@ -36,11 +37,11 @@ export class FlashcardDeckService {
       .select()
       .single();
 
-    if (error) throw mapSupabaseError(error);
-    if (!deck) throw new AppError('NOT_FOUND');
+    if (error && error.code !== 'PGRST116') return toDbFailure(error);
+    if (!deck) return failure('NOT_FOUND');
 
     if ((data as any).visibility === 'group' && (data as any).groupIds?.length) {
-      const { groupService } = await import('@/server/services/group.service');
+      const { groupService } = await import('@/server/services');
       let authorized = false;
       for (const gid of (data as any).groupIds) {
         if (await groupService.isTeacherInGroup(ctx, gid)) {
@@ -48,14 +49,14 @@ export class FlashcardDeckService {
           break;
         }
       }
-      if (!authorized) throw new AppError('FORBIDDEN');
+      if (!authorized) return failure('FORBIDDEN');
 
       const rows = (data as any).groupIds.map((gid: string) => ({
         deck_id: deck.id,
         group_id: gid,
       }));
       const { error: ae } = await supabase.from('deck_groups').insert(rows);
-      if (ae) throw mapSupabaseError(ae);
+      if (ae) return toDbFailure(ae);
     }
 
     if (data.flashcardIds && data.flashcardIds.length > 0) {
@@ -70,22 +71,22 @@ export class FlashcardDeckService {
   }
 
   private async getSuspendedDeckIds(ctx: RequestContext): Promise<Set<string>> {
-    const supabase = await createClient();
-    const { data, error } = await supabase
+    const supabase = await this.createClient();
+    const { data } = await supabase
       .from('suspended_decks')
       .select('deck_id')
       .eq('user_id', ctx.userId);
-    log.trace.info('getSuspendedDeckIds', {
-      metadata: { traceId: ctx.traceId, count: (data ?? []).length, errorCode: error?.code },
-    });
     return new Set((data ?? []).map((r) => r.deck_id));
   }
 
-  async list(ctx: RequestContext, queryParams?: Partial<DeckListQuery>) {
-    const supabase = await createClient();
+  async list(
+    ctx: RequestContext,
+    queryParams?: Partial<DeckListQuery>,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.DECK_READ, 'deck');
-    if (filter._impossible) return { items: [], nextCursor: null, hasMore: false };
+    if (filter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
 
     const suspendedIds = await this.getSuspendedDeckIds(ctx);
     const includeSuspended = queryParams?.includeSuspended ?? false;
@@ -113,7 +114,7 @@ export class FlashcardDeckService {
       rpcQuery = rpcQuery.limit(pageSize + 1);
 
       const { data, error } = await rpcQuery;
-      if (error) throw mapSupabaseError(error);
+      if (error) return toDbFailure(error);
 
       const rows = data as Array<Record<string, unknown>> | null;
       const hasMore = (rows?.length ?? 0) > pageSize;
@@ -123,7 +124,7 @@ export class FlashcardDeckService {
         suspended: suspendedIds.has(item.id as string),
       }));
 
-      return { items: items as unknown as Deck[], nextCursor: null, hasMore };
+      return success({ items: items as unknown as Deck[], nextCursor: null, hasMore });
     }
 
     let query = supabase
@@ -131,7 +132,7 @@ export class FlashcardDeckService {
       .select('*, flashcard_count:flashcard_deck_assignments(count), deck_groups(group_id)');
 
     // Apply RBAC filter
-    if (filter._impossible) return { items: [], nextCursor: null, hasMore: false };
+    if (filter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
     if (filter.created_by) query = query.eq('created_by', filter.created_by);
     if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
@@ -151,7 +152,7 @@ export class FlashcardDeckService {
             .eq('organization_id', ctx.activeOrgId)
             .eq('visibility', 'group');
         } else {
-          return { items: [], nextCursor: null, hasMore: false };
+          return success({ items: [], nextCursor: null, hasMore: false });
         }
       }
     }
@@ -182,7 +183,7 @@ export class FlashcardDeckService {
     }
 
     const { data, error } = await query;
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
     const rows = data as Array<Record<string, unknown>> | null;
     const hasMore = (rows?.length ?? 0) > pageSize;
@@ -206,17 +207,15 @@ export class FlashcardDeckService {
         ).toString('base64')
       : null;
 
-    return {
+    return success({
       items: items as unknown as Deck[],
       nextCursor,
       hasMore,
-    } as { items: Deck[]; nextCursor: string | null; hasMore: boolean };
+    } as { items: Deck[]; nextCursor: string | null; hasMore: boolean });
   }
 
-  async getById(id: string, ctx: RequestContext) {
-    const supabase = await createClient();
-
-    log.trace.info('getById/start', { metadata: { traceId: ctx.traceId, deckId: id } });
+  async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const suspendedIds = await this.getSuspendedDeckIds(ctx);
 
@@ -229,18 +228,15 @@ export class FlashcardDeckService {
         })
         .eq('id', id)
         .single();
-      log.trace.info('getById/result', {
-        metadata: { traceId: ctx.traceId, found: !!deck, errorCode: error?.code },
-      });
-      if (error || !deck) throw new AppError('NOT_FOUND');
+      if (error || !deck) return failure('NOT_FOUND');
       const countArr = (deck as Record<string, unknown>).flashcard_count as
         | { count: number }[]
         | undefined;
-      return {
+      return success({
         ...(deck as unknown as Deck),
         flashcard_count: countArr?.[0]?.count ?? 0,
         suspended: suspendedIds.has(id),
-      };
+      });
     }
 
     let query = supabase
@@ -248,15 +244,12 @@ export class FlashcardDeckService {
       .select('*, flashcard_count:flashcard_deck_assignments(count), deck_groups(group_id)')
       .eq('id', id);
 
-    if (filter._impossible) throw new AppError('NOT_FOUND');
+    if (filter._impossible) return failure('NOT_FOUND');
     if (filter.created_by) query = query.eq('created_by', filter.created_by);
     if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
     const { data: deck, error } = await query.single();
-    log.trace.info('getById/result', {
-      metadata: { traceId: ctx.traceId, found: !!deck, errorCode: error?.code },
-    });
-    if (error || !deck) throw new AppError('NOT_FOUND');
+    if (error || !deck) return failure('NOT_FOUND');
 
     const countArr = (deck as Record<string, unknown>).flashcard_count as
       | { count: number }[]
@@ -264,20 +257,20 @@ export class FlashcardDeckService {
     const groups = (deck as Record<string, unknown>).deck_groups as
       | { group_id: string }[]
       | undefined;
-    return {
+    return success({
       ...deck,
       flashcard_count: countArr?.[0]?.count ?? 0,
       groupIds: groups?.map((g) => g.group_id) ?? [],
       suspended: suspendedIds.has(id),
-    } as unknown as Deck;
+    } as unknown as Deck);
   }
 
-  async update(id: string, data: UpdateDeckInput, ctx: RequestContext) {
-    const supabase = await createClient();
-
-    log.trace.info('update/start', {
-      metadata: { traceId: ctx.traceId, deckId: id, hasSuspended: 'suspended' in data },
-    });
+  async update(
+    id: string,
+    data: UpdateDeckInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const { data: existing, error: fetchError } = await supabase
       .from('flashcard_decks')
@@ -285,12 +278,9 @@ export class FlashcardDeckService {
       .eq('id', id)
       .single();
 
-    log.trace.info('update/fetch', {
-      metadata: { traceId: ctx.traceId, found: !!existing, errorCode: fetchError?.code },
-    });
-    if (fetchError || !existing) throw new AppError('NOT_FOUND');
+    if (fetchError && fetchError.code !== 'PGRST116') return toDbFailure(fetchError);
+    if (!existing) return failure('NOT_FOUND');
     await checkPermission(ctx, Permission.DECK_UPDATE, existing);
-    log.trace.info('update/permission_ok', { metadata: { traceId: ctx.traceId } });
 
     const updateFields: Record<string, unknown> = {};
     if (data.name !== undefined) updateFields.name = data.name;
@@ -305,11 +295,8 @@ export class FlashcardDeckService {
         .select()
         .single();
 
-      log.trace.info('update/update_done', {
-        metadata: { traceId: ctx.traceId, hasDeck: !!deck, errorCode: error?.code },
-      });
-      if (error) throw mapSupabaseError(error);
-      if (!deck) throw new AppError('NOT_FOUND');
+      if (error && error.code !== 'PGRST116') return toDbFailure(error);
+      if (!deck) return failure('NOT_FOUND');
 
       if (data.visibility !== undefined && data.visibility !== existing.visibility) {
         const { data: assignedFlashcardIds } = await supabase
@@ -329,11 +316,11 @@ export class FlashcardDeckService {
 
     if ((data as any).groupIds !== undefined) {
       const { error: de } = await supabase.from('deck_groups').delete().eq('deck_id', id);
-      if (de) throw mapSupabaseError(de);
+      if (de) return toDbFailure(de);
       if ((data as any).groupIds.length > 0) {
         const rows = (data as any).groupIds.map((gid: string) => ({ deck_id: id, group_id: gid }));
         const { error: ae } = await supabase.from('deck_groups').insert(rows);
-        if (ae) throw mapSupabaseError(ae);
+        if (ae) return toDbFailure(ae);
       }
     }
 
@@ -358,20 +345,11 @@ export class FlashcardDeckService {
       }
     }
 
-    log.trace.info('update/before_getById', { metadata: { traceId: ctx.traceId } });
-    const updated = await this.getById(id, ctx);
-    log.api.info('update/result', {
-      metadata: {
-        deckId: id,
-        visibility: (updated as any).visibility,
-        groupIds: (updated as any).groupIds,
-      },
-    });
-    return updated;
+    return this.getById(id, ctx);
   }
 
-  async delete(id: string, ctx: RequestContext) {
-    const supabase = await createClient();
+  async delete(id: string, ctx: RequestContext): Promise<ServiceResult<void>> {
+    const supabase = await this.createClient();
 
     const { data: existing, error: fetchError } = await supabase
       .from('flashcard_decks')
@@ -379,16 +357,22 @@ export class FlashcardDeckService {
       .eq('id', id)
       .single();
 
-    if (fetchError || !existing) throw new AppError('NOT_FOUND');
+    if (fetchError && fetchError.code !== 'PGRST116') return toDbFailure(fetchError);
+    if (!existing) return failure('NOT_FOUND');
     await checkPermission(ctx, Permission.DECK_DELETE, existing);
 
     const { error } = await supabase.from('flashcard_decks').delete().eq('id', id);
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
+
+    return success(undefined);
   }
 
-  async bulkCreate(data: BulkCreateDeckInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  async bulkCreate(
+    data: BulkCreateDeckInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
     const decks = data.decks.map((d) => ({
       name: d.name,
       description: d.description ?? null,
@@ -402,20 +386,23 @@ export class FlashcardDeckService {
       .insert(decks)
       .select('*');
 
-    if (error) throw mapSupabaseError(error);
-    return created;
+    if (error) return toDbFailure(error);
+    return success(created);
   }
 
-  async batchDelete(data: BatchDeleteDeckInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  async batchDelete(
+    data: BatchDeleteDeckInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const { data: decks, error: fetchError } = await supabase
       .from('flashcard_decks')
       .select('*')
       .in('id', data.ids);
 
-    if (fetchError) throw mapSupabaseError(fetchError);
-    if (!decks || decks.length === 0) throw new AppError('NOT_FOUND');
+    if (fetchError) return toDbFailure(fetchError);
+    if (!decks || decks.length === 0) return failure('NOT_FOUND');
 
     for (const deck of decks) {
       await checkPermission(ctx, Permission.DECK_DELETE, deck);
@@ -423,13 +410,16 @@ export class FlashcardDeckService {
 
     const { error } = await supabase.from('flashcard_decks').delete().in('id', data.ids);
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return { deleted: data.ids.length };
+    return success({ deleted: data.ids.length });
   }
 
-  async batchToggleSuspend(data: { deckIds: string[]; suspended: boolean }, ctx: RequestContext) {
-    const supabase = await createClient();
+  async batchToggleSuspend(
+    data: { deckIds: string[]; suspended: boolean },
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     if (data.suspended) {
       const rows = data.deckIds.map((deckId) => ({
@@ -440,18 +430,16 @@ export class FlashcardDeckService {
         onConflict: 'user_id,deck_id',
         ignoreDuplicates: true,
       });
-      if (error) throw mapSupabaseError(error);
+      if (error) return toDbFailure(error);
     } else {
       const { error } = await supabase
         .from('suspended_decks')
         .delete()
         .eq('user_id', ctx.userId)
         .in('deck_id', data.deckIds);
-      if (error) throw mapSupabaseError(error);
+      if (error) return toDbFailure(error);
     }
 
-    return { updated: data.deckIds.length };
+    return success({ updated: data.deckIds.length });
   }
 }
-
-export const flashcardDeckService = new FlashcardDeckService();

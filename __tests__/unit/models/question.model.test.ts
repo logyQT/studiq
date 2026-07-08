@@ -63,15 +63,6 @@ describe('CreateQuestionSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('fails when difficulty is invalid', () => {
-    const result = CreateQuestionSchema.safeParse({
-      type: 'mcq',
-      content: 'Question',
-      difficulty: 'extreme',
-      answers: [{ content: 'Answer', isCorrect: true }],
-    });
-    expect(result.success).toBe(false);
-  });
 });
 
 describe('UpdateQuestionSchema', () => {

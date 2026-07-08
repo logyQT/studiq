@@ -1,7 +1,8 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildQueryFilter, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type { SearchResult } from '@/server/models';
 import { AccountType } from '@/types';
 
@@ -15,11 +16,13 @@ type RpcRow = {
 };
 
 export class SearchService {
-  async search(q: string, ctx: RequestContext, limit = 10): Promise<SearchResult[]> {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
+  async search(q: string, ctx: RequestContext, limit = 10): Promise<ServiceResult<SearchResult[]>> {
+    const supabase = await this.createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ);
-    if (filter._impossible) return [];
+    if (filter._impossible) return success([]);
 
     let p_user_id: string | null = null;
     let p_organization_id: string | null = null;
@@ -38,10 +41,10 @@ export class SearchService {
       p_organization_id,
     });
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
     const rows = data as RpcRow[] | null;
-    if (!rows || rows.length === 0) return [];
+    if (!rows || rows.length === 0) return success([]);
 
     const basePath = ctx.accountType === AccountType.EDUCATOR ? '/edu' : '/app';
 
@@ -78,8 +81,6 @@ export class SearchService {
       }
     }
 
-    return Array.from(grouped.values());
+    return success(Array.from(grouped.values()));
   }
 }
-
-export const searchService = new SearchService();

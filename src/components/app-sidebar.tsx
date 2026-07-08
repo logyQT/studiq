@@ -14,7 +14,6 @@ import {
   Layers,
   LayoutDashboard,
   Mail,
-  Monitor,
   PieChart,
   Radio,
   Settings,
@@ -29,6 +28,7 @@ import { usePathname } from 'next/navigation';
 import { OrgSwitcher } from '@/components/layout/org-switcher';
 import { UserMenu } from '@/components/layout/user-menu';
 import { type NavItem, NavMain } from '@/components/nav-main';
+import { useAuth } from '@/components/providers';
 import {
   Sidebar,
   SidebarContent,
@@ -37,6 +37,7 @@ import {
   SidebarRail,
 } from '@/components/ui/sidebar';
 import { useCan } from '@/hooks/use-can';
+import { AccountType } from '@/types';
 
 const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
   '/edu': [
@@ -130,13 +131,13 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
       label: 'sidebar_main',
       items: [
         { titleKey: 'admin_overview', href: '/admin', icon: LayoutDashboard },
-        { titleKey: 'admin_orgs', href: '/admin/orgs', icon: GraduationCap },
         { titleKey: 'ai_chat', href: '/admin/ai', icon: Sparkles },
       ],
     },
     {
       label: 'sidebar_system',
       items: [
+        { titleKey: 'admin_orgs', href: '/admin/orgs', icon: GraduationCap },
         { titleKey: 'admin_error_logs', href: '/admin/logs', icon: AlertTriangle },
         { titleKey: 'admin_permissions', href: '/admin/permissions', icon: ShieldCheck },
         { titleKey: 'admin_feature_flags', href: '/admin/feature-flags', icon: Flag },
@@ -146,7 +147,6 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
           icon: CreditCard,
         },
         { titleKey: 'admin_user_overrides', href: '/admin/user-overrides', icon: UserCog },
-        { titleKey: 'admin_system', href: '/admin', icon: Monitor },
       ],
     },
   ],
@@ -154,6 +154,9 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
+  const { user } = useAuth();
+  const accountType = user?.app_metadata?.account_type as AccountType | undefined;
+  const isSysAdmin = accountType === AccountType.SYS_ADMIN;
   const can = useCan();
   const hasAiChat = can({ features: ['ai.chat'] });
 
@@ -192,9 +195,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
-        <OrgSwitcher />
-      </SidebarHeader>
+      <SidebarHeader>{!isSysAdmin && <OrgSwitcher />}</SidebarHeader>
       <SidebarContent>
         {groups.map((group) => (
           <NavMain

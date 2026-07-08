@@ -1,274 +1,208 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { invitationService } from '@/server/services/invitation.service';
+import { InvitationService } from '@/server/services/invitation.service';
 import { AccountType } from '@/types';
+import type { RequestContext } from '@/lib/request-context';
+
+vi.mock('@/server/services', () => ({
+  planResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
+}));
+
+function qb(data: any, error: any = null) {
+  const result = { data: data ?? null, error };
+  const promise = Promise.resolve(result);
+  const b: any = {};
+  b.select = vi.fn(() => b);
+  b.insert = vi.fn(() => b);
+  b.update = vi.fn(() => b);
+  b.delete = vi.fn(() => b);
+  b.eq = vi.fn(() => b);
+  b.in = vi.fn(() => b);
+  b.order = vi.fn(() => b);
+  b.limit = vi.fn(() => b);
+  b.or = vi.fn(() => b);
+  b.not = vi.fn(() => b);
+  b.neq = vi.fn(() => b);
+  b.rpc = vi.fn(() => b);
+  b.single = vi.fn().mockResolvedValue(result);
+  b.maybeSingle = vi.fn().mockResolvedValue(result);
+  b.then = promise.then.bind(promise);
+  b.catch = promise.catch.bind(promise);
+  b.finally = promise.finally.bind(promise);
+  return b;
+}
 
 describe('InvitationService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
-  const userId = 'test-user-id';
+  let service: InvitationService;
+
+  const managerCtx: RequestContext = {
+    userId: 'test-user-id',
+    accountType: AccountType.MANAGER,
+    traceId: 'test',
+    url: '',
+    method: 'GET',
+    activeOrgId: null,
+    orgRoleId: null,
+  };
+
+  const educatorCtx: RequestContext = {
+    userId: 'test-user-id-2',
+    accountType: AccountType.EDUCATOR,
+    traceId: 'test',
+    url: '',
+    method: 'GET',
+    activeOrgId: 'uni-1',
+    orgRoleId: null,
+  };
+
+  const studentCtx: RequestContext = {
+    userId: 'test-user-id-3',
+    accountType: AccountType.STUDENT,
+    traceId: 'test',
+    url: '',
+    method: 'GET',
+    activeOrgId: null,
+    orgRoleId: null,
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
+    service = new InvitationService(async () => mock as any);
   });
 
   describe('createInvitation', () => {
-    it('throws NOT_FOUND when inviter profile does not exist', async () => {
-      const mockChain = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: null, error: null }),
-          }),
-        }),
-      };
-      mock.from.mockReturnValue(mockChain);
-
-      await expect(
-        invitationService.createInvitation(userId, {
-          name: 'John Doe',
-          email: 'john@example.com',
-          targetOrgRoleId: 'member',
-        }),
-      ).rejects.toThrow('ERROR_NOT_FOUND');
-    });
-
-    it('throws FORBIDDEN when university_admin has no organization_id', async () => {
-      const mockChain = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: { id: userId, organization_id: null, role: 'university_admin' },
-              error: null,
-            }),
-          }),
-        }),
-      };
-      mock.from.mockReturnValue(mockChain);
-
-      await expect(
-        invitationService.createInvitation(userId, {
-          name: 'John Doe',
-          email: 'john@example.com',
-          targetOrgRoleId: 'member',
-        }),
-      ).rejects.toThrow('ERROR_FORBIDDEN');
-    });
-
-    it('throws NOT_FOUND when sys_admin provides no organizationId', async () => {
-      const mockChain = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: { id: userId, organization_id: null, role: 'sys_admin' },
-              error: null,
-            }),
-          }),
-        }),
-      };
-      mock.from.mockReturnValue(mockChain);
-
-      await expect(
-        invitationService.createInvitation(userId, {
-          name: 'John Doe',
-          email: 'john@example.com',
-          targetOrgRoleId: 'member',
-        }),
-      ).rejects.toThrow('ERROR_NOT_FOUND');
-    });
-
-    it('creates invitation successfully for sys_admin with organizationId', async () => {
-      const mockChain = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: { id: userId, organization_id: null, role: 'sys_admin' },
-              error: null,
-            }),
-          }),
-        }),
-      };
-      const insertChain = {
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: { token: 'abc123' }, error: null }),
-          }),
-        }),
-      };
-      mock.from.mockReturnValueOnce(mockChain);
-      mock.from.mockReturnValueOnce(insertChain);
+    it('creates invitation for manager with organizationId', async () => {
+      mock.from.mockReturnValueOnce(qb({ token: 'abc123' }));
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
       vi.stubEnv('NODE_ENV', 'development');
 
-      const result = await invitationService.createInvitation(userId, {
-        name: 'John Doe',
+      const result = await service.createInvitation(managerCtx, {
         email: 'john@example.com',
         targetOrgRoleId: 'member',
         organizationId: 'uni-1',
       });
 
       expect(result.success).toBe(true);
-      expect(result.inviteLink).toContain('abc123');
+      expect((result.data as any).inviteLink).toContain('abc123');
 
       vi.unstubAllEnvs();
     });
 
-    it('creates invitation successfully for university_admin with organization_id', async () => {
-      const mockChain = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: { id: userId, organization_id: 'uni-1', role: 'university_admin' },
-              error: null,
-            }),
-          }),
-        }),
-      };
-      const insertChain = {
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: { token: 'abc123' }, error: null }),
-          }),
-        }),
-      };
-      mock.from.mockReturnValueOnce(mockChain);
-      mock.from.mockReturnValueOnce(insertChain);
+    it('returns NOT_FOUND when manager has no organizationId', async () => {
+      const result = await service.createInvitation(managerCtx, {
+        email: 'john@example.com',
+        targetOrgRoleId: 'member',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('creates invitation for educator with activeOrgId', async () => {
+      mock.from.mockReturnValueOnce(qb({ token: 'abc123' }));
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
       vi.stubEnv('NODE_ENV', 'development');
 
-      const result = await invitationService.createInvitation(userId, {
-        name: 'John Doe',
+      const result = await service.createInvitation(educatorCtx, {
         email: 'john@example.com',
         targetOrgRoleId: 'member',
       });
 
       expect(result.success).toBe(true);
+      expect((result.data as any).success).toBe(true);
 
       vi.unstubAllEnvs();
     });
 
-    it('throws INTERNAL_SERVER when SITE_URL is not set', async () => {
-      const mockChain = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: { id: userId, organization_id: 'uni-1', role: 'university_admin' },
-              error: null,
-            }),
-          }),
-        }),
-      };
-      const insertChain = {
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: { token: 'abc123' }, error: null }),
-          }),
-        }),
-      };
-      mock.from.mockReturnValueOnce(mockChain);
-      mock.from.mockReturnValueOnce(insertChain);
+    it('returns FORBIDDEN for student account type', async () => {
+      const result = await service.createInvitation(studentCtx, {
+        email: 'john@example.com',
+        targetOrgRoleId: 'member',
+      });
 
-      vi.stubEnv('NEXT_PUBLIC_SITE_URL', undefined as any);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+    });
 
-      await expect(
-        invitationService.createInvitation(userId, {
-          name: 'John Doe',
-          email: 'john@example.com',
-          targetOrgRoleId: 'member',
-        }),
-      ).rejects.toThrow('ERROR_INTERNAL_SERVER');
+    it('returns INTERNAL_SERVER when SITE_URL is not set', async () => {
+      mock.from.mockReturnValueOnce(qb({ token: 'abc123' }));
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', '');
+
+      const result = await service.createInvitation(
+        { ...managerCtx, activeOrgId: 'uni-1' },
+        { email: 'john@example.com', targetOrgRoleId: 'member' },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
 
       vi.unstubAllEnvs();
     });
 
-    it('throws INTERNAL_SERVER when insert fails', async () => {
-      const mockChain = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: { id: userId, organization_id: 'uni-1', role: 'university_admin' },
-              error: null,
-            }),
-          }),
-        }),
-      };
-      const insertChain = {
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
-          }),
-        }),
-      };
-      mock.from.mockReturnValueOnce(mockChain);
-      mock.from.mockReturnValueOnce(insertChain);
+    it('returns INTERNAL_SERVER when insert fails', async () => {
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
-      await expect(
-        invitationService.createInvitation(userId, {
-          name: 'John Doe',
-          email: 'john@example.com',
-          targetOrgRoleId: 'member',
-        }),
-      ).rejects.toThrow('ERROR_INTERNAL_SERVER');
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitation(
+        { ...managerCtx, activeOrgId: 'uni-1' },
+        { email: 'john@example.com', targetOrgRoleId: 'member' },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+
+      vi.unstubAllEnvs();
     });
   });
 
   describe('getInvitationByToken', () => {
     it('returns invitation when found and valid', async () => {
-      const mockChain = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: {
-                email: 'john@example.com',
-                name: 'John Doe',
-                expires_at: new Date(Date.now() + 86400000).toISOString(),
-              },
-              error: null,
-            }),
-          }),
-        }),
+      const invitation = {
+        email: 'john@example.com',
+        organization_id: 'uni-1',
+        target_org_role_id: 'member',
+        expires_at: new Date(Date.now() + 86400000).toISOString(),
+        organizations: { name: 'Test Uni' } as any,
+        org_roles: { name: 'Member' } as any,
       };
-      mock.from.mockReturnValue(mockChain);
+      mock.from.mockReturnValueOnce(qb(invitation));
 
-      const result = await invitationService.getInvitationByToken('valid-token');
+      const result = await service.getInvitationByToken('valid-token');
 
-      expect(result).toEqual({ email: 'john@example.com', name: 'John Doe' });
+      expect(result.success).toBe(true);
+      expect((result.data as any).email).toBe('john@example.com');
     });
 
-    it('throws NOT_FOUND when token does not exist', async () => {
-      const mockChain = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: null, error: null }),
-          }),
-        }),
-      };
-      mock.from.mockReturnValue(mockChain);
+    it('returns NOT_FOUND when token does not exist', async () => {
+      mock.from.mockReturnValueOnce(qb(null, null));
 
-      await expect(invitationService.getInvitationByToken('invalid')).rejects.toThrow(
-        'ERROR_NOT_FOUND',
-      );
+      const result = await service.getInvitationByToken('invalid');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
     });
 
-    it('throws GONE when token is expired', async () => {
-      const mockChain = {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: {
-                email: 'john@example.com',
-                name: 'John Doe',
-                expires_at: new Date(Date.now() - 86400000).toISOString(),
-              },
-              error: null,
-            }),
-          }),
-        }),
+    it('returns GONE when token is expired', async () => {
+      const invitation = {
+        email: 'john@example.com',
+        organization_id: 'uni-1',
+        target_org_role_id: 'member',
+        expires_at: new Date(Date.now() - 86400000).toISOString(),
+        organizations: { name: 'Test Uni' } as any,
+        org_roles: { name: 'Member' } as any,
       };
-      mock.from.mockReturnValue(mockChain);
+      mock.from.mockReturnValueOnce(qb(invitation));
 
-      await expect(invitationService.getInvitationByToken('expired')).rejects.toThrow('ERROR_GONE');
+      const result = await service.getInvitationByToken('expired');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('GONE');
     });
   });
 });

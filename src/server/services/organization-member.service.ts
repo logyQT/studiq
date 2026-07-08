@@ -1,11 +1,13 @@
-import { AppError } from '@/lib/errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { failure, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 
 export class OrganizationMemberService {
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
   async getProfile(ctx: RequestContext) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
 
     const { data: profile, error } = await supabase
       .from('profiles')
@@ -14,32 +16,33 @@ export class OrganizationMemberService {
       .single();
 
     if (error || !profile) {
-      throw new AppError('NOT_FOUND');
+      return failure('NOT_FOUND');
     }
 
-    return profile;
+    return success(profile);
   }
 
   async listMembers(ctx: RequestContext, roleFilter?: string) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
-    // For educators with group scope, filter members to their groups
     if (ctx.accountType === 'educator' && ctx.activeOrgId) {
-      const { groupService } = await import('@/server/services/group.service');
-      const groupIds = await groupService.getUserGroupIds(ctx);
-      if (groupIds.length === 0) return [];
+      const { groupService } = await import('@/server/services');
+      const groupResult = await groupService.getUserGroupIds(ctx);
+      if (!groupResult.success) return failure(groupResult.error);
+      const groupIds = groupResult.data;
+      if (groupIds.length === 0) return success([]);
 
-      const supabase = await createClient();
+      const supabase = await this.createClient();
       const { data: gmData } = await supabase
         .from('group_members')
         .select('user_id')
         .in('group_id', groupIds);
       const userIds = [...new Set((gmData ?? []).map((gm) => gm.user_id))];
-      if (userIds.length === 0) return [];
+      if (userIds.length === 0) return success([]);
 
       let query = supabase
         .from('org_members')
@@ -54,15 +57,14 @@ export class OrganizationMemberService {
       }
 
       const { data, error } = await query.order('joined_at', { ascending: false });
-      if (error) throw mapSupabaseError(error);
+      if (error) return toDbFailure(error);
 
-      // Merge group memberships (same as existing flow)
       const allUserIds = data.map((m) => m.user_id);
       const { data: groupData, error: groupError } = await supabase
         .from('group_members')
         .select('user_id, role, groups!inner(id, name)')
         .in('user_id', allUserIds);
-      if (groupError) throw mapSupabaseError(groupError);
+      if (groupError) return toDbFailure(groupError);
 
       const groupsByUserId: Record<string, { id: string; name: string; role: string }[]> = {};
       for (const gm of groupData ?? []) {
@@ -71,7 +73,62 @@ export class OrganizationMemberService {
         groupsByUserId[gm.user_id].push({ id: group.id, name: group.name, role: gm.role });
       }
 
-      return data.map((m) => {
+      return success(
+        data.map((m) => {
+          const profile = m.profiles as unknown as {
+            id: string;
+            email: string;
+            full_name: string | null;
+            created_at: string;
+          };
+          const roleName = (m.org_roles as unknown as { name: string }).name;
+          return {
+            id: m.user_id,
+            email: profile.email,
+            full_name: profile.full_name,
+            orgRoleName: roleName,
+            orgRoleId: m.org_role_id,
+            organization_id: ctx.activeOrgId,
+            created_at: profile.created_at,
+            groups: groupsByUserId[m.user_id] ?? [],
+          };
+        }),
+      );
+    }
+
+    let query = supabase
+      .from('org_members')
+      .select(
+        'user_id, org_role_id, org_roles!inner(name), profiles!inner(id, email, full_name, created_at)',
+      )
+      .eq('organization_id', ctx.activeOrgId);
+
+    if (roleFilter) {
+      query = query.eq('org_roles.name', roleFilter);
+    }
+
+    const { data, error } = await query.order('joined_at', { ascending: false });
+
+    if (error) return toDbFailure(error);
+
+    const userIds = data.map((m) => m.user_id);
+
+    const { data: groupData, error: groupError } = await supabase
+      .from('group_members')
+      .select('user_id, role, groups!inner(id, name)')
+      .in('user_id', userIds);
+
+    if (groupError) return toDbFailure(groupError);
+
+    const groupsByUserId: Record<string, { id: string; name: string; role: string }[]> = {};
+    for (const gm of groupData ?? []) {
+      const group = gm.groups as unknown as { id: string; name: string };
+      if (!groupsByUserId[gm.user_id]) groupsByUserId[gm.user_id] = [];
+      groupsByUserId[gm.user_id].push({ id: group.id, name: group.name, role: gm.role });
+    }
+
+    return success(
+      data.map((m) => {
         const profile = m.profiles as unknown as {
           id: string;
           email: string;
@@ -89,70 +146,19 @@ export class OrganizationMemberService {
           created_at: profile.created_at,
           groups: groupsByUserId[m.user_id] ?? [],
         };
-      });
-    }
-
-    let query = supabase
-      .from('org_members')
-      .select(
-        'user_id, org_role_id, org_roles!inner(name), profiles!inner(id, email, full_name, created_at)',
-      )
-      .eq('organization_id', ctx.activeOrgId);
-
-    if (roleFilter) {
-      query = query.eq('org_roles.name', roleFilter);
-    }
-
-    const { data, error } = await query.order('joined_at', { ascending: false });
-
-    if (error) throw mapSupabaseError(error);
-
-    const userIds = data.map((m) => m.user_id);
-
-    const { data: groupData, error: groupError } = await supabase
-      .from('group_members')
-      .select('user_id, role, groups!inner(id, name)')
-      .in('user_id', userIds);
-
-    if (groupError) throw mapSupabaseError(groupError);
-
-    const groupsByUserId: Record<string, { id: string; name: string; role: string }[]> = {};
-    for (const gm of groupData ?? []) {
-      const group = gm.groups as unknown as { id: string; name: string };
-      if (!groupsByUserId[gm.user_id]) groupsByUserId[gm.user_id] = [];
-      groupsByUserId[gm.user_id].push({ id: group.id, name: group.name, role: gm.role });
-    }
-
-    return data.map((m) => {
-      const profile = m.profiles as unknown as {
-        id: string;
-        email: string;
-        full_name: string | null;
-        created_at: string;
-      };
-      const roleName = (m.org_roles as unknown as { name: string }).name;
-      return {
-        id: m.user_id,
-        email: profile.email,
-        full_name: profile.full_name,
-        orgRoleName: roleName,
-        orgRoleId: m.org_role_id,
-        organization_id: ctx.activeOrgId,
-        created_at: profile.created_at,
-        groups: groupsByUserId[m.user_id] ?? [],
-      };
-    });
+      }),
+    );
   }
 
   async changeRole(ctx: RequestContext, targetUserId: string, newOrgRoleId: string) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     if (targetUserId === ctx.userId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const { error } = await supabase
@@ -161,20 +167,20 @@ export class OrganizationMemberService {
       .eq('organization_id', ctx.activeOrgId)
       .eq('user_id', targetUserId);
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return { success: true };
+    return success({ success: true });
   }
 
   async removeMember(ctx: RequestContext, targetUserId: string) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
 
     if (!ctx.activeOrgId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     if (targetUserId === ctx.userId) {
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
     }
 
     const { error } = await supabase
@@ -183,10 +189,8 @@ export class OrganizationMemberService {
       .eq('organization_id', ctx.activeOrgId)
       .eq('user_id', targetUserId);
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return { success: true };
+    return success({ success: true });
   }
 }
-
-export const organizationMemberService = new OrganizationMemberService();

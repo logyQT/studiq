@@ -1,12 +1,14 @@
-import { AppError } from '@/lib/errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type { CreateOrganizationInput, UpdateOrganizationInput } from '@/server/models';
 
 export class OrganizationService {
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
   async create(ctx: RequestContext, data: CreateOrganizationInput) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
 
     const { data: organization, error } = await supabase
       .from('organizations')
@@ -14,7 +16,7 @@ export class OrganizationService {
       .select()
       .single();
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
     const newOrg = organization;
 
@@ -25,7 +27,7 @@ export class OrganizationService {
       description: null,
       is_default: true,
     });
-    if (ge) throw mapSupabaseError(ge);
+    if (ge) return toDbFailure(ge);
 
     const { data: defaultGroup } = await supabase
       .from('groups')
@@ -39,25 +41,61 @@ export class OrganizationService {
         user_id: ctx.userId,
         role: 'teacher',
       });
-      if (me) throw mapSupabaseError(me);
+      if (me) return toDbFailure(me);
     }
 
-    return newOrg;
+    return success(newOrg);
+  }
+
+  async createAndJoin(
+    ctx: RequestContext,
+    data: CreateOrganizationInput,
+  ): Promise<ServiceResult<Record<string, unknown>>> {
+    const base = await this.create(ctx, data);
+    if (!base.success) return base;
+
+    const org = base.data;
+    const supabase = await this.createClient();
+
+    const { data: adminRole, error: roleError } = await supabase
+      .from('org_roles')
+      .select('id')
+      .eq('organization_id', org.id)
+      .eq('name', 'admin')
+      .single();
+
+    if (roleError || !adminRole) {
+      await supabase.from('organizations').delete().eq('id', org.id);
+      return failure('INTERNAL_SERVER');
+    }
+
+    const { error: memberError } = await supabase.from('org_members').insert({
+      organization_id: org.id,
+      user_id: ctx.userId,
+      org_role_id: adminRole.id,
+    });
+
+    if (memberError) {
+      await supabase.from('organizations').delete().eq('id', org.id);
+      return toDbFailure(memberError);
+    }
+
+    return success({ ...org, adminRoleId: adminRole.id });
   }
 
   async getAll() {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
 
     const { data: organizations, error } = await supabase
       .from('organizations')
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
     const orgIds = organizations.map((o: { id: string }) => o.id);
 
-    if (orgIds.length === 0) return [];
+    if (orgIds.length === 0) return success([]);
 
     const [memberResult, groupResult, roleResult] = await Promise.all([
       supabase.from('org_members').select('organization_id').in('organization_id', orgIds),
@@ -80,16 +118,18 @@ export class OrganizationService {
       roleCounts[r.organization_id] = (roleCounts[r.organization_id] ?? 0) + 1;
     }
 
-    return organizations.map((org: { id: string }) => ({
-      ...org,
-      member_count: memberCounts[org.id] ?? 0,
-      group_count: groupCounts[org.id] ?? 0,
-      role_count: roleCounts[org.id] ?? 0,
-    }));
+    return success(
+      organizations.map((org: { id: string }) => ({
+        ...org,
+        member_count: memberCounts[org.id] ?? 0,
+        group_count: groupCounts[org.id] ?? 0,
+        role_count: roleCounts[org.id] ?? 0,
+      })),
+    );
   }
 
   async getById(id: string) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
 
     const { data: organization, error } = await supabase
       .from('organizations')
@@ -98,16 +138,16 @@ export class OrganizationService {
       .single();
 
     if (error || !organization) {
-      if (error?.code === 'PGRST116') throw new AppError('NOT_FOUND');
-      if (error) throw mapSupabaseError(error);
-      throw new AppError('NOT_FOUND');
+      if (error?.code === 'PGRST116') return failure('NOT_FOUND');
+      if (error) return toDbFailure(error);
+      return failure('NOT_FOUND');
     }
 
-    return organization;
+    return success(organization);
   }
 
   async getByIdWithDetails(id: string) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
 
     const { data: org, error } = await supabase
       .from('organizations')
@@ -116,9 +156,9 @@ export class OrganizationService {
       .single();
 
     if (error || !org) {
-      if (error?.code === 'PGRST116') throw new AppError('NOT_FOUND');
-      if (error) throw mapSupabaseError(error);
-      throw new AppError('NOT_FOUND');
+      if (error?.code === 'PGRST116') return failure('NOT_FOUND');
+      if (error) return toDbFailure(error);
+      return failure('NOT_FOUND');
     }
 
     const [membersResult, groupsResult, rolesResult] = await Promise.all([
@@ -165,7 +205,7 @@ export class OrganizationService {
       }
     }
 
-    return {
+    return success({
       ...org,
       members: (membersResult.data ?? []).map((m: Record<string, unknown>) => ({
         id: m.user_id,
@@ -189,11 +229,11 @@ export class OrganizationService {
           permission_count: permCountMap[r.id] ?? 0,
         }),
       ),
-    };
+    });
   }
 
   async update(id: string, data: UpdateOrganizationInput) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
 
     const updateData: Partial<CreateOrganizationInput> = {};
     if (data.name !== undefined) updateData.name = data.name;
@@ -205,13 +245,13 @@ export class OrganizationService {
       .select()
       .single();
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return organization;
+    return success(organization);
   }
 
   async delete(id: string) {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
 
     const { data: exists } = await supabase
       .from('organizations')
@@ -220,15 +260,13 @@ export class OrganizationService {
       .single();
 
     if (!exists) {
-      throw new AppError('NOT_FOUND');
+      return failure('NOT_FOUND');
     }
 
     const { error } = await supabase.from('organizations').delete().eq('id', id);
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return { success: true };
+    return success({ success: true });
   }
 }
-
-export const organizationService = new OrganizationService();
