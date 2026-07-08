@@ -26,6 +26,7 @@ import { QuestionBankController } from '@/server/controllers/question-bank.contr
 import { QuizController } from '@/server/controllers/quiz.controller';
 import { QuizAttemptController } from '@/server/controllers/quiz-attempt.controller';
 import { SearchController } from '@/server/controllers/search.controller';
+import { SeatController } from '@/server/controllers/seat.controller';
 import { StatsController } from '@/server/controllers/stats.controller';
 import { StripeController } from '@/server/controllers/stripe.controller';
 import { SubscriptionPlanController } from '@/server/controllers/subscription-plan.controller';
@@ -59,6 +60,7 @@ import {
   quizAttemptService,
   quizService,
   searchService,
+  seatService,
   statsService,
   subscriptionPlanService,
   topicService,
@@ -157,6 +159,7 @@ export const quizAttemptController = wrapService(
   new QuizAttemptController(quizAttemptService),
   'quiz-attempt.controller',
 );
+export const seatController = wrapService(new SeatController(seatService), 'seat.controller');
 export const searchController = wrapService(
   new SearchController(searchService),
   'search.controller',

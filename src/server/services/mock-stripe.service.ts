@@ -12,13 +12,6 @@ export type MockCheckoutSession = {
   url: string;
 };
 
-const PLAN_CATEGORIES: Record<string, 'individual' | 'org'> = {
-  free: 'individual',
-  student_premium: 'individual',
-  teacher_license: 'org',
-  org_pro: 'org',
-};
-
 export class MockStripeService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
@@ -27,9 +20,15 @@ export class MockStripeService {
     _userId: string,
     _orgId?: string,
   ): Promise<ServiceResult<{ url: string; sessionId: string }>> {
-    if (!PLAN_CATEGORIES[planId]) {
-      return failure('BAD_REQUEST');
-    }
+    const supabase = await this.createClient();
+
+    const { data: plan } = await supabase
+      .from('subscription_plans')
+      .select('key')
+      .eq('key', planId)
+      .maybeSingle();
+
+    if (!plan) return failure('BAD_REQUEST');
 
     const sessionId = crypto.randomUUID();
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
@@ -49,20 +48,12 @@ export class MockStripeService {
 
     const supabase = await this.createClient();
 
-    const category = PLAN_CATEGORIES[event.plan_id];
-    if (!category) {
-      return success(undefined);
-    }
+    const { error } = await supabase
+      .from('profiles')
+      .update({ personal_plan_key: event.plan_id })
+      .eq('id', event.user_id);
 
-    if (category === 'individual') {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ role: 'premium' })
-        .eq('id', event.user_id)
-        .eq('role', 'free');
-
-      if (error) return toDbFailure(error);
-    }
+    if (error) return toDbFailure(error);
 
     return success(undefined);
   }

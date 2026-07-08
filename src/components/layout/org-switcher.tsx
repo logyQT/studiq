@@ -34,7 +34,7 @@ export function OrgSwitcher() {
   const router = useRouter();
   const { isMobile } = useSidebar();
 
-  if (!activeOrg || isLoading || !user) {
+  if (isLoading || !user) {
     return (
       <SidebarMenu>
         <SidebarMenuItem>
@@ -46,6 +46,52 @@ export function OrgSwitcher() {
             </div>
             <ChevronsUpDown className="ml-auto size-4 shrink-0 group-data-[collapsible=icon]:hidden text-muted-foreground" />
           </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    );
+  }
+
+  if (!activeOrg) {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <SidebarMenuButton
+                size="lg"
+                className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              >
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg">
+                  <Building2 className="size-6 text-muted-foreground" />
+                </div>
+                <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
+                  <span className="font-medium truncate max-w-32">{t('standalone')}</span>
+                  <span className="text-xs text-muted-foreground truncate max-w-32">
+                    {t('role_student')}
+                  </span>
+                </div>
+                <ChevronsUpDown className="ml-auto size-4 shrink-0 group-data-[collapsible=icon]:hidden text-muted-foreground" />
+              </SidebarMenuButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+              align="start"
+              side={isMobile ? 'bottom' : 'right'}
+              sideOffset={4}
+            >
+              <DropdownMenuLabel className="text-xs text-muted-foreground">
+                {t('no_org')}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="gap-2 p-2 text-muted-foreground"
+                onClick={() => router.push('/app/join')}
+              >
+                <LogIn className="size-4" />
+                <span>{t('join_org')}</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </SidebarMenuItem>
       </SidebarMenu>
     );
@@ -67,7 +113,7 @@ export function OrgSwitcher() {
                 {activeOrg ? (
                   <OrgAvatar orgId={activeOrg.id} name={activeOrg.name} size={32} />
                 ) : (
-                  <Building2 className="size-4 text-muted-foreground" />
+                  <Building2 className="size-6 text-muted-foreground" />
                 )}
               </div>
               <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">

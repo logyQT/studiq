@@ -1,5 +1,6 @@
 'use client';
 
+import type { QueryKey } from '@tanstack/react-query';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowRight,
@@ -189,7 +190,7 @@ export function DeckDetailScreen({
   const deckError = !decksLoading && !currentDeck;
   const topics = topicsData?.items ?? [];
   const allDecks = (allDecksData?.items ?? []).filter((d) => d.id !== deckId);
-  const flashcardQueryKey = flashcardKeys.list({ deckIds: [deckId] });
+  const flashcardQueryKey: QueryKey = ['flashcards', deckId];
 
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const handleObserver = useCallback(
@@ -289,6 +290,8 @@ export function DeckDetailScreen({
   const [barStyle, setBarStyle] = useState<React.CSSProperties>({});
 
   const [d, setD] = useState<DialogsState>({
+    createCardOpen: false,
+    editCard: null,
     deleteId: null,
     linkOpen: false,
     copyOpen: false,
@@ -355,12 +358,9 @@ export function DeckDetailScreen({
     setD((prev) => ({ ...prev, viewTopicId: topicId }));
   }, []);
 
-  const openEdit = useCallback(
-    (fc: Flashcard) => {
-      router.push(`${basePath}/${deckId}/${fc.id}`);
-    },
-    [router, basePath, deckId],
-  );
+  const openEdit = useCallback((fc: Flashcard) => {
+    setD((prev) => ({ ...prev, editCard: fc }));
+  }, []);
 
   async function handleDelete() {
     if (!d.deleteId) return;
@@ -531,6 +531,8 @@ export function DeckDetailScreen({
   }
 
   const h: DialogsHandlers = {
+    onCreateCardOpenChange: (open) => setD((prev) => ({ ...prev, createCardOpen: open })),
+    onEditCardOpenChange: (card) => setD((prev) => ({ ...prev, editCard: card })),
     onDeleteOpenChange: () => setD((prev) => ({ ...prev, deleteId: null })),
     onLinkOpenChange: (open) => setD((prev) => ({ ...prev, linkOpen: open })),
     onCopyOpenChange: (open) => setD((prev) => ({ ...prev, copyOpen: open })),
@@ -599,12 +601,12 @@ export function DeckDetailScreen({
       )
         return;
       e.preventDefault();
-      router.push(`${basePath}/${deckId}/new`);
+      setD((prev) => ({ ...prev, createCardOpen: true }));
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [currentDeck?.created_by, user?.id, basePath, deckId, router, can]);
+  }, [currentDeck?.created_by, user?.id, can]);
 
   if (deckError || (!deckLoading && !currentDeck)) {
     return (
@@ -778,7 +780,7 @@ export function DeckDetailScreen({
           can({ permissions: ['flashcard.create'], createdBy: user?.id })
         }
         onGenerate={() => router.push(`/app/ai?deckId=${deckId}`)}
-        onCreateNew={() => router.push(`${basePath}/${deckId}/new`)}
+        onCreateNew={() => setD((prev) => ({ ...prev, createCardOpen: true }))}
         t={t}
       />
 
@@ -832,7 +834,7 @@ export function DeckDetailScreen({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => router.push(`${basePath}/${deckId}/new`)}
+              onClick={() => setD((prev) => ({ ...prev, createCardOpen: true }))}
               aria-keyshortcuts="n"
             >
               <Plus className="mr-1.5 h-4 w-4" /> {t('create_first')}
@@ -980,6 +982,7 @@ export function DeckDetailScreen({
           topics={topics}
           t={t}
           basePath={basePath}
+          deckId={deckId}
         />
       </Suspense>
 
@@ -995,7 +998,7 @@ export function DeckDetailScreen({
                     {
                       icon: Plus,
                       label: t('new_flashcard'),
-                      onClick: () => router.push(`${basePath}/${deckId}/new`),
+                      onClick: () => setD((prev) => ({ ...prev, createCardOpen: true })),
                     },
                   ]
                 : []),

@@ -201,6 +201,8 @@ export async function cleanupOrganizationDeep(orgId: string) {
   const supabase = createServiceClient();
   const roleIds = (await supabase.from('org_roles').select('id').eq('organization_id', orgId)).data?.map(r => r.id) ?? [];
 
+  await supabase.from('org_seat_assignments').delete().eq('organization_id', orgId);
+  await supabase.from('org_seat_pools').delete().eq('organization_id', orgId);
   await supabase.from('org_members').delete().eq('organization_id', orgId);
   await supabase.from('group_members').delete().in('group_id', (await supabase.from('groups').select('id').eq('organization_id', orgId)).data?.map(g => g.id) ?? []);
   await supabase.from('groups').delete().eq('organization_id', orgId);

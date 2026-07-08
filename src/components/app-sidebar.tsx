@@ -88,6 +88,7 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
         { titleKey: 'manage_invitations', href: '/manage/invites', icon: Mail },
         { titleKey: 'manage_groups', href: '/manage/groups', icon: Layers },
         { titleKey: 'manage_roles', href: '/manage/roles', icon: ShieldCheck },
+        { titleKey: 'manage_seats', href: '/manage/seats', icon: CreditCard },
         { titleKey: 'manage_settings', href: '/manage/settings', icon: Settings },
       ],
     },

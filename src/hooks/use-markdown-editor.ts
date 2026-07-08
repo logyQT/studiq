@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { apiUploadFile } from '@/lib/api';
+import { formatMarkdown } from '@/lib/format-markdown';
 
 function wrapSelection(
   textarea: HTMLTextAreaElement | null,
@@ -103,6 +104,18 @@ export function useMarkdownEditor(
     [handleUpload],
   );
 
+  const insertText = useCallback(
+    (text: string) => {
+      insertAtCursor(activeTextarea, activeValue, activeOnChange, text);
+    },
+    [activeTextarea, activeValue, activeOnChange],
+  );
+
+  const formatBothSides = useCallback(() => {
+    onFrontChange(formatMarkdown(front));
+    onBackChange(formatMarkdown(back));
+  }, [front, back, onFrontChange, onBackChange]);
+
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     dragCounter.current++;
@@ -138,6 +151,8 @@ export function useMarkdownEditor(
     uploading,
     isDragOver,
     wrap,
+    insertText,
+    formatBothSides,
     handlePickFile,
     handleDragEnter,
     handleDragLeave,

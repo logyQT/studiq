@@ -7,14 +7,26 @@ import type { SubscriptionPlanService } from '@/server/services/subscription-pla
 export class SubscriptionPlanController {
   constructor(private subscriptionPlanService: SubscriptionPlanService) {}
 
-  async listPublic(): Promise<ControllerResponse> {
-    const result = await this.subscriptionPlanService.listActive();
+  async listPublic(forAccountType?: string): Promise<ControllerResponse> {
+    const result = await this.subscriptionPlanService.listActive(forAccountType);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }
 
   async getMyPlan(ctx: RequestContext): Promise<ControllerResponse> {
     const result = await this.subscriptionPlanService.getMyPlan(ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
+  }
+
+  async getByKey(key: string): Promise<ControllerResponse> {
+    const result = await this.subscriptionPlanService.getByKey(key);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
+  }
+
+  async getMyPersonalPlan(ctx: RequestContext): Promise<ControllerResponse> {
+    const result = await this.subscriptionPlanService.getPersonalPlan(ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }

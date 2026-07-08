@@ -31,6 +31,7 @@ import { QuestionBankService } from '@/server/services/question-bank.service';
 import { QuizService } from '@/server/services/quiz.service';
 import { QuizAttemptService } from '@/server/services/quiz-attempt.service';
 import { SearchService } from '@/server/services/search.service';
+import { SeatService } from '@/server/services/seat.service';
 import { StatsService } from '@/server/services/stats.service';
 import { SubscriptionPlanService } from '@/server/services/subscription-plan.service';
 import { TopicService } from '@/server/services/topic.service';
@@ -124,6 +125,7 @@ export const classroomService = wrapService(
   new ClassroomService(createClient),
   'classroom.service',
 );
+export const seatService = wrapService(new SeatService(createClient), 'seat.service');
 export const searchService = wrapService(new SearchService(createClient), 'search.service');
 export const statsService = wrapService(new StatsService(createClient), 'stats.service');
 export const topicService = wrapService(new TopicService(createClient), 'topic.service');

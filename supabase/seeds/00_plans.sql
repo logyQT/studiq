@@ -27,21 +27,23 @@ DELETE FROM public.subscription_plans;
 
 -- ==========================================================
 -- 5. Subscription plans (12 brand plans + sysadmin)
+-- Note: `description` column is for admin internal use only.
+-- Public-facing descriptions are managed via i18n keys (`plan_{key}_desc`).
 -- ==========================================================
-INSERT INTO public.subscription_plans (key, name, description, price_monthly, sort_order) VALUES
-  ('base',     'StudiQ Base',    'Free student plan — flashcards & quizzes',                0,     1),
-  ('lite',     'StudiQ Lite',    'Free educator plan — manage groups & members',             0,     2),
-  ('launch',   'StudiQ Launch',  'Free org plan — manage groups, members & documents',      0,     3),
-  ('spark',    'StudiQ Spark',   'Basic student plan — extended limits',                    999,   4),
-  ('guide',    'StudiQ Guide',   'Basic educator plan — groups, members & quiz builder',    999,   5),
-  ('team',     'StudiQ Team',    'Basic org plan — full org features',                      999,   6),
-  ('ace',      'StudiQ Ace',     'Premium student plan — AI & advanced stats',              1999,  7),
-  ('creator',  'StudiQ Creator', 'Premium educator plan — AI, groups & documents',          1999,  8),
-  ('hub',      'StudiQ Hub',     'Premium org plan — all features including role builder',  1999,  9),
-  ('pro',      'StudiQ Pro',     'Advanced student — unlimited everything',                 4999,  10),
-  ('master',   'StudiQ Master',  'Advanced educator — unlimited everything',                4999,  11),
-  ('campus',   'StudiQ Campus',  'Advanced org — unlimited everything',                     4999,  12),
-  ('sysadmin', 'System Admin',   'Internal tooling — all features',                         0,     99)
+INSERT INTO public.subscription_plans (key, name, price_monthly, currency, sort_order, for_account_type) VALUES
+  ('base',     'StudiQ Base',    0,     'PLN', 1,    'student'),
+  ('lite',     'StudiQ Lite',    0,     'PLN', 2,    'educator'),
+  ('launch',   'StudiQ Launch',  0,     'PLN', 3,    'manager'),
+  ('spark',    'StudiQ Spark',   999,   'PLN', 4,    'student'),
+  ('guide',    'StudiQ Guide',   999,   'PLN', 5,    'educator'),
+  ('team',     'StudiQ Team',    999,   'PLN', 6,    'manager'),
+  ('ace',      'StudiQ Ace',     1999,  'PLN', 7,    'student'),
+  ('creator',  'StudiQ Creator', 1999,  'PLN', 8,    'educator'),
+  ('hub',      'StudiQ Hub',     1999,  'PLN', 9,    'manager'),
+  ('pro',      'StudiQ Pro',     4999,  'PLN', 10,   'student'),
+  ('master',   'StudiQ Master',  4999,  'PLN', 11,   'educator'),
+  ('campus',   'StudiQ Campus',  4999,  'PLN', 12,   'manager'),
+  ('sysadmin', 'System Admin',   0,     'PLN', 99,   'sys_admin')
 ON CONFLICT DO NOTHING;
 
 -- ==========================================================
@@ -290,4 +292,18 @@ INSERT INTO public.plan_limits (plan_key, limit_key, limit_value) VALUES
   ('sysadmin', 'max_quiz_attempts_per_day', -1),
   ('sysadmin', 'max_ai_tokens_per_day', -1),
   ('sysadmin', 'max_storage_mb', -1)
+ON CONFLICT DO NOTHING;
+
+-- ==========================================================
+-- 8. Plan seat allocations (Phase 2 — seat-based licensing)
+-- ==========================================================
+DELETE FROM public.plan_seat_allocations;
+
+INSERT INTO public.plan_seat_allocations (org_plan, seat_plan, default_qty) VALUES
+  ('launch', 'launch', 1),
+  ('team',   'team',   5),
+  ('hub',    'hub',    20),
+  ('campus', 'pro',    50),
+  ('campus', 'master', 10),
+  ('campus', 'campus', 5)
 ON CONFLICT DO NOTHING;

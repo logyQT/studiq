@@ -1,7 +1,7 @@
 'use client';
 
 import { CreditCard, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -42,6 +42,7 @@ interface PlanLimit {
 
 export default function AdminSubscriptionPlansPage() {
   const t = useTranslations('AdminSubscriptionPlansPage');
+  const locale = useLocale();
   const [plans, setPlans] = useState<PlanInfo[] | null>(null);
   const [allFeatures, setAllFeatures] = useState<{ key: string; name: string }[]>([]);
   const [planFeatures, setPlanFeatures] = useState<PlanFeature[]>([]);
@@ -103,7 +104,11 @@ export default function AdminSubscriptionPlansPage() {
     const body: Record<string, unknown> = {};
     if (plan.key !== undefined) body.key = plan.key;
     if (plan.name !== undefined) body.name = plan.name;
+    if (plan.description !== undefined) body.description = plan.description;
     if (plan.priceMonthly !== undefined) body.priceMonthly = plan.priceMonthly;
+    if (plan.currency !== undefined) body.currency = plan.currency;
+    if (plan.sortOrder !== undefined) body.sortOrder = plan.sortOrder;
+    if (plan.isActive !== undefined) body.isActive = plan.isActive;
 
     try {
       const res = await fetch(url, {
@@ -290,9 +295,23 @@ export default function AdminSubscriptionPlansPage() {
                   <div>
                     <CardTitle>{plan.name}</CardTitle>
                     <CardDescription>
-                      {plan.key} &middot;{' '}
-                      {plan.priceMonthly > 0 ? `$${plan.priceMonthly}` : t('free')}
+                      {plan.key} &middot; {plan.currency} &middot;{' '}
+                      {plan.priceMonthly > 0
+                        ? new Intl.NumberFormat(locale, {
+                            style: 'currency',
+                            currency: plan.currency,
+                            minimumFractionDigits: 0,
+                          }).format(plan.priceMonthly / 100)
+                        : t('free')}
                     </CardDescription>
+                    {plan.description && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mr-1.5">
+                          {t('internal')}
+                        </span>
+                        {plan.description}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-1">
@@ -488,7 +507,11 @@ function PlanForm({
 }) {
   const [key, setKey] = useState(initial?.key ?? '');
   const [name, setName] = useState(initial?.name ?? '');
+  const [description, setDescription] = useState(initial?.description ?? '');
   const [priceMonthly, setPriceMonthly] = useState(initial?.priceMonthly ?? 0);
+  const [currency, setCurrency] = useState(initial?.currency ?? 'PLN');
+  const [sortOrder, setSortOrder] = useState(initial?.sortOrder ?? 0);
+  const [isActive, setIsActive] = useState(initial?.isActive ?? true);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -496,7 +519,11 @@ function PlanForm({
       id: initial?.id,
       key,
       name,
+      description: description || null,
       priceMonthly,
+      currency,
+      sortOrder,
+      isActive,
     } as any);
   }
 
@@ -511,6 +538,11 @@ function PlanForm({
         <Input value={name} onChange={(e) => setName(e.target.value)} required />
       </div>
       <div className="space-y-2">
+        <Label>{t('description_label')}</Label>
+        <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+        <p className="text-xs text-muted-foreground">{t('description_internal_hint')}</p>
+      </div>
+      <div className="space-y-2">
         <Label>{t('price_label')}</Label>
         <Input
           type="number"
@@ -518,6 +550,38 @@ function PlanForm({
           value={priceMonthly}
           onChange={(e) => setPriceMonthly(Number(e.target.value))}
         />
+      </div>
+      <div className="space-y-2">
+        <Label>{t('currency_label')}</Label>
+        <Select value={currency} onValueChange={setCurrency}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="PLN">PLN</SelectItem>
+            <SelectItem value="USD">USD</SelectItem>
+            <SelectItem value="EUR">EUR</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label>{t('sort_order_label')}</Label>
+        <Input
+          type="number"
+          min={0}
+          value={sortOrder}
+          onChange={(e) => setSortOrder(Number(e.target.value))}
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="is-active"
+          checked={isActive}
+          onChange={(e) => setIsActive(e.target.checked)}
+          className="size-4"
+        />
+        <Label htmlFor="is-active">{t('is_active_label')}</Label>
       </div>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onCancel}>

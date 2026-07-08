@@ -10,21 +10,68 @@ export interface PlanInfo {
   name: string;
   description: string | null;
   priceMonthly: number;
+  currency: string;
   features: string[];
+  limits: Record<string, number>;
+  sortOrder: number;
+  isActive: boolean;
 }
 
 export class SubscriptionPlanService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
-  async listActive(): Promise<ServiceResult<PlanInfo[]>> {
+  private async fetchLimitsByPlan(
+    planKeys: string[],
+  ): Promise<Map<string, Record<string, number>>> {
+    const supabase = await this.createClient();
+    const { data: planLimits } = await supabase
+      .from('plan_limits')
+      .select('plan_key, limit_key, limit_value')
+      .in('plan_key', planKeys);
+
+    const limitsByPlan = new Map<string, Record<string, number>>();
+    for (const pl of planLimits ?? []) {
+      if (!limitsByPlan.has(pl.plan_key)) {
+        limitsByPlan.set(pl.plan_key, {});
+      }
+      limitsByPlan.get(pl.plan_key)![pl.limit_key] = pl.limit_value;
+    }
+    return limitsByPlan;
+  }
+
+  private toPlanInfo(
+    plan: Record<string, unknown>,
+    features: string[],
+    limits: Record<string, number>,
+  ): PlanInfo {
+    return {
+      id: plan.id as string,
+      key: plan.key as string,
+      name: plan.name as string,
+      description: (plan.description as string) ?? null,
+      priceMonthly: (plan.price_monthly as number) ?? 0,
+      currency: (plan.currency as string) ?? 'PLN',
+      sortOrder: (plan.sort_order as number) ?? 0,
+      isActive: (plan.is_active as boolean) ?? true,
+      features,
+      limits,
+    };
+  }
+
+  async listActive(forAccountType?: string): Promise<ServiceResult<PlanInfo[]>> {
     const supabase = await this.createClient();
 
-    const { data: plans, error } = await supabase
+    let query = supabase
       .from('subscription_plans')
       .select('*')
       .eq('is_active', true)
-      .neq('key', 'sysadmin')
-      .order('sort_order', { ascending: true });
+      .neq('key', 'sysadmin');
+
+    if (forAccountType) {
+      query = query.eq('for_account_type', forAccountType);
+    }
+
+    const { data: plans, error } = await query.order('sort_order', { ascending: true });
 
     if (error) return toDbFailure(error);
 
@@ -45,38 +92,50 @@ export class SubscriptionPlanService {
       featuresByPlan.get(pf.plan_key)!.push(pf.feature_key);
     }
 
+    const limitsByPlan = await this.fetchLimitsByPlan(planKeys);
+
     return success(
-      plans.map((p) => ({
-        id: p.id,
-        key: p.key,
-        name: p.name,
-        description: p.description,
-        priceMonthly: p.price_monthly,
-        features: featuresByPlan.get(p.key) ?? [],
-      })),
+      plans.map((p) =>
+        this.toPlanInfo(p, featuresByPlan.get(p.key) ?? [], limitsByPlan.get(p.key) ?? {}),
+      ),
     );
   }
 
   async getMyPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
     const supabase = await this.createClient();
 
-    if (!ctx.activeOrgId) {
-      return failure('NOT_FOUND');
+    let planKey: string | null = null;
+
+    if (ctx.activeOrgId) {
+      const { data: org, error: orgError } = await supabase
+        .from('organizations')
+        .select('plan')
+        .eq('id', ctx.activeOrgId)
+        .maybeSingle();
+
+      if (orgError) return toDbFailure(orgError);
+      if (org) planKey = org.plan;
     }
 
-    const { data: org, error: orgError } = await supabase
-      .from('organizations')
-      .select('plan')
-      .eq('id', ctx.activeOrgId)
-      .maybeSingle();
+    if (!planKey) {
+      // Fall back to personal plan for standalone users
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('personal_plan_key')
+        .eq('id', ctx.userId)
+        .maybeSingle();
 
-    if (orgError) return toDbFailure(orgError);
-    if (!org) return failure('NOT_FOUND');
+      if (profile?.personal_plan_key) {
+        planKey = profile.personal_plan_key;
+      }
+    }
+
+    if (!planKey) return failure('NOT_FOUND');
 
     const { data: plan, error: planError } = await supabase
       .from('subscription_plans')
       .select('*')
-      .eq('key', org.plan)
+      .eq('key', planKey)
       .maybeSingle();
 
     if (planError) return toDbFailure(planError);
@@ -89,14 +148,54 @@ export class SubscriptionPlanService {
 
     if (pfError) return toDbFailure(pfError);
 
-    return success({
-      id: plan.id,
-      key: plan.key,
-      name: plan.name,
-      description: plan.description,
-      priceMonthly: plan.price_monthly,
-      features: planFeatures?.map((pf) => pf.feature_key) ?? [],
-    });
+    const limitsByPlan = await this.fetchLimitsByPlan([plan.key]);
+
+    return success(
+      this.toPlanInfo(
+        plan,
+        planFeatures?.map((pf) => pf.feature_key) ?? [],
+        limitsByPlan.get(plan.key) ?? {},
+      ),
+    );
+  }
+
+  async getPersonalPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
+    const supabase = await this.createClient();
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('personal_plan_key')
+      .eq('id', ctx.userId)
+      .maybeSingle();
+
+    const planKey = profile?.personal_plan_key;
+    if (!planKey) return failure('NOT_FOUND');
+
+    const { data: plan, error: planError } = await supabase
+      .from('subscription_plans')
+      .select('*')
+      .eq('key', planKey)
+      .maybeSingle();
+
+    if (planError) return toDbFailure(planError);
+    if (!plan) return failure('NOT_FOUND');
+
+    const { data: planFeatures, error: pfError } = await supabase
+      .from('plan_features')
+      .select('feature_key')
+      .eq('plan_key', plan.key);
+
+    if (pfError) return toDbFailure(pfError);
+
+    const limitsByPlan = await this.fetchLimitsByPlan([plan.key]);
+
+    return success(
+      this.toPlanInfo(
+        plan,
+        planFeatures?.map((pf) => pf.feature_key) ?? [],
+        limitsByPlan.get(plan.key) ?? {},
+      ),
+    );
   }
 
   async getAllAdmin(): Promise<ServiceResult<PlanInfo[]>> {
@@ -126,15 +225,38 @@ export class SubscriptionPlanService {
       featuresByPlan.get(pf.plan_key)!.push(pf.feature_key);
     }
 
+    const limitsByPlan = await this.fetchLimitsByPlan(planKeys);
+
     return success(
-      plans.map((p) => ({
-        id: p.id,
-        key: p.key,
-        name: p.name,
-        description: p.description,
-        priceMonthly: p.price_monthly,
-        features: featuresByPlan.get(p.key) ?? [],
-      })),
+      plans.map((p) =>
+        this.toPlanInfo(p, featuresByPlan.get(p.key) ?? [], limitsByPlan.get(p.key) ?? {}),
+      ),
+    );
+  }
+
+  async getByKey(key: string): Promise<ServiceResult<PlanInfo>> {
+    const supabase = await this.createClient();
+
+    const { data: plan, error } = await supabase
+      .from('subscription_plans')
+      .select('*')
+      .eq('key', key)
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!plan) return failure('NOT_FOUND');
+
+    const { data: features, error: pfError } = await supabase
+      .from('plan_features')
+      .select('feature_key')
+      .eq('plan_key', key);
+
+    if (pfError) return toDbFailure(pfError);
+
+    const limitsByPlan = await this.fetchLimitsByPlan([key]);
+
+    return success(
+      this.toPlanInfo(plan, features?.map((f) => f.feature_key) ?? [], limitsByPlan.get(key) ?? {}),
     );
   }
 
@@ -166,6 +288,7 @@ export class SubscriptionPlanService {
         price_yearly: input.priceYearly ?? 0,
         sort_order: input.sortOrder ?? 0,
         is_active: input.isActive ?? true,
+        currency: input.currency ?? 'PLN',
       })
       .select()
       .single();
@@ -186,6 +309,7 @@ export class SubscriptionPlanService {
     if (input.priceYearly !== undefined) updateData.price_yearly = input.priceYearly;
     if (input.sortOrder !== undefined) updateData.sort_order = input.sortOrder;
     if (input.isActive !== undefined) updateData.is_active = input.isActive;
+    if (input.currency !== undefined) updateData.currency = input.currency;
 
     const { data, error } = await supabase
       .from('subscription_plans')

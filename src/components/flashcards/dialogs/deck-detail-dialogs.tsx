@@ -2,6 +2,7 @@
 
 import type { useTranslations } from 'next-intl';
 import { BulkDialogs } from '@/components/flashcards/dialogs/bulk-dialogs';
+import { CreateCardDialog } from '@/components/flashcards/dialogs/create-card-dialog';
 import { DeckDialogs } from '@/components/flashcards/dialogs/deck-dialogs';
 import { SingleCardDialogs } from '@/components/flashcards/dialogs/single-card-dialogs';
 import { TopicDialogs } from '@/components/flashcards/dialogs/topic-dialogs';
@@ -9,6 +10,8 @@ import { useCan } from '@/hooks/use-can';
 import type { Deck, Flashcard, Topic } from '@/server/models';
 
 export interface DialogsState {
+  createCardOpen: boolean;
+  editCard: Flashcard | null;
   deleteId: string | null;
   linkOpen: boolean;
   copyOpen: boolean;
@@ -36,6 +39,8 @@ export interface DialogsState {
 }
 
 export interface DialogsHandlers {
+  onCreateCardOpenChange: (open: boolean) => void;
+  onEditCardOpenChange: (card: Flashcard | null) => void;
   onDeleteOpenChange: () => void;
   onLinkOpenChange: (open: boolean) => void;
   onCopyOpenChange: (open: boolean) => void;
@@ -80,6 +85,7 @@ interface DeckDetailDialogsProps {
   topics: Topic[];
   t: ReturnType<typeof useTranslations>;
   basePath: string;
+  deckId: string;
 }
 
 export function DeckDetailDialogs({
@@ -91,6 +97,7 @@ export function DeckDetailDialogs({
   topics,
   t,
   basePath,
+  deckId,
 }: DeckDetailDialogsProps) {
   const can = useCan();
 
@@ -100,6 +107,24 @@ export function DeckDetailDialogs({
 
   return (
     <>
+      <CreateCardDialog
+        deckId={deckId}
+        open={state.createCardOpen}
+        onOpenChange={handlers.onCreateCardOpenChange}
+        topics={topics}
+      />
+
+      <CreateCardDialog
+        deckId={deckId}
+        open={!!state.editCard}
+        onOpenChange={(open) => {
+          if (!open) handlers.onEditCardOpenChange(null);
+        }}
+        topics={topics}
+        flashcard={state.editCard}
+        onSuccess={() => handlers.onEditCardOpenChange(null)}
+      />
+
       <SingleCardDialogs
         t={t}
         basePath={basePath}

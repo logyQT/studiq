@@ -38,6 +38,12 @@ export const CreateSubscriptionPlanSchema = registry.register(
       .optional()
       .default(0),
     isActive: z.boolean({ error: ValidationErrorCode.BOOL }).optional().default(true),
+    currency: z
+      .string({ error: ValidationErrorCode.INVALID_INPUT })
+      .min(2, { error: ValidationErrorCode.TOO_SHORT })
+      .max(3, { error: ValidationErrorCode.TOO_LONG })
+      .optional()
+      .default('PLN'),
   }),
 );
 
@@ -76,6 +82,11 @@ export const UpdateSubscriptionPlanSchema = registry.register(
       .int({ error: ValidationErrorCode.INTEGER })
       .optional(),
     isActive: z.boolean({ error: ValidationErrorCode.BOOL }).optional(),
+    currency: z
+      .string({ error: ValidationErrorCode.INVALID_INPUT })
+      .min(2, { error: ValidationErrorCode.TOO_SHORT })
+      .max(3, { error: ValidationErrorCode.TOO_LONG })
+      .optional(),
   }),
 );
 

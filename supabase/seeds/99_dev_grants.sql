@@ -22,3 +22,8 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated, service_role;
 -- Future-proof: auto-grant on tables created after this seed runs
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT ALL ON TABLES TO authenticated, service_role;
+
+-- Public read access for unauthenticated pricing page
+GRANT SELECT ON public.subscription_plans TO anon;
+GRANT SELECT ON public.plan_features TO anon;
+GRANT SELECT ON public.plan_limits TO anon;

@@ -1,7 +1,7 @@
 'use client';
 
-import { Loader2 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { Loader2, Minus } from 'lucide-react';
+import { useLocale, useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,18 +10,22 @@ import { Separator } from '@/components/ui/separator';
 import { useApiQuery } from '@/hooks/use-api';
 import type { PlanInfo } from '@/server/services/subscription-plan.service';
 
-const FEATURE_LABELS: Record<string, string> = {
-  flashcards: 'flashcards',
-  quiz: 'quiz',
-  ai: 'ai',
-  quiz_builder: 'quiz_builder',
-  documents: 'documents',
-  org_manage: 'org_manage',
-  advanced_stats: 'advanced_stats',
-};
+const SORTED_LIMIT_KEYS = [
+  'max_flashcards',
+  'max_decks',
+  'max_questions',
+  'max_question_banks',
+  'max_quiz_attempts_per_day',
+  'max_ai_tokens_per_day',
+  'max_students',
+  'max_groups',
+  'max_storage_mb',
+];
 
 export default function AppBillingPage() {
   const t = useTranslations('BillingPage');
+  const pt = useTranslations('PricingPage');
+  const locale = useLocale();
   const { user } = useAuth();
   const { data: plan, isLoading } = useApiQuery<PlanInfo>({
     queryKey: ['me', 'plan'],
@@ -37,9 +41,23 @@ export default function AppBillingPage() {
     );
   }
 
-  const isPremium = plan.key !== 'free';
-  const isSchool = plan.key === 'school';
-  const featureList = plan.features.length > 0 ? plan.features : ['flashcards', 'quiz'];
+  const hasPrice = plan.priceMonthly > 0;
+  const formatter = new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency: plan.currency,
+  });
+
+  function getFeatureLabel(key: string): string {
+    const label = pt(`feature_${key}`);
+    return label.startsWith('feature_') ? key : label;
+  }
+
+  function getLimitLabel(key: string): string {
+    const label = pt(`limit_${key}`);
+    return label.startsWith('limit_') ? key : label;
+  }
+
+  const visibleLimits = SORTED_LIMIT_KEYS.filter((k) => k in plan.limits);
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -55,42 +73,59 @@ export default function AppBillingPage() {
               <CardTitle>{t('current_plan')}</CardTitle>
               <CardDescription>{plan.name}</CardDescription>
             </div>
-            <Badge variant={isPremium ? 'default' : 'secondary'}>
-              {isPremium ? t('active') : t('free')}
+            <Badge variant={hasPrice ? 'default' : 'secondary'}>
+              {hasPrice ? t('active') : t('free')}
             </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold">
-              {plan.priceMonthly > 0 ? `$${plan.priceMonthly}` : '$0'}
-            </span>
+            <span className="text-3xl font-bold">{formatter.format(plan.priceMonthly / 100)}</span>
             <span className="text-muted-foreground">
-              {plan.priceMonthly > 0 ? '/month' : t('free_forever')}
+              {hasPrice ? t('period_month') : t('free_forever')}
             </span>
           </div>
 
-          {isSchool && (
-            <div className="flex items-center gap-2 rounded-lg bg-muted p-3 text-sm">
-              <span>{t('access_via_classroom')}</span>
-            </div>
-          )}
-
           <Separator />
 
-          <ul className="space-y-2">
-            {featureList.map((feature) => (
-              <li key={feature} className="flex items-center gap-2 text-sm">
-                <span>{FEATURE_LABELS[feature] ?? feature}</span>
-              </li>
-            ))}
-          </ul>
+          {plan.features.length > 0 && (
+            <ul className="space-y-2">
+              {plan.features.map((feature) => (
+                <li key={feature} className="flex items-center gap-2 text-sm">
+                  <span>{getFeatureLabel(feature)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
 
-          {!isPremium && (
-            <Button
-              className="w-full"
-              onClick={() => (window.location.href = '/checkout?plan_id=student_premium')}
-            >
+          {visibleLimits.length > 0 && (
+            <>
+              <Separator />
+              <div className="space-y-1.5">
+                {visibleLimits.map((key) => {
+                  const value = plan.limits[key];
+                  return (
+                    <div key={key} className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">{getLimitLabel(key)}</span>
+                      <span className="font-medium tabular-nums">
+                        {value === -1 ? (
+                          <span className="flex items-center gap-1">
+                            <Minus className="size-3" />
+                            {pt('limit_unlimited')}
+                          </span>
+                        ) : (
+                          value.toLocaleString(locale)
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {!hasPrice && (
+            <Button className="w-full" onClick={() => (window.location.href = '/app/upgrade')}>
               {t('upgrade')}
             </Button>
           )}

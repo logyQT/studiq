@@ -22,6 +22,7 @@ export * from '@/server/models/question-bank.model';
 export * from '@/server/models/quiz.model';
 export * from '@/server/models/quiz-attempt.model';
 export * from '@/server/models/search.model';
+export * from '@/server/models/seat.model';
 export * from '@/server/models/stats.model';
 export * from '@/server/models/study-settings.model';
 export * from '@/server/models/subscription-plan.model';

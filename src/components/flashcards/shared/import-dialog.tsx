@@ -165,7 +165,7 @@ export function ImportDialog({ open, onOpenChange, deckId, t }: ImportDialogProp
       setStep('done');
 
       if (deckId) {
-        queryClient.removeQueries({ queryKey: flashcardKeys.list({ deckIds: [deckId] }) });
+        queryClient.invalidateQueries({ queryKey: ['flashcards', deckId] });
       }
       queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
     } catch {
