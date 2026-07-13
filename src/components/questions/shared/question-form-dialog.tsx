@@ -68,7 +68,7 @@ export function QuestionFormDialog({
         setType(initialValues.type);
         setExplanation(initialValues.explanation ?? '');
         setAnswers(
-          initialValues.question_answers.map((a) => ({
+          (initialValues.question_answers ?? []).map((a) => ({
             content: a.content,
             isCorrect: a.is_correct,
           })),

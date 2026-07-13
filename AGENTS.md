@@ -73,7 +73,7 @@ src/app/(backend)/api/v1/*/route.ts
 - Singleton: `export const fooController = new FooController()`
 - Re-exported via `src/server/controllers/index.ts`
 - Validate with Zod: `schema.safeParse(body)` → return error response (`{ success: false, statusCode: 422, error: 'UNPROCESSABLE_ENTITY', details }`)
-- Wrap logic in `withErrorHandling(async () => { ... }, ctx)`
+- Wrap logic in `withSupervision(async () => { ... }, { service, method })` or `wrapService(service, name)` from `@/lib/observability`
 - Use `hasPermission(ctx, Permission.XXX)` for auth checks
 - Never throw — always return `ControllerResponse` object literal
 - Response shape:
@@ -112,11 +112,11 @@ export type CreateFooInput = z.infer<typeof CreateFooSchema>;
 
 ## Error Handling
 
-- `AppError(code: AppErrorCode)` — thrown by services, caught by `withErrorHandling` and `withAuth`
+- `AppError(code: AppErrorCode)` — thrown by services, caught by `withAuth` (routes) and `withSupervision`/`wrapService` (services)
 - Error codes → HTTP status via `APP_ERRORS` in `src/lib/errors.ts`:
   `BAD_REQUEST` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `CONFLICT` (409), `GONE` (410), `UNPROCESSABLE_ENTITY` (422), `RATE_LIMITED` (429), `INTERNAL_SERVER` (500), `SERVICE_UNAVAILABLE` (503)
 - `mapSupabaseError(error)` maps PG codes: PGRST116→NOT_FOUND, 23505→CONFLICT, etc.
-- Unhandled `INTERNAL_SERVER` and `SyntaxError` logged to `error_logs` table with `errorId`
+- Unhandled `INTERNAL_SERVER` and `SyntaxError` recorded as OTEL spans via `withSupervision`/`wrapService` in `@/lib/observability`
 
 ---
 

@@ -1,8 +1,0 @@
--- ==========================================
--- DEPRECATED: org_role_display_names
--- Table dropped. Custom role display names are now stored
--- in the `description` field of org_roles.
--- ==========================================
---
--- CREATE TABLE public.org_role_display_names (...)
--- DROP TABLE IF EXISTS public.org_role_display_names;

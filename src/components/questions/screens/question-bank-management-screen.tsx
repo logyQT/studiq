@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import type { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { useAuth } from '@/components/providers/AuthProvider';
 import { QuestionBankCard } from '@/components/questions/cards/question-bank-card';
 import { QuestionBankFilters } from '@/components/questions/shared/question-bank-filters';
 import { QuestionBankFormDialog } from '@/components/questions/shared/question-bank-form-dialog';
@@ -23,7 +22,6 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { groupKeys, questionKeys } from '@/lib/query-keys';
 import type { QuestionBank } from '@/server/models';
-import { AccountType } from '@/types';
 
 interface QuestionBankManagementScreenProps {
   apiBase: string;
@@ -47,7 +45,6 @@ function loadPersistedFilters() {
 
 export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManagementScreenProps) {
   const _router = useRouter();
-  const { user } = useAuth();
   const { activeOrg } = useOrgs();
   const can = useCan();
 
@@ -56,8 +53,6 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     url: '/api/v1/organization/groups',
     enabled: !!activeOrg?.id && can({ features: ['org.manage'] }),
   });
-  const accountType = user?.app_metadata?.account_type as AccountType | undefined;
-
   const persisted = loadPersistedFilters();
 
   const [searchInput, setSearchInput] = useState('');
@@ -261,15 +256,9 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     }
   }
 
-  const canSeeGroup =
-    activeOrg?.orgRoleName === 'teacher' ||
-    activeOrg?.orgRoleName === 'admin' ||
-    accountType === AccountType.MANAGER;
-
   return (
     <div className="space-y-6">
       <QuestionBankFilters
-        canSeeGroup={canSeeGroup}
         searchInput={searchInput}
         onSearchChange={setSearchInput}
         owner={owner}

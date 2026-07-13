@@ -9,13 +9,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const DEV_USERS = [
   { label: 'Admin', email: 'admin@dev.local' },
-  { label: 'Manager', email: 'manager@dev.local' },
-  { label: 'Teacher', email: 'teacher@dev.local' },
-  { label: 'Student1', email: 'student1@classroom.dev' },
-  { label: 'Student2', email: 'student2@classroom.dev' },
-  { label: 'Student3', email: 'student3@classroom.dev' },
-  { label: 'Student4', email: 'student4@classroom.dev' },
-  { label: 'Student5', email: 'student5@classroom.dev' },
+  { label: 'M1', email: 'manager@dev.local' },
+  { label: 'M2', email: 'manager2@dev.local' },
+  { label: 'T1', email: 'teacher1@dev.local' },
+  { label: 'T2', email: 'teacher2@dev.local' },
+  { label: 'S1', email: 'student1@dev.local' },
+  { label: 'S2', email: 'student2@dev.local' },
+  { label: 'S3', email: 'student3@dev.local' },
 ] as const;
 
 export function DevQuickLogin() {

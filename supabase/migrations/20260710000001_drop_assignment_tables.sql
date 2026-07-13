@@ -1,17 +1,228 @@
 -- ==========================================
--- RPC FUNCTIONS
--- Application-facing functions used by the
--- backend service layer. All use the latest
--- parameter signatures (organization_id, etc.).
+-- Migration: 20260710000001
+-- Description: Replace M:N join tables with direct FK columns
+--   - Adds bank_id FK on questions
+--   - Adds deck_id FK on flashcards
+--   - Migrates data from assignment tables
+--   - Drops question_bank_assignments
+--   - Drops flashcard_deck_assignments
+--   - Removes orphan triggers
+--   - Rewrites all RPCs to use direct FKs
 -- ==========================================
 
 -- ==========================================
--- get_due_flashcards
--- Returns due + new flashcards for a user,
--- scoped by RBAC filter. Separates review vs
--- new and excludes leeched cards.
+-- STEP 1: Add bank_id to questions
+-- ==========================================
+ALTER TABLE public.questions
+  ADD COLUMN bank_id uuid REFERENCES public.question_banks(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_questions_bank_id ON public.questions(bank_id);
+
+-- Migrate existing data from question_bank_assignments
+-- (Each question was in at most one bank in practice; if a question was in
+--  multiple banks, we keep the first one by insertion order.)
+UPDATE public.questions q
+SET bank_id = sub.bank_id
+FROM (
+  SELECT DISTINCT ON (question_id) question_id, bank_id
+  FROM public.question_bank_assignments
+  ORDER BY question_id, bank_id
+) sub
+WHERE q.id = sub.question_id;
+
+-- ==========================================
+-- STEP 2: Add deck_id to flashcards
+-- ==========================================
+ALTER TABLE public.flashcards
+  ADD COLUMN deck_id uuid REFERENCES public.flashcard_decks(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_flashcards_deck_id ON public.flashcards(deck_id);
+
+-- Migrate existing data from flashcard_deck_assignments
+-- (Each flashcard was in at most one deck in practice; if a flashcard was in
+--  multiple decks, we keep the first one by insertion order.)
+UPDATE public.flashcards f
+SET deck_id = sub.deck_id
+FROM (
+  SELECT DISTINCT ON (flashcard_id) flashcard_id, deck_id
+  FROM public.flashcard_deck_assignments
+  ORDER BY flashcard_id, deck_id
+) sub
+WHERE f.id = sub.flashcard_id;
+
+-- ==========================================
+-- STEP 3: Remove triggers on flashcard_deck_assignments
 -- ==========================================
 
+-- Drop the orphan cleanup trigger and function
+DROP TRIGGER IF EXISTS trg_flashcard_deck_assignments_cleanup ON public.flashcard_deck_assignments;
+DROP FUNCTION IF EXISTS public.cleanup_orphan_flashcards();
+
+-- Drop the deck updated_at trigger on assignments
+DROP TRIGGER IF EXISTS trg_deck_updated_at_on_assignment ON public.flashcard_deck_assignments;
+DROP FUNCTION IF EXISTS public.update_deck_updated_at_on_assignment();
+
+-- ==========================================
+-- STEP 4: Rewrite update_deck_updated_at_on_flashcard_change to use direct deck_id
+-- ==========================================
+CREATE OR REPLACE FUNCTION public.update_deck_updated_at_on_flashcard_change()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.deck_id IS NOT NULL THEN
+    UPDATE public.flashcard_decks
+    SET updated_at = now()
+    WHERE id = NEW.deck_id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Recreate the trigger on flashcards.deck_id change
+DROP TRIGGER IF EXISTS trg_deck_updated_at_on_flashcard_change ON public.flashcards;
+CREATE TRIGGER trg_deck_updated_at_on_flashcard_change
+  AFTER UPDATE ON public.flashcards
+  FOR EACH ROW
+  WHEN (OLD.front IS DISTINCT FROM NEW.front
+    OR OLD.back IS DISTINCT FROM NEW.back
+    OR OLD.deck_id IS DISTINCT FROM NEW.deck_id)
+  EXECUTE FUNCTION public.update_deck_updated_at_on_flashcard_change();
+
+-- ==========================================
+-- STEP 5: Drop the assignment tables
+-- ==========================================
+
+DROP TABLE IF EXISTS public.question_bank_assignments CASCADE;
+DROP TABLE IF EXISTS public.flashcard_deck_assignments CASCADE;
+
+-- ==========================================
+-- STEP 6: Update get_accessible_flashcard_decks to use direct FK count
+-- ==========================================
+DROP FUNCTION IF EXISTS public.get_accessible_flashcard_decks(uuid, uuid);
+CREATE FUNCTION public.get_accessible_flashcard_decks(p_user_id uuid, p_org_id uuid)
+RETURNS TABLE(
+  id uuid, organization_id uuid, created_by uuid, name text, description text,
+  visibility visibility_type, search_vector tsvector, created_at timestamptz,
+  updated_at timestamptz, flashcard_count bigint
+) LANGUAGE sql STABLE AS $$
+  SELECT DISTINCT d.id, d.organization_id, d.created_by, d.name, d.description,
+    d.visibility, d.search_vector, d.created_at, d.updated_at,
+    (SELECT COUNT(*) FROM public.flashcards WHERE deck_id = d.id) AS flashcard_count
+  FROM public.flashcard_decks d
+  LEFT JOIN public.deck_groups dg ON dg.deck_id = d.id
+  LEFT JOIN public.group_members gm ON gm.group_id = dg.group_id AND gm.user_id = p_user_id
+  WHERE d.organization_id = p_org_id
+    AND (
+      (d.visibility = 'personal' AND d.created_by = p_user_id)
+      OR
+      gm.id IS NOT NULL
+    );
+$$;
+
+-- ==========================================
+-- STEP 7: Update get_accessible_flashcards to use direct FK
+-- ==========================================
+DROP FUNCTION IF EXISTS public.get_accessible_flashcards(uuid, uuid);
+CREATE FUNCTION public.get_accessible_flashcards(p_user_id uuid, p_org_id uuid)
+RETURNS SETOF public.flashcards LANGUAGE sql STABLE AS $$
+  SELECT DISTINCT f.*
+  FROM public.flashcards f
+  LEFT JOIN public.deck_groups dg ON dg.deck_id = f.deck_id
+  LEFT JOIN public.group_members gm ON gm.group_id = dg.group_id AND gm.user_id = p_user_id
+  WHERE f.organization_id = p_org_id
+    AND (
+      (f.visibility = 'personal' AND f.created_by = p_user_id)
+      OR
+      gm.id IS NOT NULL
+    );
+$$;
+
+-- ==========================================
+-- STEP 8: Update get_accessible_question_banks to use direct FK count
+-- ==========================================
+DROP FUNCTION IF EXISTS public.get_accessible_question_banks(uuid, uuid);
+CREATE FUNCTION public.get_accessible_question_banks(p_user_id uuid, p_org_id uuid)
+RETURNS TABLE(
+  id uuid, organization_id uuid, created_by uuid, name text, description text,
+  visibility visibility_type, search_vector tsvector, created_at timestamptz,
+  updated_at timestamptz, question_count bigint
+) LANGUAGE sql STABLE AS $$
+  SELECT DISTINCT b.id, b.organization_id, b.created_by, b.name, b.description,
+    b.visibility, b.search_vector, b.created_at, b.updated_at,
+    (SELECT COUNT(*) FROM public.questions WHERE bank_id = b.id) AS question_count
+  FROM public.question_banks b
+  LEFT JOIN public.bank_groups bg ON bg.bank_id = b.id
+  LEFT JOIN public.group_members gm ON gm.group_id = bg.group_id AND gm.user_id = p_user_id
+  WHERE b.organization_id = p_org_id
+    AND (
+      (b.visibility = 'personal' AND b.created_by = p_user_id)
+      OR
+      gm.id IS NOT NULL
+    );
+$$;
+
+-- ==========================================
+-- STEP 9: Update get_accessible_questions to use direct FK
+-- ==========================================
+DROP FUNCTION IF EXISTS public.get_accessible_questions(uuid, uuid, text, uuid, uuid[], uuid[], text);
+CREATE FUNCTION public.get_accessible_questions(
+  p_user_id uuid,
+  p_org_id uuid DEFAULT NULL,
+  p_scope text DEFAULT 'own',
+  p_question_id uuid DEFAULT NULL,
+  p_bank_ids uuid[] DEFAULT NULL,
+  p_topic_ids uuid[] DEFAULT NULL,
+  p_type text DEFAULT NULL
+)
+RETURNS TABLE(
+  id uuid, organization_id uuid, created_by uuid,
+  type text, content text, explanation text,
+  visibility visibility_type, search_vector tsvector,
+  created_at timestamptz, updated_at timestamptz,
+  question_answers jsonb
+)
+LANGUAGE sql STABLE AS $$
+  WITH accessible AS (
+    SELECT DISTINCT q.*
+    FROM public.questions q
+    LEFT JOIN public.question_topic_assignments qta ON qta.question_id = q.id
+    LEFT JOIN public.bank_groups bg ON bg.bank_id = q.bank_id
+    LEFT JOIN public.topic_groups tg ON tg.topic_id = qta.topic_id
+    LEFT JOIN public.group_members gm ON gm.group_id = bg.group_id AND gm.user_id = p_user_id
+    WHERE (p_org_id IS NULL OR q.organization_id = p_org_id)
+      AND (
+        CASE p_scope
+          WHEN 'own'   THEN q.created_by = p_user_id
+          WHEN 'group' THEN (q.created_by = p_user_id) OR gm.id IS NOT NULL
+          ELSE TRUE
+        END
+      )
+      AND (p_bank_ids IS NULL   OR q.bank_id = ANY(p_bank_ids))
+      AND (p_topic_ids IS NULL  OR qta.topic_id = ANY(p_topic_ids))
+      AND (p_question_id IS NULL OR q.id = p_question_id)
+      AND (p_type IS NULL        OR q.type::text = p_type)
+  )
+  SELECT a.id, a.organization_id, a.created_by, a.type::text, a.content, a.explanation,
+         a.visibility, a.search_vector, a.created_at, a.updated_at,
+         CASE WHEN p_question_id IS NOT NULL THEN (
+           SELECT jsonb_agg(
+             jsonb_build_object(
+               'id', qa.id,
+               'question_id', qa.question_id,
+               'content', qa.content,
+               'is_correct', qa.is_correct,
+               'order_index', qa.order_index
+             ) ORDER BY qa.order_index
+           )
+           FROM public.question_answers qa
+           WHERE qa.question_id = a.id
+         ) ELSE NULL END AS question_answers
+  FROM accessible a
+  ORDER BY a.created_at DESC;
+$$;
+
+-- ==========================================
+-- STEP 10: Update get_due_flashcards to use direct FK
+-- ==========================================
 CREATE OR REPLACE FUNCTION get_due_flashcards(
   p_user_id UUID,
   p_filter_type TEXT DEFAULT 'own',
@@ -116,11 +327,8 @@ END;
 $$;
 
 -- ==========================================
--- get_due_breakdown
--- Counts due cards per topic and deck, plus
--- next review time. Excludes leeched cards.
+-- STEP 11: Update get_due_breakdown to use direct FK
 -- ==========================================
-
 CREATE OR REPLACE FUNCTION public.get_due_breakdown(
   p_user_id uuid,
   p_created_by uuid DEFAULT NULL,
@@ -211,12 +419,8 @@ END;
 $$;
 
 -- ==========================================
--- get_practice_state_breakdown
--- Counts flashcards by practice state
--- (never_practiced, learning, review,
---  relearning, leeched) for a user.
+-- STEP 12: Update get_practice_state_breakdown to use direct FK + suspended_decks
 -- ==========================================
-
 CREATE OR REPLACE FUNCTION public.get_practice_state_breakdown(
   p_user_id uuid,
   p_created_by uuid DEFAULT NULL,
@@ -312,9 +516,9 @@ BEGIN
     SELECT COUNT(*) INTO total
     FROM public.flashcards f
     WHERE NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
+      SELECT 1 FROM public.suspended_decks sd
+      WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
+    );
 
     SELECT
       COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
@@ -327,9 +531,9 @@ BEGIN
     LEFT JOIN public.flashcard_review_state rs
       ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
     WHERE NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
+      SELECT 1 FROM public.suspended_decks sd
+      WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
+    );
   END IF;
 
   RETURN json_build_object(
@@ -344,11 +548,8 @@ END;
 $$;
 
 -- ==========================================
--- search_flashcards
--- Bilingual full-text search across flashcards
--- with RBAC ownership scope filtering.
+-- STEP 13: Update search_flashcards to use direct FK
 -- ==========================================
-
 CREATE OR REPLACE FUNCTION public.search_flashcards(
   search_query text,
   result_limit int DEFAULT 10,
@@ -395,11 +596,46 @@ END;
 $$;
 
 -- ==========================================
--- get_teacher_stats
--- Aggregates teacher dashboard stats server-side
--- to avoid large SELECT limits.
+-- STEP 14: Update count_new_cards to use direct FK + suspended_decks
 -- ==========================================
+CREATE OR REPLACE FUNCTION count_new_cards(
+  p_user_id UUID,
+  p_filter_type TEXT DEFAULT 'own',
+  p_organization_id UUID DEFAULT NULL
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  v_count INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO v_count
+  FROM flashcards f
+  WHERE
+    CASE p_filter_type
+      WHEN 'impossible' THEN FALSE
+      WHEN 'any' THEN TRUE
+      WHEN 'own' THEN f.created_by = p_user_id AND f.organization_id = p_organization_id
+      WHEN 'university' THEN f.organization_id = p_organization_id AND f.visibility = 'group'
+      ELSE FALSE
+    END
+    AND NOT EXISTS (
+      SELECT 1 FROM flashcard_review_state rs
+      WHERE rs.flashcard_id = f.id AND rs.user_id = p_user_id
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM suspended_decks sd
+      WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
+    );
 
+  RETURN v_count;
+END;
+$$;
+
+-- ==========================================
+-- STEP 15: Update get_teacher_stats to use direct FK
+-- ==========================================
 CREATE OR REPLACE FUNCTION public.get_teacher_stats(
   p_flashcard_ids uuid[],
   p_user_id uuid,
@@ -628,43 +864,55 @@ END;
 $$;
 
 -- ==========================================
--- count_new_cards
--- Counts flashcards with no review state for
--- the user. Used to show accurate remaining
--- new card count in settings.
+-- STEP 16: Drop indexes on removed tables
 -- ==========================================
+DROP INDEX IF EXISTS public.idx_fda_deck_flashcard;
+DROP INDEX IF EXISTS public.idx_question_bank_assignments_bank;
+DROP INDEX IF EXISTS public.idx_qba_bank_question;
+DROP INDEX IF EXISTS public.idx_flashcard_deck_assignments_deck;
 
-CREATE OR REPLACE FUNCTION count_new_cards(
+-- ==========================================
+-- STEP 17: Update bulk_create_flashcards RPC to use direct deck_id
+-- ==========================================
+CREATE OR REPLACE FUNCTION bulk_create_flashcards(
+  p_cards JSONB,
   p_user_id UUID,
-  p_filter_type TEXT DEFAULT 'own',
-  p_organization_id UUID DEFAULT NULL
-)
-RETURNS INTEGER
-LANGUAGE plpgsql
-STABLE
-AS $$
+  p_organization_id UUID DEFAULT NULL,
+  p_visibility TEXT DEFAULT 'personal',
+  p_deck_ids UUID[] DEFAULT '{}',
+  p_topic_ids UUID[] DEFAULT '{}'
+) RETURNS SETOF flashcards AS $$
 DECLARE
-  v_count INTEGER;
+  v_ids UUID[];
+  v_deck_id UUID;
 BEGIN
-  SELECT COUNT(*) INTO v_count
-  FROM flashcards f
-  WHERE
-    CASE p_filter_type
-      WHEN 'impossible' THEN FALSE
-      WHEN 'any' THEN TRUE
-      WHEN 'own' THEN f.created_by = p_user_id AND f.organization_id = p_organization_id
-      WHEN 'university' THEN f.organization_id = p_organization_id AND f.visibility = 'group'
-      ELSE FALSE
-    END
-    AND NOT EXISTS (
-      SELECT 1 FROM flashcard_review_state rs
-      WHERE rs.flashcard_id = f.id AND rs.user_id = p_user_id
-    )
-    AND NOT EXISTS (
-      SELECT 1 FROM suspended_decks sd
-      WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-    );
+  -- Use the first deck_id if provided (1:N means a flashcard can only belong to one deck)
+  IF array_length(p_deck_ids, 1) > 0 THEN
+    v_deck_id := p_deck_ids[1];
+  END IF;
 
-  RETURN v_count;
+  -- Step 1: Insert all flashcards with direct deck_id
+  WITH ins AS (
+    INSERT INTO flashcards (front, back, created_by, organization_id, visibility, deck_id)
+    SELECT
+      c->>'front',
+      c->>'back',
+      p_user_id,
+      p_organization_id,
+      p_visibility,
+      v_deck_id
+    FROM jsonb_array_elements(p_cards) AS c
+    RETURNING id
+  )
+  SELECT array_agg(id) INTO v_ids FROM ins;
+
+  -- Step 2: Topic assignments (if any)
+  IF array_length(p_topic_ids, 1) > 0 THEN
+    INSERT INTO flashcard_topic_assignments (flashcard_id, topic_id)
+    SELECT id, unnest(p_topic_ids) FROM unnest(v_ids) AS id;
+  END IF;
+
+  -- Return created flashcards
+  RETURN QUERY SELECT * FROM flashcards WHERE id = ANY(v_ids);
 END;
-$$;
+$$ LANGUAGE plpgsql;

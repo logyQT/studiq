@@ -1,5 +1,5 @@
+import { can, Permission } from '@/lib/access';
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
-import { hasPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import {
@@ -12,6 +12,7 @@ import {
   BulkCreateFlashcardsSchema,
   CopyFlashcardSchema,
   CreateFlashcardSchema,
+  FlashcardListQuerySchema,
   LinkFlashcardSchema,
   UnlinkFlashcardSchema,
   UpdateFlashcardSchema,
@@ -22,7 +23,7 @@ export class FlashcardController {
   constructor(private flashcardService: FlashcardService) {}
 
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    if (!(await hasPermission(ctx, Permission.FLASHCARD_CREATE))) {
+    if (!(await can(ctx, Permission.FLASHCARD_CREATE))) {
       return controllerResponse.error('FORBIDDEN');
     }
 
@@ -53,7 +54,13 @@ export class FlashcardController {
       limit?: number;
     },
   ): Promise<ControllerResponse> {
-    const result = await this.flashcardService.list(ctx, filters);
+    const parsed = FlashcardListQuerySchema.safeParse(filters ?? {});
+
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
+
+    const result = await this.flashcardService.list(ctx, parsed.data);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
@@ -63,7 +70,7 @@ export class FlashcardController {
   }
 
   async bulkCreate(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    if (!(await hasPermission(ctx, Permission.FLASHCARD_CREATE))) {
+    if (!(await can(ctx, Permission.FLASHCARD_CREATE))) {
       return controllerResponse.error('FORBIDDEN');
     }
 

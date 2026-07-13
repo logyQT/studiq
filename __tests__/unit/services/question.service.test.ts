@@ -5,9 +5,8 @@ import { success, failure } from '@/lib/service-result';
 import type { RequestContext } from '@/lib/request-context';
 import { AccountType } from '@/types';
 
-vi.mock('@/lib/rbac', () => ({
-  buildQueryFilter: vi.fn().mockResolvedValue({}),
-  checkPermission: vi.fn().mockResolvedValue(undefined),
+vi.mock('@/lib/access', () => ({
+  accessibleFilter: vi.fn().mockResolvedValue({}),
   Permission: { QUESTION_READ: 'question.read' as const, QUESTION_UPDATE: 'question.update' as const },
 }));
 
@@ -48,6 +47,8 @@ describe('QuestionService', () => {
     method: 'GET',
     activeOrgId: null,
     orgRoleId: null,
+    groupIds: [],
+    permissionScopes: {},
   };
   const service = new QuestionService(async () => mock as any);
 
@@ -63,7 +64,7 @@ describe('QuestionService', () => {
       mock.from.mockReturnValueOnce(chain([], 0));
       mock.from.mockReturnValueOnce(chain(mockQuestion));
       mock.from.mockReturnValueOnce(chain(null));
-      mock.from.mockReturnValue(chain(mockQuestion));
+      mock.from.mockReturnValueOnce(chain(mockQuestion));
 
       const result = await service.create(
         {
@@ -118,10 +119,8 @@ describe('QuestionService', () => {
 
     it('filters by bankId when provided', async () => {
       const questions = [{ id: 'q-1', content: 'Q1' }];
-      const bankAssignments = [{ question_id: 'q-1' }];
 
-      mock.from.mockReturnValueOnce(chain(questions));
-      mock.from.mockReturnValue(chain(bankAssignments));
+      mock.from.mockReturnValue(chain(questions));
 
       const result = await service.list(ctx, { bankId: 'bank-1' });
 
@@ -156,7 +155,7 @@ describe('QuestionService', () => {
       const updated = { id: 'q-1', content: 'Updated' };
 
       mock.from.mockReturnValueOnce(chain(updated));
-      mock.from.mockReturnValue(chain(updated));
+      mock.from.mockReturnValueOnce(chain(updated));
 
       const result = await service.update('q-1', { content: 'Updated' }, ctx);
 
@@ -179,7 +178,7 @@ describe('QuestionService', () => {
       mock.from.mockReturnValueOnce(chain(updated));
       mock.from.mockReturnValueOnce(chain(null));
       mock.from.mockReturnValueOnce(chain(null));
-      mock.from.mockReturnValue(chain(updated));
+      mock.from.mockReturnValueOnce(chain(updated));
 
       const result = await service.update(
         'q-1',

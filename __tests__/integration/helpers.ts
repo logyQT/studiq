@@ -262,7 +262,7 @@ export async function cleanupFlashcards(userId: string, frontPrefix?: string) {
   if (flashcards && flashcards.length > 0) {
     const flashcardIds = flashcards.map((f) => f.id);
     await supabase.from('flashcard_topic_assignments').delete().in('flashcard_id', flashcardIds);
-    await supabase.from('flashcard_deck_assignments').delete().in('flashcard_id', flashcardIds);
+    // flashcard_deck_assignments table removed — deck_id is a direct FK on flashcards
     await supabase.from('flashcard_practice').delete().in('flashcard_id', flashcardIds);
     await supabase.from('flashcards').delete().in('id', flashcardIds);
   }

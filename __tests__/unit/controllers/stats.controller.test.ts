@@ -19,6 +19,8 @@ const mockCtx: RequestContext = {
   activeOrgId: null,
   url: '/test',
   method: 'GET',
+  groupIds: [],
+  permissionScopes: {},
 };
 
 describe('StatsController', () => {

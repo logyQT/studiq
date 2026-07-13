@@ -45,6 +45,8 @@ describe('FlashcardDeckService', () => {
     method: 'GET',
     activeOrgId: null,
     orgRoleId: null,
+    groupIds: [],
+    permissionScopes: {},
   };
 
   beforeEach(() => {

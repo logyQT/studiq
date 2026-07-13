@@ -1,5 +1,5 @@
+import { can, Permission } from '@/lib/access';
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
-import { hasPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import {
@@ -16,7 +16,7 @@ export class FlashcardDeckController {
   constructor(private flashcardDeckService: FlashcardDeckService) {}
 
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    if (!(await hasPermission(ctx, Permission.DECK_CREATE))) {
+    if (!(await can(ctx, Permission.DECK_CREATE))) {
       return controllerResponse.error('FORBIDDEN');
     }
 

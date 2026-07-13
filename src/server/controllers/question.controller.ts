@@ -1,8 +1,9 @@
+import { can, check, Permission } from '@/lib/access';
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import { AppError } from '@/lib/errors';
-import { hasPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { CreateQuestionSchema, UpdateQuestionSchema } from '@/server/models';
 import type { QuestionService } from '@/server/services/question.service';
 
@@ -10,7 +11,7 @@ export class QuestionController {
   constructor(private questionService: QuestionService) {}
 
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    if (!(await hasPermission(ctx, Permission.QUESTION_CREATE))) throw new AppError('FORBIDDEN');
+    if (!(await can(ctx, Permission.QUESTION_CREATE))) throw new AppError('FORBIDDEN');
     const parsed = CreateQuestionSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -22,7 +23,20 @@ export class QuestionController {
       };
     }
 
-    const question = await this.questionService.create(parsed.data, ctx);
+    let bankVisibility: string | undefined;
+    if (parsed.data.bankId) {
+      const supabase = await createClient();
+      const { data: bank } = await supabase
+        .from('question_banks')
+        .select('id, created_by, organization_id, visibility')
+        .eq('id', parsed.data.bankId)
+        .single();
+      if (!bank) throw new AppError('NOT_FOUND');
+      await check(ctx, Permission.QUESTION_BANK_UPDATE, bank);
+      bankVisibility = bank.visibility;
+    }
+
+    const question = await this.questionService.create(parsed.data, ctx, bankVisibility);
 
     if (isFailure(question)) {
       return controllerResponse.error(question.error);
@@ -70,7 +84,20 @@ export class QuestionController {
       };
     }
 
-    const question = await this.questionService.update(id, parsed.data, ctx);
+    let bankVisibility: string | undefined;
+    if (parsed.data.bankId) {
+      const supabase = await createClient();
+      const { data: bank } = await supabase
+        .from('question_banks')
+        .select('id, created_by, organization_id, visibility')
+        .eq('id', parsed.data.bankId)
+        .single();
+      if (!bank) throw new AppError('NOT_FOUND');
+      await check(ctx, Permission.QUESTION_BANK_UPDATE, bank);
+      bankVisibility = bank.visibility;
+    }
+
+    const question = await this.questionService.update(id, parsed.data, ctx, bankVisibility);
 
     if (isFailure(question)) {
       return controllerResponse.error(question.error);

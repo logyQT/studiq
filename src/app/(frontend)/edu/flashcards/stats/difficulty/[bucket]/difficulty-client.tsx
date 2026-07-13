@@ -1,6 +1,5 @@
 'use client';
 
-import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, BarChart3, Filter, Layers, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -14,7 +13,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { useApiQuery } from '@/hooks/use-api';
-import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { DifficultyFlashcardDetail } from '@/server/models';
 
@@ -24,7 +22,6 @@ export default function DifficultyBucketClient() {
   const params = useParams();
   const bucket = params.bucket as string;
   const t = useTranslations('DifficultyPage');
-  const queryClient = useQueryClient();
   const [deckIds, setDeckIds] = useState<string[]>([]);
   const [topicIds, setTopicIds] = useState<string[]>([]);
 
@@ -52,21 +49,11 @@ export default function DifficultyBucketClient() {
   const filteredData = useMemo(() => {
     if (!data) return undefined;
     return data.filter((card) => {
-      if (deckIds.length > 0 && !deckIds.some((id) => card.deckIds.includes(id))) return false;
+      if (deckIds.length > 0 && !deckIds.some((id) => card.deckId === id)) return false;
       if (topicIds.length > 0 && !topicIds.some((id) => card.topicIds.includes(id))) return false;
       return true;
     });
   }, [data, deckIds, topicIds]);
-
-  useRealtimeChannel(
-    channel(`difficulty-${bucket}`)
-      .listen('flashcard_practice', () => {
-        queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.difficultyBucket(bucket) });
-      })
-      .listen('flashcard_review_state', () => {
-        queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.difficultyBucket(bucket) });
-      }),
-  );
 
   const titleKey = `title_${bucket}` as 'title_easy' | 'title_medium' | 'title_hard' | 'title_new';
 
@@ -140,12 +127,12 @@ export default function DifficultyBucketClient() {
                 </div>
 
                 <div className="flex flex-wrap gap-1.5">
-                  {fc.deckNames.map((name) => (
-                    <Badge key={name} variant="secondary" className="text-xs">
+                  {fc.deckName ? (
+                    <Badge variant="secondary" className="text-xs">
                       <Layers className="mr-1 h-3 w-3" />
-                      {name}
+                      {fc.deckName}
                     </Badge>
-                  ))}
+                  ) : null}
                   {fc.topicNames.map((name) => (
                     <Badge key={name} variant="outline" className="text-xs">
                       <Sparkles className="mr-1 h-3 w-3" />

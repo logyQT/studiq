@@ -1,5 +1,0 @@
--- ==========================================
--- NOTE: org_subscriptions table has been removed.
--- Feature gating is now handled entirely by role_permissions
--- in the RBAC system. See 55_rbac_permissions.sql.
--- ==========================================

@@ -124,6 +124,60 @@ describe('Questions Integration', () => {
       expect(response.status).toBe(401);
       expect(body.success).toBe(false);
     });
+
+    it('returns 403 when using another users bankId', async () => {
+      const supabase = createServiceClient();
+      const { data: bank } = await supabase
+        .from('question_banks')
+        .insert({
+          name: 'Test Bank',
+          created_by: TEST_USERS.TEACHER.id,
+          organization_id: orgId,
+          visibility: 'personal',
+        })
+        .select()
+        .single();
+
+      mockUser(TEST_USERS.STUDENT);
+
+      const req = createNextRequest('http://localhost/api/v1/questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'mcq',
+          content: 'Question',
+          bankId: bank.id,
+          answers: [{ content: 'Answer', isCorrect: true }],
+        }),
+      }, orgCookies());
+
+      const response = await POST(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(body.success).toBe(false);
+    });
+
+    it('returns 404 when bankId does not exist', async () => {
+      mockUser(TEST_USERS.TEACHER);
+
+      const req = createNextRequest('http://localhost/api/v1/questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'mcq',
+          content: 'Question',
+          bankId: '00000000-0000-4000-8000-000000000099',
+          answers: [{ content: 'Answer', isCorrect: true }],
+        }),
+      }, orgCookies());
+
+      const response = await POST(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(body.success).toBe(false);
+    });
   });
 
   describe('GET /api/v1/questions', () => {

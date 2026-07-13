@@ -5,11 +5,12 @@ import { success, failure } from '@/lib/service-result';
 import type { RequestContext } from '@/lib/request-context';
 import { AccountType } from '@/types';
 
-vi.mock('@/lib/rbac', () => {
-  const checkPermission = vi.fn().mockResolvedValue(undefined);
+vi.mock('@/lib/access', () => {
+  const check = vi.fn().mockResolvedValue(undefined);
   return {
-    checkPermission,
-    buildQueryFilter: vi.fn().mockResolvedValue({}),
+    check,
+    accessibleFilter: vi.fn().mockResolvedValue({}),
+    can: vi.fn().mockResolvedValue(true),
     Permission: {
       FLASHCARD_READ: 'flashcard.read',
       FLASHCARD_UPDATE: 'flashcard.update',
@@ -56,6 +57,8 @@ describe('FlashcardService', () => {
     method: 'GET',
     activeOrgId: null,
     orgRoleId: null,
+    groupIds: [],
+    permissionScopes: {},
   };
   const service = new FlashcardService(async () => mock as any);
 
@@ -273,18 +276,17 @@ describe('FlashcardService', () => {
       expect(result.data).toBeDefined();
     });
 
-    it('updates deck assignments when deckIds provided', async () => {
+    it('updates deck_id when deckId provided', async () => {
       const updated = { id: 'fc-1', front: 'Updated', back: 'A' };
 
       mock.from.mockReturnValueOnce(chain(updated));
       mock.from.mockReturnValueOnce(chain(updated));
       mock.from.mockReturnValueOnce(chain(null));
-      mock.from.mockReturnValueOnce(chain(null));
       mock.from.mockReturnValue(chain(updated));
 
       const result = await service.update(
         'fc-1',
-        { front: 'Updated', deckIds: ['d-1'] },
+        { front: 'Updated', deckId: 'd-1' },
         ctx,
       );
 

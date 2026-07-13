@@ -163,10 +163,8 @@ export interface FlashcardRow {
   front: string;
   back: string;
   created_at: string;
-  flashcard_deck_assignments?: Array<{
-    deck_id: string;
-    flashcard_decks?: Array<{ name: string }>;
-  }>;
+  deck_id?: string | null;
+  deck_name?: string | null;
   flashcard_topic_assignments?: Array<{
     topic_id: string;
     topics?: Array<{ name: string }>;

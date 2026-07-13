@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createClient } from '@/lib/supabase/server';
 import { success, failure } from '@/lib/service-result';
 import { QuestionController } from '@/server/controllers/question.controller';
 import type { ControllerResponse } from '@/lib/controller-response';
@@ -22,6 +23,8 @@ const mockCtx: RequestContext = {
   activeOrgId: null,
   url: '/test',
   method: 'GET',
+  groupIds: [],
+  permissionScopes: {},
 };
 
 describe('QuestionController', () => {
@@ -66,6 +69,34 @@ describe('QuestionController', () => {
       );
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    });
+
+    it('passes bankVisibility to service when bankId is valid', async () => {
+      const bankId = '550e8400-e29b-41d4-a716-446655440000';
+      const body = {
+        type: 'mcq',
+        content: 'Q',
+        bankId,
+        answers: [{ content: 'A', isCorrect: true }],
+      };
+      const created = { id: 'q-1', content: 'Q', bank_id: bankId };
+      mockService.create.mockResolvedValueOnce(success(created));
+
+      const queryChain: any = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({
+          data: { id: bankId, created_by: mockCtx.userId, organization_id: null, visibility: 'personal' },
+          error: null,
+        }),
+      };
+      const mockSupabase: any = { from: vi.fn().mockReturnValue(queryChain) };
+      vi.mocked(createClient).mockResolvedValue(mockSupabase);
+
+      const response = await controller.create(body, mockCtx);
+
+      expect(response).toEqual({ success: true, statusCode: 201, data: created });
+      expect(mockService.create).toHaveBeenCalledWith(expect.objectContaining({ bankId }), mockCtx, 'personal');
     });
   });
 

@@ -18,6 +18,8 @@ const ctx: RequestContext = {
   method: 'POST',
   activeOrgId: null,
   orgRoleId: null,
+  groupIds: [],
+  permissionScopes: {},
 };
 
 const defaultSettings = {

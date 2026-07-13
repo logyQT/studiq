@@ -208,7 +208,7 @@ export class GroupService {
     const supabase = await this.createClient();
     const { data, error } = await supabase.rpc('get_user_group_ids', {
       p_user_id: ctx.userId,
-      p_org_id: ctx.activeOrgId,
+      p_org_id: ctx.activeOrgId ?? null,
     });
     if (error) return toDbFailure(error);
     return success((data as { group_id: string }[] | null)?.map((r) => r.group_id) ?? []);

@@ -1,7 +1,7 @@
 'use client';
 
 import type { QueryKey } from '@tanstack/react-query';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowRight,
   Copy,
@@ -46,7 +46,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useCan } from '@/hooks/use-can';
-import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { apiDelete, apiPost, apiPut } from '@/lib/api';
 import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 
 const DeckDetailDialogs = lazy(() =>
@@ -61,7 +61,9 @@ type DialogsHandlers =
 import { ImportDialog } from '@/components/flashcards/shared/import-dialog';
 import { ScrollBackToBar } from '@/components/shared/scroll-back-to-bar';
 import { SpeedDial } from '@/components/shared/speed-dial';
+import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import { useDebounce } from '@/hooks/use-debounce';
+import { usePersistedState } from '@/hooks/use-persisted-state';
 import { useSelection } from '@/hooks/use-selection';
 import { getGradientHex } from '@/lib/color-utils';
 import type { Deck, Flashcard, Topic } from '@/server/models';
@@ -72,22 +74,6 @@ interface DeckDetailScreenProps {
   apiBase: string;
   t: ReturnType<typeof useTranslations>;
   practiceHref?: string;
-}
-
-function getStorageKey(deckId: string) {
-  return `flashcard_deck_detail_filters_${deckId}`;
-}
-
-function loadPersistedFilters(deckId: string) {
-  if (typeof window === 'undefined')
-    return { topicFilter: 'all', sortBy: 'created_at', sortOrder: 'desc' };
-  try {
-    const raw = localStorage.getItem(getStorageKey(deckId));
-    if (raw) return JSON.parse(raw);
-  } catch {
-    /* ignore */
-  }
-  return { topicFilter: 'all', sortBy: 'created_at', sortOrder: 'desc' };
 }
 
 export function DeckDetailScreen({
@@ -103,64 +89,38 @@ export function DeckDetailScreen({
   const { user } = useAuth();
   const headerGrad = getGradientHex(deckId);
 
-  const persisted = loadPersistedFilters(deckId);
-
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebounce(searchInput, 300);
-  const [topicFilter, setTopicFilter] = useState(persisted.topicFilter);
-  const [sortBy, setSortBy] = useState(persisted.sortBy);
-  const [sortOrder, setSortOrder] = useState(persisted.sortOrder);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        getStorageKey(deckId),
-        JSON.stringify({ topicFilter, sortBy, sortOrder }),
-      );
-    } catch {
-      /* ignore */
-    }
-  }, [deckId, topicFilter, sortBy, sortOrder]);
-
-  const filters = {
-    q: debouncedSearch || undefined,
-    topicIds: topicFilter !== 'all' ? [topicFilter] : undefined,
-    sortBy,
-    sortOrder,
-  };
-
-  const params: Record<string, string> = {};
-  params.deckIds = deckId;
-  params.limit = '30';
-  if (filters.q) params.q = filters.q;
-  if (filters.sortBy) params.sortBy = filters.sortBy;
-  if (filters.sortOrder) params.sortOrder = filters.sortOrder;
-  if (filters.topicIds?.[0]) params.topicIds = filters.topicIds[0];
-  const queryString = new URLSearchParams(params).toString();
+  const [topicFilter, setTopicFilter] = usePersistedState(
+    `flashcard_deck_detail_topic_filter_${deckId}`,
+    'all',
+  );
+  const [sortBy, setSortBy] = usePersistedState(
+    `flashcard_deck_detail_sort_by_${deckId}`,
+    'created_at',
+  );
+  const [sortOrder, setSortOrder] = usePersistedState(
+    `flashcard_deck_detail_sort_order_${deckId}`,
+    'desc',
+  );
 
   const {
-    data: flashcardsData,
+    items: flashcards,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useInfiniteQuery({
-    queryKey: [
-      'flashcards',
-      deckId,
-      filters.q ?? '',
-      filters.topicIds?.[0] ?? '',
+  } = useCursorPagination<Flashcard>({
+    queryKey: ['flashcards', deckId, debouncedSearch ?? '', topicFilter, sortBy, sortOrder],
+    url: '/api/v1/flashcards',
+    filters: {
+      deckIds: deckId,
+      q: debouncedSearch || undefined,
+      topicIds: topicFilter !== 'all' ? topicFilter : undefined,
       sortBy,
       sortOrder,
-    ],
-    queryFn: ({ pageParam }) =>
-      apiGet<{ items: Flashcard[]; nextCursor: string | null; hasMore: boolean }>(
-        `/api/v1/flashcards?${queryString}${pageParam ? `&cursor=${pageParam}` : ''}`,
-      ),
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
-    initialPageParam: '',
+    },
+    limit: 30,
     enabled: !!deckId,
-    staleTime: Infinity,
-    refetchOnMount: false,
   });
   const { data: topicsData } = useApiQuery<{
     items: Topic[];
@@ -185,7 +145,6 @@ export function DeckDetailScreen({
     url: '/api/v1/flashcards/decks?limit=200',
   });
 
-  const flashcards = flashcardsData?.pages.flatMap((page) => page.items) ?? [];
   const deckLoading = decksLoading;
   const deckError = !decksLoading && !currentDeck;
   const topics = topicsData?.items ?? [];

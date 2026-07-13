@@ -1,6 +1,5 @@
 'use client';
 
-import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   BarChart3,
@@ -34,28 +33,15 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useApiQuery } from '@/hooks/use-api';
-import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { TeacherFlashcardStatsResponse } from '@/server/models';
 
 export default function EduFlashcardStatsClient() {
   const t = useTranslations('EduFlashcardStatsPage');
-  const queryClient = useQueryClient();
-
   const { data, isLoading } = useApiQuery<TeacherFlashcardStatsResponse>({
     queryKey: flashcardKeys.stats.teacher,
     url: '/api/v1/flashcards/stats/teacher',
   });
-
-  useRealtimeChannel(
-    channel('teacher-flashcard-stats')
-      .listen('flashcard_practice', () => {
-        queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.teacher });
-      })
-      .listen('flashcard_review_state', () => {
-        queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.teacher });
-      }),
-  );
 
   if (isLoading) return <DeckDetailSkeleton />;
 

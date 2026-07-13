@@ -18,6 +18,8 @@ const mockCtx: RequestContext = {
   activeOrgId: null,
   url: 'http://localhost',
   method: 'POST',
+  groupIds: [],
+  permissionScopes: {},
 };
 
 describe('FlashcardPracticeController', () => {

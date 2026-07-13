@@ -1,6 +1,6 @@
+import { can, Permission } from '@/lib/access';
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
-import { hasPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import {
@@ -16,7 +16,7 @@ export class TopicController {
   constructor(private topicService: TopicService) {}
 
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    if (!(await hasPermission(ctx, Permission.TOPIC_CREATE))) {
+    if (!(await can(ctx, Permission.TOPIC_CREATE))) {
       return controllerResponse.error('FORBIDDEN');
     }
     const parsed = CreateTopicSchema.safeParse(body);

@@ -1,4 +1,5 @@
 import type { AccountType, Nullable } from '@/types';
+import type { PermissionScope } from './permissions';
 
 export interface RequestContext {
   traceId: string;
@@ -8,4 +9,6 @@ export interface RequestContext {
   activeOrgId: Nullable<string>;
   url: string;
   method: string;
+  groupIds: string[];
+  permissionScopes: Partial<Record<string, PermissionScope>>;
 }

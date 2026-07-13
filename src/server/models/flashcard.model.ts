@@ -1,3 +1,4 @@
+import { createListQuerySchema } from '@/lib/query-list';
 import { ValidationErrorCode } from '@/lib/validation-errors';
 import { registry, z } from '@/lib/zod';
 
@@ -23,7 +24,7 @@ export const BulkCreateFlashcardsSchema = registry.register(
   'BulkCreateFlashcardsRequest',
   z.object({
     topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
-    deckIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+    deckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
     cards: z
       .array(
         z.object({
@@ -48,7 +49,7 @@ export const UpdateFlashcardSchema = registry.register(
   'UpdateFlashcardRequest',
   z.object({
     topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
-    deckIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+    deckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
     front: z
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
@@ -72,9 +73,7 @@ export type UpdateFlashcardInput = z.infer<typeof UpdateFlashcardSchema>;
 export const LinkFlashcardSchema = registry.register(
   'LinkFlashcardRequest',
   z.object({
-    deckIds: z
-      .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
-      .min(1, { error: ValidationErrorCode.TOO_FEW }),
+    deckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
   }),
 );
 
@@ -100,9 +99,7 @@ export const BatchLinkSchema = registry.register(
     ids: z
       .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
       .min(1, { error: ValidationErrorCode.TOO_FEW }),
-    deckIds: z
-      .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
-      .min(1, { error: ValidationErrorCode.TOO_FEW }),
+    deckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
   }),
 );
 
@@ -155,6 +152,21 @@ export const BatchCopySchema = registry.register(
   }),
 );
 
+const flashcardListQueryBase = createListQuerySchema({
+  sortColumns: ['created_at', 'front', 'back', 'updated_at'] as const,
+  defaultLimit: 50,
+});
+
+export const FlashcardListQuerySchema = registry.register(
+  'FlashcardListQuery',
+  flashcardListQueryBase.extend({
+    deckIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+    topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+  }),
+);
+
+export type FlashcardListQueryInput = z.infer<typeof FlashcardListQuerySchema>;
+
 export const FlashcardSchema = registry.register(
   'Flashcard',
   z.object({
@@ -175,8 +187,8 @@ export interface FlashcardWithAssignments {
   front: string;
   back: string;
   created_by: string;
+  deck_id?: string | null;
   flashcard_topic_assignments?: Array<{ topic_id: string }>;
-  flashcard_deck_assignments?: Array<{ deck_id: string }>;
   visibility?: 'personal' | 'group';
 }
 

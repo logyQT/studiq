@@ -41,6 +41,8 @@ describe('OrganizationService', () => {
     method: 'POST',
     activeOrgId: null,
     orgRoleId: null,
+    groupIds: [],
+    permissionScopes: {},
   };
 
   beforeEach(() => {

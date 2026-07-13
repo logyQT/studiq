@@ -17,6 +17,7 @@ CREATE TABLE public.flashcards (
                     to_tsvector('english', coalesce(back, '')) ||
                     to_tsvector('polish', coalesce(back, ''))
                   ) STORED,
+  deck_id         uuid REFERENCES public.flashcard_decks(id) ON DELETE CASCADE,
   created_at      timestamptz DEFAULT now()
 );
 
@@ -29,4 +30,5 @@ CREATE INDEX idx_flashcards_organization ON public.flashcards(organization_id);
 CREATE INDEX idx_flashcards_created_at_id ON public.flashcards (created_at DESC, id);
 CREATE INDEX idx_flashcards_owner_time ON public.flashcards (created_by, created_at DESC, id);
 CREATE INDEX idx_flashcards_org_time ON public.flashcards (organization_id, created_at DESC, id);
+CREATE INDEX idx_flashcards_deck_id ON public.flashcards(deck_id);
 CREATE INDEX idx_flashcards_visibility ON public.flashcards (organization_id, visibility);

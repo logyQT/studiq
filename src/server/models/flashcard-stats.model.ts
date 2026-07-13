@@ -57,8 +57,8 @@ export type DifficultyFlashcardDetail = {
   accuracy: number;
   totalAttempts: number;
   studentCount: number;
-  deckIds: string[];
-  deckNames: string[];
+  deckId: string;
+  deckName: string;
   topicIds: string[];
   topicNames: string[];
 };

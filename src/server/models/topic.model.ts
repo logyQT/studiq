@@ -1,3 +1,4 @@
+import { createListQuerySchema } from '@/lib/query-list';
 import { ValidationErrorCode } from '@/lib/validation-errors';
 import { registry, z } from '@/lib/zod';
 
@@ -39,13 +40,12 @@ export const BatchDeleteTopicSchema = registry.register(
 
 export const TopicListQuerySchema = registry.register(
   'TopicListQuery',
-  z.object({
-    q: z.string().optional(),
+  createListQuerySchema({
+    sortColumns: ['created_at', 'name'] as const,
+    maxLimit: 500,
+    defaultLimit: 50,
+  }).extend({
     owner: z.enum(['all', 'mine', 'shared', 'group']).optional().default('all'),
-    sortBy: z.enum(['created_at', 'name']).optional().default('created_at'),
-    sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
-    cursor: z.string().optional(),
-    limit: z.coerce.number().int().min(1).max(500).optional().default(50),
   }),
 );
 

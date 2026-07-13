@@ -36,6 +36,8 @@ describe('OrganizationMemberService', () => {
     method: 'GET',
     activeOrgId: 'uni-1',
     orgRoleId: null,
+    groupIds: [],
+    permissionScopes: {},
   };
   const service = new OrganizationMemberService(async () => mock as any);
 

@@ -27,17 +27,7 @@ export class QuizService {
     query = query.in('type', config.questionTypes);
 
     if (config.bankId) {
-      const { data: bankQuestionIds } = await supabase
-        .from('question_bank_assignments')
-        .select('question_id')
-        .eq('bank_id', config.bankId);
-
-      const ids = bankQuestionIds?.map((b) => b.question_id) ?? [];
-      if (ids.length > 0) {
-        query = query.in('id', ids);
-      } else {
-        return success({ questions: [], attemptId: '' });
-      }
+      query = query.eq('bank_id', config.bankId);
     }
 
     if (config.topicIds && config.topicIds.length > 0) {

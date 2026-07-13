@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { buildQueryFilter, Permission } from '@/lib/rbac';
+import { accessibleFilter, Permission } from '@/lib/access';
 import type { RequestContext } from '@/lib/request-context';
 import { type ServiceResult, success } from '@/lib/service-result';
 import { toDbFailure } from '@/lib/supabase-errors';
@@ -21,15 +21,16 @@ export class SearchService {
   async search(q: string, ctx: RequestContext, limit = 10): Promise<ServiceResult<SearchResult[]>> {
     const supabase = await this.createClient();
 
-    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ);
+    const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (filter._impossible) return success([]);
 
     let p_user_id: string | null = null;
     let p_organization_id: string | null = null;
 
-    if ('created_by' in filter) {
+    // Construct search RPC params based on access filter
+    if (filter.created_by) {
       p_user_id = ctx.userId;
-    } else if ('or' in filter) {
+    } else if (filter.or) {
       p_user_id = ctx.userId;
       p_organization_id = ctx.activeOrgId;
     }

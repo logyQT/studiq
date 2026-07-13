@@ -63,7 +63,8 @@ export class OrganizationMemberService {
       const { data: groupData, error: groupError } = await supabase
         .from('group_members')
         .select('user_id, role, groups!inner(id, name)')
-        .in('user_id', allUserIds);
+        .in('user_id', allUserIds)
+        .eq('groups.organization_id', ctx.activeOrgId);
       if (groupError) return toDbFailure(groupError);
 
       const groupsByUserId: Record<string, { id: string; name: string; role: string }[]> = {};
@@ -116,7 +117,8 @@ export class OrganizationMemberService {
     const { data: groupData, error: groupError } = await supabase
       .from('group_members')
       .select('user_id, role, groups!inner(id, name)')
-      .in('user_id', userIds);
+      .in('user_id', userIds)
+      .eq('groups.organization_id', ctx.activeOrgId);
 
     if (groupError) return toDbFailure(groupError);
 

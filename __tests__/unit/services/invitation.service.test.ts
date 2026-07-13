@@ -44,6 +44,8 @@ describe('InvitationService', () => {
     method: 'GET',
     activeOrgId: null,
     orgRoleId: null,
+    groupIds: [],
+    permissionScopes: {},
   };
 
   const educatorCtx: RequestContext = {
@@ -54,6 +56,8 @@ describe('InvitationService', () => {
     method: 'GET',
     activeOrgId: 'uni-1',
     orgRoleId: null,
+    groupIds: [],
+    permissionScopes: {},
   };
 
   const studentCtx: RequestContext = {
@@ -64,6 +68,8 @@ describe('InvitationService', () => {
     method: 'GET',
     activeOrgId: null,
     orgRoleId: null,
+    groupIds: [],
+    permissionScopes: {},
   };
 
   beforeEach(() => {

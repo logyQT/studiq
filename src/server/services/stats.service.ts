@@ -164,27 +164,23 @@ export class StatsService {
 
     if (practiceError) return toDbFailure(practiceError);
 
-    // Step 2: Build flashcard → deck lookup via flashcard_deck_assignments
-    const { data: deckAssignments, error: daError } = await supabase
-      .from('flashcard_deck_assignments')
-      .select(`
-        flashcard_id,
-        deck_id,
-        flashcard_decks(name)
-      `);
+    // Step 2: Build flashcard → deck lookup via direct deck_id
+    const { data: flashcardsWithDecks, error: daError } = await supabase
+      .from('flashcards')
+      .select('id, deck_id, flashcard_decks(id, name)')
+      .not('deck_id', 'is', null);
 
     if (daError) return toDbFailure(daError);
 
     const cardToDecks = new Map<string, Array<{ deckId: string; name: string }>>();
-    for (const a of deckAssignments ?? []) {
-      const decks = cardToDecks.get(a.flashcard_id) ?? [];
-      const deckRaw = a.flashcard_decks as unknown;
-      const deckName =
-        deckRaw && typeof deckRaw === 'object' && 'name' in (deckRaw as object)
-          ? (deckRaw as { name: string }).name
-          : ((deckRaw as Array<{ name: string }> | null)?.[0]?.name ?? 'Unknown');
-      decks.push({ deckId: a.deck_id, name: deckName });
-      cardToDecks.set(a.flashcard_id, decks);
+    for (const f of flashcardsWithDecks ?? []) {
+      const decks = cardToDecks.get(f.id) ?? [];
+      const deckRaw = f.flashcard_decks as unknown;
+      const deckData = Array.isArray(deckRaw) ? deckRaw[0] : deckRaw;
+      if (deckData) {
+        decks.push({ deckId: f.deck_id, name: deckData.name ?? 'Unknown' });
+        cardToDecks.set(f.id, decks);
+      }
     }
 
     const deckMap = new Map<string, { name: string; total: number; correct: number }>();

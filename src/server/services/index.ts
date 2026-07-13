@@ -5,7 +5,6 @@ import { agentTraceService as _agentTraceService } from '@/server/services/agent
 import { chatService as _chatService } from '@/server/services/ai-chat.service';
 import { AuthService } from '@/server/services/auth.service';
 import { ClassroomService } from '@/server/services/classroom.service';
-import { errorLogService as _errorLogService } from '@/server/services/error-log.service';
 import { FeatureFlagService } from '@/server/services/feature-flag.service';
 import { FlashcardService } from '@/server/services/flashcard.service';
 import { FlashcardDeckService } from '@/server/services/flashcard-deck.service';
@@ -81,7 +80,6 @@ export const chatService = wrapService(_chatService, 'ai-chat.service', { group:
 export const agentTraceService = wrapService(_agentTraceService, 'agent-trace.service', {
   group: 'ai',
 });
-export const errorLogService = wrapService(_errorLogService, 'error-log.service');
 export const pdfService = wrapService(_pdfService, 'pdf.service');
 export const pdfCacheService = wrapService(_pdfCacheService, 'pdf-cache.service');
 export const mockStripeService = wrapService(

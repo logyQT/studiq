@@ -38,6 +38,8 @@ describe('SeatService', () => {
     method: 'GET',
     activeOrgId: orgId,
     orgRoleId: 'role-id',
+    groupIds: [],
+    permissionScopes: {},
   };
   const service = new SeatService(async () => mock as any);
 

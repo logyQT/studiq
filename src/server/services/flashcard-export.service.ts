@@ -6,7 +6,7 @@ import { flashcardService } from '@/server/services';
 
 type FlashcardWithAssignments = Flashcard & {
   flashcard_topic_assignments: Array<{ topic_id: string }>;
-  flashcard_deck_assignments: Array<{ deck_id: string }>;
+  deck_id?: string | null;
 };
 
 export class FlashcardExportService {
@@ -56,8 +56,8 @@ export class FlashcardExportService {
       for (const t of fc.flashcard_topic_assignments ?? []) {
         topicIds.add(t.topic_id);
       }
-      for (const d of fc.flashcard_deck_assignments ?? []) {
-        deckIds.add(d.deck_id);
+      if (fc.deck_id) {
+        deckIds.add(fc.deck_id);
       }
     }
 
@@ -83,12 +83,7 @@ export class FlashcardExportService {
           .filter(Boolean)
           .join('; '),
       );
-      const deck = this.escapeCsv(
-        (fc.flashcard_deck_assignments ?? [])
-          .map((d) => deckMap.get(d.deck_id) ?? '')
-          .filter(Boolean)
-          .join('; '),
-      );
+      const deck = this.escapeCsv(fc.deck_id ? (deckMap.get(fc.deck_id) ?? '') : '');
       return `${front},${back},${topic},${deck}`;
     });
 

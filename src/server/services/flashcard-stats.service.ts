@@ -75,28 +75,23 @@ export class FlashcardStatsService {
     const flashcardIds = flashcards.map((f) => f.id);
     const flashcardMap = new Map(flashcards.map((f) => [f.id, f]));
 
-    const { data: deckAssignments } = await supabase
-      .from('flashcard_deck_assignments')
-      .select('flashcard_id, deck_id')
-      .in('flashcard_id', flashcardIds);
+    const { data: flashcardsWithDecks } = await supabase
+      .from('flashcards')
+      .select('id, deck_id, flashcard_decks!inner(id, name)')
+      .in('id', flashcardIds)
+      .not('deck_id', 'is', null);
 
-    const deckIds = [...new Set((deckAssignments ?? []).map((a) => a.deck_id))];
-    const { data: decks } = await supabase
-      .from('flashcard_decks')
-      .select('id, name')
-      .in('id', deckIds);
-
-    const deckNameMap = new Map((decks ?? []).map((d) => [d.id, d.name]));
-    const cardToDeckIds = new Map<string, string[]>();
-    const cardToDeckNames = new Map<string, string[]>();
-    for (const a of deckAssignments ?? []) {
-      const ids = cardToDeckIds.get(a.flashcard_id) ?? [];
-      ids.push(a.deck_id);
-      cardToDeckIds.set(a.flashcard_id, ids);
-      const existing = cardToDeckNames.get(a.flashcard_id) ?? [];
-      const name = deckNameMap.get(a.deck_id);
-      if (name) existing.push(name);
-      cardToDeckNames.set(a.flashcard_id, existing);
+    const deckNameMap = new Map<string, string>();
+    const cardToDeckId = new Map<string, string>();
+    const cardToDeckName = new Map<string, string>();
+    for (const f of flashcardsWithDecks ?? []) {
+      const deckRaw = f.flashcard_decks as unknown;
+      const deck = Array.isArray(deckRaw) ? deckRaw[0] : deckRaw;
+      if (deck) {
+        deckNameMap.set(deck.id, deck.name);
+        cardToDeckId.set(f.id, deck.id);
+        cardToDeckName.set(f.id, deck.name);
+      }
     }
 
     const { data: topicAssignments } = await supabase
@@ -165,8 +160,8 @@ export class FlashcardStatsService {
           accuracy: 0,
           totalAttempts: 0,
           studentCount: 0,
-          deckIds: cardToDeckIds.get(fcId) ?? [],
-          deckNames: cardToDeckNames.get(fcId) ?? [],
+          deckId: cardToDeckId.get(fcId) ?? '',
+          deckName: cardToDeckName.get(fcId) ?? '',
           topicIds: cardToTopicIds.get(fcId) ?? [],
           topicNames: cardToTopicNames.get(fcId) ?? [],
         });
@@ -206,8 +201,8 @@ export class FlashcardStatsService {
         accuracy: cardAccuracy,
         totalAttempts: totals.total,
         studentCount: cardStudentCount,
-        deckIds: cardToDeckIds.get(fcId) ?? [],
-        deckNames: cardToDeckNames.get(fcId) ?? [],
+        deckId: cardToDeckId.get(fcId) ?? '',
+        deckName: cardToDeckName.get(fcId) ?? '',
         topicIds: cardToTopicIds.get(fcId) ?? [],
         topicNames: cardToTopicNames.get(fcId) ?? [],
       });

@@ -20,7 +20,6 @@ interface QuestionBankFiltersProps {
   sortBy: string;
   sortOrder: string;
   onSortChange: (sortBy: string, sortOrder: string) => void;
-  canSeeGroup: boolean;
   onCreateNew: () => void;
   t: ReturnType<typeof useTranslations>;
 }
@@ -33,7 +32,6 @@ export function QuestionBankFilters({
   sortBy,
   sortOrder,
   onSortChange,
-  canSeeGroup,
   onCreateNew,
   t,
 }: QuestionBankFiltersProps) {
@@ -63,7 +61,6 @@ export function QuestionBankFilters({
         <SelectContent>
           <SelectItem value="all">{t('owner_all')}</SelectItem>
           <SelectItem value="mine">{t('owner_mine')}</SelectItem>
-          {canSeeGroup && <SelectItem value="group">{t('owner_group')}</SelectItem>}
         </SelectContent>
       </Select>
       <Select

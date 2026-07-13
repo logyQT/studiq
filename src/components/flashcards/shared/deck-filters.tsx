@@ -20,7 +20,6 @@ interface DeckFiltersProps {
   sortBy: string;
   sortOrder: string;
   onSortChange: (sortBy: string, sortOrder: string) => void;
-  canSeeGroup: boolean;
   includeSuspended: boolean;
   onIncludeSuspendedChange: (value: boolean) => void;
   onImport: () => void;
@@ -36,7 +35,6 @@ export function DeckFilters({
   sortBy,
   sortOrder,
   onSortChange,
-  canSeeGroup,
   includeSuspended,
   onIncludeSuspendedChange,
   onImport,
@@ -74,8 +72,6 @@ export function DeckFilters({
         <SelectContent>
           <SelectItem value="all">{t('owner_all')}</SelectItem>
           <SelectItem value="mine">{t('owner_mine')}</SelectItem>
-          {canSeeGroup && <SelectItem value="group">{t('owner_group')}</SelectItem>}
-          <SelectItem value="shared">{t('owner_shared')}</SelectItem>
         </SelectContent>
       </Select>
       <Select

@@ -324,7 +324,6 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
             <SelectContent>
               <SelectItem value="all">{t('owner_all')}</SelectItem>
               <SelectItem value="mine">{t('owner_mine')}</SelectItem>
-              <SelectItem value="shared">{t('owner_shared')}</SelectItem>
             </SelectContent>
           </Select>
 

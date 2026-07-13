@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { checkPermission, Permission } from '@/lib/rbac';
+import { check, Permission } from '@/lib/access';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
 import { toDbFailure } from '@/lib/supabase-errors';
@@ -24,7 +24,7 @@ export class FlashcardImportService {
         .single();
 
       if (!deck) return failure('NOT_FOUND');
-      await checkPermission(ctx, Permission.DECK_UPDATE, deck);
+      await check(ctx, Permission.DECK_UPDATE, deck);
     } else {
       const hasDeckColumn = data.cards.some((c) => c.deck);
       if (!hasDeckColumn) {
@@ -130,12 +130,14 @@ export class FlashcardImportService {
       if (id) allDeckIds.push(id);
     }
 
+    const allDeckId = allDeckIds.length > 0 ? allDeckIds[0] : null;
     const cardsToInsert = data.cards.map((c) => ({
       front: c.front,
       back: c.back,
       created_by: ctx.userId,
       organization_id: ctx.activeOrgId,
       visibility: 'personal',
+      deck_id: allDeckId,
     }));
 
     const { data: flashcards, error: insertError } = await supabase
@@ -151,7 +153,6 @@ export class FlashcardImportService {
       return failure('INTERNAL_SERVER');
     }
 
-    const deckAssignments: { flashcard_id: string; deck_id: string }[] = [];
     const topicAssignments: { flashcard_id: string; topic_id: string }[] = [];
 
     for (let i = 0; i < data.cards.length; i++) {
@@ -163,31 +164,12 @@ export class FlashcardImportService {
         continue;
       }
 
-      if (defaultDeckId) {
-        deckAssignments.push({ flashcard_id: flashcardId, deck_id: defaultDeckId });
-      }
-
-      if (card.deck) {
-        const deckId = deckNameToId.get(card.deck.toLowerCase());
-        if (deckId) {
-          deckAssignments.push({ flashcard_id: flashcardId, deck_id: deckId });
-        }
-      }
-
       if (card.topic) {
         const topicId = topicNameToId.get(card.topic.toLowerCase());
         if (topicId) {
           topicAssignments.push({ flashcard_id: flashcardId, topic_id: topicId });
         }
       }
-    }
-
-    if (deckAssignments.length > 0) {
-      const { error: daError } = await supabase
-        .from('flashcard_deck_assignments')
-        .insert(deckAssignments);
-
-      if (daError) return toDbFailure(daError);
     }
 
     if (topicAssignments.length > 0) {

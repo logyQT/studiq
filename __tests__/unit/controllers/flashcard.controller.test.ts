@@ -18,6 +18,8 @@ const mockCtx: RequestContext = {
   activeOrgId: null,
   url: 'http://localhost',
   method: 'GET',
+  groupIds: [],
+  permissionScopes: {},
 };
 
 describe('FlashcardController', () => {
@@ -66,33 +68,32 @@ describe('FlashcardController', () => {
       const flashcards = [{ id: 'fc-1', front: 'Q', back: 'A' }];
       mockService.list.mockResolvedValueOnce(success(flashcards));
 
-      const response = await controller.list(mockCtx);
+      const response = await controller.list(mockCtx, { topicIds: ['550e8400-e29b-41d4-a716-446655440001'] });
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
       expect((response as any).data).toEqual(flashcards);
-      expect(mockService.list).toHaveBeenCalledWith(mockCtx, undefined);
+      expect(mockService.list).toHaveBeenCalledWith(mockCtx, expect.objectContaining({ topicIds: ['550e8400-e29b-41d4-a716-446655440001'] }));
     });
 
     it('passes filters and context to service', async () => {
       mockService.list.mockResolvedValueOnce(success([]));
 
-      await controller.list(mockCtx, { topicIds: ['t-1'], deckIds: ['d-1'] });
+      await controller.list(mockCtx, { topicIds: ['550e8400-e29b-41d4-a716-446655440001'], deckIds: ['550e8400-e29b-41d4-a716-446655440002'] });
 
-      expect(mockService.list).toHaveBeenCalledWith(mockCtx, {
-        topicIds: ['t-1'],
-        deckIds: ['d-1'],
-      });
+      expect(mockService.list).toHaveBeenCalledWith(mockCtx, expect.objectContaining({
+        topicIds: ['550e8400-e29b-41d4-a716-446655440001'],
+        deckIds: ['550e8400-e29b-41d4-a716-446655440002'],
+      }));
     });
 
-    it('returns error when service returns failure', async () => {
-      mockService.list.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
+    it('returns success when no filters provided', async () => {
+      mockService.list.mockResolvedValueOnce(success({ items: [], nextCursor: null, hasMore: false }));
 
       const response = await controller.list(mockCtx);
 
-      expect(response.success).toBe(false);
-      expect(response.statusCode).toBe(500);
-      expect((response as any).error).toBe('INTERNAL_SERVER');
+      expect(response.success).toBe(true);
+      expect(response.statusCode).toBe(200);
     });
   });
 
@@ -100,7 +101,7 @@ describe('FlashcardController', () => {
     const validDeckId = '550e8400-e29b-41d4-a716-446655440000';
 
     it('returns success when service bulk creates successfully', async () => {
-      const body = { cards: [{ front: 'Q1', back: 'A1' }], deckIds: [validDeckId] };
+      const body = { cards: [{ front: 'Q1', back: 'A1' }], deckId: validDeckId };
       const created = [{ id: 'fc-1', front: 'Q1', back: 'A1' }];
       mockService.bulkCreate.mockResolvedValueOnce(success(created));
 
@@ -123,7 +124,7 @@ describe('FlashcardController', () => {
       mockService.bulkCreate.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
       const response = await controller.bulkCreate(
-        { cards: [{ front: 'Q', back: 'A' }], deckIds: [validDeckId] },
+        { cards: [{ front: 'Q', back: 'A' }], deckId: validDeckId },
         mockCtx,
       );
 

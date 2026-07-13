@@ -1,6 +1,6 @@
+import { can, Permission } from '@/lib/access';
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import { AppError } from '@/lib/errors';
-import { hasPermission, Permission } from '@/lib/rbac';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import {
@@ -16,8 +16,7 @@ export class QuestionBankController {
   constructor(private questionBankService: QuestionBankService) {}
 
   async create(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    if (!(await hasPermission(ctx, Permission.QUESTION_BANK_CREATE)))
-      throw new AppError('FORBIDDEN');
+    if (!(await can(ctx, Permission.QUESTION_BANK_CREATE))) throw new AppError('FORBIDDEN');
     const parsed = CreateQuestionBankSchema.safeParse(body);
 
     if (!parsed.success) {

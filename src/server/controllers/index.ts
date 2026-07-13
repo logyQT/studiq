@@ -2,7 +2,6 @@ import { wrapService } from '@/lib/observability';
 import { ActivityController } from '@/server/controllers/activity.controller';
 import { AuthController } from '@/server/controllers/auth.controller';
 import { ClassroomController } from '@/server/controllers/classroom.controller';
-import { ErrorLogController } from '@/server/controllers/error-log.controller';
 import { FeatureFlagController } from '@/server/controllers/feature-flag.controller';
 import { FlashcardController } from '@/server/controllers/flashcard.controller';
 import { FlashcardDeckController } from '@/server/controllers/flashcard-deck.controller';
@@ -37,7 +36,6 @@ import {
   activityService,
   authService,
   classroomService,
-  errorLogService,
   featureFlagService,
   flashcardDeckService,
   flashcardExportService,
@@ -75,10 +73,6 @@ export const authController = wrapService(new AuthController(authService), 'auth
 export const classroomController = wrapService(
   new ClassroomController(classroomService),
   'classroom.controller',
-);
-export const errorLogController = wrapService(
-  new ErrorLogController(errorLogService),
-  'error-log.controller',
 );
 export const featureFlagController = wrapService(
   new FeatureFlagController(featureFlagService),

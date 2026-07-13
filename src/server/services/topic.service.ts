@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { buildQueryFilter, checkPermission, Permission } from '@/lib/rbac';
+import { accessibleFilter, check, Permission } from '@/lib/access';
+import { decodeCursor, encodeCursor } from '@/lib/query-list';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
 import { toDbFailure } from '@/lib/supabase-errors';
@@ -62,48 +63,13 @@ export class TopicService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const filter = await buildQueryFilter(ctx, Permission.TOPIC_READ, 'topic');
+    const filter = await accessibleFilter(ctx, Permission.TOPIC_READ, 'topic');
     if (filter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
-
-    if (filter._useRpc) {
-      const rpcQuery = supabase.rpc('get_accessible_topics', {
-        p_user_id: ctx.userId,
-        p_org_id: ctx.activeOrgId,
-      });
-      const sortBy = queryParams?.sortBy ?? 'created_at';
-      const sortOrder = queryParams?.sortOrder ?? 'desc';
-      const sortAsc = sortOrder === 'asc';
-      const pageSize = Math.min(queryParams?.limit ?? 50, 100);
-      if (queryParams?.q) {
-        void rpcQuery.ilike('name', `%${queryParams.q}%`);
-      }
-      void rpcQuery.order(sortBy, { ascending: sortAsc }).order('id');
-      void rpcQuery.limit(pageSize + 1);
-      if (queryParams?.cursor) {
-        const decoded = JSON.parse(Buffer.from(queryParams.cursor, 'base64').toString('utf-8'));
-        const cursorVal = decoded.v;
-        const cursorId = decoded.id;
-        const op = sortAsc ? 'gt' : 'lt';
-        void rpcQuery.or(
-          `${sortBy}.${op}.${cursorVal},and(${sortBy}.eq.${cursorVal},id.gt.${cursorId})`,
-        );
-      }
-      const { data, error } = await rpcQuery;
-      if (error) return toDbFailure(error);
-      const rows = data as unknown as Array<{ id: string; [key: string]: unknown }>;
-      const hasMore = (rows?.length ?? 0) > pageSize;
-      const items = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
-      const nextCursor = hasMore
-        ? Buffer.from(
-            JSON.stringify({ v: items[items.length - 1][sortBy], id: items[items.length - 1].id }),
-          ).toString('base64')
-        : null;
-      return success({ items, nextCursor, hasMore });
-    }
 
     let query = supabase
       .from('topics')
       .select('*, flashcard_count:flashcard_topic_assignments(count)');
+    if (filter.or) query = query.or(filter.or);
 
     if (filter.created_by) query = query.eq('created_by', filter.created_by);
     if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
@@ -142,9 +108,7 @@ export class TopicService {
     query = query.limit(pageSize + 1);
 
     if (queryParams?.cursor) {
-      const decoded = JSON.parse(Buffer.from(queryParams.cursor, 'base64').toString('utf-8'));
-      const cursorVal = decoded.v;
-      const cursorId = decoded.id;
+      const { v: cursorVal, id: cursorId } = decodeCursor(queryParams.cursor);
       const op = sortAsc ? 'gt' : 'lt';
       query = query.or(
         `${sortBy}.${op}.${cursorVal},and(${sortBy}.eq.${cursorVal},id.gt.${cursorId})`,
@@ -162,12 +126,7 @@ export class TopicService {
       return { ...item, flashcard_count: countArr?.[0]?.count ?? 0 };
     });
     const nextCursor = hasMore
-      ? Buffer.from(
-          JSON.stringify({
-            v: sliced[sliced.length - 1][sortBy],
-            id: sliced[sliced.length - 1].id,
-          }),
-        ).toString('base64')
+      ? encodeCursor(sliced[sliced.length - 1][sortBy], sliced[sliced.length - 1].id)
       : null;
 
     return success({
@@ -180,22 +139,11 @@ export class TopicService {
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const filter = await buildQueryFilter(ctx, Permission.TOPIC_READ, 'topic');
+    const filter = await accessibleFilter(ctx, Permission.TOPIC_READ, 'topic');
     if (filter._impossible) return failure('NOT_FOUND');
 
-    if (filter._useRpc) {
-      const { data, error } = await supabase
-        .rpc('get_accessible_topics', {
-          p_user_id: ctx.userId,
-          p_org_id: ctx.activeOrgId,
-        })
-        .eq('id', id)
-        .single();
-      if (error) return toDbFailure(error);
-      return success(data);
-    }
-
     let query = supabase.from('topics').select('*').eq('id', id);
+    if (filter.or) query = query.or(filter.or);
     if (filter.organization_id) {
       query = query.eq('organization_id', filter.organization_id);
     }
@@ -222,7 +170,7 @@ export class TopicService {
       .single();
 
     if (fetchError || !existing) return failure('NOT_FOUND');
-    await checkPermission(ctx, Permission.TOPIC_UPDATE, existing);
+    await check(ctx, Permission.TOPIC_UPDATE, existing);
 
     const updateFields: Record<string, unknown> = {};
     if (data.name !== undefined) updateFields.name = data.name;
@@ -263,7 +211,7 @@ export class TopicService {
       .single();
 
     if (fetchError || !existing) return failure('NOT_FOUND');
-    await checkPermission(ctx, Permission.TOPIC_DELETE, existing);
+    await check(ctx, Permission.TOPIC_DELETE, existing);
 
     const { error } = await supabase.from('topics').delete().eq('id', id);
 
@@ -306,7 +254,7 @@ export class TopicService {
     if (!topics || topics.length === 0) return failure('NOT_FOUND');
 
     for (const topic of topics) {
-      await checkPermission(ctx, Permission.TOPIC_DELETE, topic);
+      await check(ctx, Permission.TOPIC_DELETE, topic);
     }
 
     const { error } = await supabase.from('topics').delete().in('id', data.ids);

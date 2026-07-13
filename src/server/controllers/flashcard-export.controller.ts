@@ -22,14 +22,6 @@ export class FlashcardExportController {
     if (parsed.data.deckId) {
       filters.deckIds = [parsed.data.deckId];
     }
-    if (parsed.data.deckIds) {
-      filters.deckIds = (filters.deckIds ?? []).concat(
-        parsed.data.deckIds
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean),
-      );
-    }
     if (parsed.data.ids) {
       filters.ids = parsed.data.ids
         .split(',')

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { buildQueryFilter, checkPermission, Permission } from '@/lib/rbac';
+import { accessibleFilter, check, Permission } from '@/lib/access';
+import { decodeCursor, encodeCursor } from '@/lib/query-list';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
 import { toDbFailure } from '@/lib/supabase-errors';
@@ -55,13 +56,10 @@ export class QuestionBankService {
     }
 
     if (data.questionIds && data.questionIds.length > 0) {
-      const assignments = data.questionIds.map((questionId) => ({
-        bank_id: bank.id,
-        question_id: questionId,
-      }));
       const { error: aError } = await supabase
-        .from('question_bank_assignments')
-        .insert(assignments);
+        .from('questions')
+        .update({ bank_id: bank.id })
+        .in('id', data.questionIds);
       if (aError) return toDbFailure(aError);
     }
 
@@ -74,49 +72,12 @@ export class QuestionBankService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const filter = await buildQueryFilter(ctx, Permission.QUESTION_BANK_READ, 'question_bank');
+    const filter = await accessibleFilter(ctx, Permission.QUESTION_BANK_READ, 'question_bank');
     if (filter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
 
-    if (filter._useRpc) {
-      const rpcQuery = supabase.rpc('get_accessible_question_banks', {
-        p_user_id: ctx.userId,
-        p_org_id: ctx.activeOrgId,
-      });
-      const sortBy = queryParams?.sortBy ?? 'created_at';
-      const sortOrder = queryParams?.sortOrder ?? 'desc';
-      const sortAsc = sortOrder === 'asc';
-      const pageSize = Math.min(queryParams?.limit ?? 24, 100);
-      if (queryParams?.q) {
-        void rpcQuery.ilike('name', `%${queryParams.q}%`);
-      }
-      void rpcQuery.order(sortBy, { ascending: sortAsc }).order('id');
-      void rpcQuery.limit(pageSize + 1);
-      if (queryParams?.cursor) {
-        const decoded = JSON.parse(Buffer.from(queryParams.cursor, 'base64').toString('utf-8'));
-        const cursorVal = decoded.v;
-        const cursorId = decoded.id;
-        const op = sortAsc ? 'gt' : 'lt';
-        void rpcQuery.or(
-          `${sortBy}.${op}.${cursorVal},and(${sortBy}.eq.${cursorVal},id.gt.${cursorId})`,
-        );
-      }
-      const { data, error } = await rpcQuery;
-      if (error) return toDbFailure(error);
-      const rows = data as unknown as Array<{ id: string; [key: string]: unknown }>;
-      const hasMore = (rows?.length ?? 0) > pageSize;
-      const items = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
-      const nextCursor = hasMore
-        ? Buffer.from(
-            JSON.stringify({ v: items[items.length - 1][sortBy], id: items[items.length - 1].id }),
-          ).toString('base64')
-        : null;
-      return success({ items, nextCursor, hasMore });
-    }
+    let query = supabase.from('question_banks').select('*, question_count:questions(count)');
 
-    let query = supabase
-      .from('question_banks')
-      .select('*, question_count:question_bank_assignments(count)');
-
+    if (filter.or) query = query.or(filter.or);
     if (filter.created_by) query = query.eq('created_by', filter.created_by);
     if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
@@ -148,9 +109,7 @@ export class QuestionBankService {
     query = query.limit(pageSize + 1);
 
     if (queryParams?.cursor) {
-      const decoded = JSON.parse(Buffer.from(queryParams.cursor, 'base64').toString('utf-8'));
-      const cursorVal = decoded.v;
-      const cursorId = decoded.id;
+      const { v: cursorVal, id: cursorId } = decodeCursor(queryParams.cursor);
       const op = sortAsc ? 'gt' : 'lt';
       query = query.or(
         `${sortBy}.${op}.${cursorVal},and(${sortBy}.eq.${cursorVal},id.gt.${cursorId})`,
@@ -168,12 +127,7 @@ export class QuestionBankService {
       return { ...item, question_count: countArr?.[0]?.count ?? 0 };
     });
     const nextCursor = hasMore
-      ? Buffer.from(
-          JSON.stringify({
-            v: sliced[sliced.length - 1][sortBy],
-            id: sliced[sliced.length - 1].id,
-          }),
-        ).toString('base64')
+      ? encodeCursor(sliced[sliced.length - 1][sortBy], sliced[sliced.length - 1].id)
       : null;
 
     return success({
@@ -186,24 +140,15 @@ export class QuestionBankService {
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const filter = await buildQueryFilter(ctx, Permission.QUESTION_BANK_READ, 'question_bank');
+    const filter = await accessibleFilter(ctx, Permission.QUESTION_BANK_READ, 'question_bank');
+    if (filter._impossible) return failure('NOT_FOUND');
+
     let query = supabase
       .from('question_banks')
-      .select('*, question_count:question_bank_assignments(count)')
+      .select('*, question_count:questions(count)')
       .eq('id', id);
 
-    if (filter._impossible) return failure('NOT_FOUND');
-    if (filter._useRpc) {
-      const { data, error } = await supabase
-        .rpc('get_accessible_question_banks', {
-          p_user_id: ctx.userId,
-          p_org_id: ctx.activeOrgId,
-        })
-        .eq('id', id)
-        .single();
-      if (error) return toDbFailure(error);
-      return success(data);
-    }
+    if (filter.or) query = query.or(filter.or);
     if (filter.created_by) query = query.eq('created_by', filter.created_by);
     if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
@@ -233,7 +178,7 @@ export class QuestionBankService {
       .single();
 
     if (fetchError || !existing) return failure('NOT_FOUND');
-    await checkPermission(ctx, Permission.QUESTION_BANK_UPDATE, existing);
+    await check(ctx, Permission.QUESTION_BANK_UPDATE, existing);
 
     const updateFields: Record<string, unknown> = {};
     if (data.name !== undefined) updateFields.name = data.name;
@@ -252,12 +197,12 @@ export class QuestionBankService {
       if (!bank) return failure('NOT_FOUND');
 
       if (data.visibility !== undefined && data.visibility !== existing.visibility) {
-        const { data: assignedQuestionIds } = await supabase
-          .from('question_bank_assignments')
-          .select('question_id')
+        const { data: assignedQuestions } = await supabase
+          .from('questions')
+          .select('id')
           .eq('bank_id', id);
 
-        const questionIds = assignedQuestionIds?.map((a) => a.question_id) ?? [];
+        const questionIds = assignedQuestions?.map((q) => q.id) ?? [];
         if (questionIds.length > 0) {
           await supabase
             .from('questions')
@@ -278,13 +223,15 @@ export class QuestionBankService {
     }
 
     if (data.questionIds !== undefined) {
-      await supabase.from('question_bank_assignments').delete().eq('bank_id', id);
+      // First unset bank_id for all questions currently in this bank
+      await supabase.from('questions').update({ bank_id: null }).eq('bank_id', id);
+      // Then set bank_id for the specified questions
       if (data.questionIds.length > 0) {
-        const assignments = data.questionIds.map((questionId) => ({
-          bank_id: id,
-          question_id: questionId,
-        }));
-        await supabase.from('question_bank_assignments').insert(assignments);
+        const { error: aError } = await supabase
+          .from('questions')
+          .update({ bank_id: id })
+          .in('id', data.questionIds);
+        if (aError) return toDbFailure(aError);
       }
     }
 
@@ -301,7 +248,7 @@ export class QuestionBankService {
       .single();
 
     if (fetchError || !existing) return failure('NOT_FOUND');
-    await checkPermission(ctx, Permission.QUESTION_BANK_DELETE, existing);
+    await check(ctx, Permission.QUESTION_BANK_DELETE, existing);
 
     const { error } = await supabase.from('question_banks').delete().eq('id', id);
     if (error) return toDbFailure(error);
@@ -346,7 +293,7 @@ export class QuestionBankService {
     if (!banks || banks.length === 0) return failure('NOT_FOUND');
 
     for (const bank of banks) {
-      await checkPermission(ctx, Permission.QUESTION_BANK_DELETE, bank);
+      await check(ctx, Permission.QUESTION_BANK_DELETE, bank);
     }
 
     const { error } = await supabase.from('question_banks').delete().in('id', data.ids);

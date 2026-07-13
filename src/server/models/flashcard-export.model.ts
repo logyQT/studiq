@@ -5,7 +5,6 @@ export const ExportQuerySchema = registry.register(
   z.object({
     deckId: z.string().uuid().optional(),
     ids: z.string().optional(),
-    deckIds: z.string().optional(),
   }),
 );
 

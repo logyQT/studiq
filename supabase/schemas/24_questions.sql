@@ -19,9 +19,11 @@ CREATE TABLE public.questions (
                     to_tsvector('polish', coalesce(explanation, ''))
                   ) STORED,
   created_at      timestamptz DEFAULT now(),
+  bank_id         uuid REFERENCES public.question_banks(id) ON DELETE SET NULL,
   updated_at      timestamptz DEFAULT now()
 );
 
 CREATE INDEX idx_questions_search_vector ON public.questions USING GIN (search_vector);
 CREATE INDEX idx_questions_created_by ON public.questions(created_by);
+CREATE INDEX idx_questions_bank_id ON public.questions(bank_id);
 CREATE INDEX idx_questions_visibility ON public.questions (organization_id, visibility);

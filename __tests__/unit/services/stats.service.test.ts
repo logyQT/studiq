@@ -15,6 +15,8 @@ describe('StatsService', () => {
     method: 'GET',
     activeOrgId: null,
     orgRoleId: null,
+    groupIds: [],
+    permissionScopes: {},
   };
   const service = new StatsService(async () => mock as any);
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   CheckSquare,
   Download,
@@ -17,7 +17,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { DeckCard } from '@/components/flashcards/cards/deck-card';
 import { DeckFilters } from '@/components/flashcards/shared/deck-filters';
-import { useAuth } from '@/components/providers/AuthProvider';
 import { BulkActionBar } from '@/components/shared/bulk-action-bar';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { PageGrid } from '@/components/shared/page-grid';
@@ -28,10 +27,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useCan } from '@/hooks/use-can';
 import { useOrgs } from '@/hooks/use-orgs';
-import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { apiDelete, apiPost, apiPut } from '@/lib/api';
 import { flashcardKeys, groupKeys } from '@/lib/query-keys';
 import type { Deck } from '@/server/models';
-import { AccountType } from '@/types';
 
 const ImportDialog = dynamic(
   () =>
@@ -46,7 +44,9 @@ const DeckFormDialog = dynamic(() =>
   })),
 );
 
+import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import { useDebounce } from '@/hooks/use-debounce';
+import { usePersistedState } from '@/hooks/use-persisted-state';
 import { useSelection } from '@/hooks/use-selection';
 
 interface DeckManagementScreenProps {
@@ -55,22 +55,7 @@ interface DeckManagementScreenProps {
   t: ReturnType<typeof useTranslations>;
 }
 
-const STORAGE_KEY = 'flashcard_decks_filters';
-
-function loadPersistedFilters() {
-  if (typeof window === 'undefined')
-    return { owner: 'all', sortBy: 'created_at', sortOrder: 'desc' };
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {
-    /* ignore */
-  }
-  return { owner: 'all', sortBy: 'created_at', sortOrder: 'desc' };
-}
-
 export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps) {
-  const { user } = useAuth();
   const { activeOrg } = useOrgs();
   const can = useCan();
 
@@ -79,50 +64,40 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     url: '/api/v1/organization/groups',
     enabled: !!activeOrg?.id && can({ features: ['org.manage'] }),
   });
-  const accountType = user?.app_metadata?.account_type as AccountType | undefined;
   const queryClient = useQueryClient();
-
-  const persisted = loadPersistedFilters();
 
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebounce(searchInput, 300);
-  const [owner, setOwner] = useState(persisted.owner);
-  const [sortBy, setSortBy] = useState(persisted.sortBy);
-  const [sortOrder, setSortOrder] = useState(persisted.sortOrder);
+  const [owner, setOwner] = usePersistedState('flashcard_decks_owner', 'all');
+  const [sortBy, setSortBy] = usePersistedState('flashcard_decks_sort_by', 'created_at');
+  const [sortOrder, setSortOrder] = usePersistedState('flashcard_decks_sort_order', 'desc');
   const [includeSuspended, setIncludeSuspended] = useState(false);
 
-  const filters = {
-    q: debouncedSearch || undefined,
-    owner: owner !== 'all' ? owner : undefined,
-    sortBy,
-    sortOrder,
-    includeSuspended: includeSuspended ? 'true' : undefined,
-  };
-
-  const queryString = new URLSearchParams(
-    Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined)),
-  ).toString();
-
   const {
-    data: decksData,
+    items: decks,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
     isLoading,
-  } = useInfiniteQuery({
-    queryKey: flashcardKeys.decks.paginated(filters),
-    queryFn: ({ pageParam }) =>
-      apiGet<{ items: Deck[]; nextCursor: string | null; hasMore: boolean }>(
-        `/api/v1/flashcards/decks?limit=24${queryString ? `&${queryString}` : ''}${pageParam ? `&cursor=${pageParam}` : ''}`,
-      ),
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
-    initialPageParam: '',
+  } = useCursorPagination<Deck>({
+    queryKey: flashcardKeys.decks.paginated({
+      q: debouncedSearch,
+      owner,
+      sortBy,
+      sortOrder,
+      includeSuspended: includeSuspended ? 'true' : undefined,
+    }),
+    url: '/api/v1/flashcards/decks',
+    filters: {
+      q: debouncedSearch || undefined,
+      owner: owner !== 'all' ? owner : undefined,
+      sortBy,
+      sortOrder,
+      includeSuspended: includeSuspended ? 'true' : undefined,
+    },
+    limit: 24,
     staleTime: Infinity,
-    refetchOnMount: false,
-    placeholderData: (prev) => prev,
   });
-
-  const decks = decksData?.pages.flatMap((page) => page.items) ?? [];
 
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const handleObserver = useCallback(
@@ -142,14 +117,6 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     observer.observe(el);
     return () => observer.disconnect();
   }, [handleObserver]);
-
-  function persistFilters(o: string, sb: string, so: string) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ owner: o, sortBy: sb, sortOrder: so }));
-    } catch {
-      /* ignore */
-    }
-  }
 
   const createDeck = useApiMutation({
     mutationFn: (data: {
@@ -312,28 +279,20 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     setDeleteId(null);
   }
 
-  const canSeeGroup =
-    activeOrg?.orgRoleName === 'teacher' ||
-    activeOrg?.orgRoleName === 'admin' ||
-    accountType === AccountType.MANAGER;
-
   return (
     <div className="space-y-6">
       <DeckFilters
         searchInput={searchInput}
         onSearchChange={setSearchInput}
-        canSeeGroup={canSeeGroup}
         owner={owner}
         onOwnerChange={(v) => {
           setOwner(v);
-          persistFilters(v, sortBy, sortOrder);
         }}
         sortBy={sortBy}
         sortOrder={sortOrder}
         onSortChange={(sb, so) => {
           setSortBy(sb);
           setSortOrder(so);
-          persistFilters(owner, sb, so);
         }}
         includeSuspended={includeSuspended}
         onIncludeSuspendedChange={setIncludeSuspended}

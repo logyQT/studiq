@@ -623,14 +623,7 @@ export class FlashcardPracticeService {
     }
 
     if (filters.deckIds && filters.deckIds.length > 0) {
-      const { data: assignments } = await supabase
-        .from('flashcard_deck_assignments')
-        .select('flashcard_id')
-        .in('deck_id', filters.deckIds);
-
-      const deckCardIds = [...new Set(assignments?.map((a) => a.flashcard_id) ?? [])];
-      if (deckCardIds.length === 0) return [];
-      query = query.in('id', deckCardIds);
+      query = query.in('deck_id', filters.deckIds);
     }
 
     const { data, error } = await query;
@@ -649,12 +642,12 @@ export class FlashcardPracticeService {
     const deckIds = (suspendedDecks ?? []).map((s) => s.deck_id);
     if (deckIds.length === 0) return [];
 
-    const { data: assignments } = await supabase
-      .from('flashcard_deck_assignments')
-      .select('flashcard_id')
+    const { data: flashcards } = await supabase
+      .from('flashcards')
+      .select('id')
       .in('deck_id', deckIds);
 
-    return [...new Set((assignments ?? []).map((a) => a.flashcard_id))];
+    return [...new Set((flashcards ?? []).map((f) => f.id))];
   }
 
   async completeSession(
@@ -706,7 +699,7 @@ export class FlashcardPracticeService {
     const { data: flashcards, error } = await supabase
       .from('flashcards')
       .select(
-        'id, front, back, created_at, flashcard_deck_assignments(deck_id, flashcard_decks(name)), flashcard_topic_assignments(topic_id, topics(name))',
+        'id, front, back, created_at, deck_id, flashcard_topic_assignments(topic_id, topics(name))',
       )
       .in('id', matchingIds);
     if (error) return toDbFailure(error);
@@ -719,7 +712,7 @@ export class FlashcardPracticeService {
           front: fc.front,
           back: fc.back,
           createdAt: fc.created_at ?? null,
-          deckName: fc.flashcard_deck_assignments?.[0]?.flashcard_decks?.[0]?.name ?? null,
+          deckName: fc.deck_name ?? null,
           topicNames:
             fc.flashcard_topic_assignments?.flatMap((a) => {
               const name = a.topics?.[0]?.name;

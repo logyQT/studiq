@@ -1,6 +1,0 @@
--- ==========================================
--- NOTE: user_subscriptions table has been removed.
--- Premium role is now assigned directly via profile role update.
--- Feature gating is handled by role_permissions in RBAC.
--- See 55_rbac_permissions.sql.
--- ==========================================

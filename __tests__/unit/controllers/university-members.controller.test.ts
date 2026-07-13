@@ -23,6 +23,8 @@ const mockCtx: RequestContext = {
   activeOrgId: null,
   url: 'http://localhost',
   method: 'GET',
+  groupIds: [],
+  permissionScopes: {},
 };
 
 describe('OrganizationMemberController', () => {

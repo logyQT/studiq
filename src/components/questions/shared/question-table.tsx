@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowUpDown, Pencil, Trash2 } from 'lucide-react';
+import { ArrowUpDown, Pencil, Search, Trash2, X } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -101,12 +101,21 @@ export function QuestionTable({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 basis-full lg:basis-auto lg:max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t('search_placeholder')}
-            className="pl-9"
+            className="pl-9 pr-9"
           />
+          {search && (
+            <button
+              onClick={() => onSearchChange('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
         <Select value={typeFilter} onValueChange={onTypeFilterChange}>
           <SelectTrigger className="w-40">
@@ -121,7 +130,7 @@ export function QuestionTable({
         </Select>
       </div>
 
-      <Card>
+      <Card className="p-0 gap-0">
         <Table>
           <TableHeader>
             <TableRow>
