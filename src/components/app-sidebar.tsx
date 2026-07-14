@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   BarChart3,
   Brain,
+  ClipboardCheck,
   ClipboardList,
   CreditCard,
   Database,
@@ -62,6 +63,7 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
         { titleKey: 'flashcard_decks', href: '/edu/flashcards', icon: Layers },
         { titleKey: 'flashcard_topics', href: '/edu/topics', icon: Tag },
         { titleKey: 'question_banks', href: '/edu/questions', icon: Database },
+        { titleKey: 'edu_assignments', href: '/edu/assignments', icon: ClipboardCheck },
       ],
     },
     {
@@ -116,6 +118,7 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
         { titleKey: 'flashcard_decks', href: '/app/flashcards', icon: Folder },
         { titleKey: 'flashcard_topics', href: '/app/topics', icon: Tag },
         { titleKey: 'question_banks', href: '/app/questions', icon: Database },
+        { titleKey: 'app_assignments', href: '/app/assignments', icon: ClipboardCheck },
       ],
     },
     {

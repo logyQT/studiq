@@ -22,25 +22,25 @@ export const TEST_USERS = {
   },
   TEACHER: {
     id: '00000000-0000-4000-8001-000000000003',
-    email: 'teacher@dev.local',
+    email: 'teacher1@dev.local',
     password: 'pass',
     role: 'educator',
   },
   STUDENT: {
-    id: '00000000-0000-4000-8001-000000000004',
-    email: 'student1@classroom.dev',
+    id: '00000000-0000-4000-8001-000000000009',
+    email: 'test-student@dev.local',
     password: 'pass',
     role: 'student',
   },
-  FREE: {
+  STUDENT2: {
     id: '00000000-0000-4000-8001-000000000005',
-    email: 'student2@classroom.dev',
+    email: 'student2@dev.local',
     password: 'pass',
     role: 'student',
   },
-  PREMIUM: {
+  STUDENT3: {
     id: '00000000-0000-4000-8001-000000000006',
-    email: 'student3@classroom.dev',
+    email: 'student3@dev.local',
     password: 'pass',
     role: 'student',
   },

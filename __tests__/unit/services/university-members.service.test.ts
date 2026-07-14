@@ -104,8 +104,8 @@ describe('OrganizationMemberService', () => {
       const groupTerminal = vi.fn().mockResolvedValue(groupResolved);
       const groupChain: any = {};
       groupChain.select = vi.fn(() => groupChain);
-      groupChain.in = groupTerminal;
-      groupChain.then = (onfulfilled: any) => Promise.resolve(groupResolved).then(onfulfilled);
+      groupChain.in = vi.fn(() => groupChain);
+      groupChain.eq = groupTerminal;
 
       mock.from.mockReturnValueOnce(orgChain);
       mock.from.mockReturnValue(groupChain);

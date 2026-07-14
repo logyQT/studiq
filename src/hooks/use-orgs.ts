@@ -36,7 +36,13 @@ export function useOrgs() {
       queryClient.invalidateQueries({ queryKey: ['orgs'] });
       const switchedOrg = orgs.find((o) => o.id === variables);
       const jwtAccountType = user?.app_metadata?.account_type as string | undefined;
-      const accountType = jwtAccountType ?? switchedOrg?.orgRoleName ?? 'student';
+      const ROLE_TO_ACCOUNT_TYPE: Record<string, string> = {
+        admin: 'manager',
+        teacher: 'educator',
+        member: 'student',
+      };
+      const accountType =
+        jwtAccountType ?? ROLE_TO_ACCOUNT_TYPE[switchedOrg?.orgRoleName ?? ''] ?? 'student';
       router.push(
         accountType === 'manager' ? '/manage' : accountType === 'educator' ? '/edu' : '/app',
       );

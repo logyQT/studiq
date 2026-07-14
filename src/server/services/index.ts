@@ -33,6 +33,7 @@ import { SearchService } from '@/server/services/search.service';
 import { SeatService } from '@/server/services/seat.service';
 import { StatsService } from '@/server/services/stats.service';
 import { SubscriptionPlanService } from '@/server/services/subscription-plan.service';
+import { TeacherAssignmentService } from '@/server/services/teacher-assignment.service';
 import { TopicService } from '@/server/services/topic.service';
 import { UserOverrideService } from '@/server/services/user-override.service';
 
@@ -126,6 +127,10 @@ export const classroomService = wrapService(
 export const seatService = wrapService(new SeatService(createClient), 'seat.service');
 export const searchService = wrapService(new SearchService(createClient), 'search.service');
 export const statsService = wrapService(new StatsService(createClient), 'stats.service');
+export const teacherAssignmentService = wrapService(
+  new TeacherAssignmentService(createClient),
+  'teacher-assignment.service',
+);
 export const topicService = wrapService(new TopicService(createClient), 'topic.service');
 
 export * from '@/server/services/ai-prompts';

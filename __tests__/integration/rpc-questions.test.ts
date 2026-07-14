@@ -39,7 +39,7 @@ describe('get_accessible_questions RPC', () => {
     });
     await seedOrgMembership({
       organizationId: orgId,
-      userId: TEST_USERS.FREE.id,
+      userId: TEST_USERS.STUDENT2.id,
       orgRoleId: seeded.memberRoleId,
     });
     await seedOrgMembership({
@@ -120,7 +120,7 @@ describe('get_accessible_questions RPC', () => {
       .insert({
         type: 'mcq',
         content: 'Q3: StudentB, Bank1',
-        created_by: TEST_USERS.FREE.id,
+        created_by: TEST_USERS.STUDENT2.id,
         organization_id: orgId,
         visibility: 'personal',
       })
@@ -133,7 +133,7 @@ describe('get_accessible_questions RPC', () => {
       .insert({
         type: 'mcq',
         content: 'Q4: StudentB, no bank',
-        created_by: TEST_USERS.FREE.id,
+        created_by: TEST_USERS.STUDENT2.id,
         organization_id: orgId,
         visibility: 'personal',
       })
@@ -217,7 +217,7 @@ describe('get_accessible_questions RPC', () => {
     it("p_scope='own' returns only own questions", async () => {
       const { data } = await createServiceClient()
         .rpc('get_accessible_questions', {
-          p_user_id: TEST_USERS.FREE.id,
+          p_user_id: TEST_USERS.STUDENT2.id,
           p_org_id: orgId,
           p_scope: 'own',
         });
@@ -229,7 +229,7 @@ describe('get_accessible_questions RPC', () => {
     it("p_scope='group' returns only own (no group access)", async () => {
       const { data } = await createServiceClient()
         .rpc('get_accessible_questions', {
-          p_user_id: TEST_USERS.FREE.id,
+          p_user_id: TEST_USERS.STUDENT2.id,
           p_org_id: orgId,
           p_scope: 'group',
         });
@@ -242,7 +242,7 @@ describe('get_accessible_questions RPC', () => {
     it("p_scope='organization' returns all questions", async () => {
       const { data } = await createServiceClient()
         .rpc('get_accessible_questions', {
-          p_user_id: TEST_USERS.FREE.id,
+          p_user_id: TEST_USERS.STUDENT2.id,
           p_org_id: orgId,
           p_scope: 'organization',
         });
@@ -277,7 +277,7 @@ describe('get_accessible_questions RPC', () => {
     it('returns empty when question is not accessible', async () => {
       const { data } = await createServiceClient()
         .rpc('get_accessible_questions', {
-          p_user_id: TEST_USERS.FREE.id,
+          p_user_id: TEST_USERS.STUDENT2.id,
           p_org_id: orgId,
           p_scope: 'group',
           p_question_id: q1Id, // Q1 belongs to Student A, not shared via group

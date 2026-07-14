@@ -17,7 +17,7 @@ CREATE TABLE public.flashcards (
                     to_tsvector('english', coalesce(back, '')) ||
                     to_tsvector('polish', coalesce(back, ''))
                   ) STORED,
-  deck_id         uuid REFERENCES public.flashcard_decks(id) ON DELETE CASCADE,
+  deck_id         uuid NOT NULL REFERENCES public.flashcard_decks(id) ON DELETE CASCADE,
   created_at      timestamptz DEFAULT now()
 );
 

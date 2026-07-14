@@ -26,5 +26,6 @@ export * from '@/server/models/seat.model';
 export * from '@/server/models/stats.model';
 export * from '@/server/models/study-settings.model';
 export * from '@/server/models/subscription-plan.model';
+export * from '@/server/models/teacher-assignment.model';
 export * from '@/server/models/topic.model';
 export * from '@/server/models/user-feature-override.model';

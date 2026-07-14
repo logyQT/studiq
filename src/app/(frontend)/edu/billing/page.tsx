@@ -16,8 +16,8 @@ export default function EduBillingPage() {
   const [studentCount, setStudentCount] = useState(0);
 
   useEffect(() => {
-    apiGet<{ role: string }[]>('/api/v1/organization/members')
-      .then((d) => setStudentCount(d.filter((m) => m.role === 'student').length))
+    apiGet<{ orgRoleName: string }[]>('/api/v1/organization/members')
+      .then((d) => setStudentCount(d.filter((m) => m.orgRoleName === 'member').length))
       .catch(() => {});
   }, []);
 

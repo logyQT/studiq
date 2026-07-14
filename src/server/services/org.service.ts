@@ -17,7 +17,7 @@ export class OrgService {
 
     const { data: memberships, error: mError } = await supabase
       .from('org_members')
-      .select('organization_id, org_role_id, org_roles(name)')
+      .select('organization_id, org_role_id, org_roles(name, display_name)')
       .eq('user_id', ctx.userId);
 
     if (mError) return toDbFailure(mError);
@@ -41,10 +41,12 @@ export class OrgService {
       memberships.map((m) => {
         const roles = Array.isArray(m.org_roles) ? m.org_roles : [m.org_roles];
         const org = orgMap.get(m.organization_id);
+        const roleName = roles[0]?.name ?? 'member';
         return {
           id: m.organization_id,
           name: org?.name ?? 'Unknown',
-          orgRoleName: roles[0]?.name ?? 'member',
+          orgRoleName: roleName,
+          orgRoleDisplayName: roles[0]?.display_name ?? roleName,
           orgRoleId: m.org_role_id,
           isActive: m.organization_id === ctx.activeOrgId,
         };

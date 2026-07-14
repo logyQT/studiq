@@ -18,16 +18,16 @@ DECLARE
   v_rec        record;
 BEGIN
   -- 1. Create default roles
-  INSERT INTO public.org_roles (organization_id, name, description, is_system)
-  VALUES (NEW.id, 'admin', 'Org manager — settings, members, roles', true)
+  INSERT INTO public.org_roles (organization_id, name, description, display_name, is_system)
+  VALUES (NEW.id, 'admin', 'Org manager — settings, members, roles', 'Admin', true)
   RETURNING id INTO v_admin_id;
 
-  INSERT INTO public.org_roles (organization_id, name, description, is_system)
-  VALUES (NEW.id, 'teacher', 'Educator — CRUD over own content', true)
+  INSERT INTO public.org_roles (organization_id, name, description, display_name, is_system)
+  VALUES (NEW.id, 'teacher', 'Educator — CRUD over own content', 'Teacher', true)
   RETURNING id INTO v_teacher_id;
 
-  INSERT INTO public.org_roles (organization_id, name, description, is_system)
-  VALUES (NEW.id, 'member', 'Base learner — read own + group content, create own', true)
+  INSERT INTO public.org_roles (organization_id, name, description, display_name, is_system)
+  VALUES (NEW.id, 'member', 'Base learner — read own + group content, create own', 'Student', true)
   RETURNING id INTO v_member_id;
 
   -- 2. Seed permissions per role

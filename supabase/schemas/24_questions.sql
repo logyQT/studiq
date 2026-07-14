@@ -19,7 +19,7 @@ CREATE TABLE public.questions (
                     to_tsvector('polish', coalesce(explanation, ''))
                   ) STORED,
   created_at      timestamptz DEFAULT now(),
-  bank_id         uuid REFERENCES public.question_banks(id) ON DELETE SET NULL,
+  bank_id         uuid NOT NULL REFERENCES public.question_banks(id) ON DELETE CASCADE,
   updated_at      timestamptz DEFAULT now()
 );
 

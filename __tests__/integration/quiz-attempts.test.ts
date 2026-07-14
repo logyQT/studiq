@@ -105,7 +105,7 @@ describe('Quiz Attempts Integration', () => {
     });
 
     it('returns 404 for another user attempt', async () => {
-      mockUser(TEST_USERS.PREMIUM);
+      mockUser(TEST_USERS.STUDENT3);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/quiz/${attemptId}`,

@@ -59,7 +59,7 @@ export function QuestionBankDetailScreen({
     type: string;
     explanation?: string;
     topicIds?: string[];
-    bankIds: string[];
+    bankId: string;
     answers: { content: string; isCorrect: boolean; orderIndex: number }[];
   }) {
     if (editingQuestion) {

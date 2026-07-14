@@ -33,7 +33,7 @@ export class QuestionService {
         created_by: ctx.userId,
         organization_id: ctx.activeOrgId,
         visibility,
-        bank_id: data.bankId ?? null,
+        bank_id: data.bankId,
       })
       .select()
       .single();
@@ -154,7 +154,7 @@ export class QuestionService {
     }
 
     if (data.bankId !== undefined) {
-      const bFields: Record<string, unknown> = { bank_id: data.bankId ?? null };
+      const bFields: Record<string, unknown> = { bank_id: data.bankId };
       if (bankVisibility !== undefined) bFields.visibility = bankVisibility;
       const { error: bError } = await supabase.from('questions').update(bFields).eq('id', id);
       if (bError) return toDbFailure(bError);

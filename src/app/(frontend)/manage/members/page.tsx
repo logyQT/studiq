@@ -56,6 +56,7 @@ interface Member {
   email: string;
   full_name: string | null;
   orgRoleName: string;
+  orgRoleId: string;
   created_at: string;
   groups: GroupInfo[];
 }
@@ -66,16 +67,23 @@ interface OrgGroup {
   description: string | null;
 }
 
+interface OrgRole {
+  id: string;
+  name: string;
+  displayName?: string;
+}
+
 export default function MembersPage() {
   const t = useTranslations('ManageMembersPage');
   const { user } = useAuth();
   const [members, setMembers] = useState<Member[]>([]);
   const [orgGroups, setOrgGroups] = useState<OrgGroup[]>([]);
+  const [roles, setRoles] = useState<OrgRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState('all');
   const [removeId, setRemoveId] = useState<string | null>(null);
-  const [changingRole, setChangingRole] = useState<{ id: string; role: string } | null>(null);
+  const [changingRole, setChangingRole] = useState<{ id: string; orgRoleId: string } | null>(null);
   const [managingMember, setManagingMember] = useState<Member | null>(null);
   const [groupAssignments, setGroupAssignments] = useState<
     Record<string, { checked: boolean; role: string }>
@@ -84,17 +92,22 @@ export default function MembersPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [membersRes, groupsRes] = await Promise.all([
+      const [membersRes, groupsRes, rolesRes] = await Promise.all([
         fetch('/api/v1/organization/members'),
         fetch('/api/v1/organization/groups'),
+        fetch('/api/v1/organization/roles'),
       ]);
       const membersJson = await membersRes.json();
       const groupsJson = await groupsRes.json();
+      const rolesJson = await rolesRes.json();
       if (membersJson.success && Array.isArray(membersJson.data)) {
         setMembers(membersJson.data);
       }
       if (groupsJson.success && Array.isArray(groupsJson.data)) {
         setOrgGroups(groupsJson.data);
+      }
+      if (rolesJson.success && Array.isArray(rolesJson.data)) {
+        setRoles(rolesJson.data);
       }
     } finally {
       setLoading(false);
@@ -208,13 +221,15 @@ export default function MembersPage() {
       const res = await fetch('/api/v1/organization/members', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUserId: changingRole.id, newRole: changingRole.role }),
+        body: JSON.stringify({
+          targetUserId: changingRole.id,
+          newOrgRoleId: changingRole.orgRoleId,
+        }),
       });
       if (!res.ok) throw new Error();
+      const newRoleName = roles.find((r) => r.id === changingRole.orgRoleId)?.name ?? '';
       setMembers(
-        members.map((m) =>
-          m.id === changingRole.id ? { ...m, orgRoleName: changingRole.role } : m,
-        ),
+        members.map((m) => (m.id === changingRole.id ? { ...m, orgRoleName: newRoleName } : m)),
       );
       toast.success(t('role_updated'));
     } catch {
@@ -310,17 +325,17 @@ export default function MembersPage() {
                         {t('manage_groups')}
                       </Button>
                       <Select
-                        onValueChange={(v) => setChangingRole({ id: m.id, role: v })}
-                        defaultValue={m.orgRoleName}
+                        onValueChange={(v) => setChangingRole({ id: m.id, orgRoleId: v })}
+                        defaultValue={m.orgRoleId}
                       >
                         <SelectTrigger className="w-36 h-8">
                           <Shield className="mr-1 h-3 w-3" />
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {['teacher', 'member'].map((r) => (
-                            <SelectItem key={r} value={r}>
-                              {t(`role_${r}`)}
+                          {roles.map((r) => (
+                            <SelectItem key={r.id} value={r.id}>
+                              {r.displayName ?? r.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -367,7 +382,10 @@ export default function MembersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>{t('change_role_dialog_title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t('change_role_dialog_desc', { role: changingRole?.role.replace('_', ' ') ?? '' })}
+              {t('change_role_dialog_desc', {
+                role:
+                  roles.find((r) => r.id === changingRole?.orgRoleId)?.name.replace('_', ' ') ?? '',
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

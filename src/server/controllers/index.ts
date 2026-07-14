@@ -30,6 +30,7 @@ import { StatsController } from '@/server/controllers/stats.controller';
 import { StripeController } from '@/server/controllers/stripe.controller';
 import { SubscriptionPlanController } from '@/server/controllers/subscription-plan.controller';
 import { SubscriptionPlanAdminController } from '@/server/controllers/subscription-plan-admin.controller';
+import { TeacherAssignmentController } from '@/server/controllers/teacher-assignment.controller';
 import { TopicController } from '@/server/controllers/topic.controller';
 import { UserOverrideController } from '@/server/controllers/user-override.controller';
 import {
@@ -61,6 +62,7 @@ import {
   seatService,
   statsService,
   subscriptionPlanService,
+  teacherAssignmentService,
   topicService,
   userOverrideService,
 } from '@/server/services';
@@ -159,6 +161,10 @@ export const searchController = wrapService(
   'search.controller',
 );
 export const statsController = wrapService(new StatsController(statsService), 'stats.controller');
+export const teacherAssignmentController = wrapService(
+  new TeacherAssignmentController(teacherAssignmentService),
+  'teacher-assignment.controller',
+);
 export const stripeController = wrapService(
   new StripeController(mockStripeService),
   'stripe.controller',

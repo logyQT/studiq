@@ -52,6 +52,19 @@ export const groupKeys = {
   my: ['groups', 'my'] as const,
 };
 
+export const assignmentKeys = {
+  all: ['teacher-assignments'] as const,
+  detail: (id: string) => ['teacher-assignments', id] as const,
+  results: (id: string) => ['teacher-assignments', id, 'results'] as const,
+  studentResults: (id: string, studentId: string) =>
+    ['teacher-assignments', id, 'results', studentId] as const,
+};
+
+export const studentAssignmentKeys = {
+  all: ['student-assignments'] as const,
+  detail: (id: string) => ['student-assignments', id] as const,
+};
+
 export const searchKeys = {
   all: ['search'] as const,
   query: (q: string) => ['search', q] as const,

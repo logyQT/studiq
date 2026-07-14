@@ -33,7 +33,7 @@ export class OrgRoleService {
       .from('org_roles')
       .select(
         `
-        id, name, description, is_system,
+        id, name, display_name, description, is_system,
         org_members:org_members(count),
         org_role_permissions:org_role_permissions(count)
       `,
@@ -51,6 +51,7 @@ export class OrgRoleService {
         return {
           id: r.id,
           name: r.name,
+          displayName: r.display_name,
           description: r.description,
           isSystem: r.is_system,
           memberCount,
@@ -82,7 +83,7 @@ export class OrgRoleService {
       .from('org_roles')
       .select(
         `
-        id, name, description, is_system,
+        id, name, display_name, description, is_system,
         org_role_permissions(permission_name, scope)
       `,
       )
@@ -95,6 +96,7 @@ export class OrgRoleService {
     return success({
       id: data.id,
       name: data.name,
+      displayName: data.display_name,
       description: data.description,
       isSystem: data.is_system,
       permissions:
@@ -121,10 +123,11 @@ export class OrgRoleService {
       .insert({
         organization_id: ctx.activeOrgId,
         name: data.name,
+        display_name: data.name,
         description: data.description ?? null,
         is_system: false,
       })
-      .select('id, name, description, is_system')
+      .select('id, name, display_name, description, is_system')
       .single();
 
     if (error) return toDbFailure(error);
@@ -132,6 +135,7 @@ export class OrgRoleService {
     return success({
       id: role.id,
       name: role.name,
+      displayName: role.display_name,
       description: role.description,
       isSystem: role.is_system,
     });
@@ -150,8 +154,22 @@ export class OrgRoleService {
       return failure('FORBIDDEN');
     }
 
+    const { data: existing, error: fetchError } = await supabase
+      .from('org_roles')
+      .select('is_system')
+      .eq('id', id)
+      .eq('organization_id', ctx.activeOrgId)
+      .single();
+
+    if (fetchError) return toDbFailure(fetchError);
+
+    if (data.name !== undefined && existing.is_system) {
+      return failure('FORBIDDEN');
+    }
+
     const update: Record<string, string | null> = {};
     if (data.name !== undefined) update.name = data.name;
+    if (data.display_name !== undefined) update.display_name = data.display_name;
     if (data.description !== undefined) update.description = data.description;
 
     if (Object.keys(update).length === 0) {
@@ -163,7 +181,7 @@ export class OrgRoleService {
       .update(update)
       .eq('id', id)
       .eq('organization_id', ctx.activeOrgId)
-      .select('id, name, description, is_system')
+      .select('id, name, display_name, description, is_system')
       .single();
 
     if (error) return toDbFailure(error);
@@ -171,6 +189,7 @@ export class OrgRoleService {
     return success({
       id: role.id,
       name: role.name,
+      displayName: role.display_name,
       description: role.description,
       isSystem: role.is_system,
     });

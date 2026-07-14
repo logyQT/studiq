@@ -21,6 +21,12 @@ export const Permission = {
   QUESTION_BANK_CREATE: 'question_bank.create',
   QUESTION_BANK_UPDATE: 'question_bank.update',
   QUESTION_BANK_DELETE: 'question_bank.delete',
+  ASSIGNMENT_CREATE: 'assignment.create',
+  ASSIGNMENT_READ: 'assignment.read',
+  ASSIGNMENT_UPDATE: 'assignment.update',
+  ASSIGNMENT_DELETE: 'assignment.delete',
+  ASSIGNMENT_PUBLISH: 'assignment.publish',
+  ASSIGNMENT_GRADE: 'assignment.grade',
 } as const;
 
 export type PermissionKey = (typeof Permission)[keyof typeof Permission];
@@ -103,6 +109,12 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Record<string, PermissionS
     'question_bank.create': 'own',
     'question_bank.update': 'own',
     'question_bank.delete': 'own',
+    'assignment.create': 'own',
+    'assignment.read': 'own',
+    'assignment.update': 'own',
+    'assignment.delete': 'own',
+    'assignment.publish': 'own',
+    'assignment.grade': 'own',
   },
 
   admin: {
@@ -126,5 +138,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Record<string, PermissionS
     'question_bank.create': 'organization',
     'question_bank.update': 'organization',
     'question_bank.delete': 'organization',
+    'assignment.create': 'organization',
+    'assignment.read': 'organization',
+    'assignment.update': 'organization',
+    'assignment.delete': 'organization',
+    'assignment.publish': 'organization',
+    'assignment.grade': 'organization',
   },
 };

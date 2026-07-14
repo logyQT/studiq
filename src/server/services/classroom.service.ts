@@ -23,6 +23,7 @@ export class ClassroomService {
       .select('id')
       .eq('organization_id', org.id)
       .eq('name', 'admin')
+      .eq('is_system', true)
       .single();
     if (!adminRole) {
       await supabase.from('organizations').delete().eq('id', org.id);

@@ -39,7 +39,7 @@ interface QuestionFormDialogProps {
     type: string;
     explanation?: string;
     topicIds?: string[];
-    bankIds: string[];
+    bankId: string;
     answers: { content: string; isCorrect: boolean; orderIndex: number }[];
   }) => Promise<void>;
   t: ReturnType<typeof useTranslations>;
@@ -123,7 +123,7 @@ export function QuestionFormDialog({
         type,
         explanation: explanation.trim() || undefined,
         topicIds: [],
-        bankIds: [bankId],
+        bankId,
         answers: answers
           .filter((a) => a.content.trim())
           .map((a, i) => ({

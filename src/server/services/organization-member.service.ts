@@ -47,7 +47,7 @@ export class OrganizationMemberService {
       let query = supabase
         .from('org_members')
         .select(
-          'user_id, org_role_id, org_roles!inner(name), profiles!inner(id, email, full_name, created_at)',
+          'user_id, org_role_id, org_roles!inner(name, display_name), profiles!inner(id, email, full_name, created_at)',
         )
         .in('user_id', userIds)
         .eq('organization_id', ctx.activeOrgId);
@@ -82,12 +82,15 @@ export class OrganizationMemberService {
             full_name: string | null;
             created_at: string;
           };
-          const roleName = (m.org_roles as unknown as { name: string }).name;
+          const orgRole = m.org_roles as unknown as { name: string; display_name?: string };
+          const roleName = orgRole.name;
+          const roleDisplayName = orgRole.display_name ?? roleName;
           return {
             id: m.user_id,
             email: profile.email,
             full_name: profile.full_name,
             orgRoleName: roleName,
+            orgRoleDisplayName: roleDisplayName,
             orgRoleId: m.org_role_id,
             organization_id: ctx.activeOrgId,
             created_at: profile.created_at,
@@ -100,7 +103,7 @@ export class OrganizationMemberService {
     let query = supabase
       .from('org_members')
       .select(
-        'user_id, org_role_id, org_roles!inner(name), profiles!inner(id, email, full_name, created_at)',
+        'user_id, org_role_id, org_roles!inner(name, display_name), profiles!inner(id, email, full_name, created_at)',
       )
       .eq('organization_id', ctx.activeOrgId);
 
@@ -137,12 +140,15 @@ export class OrganizationMemberService {
           full_name: string | null;
           created_at: string;
         };
-        const roleName = (m.org_roles as unknown as { name: string }).name;
+        const orgRole = m.org_roles as unknown as { name: string; display_name?: string };
+        const roleName = orgRole.name;
+        const roleDisplayName = orgRole.display_name ?? roleName;
         return {
           id: m.user_id,
           email: profile.email,
           full_name: profile.full_name,
           orgRoleName: roleName,
+          orgRoleDisplayName: roleDisplayName,
           orgRoleId: m.org_role_id,
           organization_id: ctx.activeOrgId,
           created_at: profile.created_at,

@@ -22,6 +22,12 @@ export const UpdateOrgRoleSchema = registry.register(
       .min(3, { error: ValidationErrorCode.TOO_SHORT })
       .max(64, { error: ValidationErrorCode.TOO_LONG })
       .optional(),
+    display_name: z
+      .string({ error: ValidationErrorCode.REQUIRED })
+      .nonempty({ error: ValidationErrorCode.REQUIRED })
+      .min(1, { error: ValidationErrorCode.TOO_SHORT })
+      .max(64, { error: ValidationErrorCode.TOO_LONG })
+      .optional(),
     description: z.string().nullable().optional(),
   }),
 );

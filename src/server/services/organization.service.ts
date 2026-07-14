@@ -62,6 +62,7 @@ export class OrganizationService {
       .select('id')
       .eq('organization_id', org.id)
       .eq('name', 'admin')
+      .eq('is_system', true)
       .single();
 
     if (roleError || !adminRole) {
