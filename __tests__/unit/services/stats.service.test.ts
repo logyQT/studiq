@@ -1,21 +1,24 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { statsService } from '@/server/services/stats.service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { questionService } from '@/server/services';
-
-vi.mock('@/server/services', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/server/services')>();
-  return {
-    ...actual,
-    questionService: {
-      getStatsBySubject: vi.fn(),
-    },
-  };
-});
+import { StatsService } from '@/server/services/stats.service';
+import { success, failure } from '@/lib/service-result';
+import type { RequestContext } from '@/lib/request-context';
+import { AccountType } from '@/types';
 
 describe('StatsService', () => {
-  const userId = 'test-user-id';
-  let mock: ReturnType<typeof mockClient>;
+  let mock: ReturnType<typeof mockSupabaseClient>;
+  const ctx: RequestContext = {
+    userId: 'test-user-id',
+    accountType: AccountType.STUDENT,
+    traceId: 't',
+    url: '',
+    method: 'GET',
+    activeOrgId: null,
+    orgRoleId: null,
+    groupIds: [],
+    permissionScopes: {},
+  };
+  const service = new StatsService(async () => mock as any);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -23,7 +26,7 @@ describe('StatsService', () => {
   });
 
   describe('getTeacherStats', () => {
-    it('returns basic stats without subjectId', async () => {
+    it('returns basic stats', async () => {
       mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ data: [{ id: 'q-1' }], error: null }),
@@ -36,37 +39,10 @@ describe('StatsService', () => {
         }),
       });
 
-      const result = await statsService.getTeacherStats(userId);
+      const result = await service.getTeacherStats(ctx);
 
-      expect(result).toEqual({ totalQuestions: 1, totalFlashcards: 1 });
-    });
-
-    it('returns stats with subject details when subjectId provided', async () => {
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: [{ id: 'q-1' }], error: null }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: [{ id: 'fc-1' }], error: null }),
-        }),
-      });
-
-      vi.mocked(questionService.getStatsBySubject).mockResolvedValueOnce({
-        totalQuestions: 5,
-        byType: { mcq: 3, true_false: 2 },
-        byDifficulty: { easy: 2, medium: 3 },
-        problematicQuestions: [],
-      });
-
-      const result = await statsService.getTeacherStats(userId, 'sub-1');
-
-      expect(result.totalQuestions).toBe(1);
-      expect(result.totalFlashcards).toBe(1);
-      expect((result as any).subject).toBeDefined();
-      expect((result as any).subject?.totalQuestions).toBe(5);
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ totalQuestions: 1, totalFlashcards: 1 });
     });
   });
 
@@ -103,31 +79,53 @@ describe('StatsService', () => {
         }),
       });
 
-      const result = await statsService.getStudentStats(userId);
+      mock.from.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: [], count: 0, error: null }),
+        }),
+      });
 
-      expect(result.totalQuizzes).toBe(2);
-      expect(result.avgScore).toBe(70);
-      expect(result.totalQuestionsCreated).toBe(1);
-      expect(result.flashcardsPracticed).toBe(2);
-      expect(result.flashcardAccuracy).toBe(50);
-      expect(result.attemptsOverTime.length).toBe(2);
-    });
+      mock.from.mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: [], count: 0, error: null }),
+        }),
+      });
 
-    it('returns zero stats when no data exists', async () => {
-      mock.from.mockReturnValue({
+      mock.from.mockReturnValueOnce({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({ data: [], error: null }),
+            lte: vi.fn().mockResolvedValue({ data: [], count: 0, error: null }),
           }),
         }),
       });
 
-      const result = await statsService.getStudentStats(userId);
+      const result = await service.getStudentStats(ctx);
 
-      expect(result.totalQuizzes).toBe(0);
-      expect(result.avgScore).toBe(0);
-      expect(result.flashcardsPracticed).toBe(0);
-      expect(result.flashcardAccuracy).toBe(0);
+      expect(result.success).toBe(true);
+      expect(result.data.totalQuizzes).toBe(2);
+      expect(result.data.avgScore).toBe(70);
+      expect(result.data.totalQuestionsCreated).toBe(1);
+      expect(result.data.flashcardsPracticed).toBe(2);
+      expect(result.data.flashcardAccuracy).toBe(50);
+      expect(result.data.attemptsOverTime.length).toBe(2);
+    });
+
+    it('returns zero stats when no data exists', async () => {
+      const c: any = {};
+      c.select = vi.fn(() => c);
+      c.eq = vi.fn(() => c);
+      c.order = vi.fn(() => c);
+      c.lte = vi.fn(() => c);
+      c.then = (onfulfilled: any) => Promise.resolve({ data: [], error: null }).then(onfulfilled);
+      mock.from.mockReturnValue(c);
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data.totalQuizzes).toBe(0);
+      expect(result.data.avgScore).toBe(0);
+      expect(result.data.flashcardsPracticed).toBe(0);
+      expect(result.data.flashcardAccuracy).toBe(0);
     });
   });
 });

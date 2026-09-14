@@ -1,4 +1,4 @@
-import { z, registry } from '@/lib/zod';
+import { registry, z } from '@/lib/zod';
 
 export const TeacherFlashcardStatsQuerySchema = registry.register(
   'TeacherFlashcardStatsQuery',
@@ -57,8 +57,8 @@ export type DifficultyFlashcardDetail = {
   accuracy: number;
   totalAttempts: number;
   studentCount: number;
-  deckIds: string[];
-  deckNames: string[];
+  deckId: string;
+  deckName: string;
   topicIds: string[];
   topicNames: string[];
 };

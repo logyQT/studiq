@@ -1,477 +1,407 @@
-import { describe, it, expect, beforeEach, vi, afterAll } from 'vitest';
-import { POST, GET } from '@/app/(backend)/api/v1/admin/universities/route';
-import { GET as GET_BY_ID, PUT, DELETE } from '@/app/(backend)/api/v1/admin/universities/[id]/route';
-import { TEST_USERS, mockUser, createRealClient, cleanupUniversity } from './helpers';
-import { createNextRequest, createNextRequestWithParams } from './test-utils';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { forEachCopy, registerMock } from '#test/helpers/concurrent';
+import {
+  DELETE,
+  GET as GET_BY_ID,
+  PUT,
+} from '@/app/(backend)/api/v1/admin/organizations/[id]/route';
+import { GET, POST } from '@/app/(backend)/api/v1/admin/organizations/route';
+import {
+  applyRegisteredMock,
+  cleanupOrganizationByName,
+  createServiceClient,
+  mockUser,
+  TEST_USERS,
+} from '#test/integration/helpers';
+import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 
 const VALID_UUID = '550e8400-e29b-41d4-a716-446655440000';
 
-describe('University Integration', () => {
-  beforeEach(async () => {
-    vi.clearAllMocks();
-  });
+forEachCopy((copyId) => {
+  describe(`Organization Integration [${copyId}]`, () => {
+    registerMock(copyId, null);
 
-  afterAll(async () => {
-    await cleanupUniversity('test-');
-    await cleanupUniversity('dup-');
-    await cleanupUniversity('updated-');
-  });
+    const TEST_PREFIX = `org-test-${copyId}-`;
 
-  describe('POST /api/v1/admin/universities', () => {
-    it('creates a university as sys_admin and returns 201', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
+    afterAll(async () => {
+      await cleanupOrganizationByName(`org-test-${copyId}`);
+    });
 
-      const uniqueSlug = `test-uni-${Date.now()}`;
-      const req = createNextRequest('http://localhost/api/v1/admin/universities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Test University', slug: uniqueSlug }),
+    describe('POST /api/v1/admin/universities', () => {
+      beforeEach(() => {
+        vi.clearAllMocks();
+        applyRegisteredMock(copyId);
       });
 
-      const response = await POST(req);
-      const body = await response.json();
+      it('creates an organization as sys_admin and returns 201', async () => {
+        mockUser(TEST_USERS.SYS_ADMIN);
 
-      expect(response.status).toBe(201);
-      expect(body.success).toBe(true);
-      expect(body.data.name).toBe('Test University');
-    });
-
-    it('returns 409 when slug already exists', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
-
-      const supabase = createRealClient();
-      const uniqueSlug = `dup-uni-${Date.now()}`;
-      await supabase.from('universities').insert({ name: 'Existing', slug: uniqueSlug });
-
-      const req = createNextRequest('http://localhost/api/v1/admin/universities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Duplicate', slug: uniqueSlug }),
-      });
-
-      const response = await POST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(409);
-      expect(body.success).toBe(false);
-    });
-
-    it('returns 401 when not authenticated', async () => {
-      mockUser(null);
-
-      const req = createNextRequest('http://localhost/api/v1/admin/universities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Test University', slug: 'test-uni' }),
-      });
-
-      const response = await POST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(body.success).toBe(false);
-    });
-
-    it('returns 403 when non-sys-admin tries to create', async () => {
-      mockUser(TEST_USERS.TEACHER);
-
-      const req = createNextRequest('http://localhost/api/v1/admin/universities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Test University', slug: 'test-uni' }),
-      });
-
-      const response = await POST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(403);
-      expect(body.success).toBe(false);
-    });
-
-    it('returns 422 when name is too short', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
-
-      const req = createNextRequest('http://localhost/api/v1/admin/universities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'AB', slug: 'test-uni' }),
-      });
-
-      const response = await POST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(422);
-      expect(body.success).toBe(false);
-    });
-
-    it('returns 422 when slug has invalid format', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
-
-      const req = createNextRequest('http://localhost/api/v1/admin/universities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Test University', slug: 'Invalid_Slug!' }),
-      });
-
-      const response = await POST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(422);
-      expect(body.success).toBe(false);
-    });
-  });
-
-  describe('GET /api/v1/admin/universities', () => {
-    it('lists all universities as sys_admin and returns 200', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
-
-      const uniqueSlug = `test-list-${Date.now()}`;
-      const supabase = createRealClient();
-      await supabase.from('universities').insert({ name: 'List Test', slug: uniqueSlug });
-
-      const req = createNextRequest('http://localhost/api/v1/admin/universities');
-      const response = await GET(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.success).toBe(true);
-      expect(Array.isArray(body.data)).toBe(true);
-    });
-
-    it('returns 401 when not authenticated', async () => {
-      mockUser(null);
-
-      const req = createNextRequest('http://localhost/api/v1/admin/universities');
-      const response = await GET(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(body.success).toBe(false);
-    });
-
-    it('returns 403 when non-sys-admin tries to list', async () => {
-      mockUser(TEST_USERS.TEACHER);
-
-      const req = createNextRequest('http://localhost/api/v1/admin/universities');
-      const response = await GET(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(403);
-      expect(body.success).toBe(false);
-    });
-  });
-
-  describe('GET /api/v1/admin/universities/:id', () => {
-    it('gets a single university by id and returns 200', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
-
-      const uniqueSlug = `test-get-${Date.now()}`;
-      const supabase = createRealClient();
-      const { data: created } = await supabase
-        .from('universities')
-        .insert({ name: 'Get Test', slug: uniqueSlug })
-        .select()
-        .single();
-
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/admin/universities/${created.id}`,
-        { id: created.id },
-      );
-      const response = await GET_BY_ID(request, { params });
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.success).toBe(true);
-      expect(body.data.id).toBe(created.id);
-      expect(body.data.name).toBe('Get Test');
-    });
-
-    it('returns 404 for non-existent university', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
-
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
-        { id: VALID_UUID },
-      );
-      const response = await GET_BY_ID(request, { params });
-      const body = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(body.success).toBe(false);
-    });
-
-    it('returns 400 for invalid UUID format', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
-
-      const { request, params } = createNextRequestWithParams(
-        'http://localhost/api/v1/admin/universities/invalid-id',
-        { id: 'invalid-id' },
-      );
-      const response = await GET_BY_ID(request, { params });
-      const body = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(body.success).toBe(false);
-    });
-
-    it('returns 401 when not authenticated', async () => {
-      mockUser(null);
-
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
-        { id: VALID_UUID },
-      );
-      const response = await GET_BY_ID(request, { params });
-      const body = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(body.success).toBe(false);
-    });
-
-    it('returns 403 when non-sys-admin tries to get', async () => {
-      mockUser(TEST_USERS.TEACHER);
-
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
-        { id: VALID_UUID },
-      );
-      const response = await GET_BY_ID(request, { params });
-      const body = await response.json();
-
-      expect(response.status).toBe(403);
-      expect(body.success).toBe(false);
-    });
-  });
-
-  describe('PUT /api/v1/admin/universities/:id', () => {
-    it('updates university name and returns 200', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
-
-      const uniqueSlug = `test-put-${Date.now()}`;
-      const supabase = createRealClient();
-      const { data: created } = await supabase
-        .from('universities')
-        .insert({ name: 'Original Name', slug: uniqueSlug })
-        .select()
-        .single();
-
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/admin/universities/${created.id}`,
-        { id: created.id },
-        {
-          method: 'PUT',
+        const req = createNextRequest('http://localhost/api/v1/admin/universities', {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'Updated Name' }),
-        },
-      );
-      const response = await PUT(request, { params });
-      const body = await response.json();
+          body: JSON.stringify({ name: `${TEST_PREFIX}create-${Date.now()}` }),
+        });
 
-      expect(response.status).toBe(200);
-      expect(body.success).toBe(true);
-      expect(body.data.name).toBe('Updated Name');
-    });
+        const response = await POST(req);
+        const body = await response.json();
 
-    it('updates university slug and returns 200', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
+        expect(response.status).toBe(201);
+        expect(body.success).toBe(true);
+        expect(body.data.name).toContain(TEST_PREFIX);
+      });
 
-      const uniqueSlug = `test-put-slug-${Date.now()}`;
-      const supabase = createRealClient();
-      const { data: created } = await supabase
-        .from('universities')
-        .insert({ name: 'Slug Test', slug: uniqueSlug })
-        .select()
-        .single();
+      it('returns 401 when not authenticated', async () => {
+        mockUser(null);
 
-      const newSlug = `updated-slug-${Date.now()}`;
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/admin/universities/${created.id}`,
-        { id: created.id },
-        {
-          method: 'PUT',
+        const req = createNextRequest('http://localhost/api/v1/admin/universities', {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slug: newSlug }),
-        },
-      );
-      const response = await PUT(request, { params });
-      const body = await response.json();
+          body: JSON.stringify({ name: `${TEST_PREFIX}unauth` }),
+        });
 
-      expect(response.status).toBe(200);
-      expect(body.success).toBe(true);
-      expect(body.data.slug).toBe(newSlug);
-    });
+        const response = await POST(req);
+        const body = await response.json();
 
-    it('returns 409 for duplicate slug', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
+        expect(response.status).toBe(401);
+        expect(body.success).toBe(false);
+      });
 
-      const supabase = createRealClient();
-      const slug1 = `dup-slug-1-${Date.now()}`;
-      const slug2 = `dup-slug-2-${Date.now()}`;
-      const { data: uni1 } = await supabase
-        .from('universities')
-        .insert({ name: 'Uni 1', slug: slug1 })
-        .select()
-        .single();
-      await supabase.from('universities').insert({ name: 'Uni 2', slug: slug2 });
+      it('returns 403 when non-sys-admin tries to create', async () => {
+        mockUser(TEST_USERS.TEACHER);
 
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/admin/universities/${uni1.id}`,
-        { id: uni1.id },
-        {
-          method: 'PUT',
+        const req = createNextRequest('http://localhost/api/v1/admin/universities', {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slug: slug2 }),
-        },
-      );
-      const response = await PUT(request, { params });
-      const body = await response.json();
+          body: JSON.stringify({ name: `${TEST_PREFIX}forbidden` }),
+        });
 
-      expect(response.status).toBe(409);
-      expect(body.success).toBe(false);
-    });
+        const response = await POST(req);
+        const body = await response.json();
 
-    it('returns 404 for non-existent university', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
+      });
 
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
-        { id: VALID_UUID },
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'New Name' }),
-        },
-      );
-      const response = await PUT(request, { params });
-      const body = await response.json();
+      it('returns 422 when name is too short', async () => {
+        mockUser(TEST_USERS.SYS_ADMIN);
 
-      expect(response.status).toBe(404);
-      expect(body.success).toBe(false);
-    });
-
-    it('returns 422 for invalid body', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
-
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
-        { id: VALID_UUID },
-        {
-          method: 'PUT',
+        const req = createNextRequest('http://localhost/api/v1/admin/universities', {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: 'AB' }),
-        },
-      );
-      const response = await PUT(request, { params });
-      const body = await response.json();
+        });
 
-      expect(response.status).toBe(422);
-      expect(body.success).toBe(false);
+        const response = await POST(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+      });
     });
 
-    it('returns 400 for invalid UUID format', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
+    describe('GET /api/v1/admin/universities', () => {
+      beforeEach(() => {
+        vi.clearAllMocks();
+        applyRegisteredMock(copyId);
+      });
 
-      const { request, params } = createNextRequestWithParams(
-        'http://localhost/api/v1/admin/universities/invalid-id',
-        { id: 'invalid-id' },
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'New Name' }),
-        },
-      );
-      const response = await PUT(request, { params });
-      const body = await response.json();
+      it('lists all organizations as sys_admin and returns 200', async () => {
+        mockUser(TEST_USERS.SYS_ADMIN);
 
-      expect(response.status).toBe(400);
-      expect(body.success).toBe(false);
-    });
-  });
+        const supabase = createServiceClient();
+        await supabase.from('organizations').insert({ name: `${TEST_PREFIX}list-test` });
 
-  describe('DELETE /api/v1/admin/universities/:id', () => {
-    it('deletes a university and returns 200', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
+        const req = createNextRequest('http://localhost/api/v1/admin/universities');
+        const response = await GET(req);
+        const body = await response.json();
 
-      const uniqueSlug = `test-delete-${Date.now()}`;
-      const supabase = createRealClient();
-      const { data: created } = await supabase
-        .from('universities')
-        .insert({ name: 'Delete Test', slug: uniqueSlug })
-        .select()
-        .single();
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+        expect(Array.isArray(body.data)).toBe(true);
+      });
 
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/admin/universities/${created.id}`,
-        { id: created.id },
-      );
-      const response = await DELETE(request, { params });
-      const body = await response.json();
+      it('returns 401 when not authenticated', async () => {
+        mockUser(null);
 
-      expect(response.status).toBe(200);
-      expect(body.success).toBe(true);
+        const req = createNextRequest('http://localhost/api/v1/admin/universities');
+        const response = await GET(req);
+        const body = await response.json();
 
-      const { data: deleted } = await supabase
-        .from('universities')
-        .select('id')
-        .eq('id', created.id)
-        .single();
-      expect(deleted).toBeNull();
+        expect(response.status).toBe(401);
+        expect(body.success).toBe(false);
+      });
+
+      it('returns 403 when non-sys-admin tries to list', async () => {
+        mockUser(TEST_USERS.TEACHER);
+
+        const req = createNextRequest('http://localhost/api/v1/admin/universities');
+        const response = await GET(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
+      });
     });
 
-    it('returns 404 for non-existent university', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
+    describe('GET /api/v1/admin/universities/:id', () => {
+      beforeEach(() => {
+        vi.clearAllMocks();
+        applyRegisteredMock(copyId);
+      });
 
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
-        { id: VALID_UUID },
-      );
-      const response = await DELETE(request, { params });
-      const body = await response.json();
+      it('gets a single organization by id and returns 200', async () => {
+        mockUser(TEST_USERS.SYS_ADMIN);
 
-      expect(response.status).toBe(404);
-      expect(body.success).toBe(false);
+        const supabase = createServiceClient();
+        const { data: created } = await supabase
+          .from('organizations')
+          .insert({ name: `${TEST_PREFIX}get-test` })
+          .select()
+          .single();
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/admin/universities/${created.id}`,
+          { id: created.id },
+        );
+        const response = await GET_BY_ID(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+        expect(body.data.id).toBe(created.id);
+        expect(body.data.name).toBe(`${TEST_PREFIX}get-test`);
+      });
+
+      it('returns 404 for non-existent organization', async () => {
+        mockUser(TEST_USERS.SYS_ADMIN);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
+          { id: VALID_UUID },
+        );
+        const response = await GET_BY_ID(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(404);
+        expect(body.success).toBe(false);
+      });
+
+      it('returns 400 for invalid UUID format', async () => {
+        mockUser(TEST_USERS.SYS_ADMIN);
+
+        const { request, params } = createNextRequestWithParams(
+          'http://localhost/api/v1/admin/universities/invalid-id',
+          { id: 'invalid-id' },
+        );
+        const response = await GET_BY_ID(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(body.success).toBe(false);
+      });
+
+      it('returns 401 when not authenticated', async () => {
+        mockUser(null);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
+          { id: VALID_UUID },
+        );
+        const response = await GET_BY_ID(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(401);
+        expect(body.success).toBe(false);
+      });
+
+      it('returns 403 when non-sys-admin tries to get', async () => {
+        mockUser(TEST_USERS.TEACHER);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
+          { id: VALID_UUID },
+        );
+        const response = await GET_BY_ID(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
+      });
     });
 
-    it('returns 400 for invalid UUID format', async () => {
-      mockUser(TEST_USERS.SYS_ADMIN);
+    describe('PUT /api/v1/admin/universities/:id', () => {
+      beforeEach(() => {
+        vi.clearAllMocks();
+        applyRegisteredMock(copyId);
+      });
 
-      const { request, params } = createNextRequestWithParams(
-        'http://localhost/api/v1/admin/universities/invalid-id',
-        { id: 'invalid-id' },
-      );
-      const response = await DELETE(request, { params });
-      const body = await response.json();
+      it('updates organization name and returns 200', async () => {
+        mockUser(TEST_USERS.SYS_ADMIN);
 
-      expect(response.status).toBe(400);
-      expect(body.success).toBe(false);
+        const supabase = createServiceClient();
+        const { data: created } = await supabase
+          .from('organizations')
+          .insert({ name: `${TEST_PREFIX}put-original` })
+          .select()
+          .single();
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/admin/universities/${created.id}`,
+          { id: created.id },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: `${TEST_PREFIX}put-updated` }),
+          },
+        );
+        const response = await PUT(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+        expect(body.data.name).toBe(`${TEST_PREFIX}put-updated`);
+      });
+
+      it('returns 404 for non-existent organization', async () => {
+        mockUser(TEST_USERS.SYS_ADMIN);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
+          { id: VALID_UUID },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'New Name' }),
+          },
+        );
+        const response = await PUT(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(404);
+        expect(body.success).toBe(false);
+      });
+
+      it('returns 422 for invalid body', async () => {
+        mockUser(TEST_USERS.SYS_ADMIN);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
+          { id: VALID_UUID },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'AB' }),
+          },
+        );
+        const response = await PUT(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+      });
+
+      it('returns 400 for invalid UUID format', async () => {
+        mockUser(TEST_USERS.SYS_ADMIN);
+
+        const { request, params } = createNextRequestWithParams(
+          'http://localhost/api/v1/admin/universities/invalid-id',
+          { id: 'invalid-id' },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'New Name' }),
+          },
+        );
+        const response = await PUT(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(body.success).toBe(false);
+      });
     });
 
-    it('returns 401 when not authenticated', async () => {
-      mockUser(null);
+    describe('DELETE /api/v1/admin/universities/:id', () => {
+      beforeEach(() => {
+        vi.clearAllMocks();
+        applyRegisteredMock(copyId);
+      });
 
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
-        { id: VALID_UUID },
-      );
-      const response = await DELETE(request, { params });
-      const body = await response.json();
+      it('deletes an organization and returns 200', async () => {
+        mockUser(TEST_USERS.SYS_ADMIN);
 
-      expect(response.status).toBe(401);
-      expect(body.success).toBe(false);
-    });
+        const supabase = createServiceClient();
+        const { data: created } = await supabase
+          .from('organizations')
+          .insert({ name: `${TEST_PREFIX}delete-test` })
+          .select()
+          .single();
 
-    it('returns 403 when non-sys-admin tries to delete', async () => {
-      mockUser(TEST_USERS.TEACHER);
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/admin/universities/${created.id}`,
+          { id: created.id },
+        );
+        const response = await DELETE(request, { params });
+        const body = await response.json();
 
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
-        { id: VALID_UUID },
-      );
-      const response = await DELETE(request, { params });
-      const body = await response.json();
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+      });
 
-      expect(response.status).toBe(403);
-      expect(body.success).toBe(false);
+      it('returns 404 for non-existent organization', async () => {
+        mockUser(TEST_USERS.SYS_ADMIN);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
+          { id: VALID_UUID },
+        );
+        const response = await DELETE(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(404);
+        expect(body.success).toBe(false);
+      });
+
+      it('returns 400 for invalid UUID format', async () => {
+        mockUser(TEST_USERS.SYS_ADMIN);
+
+        const { request, params } = createNextRequestWithParams(
+          'http://localhost/api/v1/admin/universities/invalid-id',
+          { id: 'invalid-id' },
+        );
+        const response = await DELETE(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(body.success).toBe(false);
+      });
+
+      it('returns 401 when not authenticated', async () => {
+        mockUser(null);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
+          { id: VALID_UUID },
+        );
+        const response = await DELETE(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(401);
+        expect(body.success).toBe(false);
+      });
+
+      it('returns 403 when non-sys-admin tries to delete', async () => {
+        mockUser(TEST_USERS.TEACHER);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/admin/universities/${VALID_UUID}`,
+          { id: VALID_UUID },
+        );
+        const response = await DELETE(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
+      });
     });
   });
 });

@@ -1,165 +1,215 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { GET, PUT, DELETE } from '@/app/(backend)/api/v1/university/members/route';
-import { TEST_USERS, mockUser } from './helpers';
-import { createNextRequest } from './test-utils';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { forEachCopy, registerMock } from '#test/helpers/concurrent';
+import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/organization/members/route';
+import {
+  applyRegisteredMock,
+  cleanupOrganizationDeep,
+  createServiceClient,
+  mockUser,
+} from '#test/integration/helpers';
+import {
+  before,
+  createTestUser,
+  type BeforeResult,
+  type TestUserFixture,
+} from '#test/helpers/test-user';
+import { createNextRequest } from '#test/integration/test-utils';
 
-describe('Members Integration', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+forEachCopy((copyId) => {
+  describe(`Members Integration [${copyId}]`, () => {
+    registerMock(copyId, null);
 
-  describe('GET /api/v1/university/members', () => {
-    it('lists members for university_admin', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+    let fixture!: BeforeResult;
+    let orgId!: string;
+    let adminRoleId!: string;
+    let member!: TestUserFixture;
 
-      const req = createNextRequest('http://localhost/api/v1/university/members');
-      const response = await GET(req);
-      const body = await response.json();
+    beforeAll(async () => {
+      fixture = await before({
+        role: 'manager',
+        org: true,
+        members: { count: 1 },
+      });
+      orgId = fixture.orgId!;
+      member = fixture.memberUsers[0];
 
-      expect(response.status).toBe(200);
-      expect(Array.isArray(body.data)).toBe(true);
+      const supabase = createServiceClient();
+      const { data: adminRole } = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('name', 'admin')
+        .single();
+      adminRoleId = adminRole!.id;
     });
 
-    it('filters members by role', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
-
-      const req = createNextRequest('http://localhost/api/v1/university/members?role=student');
-      const response = await GET(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(Array.isArray(body.data)).toBe(true);
+    beforeEach(() => {
+      vi.clearAllMocks();
+      applyRegisteredMock(copyId);
     });
 
-    it('returns 403 when user has no university', async () => {
-      mockUser(TEST_USERS.FREE);
-
-      const req = createNextRequest('http://localhost/api/v1/university/members');
-      const response = await GET(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(403);
-      expect(body.success).toBe(false);
+    afterAll(async () => {
+      if (orgId) {
+        await cleanupOrganizationDeep(orgId);
+      }
     });
 
-    it('returns 401 when not authenticated', async () => {
-      mockUser(null);
+    describe('GET /api/v1/organization/members', () => {
+      it('lists members for the org admin', async () => {
+        mockUser(fixture.user);
 
-      const req = createNextRequest('http://localhost/api/v1/university/members');
-      const response = await GET(req);
-      const body = await response.json();
+        const req = createNextRequest('http://localhost/api/v1/organization/members', undefined, {
+          active_org_id: orgId,
+        });
+        const response = await GET(req);
+        const body = await response.json();
 
-      expect(response.status).toBe(401);
-      expect(body.success).toBe(false);
-    });
-  });
-
-  describe('PUT /api/v1/university/members', () => {
-    it.skip('changes role successfully', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
-
-      const req = createNextRequest('http://localhost/api/v1/university/members', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetUserId: TEST_USERS.STUDENT.id,
-          newRole: 'teacher',
-        }),
+        expect(response.status).toBe(200);
+        expect(Array.isArray(body.data)).toBe(true);
+        expect(body.data.length).toBeGreaterThanOrEqual(2);
       });
 
-      const response = await PUT(req);
-      const body = await response.json();
+      it('filters members by role', async () => {
+        mockUser(fixture.user);
 
-      expect(response.status).toBe(200);
-      expect(body.success).toBe(true);
-    });
+        const req = createNextRequest('http://localhost/api/v1/organization/members?role=member', undefined, {
+          active_org_id: orgId,
+        });
+        const response = await GET(req);
+        const body = await response.json();
 
-    it('returns 422 when input is invalid', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
-
-      const req = createNextRequest('http://localhost/api/v1/university/members', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetUserId: '',
-          newRole: 'invalid_role',
-        }),
+        expect(response.status).toBe(200);
+        expect(Array.isArray(body.data)).toBe(true);
       });
 
-      const response = await PUT(req);
-      const body = await response.json();
+      it('returns 403 when user has no organization', async () => {
+        const noOrg = await createTestUser({ role: 'student' });
+        mockUser(noOrg);
 
-      expect(response.status).toBe(422);
-      expect(body.success).toBe(false);
-    });
+        const req = createNextRequest('http://localhost/api/v1/organization/members');
+        const response = await GET(req);
+        const body = await response.json();
 
-    it('returns 401 when not authenticated', async () => {
-      mockUser(null);
-
-      const req = createNextRequest('http://localhost/api/v1/university/members', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetUserId: TEST_USERS.STUDENT.id,
-          newRole: 'teacher',
-        }),
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
       });
 
-      const response = await PUT(req);
-      const body = await response.json();
+      it('returns 401 when not authenticated', async () => {
+        mockUser(null);
 
-      expect(response.status).toBe(401);
-      expect(body.success).toBe(false);
+        const req = createNextRequest('http://localhost/api/v1/organization/members');
+        const response = await GET(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(401);
+        expect(body.success).toBe(false);
+      });
     });
-  });
 
-  describe('DELETE /api/v1/university/members', () => {
-    it.skip('removes member successfully', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+    describe('PUT /api/v1/organization/members', () => {
+      it('changes role successfully', async () => {
+        mockUser(fixture.user);
 
-      const req = createNextRequest(
-        `http://localhost/api/v1/university/members?userId=${TEST_USERS.STUDENT.id}`,
-        {
+        const req = createNextRequest('http://localhost/api/v1/organization/members', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            targetUserId: member.id,
+            newOrgRoleId: adminRoleId,
+          }),
+        }, { active_org_id: orgId });
+
+        const response = await PUT(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+      });
+
+      it('returns 422 when input is invalid', async () => {
+        mockUser(fixture.user);
+
+        const req = createNextRequest('http://localhost/api/v1/organization/members', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            targetUserId: '',
+            newOrgRoleId: 'invalid-uuid',
+          }),
+        }, { active_org_id: orgId });
+
+        const response = await PUT(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+      });
+
+      it('returns 401 when not authenticated', async () => {
+        mockUser(null);
+
+        const req = createNextRequest('http://localhost/api/v1/organization/members', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            targetUserId: member.id,
+            newOrgRoleId: adminRoleId,
+          }),
+        });
+
+        const response = await PUT(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(401);
+        expect(body.success).toBe(false);
+      });
+    });
+
+    describe('DELETE /api/v1/organization/members', () => {
+      it('removes member successfully', async () => {
+        mockUser(fixture.user);
+
+        const req = createNextRequest(
+          `http://localhost/api/v1/organization/members?userId=${member.id}`,
+          { method: 'DELETE' },
+          { active_org_id: orgId },
+        );
+
+        const response = await DELETE(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+      });
+
+      it('returns 400 when userId is empty', async () => {
+        mockUser(fixture.user);
+
+        const req = createNextRequest('http://localhost/api/v1/organization/members?userId=', {
           method: 'DELETE',
-        },
-      );
+        }, { active_org_id: orgId });
 
-      const response = await DELETE(req);
-      const body = await response.json();
+        const response = await DELETE(req);
+        const body = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(body.success).toBe(true);
-    });
-
-    it('returns 400 when userId is empty', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
-
-      const req = createNextRequest('http://localhost/api/v1/university/members?userId=', {
-        method: 'DELETE',
+        expect(response.status).toBe(400);
+        expect(body.success).toBe(false);
       });
 
-      const response = await DELETE(req);
-      const body = await response.json();
+      it('returns 401 when not authenticated', async () => {
+        mockUser(null);
 
-      expect(response.status).toBe(400);
-      expect(body.success).toBe(false);
-    });
+        const req = createNextRequest(
+          `http://localhost/api/v1/organization/members?userId=${member.id}`,
+          { method: 'DELETE' },
+        );
 
-    it('returns 401 when not authenticated', async () => {
-      mockUser(null);
+        const response = await DELETE(req);
+        const body = await response.json();
 
-      const req = createNextRequest(
-        `http://localhost/api/v1/university/members?userId=${TEST_USERS.STUDENT.id}`,
-        {
-          method: 'DELETE',
-        },
-      );
-
-      const response = await DELETE(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(body.success).toBe(false);
+        expect(response.status).toBe(401);
+        expect(body.success).toBe(false);
+      });
     });
   });
 });

@@ -1,10 +1,56 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { questionService } from '@/server/services/question.service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { QuestionService } from '@/server/services/question.service';
+import { success, failure } from '@/lib/service-result';
+import type { RequestContext } from '@/lib/request-context';
+import { AccountType } from '@/types';
+
+vi.mock('@/lib/access', () => ({
+  accessibleFilter: vi.fn().mockResolvedValue({}),
+  Permission: { QUESTION_READ: 'question.read' as const, QUESTION_UPDATE: 'question.update' as const },
+}));
+
+vi.mock('@/server/services', () => ({
+  planResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
+}));
+
+function chain(result: any, count?: number) {
+  const resolved = count !== undefined
+    ? { data: result, count, error: null }
+    : { data: result, error: null };
+  const terminal = vi.fn().mockResolvedValue(resolved);
+  const c: any = {};
+  c.select = vi.fn(() => c);
+  c.eq = vi.fn(() => c);
+  c.in = vi.fn(() => c);
+  c.or = vi.fn(() => c);
+  c.order = vi.fn(() => c);
+  c.filter = vi.fn(() => c);
+  c.limit = vi.fn(() => c);
+  c.single = terminal;
+  c.maybeSingle = terminal;
+  c.insert = vi.fn(() => c);
+  c.update = vi.fn(() => c);
+  c.delete = vi.fn(() => c);
+  c.upsert = vi.fn(() => c);
+  c.then = (onfulfilled: any) => Promise.resolve(resolved).then(onfulfilled);
+  return c;
+}
 
 describe('QuestionService', () => {
-  const userId = 'test-user-id';
-  let mock: ReturnType<typeof mockClient>;
+  let mock: ReturnType<typeof mockSupabaseClient>;
+  const ctx: RequestContext = {
+    userId: 'test-user-id',
+    accountType: AccountType.STUDENT,
+    traceId: 't',
+    url: '',
+    method: 'GET',
+    activeOrgId: null,
+    orgRoleId: null,
+    groupIds: [],
+    permissionScopes: {},
+  };
+  const service = new QuestionService(async () => mock as any);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -14,29 +60,29 @@ describe('QuestionService', () => {
   describe('create', () => {
     it('inserts question and answers and returns it', async () => {
       const mockQuestion = { id: 'q-1', type: 'mcq', content: 'Q1' };
-      mock.from.mockReturnValue({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: mockQuestion, error: null }),
-          }),
-        }),
-      });
 
-      const result = await questionService.create(
+      mock.from.mockReturnValueOnce(chain([], 0));
+      mock.from.mockReturnValueOnce(chain(mockQuestion));
+      mock.from.mockReturnValueOnce(chain(null));
+      mock.from.mockReturnValueOnce(chain(mockQuestion));
+
+      const result = await service.create(
         {
           type: 'mcq',
           content: 'Q1',
           difficulty: 'easy',
           answers: [{ content: 'A1', isCorrect: true, orderIndex: 0 }],
         },
-        userId,
+        ctx,
       );
 
-      expect(result).toBeDefined();
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
       expect(mock.from).toHaveBeenCalledWith('questions');
     });
 
-    it('throws INTERNAL_SERVER when insert fails', async () => {
+    it('returns INTERNAL_SERVER when insert fails', async () => {
+      mock.from.mockReturnValueOnce(chain([], 0));
       mock.from.mockReturnValue({
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
@@ -45,255 +91,126 @@ describe('QuestionService', () => {
         }),
       });
 
-      await expect(
-        questionService.create(
-          {
-            type: 'mcq',
-            content: 'Q1',
-            difficulty: 'easy',
-            answers: [{ content: 'A1', isCorrect: true, orderIndex: 0 }],
-          },
-          userId,
-        ),
-      ).rejects.toThrow('ERROR_INTERNAL_SERVER');
+      const result = await service.create(
+        {
+          type: 'mcq',
+          content: 'Q1',
+          difficulty: 'easy',
+          answers: [{ content: 'A1', isCorrect: true, orderIndex: 0 }],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
     });
   });
 
   describe('list', () => {
     it('returns all questions when no filter', async () => {
       const questions = [{ id: 'q-1', content: 'Q1' }];
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({ data: questions, error: null }),
-        }),
-      });
+      mock.from.mockReturnValue(chain(questions));
 
-      const result = await questionService.list();
+      const result = await service.list(ctx);
 
-      expect(result).toEqual(questions);
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(questions);
     });
 
-    it('filters by subjectId when provided', async () => {
+    it('filters by bankId when provided', async () => {
       const questions = [{ id: 'q-1', content: 'Q1' }];
-      const eqFn = vi.fn().mockResolvedValue({ data: questions, error: null });
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          order: vi.fn().mockReturnValue({ eq: eqFn }),
-        }),
-      });
 
-      const result = await questionService.list({ subjectId: 'sub-1' });
+      mock.from.mockReturnValue(chain(questions));
 
-      expect(result).toEqual(questions);
+      const result = await service.list(ctx, { bankId: 'bank-1' });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(questions);
     });
   });
 
   describe('getById', () => {
     it('returns question when found', async () => {
       const question = { id: 'q-1', content: 'Q1' };
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: question, error: null }),
-          }),
-        }),
-      });
+      mock.from.mockReturnValue(chain(question));
 
-      const result = await questionService.getById('q-1');
+      const result = await service.getById('q-1', ctx);
 
-      expect(result).toEqual(question);
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(question);
     });
 
-    it('throws NOT_FOUND when question does not exist', async () => {
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: null, error: null }),
-          }),
-        }),
-      });
+    it('returns NOT_FOUND when question does not exist', async () => {
+      mock.from.mockReturnValue(chain(null));
 
-      await expect(questionService.getById('nonexistent')).rejects.toThrow('ERROR_NOT_FOUND');
+      const result = await service.getById('nonexistent', ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
     });
   });
 
   describe('update', () => {
     it('updates question and returns it', async () => {
       const updated = { id: 'q-1', content: 'Updated' };
-      mock.from.mockReturnValueOnce({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({ data: updated, error: null }),
-              }),
-            }),
-          }),
-        }),
-      });
 
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: updated, error: null }),
-          }),
-        }),
-      });
+      mock.from.mockReturnValueOnce(chain(updated));
+      mock.from.mockReturnValueOnce(chain(updated));
 
-      const result = await questionService.update('q-1', { content: 'Updated' }, userId);
+      const result = await service.update('q-1', { content: 'Updated' }, ctx);
 
-      expect(result).toBeDefined();
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
     });
 
-    it('throws FORBIDDEN when question not owned by user', async () => {
-      mock.from.mockReturnValue({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({ data: null, error: null }),
-              }),
-            }),
-          }),
-        }),
-      });
+    it('returns FORBIDDEN when question not owned by user', async () => {
+      mock.from.mockReturnValue(chain(null));
 
-      await expect(questionService.update('q-1', { content: 'Updated' }, userId)).rejects.toThrow(
-        'ERROR_FORBIDDEN',
-      );
+      const result = await service.update('q-1', { content: 'Updated' }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
     });
 
     it('updates question with answers replacement', async () => {
       const updated = { id: 'q-1', content: 'Updated' };
-      mock.from.mockReturnValueOnce({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({ data: updated, error: null }),
-              }),
-            }),
-          }),
-        }),
-      });
 
-      mock.from.mockReturnValueOnce({
-        delete: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: null, error: null }),
-        }),
-      });
+      mock.from.mockReturnValueOnce(chain(updated));
+      mock.from.mockReturnValueOnce(chain(null));
+      mock.from.mockReturnValueOnce(chain(null));
+      mock.from.mockReturnValueOnce(chain(updated));
 
-      mock.from.mockReturnValueOnce({
-        insert: vi.fn().mockResolvedValue({ data: null, error: null }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: updated, error: null }),
-          }),
-        }),
-      });
-
-      const result = await questionService.update(
+      const result = await service.update(
         'q-1',
         {
           content: 'Updated',
           answers: [{ content: 'A1', isCorrect: true, orderIndex: 0 }],
         },
-        userId,
+        ctx,
       );
 
-      expect(result).toBeDefined();
-      expect(mock.from).toHaveBeenCalledWith('question_answers');
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
+      expect(mock.from).toHaveBeenCalledWith('question_options');
     });
   });
 
   describe('delete', () => {
     it('deletes question successfully', async () => {
-      mock.from.mockReturnValue({
-        delete: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({ data: { id: 'q-1' }, error: null }),
-              }),
-            }),
-          }),
-        }),
-      });
+      mock.from.mockReturnValue(chain({ id: 'q-1' }));
 
-      await expect(questionService.delete('q-1', userId)).resolves.toBeUndefined();
+      const result = await service.delete('q-1', ctx);
+
+      expect(result.success).toBe(true);
     });
 
-    it('throws FORBIDDEN when question not owned by user', async () => {
-      mock.from.mockReturnValue({
-        delete: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({ data: null, error: null }),
-              }),
-            }),
-          }),
-        }),
-      });
+    it('returns FORBIDDEN when question not owned by user', async () => {
+      mock.from.mockReturnValue(chain(null));
 
-      await expect(questionService.delete('q-1', userId)).rejects.toThrow('ERROR_FORBIDDEN');
-    });
-  });
+      const result = await service.delete('q-1', ctx);
 
-  describe('getStatsBySubject', () => {
-    it('returns stats with questions and attempts', async () => {
-      const questions = [
-        { id: 'q-1', type: 'mcq', difficulty: 'easy' },
-        { id: 'q-2', type: 'mcq', difficulty: 'hard' },
-      ];
-      const attempts = [
-        { question_id: 'q-1', is_correct: true },
-        { question_id: 'q-1', is_correct: false },
-        { question_id: 'q-2', is_correct: false },
-      ];
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: questions, error: null }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          in: vi.fn().mockResolvedValue({ data: attempts, error: null }),
-        }),
-      });
-
-      const result = await questionService.getStatsBySubject('sub-1');
-
-      expect(result.totalQuestions).toBe(2);
-      expect(result.byType).toEqual({ mcq: 2 });
-      expect(result.byDifficulty).toEqual({ easy: 1, hard: 1 });
-      expect(result.problematicQuestions.length).toBeGreaterThan(0);
-    });
-
-    it('returns zero stats when no questions exist', async () => {
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          in: vi.fn().mockResolvedValue({ data: [], error: null }),
-        }),
-      });
-
-      const result = await questionService.getStatsBySubject('sub-1');
-
-      expect(result.totalQuestions).toBe(0);
-      expect(result.byType).toEqual({});
-      expect(result.byDifficulty).toEqual({});
-      expect(result.problematicQuestions).toEqual([]);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
     });
   });
 });

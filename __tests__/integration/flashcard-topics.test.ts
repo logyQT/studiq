@@ -1,229 +1,231 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { POST, GET } from '@/app/(backend)/api/v1/flashcards/topics/route';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { forEachCopy, registerMock } from '#test/helpers/concurrent';
 import {
+  DELETE as deleteFn,
   GET as getById,
   PUT as update,
-  DELETE as deleteFn,
 } from '@/app/(backend)/api/v1/flashcards/topics/[id]/route';
-import { TEST_USERS, mockUser, cleanupFlashcardTopics, createServiceClient } from './helpers';
-import { createNextRequest, createNextRequestWithParams } from './test-utils';
+import { GET, POST } from '@/app/(backend)/api/v1/flashcards/topics/route';
+import {
+  applyRegisteredMock,
+  cleanupFlashcardTopics,
+  mockUser,
+} from '#test/integration/helpers';
+import {
+  before,
+  createTestUser,
+  type BeforeResult,
+  type TestUserFixture,
+} from '#test/helpers/test-user';
+import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 
-describe('Flashcard Topics Integration', () => {
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    for (const user of Object.values(TEST_USERS)) {
-      await cleanupFlashcardTopics(user.id, 'topic-');
-    }
-  });
+forEachCopy((copyId) => {
+  describe(`Flashcard Topics Integration [${copyId}]`, () => {
+    registerMock(copyId, null);
 
-  describe('POST /api/v1/flashcards/topics', () => {
-    it('creates a topic and returns 201', async () => {
-      mockUser(TEST_USERS.TEACHER);
+    let teacher!: BeforeResult;
+    let other!: TestUserFixture;
 
-      const req = createNextRequest('http://localhost/api/v1/flashcards/topics', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'topic-Math Topics' }),
-      });
-
-      const response = await POST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(201);
-      expect(body.success).toBe(true);
-      expect(body.data.name).toBe('topic-Math Topics');
+    beforeAll(async () => {
+      // Fresh educator + 4 topics created through the real API (seedViaApi).
+      teacher = await before({ role: 'educator', topics: 4 });
+      // Manager user (non-owner) for 403 checks — matches legacy UNIVERSITY_ADMIN semantics.
+      other = await createTestUser({ role: 'manager' });
     });
 
-    it('returns 422 when name is empty', async () => {
-      mockUser(TEST_USERS.TEACHER);
-
-      const req = createNextRequest('http://localhost/api/v1/flashcards/topics', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: '' }),
-      });
-
-      const response = await POST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(422);
-      expect(body.success).toBe(false);
+    afterAll(async () => {
+      await cleanupFlashcardTopics(teacher.user.id);
+      await cleanupFlashcardTopics(other.id);
     });
 
-    it('returns 401 when not authenticated', async () => {
-      mockUser(null);
-
-      const req = createNextRequest('http://localhost/api/v1/flashcards/topics', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'topic-Math Topics' }),
-      });
-
-      const response = await POST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(body.success).toBe(false);
-    });
-  });
-
-  describe('GET /api/v1/flashcards/topics', () => {
-    it('lists topics for user', async () => {
-      mockUser(TEST_USERS.TEACHER);
-
-      const response = await GET();
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(Array.isArray(body.data)).toBe(true);
+    beforeEach(() => {
+      vi.clearAllMocks();
+      applyRegisteredMock(copyId);
     });
 
-    it('returns 401 when not authenticated', async () => {
-      mockUser(null);
+    describe('POST /api/v1/flashcards/topics', () => {
+      it('creates a topic and returns 201', async () => {
+        mockUser(teacher.user);
 
-      const response = await GET();
-      const body = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(body.success).toBe(false);
-    });
-  });
-
-  describe('GET /api/v1/flashcards/topics/:id', () => {
-    it('returns topic when found', async () => {
-      mockUser(TEST_USERS.TEACHER);
-
-      const supabase = createServiceClient();
-      const { data: topic } = await supabase
-        .from('flashcard_topics')
-        .insert({ name: 'topic-Get Me', created_by: TEST_USERS.TEACHER.id })
-        .select()
-        .single();
-
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/topics/${topic.id}`,
-        { id: topic.id },
-      );
-      const response = await getById(request, { params });
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.data.name).toBe('topic-Get Me');
-    });
-
-    it('returns 404 when topic does not exist', async () => {
-      mockUser(TEST_USERS.TEACHER);
-
-      const fakeId = '00000000-0000-4000-8000-000000000099';
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/topics/${fakeId}`,
-        { id: fakeId },
-      );
-      const response = await getById(request, { params });
-      const body = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(body.success).toBe(false);
-    });
-  });
-
-  describe('PUT /api/v1/flashcards/topics/:id', () => {
-    it('updates own topic and returns 200', async () => {
-      mockUser(TEST_USERS.TEACHER);
-
-      const supabase = createServiceClient();
-      const { data: topic } = await supabase
-        .from('flashcard_topics')
-        .insert({ name: 'topic-Original', created_by: TEST_USERS.TEACHER.id })
-        .select()
-        .single();
-
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/topics/${topic.id}`,
-        { id: topic.id },
-        {
-          method: 'PUT',
+        const req = createNextRequest('http://localhost/api/v1/flashcards/topics', {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'Updated' }),
-        },
-      );
-      const response = await update(request, { params });
-      const body = await response.json();
+          body: JSON.stringify({ name: 'topic-Math Topics' }),
+        });
 
-      expect(response.status).toBe(200);
-      expect(body.data.name).toBe('Updated');
-    });
+        const response = await POST(req);
+        const body = await response.json();
 
-    it('returns 403 when updating another user topic', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+        expect(response.status).toBe(201);
+        expect(body.success).toBe(true);
+        expect(body.data.name).toBe('topic-Math Topics');
+      });
 
-      const supabase = createServiceClient();
-      const { data: topic } = await supabase
-        .from('flashcard_topics')
-        .insert({ name: 'topic-Teacher Topic', created_by: TEST_USERS.TEACHER.id })
-        .select()
-        .single();
+      it('returns 422 when name is empty', async () => {
+        mockUser(teacher.user);
 
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/topics/${topic.id}`,
-        { id: topic.id },
-        {
-          method: 'PUT',
+        const req = createNextRequest('http://localhost/api/v1/flashcards/topics', {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'Hacked' }),
-        },
-      );
-      const response = await update(request, { params });
-      const body = await response.json();
+          body: JSON.stringify({ name: '' }),
+        });
 
-      expect(response.status).toBe(403);
-      expect(body.success).toBe(false);
-    });
-  });
+        const response = await POST(req);
+        const body = await response.json();
 
-  describe('DELETE /api/v1/flashcards/topics/:id', () => {
-    it('deletes own topic and returns 200', async () => {
-      mockUser(TEST_USERS.TEACHER);
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+      });
 
-      const supabase = createServiceClient();
-      const { data: topic } = await supabase
-        .from('flashcard_topics')
-        .insert({ name: 'topic-To Delete', created_by: TEST_USERS.TEACHER.id })
-        .select()
-        .single();
+      it('returns 401 when not authenticated', async () => {
+        mockUser(null);
 
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/topics/${topic.id}`,
-        { id: topic.id },
-        { method: 'DELETE' },
-      );
-      const response = await deleteFn(request, { params });
-      const body = await response.json();
+        const req = createNextRequest('http://localhost/api/v1/flashcards/topics', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'topic-Math Topics' }),
+        });
 
-      expect(response.status).toBe(200);
-      expect(body.success).toBe(true);
+        const response = await POST(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(401);
+        expect(body.success).toBe(false);
+      });
     });
 
-    it('returns 403 when deleting another user topic', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+    describe('GET /api/v1/flashcards/topics', () => {
+      it('lists topics for user', async () => {
+        mockUser(teacher.user);
 
-      const supabase = createServiceClient();
-      const { data: topic } = await supabase
-        .from('flashcard_topics')
-        .insert({ name: 'topic-Teacher Topic', created_by: TEST_USERS.TEACHER.id })
-        .select()
-        .single();
+        const req = createNextRequest('http://localhost/api/v1/flashcards/topics');
+        const response = await GET(req);
+        const body = await response.json();
 
-      const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/topics/${topic.id}`,
-        { id: topic.id },
-        { method: 'DELETE' },
-      );
-      const response = await deleteFn(request, { params });
-      const body = await response.json();
+        expect(response.status).toBe(200);
+        expect(Array.isArray(body.data?.items)).toBe(true);
+        expect(body.data?.items?.length).toBeGreaterThanOrEqual(4);
+      });
 
-      expect(response.status).toBe(403);
-      expect(body.success).toBe(false);
+      it('returns 401 when not authenticated', async () => {
+        mockUser(null);
+
+        const req = createNextRequest('http://localhost/api/v1/flashcards/topics');
+        const response = await GET(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(401);
+        expect(body.success).toBe(false);
+      });
+    });
+
+    describe('GET /api/v1/flashcards/topics/:id', () => {
+      it('returns topic when found', async () => {
+        mockUser(teacher.user);
+
+        const topicId = teacher.created.topics[0];
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/flashcards/topics/${topicId}`,
+          { id: topicId },
+        );
+        const response = await getById(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.id).toBe(topicId);
+        expect(body.data.name).toContain('seed-topic-');
+      });
+
+      it('returns 404 when topic does not exist', async () => {
+        mockUser(teacher.user);
+
+        const fakeId = '00000000-0000-4000-8000-000000000099';
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/flashcards/topics/${fakeId}`,
+          { id: fakeId },
+        );
+        const response = await getById(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(404);
+        expect(body.success).toBe(false);
+      });
+    });
+
+    describe('PUT /api/v1/flashcards/topics/:id', () => {
+      it('updates own topic and returns 200', async () => {
+        mockUser(teacher.user);
+
+        const topicId = teacher.created.topics[1];
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/flashcards/topics/${topicId}`,
+          { id: topicId },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'Updated' }),
+          },
+        );
+        const response = await update(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.name).toBe('Updated');
+      });
+
+      it('returns 403 when updating another user topic', async () => {
+        mockUser(other);
+
+        const topicId = teacher.created.topics[0];
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/flashcards/topics/${topicId}`,
+          { id: topicId },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'Hacked' }),
+          },
+        );
+        const response = await update(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
+      });
+    });
+
+    describe('DELETE /api/v1/flashcards/topics/:id', () => {
+      it('deletes own topic and returns 200', async () => {
+        mockUser(teacher.user);
+
+        const topicId = teacher.created.topics[2];
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/flashcards/topics/${topicId}`,
+          { id: topicId },
+          { method: 'DELETE' },
+        );
+        const response = await deleteFn(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+      });
+
+      it('returns 403 when deleting another user topic', async () => {
+        mockUser(other);
+
+        const topicId = teacher.created.topics[3];
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/flashcards/topics/${topicId}`,
+          { id: topicId },
+          { method: 'DELETE' },
+        );
+        const response = await deleteFn(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
+      });
     });
   });
 });

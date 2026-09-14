@@ -57,6 +57,9 @@ NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
+
+# Tracing / Debugging (optional)
+TRACE_ENABLED=true            # detailed request tracing in dev terminal
 ```
 
 ### 5. (Optional) Set up LLM / AI Provider
@@ -72,15 +75,23 @@ LLM_MODEL_NAME=gpt-4o-mini
 
 # Option B: Local Ollama (free, open-source)
 # LLM_PROVIDER=ollama
-# LLM_BASE_URL=http://localhost:11434
+# LLM_BASE_URL=http://localhost:11434/v1
 # LLM_MODEL_NAME=llama3.2
 ```
+
+> The `/v1` suffix is required — `src/server/ai/model.ts` talks to the provider
+> through `createOpenAICompatible`, which expects an OpenAI-compatible base URL.
+> Without it, requests fail.
 
 To use Ollama, install it from [ollama.com](https://ollama.com) and pull a model:
 
 ```bash
 ollama pull llama3.2
 ```
+
+For better (if slower) Polish-language answers on capable hardware, a larger
+model such as `qwen2.5:14b` also works well — just point `LLM_MODEL_NAME` at
+whatever you've pulled.
 
 ### 6. Seed the database (optional)
 

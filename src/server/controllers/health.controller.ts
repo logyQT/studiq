@@ -1,25 +1,20 @@
-import { healthService } from '@/server/services';
-import type { HealthStatusResponse } from '@/server/models';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
+import { controllerResponse } from '@/lib/controller-response';
+import type { HealthService } from '@/server/services/health.service';
 
 export class HealthController {
+  constructor(private healthService: HealthService) {}
+
   async getStatus(): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const health = await healthService.checkHealth();
+    const health = await this.healthService.checkHealth();
 
-      const statusCode = mapStatusToHttp(health.status);
+    const statusCode = mapStatusToHttp(health.status);
 
-      return {
-        success: true,
-        statusCode,
-        data: health,
-      } as ControllerResponse;
-    });
+    return controllerResponse.success(health, statusCode);
   }
 }
 
-function mapStatusToHttp(status: HealthStatusResponse['status']): number {
+function mapStatusToHttp(status: string): number {
   switch (status) {
     case 'healthy':
       return 200;
@@ -31,5 +26,3 @@ function mapStatusToHttp(status: HealthStatusResponse['status']): number {
       return 500;
   }
 }
-
-export const healthController = new HealthController();

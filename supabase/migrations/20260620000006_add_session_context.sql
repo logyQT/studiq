@@ -40,6 +40,11 @@ BEGIN
       AND (p_topic_ids IS NULL OR f.id IN (
         SELECT flashcard_id FROM flashcard_topic_assignments WHERE topic_id = ANY(p_topic_ids)
       ))
+      AND NOT EXISTS (
+        SELECT 1 FROM flashcard_deck_assignments fda
+        JOIN suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id
+        WHERE fda.flashcard_id = f.id
+      )
   ),
   with_state AS (
     SELECT

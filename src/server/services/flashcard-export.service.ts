@@ -1,19 +1,22 @@
-import { createClient } from '@/lib/supabase/server';
-import { flashcardService } from '@/server/services';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
-import type { Flashcard } from '@/types/flashcards';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import type { Flashcard } from '@/server/models';
+import { flashcardService } from '@/server/services';
 
 type FlashcardWithAssignments = Flashcard & {
   flashcard_topic_assignments: Array<{ topic_id: string }>;
-  flashcard_deck_assignments: Array<{ deck_id: string }>;
+  deck_id?: string | null;
 };
 
 export class FlashcardExportService {
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
   async exportCsv(
     ctx: RequestContext,
     filters?: { deckIds?: string[]; ids?: string[] },
-  ): Promise<string> {
-    const supabase = await createClient();
+  ): Promise<ServiceResult<string>> {
+    const supabase = await this.createClient();
 
     const listFilters: { deckIds?: string[] } = {};
     if (filters?.deckIds && filters.deckIds.length > 0) {
@@ -24,20 +27,27 @@ export class FlashcardExportService {
     let cursor: string | undefined;
 
     do {
-      const result = await flashcardService.list(ctx, {
+      const serviceResult = await flashcardService.list(ctx, {
         ...listFilters,
         limit: 100,
         cursor,
       });
-      allFlashcards.push(...(result.items as unknown as FlashcardWithAssignments[]));
+      if (!serviceResult.success) return failure(serviceResult.error);
+      const result = serviceResult.data as {
+        items: FlashcardWithAssignments[];
+        hasMore: boolean;
+        nextCursor: string | null;
+      };
+      allFlashcards.push(...result.items);
       cursor = result.hasMore && result.nextCursor ? result.nextCursor : undefined;
     } while (cursor);
 
     const flashcards = allFlashcards;
 
-    const filtered = filters?.ids && filters.ids.length > 0
-      ? flashcards.filter((fc) => filters.ids!.includes(fc.id))
-      : flashcards;
+    const filtered =
+      filters?.ids && filters.ids.length > 0
+        ? flashcards.filter((fc) => filters.ids!.includes(fc.id))
+        : flashcards;
 
     const topicIds = new Set<string>();
     const deckIds = new Set<string>();
@@ -46,14 +56,14 @@ export class FlashcardExportService {
       for (const t of fc.flashcard_topic_assignments ?? []) {
         topicIds.add(t.topic_id);
       }
-      for (const d of fc.flashcard_deck_assignments ?? []) {
-        deckIds.add(d.deck_id);
+      if (fc.deck_id) {
+        deckIds.add(fc.deck_id);
       }
     }
 
     const [topicResult, deckResult] = await Promise.all([
       topicIds.size > 0
-        ? supabase.from('flashcard_topics').select('id, name').in('id', Array.from(topicIds))
+        ? supabase.from('topics').select('id, name').in('id', Array.from(topicIds))
         : Promise.resolve({ data: [] as { id: string; name: string }[], error: null }),
       deckIds.size > 0
         ? supabase.from('flashcard_decks').select('id, name').in('id', Array.from(deckIds))
@@ -73,24 +83,22 @@ export class FlashcardExportService {
           .filter(Boolean)
           .join('; '),
       );
-      const deck = this.escapeCsv(
-        (fc.flashcard_deck_assignments ?? [])
-          .map((d) => deckMap.get(d.deck_id) ?? '')
-          .filter(Boolean)
-          .join('; '),
-      );
+      const deck = this.escapeCsv(fc.deck_id ? (deckMap.get(fc.deck_id) ?? '') : '');
       return `${front},${back},${topic},${deck}`;
     });
 
-    return `\uFEFF${header}\n${rows.join('\n')}`;
+    return success(`\uFEFF${header}\n${rows.join('\n')}`);
   }
 
   private escapeCsv(value: string): string {
-    if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r')) {
+    if (
+      value.includes(',') ||
+      value.includes('"') ||
+      value.includes('\n') ||
+      value.includes('\r')
+    ) {
       return `"${value.replace(/"/g, '""')}"`;
     }
     return value;
   }
 }
-
-export const flashcardExportService = new FlashcardExportService();

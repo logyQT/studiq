@@ -1,5 +1,5 @@
-import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import { registry, z } from '@/lib/zod';
 
 export const ReviewStateSchema = registry.register(
   'ReviewState',
@@ -83,11 +83,24 @@ export const CompleteSessionSchema = registry.register(
   'CompleteSessionRequest',
   z.object({
     sessionId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
-    startedAt: z.string({ error: ValidationErrorCode.REQUIRED }).datetime({ error: ValidationErrorCode.INVALID_INPUT }),
-    completedAt: z.string({ error: ValidationErrorCode.REQUIRED }).datetime({ error: ValidationErrorCode.INVALID_INPUT }),
-    durationMs: z.number({ error: ValidationErrorCode.NUMBER }).int({ error: ValidationErrorCode.INTEGER }).positive({ error: ValidationErrorCode.POSITIVE_NUMBER }),
-    cardsStudied: z.number({ error: ValidationErrorCode.NUMBER }).int({ error: ValidationErrorCode.INTEGER }).min(0, { error: ValidationErrorCode.TOO_SMALL }),
-    cardsCorrect: z.number({ error: ValidationErrorCode.NUMBER }).int({ error: ValidationErrorCode.INTEGER }).min(0, { error: ValidationErrorCode.TOO_SMALL }),
+    startedAt: z
+      .string({ error: ValidationErrorCode.REQUIRED })
+      .datetime({ error: ValidationErrorCode.INVALID_INPUT }),
+    completedAt: z
+      .string({ error: ValidationErrorCode.REQUIRED })
+      .datetime({ error: ValidationErrorCode.INVALID_INPUT }),
+    durationMs: z
+      .number({ error: ValidationErrorCode.NUMBER })
+      .int({ error: ValidationErrorCode.INTEGER })
+      .positive({ error: ValidationErrorCode.POSITIVE_NUMBER }),
+    cardsStudied: z
+      .number({ error: ValidationErrorCode.NUMBER })
+      .int({ error: ValidationErrorCode.INTEGER })
+      .min(0, { error: ValidationErrorCode.TOO_SMALL }),
+    cardsCorrect: z
+      .number({ error: ValidationErrorCode.NUMBER })
+      .int({ error: ValidationErrorCode.INTEGER })
+      .min(0, { error: ValidationErrorCode.TOO_SMALL }),
     deckIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
     mode: z.enum(['review', 'cram', 'quick'], { error: ValidationErrorCode.INVALID_INPUT }),
   }),
@@ -99,3 +112,86 @@ export type BatchPracticeInput = z.infer<typeof BatchPracticeSchema>;
 export type CompleteSessionInput = z.infer<typeof CompleteSessionSchema>;
 export type PracticeCardData = z.infer<typeof PracticeCardSchema>;
 export type PreparePracticeInput = z.infer<typeof PreparePracticeSchema>;
+
+export interface DueBreakdownTopic {
+  topic_id: string;
+  count: number;
+}
+
+export interface DueBreakdownDeck {
+  deck_id: string;
+  count: number;
+}
+
+export interface DueBreakdownResponse {
+  total: number;
+  nextReviewAt: string | null;
+  byTopic: DueBreakdownTopic[];
+  byDeck: DueBreakdownDeck[];
+}
+
+export interface DueCountResponse {
+  total: number;
+}
+
+export interface PracticeSummary {
+  total: number;
+  correct: number;
+  lastPracticedAt: string | null;
+}
+
+export interface CardStatsItem {
+  id: string;
+  front: string;
+  back: string;
+  createdAt: string;
+  state: 'new' | 'learning' | 'review' | 'relearning' | 'leech' | string;
+  totalAttempts: number;
+  correctRate: number;
+  lastPracticedAt: string | null;
+  easinessFactor: number | null;
+  intervalDays: number | null;
+  nextReviewAt: string | null;
+  repetitions: number | null;
+  isLeech: boolean;
+  learningStep: number | null;
+  lapseCount: number | null;
+}
+
+export interface FlashcardRow {
+  id: string;
+  front: string;
+  back: string;
+  created_at: string;
+  deck_id?: string | null;
+  deck_name?: string | null;
+  flashcard_topic_assignments?: Array<{
+    topic_id: string;
+    topics?: Array<{ name: string }>;
+  }>;
+}
+
+export interface DueFlashcardItem {
+  id: string;
+  front: string;
+  back: string;
+  createdAt: string;
+  reviewState: Record<string, unknown> | null;
+  deckName: string | null;
+  topicNames: string[];
+}
+
+export interface StateBreakdown {
+  totalCards: number;
+  neverPracticed: number;
+  learning: number;
+  review: number;
+  relearning: number;
+  leeched: number;
+}
+
+export interface CardStatsResponse {
+  items: CardStatsItem[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}

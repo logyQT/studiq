@@ -1,130 +1,102 @@
-import { createClient } from '@/lib/supabase/server';
+import { evaluate } from '@/lib/authz';
 import { AppError } from '@/lib/errors';
+import type { PermissionKey, PermissionScope } from '@/lib/permissions';
+import { Permission } from '@/lib/permissions';
 import type { RequestContext } from '@/lib/request-context';
-import { UserRole } from '@/types';
+import { createClient } from '@/lib/supabase/server';
+import { AccountType } from '@/types';
 
-export type PermissionScope = 'own' | 'university' | 'any';
-
-export const Permission = {
-  FLASHCARD_READ: 'flashcard.read',
-  FLASHCARD_CREATE: 'flashcard.create',
-  FLASHCARD_UPDATE: 'flashcard.update',
-  FLASHCARD_DELETE: 'flashcard.delete',
-  TOPIC_READ: 'topic.read',
-  TOPIC_CREATE: 'topic.create',
-  TOPIC_UPDATE: 'topic.update',
-  TOPIC_DELETE: 'topic.delete',
-  DECK_READ: 'deck.read',
-  DECK_CREATE: 'deck.create',
-  DECK_UPDATE: 'deck.update',
-  DECK_DELETE: 'deck.delete',
-} as const;
-
-export type PermissionKey = (typeof Permission)[keyof typeof Permission];
+export type { PermissionKey, PermissionScope };
+export { Permission };
 
 export interface Resource {
   id: string;
   created_by: string;
-  university_id: string | null;
+  organization_id: string | null;
 }
 
-type RolePermissionMap = Map<UserRole, Map<string, PermissionScope>>;
-
-let cachedRolePermissions: RolePermissionMap | null = null;
-let loadPromise: Promise<RolePermissionMap> | null = null;
-
-async function ensureRolePermissionsLoaded(): Promise<RolePermissionMap> {
-  if (cachedRolePermissions) return cachedRolePermissions;
-  if (loadPromise) return loadPromise;
-
-  loadPromise = (async () => {
+export async function getScope(
+  accountType: AccountType,
+  orgRoleId: string | null,
+  permission: string,
+): Promise<PermissionScope | null> {
+  if (orgRoleId) {
     const supabase = await createClient();
-    const { data, error } = await supabase
-      .from('role_permissions')
-      .select('role, scope, permissions!inner(name)');
+    const { data } = await supabase
+      .from('org_role_permissions')
+      .select('scope')
+      .eq('org_role_id', orgRoleId)
+      .eq('permission_name', permission)
+      .maybeSingle();
+    if (data) return data.scope as PermissionScope;
+  }
 
-    if (error || !data) {
-      console.error('[ensureRolePermissionsLoaded] query failed:', JSON.stringify(error), 'data:', !!data);
-      cachedRolePermissions = new Map();
-      return cachedRolePermissions;
+  if (accountType === AccountType.STUDENT || accountType === AccountType.EDUCATOR) {
+    if (
+      permission.endsWith('.read') ||
+      permission.endsWith('.create') ||
+      permission.endsWith('.update') ||
+      permission.endsWith('.delete')
+    ) {
+      return 'own';
     }
+  }
 
-    const map = new Map<UserRole, Map<string, PermissionScope>>();
-
-    for (const row of data) {
-      const role = row.role as UserRole;
-      const permissionName = (row as unknown as { role: string; scope: string; permissions: { name: string } }).permissions.name;
-      const scope = row.scope as PermissionScope;
-
-      if (!permissionName) continue;
-
-      if (!map.has(role)) {
-        map.set(role, new Map());
-      }
-      map.get(role)!.set(permissionName, scope);
-    }
-
-    cachedRolePermissions = map;
-    return map;
-  })();
-
-  return loadPromise;
+  return null;
 }
 
-export async function loadRolePermissions(): Promise<RolePermissionMap> {
-  return ensureRolePermissionsLoaded();
-}
+export async function checkPermission(
+  ctx: RequestContext,
+  permission: string,
+  resource: Resource | null,
+) {
+  const scope = await getScope(ctx.accountType, ctx.orgRoleId, permission);
+  if (!scope) {
+    throw new AppError('FORBIDDEN');
+  }
 
-export function clearRolePermissionCache() {
-  cachedRolePermissions = null;
-  loadPromise = null;
-}
+  const passed = evaluate({
+    scope,
+    userId: ctx.userId,
+    resource: {
+      createdBy: resource?.created_by ?? '',
+      orgId: resource?.organization_id ?? null,
+      activeOrgId: ctx.activeOrgId,
+    },
+  });
 
-async function getScopeForRole(role: UserRole, permission: string): Promise<PermissionScope | null> {
-  await ensureRolePermissionsLoaded();
-  return cachedRolePermissions!.get(role)?.get(permission) ?? null;
-}
-
-export async function checkPermission(ctx: RequestContext, permission: string, resource: Resource | null) {
-  const scope = await getScopeForRole(ctx.role, permission);
-  if (!scope) throw new AppError('FORBIDDEN');
-
-  switch (scope) {
-    case 'any':
-      return;
-    case 'university':
-      if (!resource) throw new AppError('FORBIDDEN');
-      if (resource.created_by === ctx.userId) return;
-      if (resource.university_id !== ctx.universityId) throw new AppError('FORBIDDEN');
-      return;
-    case 'own':
-      if (!resource || resource.created_by !== ctx.userId) {
-        throw new AppError('FORBIDDEN');
-      }
-      return;
+  if (!passed) {
+    throw new AppError('FORBIDDEN');
   }
 }
 
 export async function hasPermission(ctx: RequestContext, permission: string): Promise<boolean> {
-  const scope = await getScopeForRole(ctx.role, permission);
+  const scope = await getScope(ctx.accountType, ctx.orgRoleId, permission);
   return scope !== null;
 }
 
-export async function shouldSetUniversityId(ctx: RequestContext, permission: string): Promise<boolean> {
-  const scope = await getScopeForRole(ctx.role, permission);
-  return scope === 'university' || scope === 'any';
-}
-
-export async function buildQueryFilter(ctx: RequestContext, permission: string, _resourceType?: string) {
-  const scope = await getScopeForRole(ctx.role, permission);
-  if (!scope) return { _impossible: true };
+export async function buildQueryFilter(
+  ctx: RequestContext,
+  permission: string,
+  _resourceType?: string,
+) {
+  const scope = await getScope(ctx.accountType, ctx.orgRoleId, permission);
+  if (!scope) {
+    return { _impossible: true };
+  }
 
   switch (scope) {
     case 'any':
       return {};
-    case 'university':
-      return { or: `created_by.eq.${ctx.userId},university_id.eq.${ctx.universityId}` };
+    case 'organization':
+      return ctx.activeOrgId ? { organization_id: ctx.activeOrgId } : { _impossible: true };
+    case 'group':
+      return ctx.activeOrgId
+        ? { _useRpc: true, organization_id: ctx.activeOrgId }
+        : { _impossible: true };
     case 'own':
-      return { created_by: ctx.userId };
+      return ctx.activeOrgId
+        ? { created_by: ctx.userId, organization_id: ctx.activeOrgId }
+        : { created_by: ctx.userId };
   }
 }

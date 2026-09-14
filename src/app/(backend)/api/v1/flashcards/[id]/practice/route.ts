@@ -1,59 +1,7 @@
-/**
- * @swagger
- * /api/v1/flashcards/{id}/practice:
- *   post:
- *     summary: Log flashcard practice
- *     description: Logs a practice attempt for a specific flashcard. Requires authentication.
- *     tags:
- *       - Flashcard Practice
- *     security:
- *       - cookieAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *         description: Flashcard ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - wasCorrect
- *             properties:
- *               wasCorrect:
- *                 type: boolean
- *               responseTimeMs:
- *                 type: integer
- *                 description: Time taken to answer in milliseconds
- *               confidenceLevel:
- *                 type: integer
- *                 minimum: 1
- *                 maximum: 5
- *                 description: Self-reported confidence level
- *               sessionId:
- *                 type: string
- *                 format: uuid
- *                 description: Study session identifier
- *     responses:
- *       201:
- *         description: Practice logged successfully
- *       401:
- *         description: Unauthorized (no session)
- *       422:
- *         description: Validation error
- *       500:
- *         description: Internal server error
- */
-
-import { NextRequest } from 'next/server';
-import { flashcardPracticeController } from '@/server/controllers';
+import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
+import { flashcardPracticeController } from '@/server/controllers';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(req, async (ctx) => {

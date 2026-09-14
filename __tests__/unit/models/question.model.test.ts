@@ -1,10 +1,13 @@
-import { describe, it, expect } from 'vitest';
-import { CreateQuestionSchema, UpdateQuestionSchema } from '@/server/models/question.model';
+import { describe, expect, it } from 'vitest';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import { CreateQuestionSchema, UpdateQuestionSchema } from '@/server/models/question.model';
+
+const VALID_BANK_ID = '00000000-0000-4000-8020-000000000001';
 
 describe('CreateQuestionSchema', () => {
   it('passes with valid input', () => {
     const result = CreateQuestionSchema.safeParse({
+      bankId: VALID_BANK_ID,
       type: 'mcq',
       content: 'What is 2+2?',
       answers: [{ content: '4', isCorrect: true, orderIndex: 0 }],
@@ -14,7 +17,7 @@ describe('CreateQuestionSchema', () => {
 
   it('passes with optional fields', () => {
     const result = CreateQuestionSchema.safeParse({
-      subjectId: '550e8400-e29b-41d4-a716-446655440000',
+      bankId: VALID_BANK_ID,
       type: 'true_false',
       content: 'True or false?',
       explanation: 'The answer is true',
@@ -26,6 +29,7 @@ describe('CreateQuestionSchema', () => {
 
   it('fails when content is empty', () => {
     const result = CreateQuestionSchema.safeParse({
+      bankId: VALID_BANK_ID,
       type: 'mcq',
       content: '',
       answers: [{ content: '4', isCorrect: true }],
@@ -38,6 +42,7 @@ describe('CreateQuestionSchema', () => {
 
   it('fails when answers is empty', () => {
     const result = CreateQuestionSchema.safeParse({
+      bankId: VALID_BANK_ID,
       type: 'mcq',
       content: 'Question',
       answers: [],
@@ -47,6 +52,7 @@ describe('CreateQuestionSchema', () => {
 
   it('fails when answer content is empty', () => {
     const result = CreateQuestionSchema.safeParse({
+      bankId: VALID_BANK_ID,
       type: 'mcq',
       content: 'Question',
       answers: [{ content: '', isCorrect: true }],
@@ -56,6 +62,7 @@ describe('CreateQuestionSchema', () => {
 
   it('fails when type is invalid', () => {
     const result = CreateQuestionSchema.safeParse({
+      bankId: VALID_BANK_ID,
       type: 'invalid',
       content: 'Question',
       answers: [{ content: 'Answer', isCorrect: true }],
@@ -63,15 +70,6 @@ describe('CreateQuestionSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('fails when difficulty is invalid', () => {
-    const result = CreateQuestionSchema.safeParse({
-      type: 'mcq',
-      content: 'Question',
-      difficulty: 'extreme',
-      answers: [{ content: 'Answer', isCorrect: true }],
-    });
-    expect(result.success).toBe(false);
-  });
 });
 
 describe('UpdateQuestionSchema', () => {

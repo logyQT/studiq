@@ -1,33 +1,37 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { authController } from '@/server/controllers/auth.controller';
-import { authService } from '@/server/services';
-import { AppError } from '@/lib/errors';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { success, failure } from '@/lib/service-result';
+import { AuthController } from '@/server/controllers/auth.controller';
 
-vi.mock('@/server/services', () => ({
-  authService: {
+function createMockAuthService() {
+  return {
     register: vi.fn(),
     login: vi.fn(),
     logout: vi.fn(),
     requestPasswordReset: vi.fn(),
+    updateProfile: vi.fn(),
     updatePassword: vi.fn(),
-  },
-}));
-
-const mockService = vi.mocked(authService);
+  };
+}
 
 describe('AuthController', () => {
+  let mockService: ReturnType<typeof createMockAuthService>;
+  let controller: AuthController;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mockService = createMockAuthService();
+    controller = new AuthController(mockService as any);
   });
 
   describe('register', () => {
     it('returns success when registration succeeds', async () => {
-      mockService.register.mockResolvedValueOnce(undefined);
+      mockService.register.mockResolvedValueOnce(success(undefined));
 
-      const response = await authController.register({
+      const response = await controller.register({
         name: 'John Doe',
         email: 'john@example.com',
         password: 'SecurePass1',
+        accountType: 'student',
       });
 
       expect(response.success).toBe(true);
@@ -36,136 +40,120 @@ describe('AuthController', () => {
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid input', async () => {
-      const response = await authController.register({ name: '', email: 'bad', password: 'x' });
+      const response = await controller.register({ name: '', email: 'bad', password: 'x' });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
       expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
-    it('returns INTERNAL_SERVER when service throws', async () => {
-      mockService.register.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
+    it('returns error when service returns failure', async () => {
+      mockService.register.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-      const response = await authController.register({
+      const response = await controller.register({
         name: 'John Doe',
         email: 'john@example.com',
         password: 'SecurePass1',
+        accountType: 'student',
       });
 
-      expect(response).toEqual({
-        success: false,
-        statusCode: 500,
-        error: 'INTERNAL_SERVER',
-      });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(500);
+      expect((response as any).error).toBe('INTERNAL_SERVER');
     });
   });
 
   describe('login', () => {
-    it('returns user when login succeeds', async () => {
-      const mockUser = { id: 'user-1', email: 'john@example.com' };
-      mockService.login.mockResolvedValueOnce({ user: mockUser as any });
+    const mockSession = { access_token: 'token', refresh_token: 'refresh' };
+    const mockUser = { id: 'user-1', email: 'john@example.com' };
 
-      const response = await authController.login({
+    it('returns user when login succeeds', async () => {
+      mockService.login.mockResolvedValueOnce(success({ user: mockUser as any, session: mockSession as any }));
+
+      const response = await controller.login({
         email: 'john@example.com',
         password: 'SecurePass1',
       });
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toEqual({ user: mockUser });
+      expect((response as any).data).toEqual({ user: mockUser, session: mockSession });
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid input', async () => {
-      const response = await authController.login({ email: 'bad', password: '' });
+      const response = await controller.login({ email: 'bad', password: '' });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
       expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
-    it('returns error when service throws', async () => {
-      mockService.login.mockRejectedValueOnce(new AppError('UNAUTHORIZED'));
+    it('returns error when service returns failure', async () => {
+      mockService.login.mockResolvedValueOnce(failure('UNAUTHORIZED'));
 
-      const response = await authController.login({
+      const response = await controller.login({
         email: 'john@example.com',
         password: 'wrong',
       });
 
-      expect(response).toEqual({
-        success: false,
-        statusCode: 401,
-        error: 'UNAUTHORIZED',
-      });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(401);
+      expect((response as any).error).toBe('UNAUTHORIZED');
     });
   });
 
   describe('logout', () => {
     it('returns success when logout succeeds', async () => {
-      mockService.logout.mockResolvedValueOnce(undefined);
+      mockService.logout.mockResolvedValueOnce(success(undefined));
 
-      const response = await authController.logout();
+      const response = await controller.logout();
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
     });
 
-    it('returns error when service throws', async () => {
-      mockService.logout.mockRejectedValueOnce(new AppError('INTERNAL_SERVER'));
+    it('returns error when service returns failure', async () => {
+      mockService.logout.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-      const response = await authController.logout();
+      const response = await controller.logout();
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
-    });
-
-    it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.logout.mockRejectedValueOnce(new Error('unexpected'));
-
-      const response = await authController.logout();
-
-      expect(response).toEqual({
-        success: false,
-        statusCode: 500,
-        error: 'INTERNAL_SERVER',
-      });
     });
   });
 
   describe('requestPasswordReset', () => {
     it('returns success when reset email sent', async () => {
-      mockService.requestPasswordReset.mockResolvedValueOnce(undefined);
+      mockService.requestPasswordReset.mockResolvedValueOnce(success(undefined));
 
-      const response = await authController.requestPasswordReset({ email: 'john@example.com' });
+      const response = await controller.requestPasswordReset({ email: 'john@example.com' });
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid email', async () => {
-      const response = await authController.requestPasswordReset({ email: 'bad' });
+      const response = await controller.requestPasswordReset({ email: 'bad' });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
     });
 
-    it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.requestPasswordReset.mockRejectedValueOnce(new Error('unexpected'));
+    it('returns error when service returns failure', async () => {
+      mockService.requestPasswordReset.mockResolvedValueOnce(failure('BAD_REQUEST'));
 
-      const response = await authController.requestPasswordReset({ email: 'john@example.com' });
+      const response = await controller.requestPasswordReset({ email: 'john@example.com' });
 
-      expect(response).toEqual({
-        success: false,
-        statusCode: 500,
-        error: 'INTERNAL_SERVER',
-      });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(400);
     });
   });
 
   describe('updatePassword', () => {
     it('returns success when password updated', async () => {
-      mockService.updatePassword.mockResolvedValueOnce(undefined);
+      mockService.updatePassword.mockResolvedValueOnce(success(undefined));
 
-      const response = await authController.updatePassword({
+      const response = await controller.updatePassword({
         password: 'NewSecure1',
         confirmPassword: 'NewSecure1',
       });
@@ -175,7 +163,7 @@ describe('AuthController', () => {
     });
 
     it('returns UNPROCESSABLE_ENTITY when passwords do not match', async () => {
-      const response = await authController.updatePassword({
+      const response = await controller.updatePassword({
         password: 'NewSecure1',
         confirmPassword: 'Different1',
       });
@@ -184,34 +172,16 @@ describe('AuthController', () => {
       expect(response.statusCode).toBe(422);
     });
 
-    it('returns UNPROCESSABLE_ENTITY when service throws same_password', async () => {
-      mockService.updatePassword.mockRejectedValueOnce(new AppError('UNPROCESSABLE_ENTITY'));
+    it('returns UNPROCESSABLE_ENTITY when service returns same_password', async () => {
+      mockService.updatePassword.mockResolvedValueOnce(failure('UNPROCESSABLE_ENTITY'));
 
-      const response = await authController.updatePassword({
+      const response = await controller.updatePassword({
         password: 'OldSecure1',
         confirmPassword: 'OldSecure1',
       });
 
-      expect(response).toEqual({
-        success: false,
-        statusCode: 422,
-        error: 'UNPROCESSABLE_ENTITY',
-      });
-    });
-
-    it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.updatePassword.mockRejectedValueOnce(new Error('unexpected'));
-
-      const response = await authController.updatePassword({
-        password: 'NewSecure1',
-        confirmPassword: 'NewSecure1',
-      });
-
-      expect(response).toEqual({
-        success: false,
-        statusCode: 500,
-        error: 'INTERNAL_SERVER',
-      });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
     });
   });
 });

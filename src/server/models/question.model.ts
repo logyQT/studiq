@@ -1,13 +1,13 @@
-import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import { registry, z } from '@/lib/zod';
 
 export const QuestionTypeEnum = z.enum(['mcq', 'true_false', 'open']);
-export const DifficultyEnum = z.enum(['easy', 'medium', 'hard']);
 
 export const CreateQuestionSchema = registry.register(
   'CreateQuestionRequest',
   z.object({
-    subjectId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+    bankId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
+    topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
     type: QuestionTypeEnum,
     content: z
       .string()
@@ -15,7 +15,6 @@ export const CreateQuestionSchema = registry.register(
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
       .max(255, { error: ValidationErrorCode.TOO_LONG }),
     explanation: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
-    difficulty: DifficultyEnum.default('medium'),
     answers: z
       .array(
         z.object({
@@ -38,7 +37,8 @@ export const CreateQuestionSchema = registry.register(
 export const UpdateQuestionSchema = registry.register(
   'UpdateQuestionRequest',
   z.object({
-    subjectId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+    bankId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+    topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
     type: QuestionTypeEnum.optional(),
     content: z
       .string()
@@ -47,7 +47,6 @@ export const UpdateQuestionSchema = registry.register(
       .max(255, { error: ValidationErrorCode.TOO_LONG })
       .optional(),
     explanation: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
-    difficulty: DifficultyEnum.optional(),
     answers: z
       .array(
         z.object({
@@ -61,8 +60,32 @@ export const UpdateQuestionSchema = registry.register(
         }),
       )
       .optional(),
+    visibility: z.enum(['personal', 'group']).optional(),
   }),
 );
 
 export type CreateQuestionInput = z.infer<typeof CreateQuestionSchema>;
 export type UpdateQuestionInput = z.infer<typeof UpdateQuestionSchema>;
+
+export interface QuestionAnswer {
+  id: string;
+  question_id: string;
+  content: string;
+  is_correct: boolean;
+  order_index: number;
+}
+
+export interface Question {
+  id: string;
+  organization_id: string | null;
+  created_by: string;
+  type: 'mcq' | 'true_false' | 'open';
+  content: string;
+  explanation: string | null;
+  visibility?: 'personal' | 'group';
+  difficulty: 'easy' | 'medium' | 'hard';
+  created_at: string;
+  updated_at: string;
+  question_answers: QuestionAnswer[];
+  topics?: Array<{ id: string; name: string }>;
+}

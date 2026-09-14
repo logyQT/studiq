@@ -1,19 +1,14 @@
-import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
-import { UNIVERSITY_ROLES } from '@/types';
-import { NameSchema } from '@/server/models';
+import { registry, z } from '@/lib/zod';
 
 export const CreateInviteSchema = registry.register(
   'CreateInviteRequest',
   z.object({
-    name: NameSchema,
     email: z
       .email({ error: ValidationErrorCode.EMAIL_INVALID })
       .nonempty({ error: ValidationErrorCode.REQUIRED }),
-    role: z.enum(UNIVERSITY_ROLES, {
-      error: ValidationErrorCode.INVALID_ROLE,
-    }),
-    universityId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+    targetOrgRoleId: z.string().uuid({ error: ValidationErrorCode.UUID_INVALID }),
+    organizationId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
   }),
 );
 
@@ -24,5 +19,21 @@ export const BulkInviteSchema = registry.register(
   }),
 );
 
+export const InvitationListQuerySchema = registry.register(
+  'InvitationListQuery',
+  z.object({
+    isAccepted: z.coerce.boolean().optional().default(false),
+  }),
+);
+
+export const UpdateInviteSchema = registry.register(
+  'UpdateInviteRequest',
+  z.object({
+    targetOrgRoleId: z.string().uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+  }),
+);
+
 export type CreateInviteInput = z.infer<typeof CreateInviteSchema>;
 export type BulkInviteInput = z.infer<typeof BulkInviteSchema>;
+export type InvitationListQuery = z.infer<typeof InvitationListQuerySchema>;
+export type UpdateInviteInput = z.infer<typeof UpdateInviteSchema>;

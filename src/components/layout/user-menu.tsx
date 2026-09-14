@@ -1,47 +1,24 @@
 'use client';
 
-import { useTheme } from 'next-themes';
-import { useTranslations } from 'next-intl';
+import { ChevronsUpDown } from 'lucide-react';
+import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { DicebearAvatar } from '@/components/ui/dicebear-avatar';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
-import { LogOut, Globe, Sun, Moon, Check } from 'lucide-react';
-import { UserRole } from '@/types';
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from '@/components/ui/sidebar';
+import { Skeleton } from '@/components/ui/skeleton';
+import { UserAvatar } from '@/components/ui/user-avatar';
 import { cn } from '@/lib/utils';
-
-type Locale = 'pl' | 'en';
-
-function getLocale(): Locale {
-  if (typeof document === 'undefined') return 'pl';
-  const match = document.cookie.match(/NEXT_LOCALE=(pl|en)/);
-  return (match?.[1] as Locale) || 'pl';
-}
-
-function changeLanguage(lang: Locale) {
-  document.cookie = `NEXT_LOCALE=${lang}; path=/; max-age=31536000`;
-  window.location.reload();
-}
-
-const ROLE_LABELS: Record<UserRole, string> = {
-  [UserRole.SYS_ADMIN]: 'role_sys_admin',
-  [UserRole.UNIVERSITY_ADMIN]: 'role_uni_admin',
-  [UserRole.TEACHER]: 'role_teacher',
-  [UserRole.STUDENT]: 'role_student',
-  [UserRole.PREMIUM]: 'role_premium',
-  [UserRole.FREE]: 'role_free',
-};
 
 interface UserMenuProps {
   className?: string;
@@ -49,94 +26,65 @@ interface UserMenuProps {
 
 export function UserMenu({ className }: UserMenuProps) {
   const { user } = useAuth();
-  const t = useTranslations('DashboardLayout');
-  const { setTheme } = useTheme();
-  const locale = getLocale();
+  const { isMobile } = useSidebar();
 
-  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || t('default_user');
-  const userRole = user?.app_metadata?.role as UserRole | undefined;
-
-  async function handleLogout() {
-    try {
-      const res = await fetch('/api/v1/auth/logout', { method: 'POST' });
-      if (!res.ok) throw new Error('Logout failed');
-      window.location.href = '/login';
-    } catch {
-      window.location.href = '/login';
-    }
+  if (!user) {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton size="lg" disabled>
+            <Skeleton className="size-8 rounded-lg shrink-0" />
+            <div className="grid flex-1 gap-1.5 group-data-[collapsible=icon]:hidden">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-3 w-20" />
+            </div>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    );
   }
 
+  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'User';
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn('h-9 w-9 rounded-full', className)}
-        >
-          <DicebearAvatar seed={user?.email || userName} size={36} />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="font-normal">
-          <div className="flex items-center gap-3">
-            <DicebearAvatar seed={user?.email || userName} size={40} />
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <p className="text-sm font-medium leading-none truncate">{userName}</p>
-              <p className="text-xs leading-none text-muted-foreground truncate">
-                {user?.email}
-              </p>
-              {userRole && (
-                <Badge variant="secondary" className="mt-1 w-fit text-[10px] px-1.5 py-0">
-                  {t(ROLE_LABELS[userRole])}
-                </Badge>
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton
+              size="lg"
+              className={cn(
+                'data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground',
+                className,
               )}
-            </div>
-          </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="gap-2">
-            <Globe className="h-4 w-4 text-muted-foreground" />
-            <span>{t('language')}</span>
-            <span className="ml-auto text-xs text-muted-foreground">
-              {locale === 'pl' ? 'PL' : 'EN'}
-            </span>
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuItem onClick={() => changeLanguage('pl')} className="gap-2">
-              <span>🇵🇱</span>
-              <span>Polski</span>
-              {locale === 'pl' && <Check className="ml-auto h-4 w-4" />}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => changeLanguage('en')} className="gap-2">
-              <span>🇬🇧</span>
-              <span>English</span>
-              {locale === 'en' && <Check className="ml-auto h-4 w-4" />}
-            </DropdownMenuItem>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-
-        <DropdownMenuItem
-          onClick={() => {
-            const isDark = document.documentElement.classList.contains('dark');
-            setTheme(isDark ? 'light' : 'dark');
-          }}
-          className="gap-2"
-        >
-          <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-          <span>{t('theme')}</span>
-        </DropdownMenuItem>
-
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive gap-2">
-          <LogOut className="h-4 w-4" />
-          <span>{t('logout')}</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+            >
+              <UserAvatar
+                name={userName}
+                email={user?.email}
+                size={20}
+                className="size-8 rounded-lg"
+              />
+              <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+                <span className="truncate font-medium">{userName}</span>
+                <span className="truncate text-xs text-muted-foreground">{user?.email}</span>
+              </div>
+              <ChevronsUpDown className="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+            side={isMobile ? 'bottom' : 'right'}
+            align="end"
+            sideOffset={4}
+          >
+            <DropdownMenuLabel className="p-0 font-normal">
+              <UserMenuHeader />
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <UserMenuItems />
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }

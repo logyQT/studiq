@@ -1,157 +1,138 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { POST } from '@/app/(backend)/api/v1/quizzes/route';
-import { TEST_USERS, mockUser, cleanupQuizAttempts, cleanupQuestions, cleanupSubjects, createServiceClient } from './helpers';
-import { createNextRequest } from './test-utils';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { forEachCopy, registerMock } from '#test/helpers/concurrent';
+import { POST } from '@/app/(backend)/api/v1/quiz/new/route';
+import {
+  before,
+  type BeforeResult,
+} from '#test/helpers/test-user';
+import {
+  applyRegisteredMock,
+  cleanupQuestions,
+  cleanupQuizAttempts,
+  mockUser,
+} from '#test/integration/helpers';
+import { createNextRequest } from '#test/integration/test-utils';
 
-describe('Quizzes Integration', () => {
-  let subjectId: string;
+forEachCopy((copyId) => {
+  describe(`Quizzes Integration [${copyId}]`, () => {
+    registerMock(copyId, null);
 
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    for (const user of Object.values(TEST_USERS)) {
-      await cleanupQuizAttempts(user.id);
-      await cleanupQuestions(user.id, 'quiz-');
-      await cleanupSubjects(user.id, 'quiz-');
-    }
+    let student!: BeforeResult;
 
-    const supabase = createServiceClient();
-    const { data: subject, error: subjectError } = await supabase
-      .from('subjects')
-      .insert({ name: 'quiz-Quiz Test Subject', created_by: TEST_USERS.TEACHER.id })
-      .select()
-      .single();
-    if (subjectError || !subject) throw new Error(`Failed to create subject: ${subjectError?.message}`);
-    subjectId = subject.id;
-
-    for (let i = 0; i < 5; i++) {
-      const { error: questionError } = await supabase.from('questions').insert({
-        subject_id: subjectId,
-        type: 'mcq',
-        content: `quiz-Quiz Question ${i}`,
-        difficulty: 'easy',
-        created_by: TEST_USERS.TEACHER.id,
-      });
-      if (questionError) throw new Error(`Failed to create question ${i}: ${questionError.message}`);
-    }
-  });
-
-  describe('POST /api/v1/quizzes', () => {
-    it('generates a quiz and returns 201', async () => {
-      mockUser(TEST_USERS.STUDENT);
-
-      const req = createNextRequest('http://localhost/api/v1/quizzes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subjectId,
-          questionTypes: ['mcq'],
-          difficulty: 'easy',
-          questionCount: 3,
-        }),
-      });
-
-      const response = await POST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(201);
-      expect(body.success).toBe(true);
-      expect(body.data.questions).toBeDefined();
-      expect(body.data.questions.length).toBeLessThanOrEqual(3);
+    beforeAll(async () => {
+      // Fresh student + 5 personal mcq questions seeded through the real
+      // question API (bank created implicitly via the question-banks API).
+      student = await before({ role: 'student', questions: 5 });
     });
 
-    it('generates a quiz without subjectId', async () => {
-      mockUser(TEST_USERS.STUDENT);
-
-      const req = createNextRequest('http://localhost/api/v1/quizzes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questionTypes: ['mcq'],
-          questionCount: 2,
-        }),
-      });
-
-      const response = await POST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(201);
-      expect(body.success).toBe(true);
+    beforeEach(async () => {
+      vi.clearAllMocks();
+      applyRegisteredMock(copyId);
+      await cleanupQuizAttempts(student.user.id);
     });
 
-    it('returns 401 when not authenticated', async () => {
-      mockUser(null);
-
-      const req = createNextRequest('http://localhost/api/v1/quizzes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questionTypes: ['mcq'],
-          questionCount: 3,
-        }),
-      });
-
-      const response = await POST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(body.success).toBe(false);
+    afterAll(async () => {
+      await cleanupQuizAttempts(student.user.id);
+      await cleanupQuestions(student.user.id, 'seed-question-');
     });
 
-    it('returns 422 when questionTypes is empty', async () => {
-      mockUser(TEST_USERS.STUDENT);
+    describe('POST /api/v1/quizzes', () => {
+      it('generates a quiz and returns 201', async () => {
+        mockUser(student.user);
 
-      const req = createNextRequest('http://localhost/api/v1/quizzes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questionTypes: [],
-          questionCount: 3,
-        }),
+        const req = createNextRequest('http://localhost/api/v1/quiz/new', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            questionTypes: ['mcq'],
+            questionCount: 3,
+          }),
+        });
+
+        const response = await POST(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(201);
+        expect(body.success).toBe(true);
+        expect(body.data.questions).toBeDefined();
+        expect(body.data.questions.length).toBeLessThanOrEqual(3);
       });
 
-      const response = await POST(req);
-      const body = await response.json();
+      it('generates a quiz without optional fields', async () => {
+        mockUser(student.user);
 
-      expect(response.status).toBe(422);
-      expect(body.success).toBe(false);
-    });
+        const req = createNextRequest('http://localhost/api/v1/quiz/new', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            questionTypes: ['mcq'],
+            questionCount: 2,
+          }),
+        });
 
-    it('returns 404 when no matching questions exist', async () => {
-      mockUser(TEST_USERS.STUDENT);
+        const response = await POST(req);
+        const body = await response.json();
 
-      const req = createNextRequest('http://localhost/api/v1/quizzes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questionTypes: ['open'],
-          questionCount: 3,
-        }),
+        expect(response.status).toBe(201);
+        expect(body.success).toBe(true);
       });
 
-      const response = await POST(req);
-      const body = await response.json();
+      it('returns 401 when not authenticated', async () => {
+        mockUser(null);
 
-      expect(response.status).toBe(404);
-      expect(body.success).toBe(false);
-    });
+        const req = createNextRequest('http://localhost/api/v1/quiz/new', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            questionTypes: ['mcq'],
+            questionCount: 3,
+          }),
+        });
 
-    it('generates quiz as free user', async () => {
-      mockUser(TEST_USERS.FREE);
+        const response = await POST(req);
+        const body = await response.json();
 
-      const req = createNextRequest('http://localhost/api/v1/quizzes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questionTypes: ['mcq'],
-          questionCount: 2,
-        }),
+        expect(response.status).toBe(401);
+        expect(body.success).toBe(false);
       });
 
-      const response = await POST(req);
-      const body = await response.json();
+      it('returns 422 when questionTypes is empty', async () => {
+        mockUser(student.user);
 
-      expect(response.status).toBe(201);
-      expect(body.success).toBe(true);
+        const req = createNextRequest('http://localhost/api/v1/quiz/new', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            questionTypes: [],
+            questionCount: 3,
+          }),
+        });
+
+        const response = await POST(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+      });
+
+      it('returns 404 when no matching questions exist', async () => {
+        mockUser(student.user);
+
+        const req = createNextRequest('http://localhost/api/v1/quiz/new', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            questionTypes: ['open'],
+            questionCount: 3,
+          }),
+        });
+
+        const response = await POST(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(404);
+        expect(body.success).toBe(false);
+      });
     });
   });
 });

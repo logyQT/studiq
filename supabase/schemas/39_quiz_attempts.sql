@@ -10,7 +10,10 @@ CREATE TABLE public.quiz_attempts (
   total_questions  int NOT NULL DEFAULT 0,
   config           jsonb,
   started_at       timestamptz DEFAULT now(),
-  completed_at     timestamptz
+  completed_at     timestamptz,
+  assignment_id    uuid REFERENCES public.teacher_assignments(id) ON DELETE SET NULL,
+  graded_at        timestamptz
 );
 
 CREATE INDEX idx_quiz_attempts_user ON public.quiz_attempts(user_id);
+CREATE INDEX idx_quiz_attempts_assignment ON public.quiz_attempts(assignment_id);

@@ -1,0 +1,84 @@
+'use client';
+
+import { CheckSquare, Eye, EyeOff, FileDown, Pencil, Trash2 } from 'lucide-react';
+import type { useTranslations } from 'next-intl';
+import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+
+interface DeckContextMenuProps {
+  t: ReturnType<typeof useTranslations>;
+  canUpdate: boolean;
+  canDelete: boolean;
+  suspended: boolean;
+  onSelect: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onExport: () => void;
+  onToggleSuspend: () => void;
+}
+
+export function DeckContextMenu({
+  t,
+  canUpdate,
+  canDelete,
+  suspended,
+  onSelect,
+  onEdit,
+  onDelete,
+  onExport,
+  onToggleSuspend,
+}: DeckContextMenuProps) {
+  return (
+    <>
+      <DropdownMenuItem
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+      >
+        <CheckSquare className="mr-2 h-4 w-4" /> {t('select_cards')}
+      </DropdownMenuItem>
+      {canUpdate && (
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+        >
+          <Pencil className="mr-2 h-4 w-4" /> {t('common_edit')}
+        </DropdownMenuItem>
+      )}
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleSuspend();
+        }}
+      >
+        {suspended ? <Eye className="mr-2 h-4 w-4" /> : <EyeOff className="mr-2 h-4 w-4" />}
+        {suspended ? t('unsuspend_deck') : t('suspend_deck')}
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        onClick={(e) => {
+          e.stopPropagation();
+          onExport();
+        }}
+      >
+        <FileDown className="mr-2 h-4 w-4" /> {t('common_export')}
+      </DropdownMenuItem>
+      {canDelete && (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Trash2 className="mr-2 h-4 w-4" /> {t('common_delete')}
+          </DropdownMenuItem>
+        </>
+      )}
+    </>
+  );
+}

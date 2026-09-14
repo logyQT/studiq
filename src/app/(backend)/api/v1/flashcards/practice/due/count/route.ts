@@ -1,37 +1,7 @@
-/**
- * @swagger
- * /api/v1/flashcards/practice/due/count:
- *   get:
- *     summary: Get count of due flashcards
- *     description: Returns the number of flashcards due for review.
- *     tags:
- *       - Flashcard Practice
- *     security:
- *       - cookieAuth: []
- *     parameters:
- *       - in: query
- *         name: topicIds
- *         schema:
- *           type: string
- *         description: Comma-separated topic IDs to filter by
- *       - in: query
- *         name: deckIds
- *         schema:
- *           type: string
- *         description: Comma-separated deck IDs to filter by
- *     responses:
- *       200:
- *         description: Due count retrieved
- *       401:
- *         description: Unauthorized (no session)
- *       500:
- *         description: Internal server error
- */
-
-import { NextRequest } from 'next/server';
-import { flashcardPracticeController } from '@/server/controllers';
+import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
+import { flashcardPracticeController } from '@/server/controllers';
 
 export async function GET(req: NextRequest) {
   return withAuth(req, async (ctx) => {

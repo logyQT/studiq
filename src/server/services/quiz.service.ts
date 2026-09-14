@@ -1,39 +1,54 @@
-import { createClient } from '@/lib/supabase/server';
-import { AppError } from '@/lib/errors';
-import type { GenerateQuizInput } from '@/server/models';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
+import type { GenerateQuizInput } from '@/server/models';
 
 export class QuizService {
-  async generateQuiz(config: GenerateQuizInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
+  async generateQuiz(
+    config: GenerateQuizInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const orConditions = [];
 
-    if (ctx.universityId) orConditions.push(`university_id.eq.${ctx.universityId}`);
+    if (ctx.activeOrgId) orConditions.push(`organization_id.eq.${ctx.activeOrgId}`);
     if (ctx.userId) orConditions.push(`created_by.eq.${ctx.userId}`);
 
-    let query = supabase
-      .from('questions')
-      .select('*, question_answers(*)')
-      .or(orConditions.join(','))
-      .in('type', config.questionTypes);
+    let query = supabase.from('questions').select('*, question_answers:question_options(*)');
 
-    if (config.subjectId) {
-      query = query.eq('subject_id', config.subjectId);
+    if (orConditions.length > 0) {
+      query = query.or(orConditions.join(','));
     }
 
-    if (config.difficulty && config.difficulty !== 'mixed') {
-      query = query.eq('difficulty', config.difficulty);
+    query = query.in('type', config.questionTypes);
+
+    if (config.bankId) {
+      query = query.eq('bank_id', config.bankId);
+    }
+
+    if (config.topicIds && config.topicIds.length > 0) {
+      const { data: topicQuestionIds } = await supabase
+        .from('question_topic_assignments')
+        .select('question_id')
+        .in('topic_id', config.topicIds);
+
+      const ids = topicQuestionIds?.map((t) => t.question_id) ?? [];
+      if (ids.length > 0) {
+        query = query.in('id', ids);
+      } else {
+        return success({ questions: [], attemptId: '' });
+      }
     }
 
     const { data: allQuestions, error: fetchError } = await query;
-    if (fetchError) throw mapSupabaseError(fetchError);
+    if (fetchError) return toDbFailure(fetchError);
     if (!allQuestions || allQuestions.length === 0) {
-      throw new AppError('NOT_FOUND');
+      return failure('NOT_FOUND');
     }
-
-    if (allQuestions.length < config.questionCount) throw new AppError('BAD_REQUEST');
 
     const shuffled = [...allQuestions].sort(() => Math.random() - 0.5);
     const selectedQuestions = shuffled.slice(0, Math.min(config.questionCount, shuffled.length));
@@ -50,8 +65,8 @@ export class QuizService {
       .select()
       .single();
 
-    if (attemptError) throw mapSupabaseError(attemptError);
-    if (!attempt) throw new AppError('NOT_FOUND');
+    if (attemptError) return toDbFailure(attemptError);
+    if (!attempt) return failure('NOT_FOUND');
 
     const attemptQuestions = selectedQuestions.map((q, i) => ({
       attempt_id: attempt.id,
@@ -63,13 +78,11 @@ export class QuizService {
       .from('quiz_attempt_questions')
       .insert(attemptQuestions);
 
-    if (questionsError) throw mapSupabaseError(questionsError);
+    if (questionsError) return toDbFailure(questionsError);
 
-    return {
+    return success({
       ...attempt,
       questions: selectedQuestions,
-    };
+    });
   }
 }
-
-export const quizService = new QuizService();

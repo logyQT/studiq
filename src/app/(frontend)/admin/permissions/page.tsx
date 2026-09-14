@@ -1,11 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 interface PermissionMatrix {
   roles: string[];
@@ -16,23 +23,20 @@ interface PermissionMatrix {
 
 const SCOPE_STYLES: Record<string, string> = {
   any: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  university: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+  organization: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
   own: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
 };
 
 const SCOPE_LABELS: Record<string, string> = {
   any: 'any',
-  university: 'university',
+  organization: 'organization',
   own: 'own',
 };
 
 const ROLE_LABELS: Record<string, string> = {
-  free: 'Free',
-  premium: 'Premium',
-  student: 'Student',
+  member: 'Member',
   teacher: 'Teacher',
-  university_admin: 'Uni Admin',
-  sys_admin: 'Sys Admin',
+  admin: 'Admin',
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -66,9 +70,7 @@ export default function AdminPermissionsPage() {
 
   if (!data) {
     return (
-      <div className="flex items-center justify-center h-64 text-destructive">
-        {t('error')}
-      </div>
+      <div className="flex items-center justify-center h-64 text-destructive">{t('error')}</div>
     );
   }
 
@@ -115,9 +117,7 @@ export default function AdminPermissionsPage() {
                         {ROLE_LABELS[role] ?? role}
                       </TableCell>
                     )}
-                    <TableCell className="font-medium text-muted-foreground">
-                      {resource}
-                    </TableCell>
+                    <TableCell className="font-medium text-muted-foreground">{resource}</TableCell>
                     {data.actions.map((action) => {
                       const scope = data.matrix[role]?.[resource]?.[action] ?? '—';
                       const isMissing = scope === '—';

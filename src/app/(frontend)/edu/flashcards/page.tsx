@@ -1,5 +1,5 @@
-import EduFlashcardsClient from './flashcards-client';
+import EduDecksClient from '@/app/(frontend)/edu/flashcards/decks-client';
 
-export default function EduFlashcardsPage() {
-  return <EduFlashcardsClient />;
+export default function EduDecksPage() {
+  return <EduDecksClient />;
 }

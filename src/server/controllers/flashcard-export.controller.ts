@@ -1,40 +1,43 @@
-import { flashcardExportService } from '@/server/services';
-import { ExportQuerySchema } from '@/server/models';
-import { withErrorHandling } from '@/lib/with-error-handling';
-import { controllerResponse } from '@/lib/controller-response';
+import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
-import type { ControllerResponse } from '@/lib/controller-response';
+import { isFailure } from '@/lib/service-result';
+import { ExportQuerySchema } from '@/server/models';
+import type { FlashcardExportService } from '@/server/services/flashcard-export.service';
 
 export class FlashcardExportController {
-  async exportCsv(query: Record<string, string | null>, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = ExportQuerySchema.safeParse(query);
+  constructor(private flashcardExportService: FlashcardExportService) {}
 
-      if (!parsed.success) {
-        return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
-      }
+  async exportCsv(
+    query: Record<string, string | null>,
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
+    const parsed = ExportQuerySchema.safeParse(query);
 
-      const filters: { deckIds?: string[]; ids?: string[] } = {};
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      if (parsed.data.deckId) {
-        filters.deckIds = [parsed.data.deckId];
-      }
-      if (parsed.data.deckIds) {
-        filters.deckIds = (filters.deckIds ?? []).concat(
-          parsed.data.deckIds.split(',').map((s) => s.trim()).filter(Boolean),
-        );
-      }
-      if (parsed.data.ids) {
-        filters.ids = parsed.data.ids.split(',').map((s) => s.trim()).filter(Boolean);
-      }
+    const filters: { deckIds?: string[]; ids?: string[] } = {};
 
-      const csv = await flashcardExportService.exportCsv(
-        ctx,
-        Object.keys(filters).length > 0 ? filters : undefined,
-      );
-      return controllerResponse.success(csv);
-    }, ctx);
+    if (parsed.data.deckId) {
+      filters.deckIds = [parsed.data.deckId];
+    }
+    if (parsed.data.ids) {
+      filters.ids = parsed.data.ids
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    const result = await this.flashcardExportService.exportCsv(
+      ctx,
+      Object.keys(filters).length > 0 ? filters : undefined,
+    );
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 }
-
-export const flashcardExportController = new FlashcardExportController();

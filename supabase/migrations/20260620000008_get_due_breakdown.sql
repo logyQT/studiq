@@ -20,6 +20,11 @@ BEGIN
   FROM public.flashcards f
   JOIN public.flashcard_review_state rs ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
   WHERE rs.next_review_at <= NOW()
+    AND NOT EXISTS (
+      SELECT 1 FROM public.flashcard_deck_assignments fda
+      JOIN public.suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id
+      WHERE fda.flashcard_id = f.id
+    )
     AND (
       (p_created_by IS NULL AND p_university_id IS NULL)  -- any scope
       OR (p_created_by IS NOT NULL AND p_university_id IS NULL AND f.created_by = p_created_by)  -- own scope
@@ -43,10 +48,15 @@ BEGIN
   CREATE TEMP TABLE _accessible ON COMMIT DROP AS
   SELECT f.id
   FROM public.flashcards f
-  WHERE (p_created_by IS NULL AND p_university_id IS NULL)
+  WHERE ( (p_created_by IS NULL AND p_university_id IS NULL)
     OR (p_created_by IS NOT NULL AND p_university_id IS NULL AND f.created_by = p_created_by)
     OR (p_created_by IS NULL AND p_university_id IS NOT NULL AND (f.created_by = p_created_by OR f.university_id = p_university_id))
-    OR (p_created_by IS NOT NULL AND p_university_id IS NOT NULL AND (f.created_by = p_created_by OR f.university_id = p_university_id));
+    OR (p_created_by IS NOT NULL AND p_university_id IS NOT NULL AND (f.created_by = p_created_by OR f.university_id = p_university_id)) )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.flashcard_deck_assignments fda
+      JOIN public.suspended_decks sd ON sd.deck_id = fda.deck_id AND sd.user_id = p_user_id
+      WHERE fda.flashcard_id = f.id
+    );
 
   SELECT MIN(rs.next_review_at) INTO next_review_at
   FROM _accessible a

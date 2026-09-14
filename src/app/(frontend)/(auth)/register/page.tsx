@@ -1,13 +1,15 @@
 'use client';
 
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Building2, GraduationCap, Loader2, Lock, Mail, User } from 'lucide-react';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useTranslations } from 'next-intl';
-import { RegisterSchema, type RegisterInput } from '@/server/models/auth.model';
-import { APP_ERRORS } from '@/lib/errors';
+import { toast } from 'sonner';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Form,
   FormControl,
@@ -16,12 +18,19 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { toast } from 'sonner';
-import { Loader2, Mail, Lock, User } from 'lucide-react';
-import Link from 'next/link';
+import { Input } from '@/components/ui/input';
+import { Item, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { APP_ERRORS } from '@/lib/errors';
 import { cn } from '@/lib/utils';
+import { type RegisterInput, RegisterSchema } from '@/server/models/auth.model';
 
 export default function RegisterPage() {
   const t = useTranslations('RegisterPage');
@@ -57,8 +66,8 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/50 p-6">
-      <Card className="w-full max-w-md shadow-lg border">
+    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      <Card className="w-full max-w-md shadow-lg border-sidebar-border bg-sidebar">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl text-center">
             {isSuccess ? t('success_header') : t('header')}
@@ -143,6 +152,73 @@ export default function RegisterPage() {
                 />
                 <FormField
                   control={form.control}
+                  name="accountType"
+                  render={({ field, fieldState }) => (
+                    <FormItem>
+                      <FormLabel>{t('account_type_label')}</FormLabel>
+                      <FormControl>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <SelectTrigger
+                            className={cn(
+                              'w-full',
+                              fieldState.error &&
+                                'border-destructive focus-visible:ring-destructive',
+                            )}
+                            aria-invalid={!!fieldState.error}
+                          >
+                            <SelectValue placeholder={t('account_type_placeholder')} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              <SelectItem value="student" className="py-3">
+                                <Item size="sm" className="w-full p-0">
+                                  <ItemContent className="gap-0">
+                                    <ItemTitle className="font-sans flex items-center gap-2">
+                                      <User className="size-4" />
+                                      {t('account_type_student')}
+                                    </ItemTitle>
+                                    <ItemDescription className="text-xs font-normal">
+                                      {t('account_type_student_desc')}
+                                    </ItemDescription>
+                                  </ItemContent>
+                                </Item>
+                              </SelectItem>
+                              <SelectItem value="educator" className="py-3">
+                                <Item size="sm" className="w-full p-0">
+                                  <ItemContent className="gap-0">
+                                    <ItemTitle className="font-sans flex items-center gap-2">
+                                      <GraduationCap className="size-4" />
+                                      {t('account_type_teacher')}
+                                    </ItemTitle>
+                                    <ItemDescription className="text-xs font-normal">
+                                      {t('account_type_teacher_desc')}
+                                    </ItemDescription>
+                                  </ItemContent>
+                                </Item>
+                              </SelectItem>
+                              <SelectItem value="manager" className="py-3">
+                                <Item size="sm" className="w-full p-0">
+                                  <ItemContent className="gap-0">
+                                    <ItemTitle className="font-sans flex items-center gap-2">
+                                      <Building2 className="size-4" />
+                                      {t('account_type_manager')}
+                                    </ItemTitle>
+                                    <ItemDescription className="text-xs font-normal">
+                                      {t('account_type_manager_desc')}
+                                    </ItemDescription>
+                                  </ItemContent>
+                                </Item>
+                              </SelectItem>
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
                   name="password"
                   render={({ field, fieldState }) => (
                     <FormItem>
@@ -153,7 +229,6 @@ export default function RegisterPage() {
                           <Input
                             id={field.name}
                             type="password"
-                            placeholder="********"
                             className={cn(
                               'pl-9',
                               fieldState.error &&

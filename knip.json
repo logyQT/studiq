@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/app/**/{page,layout,loading,error,route,not-found,default}.ts{x,}",
+    "__tests__/setup.ts"
+  ],
+  "project": ["src/**/*.ts{x,}"],
+  "ignoreDependencies": ["@types/*"],
+  "ignoreExportsUsedInFile": {
+    "interface": true,
+    "type": true
+  },
+  "ignore": ["src/components/ui/**"]
+}

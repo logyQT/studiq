@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 
 export function useAutoResize(maxHeight = 200) {
   const ref = useRef<HTMLTextAreaElement>(null);

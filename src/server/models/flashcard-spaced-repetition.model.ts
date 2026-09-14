@@ -1,19 +1,12 @@
-import { z, registry } from '@/lib/zod';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import { registry, z } from '@/lib/zod';
 
 export const DueCardsQuerySchema = registry.register(
   'DueCardsQuery',
   z.object({
-    topicIds: z
-      .string({ error: ValidationErrorCode.INVALID_INPUT })
-      .optional(),
-    deckIds: z
-      .string({ error: ValidationErrorCode.INVALID_INPUT })
-      .optional(),
-    limit: z
-      .string({ error: ValidationErrorCode.INVALID_INPUT })
-      .optional()
-      .default('20'),
+    topicIds: z.string({ error: ValidationErrorCode.INVALID_INPUT }).optional(),
+    deckIds: z.string({ error: ValidationErrorCode.INVALID_INPUT }).optional(),
+    limit: z.string({ error: ValidationErrorCode.INVALID_INPUT }).optional().default('20'),
   }),
 );
 

@@ -1,7 +1,7 @@
-import { z, registry } from '@/lib/zod';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { ValidationErrorCode } from '@/lib/validation-errors';
-import { User as SupabaseUser } from '@supabase/supabase-js';
-import { UserRole } from '@/types';
+import { registry, z } from '@/lib/zod';
+import type { AccountType } from '@/types';
 
 export const NameSchema = z
   .string({ error: ValidationErrorCode.NAME_REQUIRED })
@@ -25,7 +25,9 @@ export const RegisterSchema = registry.register(
       .email({ error: ValidationErrorCode.EMAIL_INVALID })
       .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED }),
     password: passwordSchema,
-    inviteToken: z.string().optional(),
+    accountType: z.enum(['student', 'educator', 'manager'], {
+      error: ValidationErrorCode.INVALID_INPUT,
+    }),
   }),
 );
 
@@ -65,13 +67,21 @@ export const updatePasswordSchema = registry
     path: ['confirmPassword'],
   });
 
+export const UpdateProfileSchema = registry.register(
+  'UpdateProfileRequest',
+  z.object({
+    name: NameSchema,
+  }),
+);
+
 export type RegisterInput = z.infer<typeof RegisterSchema>;
 export type LoginInput = z.infer<typeof LoginSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type UpdatePasswordInput = z.infer<typeof updatePasswordSchema>;
+export type UpdateProfileInput = z.infer<typeof UpdateProfileSchema>;
 
 export type User = SupabaseUser & {
   app_metadata: SupabaseUser['app_metadata'] & {
-    role?: UserRole;
+    accountType?: AccountType;
   };
 };

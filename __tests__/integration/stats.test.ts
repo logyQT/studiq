@@ -1,121 +1,118 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { GET as teacherGet } from '@/app/(backend)/api/v1/stats/teacher/route';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { forEachCopy, registerMock } from '#test/helpers/concurrent';
 import { GET as studentGet } from '@/app/(backend)/api/v1/stats/student/route';
+import { GET as teacherGet } from '@/app/(backend)/api/v1/stats/teacher/route';
 import {
-  TEST_USERS,
-  mockUser,
-  cleanupSubjects,
-  cleanupQuestions,
+  applyRegisteredMock,
   cleanupFlashcards,
+  cleanupQuestions,
   cleanupQuizAttempts,
-  createRealClient,
-} from './helpers';
-import { createNextRequest } from './test-utils';
+  mockUser,
+} from '#test/integration/helpers';
+import { before, type BeforeResult } from '#test/helpers/test-user';
+import { createNextRequest } from '#test/integration/test-utils';
 
-describe('Stats Integration', () => {
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    for (const user of Object.values(TEST_USERS)) {
-      await cleanupSubjects(user.id, 'stats-');
-      await cleanupQuestions(user.id);
-      await cleanupFlashcards(user.id);
-      await cleanupQuizAttempts(user.id);
-    }
-  });
+forEachCopy((copyId) => {
+  describe(`Stats Integration [${copyId}]`, () => {
+    registerMock(copyId, null);
 
-  describe('GET /api/v1/stats/teacher', () => {
-    it('returns teacher stats', async () => {
-      mockUser(TEST_USERS.TEACHER);
+    let teacher!: BeforeResult;
+    let student!: BeforeResult;
 
-      const req = createNextRequest('http://localhost/api/v1/stats/teacher');
-      const response = await teacherGet(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.success).toBe(true);
-      expect(body.data.totalQuestions).toBeDefined();
-      expect(body.data.totalFlashcards).toBeDefined();
+    beforeAll(async () => {
+      // Fresh educator with exactly 3 API-created questions + fresh student.
+      teacher = await before({ role: 'educator', questions: 3 });
+      student = await before({ role: 'student' });
     });
 
-    it('returns teacher stats with subject details', async () => {
-      mockUser(TEST_USERS.TEACHER);
+    beforeEach(() => {
+      vi.clearAllMocks();
+      applyRegisteredMock(copyId);
+    });
 
-      const supabase = createRealClient();
-      const { data: subject, error: subjectError } = await supabase
-        .from('subjects')
-        .insert({ name: 'stats-Stats Subject', created_by: TEST_USERS.TEACHER.id })
-        .select()
-        .single();
-      if (subjectError || !subject) throw new Error(`Failed to create subject: ${subjectError?.message}`);
-
-      for (let i = 0; i < 3; i++) {
-        const { error: questionError } = await supabase.from('questions').insert({
-          subject_id: subject.id,
-          type: 'mcq',
-          content: `Stats Question ${i}`,
-          difficulty: 'easy',
-          created_by: TEST_USERS.TEACHER.id,
-        });
-        if (questionError) throw new Error(`Failed to create question ${i}: ${questionError.message}`);
+    afterAll(async () => {
+      for (const user of [teacher.user, student.user]) {
+        await cleanupQuestions(user.id, 'seed-question-');
+        await cleanupFlashcards(user.id);
+        await cleanupQuizAttempts(user.id);
       }
-
-      const req = createNextRequest(
-        `http://localhost/api/v1/stats/teacher?subjectId=${subject.id}`,
-      );
-      const response = await teacherGet(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.data.subject).toBeDefined();
-      expect(body.data.subject.totalQuestions).toBe(3);
     });
 
-    it('returns 401 when not authenticated', async () => {
-      mockUser(null);
+    describe('GET /api/v1/stats/teacher', () => {
+      it('returns teacher stats', async () => {
+        mockUser(teacher.user);
 
-      const req = createNextRequest('http://localhost/api/v1/stats/teacher');
-      const response = await teacherGet(req);
-      const body = await response.json();
+        const req = createNextRequest('http://localhost/api/v1/stats/teacher');
+        const response = await teacherGet(req);
+        const body = await response.json();
 
-      expect(response.status).toBe(401);
-      expect(body.success).toBe(false);
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+        expect(body.data.totalQuestions).toBeDefined();
+        expect(body.data.totalFlashcards).toBeDefined();
+      });
+
+      it('returns teacher stats with question details', async () => {
+        mockUser(teacher.user);
+
+        const req = createNextRequest('http://localhost/api/v1/stats/teacher');
+        const response = await teacherGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.totalQuestions).toBe(3);
+      });
+
+      it('returns 401 when not authenticated', async () => {
+        mockUser(null);
+
+        const req = createNextRequest('http://localhost/api/v1/stats/teacher');
+        const response = await teacherGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(401);
+        expect(body.success).toBe(false);
+      });
     });
-  });
 
-  describe('GET /api/v1/stats/student', () => {
-    it('returns student stats', async () => {
-      mockUser(TEST_USERS.STUDENT);
+    describe('GET /api/v1/stats/student', () => {
+      it('returns student stats', async () => {
+        mockUser(student.user);
 
-      const response = await studentGet();
-      const body = await response.json();
+        const req = createNextRequest('http://localhost/api/v1/stats/student');
+        const response = await studentGet(req);
+        const body = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(body.success).toBe(true);
-      expect(body.data.totalQuizzes).toBeDefined();
-      expect(body.data.avgScore).toBeDefined();
-      expect(body.data.flashcardsPracticed).toBeDefined();
-    });
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+        expect(body.data.totalQuizzes).toBeDefined();
+        expect(body.data.avgScore).toBeDefined();
+        expect(body.data.flashcardsPracticed).toBeDefined();
+      });
 
-    it('returns zero stats when no data exists', async () => {
-      mockUser(TEST_USERS.PREMIUM);
+      it('returns zero stats when no data exists', async () => {
+        mockUser(student.user);
 
-      const response = await studentGet();
-      const body = await response.json();
+        const req = createNextRequest('http://localhost/api/v1/stats/student');
+        const response = await studentGet(req);
+        const body = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(body.data.totalQuizzes).toBe(0);
-      expect(body.data.avgScore).toBe(0);
-      expect(body.data.flashcardsPracticed).toBe(0);
-    });
+        expect(response.status).toBe(200);
+        expect(body.data.totalQuizzes).toBe(0);
+        expect(body.data.avgScore).toBe(0);
+        expect(body.data.flashcardsPracticed).toBe(0);
+      });
 
-    it('returns 401 when not authenticated', async () => {
-      mockUser(null);
+      it('returns 401 when not authenticated', async () => {
+        mockUser(null);
 
-      const response = await studentGet();
-      const body = await response.json();
+        const req = createNextRequest('http://localhost/api/v1/stats/student');
+        const response = await studentGet(req);
+        const body = await response.json();
 
-      expect(response.status).toBe(401);
-      expect(body.success).toBe(false);
+        expect(response.status).toBe(401);
+        expect(body.success).toBe(false);
+      });
     });
   });
 });

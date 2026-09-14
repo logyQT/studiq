@@ -1,25 +1,28 @@
 'use client';
 
+import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
 
 const DEV_USERS = [
-  { label: 'Sys Admin', email: 'admin@dev.local' },
-  { label: 'Univ Admin', email: 'uadmin@dev.local' },
-  { label: 'Teacher', email: 'teacher@dev.local' },
-  { label: 'Student', email: 'student@dev.local' },
-  { label: 'Premium', email: 'premium@dev.local' },
-  { label: 'eTeacher1', email: 'e2e-teacher1@test.local' },
-  { label: 'eTeacher2', email: 'e2e-teacher2@test.local' },
-  { label: 'eStudent1', email: 'e2e-student1@test.local' },
+  { label: 'Admin', email: 'admin@dev.local' },
+  { label: 'M1', email: 'manager@dev.local' },
+  { label: 'M2', email: 'manager2@dev.local' },
+  { label: 'T1', email: 'teacher1@dev.local' },
+  { label: 'T2', email: 'teacher2@dev.local' },
+  { label: 'S1', email: 'student1@dev.local' },
+  { label: 'S2', email: 'student2@dev.local' },
+  { label: 'S3', email: 'student3@dev.local' },
+  { label: 'TC', email: 'teacher-classroom@dev.local' },
+  { label: 'SC', email: 'student-classroom@dev.local' },
 ] as const;
 
 export function DevQuickLogin() {
   const router = useRouter();
+  const { refresh } = useAuth();
   const [loadingEmail, setLoadingEmail] = useState<string | null>(null);
 
   if (process.env.NODE_ENV !== 'development') return null;
@@ -34,8 +37,7 @@ export function DevQuickLogin() {
       });
       const result = await res.json();
       if (result.success) {
-        const supabase = createClient();
-        await supabase.auth.setSession(result.data.session);
+        await refresh();
         router.refresh();
       }
     } finally {
@@ -44,7 +46,7 @@ export function DevQuickLogin() {
   }
 
   return (
-    <Card className="w-56 shadow-lg border">
+    <Card className="w-56 shadow-lg border-sidebar-border bg-sidebar">
       <CardHeader className="pb-3">
         <CardTitle className="text-sm text-muted-foreground font-normal">Dev Quick Login</CardTitle>
       </CardHeader>

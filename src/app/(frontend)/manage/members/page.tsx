@@ -1,26 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { RoleBadge } from '@/components/ui/role-badge';
-import { DicebearAvatar } from '@/components/ui/dicebear-avatar';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Search, Shield, UserMinus } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { useAuth } from '@/components/providers/AuthProvider';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,54 +15,199 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { toast } from 'sonner';
-import { Search, UserMinus, Shield } from 'lucide-react';
-import { UserRole, UNIVERSITY_ROLES } from '@/types';
-import { useTranslations } from 'next-intl';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { UserAvatar } from '@/components/ui/user-avatar';
+
+interface GroupInfo {
+  id: string;
+  name: string;
+  role: string;
+}
 
 interface Member {
   id: string;
   email: string;
   full_name: string | null;
-  role: string;
+  orgRoleName: string;
+  orgRoleId: string;
   created_at: string;
+  groups: GroupInfo[];
+}
+
+interface OrgGroup {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+interface OrgRole {
+  id: string;
+  name: string;
+  displayName?: string;
 }
 
 export default function MembersPage() {
   const t = useTranslations('ManageMembersPage');
+  const { user } = useAuth();
   const [members, setMembers] = useState<Member[]>([]);
+  const [orgGroups, setOrgGroups] = useState<OrgGroup[]>([]);
+  const [roles, setRoles] = useState<OrgRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState('all');
   const [removeId, setRemoveId] = useState<string | null>(null);
-  const [changingRole, setChangingRole] = useState<{ id: string; role: string } | null>(null);
+  const [changingRole, setChangingRole] = useState<{ id: string; orgRoleId: string } | null>(null);
+  const [managingMember, setManagingMember] = useState<Member | null>(null);
+  const [groupAssignments, setGroupAssignments] = useState<
+    Record<string, { checked: boolean; role: string }>
+  >({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [membersRes, groupsRes, rolesRes] = await Promise.all([
+        fetch('/api/v1/organization/members'),
+        fetch('/api/v1/organization/groups'),
+        fetch('/api/v1/organization/roles'),
+      ]);
+      const membersJson = await membersRes.json();
+      const groupsJson = await groupsRes.json();
+      const rolesJson = await rolesRes.json();
+      if (membersJson.success && Array.isArray(membersJson.data)) {
+        setMembers(membersJson.data);
+      }
+      if (groupsJson.success && Array.isArray(groupsJson.data)) {
+        setOrgGroups(groupsJson.data);
+      }
+      if (rolesJson.success && Array.isArray(rolesJson.data)) {
+        setRoles(rolesJson.data);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    fetch('/api/v1/university/members')
-      .then((r) => r.json())
-      .then((data) => {
-        setMembers(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
+    load();
+  }, [load]);
 
   const filtered = members.filter((m) => {
     const matchesSearch =
       m.email.toLowerCase().includes(search.toLowerCase()) ||
       (m.full_name?.toLowerCase().includes(search.toLowerCase()) ?? false);
-    const matchesRole = filterRole === 'all' || m.role === filterRole;
+    const matchesRole = filterRole === 'all' || m.orgRoleName === filterRole;
     return matchesSearch && matchesRole;
   });
+
+  function openManageDialog(member: Member) {
+    setManagingMember(member);
+    const assignments: Record<string, { checked: boolean; role: string }> = {};
+    for (const group of orgGroups) {
+      const membership = member.groups.find((g) => g.id === group.id);
+      assignments[group.id] = {
+        checked: !!membership,
+        role: membership?.role ?? 'member',
+      };
+    }
+    setGroupAssignments(assignments);
+  }
+
+  async function handleSaveGroupMemberships() {
+    if (!managingMember) return;
+
+    const prevGroups = managingMember.groups;
+    const changedGroups: { groupId: string; add: boolean; role: string }[] = [];
+
+    for (const group of orgGroups) {
+      const assignment = groupAssignments[group.id];
+      const wasMember = prevGroups.some((g) => g.id === group.id);
+      const isMember = assignment?.checked ?? false;
+      const newRole = assignment?.role ?? 'member';
+
+      if (
+        isMember !== wasMember ||
+        (isMember && newRole !== prevGroups.find((g) => g.id === group.id)?.role)
+      ) {
+        changedGroups.push({ groupId: group.id, add: isMember, role: newRole });
+      }
+    }
+
+    if (changedGroups.length === 0) {
+      setManagingMember(null);
+      return;
+    }
+
+    try {
+      for (const change of changedGroups) {
+        const res = await fetch(`/api/v1/organization/groups/${change.groupId}/members`);
+        const json = await res.json();
+        if (!json.success) throw new Error();
+
+        let currentMembers: { userId: string; role: string }[] = json.data ?? [];
+
+        if (change.add) {
+          const existing = currentMembers.find((cm) => cm.userId === managingMember.id);
+          if (existing) {
+            existing.role = change.role;
+          } else {
+            currentMembers.push({ userId: managingMember.id, role: change.role });
+          }
+        } else {
+          currentMembers = currentMembers.filter((cm) => cm.userId !== managingMember.id);
+        }
+
+        const updateRes = await fetch(`/api/v1/organization/groups/${change.groupId}/members`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ members: currentMembers }),
+        });
+        const updateJson = await updateRes.json();
+        if (!updateJson.success) throw new Error();
+      }
+
+      toast.success(t('group_membership_updated'));
+      setManagingMember(null);
+      load();
+    } catch {
+      toast.error(t('group_membership_failed'));
+    }
+  }
 
   async function handleRemove() {
     if (!removeId) return;
     try {
-      const res = await fetch(`/api/v1/university/members?userId=${removeId}`, {
+      const res = await fetch(`/api/v1/organization/members?userId=${removeId}`, {
         method: 'DELETE',
       });
       if (!res.ok) throw new Error();
-      setMembers(members.map((m) => (m.id === removeId ? { ...m, role: UserRole.FREE } : m)));
+      setMembers(members.map((m) => (m.id === removeId ? { ...m, orgRoleName: 'member' } : m)));
       toast.success(t('member_removed'));
     } catch {
       toast.error(t('member_remove_failed'));
@@ -89,14 +218,18 @@ export default function MembersPage() {
   async function handleChangeRole() {
     if (!changingRole) return;
     try {
-      const res = await fetch('/api/v1/university/members', {
+      const res = await fetch('/api/v1/organization/members', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUserId: changingRole.id, newRole: changingRole.role }),
+        body: JSON.stringify({
+          targetUserId: changingRole.id,
+          newOrgRoleId: changingRole.orgRoleId,
+        }),
       });
       if (!res.ok) throw new Error();
+      const newRoleName = roles.find((r) => r.id === changingRole.orgRoleId)?.name ?? '';
       setMembers(
-        members.map((m) => (m.id === changingRole.id ? { ...m, role: changingRole.role } : m)),
+        members.map((m) => (m.id === changingRole.id ? { ...m, orgRoleName: newRoleName } : m)),
       );
       toast.success(t('role_updated'));
     } catch {
@@ -111,7 +244,9 @@ export default function MembersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">{t('title')}</h2>
-        <span className="text-sm text-muted-foreground">{t('total_count', { count: members.length })}</span>
+        <span className="text-sm text-muted-foreground">
+          {t('total_count', { count: members.length })}
+        </span>
       </div>
 
       <div className="flex gap-3">
@@ -130,7 +265,7 @@ export default function MembersPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t('all_roles')}</SelectItem>
-            {UNIVERSITY_ROLES.map((r) => (
+            {['teacher', 'member'].map((r) => (
               <SelectItem key={r} value={r}>
                 {t(`role_${r}`)}
               </SelectItem>
@@ -145,6 +280,7 @@ export default function MembersPage() {
             <TableRow>
               <TableHead>{t('col_member')}</TableHead>
               <TableHead>{t('col_role')}</TableHead>
+              <TableHead>{t('col_groups')}</TableHead>
               <TableHead>{t('col_joined')}</TableHead>
               <TableHead className="text-right">{t('col_actions')}</TableHead>
             </TableRow>
@@ -154,7 +290,7 @@ export default function MembersPage() {
               <TableRow key={m.id}>
                 <TableCell>
                   <div className="flex items-center gap-3">
-                    <DicebearAvatar seed={m.email} size={32} />
+                    <UserAvatar name={m.full_name} email={m.email} size={32} />
                     <div>
                       <p className="font-medium">{m.full_name || t('unnamed')}</p>
                       <p className="text-xs text-muted-foreground">{m.email}</p>
@@ -162,39 +298,59 @@ export default function MembersPage() {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <RoleBadge role={m.role as UserRole} />
+                  <span className="text-sm text-muted-foreground">{m.orgRoleName}</span>
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {m.groups.length > 0 ? (
+                      m.groups.map((g) => (
+                        <Badge key={g.id} variant="outline" className="text-xs">
+                          {g.name}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {new Date(m.created_at).toLocaleDateString()}
                 </TableCell>
                 <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Select
-                      onValueChange={(v) => setChangingRole({ id: m.id, role: v })}
-                      defaultValue={m.role}
-                    >
-                      <SelectTrigger className="w-36 h-8">
-                        <Shield className="mr-1 h-3 w-3" />
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {UNIVERSITY_ROLES.map((r) => (
-                          <SelectItem key={r} value={r}>
-                            {t(`role_${r}`)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button variant="ghost" size="icon" onClick={() => setRemoveId(m.id)}>
-                      <UserMinus className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
+                  {m.id === user?.id ? (
+                    <span className="text-xs text-muted-foreground">{t('self_label')}</span>
+                  ) : (
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => openManageDialog(m)}>
+                        {t('manage_groups')}
+                      </Button>
+                      <Select
+                        onValueChange={(v) => setChangingRole({ id: m.id, orgRoleId: v })}
+                        defaultValue={m.orgRoleId}
+                      >
+                        <SelectTrigger className="w-36 h-8">
+                          <Shield className="mr-1 h-3 w-3" />
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {roles.map((r) => (
+                            <SelectItem key={r.id} value={r.id}>
+                              {r.displayName ?? r.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button variant="ghost" size="icon" onClick={() => setRemoveId(m.id)}>
+                        <UserMinus className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                   {t('no_members')}
                 </TableCell>
               </TableRow>
@@ -207,9 +363,7 @@ export default function MembersPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('remove_dialog_title')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('remove_dialog_desc')}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t('remove_dialog_desc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common_cancel')}</AlertDialogCancel>
@@ -228,7 +382,10 @@ export default function MembersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>{t('change_role_dialog_title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t('change_role_dialog_desc', { role: changingRole?.role.replace('_', ' ') ?? '' })}
+              {t('change_role_dialog_desc', {
+                role:
+                  roles.find((r) => r.id === changingRole?.orgRoleId)?.name.replace('_', ' ') ?? '',
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -237,6 +394,63 @@ export default function MembersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!managingMember} onOpenChange={(o) => !o && setManagingMember(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {t('manage_groups_title', {
+                name: managingMember?.full_name || managingMember?.email || '',
+              })}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {orgGroups.map((group) => {
+              const assignment = groupAssignments[group.id];
+              const checked = assignment?.checked ?? false;
+              return (
+                <div key={group.id} className="flex items-center gap-3">
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={(c) =>
+                      setGroupAssignments((prev) => ({
+                        ...prev,
+                        [group.id]: { ...prev[group.id], checked: !!c },
+                      }))
+                    }
+                  />
+                  <Label className="flex-1">{group.name}</Label>
+                  {checked && (
+                    <Select
+                      value={assignment?.role ?? 'member'}
+                      onValueChange={(v) =>
+                        setGroupAssignments((prev) => ({
+                          ...prev,
+                          [group.id]: { ...prev[group.id], role: v },
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="w-32 h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="teacher">{t('role_teacher')}</SelectItem>
+                        <SelectItem value="member">{t('role_member')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManagingMember(null)}>
+              {t('common_cancel')}
+            </Button>
+            <Button onClick={handleSaveGroupMemberships}>{t('common_save')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

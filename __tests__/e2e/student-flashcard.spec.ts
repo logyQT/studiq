@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import { t } from './utils';
+import { expect, test } from '@playwright/test';
+import { t } from '#test/e2e/utils';
 
 const email = 'student@dev.local';
 const password = 'pass';

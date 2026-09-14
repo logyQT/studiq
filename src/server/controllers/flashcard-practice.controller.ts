@@ -1,56 +1,49 @@
-import { flashcardPracticeService } from '@/server/services';
-import { LogPracticeSchema, BatchPracticeSchema, CompleteSessionSchema } from '@/server/models';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
+import { isFailure } from '@/lib/service-result';
+import { BatchPracticeSchema, CompleteSessionSchema, LogPracticeSchema } from '@/server/models';
+import type { FlashcardPracticeService } from '@/server/services/flashcard-practice.service';
 
 export class FlashcardPracticeController {
-  async log(
-    flashcardId: string,
-    body: unknown,
-    ctx: RequestContext,
-  ): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = LogPracticeSchema.safeParse(body);
+  constructor(private flashcardPracticeService: FlashcardPracticeService) {}
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+  async log(flashcardId: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    const parsed = LogPracticeSchema.safeParse(body);
 
-      const result = await flashcardPracticeService.log(
-        flashcardId,
-        parsed.data.wasCorrect,
-        ctx,
-        parsed.data.responseTimeMs,
-        parsed.data.confidenceLevel,
-        parsed.data.sessionId,
-      );
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      return { success: true, statusCode: 201, data: result };
-    }, ctx);
+    const result = await this.flashcardPracticeService.log(
+      flashcardId,
+      parsed.data.wasCorrect,
+      ctx,
+      parsed.data.responseTimeMs,
+      parsed.data.confidenceLevel,
+      parsed.data.sessionId,
+    );
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.created(result.data);
   }
 
   async batch(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = BatchPracticeSchema.safeParse(body);
+    const parsed = BatchPracticeSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const result = await flashcardPracticeService.batch(parsed.data, ctx);
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    const result = await this.flashcardPracticeService.batch(parsed.data, ctx);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async getDueCards(
@@ -59,97 +52,128 @@ export class FlashcardPracticeController {
     limit: number = 20,
     newOnly: boolean = false,
   ): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const cards = await flashcardPracticeService.getDueCards(ctx, filters, limit, newOnly);
-      return { success: true, statusCode: 200, data: cards };
-    }, ctx);
+    const result = await this.flashcardPracticeService.getDueCards(ctx, filters, limit, newOnly);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async getDueBreakdown(ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const result = await flashcardPracticeService.getDueBreakdown(ctx);
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    const result = await this.flashcardPracticeService.getDueBreakdown(ctx);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async getDueCount(
     ctx: RequestContext,
     filters: { topicIds?: string[]; deckIds?: string[] },
   ): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const result = await flashcardPracticeService.getDueCount(ctx, filters);
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    const result = await this.flashcardPracticeService.getDueCount(ctx, filters);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async getStatsForFlashcard(
     flashcardId: string,
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const stats = await flashcardPracticeService.getStatsForFlashcard(flashcardId, ctx);
-      return { success: true, statusCode: 200, data: stats };
-    }, ctx);
+    const result = await this.flashcardPracticeService.getStatsForFlashcard(flashcardId, ctx);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async getStatsAll(ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const stats = await flashcardPracticeService.getStatsAll(ctx);
-      return { success: true, statusCode: 200, data: stats };
-    }, ctx);
+    const result = await this.flashcardPracticeService.getStatsAll(ctx);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async getStateBreakdown(ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const breakdown = await flashcardPracticeService.getStateBreakdown(ctx);
-      return { success: true, statusCode: 200, data: breakdown };
-    }, ctx);
+    const result = await this.flashcardPracticeService.getStateBreakdown(ctx);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async getAllCardStats(
     ctx: RequestContext,
-    filters?: { deckIds?: string[]; topicIds?: string[]; state?: string; sortBy?: string; order?: string; limit?: number; cursor?: string },
+    filters?: {
+      deckIds?: string[];
+      topicIds?: string[];
+      state?: string;
+      sortBy?: string;
+      order?: string;
+      limit?: number;
+      cursor?: string;
+    },
   ): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const result = await flashcardPracticeService.getAllCardStats(ctx, filters);
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    const result = await this.flashcardPracticeService.getAllCardStats(ctx, filters);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async getSettings(ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const settings = await flashcardPracticeService.getSettings(ctx);
-      return { success: true, statusCode: 200, data: settings };
-    }, ctx);
+    const result = await this.flashcardPracticeService.getSettings(ctx);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async prepare(
     ctx: RequestContext,
     filters: { deckIds?: string[]; topicIds?: string[] },
   ): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const cards = await flashcardPracticeService.getCardsForPractice(ctx, filters);
-      return { success: true, statusCode: 200, data: cards };
-    }, ctx);
+    const result = await this.flashcardPracticeService.getCardsForPractice(ctx, filters);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 
   async completeSession(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = CompleteSessionSchema.safeParse(body);
+    const parsed = CompleteSessionSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
 
-      const result = await flashcardPracticeService.completeSession(parsed.data, ctx);
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    const result = await this.flashcardPracticeService.completeSession(parsed.data, ctx);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
   }
 }
-
-export const flashcardPracticeController = new FlashcardPracticeController();

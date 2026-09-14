@@ -1,9 +1,10 @@
 'use client';
 
+import { GraduationCap } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { GraduationCap } from 'lucide-react';
-import { LanguageToggle } from './LanguageToggle';
+import { LanguageToggle } from '@/components/layout/LanguageToggle';
+import { ThemeToggle } from '@/components/layout/ThemeToggle';
 
 export function Footer() {
   const t = useTranslations('Footer');
@@ -85,7 +86,10 @@ export function Footer() {
 
         <div className="mt-10 pt-8 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">{t('copyright')}</p>
-          <LanguageToggle />
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <LanguageToggle />
+          </div>
         </div>
       </div>
     </footer>

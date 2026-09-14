@@ -1,78 +1,88 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { universityMembersController } from '@/server/controllers/university-members.controller';
-import { universityMembersService } from '@/server/services';
-import { AppError } from '@/lib/errors';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { success, failure } from '@/lib/service-result';
+import { OrganizationMemberController } from '@/server/controllers/organization-member.controller';
+import type { RequestContext } from '@/lib/request-context';
 
-vi.mock('@/server/services', () => ({
-  universityMembersService: {
-    getProfile: vi.fn(),
-    listMembers: vi.fn(),
-    changeRole: vi.fn(),
-    removeMember: vi.fn(),
-  },
+vi.mock('@/lib/features', () => ({
+  requireFeature: vi.fn().mockResolvedValue(undefined),
+  getEnabledFeatures: vi.fn().mockResolvedValue([]),
 }));
 
-const mockService = vi.mocked(universityMembersService);
+function createMockService() {
+  return { listMembers: vi.fn(), changeRole: vi.fn(), removeMember: vi.fn() };
+}
 
-describe('UniversityMembersController', () => {
-  const userId = 'test-user-id';
+let mockService: ReturnType<typeof createMockService>;
+let controller: OrganizationMemberController;
 
+const mockCtx: RequestContext = {
+  traceId: 'test-trace',
+  userId: 'test-user-id',
+  accountType: 'student' as any,
+  orgRoleId: null,
+  activeOrgId: null,
+  url: 'http://localhost',
+  method: 'GET',
+  groupIds: [],
+  permissionScopes: {},
+};
+
+describe('OrganizationMemberController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockService = createMockService();
+    controller = new OrganizationMemberController(mockService as any);
   });
 
   describe('listMembers', () => {
-    it('returns members when user has university', async () => {
-      mockService.getProfile.mockResolvedValueOnce({ id: userId, university_id: 'uni-1' } as any);
-      const members = [{ id: 'user-1', role: 'student' }];
-      mockService.listMembers.mockResolvedValueOnce(members as any);
+    it('returns members', async () => {
+      const members = [{ id: 'user-1', account_type: 'student' }];
+      mockService.listMembers.mockResolvedValueOnce(success(members));
 
-      const response = await universityMembersController.listMembers(userId);
+      const response = await controller.listMembers(mockCtx);
 
-      expect(response).toEqual({ success: true, statusCode: 200, data: members });
-    });
-
-    it('returns FORBIDDEN when user has no university', async () => {
-      mockService.getProfile.mockResolvedValueOnce({ id: userId, university_id: null } as any);
-
-      const response = await universityMembersController.listMembers(userId);
-
-      expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+      expect(response.success).toBe(true);
+      expect(response.statusCode).toBe(200);
+      expect((response as any).data).toEqual(members);
     });
 
     it('passes roleFilter to service', async () => {
-      mockService.getProfile.mockResolvedValueOnce({ id: userId, university_id: 'uni-1' } as any);
-      mockService.listMembers.mockResolvedValueOnce([]);
+      mockService.listMembers.mockResolvedValueOnce(success([]));
 
-      await universityMembersController.listMembers(userId, 'student');
+      await controller.listMembers(mockCtx, 'student');
 
-      expect(mockService.listMembers).toHaveBeenCalledWith('uni-1', 'student');
+      expect(mockService.listMembers).toHaveBeenCalledWith(mockCtx, 'student');
     });
 
-    it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.getProfile.mockResolvedValueOnce({ id: userId, university_id: 'uni-1' } as any);
-      mockService.listMembers.mockRejectedValueOnce(new Error('unexpected'));
+    it('returns error when service returns failure', async () => {
+      mockService.listMembers.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-      const response = await universityMembersController.listMembers(userId);
+      const response = await controller.listMembers(mockCtx);
 
-      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(500);
+      expect((response as any).error).toBe('INTERNAL_SERVER');
     });
   });
 
+  const validUserId = '550e8400-e29b-41d4-a716-446655440001';
+
   describe('changeRole', () => {
     it('returns success when service changes role successfully', async () => {
-      const body = { targetUserId: 'user-123', newRole: 'university_admin' };
-      mockService.changeRole.mockResolvedValueOnce({ success: true });
+      const body = { targetUserId: validUserId, newOrgRoleId: '00000000-0000-4000-8000-000000000001' };
+      mockService.changeRole.mockResolvedValueOnce(success(undefined));
 
-      const response = await universityMembersController.changeRole(userId, body);
+      const response = await controller.changeRole(mockCtx, body);
 
-      expect(response).toEqual({ success: true, statusCode: 200, data: { success: true } });
+      expect(response.success).toBe(true);
+      expect(response.statusCode).toBe(200);
+      expect((response as any).data).toEqual({ success: true });
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
-      const response = await universityMembersController.changeRole(userId, {
+      const response = await controller.changeRole(mockCtx, {
         targetUserId: '',
-        newRole: 'invalid',
+        newOrgRoleId: 'invalid',
       });
 
       expect(response.success).toBe(false);
@@ -80,58 +90,70 @@ describe('UniversityMembersController', () => {
       expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
     });
 
-    it('returns error when service throws AppError', async () => {
-      mockService.changeRole.mockRejectedValueOnce(new AppError('FORBIDDEN'));
+    it('returns error when service returns failure', async () => {
+      mockService.changeRole.mockResolvedValueOnce(failure('FORBIDDEN'));
 
-      const response = await universityMembersController.changeRole(userId, {
-        targetUserId: 'user-123',
-        newRole: 'university_admin',
+      const response = await controller.changeRole(mockCtx, {
+        targetUserId: validUserId,
+        newOrgRoleId: '00000000-0000-4000-8000-000000000001',
       });
 
-      expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(403);
+      expect((response as any).error).toBe('FORBIDDEN');
     });
 
-    it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.changeRole.mockRejectedValueOnce(new Error('unexpected'));
+    it('returns error when service returns failure', async () => {
+      mockService.changeRole.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-      const response = await universityMembersController.changeRole(userId, {
-        targetUserId: 'user-123',
-        newRole: 'university_admin',
+      const response = await controller.changeRole(mockCtx, {
+        targetUserId: validUserId,
+        newOrgRoleId: '00000000-0000-4000-8000-000000000001',
       });
 
-      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(500);
+      expect((response as any).error).toBe('INTERNAL_SERVER');
     });
   });
 
   describe('removeMember', () => {
     it('returns success when service removes member successfully', async () => {
-      mockService.removeMember.mockResolvedValueOnce({ success: true });
+      mockService.removeMember.mockResolvedValueOnce(success(undefined));
 
-      const response = await universityMembersController.removeMember(userId, 'user-123');
+      const response = await controller.removeMember(mockCtx, 'user-123');
 
-      expect(response).toEqual({ success: true, statusCode: 200, data: { success: true } });
+      expect(response.success).toBe(true);
+      expect(response.statusCode).toBe(200);
+      expect((response as any).data).toEqual({ success: true });
     });
 
     it('returns BAD_REQUEST when targetUserId is empty', async () => {
-      const response = await universityMembersController.removeMember(userId, '');
+      const response = await controller.removeMember(mockCtx, '');
 
-      expect(response).toEqual({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(400);
+      expect((response as any).error).toBe('BAD_REQUEST');
     });
 
-    it('returns error when service throws AppError', async () => {
-      mockService.removeMember.mockRejectedValueOnce(new AppError('FORBIDDEN'));
+    it('returns error when service returns failure', async () => {
+      mockService.removeMember.mockResolvedValueOnce(failure('FORBIDDEN'));
 
-      const response = await universityMembersController.removeMember(userId, 'user-123');
+      const response = await controller.removeMember(mockCtx, 'user-123');
 
-      expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(403);
+      expect((response as any).error).toBe('FORBIDDEN');
     });
 
-    it('returns INTERNAL_SERVER when service throws generic error', async () => {
-      mockService.removeMember.mockRejectedValueOnce(new Error('unexpected'));
+    it('returns error when service returns failure', async () => {
+      mockService.removeMember.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-      const response = await universityMembersController.removeMember(userId, 'user-123');
+      const response = await controller.removeMember(mockCtx, 'user-123');
 
-      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(500);
+      expect((response as any).error).toBe('INTERNAL_SERVER');
     });
   });
 });

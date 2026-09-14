@@ -1,202 +1,254 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { forEachCopy, registerMock } from '#test/helpers/concurrent';
+import { POST as bulkPost } from '@/app/(backend)/api/v1/organization/invites/bulk/route';
 import {
-  POST as invitePost,
   GET as inviteGet,
-} from '@/app/(backend)/api/v1/university/invitations/route';
-import { POST as bulkPost } from '@/app/(backend)/api/v1/university/invitations/bulk/route';
-import { TEST_USERS, mockUser, cleanupInvitations, createRealClient } from './helpers';
-import { createNextRequest } from './test-utils';
+  POST as invitePost,
+} from '@/app/(backend)/api/v1/organization/invites/route';
+import {
+  before,
+  createTestUser,
+  type BeforeResult,
+  type TestUserFixture,
+} from '#test/helpers/test-user';
+import {
+  applyRegisteredMock,
+  cleanupInvitations,
+  cleanupOrganizationDeep,
+  createServiceClient,
+  mockUser,
+} from '#test/integration/helpers';
+import { createNextRequest } from '#test/integration/test-utils';
 
-describe('Invitations Integration', () => {
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    for (const user of Object.values(TEST_USERS)) {
-      await cleanupInvitations(user.id);
-    }
-  });
+forEachCopy((copyId) => {
+  describe(`Invitations Integration [${copyId}]`, () => {
+    registerMock(copyId, null);
 
-  describe('POST /api/v1/university/invitations', () => {
-    it('creates an invitation as university_admin and returns 201', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+    let fixture!: BeforeResult;
+    let student!: TestUserFixture;
+    let orgId!: string;
+    let adminRoleId!: string;
 
-      const req = createNextRequest('http://localhost/api/v1/university/invitations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'Invitee Name',
-          email: `invite-${Date.now()}@example.com`,
-          role: 'student',
-        }),
-      });
+    beforeAll(async () => {
+      // Manager creates the org via the API and becomes its admin member.
+      fixture = await before({ role: 'manager', org: true });
+      orgId = fixture.orgId!;
+      student = await createTestUser({ role: 'student' });
 
-      const response = await invitePost(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(201);
-      expect(body.success).toBe(true);
-    });
-
-    it('returns 422 when email is invalid', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
-
-      const req = createNextRequest('http://localhost/api/v1/university/invitations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'not-an-email', role: 'student' }),
-      });
-
-      const response = await invitePost(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(422);
-      expect(body.success).toBe(false);
-    });
-
-    it('returns 401 when not authenticated', async () => {
-      mockUser(null);
-
-      const req = createNextRequest('http://localhost/api/v1/university/invitations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'test@example.com', role: 'student' }),
-      });
-
-      const response = await invitePost(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(body.success).toBe(false);
-    });
-
-    it('returns 403 when student tries to invite', async () => {
-      mockUser(TEST_USERS.STUDENT);
-
-      const req = createNextRequest('http://localhost/api/v1/university/invitations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Invitee', email: 'test@example.com', role: 'student' }),
-      });
-
-      const response = await invitePost(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(403);
-      expect(body.success).toBe(false);
-    });
-  });
-
-  describe('GET /api/v1/university/invitations?token=...', () => {
-    it('returns invitation when token is valid', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
-
-      const supabase = createRealClient();
-      const { data: invitation, error: insertError } = await supabase
-        .from('invitations')
-        .insert({
-          name: 'Valid Invitee',
-          email: 'valid@example.com',
-          target_role: 'student',
-          token: 'valid-token-123',
-          expires_at: new Date(Date.now() + 86400000).toISOString(),
-          inviter_id: TEST_USERS.UNIVERSITY_ADMIN.id,
-          university_id: '00000000-0000-4000-8000-000000000001',
-        })
-        .select()
+      const supabase = createServiceClient();
+      const { data: adminRole } = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('name', 'admin')
         .single();
-      if (insertError || !invitation) throw new Error(`Failed to insert invitation: ${insertError?.message}`);
-
-      const req = createNextRequest(
-        `http://localhost/api/v1/university/invitations?token=${invitation.token}`,
-      );
-      const response = await inviteGet(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.data.email).toBe('valid@example.com');
+      if (!adminRole) throw new Error('Admin role not found for fixture org');
+      adminRoleId = adminRole.id;
     });
 
-    it('returns 404 when token does not exist', async () => {
-      const req = createNextRequest(
-        'http://localhost/api/v1/university/invitations?token=nonexistent-token',
-      );
-      const response = await inviteGet(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(body.success).toBe(false);
+    beforeEach(async () => {
+      vi.clearAllMocks();
+      applyRegisteredMock(copyId);
+      await cleanupInvitations(fixture.user.id);
+      await cleanupInvitations(student.id);
     });
 
-    it('returns 410 when token is expired', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+    afterAll(async () => {
+      if (orgId) {
+        await cleanupOrganizationDeep(orgId);
+      }
+    });
 
-      const supabase = createRealClient();
-      await supabase.from('invitations').insert({
-        name: 'Expired Invitee',
-        email: 'expired@example.com',
-        target_role: 'student',
-        token: 'expired-token-123',
-        expires_at: new Date(Date.now() - 86400000).toISOString(),
-        inviter_id: TEST_USERS.UNIVERSITY_ADMIN.id,
-        university_id: '00000000-0000-4000-8000-000000000001',
+    describe('POST /api/v1/organization/invites', () => {
+      it('creates an invitation as manager and returns 201', async () => {
+        mockUser(fixture.user);
+
+        const req = createNextRequest('http://localhost/api/v1/organization/invites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: `invite-${copyId}-${Date.now()}@example.com`,
+            targetOrgRoleId: adminRoleId,
+            organizationId: orgId,
+          }),
+        }, { active_org_id: orgId });
+
+        const response = await invitePost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(201);
+        expect(body.success).toBe(true);
       });
 
-      const req = createNextRequest(
-        'http://localhost/api/v1/university/invitations?token=expired-token-123',
-      );
-      const response = await inviteGet(req);
-      const body = await response.json();
+      it('returns 422 when email is invalid', async () => {
+        mockUser(fixture.user);
 
-      expect(response.status).toBe(410);
-      expect(body.success).toBe(false);
-    });
+        const req = createNextRequest('http://localhost/api/v1/organization/invites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'not-an-email', targetOrgRoleId: adminRoleId }),
+        }, { active_org_id: orgId });
 
-    it('returns 400 when token is empty', async () => {
-      const req = createNextRequest('http://localhost/api/v1/university/invitations?token=');
-      const response = await inviteGet(req);
-      const body = await response.json();
+        const response = await invitePost(req);
+        const body = await response.json();
 
-      expect(response.status).toBe(400);
-      expect(body.success).toBe(false);
-    });
-  });
-
-  describe('POST /api/v1/university/invitations/bulk', () => {
-    it('bulk creates invitations and returns 200', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
-
-      const req = createNextRequest('http://localhost/api/v1/university/invitations/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          invitations: [
-            { name: 'Bulk User Alpha', email: `bulk1-${Date.now()}@example.com`, role: 'student' },
-            { name: 'Bulk User Beta', email: `bulk2-${Date.now()}@example.com`, role: 'student' },
-          ],
-        }),
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
       });
 
-      const response = await bulkPost(req);
-      const body = await response.json();
+      it('returns 401 when not authenticated', async () => {
+        mockUser(null);
 
-      expect(response.status).toBe(200);
-      expect(body.success).toBe(true);
-      expect(Array.isArray(body.data.results)).toBe(true);
-    });
+        const req = createNextRequest('http://localhost/api/v1/organization/invites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'test@example.com', targetOrgRoleId: adminRoleId }),
+        });
 
-    it('returns 422 when emails array is empty', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+        const response = await invitePost(req);
+        const body = await response.json();
 
-      const req = createNextRequest('http://localhost/api/v1/university/invitations/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invitations: [] }),
+        expect(response.status).toBe(401);
+        expect(body.success).toBe(false);
       });
 
-      const response = await bulkPost(req);
-      const body = await response.json();
+      it('returns 403 when student tries to invite', async () => {
+        mockUser(student);
 
-      expect(response.status).toBe(422);
-      expect(body.success).toBe(false);
+        const req = createNextRequest('http://localhost/api/v1/organization/invites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'test@example.com', targetOrgRoleId: adminRoleId }),
+        }, { active_org_id: orgId });
+
+        const response = await invitePost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
+      });
+    });
+
+    describe('GET /api/v1/organization/invites?token=...', () => {
+      it('returns invitation when token is valid', async () => {
+        // Use mockUser to get a service-role client — anon role has no
+        // SELECT permission on the invitations table (99_dev_grants.sql).
+        mockUser(fixture.user);
+
+        const supabase = createServiceClient();
+        const { data: invitation, error } = await supabase
+          .from('invitations')
+          .insert({
+            email: `valid-${copyId}@example.com`,
+            target_org_role_id: adminRoleId,
+            token: `valid-token-${copyId}-${Date.now()}`,
+            expires_at: new Date(Date.now() + 86400000).toISOString(),
+            inviter_id: fixture.user.id,
+            organization_id: orgId,
+          })
+          .select()
+          .single();
+        if (error || !invitation) throw new Error(`Failed to insert invitation: ${error?.message}`);
+
+        const req = createNextRequest(
+          `http://localhost/api/v1/organization/invites?token=${invitation.token}`,
+        );
+        const response = await inviteGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.email).toBe(`valid-${copyId}@example.com`);
+      });
+
+      it('returns 404 when token does not exist', async () => {
+        // Use mockUser for consistent service-role access to invitations.
+        mockUser(fixture.user);
+
+        const req = createNextRequest(
+          `http://localhost/api/v1/organization/invites?token=nonexistent-token-${copyId}`,
+        );
+        const response = await inviteGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(404);
+        expect(body.success).toBe(false);
+      });
+
+      it('returns 410 when token is expired', async () => {
+        // Use mockUser to get a service-role client — anon role has no
+        // SELECT permission on the invitations table (99_dev_grants.sql).
+        mockUser(fixture.user);
+
+        const supabase = createServiceClient();
+        const token = `expired-token-${copyId}-${Date.now()}`;
+        await supabase.from('invitations').insert({
+          email: `expired-${copyId}@example.com`,
+          target_org_role_id: adminRoleId,
+          token,
+          expires_at: new Date(Date.now() - 86400000).toISOString(),
+          inviter_id: fixture.user.id,
+          organization_id: orgId,
+        });
+
+        const req = createNextRequest(
+          `http://localhost/api/v1/organization/invites?token=${token}`,
+        );
+        const response = await inviteGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(410);
+        expect(body.success).toBe(false);
+      });
+
+      it('returns 401 when token is empty (treated as no token, requires auth)', async () => {
+        mockUser(null);
+        const req = createNextRequest('http://localhost/api/v1/organization/invites?token=');
+        const response = await inviteGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(401);
+        expect(body.success).toBe(false);
+      });
+    });
+
+    describe('POST /api/v1/organization/invites/bulk', () => {
+      it('bulk creates invitations and returns 200', async () => {
+        mockUser(fixture.user);
+
+        const req = createNextRequest('http://localhost/api/v1/organization/invites/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            invitations: [
+              { email: `bulk1-${copyId}-${Date.now()}@example.com`, targetOrgRoleId: adminRoleId },
+              { email: `bulk2-${copyId}-${Date.now()}@example.com`, targetOrgRoleId: adminRoleId },
+            ],
+          }),
+        }, { active_org_id: orgId });
+
+        const response = await bulkPost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+        expect(Array.isArray(body.data.results)).toBe(true);
+      });
+
+      it('returns 422 when invitations array is empty', async () => {
+        mockUser(fixture.user);
+
+        const req = createNextRequest('http://localhost/api/v1/organization/invites/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invitations: [] }),
+        }, { active_org_id: orgId });
+
+        const response = await bulkPost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+      });
     });
   });
 });

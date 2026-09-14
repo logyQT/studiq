@@ -11,7 +11,7 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   // Directory where your E2E tests are located
-  testDir: './e2e',
+  testDir: './__tests__/e2e',
 
   // Run tests in files in parallel
   fullyParallel: true,
@@ -28,19 +28,12 @@ export default defineConfig({
   // Reporter to use. See https://playwright.dev/docs/test-reporters
   reporter: 'html',
 
-  // Shared settings for all the projects below.
   use: {
-    // Base URL to use in actions like `await page.goto('/')`.
     baseURL: 'http://localhost:3000',
-
-    // Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer
     trace: 'on-first-retry',
-
-    // Take a screenshot on failure
     screenshot: 'only-on-failure',
   },
 
-  /* Configure projects for major browsers */
   projects: [
     {
       name: 'chromium',
@@ -65,11 +58,8 @@ export default defineConfig({
     // },
   ],
 
-  /* Run your local dev server before starting the tests */
   webServer: {
-    // Using bun since a bun.lock file is present in your repo.
-    // Change to 'npm run dev' or 'yarn dev' if you prefer another package manager.
-    command: 'bunx supabase db reset && bun run build && bun run start',
+    command: 'bun dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,

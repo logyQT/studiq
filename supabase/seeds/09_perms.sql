@@ -14,71 +14,67 @@ INSERT INTO public.permissions (name) VALUES
   ('deck.read'),
   ('deck.create'),
   ('deck.update'),
-  ('deck.delete');
+  ('deck.delete'),
+  ('question.read'),
+  ('question.create'),
+  ('question.update'),
+  ('question.delete'),
+  ('question_bank.read'),
+  ('question_bank.create'),
+  ('question_bank.update'),
+  ('question_bank.delete')
+ON CONFLICT DO NOTHING;
 
 -- ==========================================
--- SEED: role_permissions
+-- SEED: org_role_permissions
+-- Maps dev org roles to permissions with scopes.
 -- ==========================================
 
--- free: all own
-INSERT INTO public.role_permissions (role, permission_id, scope)
-SELECT 'free', p.id, 'own'
-FROM public.permissions p
-WHERE p.name IN (
-  'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
-  'topic.read', 'topic.create', 'topic.update', 'topic.delete',
-  'deck.read', 'deck.create', 'deck.update', 'deck.delete'
-);
+-- member: read=group, create/update/delete=own
+INSERT INTO public.org_role_permissions (org_role_id, permission_name, scope)
+SELECT r.id, p.name,
+  CASE
+    WHEN p.name LIKE '%.read' THEN 'group'
+    ELSE 'own'
+  END
+FROM public.org_roles r, public.permissions p
+WHERE r.organization_id = '00000000-0000-4000-8000-000000000001'
+  AND r.name = 'member'
+  AND p.name IN (
+    'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
+    'topic.read', 'topic.create', 'topic.update', 'topic.delete',
+    'deck.read', 'deck.create', 'deck.update', 'deck.delete',
+    'question.read', 'question.create', 'question.update', 'question.delete',
+    'question_bank.read', 'question_bank.create', 'question_bank.update', 'question_bank.delete'
+  )
+ON CONFLICT DO NOTHING;
 
--- premium: all own
-INSERT INTO public.role_permissions (role, permission_id, scope)
-SELECT 'premium', p.id, 'own'
-FROM public.permissions p
-WHERE p.name IN (
-  'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
-  'topic.read', 'topic.create', 'topic.update', 'topic.delete',
-  'deck.read', 'deck.create', 'deck.update', 'deck.delete'
-);
+-- teacher: all=own
+INSERT INTO public.org_role_permissions (org_role_id, permission_name, scope)
+SELECT r.id, p.name, 'own'
+FROM public.org_roles r, public.permissions p
+WHERE r.organization_id = '00000000-0000-4000-8000-000000000001'
+  AND r.name = 'teacher'
+  AND p.name IN (
+    'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
+    'topic.read', 'topic.create', 'topic.update', 'topic.delete',
+    'deck.read', 'deck.create', 'deck.update', 'deck.delete',
+    'question.read', 'question.create', 'question.update', 'question.delete',
+    'question_bank.read', 'question_bank.create', 'question_bank.update', 'question_bank.delete'
+  )
+ON CONFLICT DO NOTHING;
 
--- student: read=university, rest=own
-INSERT INTO public.role_permissions (role, permission_id, scope)
-SELECT 'student', p.id,
-  CASE WHEN p.name IN ('flashcard.read', 'topic.read', 'deck.read') THEN 'university' ELSE 'own' END
-FROM public.permissions p
-WHERE p.name IN (
-  'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
-  'topic.read', 'topic.create', 'topic.update', 'topic.delete',
-  'deck.read', 'deck.create', 'deck.update', 'deck.delete'
-);
-
--- teacher: create=university, read/update/delete=own
-INSERT INTO public.role_permissions (role, permission_id, scope)
-SELECT 'teacher', p.id,
-  CASE WHEN p.name IN ('flashcard.create', 'topic.create', 'deck.create') THEN 'university' ELSE 'own' END
-FROM public.permissions p
-WHERE p.name IN (
-  'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
-  'topic.read', 'topic.create', 'topic.update', 'topic.delete',
-  'deck.read', 'deck.create', 'deck.update', 'deck.delete'
-);
-
--- university_admin: create=own, rest=university
-INSERT INTO public.role_permissions (role, permission_id, scope)
-SELECT 'university_admin', p.id,
-  CASE WHEN p.name IN ('flashcard.create', 'topic.create', 'deck.create') THEN 'own' ELSE 'university' END
-FROM public.permissions p
-WHERE p.name IN (
-  'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
-  'topic.read', 'topic.create', 'topic.update', 'topic.delete',
-  'deck.read', 'deck.create', 'deck.update', 'deck.delete'
-);
-
--- sys_admin: all any
-INSERT INTO public.role_permissions (role, permission_id, scope)
-SELECT 'sys_admin', p.id, 'any'
-FROM public.permissions p
-WHERE p.name IN (
-  'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
-  'topic.read', 'topic.create', 'topic.update', 'topic.delete',
-  'deck.read', 'deck.create', 'deck.update', 'deck.delete'
-);
+-- admin: all=organization
+INSERT INTO public.org_role_permissions (org_role_id, permission_name, scope)
+SELECT r.id, p.name, 'organization'
+FROM public.org_roles r, public.permissions p
+WHERE r.organization_id = '00000000-0000-4000-8000-000000000001'
+  AND r.name = 'admin'
+  AND p.name IN (
+    'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
+    'topic.read', 'topic.create', 'topic.update', 'topic.delete',
+    'deck.read', 'deck.create', 'deck.update', 'deck.delete',
+    'question.read', 'question.create', 'question.update', 'question.delete',
+    'question_bank.read', 'question_bank.create', 'question_bank.update', 'question_bank.delete'
+  )
+ON CONFLICT DO NOTHING;

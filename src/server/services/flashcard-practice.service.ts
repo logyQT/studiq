@@ -1,12 +1,24 @@
-import { log } from '@/lib/logger';
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
-import type { RequestContext } from '@/lib/request-context';
-import { flashcardSpacedRepetitionService } from './flashcard-spaced-repetition.service';
-import type { BatchPracticeInput, CompleteSessionInput, PracticeCardData, Rating } from '@/server/models';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildQueryFilter, Permission } from '@/lib/rbac';
+import type { RequestContext } from '@/lib/request-context';
+import { type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
+import type {
+  BatchPracticeInput,
+  CardStatsItem,
+  CompleteSessionInput,
+  DueBreakdownResponse,
+  DueCountResponse,
+  DueFlashcardItem,
+  FlashcardRow,
+  PracticeSummary,
+  Rating,
+} from '@/server/models';
+import { flashcardSpacedRepetitionService } from '@/server/services/flashcard-spaced-repetition.service';
 
 export class FlashcardPracticeService {
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
+
   async log(
     flashcardId: string,
     wasCorrect: boolean,
@@ -14,8 +26,8 @@ export class FlashcardPracticeService {
     responseTimeMs?: number,
     confidenceLevel?: number,
     sessionId?: string,
-  ) {
-    const supabase = await createClient();
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const { data: practice, error } = await supabase
       .from('flashcard_practice')
@@ -30,50 +42,58 @@ export class FlashcardPracticeService {
       .select()
       .single();
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    const reviewState = await this.upsertReviewState(flashcardId, wasCorrect, confidenceLevel, ctx);
+    const reviewStateResult = await this.upsertReviewState(
+      flashcardId,
+      wasCorrect,
+      confidenceLevel,
+      ctx,
+    );
+    if (!reviewStateResult.success) return reviewStateResult;
 
-    return {
+    return success({
       practice,
-      reviewState,
-    };
+      reviewState: reviewStateResult.data as any,
+    });
   }
 
-  async batch(data: BatchPracticeInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  async batch(data: BatchPracticeInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
     const results: Array<{ flashcardId: string; isLeech: boolean }> = [];
 
     for (const item of data.items) {
-      const { error: practiceError } = await supabase
-        .from('flashcard_practice')
-        .insert({
-          user_id: ctx.userId,
-          flashcard_id: item.flashcardId,
-          was_correct: item.wasCorrect,
-          confidence_level: item.confidenceLevel ?? null,
-          session_id: item.sessionId ?? null,
-        });
+      const { error: practiceError } = await supabase.from('flashcard_practice').insert({
+        user_id: ctx.userId,
+        flashcard_id: item.flashcardId,
+        was_correct: item.wasCorrect,
+        confidence_level: item.confidenceLevel ?? null,
+        session_id: item.sessionId ?? null,
+      });
 
-      if (practiceError) {
-        results.push({ flashcardId: item.flashcardId, isLeech: false });
-        continue;
-      }
+      if (practiceError) return toDbFailure(practiceError);
 
-      try {
-        const reviewState = await this.upsertReviewState(item.flashcardId, item.wasCorrect, item.confidenceLevel, ctx);
-        results.push({ flashcardId: item.flashcardId, isLeech: reviewState.is_leech });
-      } catch (err) {
-        log.system.error(`[batch] upsertReviewState failed for card ${item.flashcardId}`, { metadata: { err } });
-        results.push({ flashcardId: item.flashcardId, isLeech: false });
-      }
+      const reviewStateResult = await this.upsertReviewState(
+        item.flashcardId,
+        item.wasCorrect,
+        item.confidenceLevel,
+        ctx,
+      );
+      if (!reviewStateResult.success) return reviewStateResult;
+      results.push({
+        flashcardId: item.flashcardId,
+        isLeech: (reviewStateResult.data as any).is_leech,
+      });
     }
 
-    return { success: true, results };
+    return success({ success: true, results });
   }
 
-  private async getReviewState(flashcardId: string, ctx: RequestContext) {
-    const supabase = await createClient();
+  private async getReviewState(
+    flashcardId: string,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const { data } = await supabase
       .from('flashcard_review_state')
@@ -82,11 +102,11 @@ export class FlashcardPracticeService {
       .eq('flashcard_id', flashcardId)
       .maybeSingle();
 
-    return data;
+    return success(data);
   }
 
-  private async ensureStudySettings(ctx: RequestContext) {
-    const supabase = await createClient();
+  private async ensureStudySettings(ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const { data: existing } = await supabase
       .from('user_study_settings')
@@ -94,7 +114,7 @@ export class FlashcardPracticeService {
       .eq('user_id', ctx.userId)
       .maybeSingle();
 
-    if (existing) return existing;
+    if (existing) return success(existing);
 
     const { data: created, error } = await supabase
       .from('user_study_settings')
@@ -102,13 +122,15 @@ export class FlashcardPracticeService {
       .select()
       .single();
 
-    if (error) throw mapSupabaseError(error);
-    return created;
+    if (error) return toDbFailure(error);
+    return success(created);
   }
 
-  private async resetDailyIfNeeded(ctx: RequestContext) {
-    const supabase = await createClient();
-    const settings = await this.ensureStudySettings(ctx);
+  private async resetDailyIfNeeded(ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
+    const settingsResult = await this.ensureStudySettings(ctx);
+    if (!settingsResult.success) return settingsResult;
+    const settings = settingsResult.data as any;
 
     const today = new Date().toISOString().split('T')[0];
     if (settings.daily_reset_date < today) {
@@ -119,23 +141,46 @@ export class FlashcardPracticeService {
         .select()
         .single();
 
-      if (error) throw mapSupabaseError(error);
-      return updated;
+      if (error) return toDbFailure(error);
+      return success(updated);
     }
 
-    return settings;
+    return success(settings);
   }
 
-  async getSettings(ctx: RequestContext) {
-    const settings = await this.resetDailyIfNeeded(ctx);
-    return {
+  async getSettings(ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const settingsResult = await this.resetDailyIfNeeded(ctx);
+    if (!settingsResult.success) return settingsResult;
+    const settings = settingsResult.data as any;
+    const budget = Math.max(0, settings.new_cards_per_day - settings.new_cards_introduced);
+    const actualNew = await this.countNewCards(ctx);
+    return success({
       learningSteps: settings.learning_steps,
       newCardsPerDay: settings.new_cards_per_day,
       newCardsIntroduced: settings.new_cards_introduced,
       leechThreshold: settings.leech_threshold,
       dailyResetDate: settings.daily_reset_date,
-      remainingNewCards: Math.max(0, settings.new_cards_per_day - settings.new_cards_introduced),
-    };
+      remainingNewCards: Math.min(budget, actualNew),
+      totalNewCards: actualNew,
+      dailyReviewGoal: settings.daily_review_goal ?? 0,
+    });
+  }
+
+  private async countNewCards(ctx: RequestContext): Promise<number> {
+    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    if (filter._impossible) return 0;
+
+    const { filterType, organizationId } = resolveFilterType(filter, ctx);
+
+    const supabase = await this.createClient();
+    const { data, error } = await supabase.rpc('count_new_cards', {
+      p_user_id: ctx.userId,
+      p_filter_type: filterType,
+      p_organization_id: organizationId,
+    });
+
+    if (error) return 0;
+    return (data as number) ?? 0;
   }
 
   private async upsertReviewState(
@@ -143,13 +188,17 @@ export class FlashcardPracticeService {
     _wasCorrect: boolean,
     confidenceLevel: number | undefined,
     ctx: RequestContext,
-  ) {
-    const supabase = await createClient();
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
-    const existing = await this.getReviewState(flashcardId, ctx);
-    const settings = await this.resetDailyIfNeeded(ctx);
+    const existingResult = await this.getReviewState(flashcardId, ctx);
+    if (!existingResult.success) return existingResult;
+    const existing = existingResult.data as any;
+    const settingsResult = await this.resetDailyIfNeeded(ctx);
+    if (!settingsResult.success) return settingsResult;
+    const settings = settingsResult.data as any;
 
-    const rating = (Math.min(Math.max(confidenceLevel ?? 3, 1), 4)) as Rating;
+    const rating = Math.min(Math.max(confidenceLevel ?? 3, 1), 4) as Rating;
 
     const result = flashcardSpacedRepetitionService.calculateNextReview({
       learningState: existing?.learning_state ?? 'new',
@@ -167,36 +216,39 @@ export class FlashcardPracticeService {
 
     const { data: reviewState, error } = await supabase
       .from('flashcard_review_state')
-      .upsert({
-        user_id: ctx.userId,
-        flashcard_id: flashcardId,
-        easiness_factor: result.newEasinessFactor,
-        interval_days: result.newInterval,
-        repetitions: result.newRepetitions,
-        next_review_at: result.nextReviewAt.toISOString(),
-        last_reviewed_at: new Date().toISOString(),
-        last_quality: quality,
-        learning_state: result.learningState,
-        learning_step: result.learningStep,
-        lapse_count: result.lapseCount,
-        is_leech: result.isLeech,
-      }, {
-        onConflict: 'user_id, flashcard_id',
-      })
+      .upsert(
+        {
+          user_id: ctx.userId,
+          flashcard_id: flashcardId,
+          easiness_factor: result.newEasinessFactor,
+          interval_days: result.newInterval,
+          repetitions: result.newRepetitions,
+          next_review_at: result.nextReviewAt.toISOString(),
+          last_reviewed_at: new Date().toISOString(),
+          last_quality: quality,
+          learning_state: result.learningState,
+          learning_step: result.learningStep,
+          lapse_count: result.lapseCount,
+          is_leech: result.isLeech,
+        },
+        {
+          onConflict: 'user_id, flashcard_id',
+        },
+      )
       .select()
       .single();
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
     if (!existing) {
       const { error: introError } = await supabase
         .from('user_study_settings')
         .update({ new_cards_introduced: settings.new_cards_introduced + 1 })
         .eq('user_id', ctx.userId);
-      if (introError) throw mapSupabaseError(introError);
+      if (introError) return toDbFailure(introError);
     }
 
-    return reviewState;
+    return success(reviewState);
   }
 
   async getDueCards(
@@ -204,32 +256,23 @@ export class FlashcardPracticeService {
     filters: { topicIds?: string[]; deckIds?: string[] },
     limit: number = 20,
     newOnly: boolean = false,
-  ) {
-    const supabase = await createClient();
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return [];
+    if (filter._impossible) return success([]);
 
-    let filterType: string;
-    let universityId: string | null;
-    if (filter.or) {
-      filterType = 'university';
-      universityId = ctx.universityId ?? null;
-    } else if (filter.created_by) {
-      filterType = 'own';
-      universityId = null;
-    } else {
-      filterType = 'any';
-      universityId = null;
-    }
+    const { filterType, organizationId } = resolveFilterType(filter, ctx);
 
-    const settings = await this.resetDailyIfNeeded(ctx);
+    const settingsResult = await this.resetDailyIfNeeded(ctx);
+    if (!settingsResult.success) return settingsResult;
+    const settings = settingsResult.data as any;
     const newCardLimit = Math.max(0, settings.new_cards_per_day - settings.new_cards_introduced);
 
     const { data: rpcResult, error: rpcError } = await supabase.rpc('get_due_flashcards', {
       p_user_id: ctx.userId,
       p_filter_type: filterType,
-      p_university_id: universityId,
+      p_organization_id: organizationId,
       p_limit: newOnly ? Math.min(limit, newCardLimit) : limit,
       p_deck_ids: filters.deckIds?.length ? filters.deckIds : null,
       p_topic_ids: filters.topicIds?.length ? filters.topicIds : null,
@@ -237,39 +280,30 @@ export class FlashcardPracticeService {
       p_new_only: newOnly,
     });
 
-    if (rpcError) throw mapSupabaseError(rpcError);
-    const cards = (rpcResult as unknown as Array<{
-      id: string; front: string; back: string;
-      createdAt: string; reviewState: Record<string, unknown> | null;
-      deckName: string | null;
-      topicNames: string[];
-    }>) ?? [];
+    if (rpcError) return toDbFailure(rpcError);
+    const cards = (rpcResult as unknown as DueFlashcardItem[]) ?? [];
 
-    return cards;
+    return success(cards);
   }
 
-  async getDueBreakdown(ctx: RequestContext) {
-    const supabase = await createClient();
+  async getDueBreakdown(ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return { total: 0, nextReviewAt: null, byTopic: {}, byDeck: {} };
+    if (filter._impossible)
+      return success({ total: 0, nextReviewAt: null, byTopic: {}, byDeck: {} });
 
     const { data, error } = await supabase.rpc('get_due_breakdown', {
       p_user_id: ctx.userId,
-      p_created_by: filter.created_by ?? (filter.or ? ctx.userId : null),
-      p_university_id: ctx.universityId ?? null,
+      p_created_by: filter.created_by ?? null,
+      p_organization_id: ctx.activeOrgId ?? null,
       p_topic_ids: null,
       p_deck_ids: null,
     });
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    const rpcResult = data as {
-      total: number;
-      nextReviewAt: string | null;
-      byTopic: Array<{ topic_id: string; count: number }>;
-      byDeck: Array<{ deck_id: string; count: number }>;
-    };
+    const rpcResult = data as DueBreakdownResponse;
 
     const byTopic: Record<string, number> = {};
     for (const t of rpcResult.byTopic ?? []) byTopic[t.topic_id] = t.count;
@@ -277,95 +311,130 @@ export class FlashcardPracticeService {
     const byDeck: Record<string, number> = {};
     for (const d of rpcResult.byDeck ?? []) byDeck[d.deck_id] = d.count;
 
-    return { total: rpcResult.total, nextReviewAt: rpcResult.nextReviewAt, byTopic, byDeck };
+    return success({
+      total: rpcResult.total,
+      nextReviewAt: rpcResult.nextReviewAt,
+      byTopic,
+      byDeck,
+    });
   }
 
   async getDueCount(
     ctx: RequestContext,
     filters: { topicIds?: string[]; deckIds?: string[] },
-  ) {
-    const supabase = await createClient();
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const rbac = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (rbac._impossible) return { count: 0 };
+    if (rbac._impossible) return success({ count: 0 });
 
     const { data, error } = await supabase.rpc('get_due_breakdown', {
       p_user_id: ctx.userId,
-      p_created_by: rbac.created_by ?? (rbac.or ? ctx.userId : null),
-      p_university_id: ctx.universityId ?? null,
+      p_created_by: rbac.created_by ?? null,
+      p_organization_id: ctx.activeOrgId ?? null,
       p_topic_ids: filters.topicIds?.length ? filters.topicIds : null,
       p_deck_ids: filters.deckIds?.length ? filters.deckIds : null,
     });
 
-    if (error) throw mapSupabaseError(error);
-    return { count: (data as { total: number }).total };
+    if (error) return toDbFailure(error);
+    return success({ count: (data as DueCountResponse).total });
   }
 
-  async getStatsAll(ctx: RequestContext) {
-    const supabase = await createClient();
+  async getStatsAll(ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
+    const suspendedCardIds = await this.getSuspendedCardIds(ctx);
 
-    const { count: totalPracticed, error: countError } = await supabase
+    let practiceQuery = supabase
       .from('flashcard_practice')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', ctx.userId);
 
-    if (countError) throw mapSupabaseError(countError);
+    if (suspendedCardIds.length > 0) {
+      practiceQuery = practiceQuery.filter(
+        'flashcard_id',
+        'not.in',
+        `(${suspendedCardIds.join(',')})`,
+      );
+    }
 
-    const { data: stateRows } = await supabase
-      .from('flashcard_review_state')
-      .select('*')
-      .eq('user_id', ctx.userId);
+    const { count: totalPracticed, error: countError } = await practiceQuery;
+    if (countError) return toDbFailure(countError);
+
+    let stateQuery = supabase.from('flashcard_review_state').select('*').eq('user_id', ctx.userId);
+
+    if (suspendedCardIds.length > 0) {
+      stateQuery = stateQuery.filter('flashcard_id', 'not.in', `(${suspendedCardIds.join(',')})`);
+    }
+
+    const { data: stateRows } = await stateQuery;
+    const filteredStates = stateRows ?? [];
 
     const now = new Date();
-    const totalDue = (stateRows ?? []).filter(
-      (s) => new Date(s.next_review_at) <= now,
-    ).length;
+    const totalDue = filteredStates.filter((s) => new Date(s.next_review_at) <= now).length;
 
     const avgEF =
-      stateRows && stateRows.length > 0
-        ? stateRows.reduce((sum, s) => sum + s.easiness_factor, 0) / stateRows.length
+      filteredStates.length > 0
+        ? filteredStates.reduce((sum, s) => sum + s.easiness_factor, 0) / filteredStates.length
         : 0;
 
-    return {
+    return success({
       totalPracticed: totalPracticed ?? 0,
       totalDue,
-      totalCardsReviewed: stateRows?.length ?? 0,
+      totalCardsReviewed: filteredStates.length,
       averageEasinessFactor: Math.round(avgEF * 100) / 100,
-    };
+    });
   }
 
-  async getStateBreakdown(ctx: RequestContext) {
-    const supabase = await createClient();
+  async getStateBreakdown(ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
 
     if (filter._impossible) {
-      return { totalCards: 0, neverPracticed: 0, learning: 0, review: 0, relearning: 0, leeched: 0 };
+      return success({
+        totalCards: 0,
+        neverPracticed: 0,
+        learning: 0,
+        review: 0,
+        relearning: 0,
+        leeched: 0,
+      });
     }
 
     const { data, error } = await supabase.rpc('get_practice_state_breakdown', {
       p_user_id: ctx.userId,
-      p_created_by: filter.created_by ?? (filter.or ? ctx.userId : null),
-      p_university_id: ctx.universityId ?? null,
+      p_created_by: filter.created_by ?? null,
+      p_organization_id: ctx.activeOrgId ?? null,
     });
 
     if (error) {
-      log.system.error('[getStateBreakdown] RPC failed', { metadata: { error } });
-      return { totalCards: 0, neverPracticed: 0, learning: 0, review: 0, relearning: 0, leeched: 0 };
+      return success({
+        totalCards: 0,
+        neverPracticed: 0,
+        learning: 0,
+        review: 0,
+        relearning: 0,
+        leeched: 0,
+      });
     }
 
-    return data as {
-      totalCards: number;
-      neverPracticed: number;
-      learning: number;
-      review: number;
-      relearning: number;
-      leeched: number;
-    };
+    return success(
+      data as {
+        totalCards: number;
+        neverPracticed: number;
+        learning: number;
+        review: number;
+        relearning: number;
+        leeched: number;
+      },
+    );
   }
 
-  async getStatsForFlashcard(flashcardId: string, ctx: RequestContext) {
-    const supabase = await createClient();
+  async getStatsForFlashcard(
+    flashcardId: string,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const { data: attempts, error } = await supabase
       .from('flashcard_practice')
@@ -374,45 +443,54 @@ export class FlashcardPracticeService {
       .eq('user_id', ctx.userId)
       .order('practiced_at', { ascending: false });
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    const reviewState = await this.getReviewState(flashcardId, ctx);
+    const reviewStateResult = await this.getReviewState(flashcardId, ctx);
+    if (!reviewStateResult.success) return reviewStateResult;
 
     const totalAttempts = attempts?.length ?? 0;
     const correctAttempts = (attempts ?? []).filter((a) => a.was_correct).length;
-    const avgResponseTime = (attempts ?? []).reduce((sum, a) => sum + (a.response_time_ms ?? 0), 0) / (totalAttempts || 1);
+    const avgResponseTime =
+      (attempts ?? []).reduce((sum, a) => sum + (a.response_time_ms ?? 0), 0) /
+      (totalAttempts || 1);
 
-    return {
+    return success({
       totalAttempts,
       correctRate: totalAttempts > 0 ? Math.round((correctAttempts / totalAttempts) * 100) : 0,
       averageResponseTimeMs: Math.round(avgResponseTime),
-      reviewState,
-    };
+      reviewState: reviewStateResult.data,
+    });
   }
 
   async getAllCardStats(
     ctx: RequestContext,
-    filters?: { deckIds?: string[]; topicIds?: string[]; state?: string; sortBy?: string; order?: string; limit?: number; cursor?: string },
-  ) {
-    const supabase = await createClient();
-
-    interface CardStatsItem {
-      id: string; front: string; back: string; createdAt: string; state: string;
-      totalAttempts: number; correctRate: number; lastPracticedAt: string | null;
-      easinessFactor: number | null; intervalDays: number | null; nextReviewAt: string | null;
-      repetitions: number | null; isLeech: boolean; learningStep: number | null; lapseCount: number | null;
-    }
+    filters?: {
+      deckIds?: string[];
+      topicIds?: string[];
+      state?: string;
+      sortBy?: string;
+      order?: string;
+      limit?: number;
+      cursor?: string;
+    },
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const cardFilter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    let query = supabase
-      .from('flashcards')
-      .select('id, front, back, created_at');
+    const suspendedCardIds = await this.getSuspendedCardIds(ctx);
 
-    if (cardFilter._impossible) return { items: [], nextCursor: null, hasMore: false };
-    if (cardFilter.or) {
-      query = query.or(cardFilter.or);
-    } else if (cardFilter.created_by) {
+    let query = supabase.from('flashcards').select('id, front, back, created_at');
+
+    if (cardFilter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
+    if (cardFilter.organization_id) {
+      query = query.eq('organization_id', cardFilter.organization_id);
+    }
+    if (cardFilter.created_by) {
       query = query.eq('created_by', cardFilter.created_by);
+    }
+
+    if (suspendedCardIds.length > 0) {
+      query = query.filter('id', 'not.in', `(${suspendedCardIds.join(',')})`);
     }
 
     const pageSize = Math.min(filters?.limit ?? 50, 100);
@@ -422,13 +500,18 @@ export class FlashcardPracticeService {
     }
 
     const { data: flashcards, error } = await query;
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    const rows = (flashcards ?? []) as Array<{ id: string; front: string; back: string; created_at: string }>;
+    const rows = (flashcards ?? []) as Array<{
+      id: string;
+      front: string;
+      back: string;
+      created_at: string;
+    }>;
     const hasMore = rows.length > pageSize;
     const page = hasMore ? rows.slice(0, pageSize) : rows;
 
-    if (page.length === 0) return { items: [], nextCursor: null, hasMore: false };
+    if (page.length === 0) return success({ items: [], nextCursor: null, hasMore: false });
 
     const flashcardIds = page.map((fc) => fc.id);
 
@@ -447,9 +530,13 @@ export class FlashcardPracticeService {
       .in('flashcard_id', flashcardIds)
       .order('practiced_at', { ascending: false });
 
-    const practiceByCard = new Map<string, { total: number; correct: number; lastPracticedAt: string | null }>();
+    const practiceByCard = new Map<string, PracticeSummary>();
     for (const row of practiceRows ?? []) {
-      const entry = practiceByCard.get(row.flashcard_id) ?? { total: 0, correct: 0, lastPracticedAt: null };
+      const entry = practiceByCard.get(row.flashcard_id) ?? {
+        total: 0,
+        correct: 0,
+        lastPracticedAt: null,
+      };
       entry.total++;
       if (row.was_correct) entry.correct++;
       if (!entry.lastPracticedAt) entry.lastPracticedAt = row.practiced_at;
@@ -474,7 +561,10 @@ export class FlashcardPracticeService {
         createdAt: fc.created_at,
         state: stateLabel,
         totalAttempts: practice?.total ?? 0,
-        correctRate: practice && practice.total > 0 ? Math.round((practice.correct / practice.total) * 100) : 0,
+        correctRate:
+          practice && practice.total > 0
+            ? Math.round((practice.correct / practice.total) * 100)
+            : 0,
         lastPracticedAt: practice?.lastPracticedAt ?? null,
         easinessFactor: state?.easiness_factor ?? null,
         intervalDays: state?.interval_days ?? null,
@@ -501,24 +591,23 @@ export class FlashcardPracticeService {
 
     const nextCursor = hasMore ? page[page.length - 1].id : null;
 
-    return { items, nextCursor, hasMore };
+    return success({ items, nextCursor, hasMore });
   }
 
   private async getMatchingFlashcardIds(
     ctx: RequestContext,
     filters: { topicIds?: string[]; deckIds?: string[] },
   ): Promise<string[]> {
-    const supabase = await createClient();
+    const supabase = await this.createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    let query = supabase
-      .from('flashcards')
-      .select('id');
+    let query = supabase.from('flashcards').select('id');
 
     if (filter._impossible) return [];
-    if (filter.or) {
-      query = query.or(filter.or);
-    } else if (filter.created_by) {
+    if (filter.organization_id) {
+      query = query.eq('organization_id', filter.organization_id);
+    }
+    if (filter.created_by) {
       query = query.eq('created_by', filter.created_by);
     }
 
@@ -534,23 +623,38 @@ export class FlashcardPracticeService {
     }
 
     if (filters.deckIds && filters.deckIds.length > 0) {
-      const { data: assignments } = await supabase
-        .from('flashcard_deck_assignments')
-        .select('flashcard_id')
-        .in('deck_id', filters.deckIds);
-
-      const deckCardIds = [...new Set(assignments?.map((a) => a.flashcard_id) ?? [])];
-      if (deckCardIds.length === 0) return [];
-      query = query.in('id', deckCardIds);
+      query = query.in('deck_id', filters.deckIds);
     }
 
     const { data, error } = await query;
-    if (error) throw mapSupabaseError(error);
+    if (error) return [];
     return (data ?? []).map((r) => r.id);
   }
 
-  async completeSession(data: CompleteSessionInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  private async getSuspendedCardIds(ctx: RequestContext): Promise<string[]> {
+    const supabase = await this.createClient();
+
+    const { data: suspendedDecks } = await supabase
+      .from('suspended_decks')
+      .select('deck_id')
+      .eq('user_id', ctx.userId);
+
+    const deckIds = (suspendedDecks ?? []).map((s) => s.deck_id);
+    if (deckIds.length === 0) return [];
+
+    const { data: flashcards } = await supabase
+      .from('flashcards')
+      .select('id')
+      .in('deck_id', deckIds);
+
+    return [...new Set((flashcards ?? []).map((f) => f.id))];
+  }
+
+  async completeSession(
+    data: CompleteSessionInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const { error } = await supabase.from('flashcard_study_sessions').insert({
       id: data.sessionId,
@@ -564,27 +668,29 @@ export class FlashcardPracticeService {
       mode: data.mode,
     });
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    return { success: true };
+    return success(undefined);
   }
 
   async getCardsForPractice(
     ctx: RequestContext,
     filters: { deckIds?: string[]; topicIds?: string[] },
-  ): Promise<PracticeCardData[]> {
-    const supabase = await createClient();
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
-    if (filter._impossible) return [];
+    if (filter._impossible) return success([]);
 
     const matchingIds = await this.getMatchingFlashcardIds(ctx, filters);
 
-    if (matchingIds.length === 0) return [];
+    if (matchingIds.length === 0) return success([]);
 
     const { data: reviewStates } = await supabase
       .from('flashcard_review_state')
-      .select('flashcard_id, easiness_factor, interval_days, repetitions, next_review_at, last_reviewed_at, last_quality, learning_state, learning_step, lapse_count, is_leech')
+      .select(
+        'flashcard_id, easiness_factor, interval_days, repetitions, next_review_at, last_reviewed_at, last_quality, learning_state, learning_step, lapse_count, is_leech',
+      )
       .eq('user_id', ctx.userId)
       .in('flashcard_id', matchingIds);
 
@@ -592,45 +698,63 @@ export class FlashcardPracticeService {
 
     const { data: flashcards, error } = await supabase
       .from('flashcards')
-      .select('id, front, back, created_at, flashcard_deck_assignments(deck_id, flashcard_decks(name)), flashcard_topic_assignments(topic_id, flashcard_topics(name))')
+      .select(
+        'id, front, back, created_at, deck_id, flashcard_topic_assignments(topic_id, topics(name))',
+      )
       .in('id', matchingIds);
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
-    interface FlashcardRow {
-      id: string; front: string; back: string; created_at: string;
-      flashcard_deck_assignments?: Array<{ deck_id: string; flashcard_decks?: Array<{ name: string }> }>;
-      flashcard_topic_assignments?: Array<{ topic_id: string; flashcard_topics?: Array<{ name: string }> }>;
-    }
-
-    return (flashcards ?? []).map((fc: FlashcardRow) => {
-      const state = stateByCard.get(fc.id);
-      return {
-        id: fc.id,
-        front: fc.front,
-        back: fc.back,
-        createdAt: fc.created_at ?? null,
-        deckName: fc.flashcard_deck_assignments?.[0]?.flashcard_decks?.[0]?.name ?? null,
-        topicNames: fc.flashcard_topic_assignments?.flatMap((a) => {
-          const name = (a.flashcard_topics as unknown as { name: string } | undefined)?.name;
-          return name ? [name] : [];
-        }) ?? [],
-        reviewState: state
-          ? {
-              easinessFactor: state.easiness_factor,
-              intervalDays: state.interval_days,
-              repetitions: state.repetitions,
-              nextReviewAt: state.next_review_at,
-              lastReviewedAt: state.last_reviewed_at,
-              lastQuality: state.last_quality,
-              learningState: state.learning_state,
-              learningStep: state.learning_step,
-              lapseCount: state.lapse_count,
-              isLeech: state.is_leech,
-            }
-          : null,
-      };
-    });
+    return success(
+      (flashcards ?? []).map((fc: FlashcardRow) => {
+        const state = stateByCard.get(fc.id);
+        return {
+          id: fc.id,
+          front: fc.front,
+          back: fc.back,
+          createdAt: fc.created_at ?? null,
+          deckName: fc.deck_name ?? null,
+          topicNames:
+            fc.flashcard_topic_assignments?.flatMap((a) => {
+              const name = a.topics?.[0]?.name;
+              return name ? [name] : [];
+            }) ?? [],
+          reviewState: state
+            ? {
+                easinessFactor: state.easiness_factor,
+                intervalDays: state.interval_days,
+                repetitions: state.repetitions,
+                nextReviewAt: state.next_review_at,
+                lastReviewedAt: state.last_reviewed_at,
+                lastQuality: state.last_quality,
+                learningState: state.learning_state,
+                learningStep: state.learning_step,
+                lapseCount: state.lapse_count,
+                isLeech: state.is_leech,
+              }
+            : null,
+        };
+      }),
+    );
   }
 }
 
-export const flashcardPracticeService = new FlashcardPracticeService();
+/**
+ * Maps the compound filter from buildQueryFilter to the RPC
+ * parameter format expected by practice functions.
+ *
+ *   visibility = 'group'  → university scope (shared group content)
+ *   created_by present   → own scope (user's content in current org)
+ *   empty filter         → any scope (no filtering)
+ */
+function resolveFilterType(
+  filter: Record<string, unknown>,
+  ctx: RequestContext,
+): { filterType: string; organizationId: string | null } {
+  if (filter._useRpc) {
+    return { filterType: 'university', organizationId: ctx.activeOrgId ?? null };
+  }
+  if (filter.created_by) {
+    return { filterType: 'own', organizationId: ctx.activeOrgId ?? null };
+  }
+  return { filterType: 'any', organizationId: null };
+}

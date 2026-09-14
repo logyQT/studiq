@@ -1,13 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { HealthService } from '@/server/services/health.service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { HealthService } from '@/server/services/health.service';
 
 describe('HealthService', () => {
-  let mock: ReturnType<typeof mockClient>;
+  let mock: ReturnType<typeof mockSupabaseClient>;
+  let service: HealthService;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
+    service = new HealthService(async () => mock as any);
   });
 
   describe('checkHealth', () => {
@@ -18,7 +20,7 @@ describe('HealthService', () => {
         }),
       });
 
-      const result = await HealthService.checkHealth();
+      const result = await service.checkHealth();
 
       expect(result.status).toBe('healthy');
       expect(result.services.supabase).toBe('up');
@@ -31,7 +33,7 @@ describe('HealthService', () => {
         }),
       });
 
-      const result = await HealthService.checkHealth();
+      const result = await service.checkHealth();
 
       expect(result.status).toBe('unhealthy');
       expect(result.services.supabase).toBe('down');
@@ -44,7 +46,7 @@ describe('HealthService', () => {
         }),
       });
 
-      const result = await HealthService.checkHealth();
+      const result = await service.checkHealth();
 
       expect(result.status).toBe('healthy');
       expect(result.services.supabase).toBe('up');
@@ -57,7 +59,7 @@ describe('HealthService', () => {
         }),
       });
 
-      const result = await HealthService.checkHealth();
+      const result = await service.checkHealth();
 
       expect(result.timestamp).toBeDefined();
       expect(result.uptime).toBeDefined();

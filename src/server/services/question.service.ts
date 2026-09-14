@@ -1,32 +1,45 @@
-import { createClient } from '@/lib/supabase/server';
-import { AppError } from '@/lib/errors';
-import type { CreateQuestionInput, UpdateQuestionInput } from '@/server/models';
-import { UserRole } from '@/types';
-import { mapSupabaseError } from '@/lib/supabase-errors';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { accessibleFilter, Permission } from '@/lib/access';
 import type { RequestContext } from '@/lib/request-context';
+import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
+import type { CreateQuestionInput, UpdateQuestionInput } from '@/server/models';
+import { planResolver } from '@/server/services';
 
 export class QuestionService {
-  async create(data: CreateQuestionInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
 
-    const universityId = ctx.role !== UserRole.TEACHER ? null : ctx.universityId;
+  async create(
+    data: CreateQuestionInput,
+    ctx: RequestContext,
+    bankVisibility?: string,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
+
+    const { count: questionCount } = await supabase
+      .from('questions')
+      .select('*', { count: 'exact', head: true })
+      .eq('created_by', ctx.userId);
+    await planResolver.checkLimit(ctx, 'max_questions', questionCount ?? 0);
+
+    const visibility = bankVisibility ?? 'personal';
 
     const { data: question, error: qError } = await supabase
       .from('questions')
       .insert({
-        subject_id: data.subjectId ?? null,
         type: data.type,
         content: data.content,
         explanation: data.explanation ?? null,
-        difficulty: data.difficulty,
         created_by: ctx.userId,
-        university_id: universityId,
+        organization_id: ctx.activeOrgId,
+        visibility,
+        bank_id: data.bankId,
       })
       .select()
       .single();
 
-    if (qError) throw mapSupabaseError(qError);
-    if (!question) throw new AppError('NOT_FOUND');
+    if (qError) return toDbFailure(qError);
+    if (!question) return failure('NOT_FOUND');
 
     const answersToInsert = data.answers.map((a, i) => ({
       question_id: question.id,
@@ -35,103 +48,134 @@ export class QuestionService {
       order_index: a.orderIndex ?? i,
     }));
 
-    const { error: aError } = await supabase.from('question_answers').insert(answersToInsert);
-    if (aError) throw mapSupabaseError(aError);
+    const { error: aError } = await supabase.from('question_options').insert(answersToInsert);
+    if (aError) return toDbFailure(aError);
 
-    return {
-      ...question,
-      question_answers: data.answers.map((a, i) => ({
-        id: '',
+    if (data.topicIds && data.topicIds.length > 0) {
+      const topicAssignments = data.topicIds.map((topicId) => ({
         question_id: question.id,
-        content: a.content,
-        is_correct: a.isCorrect,
-        order_index: a.orderIndex ?? i,
-        created_at: new Date().toISOString(),
-      })),
-    };
+        topic_id: topicId,
+      }));
+      const { error: tError } = await supabase
+        .from('question_topic_assignments')
+        .insert(topicAssignments);
+      if (tError) return toDbFailure(tError);
+    }
+
+    return this.getById(question.id, ctx);
   }
 
   async list(
     ctx: RequestContext,
-    filters?: { subjectId?: string; type?: string; difficulty?: string },
-  ) {
-    const supabase = await createClient();
-    const orConditions = [];
+    filters?: { bankId?: string; topicIds?: string; type?: string },
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
-    if (ctx.universityId) orConditions.push(`university_id.eq.${ctx.universityId}`);
-    if (ctx.userId) orConditions.push(`created_by.eq.${ctx.userId}`);
+    const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
+    if (filter._impossible) return success([]);
 
     let query = supabase
       .from('questions')
-      .select('*, question_answers(*)')
-      .order('created_at', { ascending: false });
+      .select('*, question_answers:question_options(*), question_topic_assignments(topic_id)');
 
-    if (orConditions.length > 0) query.or(orConditions.join(','));
-    if (filters?.subjectId) query = query.eq('subject_id', filters.subjectId);
+    if (filter.or) query = query.or(filter.or);
+    if (filter.created_by) query = query.eq('created_by', filter.created_by);
+    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
+
+    if (filters?.bankId) query = query.eq('bank_id', filters.bankId);
+    if (filters?.topicIds)
+      query = query.filter(
+        'question_topic_assignments.topic_id',
+        'in',
+        `(${filters.topicIds.split(',').join(',')})`,
+      );
     if (filters?.type) query = query.eq('type', filters.type);
-    if (filters?.difficulty) query = query.eq('difficulty', filters.difficulty);
 
     const { data, error } = await query;
-
-    if (error) throw mapSupabaseError(error);
-    return data;
+    if (error) return toDbFailure(error);
+    return success(data ?? []);
   }
 
-  async getById(id: string, ctx: RequestContext) {
-    const supabase = await createClient();
-    const { data, error } = await supabase
+  async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
+
+    const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
+    if (filter._impossible) return failure('NOT_FOUND');
+
+    let query = supabase
       .from('questions')
-      .select('*, question_answers(*)')
-      .eq('id', id)
-      .single();
+      .select('*, question_answers:question_options(*), question_topic_assignments(topic_id)')
+      .eq('id', id);
 
-    if (error || !data) throw new AppError('NOT_FOUND');
+    if (filter.or) query = query.or(filter.or);
+    if (filter.created_by) query = query.eq('created_by', filter.created_by);
+    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
-    if (data.created_by === ctx.userId) return data;
-
-    if (data.university_id && data.university_id === ctx.universityId) return data;
-
-    throw new AppError('FORBIDDEN');
+    const { data: question, error } = await query.single();
+    if (error || !question) return failure('NOT_FOUND');
+    return success(question);
   }
 
-  async update(id: string, data: UpdateQuestionInput, ctx: RequestContext) {
-    const supabase = await createClient();
+  async update(
+    id: string,
+    data: UpdateQuestionInput,
+    ctx: RequestContext,
+    bankVisibility?: string,
+  ): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
 
     const updateFields: Record<string, unknown> = {};
-    if (data.subjectId !== undefined) updateFields.subject_id = data.subjectId;
     if (data.type) updateFields.type = data.type;
     if (data.content) updateFields.content = data.content;
     if (data.explanation !== undefined) updateFields.explanation = data.explanation;
-    if (data.difficulty) updateFields.difficulty = data.difficulty;
 
     const { data: question, error: qError } = await supabase
       .from('questions')
       .update(updateFields)
       .eq('id', id)
       .eq('created_by', ctx.userId)
+      .eq('organization_id', ctx.activeOrgId)
       .select()
       .single();
 
-    if (qError && qError.code !== 'PGRST116') throw mapSupabaseError(qError);
+    if (qError && qError.code !== 'PGRST116') return toDbFailure(qError);
     if (!question || (Array.isArray(question) && question.length === 0))
-      throw new AppError('FORBIDDEN');
+      return failure('FORBIDDEN');
 
     if (data.answers) {
-      await supabase.from('question_answers').delete().eq('question_id', id);
+      await supabase.from('question_options').delete().eq('question_id', id);
       const answersToInsert = data.answers.map((a, i) => ({
         question_id: id,
         content: a.content,
         is_correct: a.isCorrect,
         order_index: a.orderIndex ?? i,
       }));
-      await supabase.from('question_answers').insert(answersToInsert);
+      await supabase.from('question_options').insert(answersToInsert);
+    }
+
+    if (data.bankId !== undefined) {
+      const bFields: Record<string, unknown> = { bank_id: data.bankId };
+      if (bankVisibility !== undefined) bFields.visibility = bankVisibility;
+      const { error: bError } = await supabase.from('questions').update(bFields).eq('id', id);
+      if (bError) return toDbFailure(bError);
+    }
+
+    if (data.topicIds !== undefined) {
+      await supabase.from('question_topic_assignments').delete().eq('question_id', id);
+      if (data.topicIds.length > 0) {
+        const topicAssignments = data.topicIds.map((topicId) => ({
+          question_id: id,
+          topic_id: topicId,
+        }));
+        await supabase.from('question_topic_assignments').insert(topicAssignments);
+      }
     }
 
     return this.getById(id, ctx);
   }
 
-  async delete(id: string, ctx: RequestContext) {
-    const supabase = await createClient();
+  async delete(id: string, ctx: RequestContext): Promise<ServiceResult<void>> {
+    const supabase = await this.createClient();
 
     const { data, error } = await supabase
       .from('questions')
@@ -141,61 +185,9 @@ export class QuestionService {
       .select()
       .single();
 
-    if (error && error.code !== 'PGRST116') throw mapSupabaseError(error);
-    if (!data || (Array.isArray(data) && data.length === 0)) throw new AppError('FORBIDDEN');
-  }
+    if (error && error.code !== 'PGRST116') return toDbFailure(error);
+    if (!data || (Array.isArray(data) && data.length === 0)) return failure('FORBIDDEN');
 
-  async getStatsBySubject(subjectId: string) {
-    const supabase = await createClient();
-
-    const { data: questions } = await supabase
-      .from('questions')
-      .select('id, type, difficulty')
-      .eq('subject_id', subjectId);
-
-    const { data: attempts } = await supabase
-      .from('quiz_answers')
-      .select('question_id, is_correct')
-      .in('question_id', questions?.map((q) => q.id) ?? []);
-
-    const correctMap = new Map<string, { correct: number; total: number }>();
-    attempts?.forEach((a) => {
-      const entry = correctMap.get(a.question_id) || { correct: 0, total: 0 };
-      entry.total++;
-      if (a.is_correct) entry.correct++;
-      correctMap.set(a.question_id, entry);
-    });
-
-    const problematicQuestions = questions
-      ?.map((q) => ({
-        ...q,
-        stats: correctMap.get(q.id),
-        correctRate: correctMap.get(q.id)
-          ? correctMap.get(q.id)!.correct / correctMap.get(q.id)!.total
-          : null,
-      }))
-      .filter((q) => q.stats && q.correctRate !== null && q.correctRate < 0.5)
-      .sort((a, b) => (a.correctRate ?? 1) - (b.correctRate ?? 1));
-
-    return {
-      totalQuestions: questions?.length ?? 0,
-      byType: questions?.reduce(
-        (acc, q) => {
-          acc[q.type] = (acc[q.type] || 0) + 1;
-          return acc;
-        },
-        {} as Record<string, number>,
-      ),
-      byDifficulty: questions?.reduce(
-        (acc, q) => {
-          acc[q.difficulty] = (acc[q.difficulty] || 0) + 1;
-          return acc;
-        },
-        {} as Record<string, number>,
-      ),
-      problematicQuestions: problematicQuestions ?? [],
-    };
+    return success(undefined);
   }
 }
-
-export const questionService = new QuestionService();

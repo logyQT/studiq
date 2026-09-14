@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { GenerateQuizSchema } from '@/server/models/quiz.model';
+import { describe, expect, it } from 'vitest';
 import { ValidationErrorCode } from '@/lib/validation-errors';
+import { GenerateQuizSchema } from '@/server/models/quiz.model';
 
 describe('GenerateQuizSchema', () => {
   it('passes with valid input', () => {
@@ -13,9 +13,9 @@ describe('GenerateQuizSchema', () => {
 
   it('passes with optional fields', () => {
     const result = GenerateQuizSchema.safeParse({
-      subjectId: '550e8400-e29b-41d4-a716-446655440000',
+      bankId: '550e8400-e29b-41d4-a716-446655440000',
+      topicIds: ['550e8400-e29b-41d4-a716-446655440001'],
       questionTypes: ['mcq', 'true_false'],
-      difficulty: 'mixed',
       questionCount: 25,
     });
     expect(result.success).toBe(true);
@@ -51,24 +51,6 @@ describe('GenerateQuizSchema', () => {
   it('fails when questionTypes has invalid type', () => {
     const result = GenerateQuizSchema.safeParse({
       questionTypes: ['essay'],
-      questionCount: 10,
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('fails when difficulty is invalid', () => {
-    const result = GenerateQuizSchema.safeParse({
-      questionTypes: ['mcq'],
-      difficulty: 'extreme',
-      questionCount: 10,
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('fails when subjectId is not a valid UUID', () => {
-    const result = GenerateQuizSchema.safeParse({
-      subjectId: 'not-a-uuid',
-      questionTypes: ['mcq'],
       questionCount: 10,
     });
     expect(result.success).toBe(false);

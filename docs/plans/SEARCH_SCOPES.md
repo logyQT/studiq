@@ -2,12 +2,12 @@
 
 Per-role search vision for the StudiQ global search bar.
 
-| Role | Domain | Route | Current | Phase 1 | Phase 2 | Phase 3 |
-|------|--------|-------|---------|---------|---------|---------|
-| STUDENT / FREE / PREMIUM | Student | `/app` | Flashcards | Topics | Notes, questions | AI-powered discovery |
-| TEACHER | Education | `/edu` | Flashcards | Topics, class decks | Shared resources, student submissions | Cross-course analytics |
-| UNIVERSITY_ADMIN | Management | `/manage` | — (hidden) | Members, invitations | University-wide content | Audit logs |
-| SYS_ADMIN | Admin | `/admin` | — (hidden) | Organizations, sys admins | Pending invites, error logs | Permissions, settings |
+| Role                     | Domain     | Route     | Current    | Phase 1                   | Phase 2                               | Phase 3                |
+| ------------------------ | ---------- | --------- | ---------- | ------------------------- | ------------------------------------- | ---------------------- |
+| STUDENT / FREE / PREMIUM | Student    | `/app`    | Flashcards | Topics                    | Notes, questions                      | AI-powered discovery   |
+| TEACHER                  | Education  | `/edu`    | Flashcards | Topics, class decks       | Shared resources, student submissions | Cross-course analytics |
+| UNIVERSITY_ADMIN         | Management | `/manage` | — (hidden) | Members, invitations      | University-wide content               | Audit logs             |
+| SYS_ADMIN                | Admin      | `/admin`  | — (hidden) | Organizations, sys admins | Pending invites, error logs           | Permissions, settings  |
 
 ---
 
@@ -19,6 +19,24 @@ All authenticated users on `/app` or `/edu` routes. Backed by `GET /api/v1/searc
 - **RPC**: `public.search_flashcards(search_query, result_limit, p_user_id, p_university_id)`
 - **Frontend**: `src/components/layout/app-search.tsx` → `src/components/search/flashcard-search-result.tsx`
 
+## Pre-phase 1
+
+### /app /edu /manage /admin
+
+Search/Commandcenter - ability for power users to quickly perform actions using the command pallete.
+Use cases:
+/app and /edu -> User enters `new deck` - navigate to new deck modal / display the modal in place where the user is currently in the navigation
+/app and /edu -> User enters `new card` - dialog with deck selection -> dialog for creating a flashcard
+
+/app -> User enters `review:l:5 | review:n | review:e | review:c` - l-limited 5-untill 5 correct, n-new, e-endless review mode, c-cram deck -> deck selection popup
+
+/edu -> User enters `card:stats` - navigate to flashcard stats
+
+/manage -> User enters `new invite` - modal with invite details or navigate to invite page
+/manage -> User enters `new group` - (this would be implemented after @GROUPS.md) -> new group creation
+
+/admin -> User enters `new org` - new org modal
+
 ## Phase 1
 
 ### Topics — `/app` and `/edu`
@@ -26,6 +44,7 @@ All authenticated users on `/app` or `/edu` routes. Backed by `GET /api/v1/searc
 Index `flashcard_topics` with a `search_vector` column (bilingual en+pl). Add topics to the search results as a second result type. Same ownership scoping rules as flashcards.
 
 Implementation sketch:
+
 - New migration: `ALTER TABLE flashcard_topics ADD COLUMN search_vector tsvector GENERATED ...`
 - New RPC: `search_topics(search_query, limit, p_user_id, p_university_id)` or extend the unified search endpoint to accept a `types` filter param
 - New component: `src/components/search/topic-search-result.tsx`

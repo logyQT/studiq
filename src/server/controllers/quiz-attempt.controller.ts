@@ -1,51 +1,48 @@
-import { quizAttemptService } from '@/server/services';
-import { SubmitQuizAttemptSchema } from '@/server/models';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { ControllerResponse } from '@/lib/controller-response';
+import { controllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
+import { isFailure } from '@/lib/service-result';
+import { SubmitQuizAttemptSchema } from '@/server/models';
+import type { QuizAttemptService } from '@/server/services/quiz-attempt.service';
 
 export class QuizAttemptController {
-  async list(ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const attempts = await quizAttemptService.list(ctx);
+  constructor(private quizAttemptService: QuizAttemptService) {}
 
-      return { success: true, statusCode: 200, data: attempts };
-    }, ctx);
+  async list(ctx: RequestContext): Promise<ControllerResponse> {
+    const result = await this.quizAttemptService.list(ctx);
+
+    if (isFailure(result)) return controllerResponse.error(result.error);
+
+    return controllerResponse.success(result.data);
   }
 
   async getDetails(attemptId: string, ctx: RequestContext): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const attempt = await quizAttemptService.getById(attemptId, ctx);
+    const result = await this.quizAttemptService.getById(attemptId, ctx);
 
-      return { success: true, statusCode: 200, data: attempt };
-    }, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+
+    return controllerResponse.success(result.data);
   }
 
-  async submit(
-    body: unknown,
-    attemptId: string,
-    ctx: RequestContext,
-  ): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = SubmitQuizAttemptSchema.safeParse({
-        ...(body as Record<string, unknown>),
-        attemptId,
-      });
+  async submit(body: unknown, attemptId: string, ctx: RequestContext): Promise<ControllerResponse> {
+    const parsed = SubmitQuizAttemptSchema.safeParse({
+      ...(body as Record<string, unknown>),
+      attemptId,
+    });
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
 
-      const result = await quizAttemptService.submit(parsed.data, ctx);
+    const result = await this.quizAttemptService.submit(parsed.data, ctx);
 
-      return { success: true, statusCode: 200, data: result };
-    }, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+
+    return controllerResponse.success(result.data);
   }
 }
-
-export const quizAttemptController = new QuizAttemptController();

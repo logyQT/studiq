@@ -1,15 +1,13 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { toast } from 'sonner';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-
-import { RegisterSchema, RegisterInput } from '@/server/models/auth.model';
+import { Suspense, useEffect, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Form,
   FormControl,
@@ -18,14 +16,15 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { APP_ERRORS } from '@/lib/errors';
+import { type RegisterInput, RegisterSchema } from '@/server/models/auth.model';
 
 function JoinSkeleton() {
   return (
-    <Card className="w-full max-w-md mx-auto">
+    <Card className="w-full max-w-md mx-auto shadow-lg border-sidebar-border bg-sidebar">
       <CardHeader className="space-y-2">
         <Skeleton className="h-6 w-1/2" />
         <Skeleton className="h-4 w-3/4" />
@@ -67,7 +66,7 @@ function JoinContent() {
       name: '',
       email: '',
       password: '',
-      inviteToken: token || '',
+      accountType: 'student',
     },
   });
 
@@ -79,7 +78,7 @@ function JoinContent() {
 
     async function verifyToken() {
       try {
-        const res = await fetch(`/api/v1/university/invitations?token=${token}`);
+        const res = await fetch(`/api/v1/organization/invites?token=${token}`);
         const result = await res.json();
 
         if (!res.ok || !result.success) {
@@ -130,7 +129,7 @@ function JoinContent() {
   }
 
   return (
-    <Card className="w-full max-w-md mx-auto">
+    <Card className="w-full max-w-md mx-auto shadow-lg border-sidebar-border bg-sidebar">
       <CardHeader>
         <CardTitle>{t('join_title')}</CardTitle>
         <CardDescription>{t('join_desc')}</CardDescription>
@@ -190,7 +189,7 @@ function JoinContent() {
 
 export default function JoinPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Suspense fallback={<JoinSkeleton />}>
         <JoinContent />
       </Suspense>

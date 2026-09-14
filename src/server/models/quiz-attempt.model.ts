@@ -1,5 +1,5 @@
 import { ValidationErrorCode } from '@/lib/validation-errors';
-import { z, registry } from '@/lib/zod';
+import { registry, z } from '@/lib/zod';
 
 export const SubmitQuizAttemptSchema = registry.register(
   'SubmitQuizAttemptRequest',

@@ -1,5 +1,5 @@
-import FlashcardsClient from './flashcards-client';
+import DecksClient from '@/app/(frontend)/app/flashcards/decks-client';
 
-export default function FlashcardsPage() {
-  return <FlashcardsClient />;
+export default function DecksPage() {
+  return <DecksClient />;
 }

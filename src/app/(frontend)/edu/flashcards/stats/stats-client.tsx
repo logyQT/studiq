@@ -1,57 +1,47 @@
 'use client';
 
-import Link from 'next/link';
-import { useTranslations } from 'next-intl';
-import { useQueryClient } from '@tanstack/react-query';
 import {
-  Layers,
-  FileText,
-  BookOpen,
-  Users,
-  TrendingUp,
-  Brain,
   ArrowLeft,
   BarChart3,
+  BookOpen,
+  Brain,
+  FileText,
+  Layers,
   Sparkles,
+  TrendingUp,
+  Users,
 } from 'lucide-react';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { DeckDetailSkeleton } from '@/components/flashcards';
 import { Button } from '@/components/ui/button';
-import { StatCard } from '@/components/ui/stat-card';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableHead,
-  TableRow,
-  TableCell,
-} from '@/components/ui/table';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Empty,
-  EmptyHeader,
-  EmptyTitle,
   EmptyDescription,
+  EmptyHeader,
   EmptyMedia,
+  EmptyTitle,
 } from '@/components/ui/empty';
-import { channel, useRealtimeChannel } from '@/hooks/use-realtime-channel';
-import { DeckDetailSkeleton } from '@/components/flashcards/deck-detail-skeleton';
+import { StatCard } from '@/components/ui/stat-card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { TeacherFlashcardStatsResponse } from '@/server/models';
 
 export default function EduFlashcardStatsClient() {
   const t = useTranslations('EduFlashcardStatsPage');
-  const queryClient = useQueryClient();
-
   const { data, isLoading } = useApiQuery<TeacherFlashcardStatsResponse>({
     queryKey: flashcardKeys.stats.teacher,
     url: '/api/v1/flashcards/stats/teacher',
   });
-
-  useRealtimeChannel(
-    channel('teacher-flashcard-stats')
-      .listen('flashcard_practice', () => { queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.teacher }); })
-      .listen('flashcard_review_state', () => { queryClient.invalidateQueries({ queryKey: flashcardKeys.stats.teacher }); }),
-  );
 
   if (isLoading) return <DeckDetailSkeleton />;
 
@@ -195,7 +185,7 @@ export default function EduFlashcardStatsClient() {
               {byDeck.map((deck) => (
                 <TableRow key={deck.deckId}>
                   <TableCell className="font-medium">
-                    <Link href={`/edu/flashcards/decks/${deck.deckId}`} className="hover:underline">
+                    <Link href={`/edu/flashcards/${deck.deckId}`} className="hover:underline">
                       {deck.deckName}
                     </Link>
                   </TableCell>

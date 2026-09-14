@@ -1,15 +1,16 @@
-import { log } from '@/lib/logger';
-import { callLLMStreaming } from '@/server/ai';
-import { pdfService } from '@/server/services/pdf.service';
-import { pdfCacheService } from '@/server/services/pdf-cache.service';
+import { streamText } from 'ai';
 import type { RequestContext } from '@/lib/request-context';
 import type { TokenUsage } from '@/server/ai/ai.types';
+import { chatModel, providerName, reasoningEffort } from '@/server/ai/model';
 import type { ChatMessageInput } from '@/server/models/ai-chat.model';
+import { pdfService } from '@/server/services/pdf.service';
+import { pdfCacheService } from '@/server/services/pdf-cache.service';
 
 const MAX_FILE_CHARS = parseInt(process.env.LLM_MAX_FILE_CHARS || '200000', 10);
 
 export interface ChatServiceCallbacks {
   onToken: (token: string) => void;
+  onReasoning?: (token: string) => void;
   onResult: (type: string, data: unknown) => void;
   onComplete: (summary: string, usage?: TokenUsage) => void;
   onError: (message: string) => void;
@@ -23,7 +24,7 @@ export class ChatService {
     file: { data: string; mimeType: string } | undefined,
     messages: ChatMessageInput[] | undefined,
     conversationId: string | undefined,
-    ctx: RequestContext,
+    _ctx: RequestContext,
     callbacks: ChatServiceCallbacks,
   ): Promise<void> {
     try {
@@ -44,20 +45,17 @@ export class ChatService {
           if (file.mimeType === 'application/pdf') {
             const buffer = Buffer.from(file.data, 'base64');
             extracted = await pdfService.extractText(buffer);
-            log.ai.info(`PDF extracted ${extracted.length} chars`);
           } else if (file.mimeType === 'text/plain') {
             extracted = Buffer.from(file.data, 'base64').toString('utf-8');
           }
         } catch (error) {
           const msg = error instanceof Error ? error.message : 'Unknown error';
-          log.ai.error('File extraction failed', { metadata: { error } });
           callbacks.onError(`Failed to extract file content: ${msg}`);
           return;
         }
 
         // Truncate to configurable limit
         if (extracted.length > MAX_FILE_CHARS) {
-          log.ai.warn(`Truncating file content from ${extracted.length} to ${MAX_FILE_CHARS} chars`);
           extracted = extracted.slice(0, MAX_FILE_CHARS);
         }
 
@@ -70,7 +68,6 @@ export class ChatService {
         const cached = pdfCacheService.get(conversationId);
         if (cached) {
           extracted = cached.text;
-          log.ai.info(`Retrieved ${extracted.length} chars from cache for conversation ${conversationId}`);
         }
       }
 
@@ -78,20 +75,37 @@ export class ChatService {
         systemPrompt = `${SYSTEM_PROMPT}\n\nThe user has attached a file with the following content:\n\n${extracted}\n\nUse the file content to answer the user's questions.`;
       }
 
-      const response = await callLLMStreaming(
-        {
-          prompt,
-          systemPrompt,
-          responseFormat: 'text',
+      const result = streamText({
+        model: chatModel,
+        system: systemPrompt,
+        prompt,
+        maxRetries: 3,
+        ...(reasoningEffort ? { providerOptions: { [providerName]: { reasoningEffort } } } : {}),
+        onChunk: ({ chunk }: { chunk: { type: string; textDelta?: string } }) => {
+          if (chunk.type === 'text-delta' && chunk.textDelta) {
+            callbacks.onToken(chunk.textDelta);
+          }
+          if (chunk.type === 'reasoning' && chunk.textDelta) {
+            callbacks.onReasoning?.(chunk.textDelta);
+          }
         },
-        ctx,
-        { onToken: (token) => callbacks.onToken(token) },
-      );
+      });
 
-      callbacks.onComplete(response.content, response.usage);
+      const content = await result.text;
+      const resolvedUsage = await result.usage;
+      const mappedUsage: TokenUsage | undefined = resolvedUsage
+        ? {
+            inputTokens: resolvedUsage.inputTokens ?? 0,
+            outputTokens: resolvedUsage.outputTokens ?? 0,
+            totalTokens: resolvedUsage.totalTokens ?? 0,
+            provider: providerName,
+            model: chatModel.modelId,
+          }
+        : undefined;
+
+      callbacks.onComplete(content, mappedUsage);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Internal server error';
-      log.ai.error('Chat failed', { metadata: { error } });
       callbacks.onError(msg);
     }
   }

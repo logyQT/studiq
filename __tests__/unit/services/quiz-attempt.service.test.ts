@@ -1,171 +1,142 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { quizAttemptService } from '@/server/services/quiz-attempt.service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { QuizAttemptService } from '@/server/services/quiz-attempt.service';
+import { AccountType } from '@/types';
+import type { RequestContext } from '@/lib/request-context';
+
+function qb(data: any, error: any = null) {
+  const result = { data: data ?? null, error };
+  const promise = Promise.resolve(result);
+  const b: any = {};
+  b.select = vi.fn(() => b);
+  b.insert = vi.fn(() => b);
+  b.update = vi.fn(() => b);
+  b.delete = vi.fn(() => b);
+  b.eq = vi.fn(() => b);
+  b.in = vi.fn(() => b);
+  b.order = vi.fn(() => b);
+  b.limit = vi.fn(() => b);
+  b.or = vi.fn(() => b);
+  b.not = vi.fn(() => b);
+  b.neq = vi.fn(() => b);
+  b.rpc = vi.fn(() => b);
+  b.single = vi.fn().mockResolvedValue(result);
+  b.maybeSingle = vi.fn().mockResolvedValue(result);
+  b.then = promise.then.bind(promise);
+  b.catch = promise.catch.bind(promise);
+  b.finally = promise.finally.bind(promise);
+  return b;
+}
 
 describe('QuizAttemptService', () => {
-  const userId = 'test-user-id';
-  let mock: ReturnType<typeof mockClient>;
+  let mock: ReturnType<typeof mockSupabaseClient>;
+  let service: QuizAttemptService;
+  const ctx: RequestContext = {
+    userId: 'test-user-id',
+    accountType: AccountType.STUDENT,
+    traceId: 'test',
+    url: '',
+    method: 'GET',
+    activeOrgId: null,
+    orgRoleId: null,
+    groupIds: [],
+    permissionScopes: {},
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
+    service = new QuizAttemptService(async () => mock as any);
   });
 
   describe('list', () => {
     it('returns attempts for user', async () => {
-      const attempts = [{ id: 'a-1', user_id: userId, score: 5 }];
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({ data: attempts, error: null }),
-          }),
-        }),
-      });
+      const attempts = [{ id: 'a-1', user_id: ctx.userId, score: 5 }];
+      mock.from.mockReturnValueOnce(qb(attempts));
 
-      const result = await quizAttemptService.list(userId);
+      const result = await service.list(ctx);
 
-      expect(result).toEqual(attempts);
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(attempts);
     });
 
-    it('throws INTERNAL_SERVER when query fails', async () => {
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
-          }),
-        }),
-      });
+    it('returns INTERNAL_SERVER when query fails', async () => {
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
-      await expect(quizAttemptService.list(userId)).rejects.toThrow('ERROR_INTERNAL_SERVER');
+      const result = await service.list(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
     });
   });
 
   describe('getById', () => {
     it('returns attempt with questions and answers', async () => {
-      const attempt = { id: 'a-1', user_id: userId };
+      const attempt = { id: 'a-1', user_id: ctx.userId };
       const attemptQuestions = [{ order_index: 0, question_id: 'q-1', questions: { id: 'q-1' } }];
       const answers = [{ question_id: 'q-1', selected_answer_id: 'ans-1', is_correct: true }];
 
-      const eqChain = vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: attempt, error: null }),
-      });
-      const eqFirst = vi.fn().mockReturnValue({ eq: eqChain });
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb(attemptQuestions));
+      mock.from.mockReturnValueOnce(qb(answers));
 
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({ eq: eqFirst }),
-      });
+      const result = await service.getById('a-1', ctx);
 
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({ data: attemptQuestions, error: null }),
-          }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: answers, error: null }),
-        }),
-      });
-
-      const result = await quizAttemptService.getById('a-1', userId);
-
-      expect(result).toBeDefined();
-      expect(result.questions).toBeDefined();
-      expect(result.answers).toBeDefined();
+      expect(result.success).toBe(true);
+      expect((result.data as any).questions).toBeDefined();
+      expect((result.data as any).answers).toBeDefined();
     });
 
-    it('throws NOT_FOUND when attempt does not exist', async () => {
-      const eqChain = vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: null, error: null }),
-      });
-      const eqFirst = vi.fn().mockReturnValue({ eq: eqChain });
+    it('returns NOT_FOUND when attempt does not exist', async () => {
+      mock.from.mockReturnValueOnce(qb(null, null));
 
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({ eq: eqFirst }),
-      });
+      const result = await service.getById('nonexistent', ctx);
 
-      await expect(quizAttemptService.getById('nonexistent', userId)).rejects.toThrow(
-        'ERROR_NOT_FOUND',
-      );
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
     });
   });
 
   describe('submit', () => {
     it('submits answers and returns score', async () => {
-      const attempt = { id: 'a-1', user_id: userId, completed_at: null };
+      const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
       const answer = { id: 'ans-1', is_correct: true };
 
-      const eqChain = vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: attempt, error: null }),
-      });
-      const eqFirst = vi.fn().mockReturnValue({ eq: eqChain });
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb(answer));
+      mock.from.mockReturnValueOnce(qb(null));
+      mock.from.mockReturnValueOnce(qb(null));
 
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({ eq: eqFirst }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: answer, error: null }),
-          }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ error: null }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        insert: vi.fn().mockResolvedValue({ error: null }),
-      });
-
-      const result = await quizAttemptService.submit(
+      const result = await service.submit(
         {
           attemptId: 'a-1',
           answers: [{ questionId: 'q-1', selectedAnswerId: 'ans-1' }],
         },
-        userId,
+        ctx,
       );
 
-      expect(result).toBeDefined();
-      expect(result.score).toBe(1);
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
+      expect((result.data as any).score).toBe(1);
     });
 
-    it('throws NOT_FOUND when attempt does not exist', async () => {
-      const eqChain = vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: null, error: null }),
-      });
-      const eqFirst = vi.fn().mockReturnValue({ eq: eqChain });
+    it('returns NOT_FOUND when attempt does not exist', async () => {
+      mock.from.mockReturnValueOnce(qb(null, null));
 
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({ eq: eqFirst }),
-      });
+      const result = await service.submit({ attemptId: 'nonexistent', answers: [] }, ctx);
 
-      await expect(
-        quizAttemptService.submit({ attemptId: 'nonexistent', answers: [] }, userId),
-      ).rejects.toThrow('ERROR_NOT_FOUND');
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
     });
 
-    it('throws BAD_REQUEST when attempt already completed', async () => {
-      const attempt = { id: 'a-1', user_id: userId, completed_at: '2024-01-01' };
+    it('returns BAD_REQUEST when attempt already completed', async () => {
+      const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: '2024-01-01' };
+      mock.from.mockReturnValueOnce(qb(attempt));
 
-      const eqChain = vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: attempt, error: null }),
-      });
-      const eqFirst = vi.fn().mockReturnValue({ eq: eqChain });
+      const result = await service.submit({ attemptId: 'a-1', answers: [] }, ctx);
 
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({ eq: eqFirst }),
-      });
-
-      await expect(
-        quizAttemptService.submit({ attemptId: 'a-1', answers: [] }, userId),
-      ).rejects.toThrow('ERROR_BAD_REQUEST');
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('BAD_REQUEST');
     });
   });
 });

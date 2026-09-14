@@ -1,0 +1,194 @@
+-- ==========================================
+-- TABLES: deck_groups, bank_groups, topic_groups
+-- M:N assignment between content and groups
+-- Depends on: 60_groups.sql, 34_flashcard_decks.sql, 57_question_banks.sql, 31_topics.sql
+-- ==========================================
+
+CREATE TABLE public.deck_groups (
+  deck_id  uuid NOT NULL REFERENCES public.flashcard_decks(id) ON DELETE CASCADE,
+  group_id uuid NOT NULL REFERENCES public.groups(id) ON DELETE CASCADE,
+  PRIMARY KEY (deck_id, group_id)
+);
+CREATE INDEX idx_deck_groups_group_id ON public.deck_groups(group_id);
+CREATE INDEX idx_deck_groups_deck_id ON public.deck_groups(deck_id);
+
+CREATE TABLE public.bank_groups (
+  bank_id  uuid NOT NULL REFERENCES public.question_banks(id) ON DELETE CASCADE,
+  group_id uuid NOT NULL REFERENCES public.groups(id) ON DELETE CASCADE,
+  PRIMARY KEY (bank_id, group_id)
+);
+CREATE INDEX idx_bank_groups_group_id ON public.bank_groups(group_id);
+CREATE INDEX idx_bank_groups_bank_id ON public.bank_groups(bank_id);
+
+CREATE TABLE public.topic_groups (
+  topic_id uuid NOT NULL REFERENCES public.topics(id) ON DELETE CASCADE,
+  group_id uuid NOT NULL REFERENCES public.groups(id) ON DELETE CASCADE,
+  PRIMARY KEY (topic_id, group_id)
+);
+CREATE INDEX idx_topic_groups_group_id ON public.topic_groups(group_id);
+CREATE INDEX idx_topic_groups_topic_id ON public.topic_groups(topic_id);
+
+-- ==========================================
+-- RPC: get_user_group_ids
+-- ==========================================
+
+CREATE FUNCTION public.get_user_group_ids(p_user_id uuid, p_org_id uuid)
+RETURNS TABLE(group_id uuid) LANGUAGE sql STABLE AS $$
+  SELECT gm.group_id
+  FROM public.group_members gm
+  JOIN public.groups g ON g.id = gm.group_id
+  WHERE gm.user_id = p_user_id AND g.organization_id = p_org_id;
+$$;
+
+-- ==========================================
+-- RPC: get_accessible_flashcard_decks
+-- ==========================================
+
+CREATE FUNCTION public.get_accessible_flashcard_decks(p_user_id uuid, p_org_id uuid)
+RETURNS TABLE(
+  id uuid, organization_id uuid, created_by uuid, name text, description text,
+  visibility visibility_type, search_vector tsvector, created_at timestamptz,
+  updated_at timestamptz, flashcard_count bigint
+) LANGUAGE sql STABLE AS $$
+  SELECT DISTINCT d.id, d.organization_id, d.created_by, d.name, d.description,
+    d.visibility, d.search_vector, d.created_at, d.updated_at,
+    (SELECT COUNT(*) FROM public.flashcards WHERE deck_id = d.id) AS flashcard_count
+  FROM public.flashcard_decks d
+  LEFT JOIN public.deck_groups dg ON dg.deck_id = d.id
+  LEFT JOIN public.group_members gm ON gm.group_id = dg.group_id AND gm.user_id = p_user_id
+  WHERE d.organization_id = p_org_id
+    AND (
+      (d.visibility = 'personal' AND d.created_by = p_user_id)
+      OR
+      gm.id IS NOT NULL
+    );
+$$;
+
+-- ==========================================
+-- RPC: get_accessible_flashcards
+-- ==========================================
+
+CREATE FUNCTION public.get_accessible_flashcards(p_user_id uuid, p_org_id uuid)
+RETURNS SETOF public.flashcards LANGUAGE sql STABLE AS $$
+  SELECT DISTINCT f.*
+  FROM public.flashcards f
+  LEFT JOIN public.deck_groups dg ON dg.deck_id = f.deck_id
+  LEFT JOIN public.group_members gm ON gm.group_id = dg.group_id AND gm.user_id = p_user_id
+  WHERE f.organization_id = p_org_id
+    AND (
+      (f.visibility = 'personal' AND f.created_by = p_user_id)
+      OR
+      gm.id IS NOT NULL
+    );
+$$;
+
+-- ==========================================
+-- RPC: get_accessible_question_banks
+-- ==========================================
+
+CREATE FUNCTION public.get_accessible_question_banks(p_user_id uuid, p_org_id uuid)
+RETURNS TABLE(
+  id uuid, organization_id uuid, created_by uuid, name text, description text,
+  visibility visibility_type, search_vector tsvector, created_at timestamptz,
+  updated_at timestamptz, question_count bigint
+) LANGUAGE sql STABLE AS $$
+  SELECT DISTINCT b.id, b.organization_id, b.created_by, b.name, b.description,
+    b.visibility, b.search_vector, b.created_at, b.updated_at,
+    (SELECT COUNT(*) FROM public.questions WHERE bank_id = b.id) AS question_count
+  FROM public.question_banks b
+  LEFT JOIN public.bank_groups bg ON bg.bank_id = b.id
+  LEFT JOIN public.group_members gm ON gm.group_id = bg.group_id AND gm.user_id = p_user_id
+  WHERE b.organization_id = p_org_id
+    AND (
+      (b.visibility = 'personal' AND b.created_by = p_user_id)
+      OR
+      gm.id IS NOT NULL
+    );
+$$;
+
+-- ==========================================
+-- RPC: get_accessible_questions
+-- ==========================================
+
+CREATE FUNCTION public.get_accessible_questions(
+  p_user_id uuid,
+  p_org_id uuid DEFAULT NULL,
+  p_scope text DEFAULT 'own',
+  p_question_id uuid DEFAULT NULL,
+  p_bank_ids uuid[] DEFAULT NULL,
+  p_topic_ids uuid[] DEFAULT NULL,
+  p_type text DEFAULT NULL
+)
+RETURNS TABLE(
+  id uuid, organization_id uuid, created_by uuid,
+  type text, content text, explanation text,
+  visibility visibility_type, search_vector tsvector,
+  created_at timestamptz, updated_at timestamptz,
+  question_options jsonb
+)
+LANGUAGE sql STABLE AS $$
+  WITH accessible AS (
+    SELECT DISTINCT q.*
+    FROM public.questions q
+    LEFT JOIN public.question_topic_assignments qta ON qta.question_id = q.id
+    LEFT JOIN public.bank_groups bg ON bg.bank_id = q.bank_id
+    LEFT JOIN public.topic_groups tg ON tg.topic_id = qta.topic_id
+    LEFT JOIN public.group_members gm ON gm.group_id = bg.group_id AND gm.user_id = p_user_id
+    WHERE (p_org_id IS NULL OR q.organization_id = p_org_id)
+      AND (
+        CASE p_scope
+          WHEN 'own'   THEN q.created_by = p_user_id
+          WHEN 'group' THEN (q.created_by = p_user_id) OR gm.id IS NOT NULL
+          ELSE TRUE
+        END
+      )
+      AND (p_bank_ids IS NULL   OR q.bank_id = ANY(p_bank_ids))
+      AND (p_topic_ids IS NULL  OR qta.topic_id = ANY(p_topic_ids))
+      AND (p_question_id IS NULL OR q.id = p_question_id)
+      AND (p_type IS NULL        OR q.type::text = p_type)
+  )
+  SELECT a.id, a.organization_id, a.created_by, a.type::text, a.content, a.explanation,
+         a.visibility, a.search_vector, a.created_at, a.updated_at,
+         CASE WHEN p_question_id IS NOT NULL THEN (
+           SELECT jsonb_agg(
+             jsonb_build_object(
+               'id', qo.id,
+               'question_id', qo.question_id,
+               'content', qo.content,
+               'is_correct', qo.is_correct,
+               'order_index', qo.order_index,
+               'match_group', qo.match_group,
+               'match_side', qo.match_side
+             ) ORDER BY qo.order_index
+           )
+           FROM public.question_options qo
+           WHERE qo.question_id = a.id
+         ) ELSE NULL END AS question_options
+  FROM accessible a
+  ORDER BY a.created_at DESC;
+$$;
+
+-- ==========================================
+-- RPC: get_accessible_topics
+-- ==========================================
+
+CREATE FUNCTION public.get_accessible_topics(p_user_id uuid, p_org_id uuid)
+RETURNS TABLE(
+  id uuid, organization_id uuid, created_by uuid, name text, visibility visibility_type,
+  search_vector tsvector, created_at timestamptz,
+  flashcard_count bigint, question_count bigint
+) LANGUAGE sql STABLE AS $$
+  SELECT DISTINCT t.id, t.organization_id, t.created_by, t.name, t.visibility,
+    t.search_vector, t.created_at,
+    (SELECT COUNT(*) FROM public.flashcard_topic_assignments WHERE topic_id = t.id) AS flashcard_count,
+    (SELECT COUNT(*) FROM public.question_topic_assignments WHERE topic_id = t.id) AS question_count
+  FROM public.topics t
+  LEFT JOIN public.topic_groups tg ON tg.topic_id = t.id
+  LEFT JOIN public.group_members gm ON gm.group_id = tg.group_id AND gm.user_id = p_user_id
+  WHERE t.organization_id = p_org_id
+    AND (
+      (t.visibility = 'personal' AND t.created_by = p_user_id)
+      OR
+      gm.id IS NOT NULL
+    );
+$$;

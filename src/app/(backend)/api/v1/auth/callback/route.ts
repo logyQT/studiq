@@ -1,59 +1,11 @@
-/**
- * @swagger
- * /api/v1/auth/callback:
- *   get:
- *     summary: Handle authentication callback (PKCE & OTP)
- *     description: >
- *       Exchanges the PKCE authorization code or OTP token_hash received from
- *       the email link for a secure server-side session, then redirects the user.
- *     tags:
- *       - Auth
- *     parameters:
- *       - in: query
- *         name: code
- *         required: false
- *         schema:
- *           type: string
- *         description: >
- *           The authorization code provided by Supabase in the email link (PKCE flow).
- *       - in: query
- *         name: token_hash
- *         required: false
- *         schema:
- *           type: string
- *         description: >
- *           The token hash provided by Supabase for OTP flows
- *           (e.g., password recovery, magic links).
- *       - in: query
- *         name: type
- *         required: false
- *         schema:
- *           type: string
- *           enum: [signup, invite, magiclink, recovery, email_change, email]
- *         description: The type of the OTP token (required if token_hash is provided).
- *       - in: query
- *         name: next
- *         required: false
- *         schema:
- *           type: string
- *         description: >
- *           The path to redirect the user to after a successful token exchange
- *           (e.g., /dashboard).
- *     responses:
- *       302:
- *         description: >
- *           Redirects the user to the target page on success, or back to login
- *           with an error query parameter if the link is invalid or expired.
- */
-import { log } from '@/lib/logger';
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { EmailOtpType } from '@supabase/supabase-js';
+import type { EmailOtpType } from '@supabase/supabase-js';
+import { type NextRequest, NextResponse } from 'next/server';
 import { APP_ERRORS } from '@/lib/errors';
+import { createClient } from '@/lib/supabase/server';
+
+const FALLBACK_REDIRECT = '/';
 
 export async function GET(req: NextRequest) {
-  const FALLBACK_REDIRECT = '/';
-
   const { searchParams, origin } = req.nextUrl;
 
   const token_hash = searchParams.get('token_hash');
@@ -84,16 +36,12 @@ export async function GET(req: NextRequest) {
     if (!error) {
       return NextResponse.redirect(`${origin}${next}`);
     }
-
-    log.auth.error('Auth Callback Error (TokenHash)', { metadata: { message: error.message } });
   } else if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
       return NextResponse.redirect(`${origin}${next}`);
     }
-
-    log.auth.error('Auth Callback Error (PKCE)', { metadata: { message: error.message } });
   }
 
   return NextResponse.redirect(`${origin}/login?error=${APP_ERRORS.INTERNAL_SERVER.code}`);

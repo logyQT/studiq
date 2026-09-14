@@ -1,210 +1,171 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { flashcardDeckService } from '@/server/services/flashcard-deck.service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { FlashcardDeckService } from '@/server/services/flashcard-deck.service';
+import { AccountType } from '@/types';
+import type { RequestContext } from '@/lib/request-context';
+
+vi.mock('@/server/services', () => ({
+  planResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
+}));
+
+function qb(data: any, error: any = null, count?: number) {
+  const result = count !== undefined
+    ? { data: data ?? null, count, error }
+    : { data: data ?? null, error };
+  const promise = Promise.resolve(result);
+  const b: any = {};
+  b.select = vi.fn(() => b);
+  b.insert = vi.fn(() => b);
+  b.update = vi.fn(() => b);
+  b.delete = vi.fn(() => b);
+  b.eq = vi.fn(() => b);
+  b.in = vi.fn(() => b);
+  b.order = vi.fn(() => b);
+  b.limit = vi.fn(() => b);
+  b.or = vi.fn(() => b);
+  b.not = vi.fn(() => b);
+  b.neq = vi.fn(() => b);
+  b.rpc = vi.fn(() => b);
+  b.single = vi.fn().mockResolvedValue(result);
+  b.maybeSingle = vi.fn().mockResolvedValue(result);
+  b.then = promise.then.bind(promise);
+  b.catch = promise.catch.bind(promise);
+  b.finally = promise.finally.bind(promise);
+  return b;
+}
 
 describe('FlashcardDeckService', () => {
-  const userId = 'test-user-id';
-  let mock: ReturnType<typeof mockClient>;
+  let mock: ReturnType<typeof mockSupabaseClient>;
+  let service: FlashcardDeckService;
+  const ctx: RequestContext = {
+    userId: 'test-user-id',
+    accountType: AccountType.STUDENT,
+    traceId: 'test',
+    url: '',
+    method: 'GET',
+    activeOrgId: null,
+    orgRoleId: null,
+    groupIds: [],
+    permissionScopes: {},
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
+    service = new FlashcardDeckService(async () => mock as any);
   });
 
   describe('create', () => {
-    it('inserts deck with university_id and returns it', async () => {
-      const mockDeck = { id: 'd-1', name: 'Study Deck', created_by: userId };
+    it('inserts deck and returns it', async () => {
+      const mockDeck = { id: 'd-1', name: 'Study Deck', created_by: ctx.userId };
+      mock.from.mockReturnValueOnce(qb([], null, 0));
+      mock.from.mockReturnValueOnce(qb(mockDeck));
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb(mockDeck));
 
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: { university_id: 'uni-1' },
-              error: null,
-            }),
-          }),
-        }),
-      });
+      const result = await service.create({ name: 'Study Deck' }, ctx);
 
-      mock.from.mockReturnValueOnce({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: mockDeck, error: null }),
-          }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({ data: mockDeck, error: null }),
-            }),
-          }),
-        }),
-      });
-
-      const result = await flashcardDeckService.create({ name: 'Study Deck' }, userId);
-
-      expect(result).toBeDefined();
+      expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenCalledWith('flashcard_decks');
     });
 
-    it('throws INTERNAL_SERVER when insert fails', async () => {
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: { university_id: null },
-              error: null,
-            }),
-          }),
-        }),
-      });
+    it('returns INTERNAL_SERVER when insert fails', async () => {
+      mock.from.mockReturnValueOnce(qb([], null, 0));
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
-      mock.from.mockReturnValue({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
-          }),
-        }),
-      });
+      const result = await service.create({ name: 'Study Deck' }, ctx);
 
-      await expect(flashcardDeckService.create({ name: 'Study Deck' }, userId)).rejects.toThrow(
-        'ERROR_INTERNAL_SERVER',
-      );
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
     });
   });
 
   describe('list', () => {
     it('returns decks for user', async () => {
-      const decks = [{ id: 'd-1', name: 'Study Deck', flashcard_deck_assignments: [] }];
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({ data: decks, error: null }),
-          }),
-        }),
-      });
+      const decks = [{ id: 'd-1', name: 'Study Deck', flashcard_count: 0, groupIds: [], suspended: false }];
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb(decks));
 
-      const result = await flashcardDeckService.list(userId);
+      const result = await service.list(ctx);
 
-      expect(result).toBeDefined();
-      expect(result.length).toBe(1);
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
     });
 
-    it('throws INTERNAL_SERVER when query fails', async () => {
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
-          }),
-        }),
-      });
+    it('returns INTERNAL_SERVER when query fails', async () => {
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
-      await expect(flashcardDeckService.list(userId)).rejects.toThrow('ERROR_INTERNAL_SERVER');
+      const result = await service.list(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
     });
   });
 
   describe('getById', () => {
     it('returns deck when found', async () => {
-      const deck = { id: 'd-1', name: 'Study Deck', flashcard_deck_assignments: [] };
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({ data: deck, error: null }),
-            }),
-          }),
-        }),
-      });
+      const deck = { id: 'd-1', name: 'Study Deck' };
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb(deck));
 
-      const result = await flashcardDeckService.getById('d-1', userId);
+      const result = await service.getById('d-1', ctx);
 
-      expect(result).toBeDefined();
+      expect(result.success).toBe(true);
     });
 
-    it('throws NOT_FOUND when deck does not exist', async () => {
-      mock.from.mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({ data: null, error: null }),
-            }),
-          }),
-        }),
-      });
+    it('returns NOT_FOUND when deck does not exist', async () => {
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb(null, null));
 
-      await expect(flashcardDeckService.getById('nonexistent', userId)).rejects.toThrow(
-        'ERROR_NOT_FOUND',
-      );
+      const result = await service.getById('nonexistent', ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
     });
   });
 
   describe('update', () => {
     it('updates deck and returns it', async () => {
-      const updated = { id: 'd-1', name: 'Updated', flashcard_deck_assignments: [] };
-      mock.from.mockReturnValueOnce({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({ data: updated, error: null }),
-              }),
-            }),
-          }),
-        }),
-      });
+      const existing = { id: 'd-1', name: 'Original', created_by: ctx.userId };
+      const updated = { id: 'd-1', name: 'Updated', created_by: ctx.userId };
+      mock.from.mockReturnValueOnce(qb(existing));
+      mock.from.mockReturnValueOnce(qb(updated));
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb(updated));
 
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({ data: updated, error: null }),
-            }),
-          }),
-        }),
-      });
+      const result = await service.update('d-1', { name: 'Updated' }, ctx);
 
-      const result = await flashcardDeckService.update('d-1', { name: 'Updated' }, userId);
-
-      expect(result).toBeDefined();
+      expect(result.success).toBe(true);
     });
 
-    it('throws FORBIDDEN when deck not owned by user', async () => {
-      mock.from.mockReturnValue({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({ data: null, error: null }),
-              }),
-            }),
-          }),
-        }),
-      });
+    it('returns NOT_FOUND when deck does not exist', async () => {
+      mock.from.mockReturnValueOnce(qb(null, null));
 
-      await expect(
-        flashcardDeckService.update('d-1', { name: 'Updated' }, userId),
-      ).rejects.toThrow('ERROR_FORBIDDEN');
+      const result = await service.update('nonexistent', { name: 'Updated' }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
     });
   });
 
   describe('delete', () => {
     it('deletes deck successfully', async () => {
-      mock.from.mockReturnValue({
-        delete: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({ data: { id: 'd-1' }, error: null }),
-              }),
-            }),
-          }),
-        }),
-      });
+      mock.from.mockReturnValueOnce(qb({ id: 'd-1', created_by: ctx.userId }));
+      mock.from.mockReturnValueOnce(qb({ id: 'd-1' }));
 
-      await expect(flashcardDeckService.delete('d-1', userId)).resolves.toBeUndefined();
+      const result = await service.delete('d-1', ctx);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('returns NOT_FOUND when deck does not exist', async () => {
+      mock.from.mockReturnValueOnce(qb(null, null));
+
+      const result = await service.delete('nonexistent', ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
     });
   });
 });

@@ -1,14 +1,14 @@
 'use client';
 
-import { type ReactNode, memo } from 'react';
 import Image from 'next/image';
+import { memo, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
+import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
-import rehypeHighlight from 'rehype-highlight';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import { CodeBlock } from '@/components/shared/code-block';
 import 'katex/dist/katex.min.css';
 
@@ -39,7 +39,10 @@ function extractText(node: ReactNode): string {
   return '';
 }
 
-export const MarkdownRenderer = memo(function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
+export const MarkdownRenderer = memo(function MarkdownRenderer({
+  content,
+  className,
+}: MarkdownRendererProps) {
   return (
     <div className={`overflow-hidden break-words whitespace-normal ${className ?? ''}`}>
       <ReactMarkdown
@@ -51,19 +54,31 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, classN
           h3: ({ children }) => <h3 className="text-lg font-semibold mt-3 mb-1">{children}</h3>,
           h4: ({ children }) => <h4 className="text-base font-semibold mt-2 mb-1">{children}</h4>,
           h5: ({ children }) => <h5 className="text-sm font-semibold mt-2 mb-1">{children}</h5>,
-          h6: ({ children }) => <h6 className="text-sm font-medium mt-2 mb-1 text-muted-foreground">{children}</h6>,
+          h6: ({ children }) => (
+            <h6 className="text-sm font-medium mt-2 mb-1 text-muted-foreground">{children}</h6>
+          ),
           p: ({ children }) => <div className="mb-1 last:mb-0">{children}</div>,
-          ul: ({ children }) => <ul className="list-disc pl-8 mb-1 last:mb-0 text-left">{children}</ul>,
-          ol: ({ children }) => <ol className="list-decimal pl-8 mb-1 last:mb-0 text-left">{children}</ol>,
+          ul: ({ children }) => (
+            <ul className="list-disc pl-8 mb-1 last:mb-0 text-left">{children}</ul>
+          ),
+          ol: ({ children }) => (
+            <ol className="list-decimal pl-8 mb-1 last:mb-0 text-left">{children}</ol>
+          ),
           li: ({ children }) => <li className="mb-0.5 last:mb-0">{children}</li>,
           pre: ({ children }) => <>{children}</>,
           code: ({ className, children }) => {
             const isFenced = /language-\w+/.test(className ?? '');
             if (isFenced) {
               const language = className?.replace('language-', '');
-              return <CodeBlock language={language} rawCode={extractText(children)}>{children}</CodeBlock>;
+              return (
+                <CodeBlock language={language} rawCode={extractText(children)}>
+                  {children}
+                </CodeBlock>
+              );
             }
-            return <code className="rounded bg-black/10 px-1 py-0.5 text-sm font-mono">{children}</code>;
+            return (
+              <code className="rounded bg-black/10 px-1 py-0.5 text-sm font-mono">{children}</code>
+            );
           },
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           em: ({ children }) => <em>{children}</em>,
@@ -73,7 +88,12 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, classN
             </blockquote>
           ),
           a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2"
+            >
               {children}
             </a>
           ),
@@ -83,21 +103,29 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, classN
             </div>
           ),
           th: ({ children }) => (
-            <th className="border border-border bg-muted px-3 py-1.5 text-left font-medium">{children}</th>
+            <th className="border border-border bg-muted px-3 py-1.5 text-left font-medium">
+              {children}
+            </th>
           ),
-          td: ({ children }) => (
-            <td className="border border-border px-3 py-1.5">{children}</td>
-          ),
+          td: ({ children }) => <td className="border border-border px-3 py-1.5">{children}</td>,
           del: ({ children }) => <del className="line-through">{children}</del>,
           img: ({ src, alt }) =>
             src ? (
               <div className="relative max-w-full h-48 mx-auto">
-                <Image src={src as string} alt={alt ?? ''} fill className="object-contain rounded-lg" sizes="(max-width: 768px) 100vw, 768px" />
+                <Image
+                  src={src as string}
+                  alt={alt ?? ''}
+                  fill
+                  className="object-contain rounded-lg"
+                  sizes="(max-width: 768px) 100vw, 768px"
+                />
               </div>
             ) : null,
           hr: () => <hr className="my-2 border-border" />,
           audio: ({ src }) =>
-            typeof src === 'string' ? <audio controls src={src} className="w-full min-w-96 h-9 my-2 rounded-lg" /> : null,
+            typeof src === 'string' ? (
+              <audio controls src={src} className="w-full min-w-96 h-9 my-2 rounded-lg" />
+            ) : null,
         }}
       >
         {content}

@@ -1,26 +1,26 @@
 'use client';
 
+import {
+  ArrowRight,
+  BarChart3,
+  BookOpen,
+  Brain,
+  Building2,
+  Check,
+  FileText,
+  GraduationCap,
+  Mail,
+  Sparkles,
+  Target,
+  TrendingUp,
+  Zap,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { MainLayout } from '@/components';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import {
-  FileText,
-  Brain,
-  BookOpen,
-  BarChart3,
-  Sparkles,
-  Zap,
-  Target,
-  TrendingUp,
-  Building2,
-  Mail,
-  GraduationCap,
-  ArrowRight,
-  Check,
-} from 'lucide-react';
 
 const FREE = 'free';
 const PREMIUM = 'premium';

@@ -1,100 +1,130 @@
-import { authService } from '@/server/services';
+import type { ControllerResponse } from '@/lib/controller-response';
+import { controllerResponse } from '@/lib/controller-response';
+import { isFailure } from '@/lib/service-result';
 import {
-  RegisterSchema,
-  LoginSchema,
   forgotPasswordSchema,
+  LoginSchema,
+  RegisterSchema,
+  UpdateProfileSchema,
   updatePasswordSchema,
 } from '@/server/models';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import type { AuthService } from '@/server/services/auth.service';
 
 export class AuthController {
+  constructor(private authService: AuthService) {}
+
   async register(body: unknown): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = RegisterSchema.safeParse(body);
+    const parsed = RegisterSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
 
-      await authService.register(parsed.data);
+    const result = await this.authService.register(parsed.data);
 
-      return { success: true, statusCode: 202, data: { message: 'SUCCESS_ACTIVATION_LINK_SENT' } };
-    });
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success({ message: 'SUCCESS_ACTIVATION_LINK_SENT' }, 202);
   }
 
   async login(body: unknown): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = LoginSchema.safeParse(body);
+    const parsed = LoginSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
 
-      const result = await authService.login(parsed.data);
+    const result = await this.authService.login(parsed.data);
 
-      return { success: true, statusCode: 200, data: { user: result.user, session: result.session } };
-    });
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success({ user: result.data.user, session: result.data.session });
   }
 
   async logout(): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      await authService.logout();
-      return { success: true, statusCode: 200, data: { message: 'SUCCESS_LOGOUT' } };
-    });
+    const result = await this.authService.logout();
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success({ message: 'SUCCESS_LOGOUT' });
   }
 
   async requestPasswordReset(body: unknown): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = forgotPasswordSchema.safeParse(body);
+    const parsed = forgotPasswordSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
-
-      await authService.requestPasswordReset(parsed.data.email);
-
+    if (!parsed.success) {
       return {
-        success: true,
-        statusCode: 200,
-        data: { message: 'SUCCESS_PASSWORD_RESET_REQUESTED' },
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
       };
-    });
+    }
+
+    const result = await this.authService.requestPasswordReset(parsed.data.email);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success({ message: 'SUCCESS_PASSWORD_RESET_REQUESTED' });
+  }
+
+  async updateProfile(body: unknown): Promise<ControllerResponse> {
+    const parsed = UpdateProfileSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
+
+    const result = await this.authService.updateProfile(parsed.data);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success({ user: result.data });
   }
 
   async updatePassword(body: unknown): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = updatePasswordSchema.safeParse(body);
+    const parsed = updatePasswordSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
-      }
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
 
-      await authService.updatePassword(parsed.data.password);
+    const result = await this.authService.updatePassword(parsed.data.password);
 
-      return { success: true, statusCode: 200, data: { message: 'SUCCESS_PASSWORD_UPDATED' } };
-    });
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success({ message: 'SUCCESS_PASSWORD_UPDATED' });
   }
 }
-
-export const authController = new AuthController();

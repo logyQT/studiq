@@ -1,9 +1,10 @@
-import { createClient } from '@/lib/supabase/server';
-import { mapSupabaseError } from '@/lib/supabase-errors';
-import { buildQueryFilter, Permission } from '@/lib/rbac';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { accessibleFilter, Permission } from '@/lib/access';
 import type { RequestContext } from '@/lib/request-context';
+import { type ServiceResult, success } from '@/lib/service-result';
+import { toDbFailure } from '@/lib/supabase-errors';
 import type { SearchResult } from '@/server/models';
-import { UserRole } from '@/types';
+import { AccountType } from '@/types';
 
 type RpcRow = {
   id: string;
@@ -15,35 +16,38 @@ type RpcRow = {
 };
 
 export class SearchService {
-  async search(q: string, ctx: RequestContext, limit = 10): Promise<SearchResult[]> {
-    const supabase = await createClient();
+  constructor(private createClient: () => Promise<SupabaseClient>) {}
 
-    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ);
-    if (filter._impossible) return [];
+  async search(q: string, ctx: RequestContext, limit = 10): Promise<ServiceResult<SearchResult[]>> {
+    const supabase = await this.createClient();
+
+    const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    if (filter._impossible) return success([]);
 
     let p_user_id: string | null = null;
-    let p_university_id: string | null = null;
+    let p_organization_id: string | null = null;
 
-    if ('created_by' in filter) {
+    // Construct search RPC params based on access filter
+    if (filter.created_by) {
       p_user_id = ctx.userId;
-    } else if ('or' in filter) {
+    } else if (filter.or) {
       p_user_id = ctx.userId;
-      p_university_id = ctx.universityId;
+      p_organization_id = ctx.activeOrgId;
     }
 
     const { data, error } = await supabase.rpc('search_flashcards', {
       search_query: q,
       result_limit: limit,
       p_user_id,
-      p_university_id,
+      p_organization_id,
     });
 
-    if (error) throw mapSupabaseError(error);
+    if (error) return toDbFailure(error);
 
     const rows = data as RpcRow[] | null;
-    if (!rows || rows.length === 0) return [];
+    if (!rows || rows.length === 0) return success([]);
 
-    const basePath = ctx.role === UserRole.TEACHER ? '/edu' : '/app';
+    const basePath = ctx.accountType === AccountType.EDUCATOR ? '/edu' : '/app';
 
     const grouped = new Map<string, SearchResult>();
 
@@ -55,7 +59,7 @@ export class SearchService {
           existing.decks.push({
             id: row.deck_id,
             name: row.deck_name ?? '',
-            href: `${basePath}/flashcards/deck/${row.deck_id}/${row.id}`,
+            href: `${basePath}/flashcards/${row.deck_id}/${row.id}`,
           });
         }
       } else {
@@ -66,18 +70,18 @@ export class SearchService {
           subtitle: row.back,
           rank: row.rank,
           decks: row.deck_id
-            ? [{
-                id: row.deck_id,
-                name: row.deck_name ?? '',
-                href: `${basePath}/flashcards/deck/${row.deck_id}/${row.id}`,
-              }]
+            ? [
+                {
+                  id: row.deck_id,
+                  name: row.deck_name ?? '',
+                  href: `${basePath}/flashcards/${row.deck_id}/${row.id}`,
+                },
+              ]
             : [],
         });
       }
     }
 
-    return Array.from(grouped.values());
+    return success(Array.from(grouped.values()));
   }
 }
-
-export const searchService = new SearchService();

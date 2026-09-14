@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import { t } from './utils';
+import { expect, test } from '@playwright/test';
+import { t } from '#test/e2e/utils';
 
 const heading = t('LoginPage.header');
 const emailLabel = t('LoginPage.email_label');
@@ -18,33 +18,23 @@ const PASSWORD = 'pass';
 
 const USERS = [
   {
-    role: 'sys_admin',
+    role: 'manager',
     email: 'admin@dev.local',
-    redirectUrl: /\/admin/,
-  },
-  {
-    role: 'university_admin',
-    email: 'uadmin@dev.local',
     redirectUrl: /\/manage/,
   },
   {
-    role: 'teacher',
+    role: 'manager',
+    email: 'manager@dev.local',
+    redirectUrl: /\/manage/,
+  },
+  {
+    role: 'educator',
     email: 'teacher@dev.local',
     redirectUrl: /\/edu/,
   },
   {
     role: 'student',
     email: 'student@dev.local',
-    redirectUrl: /\/app/,
-  },
-  {
-    role: 'premium',
-    email: 'premium@dev.local',
-    redirectUrl: /\/app/,
-  },
-  {
-    role: 'free',
-    email: 'user@dev.local',
     redirectUrl: /\/app/,
   },
 ] as const;

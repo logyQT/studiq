@@ -1,66 +1,124 @@
-import { CreateInviteSchema, BulkInviteSchema } from '@/server/models/invitation.model';
-import { invitationService } from '@/server/services';
-import { ControllerResponse } from '@/lib/controller-response';
-import { withErrorHandling } from '@/lib/with-error-handling';
+import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
+import { isFailure } from '@/lib/service-result';
+import {
+  BulkInviteSchema,
+  CreateInviteSchema,
+  InvitationListQuerySchema,
+  UpdateInviteSchema,
+} from '@/server/models/invitation.model';
+import type { InvitationService } from '@/server/services/invitation.service';
 
 export class InvitationController {
+  constructor(private invitationService: InvitationService) {}
+
   async create(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsedData = CreateInviteSchema.safeParse(body);
+    const parsedData = CreateInviteSchema.safeParse(body);
 
-      if (!parsedData.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsedData.error.issues,
-        };
-      }
+    if (!parsedData.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsedData.error.issues);
+    }
 
-      const result = await invitationService.createInvitation(ctx, parsedData.data);
+    const result = await this.invitationService.createInvitation(ctx, parsedData.data);
 
-      return { success: true, statusCode: 201, data: result };
-    }, ctx);
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.created(result.data);
   }
 
   async getByToken(token: string): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      if (!token) {
-        return { success: false, statusCode: 400, error: 'BAD_REQUEST' };
-      }
+    if (!token) {
+      return controllerResponse.error('BAD_REQUEST');
+    }
 
-      const invitation = await invitationService.getInvitationByToken(token);
-      return { success: true, statusCode: 200, data: invitation };
-    });
+    const result = await this.invitationService.getInvitationByToken(token);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
+  }
+
+  async accept(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
+    const { token } = body as { token?: string };
+
+    if (!token || typeof token !== 'string') {
+      return controllerResponse.error('BAD_REQUEST');
+    }
+
+    const result = await this.invitationService.acceptInvitation(ctx, token);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
+  }
+
+  async list(ctx: RequestContext, query?: { isAccepted?: boolean }): Promise<ControllerResponse> {
+    const parsed = InvitationListQuerySchema.safeParse(query ?? {});
+
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
+
+    const result = await this.invitationService.listInvitations(ctx, parsed.data.isAccepted);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
+  }
+
+  async update(ctx: RequestContext, id: string, body: unknown): Promise<ControllerResponse> {
+    const parsed = UpdateInviteSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
+
+    const result = await this.invitationService.updateInvitation(ctx, id, parsed.data);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success({ success: true });
+  }
+
+  async delete(ctx: RequestContext, id: string): Promise<ControllerResponse> {
+    const result = await this.invitationService.deleteInvitation(ctx, id);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success({ success: true });
   }
 
   async createBulk(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
-    return withErrorHandling(async () => {
-      const parsed = BulkInviteSchema.safeParse(body);
+    const parsed = BulkInviteSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return {
-          success: false,
-          statusCode: 422,
-          error: 'UNPROCESSABLE_ENTITY',
-          details: parsed.error.issues,
-        };
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
+
+    const results = [];
+
+    for (const invite of parsed.data.invitations) {
+      const result = await this.invitationService.createInvitation(ctx, invite);
+
+      if (isFailure(result)) {
+        results.push({ success: false, error: 'Failed to create invitation' });
+      } else {
+        results.push({ success: true, data: result.data });
       }
+    }
 
-      const results = [];
-      for (const invite of parsed.data.invitations) {
-        try {
-          const result = await invitationService.createInvitation(ctx, invite);
-          results.push({ success: true, data: result });
-        } catch {
-          results.push({ success: false, error: 'Failed to create invitation' });
-        }
-      }
-
-      return { success: true, statusCode: 200, data: { results } };
-    }, ctx);
+    return controllerResponse.success({ results });
   }
 }
-
-export const invitationController = new InvitationController();

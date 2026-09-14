@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Search, Copy, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, RefreshCw, Search } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -89,9 +89,7 @@ export default function ErrorLogsPage() {
               Refresh
             </Button>
           </CardTitle>
-          <CardDescription>
-            Search by error UUID, message, or stack trace content.
-          </CardDescription>
+          <CardDescription>Search by error UUID, message, or stack trace content.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex gap-2 mb-4">
