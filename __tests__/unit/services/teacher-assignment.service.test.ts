@@ -308,7 +308,7 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
         .mockReturnValue(chain(published));
 
-      const result = await service.publish(assignmentId, '2026-07-20T00:00:00.000Z', ctx);
+      const result = await service.publish(assignmentId, '2026-07-20T00:00:00.000Z', undefined, ctx);
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data.status).toBe('published');
@@ -319,16 +319,62 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
         .mockReturnValue(chain({ id: assignmentId, status: 'published' }));
 
-      const result = await service.publish(assignmentId, undefined, ctx);
+      const result = await service.publish(assignmentId, undefined, undefined, ctx);
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data.status).toBe('published');
     });
 
+    it('publishes assignment with startTime', async () => {
+      mock.from
+        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValue(chain({ id: assignmentId, status: 'published', start_time: '2026-09-01T08:00:00.000Z' }));
+
+      const result = await service.publish(assignmentId, undefined, '2026-09-01T08:00:00.000Z', ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.start_time).toBe('2026-09-01T08:00:00.000Z');
+    });
+
     it('returns NOT_FOUND when ownership check fails', async () => {
       mock.from.mockReturnValueOnce(chain(null));
 
-      const result = await service.publish(assignmentId, undefined, ctx);
+      const result = await service.publish(assignmentId, undefined, undefined, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
+    });
+  });
+
+  describe('unpublish', () => {
+    it('unpublishes a published assignment', async () => {
+      const draft = { id: assignmentId, status: 'draft' };
+      mock.from
+        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(chain({ id: assignmentId, status: 'published' }))
+        .mockReturnValue(chain(draft));
+
+      const result = await service.unpublish(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.status).toBe('draft');
+    });
+
+    it('returns BAD_REQUEST when assignment is already draft', async () => {
+      mock.from
+        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValue(chain({ id: assignmentId, status: 'draft' }));
+
+      const result = await service.unpublish(assignmentId, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('BAD_REQUEST');
+    });
+
+    it('returns NOT_FOUND when ownership check fails', async () => {
+      mock.from.mockReturnValueOnce(chain(null));
+
+      const result = await service.unpublish(assignmentId, ctx);
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('NOT_FOUND');

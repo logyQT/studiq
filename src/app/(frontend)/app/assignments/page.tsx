@@ -11,6 +11,7 @@ interface StudentAssignment {
   title: string;
   description: string | null;
   deadline: string | null;
+  start_time: string | null;
   time_limit_min: number | null;
   max_attempts: number;
   question_count: number;
@@ -37,7 +38,26 @@ export default function StudentAssignmentsPage() {
     return new Date(dateStr).toLocaleDateString(locale);
   };
 
-  const pending = assignments?.filter((a) => !a.attempt?.completed_at) ?? [];
+  const now = new Date();
+  const scheduled =
+    assignments?.filter((a) => {
+      if (a.attempt?.completed_at) return false;
+      if (!a.start_time) return false;
+      return now < new Date(a.start_time);
+    }) ?? [];
+  const pending =
+    assignments?.filter((a) => {
+      if (a.attempt?.completed_at) return false;
+      if (a.start_time && now < new Date(a.start_time)) return false;
+      if (a.deadline && now > new Date(a.deadline)) return false;
+      return true;
+    }) ?? [];
+  const closed =
+    assignments?.filter((a) => {
+      if (a.attempt?.completed_at) return false;
+      if (!a.deadline) return false;
+      return now > new Date(a.deadline);
+    }) ?? [];
   const completed = assignments?.filter((a) => a.attempt?.completed_at) ?? [];
 
   return (
@@ -53,7 +73,10 @@ export default function StudentAssignmentsPage() {
             <div key={i} className="h-24 bg-muted animate-pulse rounded-lg" />
           ))}
         </div>
-      ) : pending.length === 0 && completed.length === 0 ? (
+      ) : pending.length === 0 &&
+        scheduled.length === 0 &&
+        closed.length === 0 &&
+        completed.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <ClipboardCheck className="h-12 w-12 text-muted-foreground mb-4" />
           <h3 className="text-lg font-semibold">{t('empty')}</h3>
@@ -61,6 +84,29 @@ export default function StudentAssignmentsPage() {
         </div>
       ) : (
         <>
+          {scheduled.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                Scheduled ({scheduled.length})
+              </h2>
+              {scheduled.map((a) => (
+                <Link key={a.id} href={`/app/assignments/${a.id}`}>
+                  <div className="rounded-lg border p-4 hover:bg-accent/50 transition-colors cursor-pointer space-y-2">
+                    <div className="flex items-start justify-between">
+                      <h3 className="font-semibold">{a.title}</h3>
+                      <span className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 px-2 py-0.5 rounded-full">
+                        Scheduled
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Opens: {formatDate(a.start_time)}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </section>
+          )}
+
           {pending.length > 0 && (
             <section className="space-y-3">
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
@@ -87,6 +133,24 @@ export default function StudentAssignmentsPage() {
                         </span>
                       )}
                     </div>
+                  </div>
+                </Link>
+              ))}
+            </section>
+          )}
+
+          {closed.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                Closed ({closed.length})
+              </h2>
+              {closed.map((a) => (
+                <Link key={a.id} href={`/app/assignments/${a.id}`}>
+                  <div className="rounded-lg border p-4 hover:bg-accent/50 transition-colors cursor-pointer space-y-2 opacity-60">
+                    <h3 className="font-semibold">{a.title}</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Closed: {formatDate(a.deadline)}
+                    </p>
                   </div>
                 </Link>
               ))}

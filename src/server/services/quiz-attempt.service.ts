@@ -86,6 +86,23 @@ export class QuizAttemptService {
     if (attemptCheckError || !attempt) return failure('NOT_FOUND');
     if (attempt.completed_at) return failure('BAD_REQUEST');
 
+    // Check deadline if this attempt belongs to an assignment
+    if (attempt.assignment_id) {
+      const { data: assignment } = await supabase
+        .from('teacher_assignments')
+        .select('deadline')
+        .eq('id', attempt.assignment_id)
+        .single();
+
+      if (assignment?.deadline) {
+        const graceEnd = new Date(assignment.deadline);
+        graceEnd.setSeconds(graceEnd.getSeconds() + 60);
+        if (new Date() > graceEnd) {
+          return failure('GONE');
+        }
+      }
+    }
+
     let score = 0;
     const answerRecords = [];
 

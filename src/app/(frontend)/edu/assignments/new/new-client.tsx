@@ -1,8 +1,8 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -14,8 +14,11 @@ import { assignmentKeys } from '@/lib/query-keys';
 
 export default function NewAssignmentClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const quizId = searchParams.get('quizId');
   const t = useTranslations('EduAssignmentNewPage');
   const [title, setTitle] = useState('');
+  const [quizName, setQuizName] = useState('');
   const [description, setDescription] = useState('');
   const [deadline, setDeadline] = useState('');
   const [timeLimitMin, setTimeLimitMin] = useState('');
@@ -24,6 +27,19 @@ export default function NewAssignmentClient() {
   const [showResults, setShowResults] = useState(false);
   const [maxAttempts, setMaxAttempts] = useState('1');
   const [passingScore, setPassingScore] = useState('');
+
+  useEffect(() => {
+    if (!quizId) return;
+    fetch(`/api/v1/teacher/quizzes/${quizId}`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && json.data) {
+          setTitle(json.data.name);
+          setQuizName(json.data.name);
+        }
+      })
+      .catch(() => {});
+  }, [quizId]);
 
   const createMutation = useApiMutation({
     mutationFn: async (body: Record<string, unknown>) => {
@@ -44,6 +60,7 @@ export default function NewAssignmentClient() {
     const data = await createMutation.mutateAsync({
       title,
       description: description || undefined,
+      quizId: quizId || undefined,
       deadline: deadline ? new Date(deadline).toISOString() : undefined,
       timeLimitMin: timeLimitMin ? parseInt(timeLimitMin, 10) : undefined,
       shuffleQuestions,
@@ -77,6 +94,7 @@ export default function NewAssignmentClient() {
                 required
                 placeholder={t('title_placeholder')}
               />
+              {quizName && <p className="text-xs text-muted-foreground">Based on: {quizName}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">{t('description')}</Label>

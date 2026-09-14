@@ -9,6 +9,7 @@ export const CreateTeacherAssignmentSchema = registry.register(
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .max(200, { error: ValidationErrorCode.TOO_LONG }),
     description: z.string().max(2000, { error: ValidationErrorCode.TOO_LONG }).optional(),
+    quizId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
     deadline: z.string().datetime().optional(),
     timeLimitMin: z
       .number({ error: ValidationErrorCode.NUMBER })
@@ -113,6 +114,7 @@ export const PublishAssignmentSchema = registry.register(
   'PublishAssignmentRequest',
   z.object({
     deadline: z.string().datetime().optional(),
+    startTime: z.string().datetime().optional(),
   }),
 );
 export type PublishAssignmentInput = z.infer<typeof PublishAssignmentSchema>;

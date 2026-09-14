@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
 import { assignmentKeys } from '@/lib/query-keys';
 
@@ -28,14 +28,44 @@ interface PrintData {
   }>;
 }
 
+interface PrintSettings {
+  showNameField: boolean;
+  showClassField: boolean;
+  showDateField: boolean;
+  showPoints: boolean;
+  includeAnswerKey: boolean;
+}
+
+const defaultSettings: PrintSettings = {
+  showNameField: true,
+  showClassField: true,
+  showDateField: true,
+  showPoints: true,
+  includeAnswerKey: true,
+};
+
+function loadSettings(): PrintSettings {
+  if (typeof window === 'undefined') return defaultSettings;
+  try {
+    const saved = localStorage.getItem('assignment-print-settings');
+    if (saved) return { ...defaultSettings, ...JSON.parse(saved) };
+  } catch {}
+  return defaultSettings;
+}
+
 export default function PrintAssignmentClient() {
   const { id } = useParams<{ id: string }>();
   const t = useTranslations('EduAssignmentPrintPage');
+  const [settings, setSettings] = useState<PrintSettings>(defaultSettings);
 
   const { data: assignment } = useApiQuery<PrintData>({
     queryKey: assignmentKeys.detail(id),
     url: `/api/v1/teacher/assignments/${id}`,
   });
+
+  useEffect(() => {
+    setSettings(loadSettings());
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => window.print(), 500);
@@ -80,15 +110,21 @@ export default function PrintAssignmentClient() {
       </div>
 
       <div className="flex gap-8 mb-8">
-        <div>
-          <span className="font-medium">{t('name')}:</span> _______________________________
-        </div>
-        <div>
-          <span className="font-medium">{t('class')}:</span> _______________________________
-        </div>
-        <div>
-          <span className="font-medium">{t('date')}:</span> _______________________________
-        </div>
+        {settings.showNameField && (
+          <div>
+            <span className="font-medium">{t('name')}:</span> _______________________________
+          </div>
+        )}
+        {settings.showClassField && (
+          <div>
+            <span className="font-medium">{t('class')}:</span> _______________________________
+          </div>
+        )}
+        {settings.showDateField && (
+          <div>
+            <span className="font-medium">{t('date')}:</span> _______________________________
+          </div>
+        )}
       </div>
 
       {questions.map((aq, i) => {
@@ -101,9 +137,11 @@ export default function PrintAssignmentClient() {
           <div key={aq.id} className="question-block">
             <p className="font-medium mb-2">
               {i + 1}. {q.content}
-              <span className="text-xs ml-2 font-normal">
-                {t(aq.points !== 1 ? 'pts_plural' : 'pts_single', { count: aq.points })}
-              </span>
+              {settings.showPoints && (
+                <span className="text-xs ml-2 font-normal">
+                  {t(aq.points !== 1 ? 'pts_plural' : 'pts_single', { count: aq.points })}
+                </span>
+              )}
             </p>
 
             {isMcq && q.question_answers && (
@@ -139,22 +177,24 @@ export default function PrintAssignmentClient() {
         );
       })}
 
-      <div className="answer-key">
-        <h2 className="text-lg font-bold mb-4">{t('answer_key')}</h2>
-        {questions.map((aq, i) => {
-          const q = aq.question;
-          const correctAnswers = q.question_answers?.filter((a) => a.is_correct) ?? [];
+      {settings.includeAnswerKey && (
+        <div className="answer-key">
+          <h2 className="text-lg font-bold mb-4">{t('answer_key')}</h2>
+          {questions.map((aq, i) => {
+            const q = aq.question;
+            const correctAnswers = q.question_answers?.filter((a) => a.is_correct) ?? [];
 
-          return (
-            <p key={aq.id} className="mb-2">
-              {i + 1}.{' '}
-              {correctAnswers.length > 0
-                ? correctAnswers.map((a) => a.content).join(', ')
-                : t('open_question')}
-            </p>
-          );
-        })}
-      </div>
+            return (
+              <p key={aq.id} className="mb-2">
+                {i + 1}.{' '}
+                {correctAnswers.length > 0
+                  ? correctAnswers.map((a) => a.content).join(', ')
+                  : t('open_question')}
+              </p>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

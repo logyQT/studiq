@@ -124,7 +124,7 @@ RETURNS TABLE(
   type text, content text, explanation text,
   visibility visibility_type, search_vector tsvector,
   created_at timestamptz, updated_at timestamptz,
-  question_answers jsonb
+  question_options jsonb
 )
 LANGUAGE sql STABLE AS $$
   WITH accessible AS (
@@ -152,16 +152,18 @@ LANGUAGE sql STABLE AS $$
          CASE WHEN p_question_id IS NOT NULL THEN (
            SELECT jsonb_agg(
              jsonb_build_object(
-               'id', qa.id,
-               'question_id', qa.question_id,
-               'content', qa.content,
-               'is_correct', qa.is_correct,
-               'order_index', qa.order_index
-             ) ORDER BY qa.order_index
+               'id', qo.id,
+               'question_id', qo.question_id,
+               'content', qo.content,
+               'is_correct', qo.is_correct,
+               'order_index', qo.order_index,
+               'match_group', qo.match_group,
+               'match_side', qo.match_side
+             ) ORDER BY qo.order_index
            )
-           FROM public.question_answers qa
-           WHERE qa.question_id = a.id
-         ) ELSE NULL END AS question_answers
+           FROM public.question_options qo
+           WHERE qo.question_id = a.id
+         ) ELSE NULL END AS question_options
   FROM accessible a
   ORDER BY a.created_at DESC;
 $$;

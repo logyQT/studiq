@@ -360,6 +360,7 @@
     "app_cram": "Cram",
     "app_quiz": "Test Yourself",
     "app_live": "Live",
+    "edu_quizzes": "Quizzes",
     "edu_assignments": "Assignments",
     "app_assignments": "Assignments",
     "stats_data": "Content",
@@ -2468,7 +2469,10 @@
     "no_questions": "No questions yet",
     "no_questions_desc": "Add questions using the buttons below",
     "search_questions": "Search questions...",
-    "select_source": "Select source"
+    "select_source": "Select source",
+    "unpublish": "Unpublish",
+    "unpublishing": "Unpublishing...",
+    "export_answers": "Export Answers"
   },
   "EduAssignmentEditPage": {
     "title": "Edit Assignment",
@@ -2493,6 +2497,52 @@
     "cancel": "Cancel",
     "saving": "Saving...",
     "save_changes": "Save Changes"
+  },
+  "EduQuizzesPage": {
+    "title": "Quizzes",
+    "subtitle": "Create and manage reusable quizzes",
+    "new_quiz": "New Quiz",
+    "empty": "No quizzes yet",
+    "empty_desc": "Create your first quiz to reuse across assignments",
+    "questions": "{count, plural, one {# question} other {# questions}}",
+    "last_updated": "Last updated: {date}"
+  },
+  "EduQuizNewPage": {
+    "title": "New Quiz",
+    "subtitle": "Create a reusable quiz for your students",
+    "name_field": "Name *",
+    "name_placeholder": "e.g. Chapter 5 Quiz",
+    "description": "Description",
+    "description_placeholder": "Optional description",
+    "cancel": "Cancel",
+    "creating": "Creating...",
+    "create": "Create Quiz"
+  },
+  "EduQuizEditPage": {
+    "title": "Edit Quiz",
+    "not_found": "Quiz not found",
+    "save": "Save",
+    "saving": "Saving...",
+    "add_questions": "Add Questions",
+    "print": "Print",
+    "create_assignment": "Create Assignment",
+    "total_points": "Total Points",
+    "no_questions": "No questions yet",
+    "no_questions_desc": "Add questions to this quiz",
+    "saved": "Saved",
+    "auto_save_failed": "Auto-save failed",
+    "save_failed": "Save failed",
+    "unsaved": "Unsaved changes"
+  },
+  "EduQuizDetailPage": {
+    "not_found": "Quiz not found",
+    "edit": "Edit",
+    "print": "Print",
+    "create_assignment": "Create Assignment",
+    "delete": "Delete",
+    "delete_confirm": "Delete this quiz? This cannot be undone.",
+    "questions": "Questions",
+    "total_points": "Total Points"
   },
   "EduAssignmentNewPage": {
     "title": "New Assignment",
@@ -2594,7 +2644,8 @@
     "points_per_question_desc": "Show point values next to each question",
     "answer_key": "Answer Key",
     "answer_key_desc": "Include a separate answer key page",
-    "save": "Save Settings"
+    "save": "Save Settings",
+    "saved": "Settings saved"
   },
   "AppAssignmentsPage": {
     "title": "My Assignments",

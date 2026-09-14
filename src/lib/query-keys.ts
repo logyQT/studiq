@@ -65,6 +65,11 @@ export const studentAssignmentKeys = {
   detail: (id: string) => ['student-assignments', id] as const,
 };
 
+export const quizKeys = {
+  all: ['teacher-quizzes'] as const,
+  detail: (id: string) => ['teacher-quizzes', id] as const,
+};
+
 export const searchKeys = {
   all: ['search'] as const,
   query: (q: string) => ['search', q] as const,

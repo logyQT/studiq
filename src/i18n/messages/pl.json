@@ -2449,7 +2449,10 @@
     "no_questions": "Brak pytań",
     "no_questions_desc": "Dodaj pytania za pomocą przycisków poniżej",
     "search_questions": "Szukaj pytań...",
-    "select_source": "Wybierz źródło"
+    "select_source": "Wybierz źródło",
+    "unpublish": "Cofnij publikację",
+    "unpublishing": "Cofanie publikacji...",
+    "export_answers": "Eksportuj odpowiedzi"
   },
   "EduAssignmentEditPage": {
     "title": "Edytuj kartkówkę",
@@ -2500,6 +2503,52 @@
     "cancel": "Anuluj",
     "creating": "Tworzenie...",
     "create": "Utwórz kartkówkę"
+  },
+  "EduQuizzesPage": {
+    "title": "Quizy",
+    "subtitle": "Twórz i zarządzaj quizami wielokrotnego użytku",
+    "new_quiz": "Nowy quiz",
+    "empty": "Brak quizów",
+    "empty_desc": "Utwórz pierwszy quiz, aby wykorzystywać go w wielu kartkówkach",
+    "questions": "{count, plural, one {# pytanie} few {# pytania} other {# pytań}}",
+    "last_updated": "Ostatnia aktualizacja: {date}"
+  },
+  "EduQuizNewPage": {
+    "title": "Nowy quiz",
+    "subtitle": "Utwórz quiz wielokrotnego użytku dla uczniów",
+    "name_field": "Nazwa *",
+    "name_placeholder": "np. Quiz z rozdziału 5",
+    "description": "Opis",
+    "description_placeholder": "Opcjonalny opis",
+    "cancel": "Anuluj",
+    "creating": "Tworzenie...",
+    "create": "Utwórz quiz"
+  },
+  "EduQuizEditPage": {
+    "title": "Edytuj quiz",
+    "not_found": "Nie znaleziono quizu",
+    "save": "Zapisz",
+    "saving": "Zapisywanie...",
+    "add_questions": "Dodaj pytania",
+    "print": "Drukuj",
+    "create_assignment": "Utwórz kartkówkę",
+    "total_points": "Suma punktów",
+    "no_questions": "Brak pytań",
+    "no_questions_desc": "Dodaj pytania do tego quizu",
+    "saved": "Zapisano",
+    "auto_save_failed": "Autozapis nieudany",
+    "save_failed": "Zapis nieudany",
+    "unsaved": "Niezapisane zmiany"
+  },
+  "EduQuizDetailPage": {
+    "not_found": "Nie znaleziono quizu",
+    "edit": "Edytuj",
+    "print": "Drukuj",
+    "create_assignment": "Utwórz kartkówkę",
+    "delete": "Usuń",
+    "delete_confirm": "Usunąć ten quiz? Tej operacji nie można cofnąć.",
+    "questions": "Pytania",
+    "total_points": "Suma punktów"
   },
   "EduAssignmentPrintPage": {
     "print_hint": "Ta strona jest zoptymalizowana do druku. Użyj Ctrl+P (Cmd+P), aby zapisać jako PDF.",
@@ -2575,7 +2624,8 @@
     "points_per_question_desc": "Pokaż liczbę punktów przy każdym pytaniu",
     "answer_key": "Klucz odpowiedzi",
     "answer_key_desc": "Dołącz osobną stronę z kluczem odpowiedzi",
-    "save": "Zapisz ustawienia"
+    "save": "Zapisz ustawienia",
+    "saved": "Ustawienia zapisane"
   },
   "AppAssignmentsPage": {
     "title": "Moje kartkówki",

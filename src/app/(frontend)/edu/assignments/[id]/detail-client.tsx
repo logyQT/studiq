@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   BookOpen,
   Dices,
+  Download,
   Edit,
   GripVertical,
   Plus,
@@ -41,6 +42,7 @@ import { Label } from '@/components/ui/label';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { apiPost } from '@/lib/api';
+import { dbToDatetimeLocal } from '@/lib/datetime';
 import { assignmentKeys, groupKeys, questionKeys } from '@/lib/query-keys';
 
 interface AssignmentDetail {
@@ -49,6 +51,8 @@ interface AssignmentDetail {
   description: string | null;
   status: 'draft' | 'published';
   deadline: string | null;
+  start_time: string | null;
+  quiz_id: string | null;
   time_limit_min: number | null;
   shuffle_questions: boolean;
   shuffle_answers: boolean;
@@ -196,6 +200,19 @@ export default function AssignmentDetailClient() {
 
   const [targetGroupIds, setTargetGroupIds] = useState<string[]>([]);
   const [targetStudentIds, setTargetStudentIds] = useState<string[]>([]);
+  const [publishDeadline, setPublishDeadline] = useState<string>('');
+  const [publishStartTime, setPublishStartTime] = useState<string>('');
+  const [scheduleRelease, setScheduleRelease] = useState(false);
+
+  useEffect(() => {
+    if (assignment?.deadline) {
+      setPublishDeadline(dbToDatetimeLocal(assignment.deadline));
+    }
+    if (assignment?.start_time) {
+      setPublishStartTime(dbToDatetimeLocal(assignment.start_time));
+      setScheduleRelease(true);
+    }
+  }, [assignment?.deadline, assignment?.start_time]);
 
   const deleteMutation = useApiMutation<void, void>({
     mutationFn: async () => {
@@ -205,12 +222,26 @@ export default function AssignmentDetailClient() {
     invalidateKeys: [assignmentKeys.all],
   });
 
+  const unpublishMutation = useApiMutation<unknown, void>({
+    mutationFn: async () => {
+      const res = await fetch(`/api/v1/teacher/assignments/${id}/unpublish`, { method: 'POST' });
+      if (!res.ok) throw new Error('Unpublish failed');
+    },
+    invalidateKeys: [assignmentKeys.detail(id), assignmentKeys.all],
+  });
+
   const publishMutation = useApiMutation<unknown, void>({
     mutationFn: async () => {
+      const deadline = publishDeadline ? new Date(publishDeadline).toISOString() : undefined;
+      const startTime =
+        scheduleRelease && publishStartTime ? new Date(publishStartTime).toISOString() : undefined;
+      const body: Record<string, string | undefined> = {};
+      if (deadline) body.deadline = deadline;
+      if (startTime) body.startTime = startTime;
       const res = await fetch(`/api/v1/teacher/assignments/${id}/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify(body),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
@@ -258,6 +289,11 @@ export default function AssignmentDetailClient() {
   const handlePublish = async () => {
     await publishMutation.mutateAsync(undefined);
     await setTargetsMutation.mutateAsync(undefined);
+  };
+
+  const handleUnpublish = async () => {
+    await unpublishMutation.mutateAsync(undefined);
+    refetch();
   };
 
   const addQuestionsMutation = useApiMutation<unknown, { questionIds: string[] }>({
@@ -393,9 +429,17 @@ export default function AssignmentDetailClient() {
             >
               {isPublished ? t('published') : t('draft')}
             </span>
+            {assignment.quiz_id && (
+              <Link
+                href={`/edu/quizzes/${assignment.quiz_id}`}
+                className="text-xs text-muted-foreground hover:text-foreground underline"
+              >
+                View source quiz
+              </Link>
+            )}
           </div>
           {assignment.description && (
-            <p className="text-sm text-muted-foreground mt-1">{assignment.description}</p>
+            <p className="text-sm text-muted-foreground mt-2">{assignment.description}</p>
           )}
         </div>
         <div className="flex gap-2">
@@ -412,18 +456,26 @@ export default function AssignmentDetailClient() {
             </>
           )}
           {isPublished && (
-            <>
-              <Link href={`/edu/assignments/${id}/results`}>
-                <Button variant="outline" size="sm">
-                  <Users className="w-4 h-4 mr-1" /> {t('results')}
-                </Button>
-              </Link>
-              <Link href={`/edu/assignments/${id}/print`}>
-                <Button variant="outline" size="sm">
-                  <Printer className="w-4 h-4 mr-1" /> {t('print')}
-                </Button>
-              </Link>
-            </>
+            <Link href={`/edu/assignments/${id}/results`}>
+              <Button variant="outline" size="sm">
+                <Users className="w-4 h-4 mr-1" /> {t('results')}
+              </Button>
+            </Link>
+          )}
+          <Link href={`/edu/assignments/${id}/print`}>
+            <Button variant="outline" size="sm">
+              <Printer className="w-4 h-4 mr-1" /> {t('print')}
+            </Button>
+          </Link>
+          {isPublished && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleUnpublish}
+              disabled={unpublishMutation.isPending}
+            >
+              {unpublishMutation.isPending ? t('unpublishing') : t('unpublish')}
+            </Button>
           )}
         </div>
       </div>
@@ -746,6 +798,34 @@ export default function AssignmentDetailClient() {
                   placeholder={t('target_students_placeholder')}
                 />
               </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="scheduleRelease"
+                  checked={scheduleRelease}
+                  onChange={(e) => setScheduleRelease(e.target.checked)}
+                  className="rounded border-gray-300"
+                />
+                <Label htmlFor="scheduleRelease">Schedule release</Label>
+              </div>
+              {scheduleRelease && (
+                <div className="space-y-2">
+                  <Label>Start time</Label>
+                  <Input
+                    type="datetime-local"
+                    value={publishStartTime}
+                    onChange={(e) => setPublishStartTime(e.target.value)}
+                  />
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label>{t('deadline')}</Label>
+                <Input
+                  type="datetime-local"
+                  value={publishDeadline}
+                  onChange={(e) => setPublishDeadline(e.target.value)}
+                />
+              </div>
               {!hasTargets && <p className="text-sm text-muted-foreground">{t('no_targets')}</p>}
               <div className="flex gap-3">
                 <Button onClick={handlePublish} disabled={publishMutation.isPending || !hasTargets}>
@@ -757,7 +837,7 @@ export default function AssignmentDetailClient() {
         </>
       )}
 
-      {isPublished && assignment.question_count > 0 && (
+      {assignment.question_count > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">{t('actions')}</CardTitle>
@@ -768,9 +848,16 @@ export default function AssignmentDetailClient() {
                 <Printer className="w-4 h-4 mr-1.5" /> {t('print_blank')}
               </Button>
             </Link>
-            <Link href={`/edu/assignments/${id}/results`}>
+            {isPublished && (
+              <Link href={`/edu/assignments/${id}/results`}>
+                <Button variant="outline">
+                  <Users className="w-4 h-4 mr-1.5" /> {t('view_results')}
+                </Button>
+              </Link>
+            )}
+            <Link href={`/api/v1/teacher/assignments/${id}/export-answers`}>
               <Button variant="outline">
-                <Users className="w-4 h-4 mr-1.5" /> {t('view_results')}
+                <Download className="w-4 h-4 mr-1.5" /> {t('export_answers')}
               </Button>
             </Link>
           </CardContent>

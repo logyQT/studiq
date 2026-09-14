@@ -1,10 +1,10 @@
 'use client';
 
-import { ArrowLeft, Check, ImagePlus, Upload } from 'lucide-react';
+import { ArrowLeft, Check, Clock, ImagePlus, Upload } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -36,6 +36,19 @@ export default function TakeAssignmentPage() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [remainingMs, setRemainingMs] = useState<number | null>(null);
+
+  const deadlineParam = searchParams.get('deadline');
+
+  useEffect(() => {
+    if (!deadlineParam) return;
+    const update = () => {
+      setRemainingMs(Math.max(0, new Date(deadlineParam).getTime() - Date.now()));
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [deadlineParam]);
 
   const { data: attempt, isLoading } = useApiQuery<AttemptData>({
     queryKey: ['assignment-attempt', attemptId ?? ''],
@@ -80,7 +93,7 @@ export default function TakeAssignmentPage() {
     [id, attemptId, t],
   );
 
-  const handleSubmit = async () => {
+  const performSubmit = useCallback(async () => {
     if (!attempt) return;
     setSubmitting(true);
 
@@ -91,7 +104,15 @@ export default function TakeAssignmentPage() {
 
     await submitMutation.mutateAsync({ attemptId: attempt.id, answers: formattedAnswers });
     router.push(`/app/assignments/${id}/review`);
-  };
+  }, [attempt, answers, submitMutation, id, router]);
+
+  const handleSubmit = performSubmit;
+
+  useEffect(() => {
+    if (remainingMs === 0 && attempt && !submitting) {
+      performSubmit();
+    }
+  }, [remainingMs, attempt, submitting, performSubmit]);
 
   if (isLoading || !attempt) {
     return (
@@ -109,6 +130,10 @@ export default function TakeAssignmentPage() {
   const isOpen = question.type === 'open';
   const progress = `${currentIndex + 1} / ${attempt.questions?.length ?? 0}`;
 
+  const remainingSeconds = remainingMs !== null ? Math.floor(remainingMs / 1000) : null;
+  const minutesLeft = remainingSeconds !== null ? Math.floor(remainingSeconds / 60) : null;
+  const secondsLeft = remainingSeconds !== null ? remainingSeconds % 60 : null;
+
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -119,6 +144,17 @@ export default function TakeAssignmentPage() {
           <ArrowLeft className="w-4 h-4 inline mr-1" />
           {t('quit')}
         </Link>
+        {remainingMs !== null && remainingMs > 0 && (
+          <span
+            className={`text-sm font-mono ${remainingMs < 60000 ? 'text-red-600 font-bold' : 'text-muted-foreground'}`}
+          >
+            <Clock className="w-3 h-3 inline mr-1" />
+            {minutesLeft}:{String(secondsLeft).padStart(2, '0')}
+          </span>
+        )}
+        {remainingMs === 0 && (
+          <span className="text-sm text-red-600 font-bold">Time&rsquo;s up!</span>
+        )}
         <span className="text-sm text-muted-foreground">{progress}</span>
       </div>
 

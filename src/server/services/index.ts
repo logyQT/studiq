@@ -29,6 +29,7 @@ import { QuestionService } from '@/server/services/question.service';
 import { QuestionBankService } from '@/server/services/question-bank.service';
 import { QuizService } from '@/server/services/quiz.service';
 import { QuizAttemptService } from '@/server/services/quiz-attempt.service';
+import { QuizTeacherService } from '@/server/services/quiz-teacher.service';
 import { SearchService } from '@/server/services/search.service';
 import { SeatService } from '@/server/services/seat.service';
 import { StatsService } from '@/server/services/stats.service';
@@ -123,6 +124,10 @@ export const activityService = wrapService(new ActivityService(createClient), 'a
 export const classroomService = wrapService(
   new ClassroomService(createClient),
   'classroom.service',
+);
+export const quizTeacherService = wrapService(
+  new QuizTeacherService(createClient),
+  'quiz-teacher.service',
 );
 export const seatService = wrapService(new SeatService(createClient), 'seat.service');
 export const searchService = wrapService(new SearchService(createClient), 'search.service');

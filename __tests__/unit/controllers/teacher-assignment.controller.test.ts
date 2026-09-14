@@ -11,6 +11,7 @@ function createMockService() {
     update: vi.fn(),
     delete: vi.fn(),
     publish: vi.fn(),
+    unpublish: vi.fn(),
     addQuestions: vi.fn(),
     removeQuestion: vi.fn(),
     randomize: vi.fn(),
@@ -174,6 +175,26 @@ describe('TeacherAssignmentController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
+    });
+  });
+
+  describe('unpublish', () => {
+    it('returns 200 when service unpublishes', async () => {
+      const draft = { id: 'a-1', status: 'draft' };
+      mockService.unpublish.mockResolvedValueOnce(success(draft));
+
+      const response = await controller.unpublish('a-1', mockCtx);
+
+      expect(response).toEqual({ success: true, statusCode: 200, data: draft });
+    });
+
+    it('propagates service error', async () => {
+      mockService.unpublish.mockResolvedValueOnce(failure('BAD_REQUEST'));
+
+      const response = await controller.unpublish('a-1', mockCtx);
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(400);
     });
   });
 

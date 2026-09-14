@@ -65,6 +65,12 @@ export class TeacherAssignmentController {
     return controllerResponse.success(result.data);
   }
 
+  async unpublish(id: string, ctx: RequestContext): Promise<ControllerResponse> {
+    const result = await this.service.unpublish(id, ctx);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
+  }
+
   async publish(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     const parsed = PublishAssignmentSchema.safeParse(body);
     if (!parsed.success) {
@@ -75,7 +81,7 @@ export class TeacherAssignmentController {
         details: parsed.error.issues,
       };
     }
-    const result = await this.service.publish(id, parsed.data.deadline, ctx);
+    const result = await this.service.publish(id, parsed.data.deadline, parsed.data.startTime, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }

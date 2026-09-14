@@ -21,26 +21,60 @@ export class TeacherAssignmentService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
+    const insertData: Record<string, unknown> = {
+      organization_id: ctx.activeOrgId,
+      created_by: ctx.userId,
+      title: data.title,
+      description: data.description,
+      deadline: data.deadline,
+      time_limit_min: data.timeLimitMin,
+      shuffle_questions: data.shuffleQuestions,
+      shuffle_answers: data.shuffleAnswers,
+      show_results: data.showResults,
+      max_attempts: data.maxAttempts,
+      passing_score: data.passingScore,
+    };
+
+    if (data.quizId) {
+      insertData.quiz_id = data.quizId;
+    }
+
     const { data: assignment, error } = await supabase
       .from('teacher_assignments')
-      .insert({
-        organization_id: ctx.activeOrgId,
-        created_by: ctx.userId,
-        title: data.title,
-        description: data.description,
-        deadline: data.deadline,
-        time_limit_min: data.timeLimitMin,
-        shuffle_questions: data.shuffleQuestions,
-        shuffle_answers: data.shuffleAnswers,
-        show_results: data.showResults,
-        max_attempts: data.maxAttempts,
-        passing_score: data.passingScore,
-      })
+      .insert(insertData)
       .select()
       .single();
 
     if (error) return toDbFailure(error);
-    return success(assignment);
+
+    // Copy questions from quiz if quizId provided
+    if (data.quizId) {
+      const { data: quizQuestions } = await supabase
+        .from('quiz_questions')
+        .select('question_id, order_index, points')
+        .eq('quiz_id', data.quizId)
+        .order('order_index', { ascending: true });
+
+      if (quizQuestions && quizQuestions.length > 0) {
+        const assignmentQuestions = quizQuestions.map((q) => ({
+          assignment_id: assignment.id,
+          question_id: q.question_id,
+          order_index: q.order_index,
+          points: q.points,
+        }));
+        await supabase.from('assignment_questions').insert(assignmentQuestions);
+      }
+    }
+
+    // Re-fetch with questions
+    const { data: full, error: refetchError } = await supabase
+      .from('teacher_assignments')
+      .select('*, assignment_questions(*)')
+      .eq('id', assignment.id)
+      .single();
+
+    if (refetchError) return toDbFailure(refetchError);
+    return success(full);
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
@@ -129,9 +163,37 @@ export class TeacherAssignmentService {
     return success(null);
   }
 
+  async unpublish(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    const supabase = await this.createClient();
+
+    const check = await this.verifyOwnership(id, ctx);
+    if (!check) return failure('NOT_FOUND');
+
+    const { data: assignment, error: fetchError } = await supabase
+      .from('teacher_assignments')
+      .select('status')
+      .eq('id', id)
+      .single();
+
+    if (fetchError) return toDbFailure(fetchError);
+    if (!assignment) return failure('NOT_FOUND');
+    if (assignment.status !== 'published') return failure('BAD_REQUEST');
+
+    const { data: updated, error } = await supabase
+      .from('teacher_assignments')
+      .update({ status: 'draft', updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) return toDbFailure(error);
+    return success(updated);
+  }
+
   async publish(
     id: string,
     deadline: string | undefined,
+    startTime: string | undefined,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
@@ -151,6 +213,7 @@ export class TeacherAssignmentService {
       updated_at: new Date().toISOString(),
     };
     if (deadline !== undefined) updateData.deadline = deadline;
+    if (startTime !== undefined) updateData.start_time = startTime;
 
     const { data: updated, error } = await supabase
       .from('teacher_assignments')
@@ -550,6 +613,19 @@ export class TeacherAssignmentService {
 
     if (assignmentError) return toDbFailure(assignmentError);
     if (!assignment) return failure('NOT_FOUND');
+
+    // Check time window
+    const now = new Date();
+    if (assignment.start_time && now < new Date(assignment.start_time)) {
+      return failure('BAD_REQUEST');
+    }
+    if (assignment.deadline) {
+      const graceEnd = new Date(assignment.deadline);
+      graceEnd.setSeconds(graceEnd.getSeconds() + 60);
+      if (now > graceEnd) {
+        return failure('GONE');
+      }
+    }
 
     const { data: existingAttempt } = await supabase
       .from('quiz_attempts')

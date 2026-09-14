@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { dbToDatetimeLocal } from '@/lib/datetime';
 import { assignmentKeys } from '@/lib/query-keys';
 
 interface AssignmentDetail {
@@ -49,7 +50,7 @@ export default function EditAssignmentClient() {
     if (assignment) {
       setTitle(assignment.title);
       setDescription(assignment.description ?? '');
-      setDeadline(assignment.deadline ? assignment.deadline.slice(0, 16) : '');
+      setDeadline(assignment.deadline ? dbToDatetimeLocal(assignment.deadline) : '');
       setTimeLimitMin(assignment.time_limit_min?.toString() ?? '');
       setShuffleQuestions(assignment.shuffle_questions);
       setShuffleAnswers(assignment.shuffle_answers);
