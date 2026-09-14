@@ -325,13 +325,13 @@ See [`docs/MARKDOWN-FLASHCARDS.md`](docs/MARKDOWN-FLASHCARDS.md) for the full im
 
 ---
 
-### 3.2 Cloze Deletion ⏳ DEFERRED — likely question type instead
+### 3.2 Cloze Deletion ❌ EXCLUDED — not planned (Alan's call)
 
-**Decision:** Cloze deletion will not be implemented as a flashcard feature. The `{{c1::...}}` syntax with flip-to-reveal is passive and doesn't leverage active recall as effectively as typed input.
+**Decision:** Cloze deletion is excluded from scope, for both flashcards and questions. Determining which part of a sentence to blank out requires either manual selection at authoring time (extra UX burden on every card) or AI-assisted selection (another AI dependency) — not enough value to justify the work on top of the existing front/back flashcards. Sticking with classic flashcards only.
 
-**Revisit as:** A new `'cloze'` question type alongside `mcq`, `true_false`, `open` in `QuestionTypeEnum`. Content stores text with gaps, answers store the correct fill values, and the UI accepts typed input with auto-validation. Questions would need spaced repetition infrastructure (due queue, review state) if we want cloze practice outside of quizzes — otherwise it's quiz-only.
+~~**Revisit as:** A new `'cloze'` question type alongside `mcq`, `true_false`, `open` in `QuestionTypeEnum`. Content stores text with gaps, answers store the correct fill values, and the UI accepts typed input with auto-validation. Questions would need spaced repetition infrastructure (due queue, review state) if we want cloze practice outside of quizzes — otherwise it's quiz-only.~~
 
-**Depends on:** Spaced repetition for questions (if desired) or quiz infra (if quiz-only).
+~~**Depends on:** Spaced repetition for questions (if desired) or quiz infra (if quiz-only).~~
 
 ---
 
@@ -395,7 +395,7 @@ front,back,topic,deck
 | 1st   | **3.3 CSV Import/Export** ✅ | No migration, no external deps (just `papaparse`), immediate user value, quickest win         |
 | 2nd   | **3.1 Media in Cards** ✅    | Foundational — sets up Supabase Storage bucket/service that 3.4 also needs. Installs `katex`. |
 | 3rd   | **3.4 APKG Import/Export**⏳ | Hardest — needs `jszip` + SQLite parsing + media handling from 3.1 storage                    |
-| —     | **3.2 Cloze Deletion** ⏳    | Deferred — likely implemented as a `'cloze'` question type instead                            |
+| —     | **3.2 Cloze Deletion** ❌    | Excluded — not planned (Alan's call)                                                          |
 
 ### Infrastructure Inventory
 
@@ -487,7 +487,7 @@ Phase 2 — 4/5 complete ✅
 
 Phase 3 — build order: 3.3 → 3.1 → 3.4 (3.2 deferred)
 ├── 3.3 CSV Import/Export ✅ (independent, no deps, quickest win)
-├── 3.2 Cloze Deletion ⏳ (deferred — likely `'cloze'` question type instead)
+├── 3.2 Cloze Deletion ❌ (excluded — not planned, Alan's call)
 ├── 3.1 Media in Cards (needs migration + storage bucket + katex) ───► 3.4 needs storage ✅
 └── 3.4 APKG Import/Export (needs jszip + bun:sqlite + 3.1 storage for media) ⏳
 
