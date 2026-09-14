@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST as logPractice } from '@/app/(backend)/api/v1/flashcards/[id]/practice/route';
 import { GET as getStatsForCard } from '@/app/(backend)/api/v1/flashcards/[id]/practice/stats/route';
 import { GET as getDueBreakdown } from '@/app/(backend)/api/v1/flashcards/practice/due/breakdown/route';
@@ -6,50 +6,47 @@ import { GET as getDueCount } from '@/app/(backend)/api/v1/flashcards/practice/d
 import { GET as getDueCards } from '@/app/(backend)/api/v1/flashcards/practice/new/route';
 import { GET as getStatsAll } from '@/app/(backend)/api/v1/flashcards/practice/stats/route';
 import {
+  before,
+  type BeforeResult,
+} from '#test/helpers/test-user';
+import {
   cleanupFlashcardPractice,
   cleanupFlashcardReviewState,
   cleanupFlashcards,
-  createServiceClient,
   mockUser,
-  TEST_USERS,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 
 describe('Flashcard Practice Integration', () => {
+  let teacher!: BeforeResult;
+  let student!: BeforeResult;
   let flashcardId: string;
+
+  beforeAll(async () => {
+    // Fresh educator with a deck + flashcard (created via the real API).
+    teacher = await before({ role: 'educator', decks: 1, flashcards: 1 });
+    flashcardId = teacher.created.flashcards[0];
+    // Fresh student who practices the teacher's card.
+    student = await before({ role: 'student' });
+  });
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    for (const user of Object.values(TEST_USERS)) {
-      await cleanupFlashcardPractice(user.id);
-      await cleanupFlashcardReviewState(user.id);
-      await cleanupFlashcards(user.id, 'practice-');
-    }
+    await cleanupFlashcardPractice(student.user.id);
+    await cleanupFlashcardReviewState(student.user.id);
+    await cleanupFlashcardPractice(teacher.user.id);
+    await cleanupFlashcardReviewState(teacher.user.id);
+  });
 
-    const supabase = createServiceClient();
-    const { data: deck } = await supabase
-      .from('flashcard_decks')
-      .insert({ name: `practice-deck-${Date.now()}`, created_by: TEST_USERS.TEACHER.id })
-      .select()
-      .single();
-    if (!deck) throw new Error('Failed to create deck');
-
-    const { data: fc } = await supabase
-      .from('flashcards')
-      .insert({
-        front: 'practice-Practice Card',
-        back: 'Answer',
-        created_by: TEST_USERS.TEACHER.id,
-        deck_id: deck.id,
-      })
-      .select()
-      .single();
-    flashcardId = fc.id;
+  afterAll(async () => {
+    await cleanupFlashcardPractice(student.user.id);
+    await cleanupFlashcardReviewState(student.user.id);
+    await cleanupFlashcards(teacher.user.id);
   });
 
   describe('POST /api/v1/flashcards/{id}/practice', () => {
     it('logs practice and returns 201 with practice + reviewState', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
@@ -73,7 +70,7 @@ describe('Flashcard Practice Integration', () => {
     });
 
     it('logs practice with optional fields and returns 201', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const sessionId = '00000000-0000-4000-8000-000000000001';
 
@@ -104,7 +101,7 @@ describe('Flashcard Practice Integration', () => {
     });
 
     it('returns 422 when wasCorrect is missing', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
@@ -146,7 +143,7 @@ describe('Flashcard Practice Integration', () => {
 
   describe('GET /api/v1/flashcards/practice/new', () => {
     it('returns new flashcards for user', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const request = createNextRequest(`http://localhost/api/v1/flashcards/practice/new?limit=10`);
 
@@ -172,7 +169,7 @@ describe('Flashcard Practice Integration', () => {
 
   describe('GET /api/v1/flashcards/practice/due/breakdown', () => {
     it('returns due breakdown', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const request = createNextRequest(
         `http://localhost/api/v1/flashcards/practice/due/breakdown`,
@@ -204,7 +201,7 @@ describe('Flashcard Practice Integration', () => {
 
   describe('GET /api/v1/flashcards/practice/due/count', () => {
     it('returns due count', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const request = createNextRequest(`http://localhost/api/v1/flashcards/practice/due/count`);
 
@@ -230,7 +227,7 @@ describe('Flashcard Practice Integration', () => {
 
   describe('GET /api/v1/flashcards/{id}/practice/stats', () => {
     it('returns stats for flashcard', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/flashcards/${flashcardId}/practice/stats`,
@@ -265,7 +262,7 @@ describe('Flashcard Practice Integration', () => {
 
   describe('GET /api/v1/flashcards/practice/stats', () => {
     it('returns aggregate stats', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      mockUser(teacher.user);
 
       const req = createNextRequest('http://localhost/api/v1/flashcards/practice/stats');
       const response = await getStatsAll(req);

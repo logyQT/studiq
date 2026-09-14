@@ -1,30 +1,43 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DELETE as deleteFn,
   GET as getById,
   PUT as update,
 } from '@/app/(backend)/api/v1/flashcards/decks/[id]/route';
 import { GET, POST } from '@/app/(backend)/api/v1/flashcards/decks/route';
-import { cleanupFlashcardDecks, createServiceClient, mockUser, TEST_USERS } from '#test/integration/helpers';
+import {
+  before,
+  createTestUser,
+  type BeforeResult,
+  type TestUserFixture,
+} from '#test/helpers/test-user';
+import { cleanupFlashcardDecks, mockUser } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 
 describe('Flashcard Decks Integration', () => {
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    for (const user of Object.values(TEST_USERS)) {
-      await cleanupFlashcardDecks(user.id);
-    }
+  let teacher!: BeforeResult;
+  let other!: TestUserFixture;
+
+  beforeAll(async () => {
+    // Fresh educator + 5 decks via the real API.
+    // Index plan: [0]=GET found, [1]=PUT own, [2]=DELETE own,
+    // [3]=GET 404 (another user), [4]=PUT/DELETE 403 (another user)
+    teacher = await before({ role: 'educator', decks: 5 });
+    other = await createTestUser({ role: 'manager' });
   });
 
-  afterEach(async () => {
-    for (const user of Object.values(TEST_USERS)) {
-      await cleanupFlashcardDecks(user.id);
-    }
+  afterAll(async () => {
+    await cleanupFlashcardDecks(teacher.user.id);
+    await cleanupFlashcardDecks(other.id);
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
   describe('POST /api/v1/flashcards/decks', () => {
     it('creates a deck and returns 201', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      mockUser(teacher.user);
 
       const req = createNextRequest('http://localhost/api/v1/flashcards/decks', {
         method: 'POST',
@@ -41,7 +54,7 @@ describe('Flashcard Decks Integration', () => {
     });
 
     it('returns 422 when name is empty', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      mockUser(teacher.user);
 
       const req = createNextRequest('http://localhost/api/v1/flashcards/decks', {
         method: 'POST',
@@ -75,7 +88,7 @@ describe('Flashcard Decks Integration', () => {
 
   describe('GET /api/v1/flashcards/decks', () => {
     it('lists decks for user', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      mockUser(teacher.user);
 
       const req = createNextRequest('http://localhost/api/v1/flashcards/decks');
       const response = await GET(req);
@@ -83,6 +96,7 @@ describe('Flashcard Decks Integration', () => {
 
       expect(response.status).toBe(200);
       expect(Array.isArray(body.data?.items)).toBe(true);
+      expect(body.data?.items?.length).toBeGreaterThanOrEqual(5);
     });
 
     it('returns 401 when not authenticated', async () => {
@@ -98,40 +112,29 @@ describe('Flashcard Decks Integration', () => {
   });
 
   describe('GET /api/v1/flashcards/decks/:id', () => {
-    it('returns deck when found and owned by user', async () => {
-      mockUser(TEST_USERS.TEACHER);
+    it('returns deck when found', async () => {
+      mockUser(teacher.user);
 
-      const supabase = createServiceClient();
-      const { data: deck } = await supabase
-        .from('flashcard_decks')
-        .insert({ name: 'deck-Get Me', created_by: TEST_USERS.TEACHER.id })
-        .select()
-        .single();
-
+      const deckId = teacher.created.decks[0];
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/decks/${deck.id}`,
-        { id: deck.id },
+        `http://localhost/api/v1/flashcards/decks/${deckId}`,
+        { id: deckId },
       );
       const response = await getById(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.data.name).toBe('deck-Get Me');
+      expect(body.data.id).toBe(deckId);
+      expect(body.data.name).toContain('seed-deck-');
     });
 
     it('returns 404 for another user deck', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      mockUser(other);
 
-      const supabase = createServiceClient();
-      const { data: deck } = await supabase
-        .from('flashcard_decks')
-        .insert({ name: 'deck-Teacher Deck', created_by: TEST_USERS.TEACHER.id })
-        .select()
-        .single();
-
+      const deckId = teacher.created.decks[3];
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/decks/${deck.id}`,
-        { id: deck.id },
+        `http://localhost/api/v1/flashcards/decks/${deckId}`,
+        { id: deckId },
       );
       const response = await getById(request, { params });
       const body = await response.json();
@@ -143,18 +146,12 @@ describe('Flashcard Decks Integration', () => {
 
   describe('PUT /api/v1/flashcards/decks/:id', () => {
     it('updates own deck and returns 200', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      mockUser(teacher.user);
 
-      const supabase = createServiceClient();
-      const { data: deck } = await supabase
-        .from('flashcard_decks')
-        .insert({ name: 'deck-Original', created_by: TEST_USERS.TEACHER.id })
-        .select()
-        .single();
-
+      const deckId = teacher.created.decks[1];
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/decks/${deck.id}`,
-        { id: deck.id },
+        `http://localhost/api/v1/flashcards/decks/${deckId}`,
+        { id: deckId },
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -169,18 +166,12 @@ describe('Flashcard Decks Integration', () => {
     });
 
     it('returns 403 when updating another user deck', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      mockUser(other);
 
-      const supabase = createServiceClient();
-      const { data: deck } = await supabase
-        .from('flashcard_decks')
-        .insert({ name: 'deck-Teacher Deck', created_by: TEST_USERS.TEACHER.id })
-        .select()
-        .single();
-
+      const deckId = teacher.created.decks[0];
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/decks/${deck.id}`,
-        { id: deck.id },
+        `http://localhost/api/v1/flashcards/decks/${deckId}`,
+        { id: deckId },
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -197,18 +188,12 @@ describe('Flashcard Decks Integration', () => {
 
   describe('DELETE /api/v1/flashcards/decks/:id', () => {
     it('deletes own deck and returns 200', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      mockUser(teacher.user);
 
-      const supabase = createServiceClient();
-      const { data: deck } = await supabase
-        .from('flashcard_decks')
-        .insert({ name: 'deck-To Delete', created_by: TEST_USERS.TEACHER.id })
-        .select()
-        .single();
-
+      const deckId = teacher.created.decks[2];
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/decks/${deck.id}`,
-        { id: deck.id },
+        `http://localhost/api/v1/flashcards/decks/${deckId}`,
+        { id: deckId },
         { method: 'DELETE' },
       );
       const response = await deleteFn(request, { params });
@@ -219,18 +204,12 @@ describe('Flashcard Decks Integration', () => {
     });
 
     it('returns 403 when deleting another user deck', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      mockUser(other);
 
-      const supabase = createServiceClient();
-      const { data: deck } = await supabase
-        .from('flashcard_decks')
-        .insert({ name: 'deck-Teacher Deck', created_by: TEST_USERS.TEACHER.id })
-        .select()
-        .single();
-
+      const deckId = teacher.created.decks[4];
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/decks/${deck.id}`,
-        { id: deck.id },
+        `http://localhost/api/v1/flashcards/decks/${deckId}`,
+        { id: deckId },
         { method: 'DELETE' },
       );
       const response = await deleteFn(request, { params });

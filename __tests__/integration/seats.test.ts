@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET as getPools } from '@/app/(backend)/api/v1/organization/seats/pools/route';
 import { PUT as updatePool } from '@/app/(backend)/api/v1/organization/seats/pools/[id]/route';
 import {
@@ -7,14 +7,13 @@ import {
 } from '@/app/(backend)/api/v1/organization/seats/assignments/route';
 import { DELETE as deleteAssignment } from '@/app/(backend)/api/v1/organization/seats/assignments/[id]/route';
 import {
-  cleanupOrganizationDeep,
-  createServiceClient,
-  mockUser,
-  TEST_USERS,
-} from '#test/integration/helpers';
+  before,
+  createTestUser,
+  type BeforeResult,
+  type TestUserFixture,
+} from '#test/helpers/test-user';
+import { cleanupOrganizationByName, createServiceClient, mockUser } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
-
-const ORG_PREFIX = 'seat-test-';
 
 /**
  * Fetches the launch seat pool ID for the current test org.
@@ -32,42 +31,42 @@ async function getLaunchPoolId(orgId: string): Promise<string> {
 }
 
 describe('Seats Integration', () => {
-  let orgId: string;
-  let poolId: string;
+  let fixture!: BeforeResult;
+  let orgId!: string;
+  let poolId!: string;
+  let assigneeA!: TestUserFixture;
+  let assigneeB!: TestUserFixture;
+  let assigneeC!: TestUserFixture;
+  let student!: TestUserFixture;
 
   const orgCookies = () => ({ active_org_id: orgId });
 
-  beforeEach(async () => {
-    vi.clearAllMocks();
-
-    const supabase = createServiceClient();
-    const name = `${ORG_PREFIX}${Date.now()}`;
-
-    const { data: org } = await supabase
-      .from('organizations')
-      .insert({ name, plan: 'launch' })
-      .select()
-      .single();
-
-    if (!org) throw new Error('Failed to create org');
-    orgId = org.id;
+  beforeAll(async () => {
+    // Manager creates the org via the API (launch plan by default) →
+    // the handle_new_organization trigger seeds the launch seat pool.
+    fixture = await before({ role: 'manager', org: true });
+    orgId = fixture.orgId!;
     poolId = await getLaunchPoolId(orgId);
+
+    // Unique assignee users per create test (org_seat_assignments
+    // has a UNIQUE(organization_id, user_id) constraint).
+    assigneeA = await createTestUser({ role: 'educator' });
+    assigneeB = await createTestUser({ role: 'educator' });
+    assigneeC = await createTestUser({ role: 'educator' });
+    student = await createTestUser({ role: 'student' });
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
   afterAll(async () => {
-    const supabase = createServiceClient();
-    const { data: orgs } = await supabase
-      .from('organizations')
-      .select('id')
-      .ilike('name', `${ORG_PREFIX}%`);
-    for (const org of orgs ?? []) {
-      await cleanupOrganizationDeep(org.id);
-    }
+    await cleanupOrganizationByName('seed-org-');
   });
 
   describe('GET /pools', () => {
     it('returns seat pools for the org', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      mockUser(fixture.user);
 
       const req = createNextRequest(
         'http://localhost/api/v1/organization/seats/pools',
@@ -90,7 +89,7 @@ describe('Seats Integration', () => {
     });
 
     it('returns 403 for non-manager users', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student);
 
       const req = createNextRequest(
         'http://localhost/api/v1/organization/seats/pools',
@@ -109,7 +108,7 @@ describe('Seats Integration', () => {
 
   describe('PUT /pools/[id]', () => {
     it('updates pool total', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      mockUser(fixture.user);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/organization/seats/pools/${poolId}`,
@@ -131,7 +130,7 @@ describe('Seats Integration', () => {
     });
 
     it('returns 422 when total is negative', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      mockUser(fixture.user);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/organization/seats/pools/${poolId}`,
@@ -154,7 +153,7 @@ describe('Seats Integration', () => {
 
   describe('GET /assignments', () => {
     it('returns empty list initially', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      mockUser(fixture.user);
 
       const req = createNextRequest(
         'http://localhost/api/v1/organization/seats/assignments',
@@ -174,7 +173,7 @@ describe('Seats Integration', () => {
 
   describe('POST /assignments', () => {
     it('creates an assignment', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      mockUser(fixture.user);
 
       const { request, params } = createNextRequestWithParams(
         'http://localhost/api/v1/organization/seats/assignments',
@@ -182,7 +181,7 @@ describe('Seats Integration', () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: TEST_USERS.TEACHER.id, poolId }),
+          body: JSON.stringify({ userId: assigneeA.id, poolId }),
         },
         orgCookies(),
       );
@@ -192,12 +191,12 @@ describe('Seats Integration', () => {
 
       expect(response.status).toBe(201);
       expect(body.success).toBe(true);
-      expect(body.data.userId).toBe(TEST_USERS.TEACHER.id);
+      expect(body.data.userId).toBe(assigneeA.id);
       expect(body.data.poolId).toBe(poolId);
     });
 
     it('succeeds and can be listed after creation', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      mockUser(fixture.user);
 
       // Create
       const createReq = createNextRequest(
@@ -205,7 +204,7 @@ describe('Seats Integration', () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: TEST_USERS.TEACHER.id, poolId }),
+          body: JSON.stringify({ userId: assigneeB.id, poolId }),
         },
         orgCookies(),
       );
@@ -222,13 +221,13 @@ describe('Seats Integration', () => {
       const listBody = await listRes.json();
 
       expect(listBody.data.length).toBeGreaterThanOrEqual(1);
-      const match = listBody.data.find((a: any) => a.userId === TEST_USERS.TEACHER.id);
+      const match = listBody.data.find((a: any) => a.userId === assigneeB.id);
       expect(match).toBeDefined();
       expect(match.poolId).toBe(poolId);
     });
 
     it('returns 422 when fields missing', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      mockUser(fixture.user);
 
       const req = createNextRequest(
         'http://localhost/api/v1/organization/seats/assignments',
@@ -259,7 +258,7 @@ describe('Seats Integration', () => {
         .insert({
           organization_id: orgId,
           pool_id: poolId,
-          user_id: TEST_USERS.TEACHER.id,
+          user_id: assigneeC.id,
         })
         .select()
         .single();
@@ -268,7 +267,7 @@ describe('Seats Integration', () => {
     });
 
     it('deletes an assignment', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      mockUser(fixture.user);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/organization/seats/assignments/${assignmentId}`,
@@ -307,7 +306,7 @@ describe('Seats Integration', () => {
     });
 
     it('returns USAGE_LIMIT_EXCEEDED when pool is full', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      mockUser(fixture.user);
 
       const req = createNextRequest(
         'http://localhost/api/v1/organization/seats/assignments',
@@ -315,7 +314,7 @@ describe('Seats Integration', () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            userId: TEST_USERS.TEACHER.id,
+            userId: assigneeC.id,
             poolId,
           }),
         },

@@ -1,50 +1,59 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST as bulkPost } from '@/app/(backend)/api/v1/organization/invites/bulk/route';
 import {
   GET as inviteGet,
   POST as invitePost,
 } from '@/app/(backend)/api/v1/organization/invites/route';
 import {
+  before,
+  createTestUser,
+  type BeforeResult,
+  type TestUserFixture,
+} from '#test/helpers/test-user';
+import {
   cleanupInvitations,
   cleanupOrganizationByName,
   createServiceClient,
   mockUser,
-  seedOrgMembership,
-  seedOrganization,
-  TEST_USERS,
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
 
-const ORG_PREFIX = 'invite-test-';
-
 describe('Invitations Integration', () => {
-  let orgId: string;
-  let adminRoleId: string;
+  let fixture!: BeforeResult;
+  let student!: TestUserFixture;
+  let orgId!: string;
+  let adminRoleId!: string;
+
+  beforeAll(async () => {
+    // Manager creates the org via the API and becomes its admin member.
+    fixture = await before({ role: 'manager', org: true });
+    orgId = fixture.orgId!;
+    student = await createTestUser({ role: 'student' });
+
+    const supabase = createServiceClient();
+    const { data: adminRole } = await supabase
+      .from('org_roles')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('name', 'admin')
+      .single();
+    if (!adminRole) throw new Error('Admin role not found for fixture org');
+    adminRoleId = adminRole.id;
+  });
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    for (const user of Object.values(TEST_USERS)) {
-      await cleanupInvitations(user.id);
-    }
-
-    const seeded = await seedOrganization(`${ORG_PREFIX}${Date.now()}`);
-    orgId = seeded.org.id;
-    adminRoleId = seeded.adminRoleId;
-
-    await seedOrgMembership({
-      organizationId: orgId,
-      userId: TEST_USERS.UNIVERSITY_ADMIN.id,
-      orgRoleId: adminRoleId,
-    });
+    await cleanupInvitations(fixture.user.id);
+    await cleanupInvitations(student.id);
   });
 
   afterAll(async () => {
-    await cleanupOrganizationByName(ORG_PREFIX);
+    await cleanupOrganizationByName('seed-org-');
   });
 
   describe('POST /api/v1/organization/invites', () => {
-    it('creates an invitation as university_admin and returns 201', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+    it('creates an invitation as manager and returns 201', async () => {
+      mockUser(fixture.user);
 
       const req = createNextRequest('http://localhost/api/v1/organization/invites', {
         method: 'POST',
@@ -54,7 +63,7 @@ describe('Invitations Integration', () => {
           targetOrgRoleId: adminRoleId,
           organizationId: orgId,
         }),
-      });
+      }, { active_org_id: orgId });
 
       const response = await invitePost(req);
       const body = await response.json();
@@ -64,13 +73,13 @@ describe('Invitations Integration', () => {
     });
 
     it('returns 422 when email is invalid', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      mockUser(fixture.user);
 
       const req = createNextRequest('http://localhost/api/v1/organization/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'not-an-email', targetOrgRoleId: adminRoleId }),
-      });
+      }, { active_org_id: orgId });
 
       const response = await invitePost(req);
       const body = await response.json();
@@ -96,13 +105,13 @@ describe('Invitations Integration', () => {
     });
 
     it('returns 403 when student tries to invite', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student);
 
       const req = createNextRequest('http://localhost/api/v1/organization/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'test@example.com', targetOrgRoleId: adminRoleId }),
-      });
+      }, { active_org_id: orgId });
 
       const response = await invitePost(req);
       const body = await response.json();
@@ -122,7 +131,7 @@ describe('Invitations Integration', () => {
           target_org_role_id: adminRoleId,
           token: `valid-token-${Date.now()}`,
           expires_at: new Date(Date.now() + 86400000).toISOString(),
-          inviter_id: TEST_USERS.UNIVERSITY_ADMIN.id,
+          inviter_id: fixture.user.id,
           organization_id: orgId,
         })
         .select()
@@ -152,17 +161,18 @@ describe('Invitations Integration', () => {
 
     it('returns 410 when token is expired', async () => {
       const supabase = createServiceClient();
+      const token = `expired-token-${Date.now()}`;
       await supabase.from('invitations').insert({
         email: 'expired@example.com',
         target_org_role_id: adminRoleId,
-        token: 'expired-token-123',
+        token,
         expires_at: new Date(Date.now() - 86400000).toISOString(),
-        inviter_id: TEST_USERS.UNIVERSITY_ADMIN.id,
+        inviter_id: fixture.user.id,
         organization_id: orgId,
       });
 
       const req = createNextRequest(
-        'http://localhost/api/v1/organization/invites?token=expired-token-123',
+        `http://localhost/api/v1/organization/invites?token=${token}`,
       );
       const response = await inviteGet(req);
       const body = await response.json();
@@ -184,7 +194,7 @@ describe('Invitations Integration', () => {
 
   describe('POST /api/v1/organization/invites/bulk', () => {
     it('bulk creates invitations and returns 200', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      mockUser(fixture.user);
 
       const req = createNextRequest('http://localhost/api/v1/organization/invites/bulk', {
         method: 'POST',
@@ -195,7 +205,7 @@ describe('Invitations Integration', () => {
             { email: `bulk2-${Date.now()}@example.com`, targetOrgRoleId: adminRoleId },
           ],
         }),
-      });
+      }, { active_org_id: orgId });
 
       const response = await bulkPost(req);
       const body = await response.json();
@@ -206,13 +216,13 @@ describe('Invitations Integration', () => {
     });
 
     it('returns 422 when invitations array is empty', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      mockUser(fixture.user);
 
       const req = createNextRequest('http://localhost/api/v1/organization/invites/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ invitations: [] }),
-      });
+      }, { active_org_id: orgId });
 
       const response = await bulkPost(req);
       const body = await response.json();

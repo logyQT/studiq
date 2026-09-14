@@ -1,23 +1,35 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET as studentGet } from '@/app/(backend)/api/v1/stats/student/route';
 import { GET as teacherGet } from '@/app/(backend)/api/v1/stats/teacher/route';
+import {
+  before,
+  type BeforeResult,
+} from '#test/helpers/test-user';
 import {
   cleanupFlashcards,
   cleanupQuestions,
   cleanupQuizAttempts,
-  cleanupSubjects,
   mockUser,
-  seedQuestion,
-  TEST_USERS,
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
 
 describe('Stats Integration', () => {
-  beforeEach(async () => {
+  let teacher!: BeforeResult;
+  let student!: BeforeResult;
+
+  beforeAll(async () => {
+    // Fresh educator with exactly 3 API-created questions + fresh student.
+    teacher = await before({ role: 'educator', questions: 3 });
+    student = await before({ role: 'student' });
+  });
+
+  beforeEach(() => {
     vi.clearAllMocks();
-    for (const user of Object.values(TEST_USERS)) {
-      await cleanupSubjects(user.id, 'stats-');
-      await cleanupQuestions(user.id);
+  });
+
+  afterAll(async () => {
+    for (const user of [teacher.user, student.user]) {
+      await cleanupQuestions(user.id, 'seed-question-');
       await cleanupFlashcards(user.id);
       await cleanupQuizAttempts(user.id);
     }
@@ -25,7 +37,7 @@ describe('Stats Integration', () => {
 
   describe('GET /api/v1/stats/teacher', () => {
     it('returns teacher stats', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      mockUser(teacher.user);
 
       const req = createNextRequest('http://localhost/api/v1/stats/teacher');
       const response = await teacherGet(req);
@@ -38,15 +50,7 @@ describe('Stats Integration', () => {
     });
 
     it('returns teacher stats with question details', async () => {
-      mockUser(TEST_USERS.TEACHER);
-
-      for (let i = 0; i < 3; i++) {
-        await seedQuestion({
-          type: 'mcq',
-          content: `stats-Stats Question ${i}`,
-          created_by: TEST_USERS.TEACHER.id,
-        });
-      }
+      mockUser(teacher.user);
 
       const req = createNextRequest('http://localhost/api/v1/stats/teacher');
       const response = await teacherGet(req);
@@ -70,7 +74,7 @@ describe('Stats Integration', () => {
 
   describe('GET /api/v1/stats/student', () => {
     it('returns student stats', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const req = createNextRequest('http://localhost/api/v1/stats/student');
       const response = await studentGet(req);
@@ -84,7 +88,7 @@ describe('Stats Integration', () => {
     });
 
     it('returns zero stats when no data exists', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const req = createNextRequest('http://localhost/api/v1/stats/student');
       const response = await studentGet(req);

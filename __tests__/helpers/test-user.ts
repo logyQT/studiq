@@ -357,14 +357,22 @@ export async function seedViaApi(
   }
 
   // Questions via API (bank created via the question-banks API).
+  // Works with or without an org — without an org the bank/questions land
+  // in the user's personal scope (organization_id = null), matching the
+  // legacy service-role seeding used by quiz/attempt suites.
   const questionCount = profile.questions ?? 0;
-  if (orgId && questionCount > 0) {
+  if (questionCount > 0) {
     const bank = await api<{ id: string }>(
       'create-question-bank',
       createBankPost,
       '/api/v1/questions/banks',
       'POST',
-      { body: { name: `seed-bank-${tags}`, visibility: 'group' } },
+      {
+        body: {
+          name: `seed-bank-${tags}`,
+          ...(orgId ? { visibility: 'group' } : {}),
+        },
+      },
       cookie,
     );
 

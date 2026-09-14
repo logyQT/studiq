@@ -1,22 +1,35 @@
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { POST } from '@/app/(backend)/api/v1/organization/route';
+import {
+  createTestUser,
+  type TestUserFixture,
+} from '#test/helpers/test-user';
 import {
   cleanupOrganizationByName,
   createServiceClient,
   mockUser,
-  TEST_USERS,
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
 
 const TEST_PREFIX = 'org-create-';
 
 describe('POST /api/v1/organization', () => {
+  let educator!: TestUserFixture;
+  let manager!: TestUserFixture;
+  let student!: TestUserFixture;
+
+  beforeAll(async () => {
+    educator = await createTestUser({ role: 'educator' });
+    manager = await createTestUser({ role: 'manager' });
+    student = await createTestUser({ role: 'student' });
+  });
+
   afterAll(async () => {
     await cleanupOrganizationByName(TEST_PREFIX);
   });
 
   it('creates organization as educator and returns 201 with cookie', async () => {
-    mockUser(TEST_USERS.TEACHER);
+    mockUser(educator);
 
     const req = createNextRequest('http://localhost/api/v1/organization', {
       method: 'POST',
@@ -35,7 +48,7 @@ describe('POST /api/v1/organization', () => {
   });
 
   it('creates organization as manager and returns 201', async () => {
-    mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+    mockUser(manager);
 
     const req = createNextRequest('http://localhost/api/v1/organization', {
       method: 'POST',
@@ -51,7 +64,7 @@ describe('POST /api/v1/organization', () => {
   });
 
   it('adds creator as org member with admin role', async () => {
-    mockUser(TEST_USERS.TEACHER);
+    mockUser(educator);
 
     const orgName = `${TEST_PREFIX}member-${Date.now()}`;
     const req = createNextRequest('http://localhost/api/v1/organization', {
@@ -69,34 +82,34 @@ describe('POST /api/v1/organization', () => {
       .from('org_members')
       .select('*, org_roles!inner(name)')
       .eq('organization_id', body.data.id)
-      .eq('user_id', TEST_USERS.TEACHER.id);
+      .eq('user_id', educator.id);
 
     expect(members?.length).toBe(1);
     expect(members?.[0].org_roles.name).toBe('admin');
   });
 
   it('returns 201 with cookie, role ids and default group', async () => {
-      mockUser(TEST_USERS.TEACHER);
+    mockUser(educator);
 
-      const req = createNextRequest('http://localhost/api/v1/organization', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: `${TEST_PREFIX}roles-${Date.now()}` }),
-      });
-
-      const response = await POST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(201);
-      expect(body.success).toBe(true);
-      expect(body.data.adminRoleId).toBeDefined();
-      expect(body.data.teacherRoleId).toBeDefined();
-      expect(body.data.memberRoleId).toBeDefined();
-      expect(body.data.defaultGroupId).toBeDefined();
+    const req = createNextRequest('http://localhost/api/v1/organization', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: `${TEST_PREFIX}roles-${Date.now()}` }),
     });
 
-    it('returns 403 when student tries to create', async () => {
-    mockUser(TEST_USERS.STUDENT);
+    const response = await POST(req);
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.success).toBe(true);
+    expect(body.data.adminRoleId).toBeDefined();
+    expect(body.data.teacherRoleId).toBeDefined();
+    expect(body.data.memberRoleId).toBeDefined();
+    expect(body.data.defaultGroupId).toBeDefined();
+  });
+
+  it('returns 403 when student tries to create', async () => {
+    mockUser(student);
 
     const req = createNextRequest('http://localhost/api/v1/organization', {
       method: 'POST',
@@ -128,7 +141,7 @@ describe('POST /api/v1/organization', () => {
   });
 
   it('returns 422 when name is too short', async () => {
-    mockUser(TEST_USERS.TEACHER);
+    mockUser(educator);
 
     const req = createNextRequest('http://localhost/api/v1/organization', {
       method: 'POST',

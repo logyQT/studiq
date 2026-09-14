@@ -1,36 +1,38 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST } from '@/app/(backend)/api/v1/quiz/new/route';
+import {
+  before,
+  type BeforeResult,
+} from '#test/helpers/test-user';
 import {
   cleanupQuestions,
   cleanupQuizAttempts,
-  cleanupSubjects,
   mockUser,
-  seedQuestion,
-  TEST_USERS,
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
 
 describe('Quizzes Integration', () => {
+  let student!: BeforeResult;
+
+  beforeAll(async () => {
+    // Fresh student + 5 personal mcq questions seeded through the real
+    // question API (bank created implicitly via the question-banks API).
+    student = await before({ role: 'student', questions: 5 });
+  });
+
   beforeEach(async () => {
     vi.clearAllMocks();
-    for (const user of Object.values(TEST_USERS)) {
-      await cleanupQuizAttempts(user.id);
-      await cleanupQuestions(user.id, 'quiz-');
-      await cleanupSubjects(user.id, 'quiz-');
-    }
+    await cleanupQuizAttempts(student.user.id);
+  });
 
-    for (let i = 0; i < 5; i++) {
-      await seedQuestion({
-        type: 'mcq',
-        content: `quiz-Quiz Question ${i}`,
-        created_by: TEST_USERS.STUDENT.id,
-      });
-    }
+  afterAll(async () => {
+    await cleanupQuizAttempts(student.user.id);
+    await cleanupQuestions(student.user.id, 'seed-question-');
   });
 
   describe('POST /api/v1/quizzes', () => {
     it('generates a quiz and returns 201', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const req = createNextRequest('http://localhost/api/v1/quiz/new', {
         method: 'POST',
@@ -51,7 +53,7 @@ describe('Quizzes Integration', () => {
     });
 
     it('generates a quiz without optional fields', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const req = createNextRequest('http://localhost/api/v1/quiz/new', {
         method: 'POST',
@@ -89,7 +91,7 @@ describe('Quizzes Integration', () => {
     });
 
     it('returns 422 when questionTypes is empty', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const req = createNextRequest('http://localhost/api/v1/quiz/new', {
         method: 'POST',
@@ -108,7 +110,7 @@ describe('Quizzes Integration', () => {
     });
 
     it('returns 404 when no matching questions exist', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const req = createNextRequest('http://localhost/api/v1/quiz/new', {
         method: 'POST',

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   GET as attemptGet,
   POST as attemptPost,
@@ -6,45 +6,36 @@ import {
 import { GET as attemptsGet } from '@/app/(backend)/api/v1/quiz/attempts/route';
 import { POST as quizPost } from '@/app/(backend)/api/v1/quiz/new/route';
 import {
+  before,
+  createTestUser,
+  type BeforeResult,
+  type TestUserFixture,
+} from '#test/helpers/test-user';
+import {
   cleanupQuestions,
   cleanupQuizAttempts,
-  cleanupSubjects,
   createServiceClient,
   mockUser,
-  seedQuestion,
-  TEST_USERS,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 
 describe('Quiz Attempts Integration', () => {
+  let student!: BeforeResult;
+  let other!: TestUserFixture;
   let attemptId: string;
+
+  beforeAll(async () => {
+    // Fresh student + 3 personal mcq questions (with answers) via the API.
+    student = await before({ role: 'student', questions: 3 });
+    // Another student for cross-user 404 checks.
+    other = await createTestUser({ role: 'student' });
+  });
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    for (const user of Object.values(TEST_USERS)) {
-      await cleanupQuizAttempts(user.id);
-      await cleanupQuestions(user.id, 'qa-');
-      await cleanupSubjects(user.id, 'quiz-attempt-');
-    }
+    await cleanupQuizAttempts(student.user.id);
 
-    const supabase = createServiceClient();
-
-    for (let i = 0; i < 3; i++) {
-      const question = await seedQuestion({
-        type: 'mcq',
-        content: `qa-Question ${i}`,
-        created_by: TEST_USERS.STUDENT.id,
-      });
-
-      await supabase.from('question_answers').insert({
-        question_id: question.id,
-        content: 'Correct Answer',
-        is_correct: true,
-        order_index: 0,
-      });
-    }
-
-    mockUser(TEST_USERS.STUDENT);
+    mockUser(student.user);
     const quizReq = createNextRequest('http://localhost/api/v1/quiz/new', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -59,9 +50,14 @@ describe('Quiz Attempts Integration', () => {
     attemptId = quizBody.data.id;
   });
 
+  afterAll(async () => {
+    await cleanupQuizAttempts(student.user.id);
+    await cleanupQuestions(student.user.id, 'seed-question-');
+  });
+
   describe('GET /api/v1/quiz/attempts', () => {
     it('lists attempts for user', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const req = createNextRequest('http://localhost/api/v1/quiz/attempts');
       const response = await attemptsGet(req);
@@ -86,7 +82,7 @@ describe('Quiz Attempts Integration', () => {
 
   describe('GET /api/v1/quiz/:attemptId', () => {
     it('returns attempt details with questions and answers', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/quiz/${attemptId}`,
@@ -101,7 +97,7 @@ describe('Quiz Attempts Integration', () => {
     });
 
     it('returns 404 for another user attempt', async () => {
-      mockUser(TEST_USERS.STUDENT3);
+      mockUser(other);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/quiz/${attemptId}`,
@@ -117,7 +113,7 @@ describe('Quiz Attempts Integration', () => {
 
   describe('POST /api/v1/quiz/:attemptId', () => {
     it('submits attempt and returns score', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const supabase = createServiceClient();
       const { data: attemptQuestions } = await supabase
@@ -156,7 +152,7 @@ describe('Quiz Attempts Integration', () => {
     });
 
     it('returns 400 when submitting already completed attempt', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const supabase = createServiceClient();
       const { data: attemptQuestions } = await supabase
@@ -197,7 +193,7 @@ describe('Quiz Attempts Integration', () => {
     });
 
     it('returns 404 for nonexistent attempt', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const fakeId = '00000000-0000-4000-8000-000000000099';
       const { request, params } = createNextRequestWithParams(
@@ -217,7 +213,7 @@ describe('Quiz Attempts Integration', () => {
     });
 
     it('returns 422 when answers have invalid questionId', async () => {
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student.user);
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/quiz/${attemptId}`,

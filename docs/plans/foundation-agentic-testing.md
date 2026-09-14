@@ -21,7 +21,7 @@ Last updated: 2026-09-14
 
 ## Phase A — Reusable API-first `before()` (test foundation)
 
-Status: IN PROGRESS (helper built + proof migrated; DB drift repaired; bulk suite migration pending)
+Status: COMPLETE (helper built + all API-flow suites migrated; DB drift repaired; 186/186 green)
 
 ### Verification baseline (2026-09-14, updated)
 - `bun run lint` — clean (tsc + biome 629 files + import-path guard)
@@ -62,8 +62,27 @@ Status: IN PROGRESS (helper built + proof migrated; DB drift repaired; bulk suit
 - [x] `before(profile)` orchestrator returning `{ user, orgId, groups, createdByIds }`
 - [x] API-gap bridge (banks, `subjects`, direct member-add) + `api-gaps.md`
 - [x] Migrate `members.test.ts` as proof (10/10 green) — defects surfaced: invite accept 429, group limit 1
-- [ ] Migrate remaining integration suites (bulk) to `before()` (schema drift repaired; suites pass without migration)
-- [x] Verify: `bun test:unit` (580) + `bun test:integration` (186) green
+- [x] Migrate remaining integration suites (bulk) to `before()` — all 11 API-flow suites migrated:
+      `members`, `flashcard-topics`, `flashcard-decks`, `flashcards`, `flashcard-practice`,
+      `quizzes`, `quiz-attempts`, `stats`, `questions`, `invitations`, `organization-create`, `seats`
+- [x] Verify: `bun test:unit` (580) + `bun test:integration` (186) green + `bun run lint` clean
+
+### DB-subject suites retained as-is (documented keep-as-is)
+
+These suites exercise DB-level subjects (triggers/RPCs), role types outside the
+`before()`/`createTestUser` role set (student|educator|manager), or the auth flows
+themselves — they are not API-flow suites and intentionally stay on service-role seeding:
+
+| Suite | Reason retained |
+|-------|-----------------|
+| `university` | SYS_ADMIN flows + role-id matrix (`org_roles`) exercised via service-role lookups; SYS_ADMIN not in the `before()` role set |
+| `org-features` | DB trigger test (`handle_new_organization` default roles) — org inserted directly to assert trigger output |
+| `rpc-questions` | RPC subject (`list_questions` pgSQL with `p_*` params + explicit created_by/user_id) — DB-level, not route-level |
+| `auth` | Tests register/login/session flows themselves — the `before()` helper depends on these routes |
+| `health` | Public ping endpoint, no auth/org — no migration needed |
+
+`TEST_USERS`/`seedOrganization`/`seedQuestion` remain referenced ONLY by the suites
+above (plus their definitions in `helpers.ts`); the API-first suites run without them.
 
 ---
 

@@ -1,49 +1,92 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/questions/[id]/route';
 import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/route';
 import { GET as GET_LIST, POST } from '@/app/(backend)/api/v1/questions/route';
 import {
+  before,
+  createTestUser,
+  type BeforeResult,
+  type TestUserFixture,
+} from '#test/helpers/test-user';
+import {
   cleanupOrganizationByName,
   cleanupQuestions,
-  createServiceClient,
   mockUser,
-  seedOrgMembership,
-  seedOrganization,
-  seedQuestion,
-  TEST_USERS,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 
-const ORG_PREFIX = 'q-test-';
-
 describe('Questions Integration', () => {
-  let orgId: string;
+  let educator!: BeforeResult;
+  let student!: TestUserFixture;
+  let manager!: TestUserFixture;
+  let orgId!: string;
+
+  beforeAll(async () => {
+    // Educator creates the org via the API and becomes its admin member.
+    educator = await before({ role: 'educator', org: true });
+    orgId = educator.orgId!;
+    student = await createTestUser({ role: 'student' });
+    manager = await createTestUser({ role: 'manager' });
+  });
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    for (const user of Object.values(TEST_USERS)) {
-      await cleanupQuestions(user.id);
-    }
-
-    const seeded = await seedOrganization(`${ORG_PREFIX}${Date.now()}`);
-    orgId = seeded.org.id;
-
-    await seedOrgMembership({
-      organizationId: orgId,
-      userId: TEST_USERS.TEACHER.id,
-      orgRoleId: seeded.teacherRoleId,
-    });
+    // Keep the org's question set clean between tests.
+    await cleanupQuestions(educator.user.id);
   });
 
   afterAll(async () => {
-    await cleanupOrganizationByName(ORG_PREFIX);
+    await cleanupOrganizationByName('seed-org-');
   });
 
   const orgCookies = () => ({ active_org_id: orgId });
 
+  async function createBank(name: string): Promise<string> {
+    mockUser(educator.user);
+    const req = createNextRequest(
+      'http://localhost/api/v1/questions/banks',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      },
+      orgCookies(),
+    );
+    const res = await createBankPost(req);
+    const body = await res.json();
+    if (res.status !== 201) throw new Error(`bank create failed: ${JSON.stringify(body)}`);
+    return body.data.id as string;
+  }
+
+  async function createQuestion(
+    content: string,
+    opts: { type?: 'mcq' | 'true_false' } = {},
+  ): Promise<{ id: string; bankId: string }> {
+    const bankId = await createBank(`q-test-bank-${Date.now()}-${Math.random()}`);
+    mockUser(educator.user);
+    const req = createNextRequest(
+      'http://localhost/api/v1/questions',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bankId,
+          type: opts.type ?? 'mcq',
+          content,
+          answers: [{ content: 'Answer', isCorrect: true, orderIndex: 0 }],
+        }),
+      },
+      orgCookies(),
+    );
+    const res = await POST(req);
+    const body = await res.json();
+    if (res.status !== 201) throw new Error(`question create failed: ${JSON.stringify(body)}`);
+    return { id: body.data.id as string, bankId };
+  }
+
   describe('POST /api/v1/questions', () => {
     it('creates a question and returns 201', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      mockUser(educator.user);
 
       const bankReq = createNextRequest(
         'http://localhost/api/v1/questions/banks',
@@ -83,12 +126,13 @@ describe('Questions Integration', () => {
     });
 
     it('returns 422 when content is empty', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      mockUser(educator.user);
 
       const req = createNextRequest('http://localhost/api/v1/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          bankId: '00000000-0000-4000-8000-000000000099',
           type: 'mcq',
           content: '',
           answers: [{ content: 'Answer', isCorrect: true }],
@@ -103,12 +147,13 @@ describe('Questions Integration', () => {
     });
 
     it('returns 422 when answers array is empty', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      mockUser(educator.user);
 
       const req = createNextRequest('http://localhost/api/v1/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          bankId: '00000000-0000-4000-8000-000000000099',
           type: 'mcq',
           content: 'Question',
           answers: [],
@@ -129,6 +174,7 @@ describe('Questions Integration', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          bankId: '00000000-0000-4000-8000-000000000099',
           type: 'mcq',
           content: 'Question',
           answers: [{ content: 'Answer', isCorrect: true }],
@@ -143,19 +189,10 @@ describe('Questions Integration', () => {
     });
 
     it('returns 403 when using another users bankId', async () => {
-      const supabase = createServiceClient();
-      const { data: bank } = await supabase
-        .from('question_banks')
-        .insert({
-          name: 'Test Bank',
-          created_by: TEST_USERS.TEACHER.id,
-          organization_id: orgId,
-          visibility: 'personal',
-        })
-        .select()
-        .single();
+      // Bank owned by the educator (org admin) — created through the real API.
+      const bankId = await createBank('q-test-foreign-bank');
 
-      mockUser(TEST_USERS.STUDENT);
+      mockUser(student);
 
       const req = createNextRequest('http://localhost/api/v1/questions', {
         method: 'POST',
@@ -163,7 +200,7 @@ describe('Questions Integration', () => {
         body: JSON.stringify({
           type: 'mcq',
           content: 'Question',
-          bankId: bank.id,
+          bankId,
           answers: [{ content: 'Answer', isCorrect: true }],
         }),
       }, orgCookies());
@@ -176,7 +213,7 @@ describe('Questions Integration', () => {
     });
 
     it('returns 404 when bankId does not exist', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      mockUser(educator.user);
 
       const req = createNextRequest('http://localhost/api/v1/questions', {
         method: 'POST',
@@ -199,7 +236,7 @@ describe('Questions Integration', () => {
 
   describe('GET /api/v1/questions', () => {
     it('returns questions list', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      mockUser(educator.user);
 
       const req = createNextRequest('http://localhost/api/v1/questions', undefined, orgCookies());
       const response = await GET_LIST(req);
@@ -210,15 +247,10 @@ describe('Questions Integration', () => {
     });
 
     it('filters by type', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      // Seed exactly one true_false question via the API (bank + question).
+      await createQuestion('True or False?', { type: 'true_false' });
 
-      await seedQuestion({
-        type: 'true_false',
-        content: 'True or False?',
-        created_by: TEST_USERS.TEACHER.id,
-        organization_id: orgId,
-      });
-
+      mockUser(educator.user);
       const req = createNextRequest('http://localhost/api/v1/questions?type=true_false', undefined, orgCookies());
       const response = await GET_LIST(req);
       const body = await response.json();
@@ -231,18 +263,12 @@ describe('Questions Integration', () => {
 
   describe('GET /api/v1/questions/:id', () => {
     it('returns question when found', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      const { id } = await createQuestion('Get Me');
 
-      const question = await seedQuestion({
-        type: 'mcq',
-        content: 'Get Me',
-        created_by: TEST_USERS.TEACHER.id,
-        organization_id: orgId,
-      });
-
+      mockUser(educator.user);
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/questions/${question.id}`,
-        { id: question.id },
+        `http://localhost/api/v1/questions/${id}`,
+        { id },
         undefined,
         orgCookies(),
       );
@@ -254,7 +280,7 @@ describe('Questions Integration', () => {
     });
 
     it('returns 404 when question does not exist', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      mockUser(educator.user);
 
       const fakeId = '00000000-0000-4000-8000-000000000099';
       const { request, params } = createNextRequestWithParams(
@@ -273,18 +299,12 @@ describe('Questions Integration', () => {
 
   describe('PUT /api/v1/questions/:id', () => {
     it('updates own question and returns 200', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      const { id } = await createQuestion('Original');
 
-      const question = await seedQuestion({
-        type: 'mcq',
-        content: 'Original',
-        created_by: TEST_USERS.TEACHER.id,
-        organization_id: orgId,
-      });
-
+      mockUser(educator.user);
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/questions/${question.id}`,
-        { id: question.id },
+        `http://localhost/api/v1/questions/${id}`,
+        { id },
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -300,18 +320,13 @@ describe('Questions Integration', () => {
     });
 
     it('returns 403 when updating another user question', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      // Educator owns the question; manager (non-member) tries to update it.
+      const { id } = await createQuestion('Teacher Question');
 
-      const question = await seedQuestion({
-        type: 'mcq',
-        content: 'Teacher Question',
-        created_by: TEST_USERS.TEACHER.id,
-        organization_id: orgId,
-      });
-
+      mockUser(manager);
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/questions/${question.id}`,
-        { id: question.id },
+        `http://localhost/api/v1/questions/${id}`,
+        { id },
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -329,18 +344,12 @@ describe('Questions Integration', () => {
 
   describe('DELETE /api/v1/questions/:id', () => {
     it('deletes own question and returns 200', async () => {
-      mockUser(TEST_USERS.TEACHER);
+      const { id } = await createQuestion('To Delete');
 
-      const question = await seedQuestion({
-        type: 'mcq',
-        content: 'To Delete',
-        created_by: TEST_USERS.TEACHER.id,
-        organization_id: orgId,
-      });
-
+      mockUser(educator.user);
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/questions/${question.id}`,
-        { id: question.id },
+        `http://localhost/api/v1/questions/${id}`,
+        { id },
         { method: 'DELETE' },
         orgCookies(),
       );
@@ -352,18 +361,12 @@ describe('Questions Integration', () => {
     });
 
     it('returns 403 when deleting another user question', async () => {
-      mockUser(TEST_USERS.UNIVERSITY_ADMIN);
+      const { id } = await createQuestion('Teacher Question');
 
-      const question = await seedQuestion({
-        type: 'mcq',
-        content: 'Teacher Question',
-        created_by: TEST_USERS.TEACHER.id,
-        organization_id: orgId,
-      });
-
+      mockUser(manager);
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/questions/${question.id}`,
-        { id: question.id },
+        `http://localhost/api/v1/questions/${id}`,
+        { id },
         { method: 'DELETE' },
         orgCookies(),
       );
