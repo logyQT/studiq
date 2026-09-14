@@ -27,6 +27,7 @@ import { PlanFeatureService } from '@/server/services/plan-feature.service';
 import { PlanLimitService } from '@/server/services/plan-limit.service';
 import { QuestionService } from '@/server/services/question.service';
 import { QuestionBankService } from '@/server/services/question-bank.service';
+import { QuestionReportService } from '@/server/services/question-report.service';
 import { QuizService } from '@/server/services/quiz.service';
 import { QuizAttemptService } from '@/server/services/quiz-attempt.service';
 import { SearchService } from '@/server/services/search.service';
@@ -94,6 +95,10 @@ export const questionBankService = wrapService(
   'question-bank.service',
 );
 export const questionService = wrapService(new QuestionService(createClient), 'question.service');
+export const questionReportService = wrapService(
+  new QuestionReportService(createClient),
+  'question-report.service',
+);
 export const quizAttemptService = wrapService(
   new QuizAttemptService(createClient),
   'quiz-attempt.service',

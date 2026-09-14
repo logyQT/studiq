@@ -22,6 +22,7 @@ import { PlanFeatureController } from '@/server/controllers/plan-feature.control
 import { PlanLimitController } from '@/server/controllers/plan-limit.controller';
 import { QuestionController } from '@/server/controllers/question.controller';
 import { QuestionBankController } from '@/server/controllers/question-bank.controller';
+import { QuestionReportController } from '@/server/controllers/question-report.controller';
 import { QuizController } from '@/server/controllers/quiz.controller';
 import { QuizAttemptController } from '@/server/controllers/quiz-attempt.controller';
 import { SearchController } from '@/server/controllers/search.controller';
@@ -55,6 +56,7 @@ import {
   planFeatureService,
   planLimitService,
   questionBankService,
+  questionReportService,
   questionService,
   quizAttemptService,
   quizService,
@@ -149,6 +151,10 @@ export const questionController = wrapService(
 export const questionBankController = wrapService(
   new QuestionBankController(questionBankService),
   'question-bank.controller',
+);
+export const questionReportController = wrapService(
+  new QuestionReportController(questionReportService),
+  'question-report.controller',
 );
 export const quizController = wrapService(new QuizController(quizService), 'quiz.controller');
 export const quizAttemptController = wrapService(
