@@ -84,6 +84,12 @@ themselves — they are not API-flow suites and intentionally stay on service-ro
 `TEST_USERS`/`seedOrganization`/`seedQuestion` remain referenced ONLY by the suites
 above (plus their definitions in `helpers.ts`); the API-first suites run without them.
 
+### Handoff: test parallelism (next task)
+
+Phase A done → next agent should pick up `docs/plans/test-parallelism.md` (full prompt):
+enable file parallelism + in-file concurrency + a 3×-side-by-side self-stress (every test
+runs as 3 concurrent copies) to prove isolation and catch flakes in one pass.
+
 ---
 
 ## Phase B — Decouple flags / perms / limits
