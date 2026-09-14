@@ -19,6 +19,7 @@ export * from '@/server/models/plan-feature.model';
 export * from '@/server/models/plan-limit.model';
 export * from '@/server/models/question.model';
 export * from '@/server/models/question-bank.model';
+export * from '@/server/models/question-report.model';
 export * from '@/server/models/quiz.model';
 export * from '@/server/models/quiz-attempt.model';
 export * from '@/server/models/search.model';

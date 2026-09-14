@@ -15,6 +15,7 @@ import {
   Layers,
   LayoutDashboard,
   Mail,
+  MessageSquareWarning,
   PieChart,
   Radio,
   ScrollText,
@@ -38,7 +39,9 @@ import {
   SidebarHeader,
   SidebarRail,
 } from '@/components/ui/sidebar';
+import { useApiQuery } from '@/hooks/use-api';
 import { useCan } from '@/hooks/use-can';
+import { questionReportKeys } from '@/lib/query-keys';
 import { AccountType } from '@/types';
 
 const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
@@ -66,6 +69,7 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
         { titleKey: 'question_banks', href: '/edu/questions', icon: Database },
         { titleKey: 'edu_quizzes', href: '/edu/quizzes', icon: ScrollText },
         { titleKey: 'edu_assignments', href: '/edu/assignments', icon: ClipboardCheck },
+        { titleKey: 'question_reports', href: '/edu/reports', icon: MessageSquareWarning },
       ],
     },
     {
@@ -121,6 +125,7 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
         { titleKey: 'flashcard_topics', href: '/app/topics', icon: Tag },
         { titleKey: 'question_banks', href: '/app/questions', icon: Database },
         { titleKey: 'app_assignments', href: '/app/assignments', icon: ClipboardCheck },
+        { titleKey: 'question_reports', href: '/app/reports', icon: MessageSquareWarning },
       ],
     },
     {
@@ -166,6 +171,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const can = useCan();
   const hasAiChat = can({ features: ['ai.chat'] });
 
+  const { data: reportsUnread } = useApiQuery<{ count: number }>({
+    queryKey: questionReportKeys.unreadCount,
+    url: '/api/v1/question-reports/unread-count',
+    enabled: !!user,
+    staleTime: 30 * 1000,
+  });
+
   const groups = (() => {
     const raw = (() => {
       if (pathname.startsWith('/edu')) return NAV_ITEMS['/edu'];
@@ -177,11 +189,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
     return raw.map((group) => ({
       ...group,
-      items: group.items.filter((item) => {
-        if (!item.feature) return true;
-        if (item.feature === 'ai.chat') return hasAiChat;
-        return true;
-      }),
+      items: group.items
+        .filter((item) => {
+          if (!item.feature) return true;
+          if (item.feature === 'ai.chat') return hasAiChat;
+          return true;
+        })
+        .map((item) =>
+          item.href.endsWith('/reports') ? { ...item, badge: reportsUnread?.count ?? 0 } : item,
+        ),
     }));
   })();
 

@@ -2,6 +2,7 @@
 
 import { ArrowUpDown, Pencil, Search, Trash2, X } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
+import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -35,6 +36,7 @@ interface QuestionTableProps {
   onSortChange: (sortBy: string, sortOrder: string) => void;
   onEdit: (question: Question) => void;
   onDelete: (id: string) => void;
+  showReportButton?: boolean;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -50,6 +52,7 @@ export function QuestionTable({
   onSortChange,
   onEdit,
   onDelete,
+  showReportButton = false,
   t,
 }: QuestionTableProps) {
   const filtered = questions.filter((q) => {
@@ -170,12 +173,18 @@ export function QuestionTable({
                 <TableCell>{q.question_answers?.length ?? 0}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => onEdit(q)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => onDelete(q.id)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    {showReportButton ? (
+                      <ReportQuestionDialog questionId={q.id} />
+                    ) : (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => onEdit(q)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => onDelete(q.id)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

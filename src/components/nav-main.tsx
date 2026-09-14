@@ -21,6 +21,7 @@ export type NavItem = {
   icon?: LucideIcon;
   children?: { titleKey: string; href: string }[];
   feature?: string;
+  badge?: number;
 };
 
 export function NavMain({
@@ -85,7 +86,12 @@ export function NavMain({
               <SidebarMenuButton asChild isActive={isActive} tooltip={t(item.titleKey)}>
                 <Link href={item.href}>
                   {item.icon && <item.icon />}
-                  <span>{t(item.titleKey)}</span>
+                  <span className="flex-1">{t(item.titleKey)}</span>
+                  {!!item.badge && (
+                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-semibold text-white">
+                      {item.badge > 99 ? '99+' : item.badge}
+                    </span>
+                  )}
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

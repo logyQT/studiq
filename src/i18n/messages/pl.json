@@ -355,7 +355,8 @@
     "billing": "Płatności",
     "notifications": "Powiadomienia",
     "upgrade": "Wybierz plan",
-    "question_banks": "Pytania"
+    "question_banks": "Pytania",
+    "question_reports": "Zgłoszenia"
   },
   "EduOverviewPage": {
     "title": "Panel Nauczyciela",
@@ -2336,6 +2337,23 @@
     "mcq": "Wielokrotnego wyboru",
     "true_false_label": "Prawda / Fałsz",
     "open_label": "Otwarte"
+  },
+  "QuestionReports": {
+    "common_loading": "Ładowanie...",
+    "report_button_title": "Zgłoś nieprawidłowość",
+    "report_dialog_title": "Zgłoś nieprawidłowość pytania",
+    "report_dialog_description": "Opisz, na czym polega problem. Wiadomość trafi bezpośrednio do wykładowcy, który stworzył to pytanie.",
+    "report_message_placeholder": "Np. odpowiedź jest błędna, treść pytania jest niejasna...",
+    "cancel": "Anuluj",
+    "send": "Wyślij",
+    "report_sent": "Zgłoszenie wysłane",
+    "report_error": "Nie udało się wysłać zgłoszenia",
+    "empty_title": "Brak zgłoszeń",
+    "empty_description": "Tu pojawią się zgłoszenia nieprawidłowości pytań.",
+    "page_title": "Zgłoszenia",
+    "page_description_student": "Twoje zgłoszenia nieprawidłowości pytań i odpowiedzi wykładowców.",
+    "page_description_teacher": "Zgłoszenia nieprawidłowości od studentów dotyczące Twoich pytań.",
+    "reply_placeholder": "Napisz odpowiedź..."
   },
   "QuestionForm": {
     "create_title": "Utwórz pytanie",

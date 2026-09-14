@@ -130,6 +130,7 @@ export function QuestionBankDetailScreen({
         }}
         onEdit={openEdit}
         onDelete={setDeleteId}
+        showReportButton={basePath.startsWith('/app')}
         t={t}
       />
 
