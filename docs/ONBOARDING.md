@@ -75,15 +75,23 @@ LLM_MODEL_NAME=gpt-4o-mini
 
 # Option B: Local Ollama (free, open-source)
 # LLM_PROVIDER=ollama
-# LLM_BASE_URL=http://localhost:11434
+# LLM_BASE_URL=http://localhost:11434/v1
 # LLM_MODEL_NAME=llama3.2
 ```
+
+> The `/v1` suffix is required — `src/server/ai/model.ts` talks to the provider
+> through `createOpenAICompatible`, which expects an OpenAI-compatible base URL.
+> Without it, requests fail.
 
 To use Ollama, install it from [ollama.com](https://ollama.com) and pull a model:
 
 ```bash
 ollama pull llama3.2
 ```
+
+For better (if slower) Polish-language answers on capable hardware, a larger
+model such as `qwen2.5:14b` also works well — just point `LLM_MODEL_NAME` at
+whatever you've pulled.
 
 ### 6. Seed the database (optional)
 
