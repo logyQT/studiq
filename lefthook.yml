@@ -1,0 +1,17 @@
+pre-commit:
+  parallel: false
+  commands:
+    lint:
+      run: bun run lint
+    typecheck:
+      run: bun run typecheck
+
+pre-push:
+  parallel: false
+  commands:
+    lint:
+      run: bun run lint
+    typecheck:
+      run: bun run typecheck
+    test:
+      run: bun test:unit
