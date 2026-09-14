@@ -37,14 +37,14 @@ export class QuizAttemptService {
 
     const { data: attemptQuestions, error: questionsError } = await supabase
       .from('quiz_attempt_questions')
-      .select('order_index, question_id, questions(*, question_answers(*))')
+      .select('order_index, question_id, questions(*, question_answers:question_options(*))')
       .eq('attempt_id', attemptId)
       .order('order_index', { ascending: true });
 
     if (questionsError) return toDbFailure(questionsError);
 
     const { data: answers, error: answersError } = await supabase
-      .from('quiz_answers')
+      .from('student_answers')
       .select('*')
       .eq('attempt_id', attemptId);
 
@@ -58,7 +58,7 @@ export class QuizAttemptService {
       {};
     (answers ?? []).forEach((a) => {
       answerObj[a.question_id] = {
-        selected_answer_id: a.selected_answer_id,
+        selected_answer_id: a.selected_option_id,
         is_correct: a.is_correct,
       };
     });
@@ -110,7 +110,7 @@ export class QuizAttemptService {
       let isCorrect = false;
       if (ans.selectedAnswerId) {
         const { data: answer } = await supabase
-          .from('question_answers')
+          .from('question_options')
           .select('is_correct')
           .eq('id', ans.selectedAnswerId)
           .single();
@@ -120,7 +120,7 @@ export class QuizAttemptService {
       answerRecords.push({
         attempt_id: data.attemptId,
         question_id: ans.questionId,
-        selected_answer_id: ans.selectedAnswerId ?? null,
+        selected_option_id: ans.selectedAnswerId ?? null,
         is_correct: isCorrect,
       });
     }
@@ -135,7 +135,7 @@ export class QuizAttemptService {
 
     if (updateError) return toDbFailure(updateError);
 
-    const { error: answersError } = await supabase.from('quiz_answers').insert(answerRecords);
+    const { error: answersError } = await supabase.from('student_answers').insert(answerRecords);
 
     if (answersError) return toDbFailure(answersError);
 

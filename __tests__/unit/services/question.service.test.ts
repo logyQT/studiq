@@ -191,7 +191,7 @@ describe('QuestionService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
-      expect(mock.from).toHaveBeenCalledWith('question_answers');
+      expect(mock.from).toHaveBeenCalledWith('question_options');
     });
   });
 

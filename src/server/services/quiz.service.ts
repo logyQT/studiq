@@ -18,7 +18,7 @@ export class QuizService {
     if (ctx.activeOrgId) orConditions.push(`organization_id.eq.${ctx.activeOrgId}`);
     if (ctx.userId) orConditions.push(`created_by.eq.${ctx.userId}`);
 
-    let query = supabase.from('questions').select('*, question_answers(*)');
+    let query = supabase.from('questions').select('*, question_answers:question_options(*)');
 
     if (orConditions.length > 0) {
       query = query.or(orConditions.join(','));

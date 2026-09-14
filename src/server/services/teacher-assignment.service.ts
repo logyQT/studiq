@@ -82,7 +82,9 @@ export class TeacherAssignmentService {
 
     const { data: assignment, error } = await supabase
       .from('teacher_assignments')
-      .select('*, assignment_questions(*, question:question_id(*, question_answers(*)))')
+      .select(
+        '*, assignment_questions(*, question:question_id(*, question_answers:question_options(*)))',
+      )
       .eq('id', id)
       .single();
 
@@ -459,7 +461,7 @@ export class TeacherAssignmentService {
     const { data: attempt, error } = await supabase
       .from('quiz_attempts')
       .select(
-        '*, quiz_attempt_questions(*, question:question_id(*, question_answers(*))), quiz_answers(*), assignment_answer_images(*)',
+        '*, quiz_attempt_questions(*, question:question_id(*, question_answers:question_options(*))), quiz_answers:student_answers(*), assignment_answer_images(*)',
       )
       .eq('assignment_id', id)
       .eq('user_id', studentId)
@@ -492,7 +494,7 @@ export class TeacherAssignmentService {
     if (!attempt) return failure('NOT_FOUND');
 
     const { data: existingAnswer } = await supabase
-      .from('quiz_answers')
+      .from('student_answers')
       .select('id')
       .eq('attempt_id', attempt.id)
       .eq('question_id', data.questionId)
@@ -500,7 +502,7 @@ export class TeacherAssignmentService {
 
     if (existingAnswer) {
       const { error } = await supabase
-        .from('quiz_answers')
+        .from('student_answers')
         .update({
           is_correct: data.points > 0,
           teacher_points: data.points,
@@ -510,10 +512,10 @@ export class TeacherAssignmentService {
 
       if (error) return toDbFailure(error);
     } else {
-      const { error } = await supabase.from('quiz_answers').insert({
+      const { error } = await supabase.from('student_answers').insert({
         attempt_id: attempt.id,
         question_id: data.questionId,
-        selected_answer_id: null,
+        selected_option_id: null,
         is_correct: data.points > 0,
         teacher_points: data.points,
         teacher_feedback: data.feedback,
@@ -650,7 +652,7 @@ export class TeacherAssignmentService {
 
     const { data: fullQuestions, error: questionsError } = await supabase
       .from('questions')
-      .select('*, question_answers(*)')
+      .select('*, question_answers:question_options(*)')
       .in(
         'id',
         orderedQuestions.map((q) => q.question_id),
@@ -709,7 +711,9 @@ export class TeacherAssignmentService {
 
     const { data: assignment, error: assignmentError } = await supabase
       .from('teacher_assignments')
-      .select('*, assignment_questions(*, question:question_id(*, question_answers(*)))')
+      .select(
+        '*, assignment_questions(*, question:question_id(*, question_answers:question_options(*)))',
+      )
       .eq('id', id)
       .single();
 
@@ -718,7 +722,9 @@ export class TeacherAssignmentService {
 
     let query = supabase
       .from('quiz_attempts')
-      .select('*, user:user_id(id, email, full_name), quiz_answers(*), assignment_answer_images(*)')
+      .select(
+        '*, user:user_id(id, email, full_name), quiz_answers:student_answers(*), assignment_answer_images(*)',
+      )
       .eq('assignment_id', id)
       .order('started_at', { ascending: true });
 

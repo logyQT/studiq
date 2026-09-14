@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/questions/[id]/route';
+import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/route';
 import { GET as GET_LIST, POST } from '@/app/(backend)/api/v1/questions/route';
 import {
   cleanupOrganizationByName,
@@ -8,6 +9,7 @@ import {
   mockUser,
   seedOrgMembership,
   seedOrganization,
+  seedQuestion,
   TEST_USERS,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
@@ -43,10 +45,25 @@ describe('Questions Integration', () => {
     it('creates a question and returns 201', async () => {
       mockUser(TEST_USERS.TEACHER);
 
+      const bankReq = createNextRequest(
+        'http://localhost/api/v1/questions/banks',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'q-test-Main Bank' }),
+        },
+        orgCookies(),
+      );
+      const bankRes = await createBankPost(bankReq);
+      const bankBody = await bankRes.json();
+      expect(bankRes.status).toBe(201);
+      expect(bankBody.data.id).toBeDefined();
+
       const req = createNextRequest('http://localhost/api/v1/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          bankId: bankBody.data.id,
           type: 'mcq',
           content: 'What is 2+2?',
           answers: [
@@ -195,8 +212,7 @@ describe('Questions Integration', () => {
     it('filters by type', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = createServiceClient();
-      await supabase.from('questions').insert({
+      await seedQuestion({
         type: 'true_false',
         content: 'True or False?',
         created_by: TEST_USERS.TEACHER.id,
@@ -217,17 +233,12 @@ describe('Questions Integration', () => {
     it('returns question when found', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = createServiceClient();
-      const { data: question } = await supabase
-        .from('questions')
-        .insert({
-          type: 'mcq',
-          content: 'Get Me',
-          created_by: TEST_USERS.TEACHER.id,
-          organization_id: orgId,
-        })
-        .select()
-        .single();
+      const question = await seedQuestion({
+        type: 'mcq',
+        content: 'Get Me',
+        created_by: TEST_USERS.TEACHER.id,
+        organization_id: orgId,
+      });
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/questions/${question.id}`,
@@ -264,17 +275,12 @@ describe('Questions Integration', () => {
     it('updates own question and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = createServiceClient();
-      const { data: question } = await supabase
-        .from('questions')
-        .insert({
-          type: 'mcq',
-          content: 'Original',
-          created_by: TEST_USERS.TEACHER.id,
-          organization_id: orgId,
-        })
-        .select()
-        .single();
+      const question = await seedQuestion({
+        type: 'mcq',
+        content: 'Original',
+        created_by: TEST_USERS.TEACHER.id,
+        organization_id: orgId,
+      });
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/questions/${question.id}`,
@@ -296,17 +302,12 @@ describe('Questions Integration', () => {
     it('returns 403 when updating another user question', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = createServiceClient();
-      const { data: question } = await supabase
-        .from('questions')
-        .insert({
-          type: 'mcq',
-          content: 'Teacher Question',
-          created_by: TEST_USERS.TEACHER.id,
-          organization_id: orgId,
-        })
-        .select()
-        .single();
+      const question = await seedQuestion({
+        type: 'mcq',
+        content: 'Teacher Question',
+        created_by: TEST_USERS.TEACHER.id,
+        organization_id: orgId,
+      });
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/questions/${question.id}`,
@@ -330,17 +331,12 @@ describe('Questions Integration', () => {
     it('deletes own question and returns 200', async () => {
       mockUser(TEST_USERS.TEACHER);
 
-      const supabase = createServiceClient();
-      const { data: question } = await supabase
-        .from('questions')
-        .insert({
-          type: 'mcq',
-          content: 'To Delete',
-          created_by: TEST_USERS.TEACHER.id,
-          organization_id: orgId,
-        })
-        .select()
-        .single();
+      const question = await seedQuestion({
+        type: 'mcq',
+        content: 'To Delete',
+        created_by: TEST_USERS.TEACHER.id,
+        organization_id: orgId,
+      });
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/questions/${question.id}`,
@@ -358,17 +354,12 @@ describe('Questions Integration', () => {
     it('returns 403 when deleting another user question', async () => {
       mockUser(TEST_USERS.UNIVERSITY_ADMIN);
 
-      const supabase = createServiceClient();
-      const { data: question } = await supabase
-        .from('questions')
-        .insert({
-          type: 'mcq',
-          content: 'Teacher Question',
-          created_by: TEST_USERS.TEACHER.id,
-          organization_id: orgId,
-        })
-        .select()
-        .single();
+      const question = await seedQuestion({
+        type: 'mcq',
+        content: 'Teacher Question',
+        created_by: TEST_USERS.TEACHER.id,
+        organization_id: orgId,
+      });
 
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/questions/${question.id}`,

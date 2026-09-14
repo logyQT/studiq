@@ -18,6 +18,9 @@ ticket for the fix.
   invitation's **organization** (org `plan` → `plan_limits`, plus `org_limits` override,
   default `-1`). `acceptInvitation` now uses it. `regression: invite-accept.test.ts`,
   members suite exercises the real accept route (seed fallback removed).
+- Hardening (`supabase/seeds/00_plans.sql`): `base` plan now carries
+  `max_students=-1` / `max_groups=-1` so personal-plan paths never resolve org-management
+  limits to `0`. `regression: plan-limits.test.ts`.
 
 ### D2-ish — Bulk invite 422 `VALIDATION_UUID_INVALID` — FIXED
 
@@ -27,11 +30,20 @@ ticket for the fix.
   (alongside `adminRoleId`); onboarding sends `memberRoleId`.
   `regression: organization-create.test.ts`, `invite-accept.test.ts`.
 
+### O1 — New org group limit is 1 (`max_groups`) — FIXED
+
+- Cause: `launch` plan (default `organizations.plan`) had `max_groups: 1`; org owners could
+  create only 1 group total (`org_limits` copied from `plan_limits` by
+  `handle_new_organization`).
+- Fix: raised `launch` `max_groups` to 3 (between `lite`=1 and `guide`=5) in
+  `supabase/seeds/00_plans.sql` (plan templates are seed-managed config).
+  `regression: plan-limits.test.ts` creates 2 extra groups (3 total) through the real API.
+
 ## Gaps (no route exists) → DB fallback in helper
 
 | Item | API gap | Helper workaround |
 |------|---------|-------------------|
-| Question banks | No `POST /api/v1/question-banks` | Service-role insert (`question_banks`) before creating questions |
+| Question banks | ~~No `POST /api/v1/question-banks`~~ — route now exists at `api/v1/questions/banks`; helper creates banks via the real API | — |
 | Subjects | No subject create route | Service-role insert (not yet used by helper — add when a subject is needed) |
 
 ### Minor API shape gaps (route exists but response is incomplete)
@@ -40,16 +52,6 @@ ticket for the fix.
   `NODE_ENV === 'development'`. In tests it is `undefined`, so the helper reads the token
   from the `invitations` table. Suggest: always return the token/link (it is already
   env-gated for prod; exposing token helps API consumers).
-
-## Open plan-config observations
-
-### O1 — New org group limit is 1 (`max_groups`)
-
-- The `launch` plan (`organizations.plan` default) has `max_groups: 1`, so an org owner can
-  create only 1 group total. Creating 2+ groups via API → `429`. Capacity gap for tests
-  that need several groups; helper currently fails loudly (do not silently skip).
-- Deliberately left as-is: this is plan-template configuration, not a code defect. If it
-  blocks product flows, raise `max_groups` in `00_plans.sql` / org plan.
 
 ## Not defects (seeding notes)
 

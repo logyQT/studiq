@@ -249,6 +249,13 @@ export async function cleanupQuestions(userId: string, contentPrefix?: string) {
     await supabase.from('question_answers').delete().in('question_id', questionIds);
     await supabase.from('questions').delete().in('id', questionIds);
   }
+
+  // Clean banks created implicitly by seedQuestion (DB-fallback bridge).
+  await supabase
+    .from('question_banks')
+    .delete()
+    .eq('created_by', userId)
+    .ilike('name', 'seed-bank-%');
 }
 
 export async function cleanupFlashcards(userId: string, frontPrefix?: string) {
@@ -338,18 +345,42 @@ export async function seedSubject(data: {
   return subject;
 }
 
+/** DB fallback bridge: questions.bank_id is NOT NULL, so create a bank on the fly. */
 export async function seedQuestion(data: {
   type: string;
   content: string;
   created_by: string;
+  organization_id?: string;
+  bank_id?: string;
 }) {
   const supabase = createServiceClient();
+
+  let bankId = data.bank_id;
+  if (!bankId) {
+    const { data: bank, error: bankError } = await supabase
+      .from('question_banks')
+      .insert({
+        name: `seed-bank-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        created_by: data.created_by,
+        organization_id: data.organization_id ?? null,
+        visibility: data.organization_id ? 'group' : 'personal',
+      })
+      .select('id')
+      .single();
+    if (bankError || !bank) {
+      throw bankError ?? new Error('Failed to create question bank');
+    }
+    bankId = bank.id;
+  }
+
   const { data: question, error } = await supabase
     .from('questions')
     .insert({
       type: data.type,
       content: data.content,
       created_by: data.created_by,
+      organization_id: data.organization_id ?? null,
+      bank_id: bankId,
     })
     .select()
     .single();
@@ -357,11 +388,34 @@ export async function seedQuestion(data: {
   return question;
 }
 
-export async function seedFlashcard(data: { front: string; back: string; created_by: string }) {
+/** DB fallback bridge: flashcards.deck_id is NOT NULL, so create a deck on the fly. */
+export async function seedFlashcard(data: {
+  front: string;
+  back: string;
+  created_by: string;
+  deck_id?: string;
+}) {
   const supabase = createServiceClient();
+
+  let deckId = data.deck_id;
+  if (!deckId) {
+    const { data: deck, error: deckError } = await supabase
+      .from('flashcard_decks')
+      .insert({
+        name: `seed-deck-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        created_by: data.created_by,
+      })
+      .select('id')
+      .single();
+    if (deckError || !deck) {
+      throw deckError ?? new Error('Failed to create flashcard deck');
+    }
+    deckId = deck.id;
+  }
+
   const { data: fc, error } = await supabase
     .from('flashcards')
-    .insert({ front: data.front, back: data.back, created_by: data.created_by })
+    .insert({ front: data.front, back: data.back, created_by: data.created_by, deck_id: deckId })
     .select()
     .single();
   if (error) throw error;

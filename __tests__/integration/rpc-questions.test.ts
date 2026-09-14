@@ -88,7 +88,7 @@ describe('get_accessible_questions RPC', () => {
     // Bank1 → Group, Bank2 → no group
     await sb.from('bank_groups').insert({ bank_id: bank1Id, group_id: defaultGroupId });
 
-    // Create 4 questions
+    // Create 4 questions (bank_id is a direct NOT NULL FK since 20260716000001)
     const { data: q1 } = await sb
       .from('questions')
       .insert({
@@ -97,6 +97,7 @@ describe('get_accessible_questions RPC', () => {
         created_by: TEST_USERS.STUDENT.id,
         organization_id: orgId,
         visibility: 'personal',
+        bank_id: bank1Id,
       })
       .select()
       .single();
@@ -110,6 +111,7 @@ describe('get_accessible_questions RPC', () => {
         created_by: TEST_USERS.STUDENT.id,
         organization_id: orgId,
         visibility: 'personal',
+        bank_id: bank2Id,
       })
       .select()
       .single();
@@ -123,6 +125,7 @@ describe('get_accessible_questions RPC', () => {
         created_by: TEST_USERS.STUDENT2.id,
         organization_id: orgId,
         visibility: 'personal',
+        bank_id: bank1Id,
       })
       .select()
       .single();
@@ -132,22 +135,18 @@ describe('get_accessible_questions RPC', () => {
       .from('questions')
       .insert({
         type: 'mcq',
-        content: 'Q4: StudentB, no bank',
+        content: 'Q4: StudentB, no group',
         created_by: TEST_USERS.STUDENT2.id,
         organization_id: orgId,
         visibility: 'personal',
+        bank_id: bank2Id,
       })
       .select()
       .single();
     q4Id = q4!.id;
 
-    // Bank assignments (now direct FK on questions)
-    await sb.from('questions').update({ bank_id: bank1Id }).eq('id', q1Id);
-    await sb.from('questions').update({ bank_id: bank2Id }).eq('id', q2Id);
-    await sb.from('questions').update({ bank_id: bank1Id }).eq('id', q3Id);
-
     // Answers for Q1 (for p_question_id test)
-    await sb.from('question_answers').insert([
+    await sb.from('question_options').insert([
       { question_id: q1Id, content: 'Ans 1', is_correct: true, order_index: 0 },
       { question_id: q1Id, content: 'Ans 2', is_correct: false, order_index: 1 },
     ]);
@@ -267,11 +266,11 @@ describe('get_accessible_questions RPC', () => {
       expect(error).toBeNull();
       expect(data).toHaveLength(1);
       expect(data![0].id).toBe(q1Id);
-      expect(data![0].question_answers).toBeDefined();
-      expect(Array.isArray(data![0].question_answers)).toBe(true);
-      expect(data![0].question_answers).toHaveLength(2);
-      expect(data![0].question_answers[0].content).toBe('Ans 1');
-      expect(data![0].question_answers[0].is_correct).toBe(true);
+      expect(data![0].question_options).toBeDefined();
+      expect(Array.isArray(data![0].question_options)).toBe(true);
+      expect(data![0].question_options).toHaveLength(2);
+      expect(data![0].question_options[0].content).toBe('Ans 1');
+      expect(data![0].question_options[0].is_correct).toBe(true);
     });
 
     it('returns empty when question is not accessible', async () => {

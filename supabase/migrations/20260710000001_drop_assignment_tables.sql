@@ -34,7 +34,7 @@ WHERE q.id = sub.question_id;
 -- STEP 2: Add deck_id to flashcards
 -- ==========================================
 ALTER TABLE public.flashcards
-  ADD COLUMN deck_id uuid REFERENCES public.flashcard_decks(id) ON DELETE SET NULL;
+  ADD COLUMN deck_id uuid REFERENCES public.flashcard_decks(id) ON DELETE CASCADE;
 
 CREATE INDEX idx_flashcards_deck_id ON public.flashcards(deck_id);
 

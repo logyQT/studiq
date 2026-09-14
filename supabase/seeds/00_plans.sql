@@ -150,7 +150,9 @@ INSERT INTO public.plan_limits (plan_key, limit_key, limit_value) VALUES
   ('base', 'max_decks', 10),
   ('base', 'max_question_banks', 5),
   ('base', 'max_quiz_attempts_per_day', 10),
-  ('base', 'max_ai_tokens_per_day', 0)
+  ('base', 'max_ai_tokens_per_day', 0),
+  ('base', 'max_students', -1),
+  ('base', 'max_groups', -1)
 ON CONFLICT DO NOTHING;
 
 -- Free tier — Lite (educator)
@@ -171,7 +173,7 @@ INSERT INTO public.plan_limits (plan_key, limit_key, limit_value) VALUES
   ('launch', 'max_questions', 50),
   ('launch', 'max_decks', 10),
   ('launch', 'max_question_banks', 5),
-  ('launch', 'max_groups', 1),
+  ('launch', 'max_groups', 3),
   ('launch', 'max_students', 5),
   ('launch', 'max_quiz_attempts_per_day', 10),
   ('launch', 'max_ai_tokens_per_day', 0)

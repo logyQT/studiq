@@ -4,8 +4,8 @@ import {
   cleanupQuestions,
   cleanupQuizAttempts,
   cleanupSubjects,
-  createServiceClient,
   mockUser,
+  seedQuestion,
   TEST_USERS,
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
@@ -19,14 +19,12 @@ describe('Quizzes Integration', () => {
       await cleanupSubjects(user.id, 'quiz-');
     }
 
-    const supabase = createServiceClient();
     for (let i = 0; i < 5; i++) {
-      const { error } = await supabase.from('questions').insert({
+      await seedQuestion({
         type: 'mcq',
         content: `quiz-Quiz Question ${i}`,
         created_by: TEST_USERS.STUDENT.id,
       });
-      if (error) throw new Error(`Failed to create question ${i}: ${error.message}`);
     }
   });
 

@@ -48,7 +48,7 @@ export class QuestionService {
       order_index: a.orderIndex ?? i,
     }));
 
-    const { error: aError } = await supabase.from('question_answers').insert(answersToInsert);
+    const { error: aError } = await supabase.from('question_options').insert(answersToInsert);
     if (aError) return toDbFailure(aError);
 
     if (data.topicIds && data.topicIds.length > 0) {
@@ -76,7 +76,7 @@ export class QuestionService {
 
     let query = supabase
       .from('questions')
-      .select('*, question_answers(*), question_topic_assignments(topic_id)');
+      .select('*, question_answers:question_options(*), question_topic_assignments(topic_id)');
 
     if (filter.or) query = query.or(filter.or);
     if (filter.created_by) query = query.eq('created_by', filter.created_by);
@@ -104,7 +104,7 @@ export class QuestionService {
 
     let query = supabase
       .from('questions')
-      .select('*, question_answers(*), question_topic_assignments(topic_id)')
+      .select('*, question_answers:question_options(*), question_topic_assignments(topic_id)')
       .eq('id', id);
 
     if (filter.or) query = query.or(filter.or);
@@ -143,14 +143,14 @@ export class QuestionService {
       return failure('FORBIDDEN');
 
     if (data.answers) {
-      await supabase.from('question_answers').delete().eq('question_id', id);
+      await supabase.from('question_options').delete().eq('question_id', id);
       const answersToInsert = data.answers.map((a, i) => ({
         question_id: id,
         content: a.content,
         is_correct: a.isCorrect,
         order_index: a.orderIndex ?? i,
       }));
-      await supabase.from('question_answers').insert(answersToInsert);
+      await supabase.from('question_options').insert(answersToInsert);
     }
 
     if (data.bankId !== undefined) {

@@ -21,17 +21,25 @@ Last updated: 2026-09-14
 
 ## Phase A — Reusable API-first `before()` (test foundation)
 
-Status: IN PROGRESS (helper built + proof migrated + verification baseline captured; bulk suite migration pending)
+Status: IN PROGRESS (helper built + proof migrated; DB drift repaired; bulk suite migration pending)
 
-### Verification baseline (2026-09-14)
-- `bun run lint` — clean (typecheck + biome 629 files)
+### Verification baseline (2026-09-14, updated)
+- `bun run lint` — clean (tsc + biome 629 files + import-path guard)
 - `bun test:unit` — 580/580 green
-- `bun test:integration` — **pre-existing red**, identical before/after this work:
-  `8 failed | 9 passed, 70 failed | 111 passed (181)` — failures are DB drift vs old
-  seed helpers (`questions.bank_id` NOT NULL, missing `launch` seat pool, etc.), not caused
-  by the helper migration. Members suite (migrated to `before()`) passes 10/10.
-- After onboarding fixes: `8 failed | 10 passed, 70 failed | 114 passed (184)` — same 8
-  pre-existing failing files untouched; new green coverage from the fix regression tests.
+- `bun test:integration` — **186/186 green** (all 19 files). Schema drift repaired:
+  - `questions.bank_id` NOT NULL → helpers create implicit bank via `seedQuestion()`
+  - `flashcards.deck_id` NOT NULL → helpers create implicit deck via `seedFlashcard()`
+  - `question_answers` → `question_options` rename (migration `20260716000001`) propagated
+    via PostgREST aliases into all server services; API response keys preserved (`question_answers`)
+  - `quiz_answers` → `student_answers`, `selected_answer_id` → `selected_option_id` propagated
+  - `flashcards.deck_id` FK changed from `ON DELETE SET NULL` → `ON DELETE CASCADE`
+    (migration `20260710000001` corrected + new `20260717000002` corrective migration)
+  - `handle_new_organization` trigger restored seat-pool seeding (`20260714000003` updated)
+  - `bulk_create_flashcards` schema file updated to match migration `20260711000002`
+  - Plan config (`launch.max_groups`=3, `base` limits=-1) lives in `seeds/00_plans.sql`
+    (no standalone migration — plan system is seed-managed)
+  - Test bodies updated: `bankId` in questions POST, `deckId` in flashcard bulk create,
+    `question_options` in rpc-questions assertions
 
 ### Onboarding blockers fixed (2026-09-14)
 - 422 bulk invite (`targetOrgRoleId: 'member'` hardcoded name) — `createAndJoin` now returns
@@ -54,8 +62,8 @@ Status: IN PROGRESS (helper built + proof migrated + verification baseline captu
 - [x] `before(profile)` orchestrator returning `{ user, orgId, groups, createdByIds }`
 - [x] API-gap bridge (banks, `subjects`, direct member-add) + `api-gaps.md`
 - [x] Migrate `members.test.ts` as proof (10/10 green) — defects surfaced: invite accept 429, group limit 1
-- [ ] Migrate remaining integration suites (bulk) to `before()`
-- [ ] Verify: `bun test:unit` + `bun test:integration` green
+- [ ] Migrate remaining integration suites (bulk) to `before()` (schema drift repaired; suites pass without migration)
+- [x] Verify: `bun test:unit` (580) + `bun test:integration` (186) green
 
 ---
 

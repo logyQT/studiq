@@ -79,6 +79,14 @@ BEGIN
   WHERE plan_key = NEW.plan
   ON CONFLICT DO NOTHING;
 
+  -- 5. Seed default seat pools from plan_seat_allocations
+  -- (preserved from 20260708000002_seat_based_licensing.sql — this re-create
+  --  must not drop the seat-pool seeding that the seat licensing migration added)
+  INSERT INTO public.org_seat_pools (organization_id, plan_key, total)
+  SELECT NEW.id, seat_plan, default_qty
+  FROM public.plan_seat_allocations
+  WHERE org_plan = NEW.plan;
+
   RETURN NEW;
 END;
 $$;

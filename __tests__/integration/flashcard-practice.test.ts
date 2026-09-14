@@ -27,12 +27,20 @@ describe('Flashcard Practice Integration', () => {
     }
 
     const supabase = createServiceClient();
+    const { data: deck } = await supabase
+      .from('flashcard_decks')
+      .insert({ name: `practice-deck-${Date.now()}`, created_by: TEST_USERS.TEACHER.id })
+      .select()
+      .single();
+    if (!deck) throw new Error('Failed to create deck');
+
     const { data: fc } = await supabase
       .from('flashcards')
       .insert({
         front: 'practice-Practice Card',
         back: 'Answer',
         created_by: TEST_USERS.TEACHER.id,
+        deck_id: deck.id,
       })
       .select()
       .single();

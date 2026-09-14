@@ -166,6 +166,7 @@ describe('Flashcards Integration', () => {
           front: 'fc-Filtered Card',
           back: 'Answer',
           created_by: TEST_USERS.TEACHER.id,
+          deck_id: deckId,
         })
         .select()
         .single();
@@ -194,6 +195,7 @@ describe('Flashcards Integration', () => {
           front: 'fc-Teacher Org Card',
           back: 'Answer',
           created_by: TEST_USERS.TEACHER.id,
+          deck_id: deckId,
         })
         .select();
 
@@ -228,6 +230,7 @@ describe('Flashcards Integration', () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            deckId: deckId,
             cards: [
               { front: 'Q1', back: 'A1' },
               { front: 'Q2', back: 'A2' },
@@ -274,6 +277,7 @@ describe('Flashcards Integration', () => {
           front: 'fc-Get Me',
           back: 'Answer',
           created_by: TEST_USERS.TEACHER.id,
+          deck_id: deckId,
         })
         .select()
         .single();
@@ -315,6 +319,7 @@ describe('Flashcards Integration', () => {
           front: 'fc-Original',
           back: 'Answer',
           created_by: TEST_USERS.TEACHER.id,
+          deck_id: deckId,
         })
         .select()
         .single();
@@ -345,6 +350,7 @@ describe('Flashcards Integration', () => {
           front: 'fc-Teacher Card',
           back: 'Answer',
           created_by: TEST_USERS.TEACHER.id,
+          deck_id: deckId,
         })
         .select()
         .single();
@@ -377,6 +383,7 @@ describe('Flashcards Integration', () => {
           front: 'fc-To Delete',
           back: 'Answer',
           created_by: TEST_USERS.TEACHER.id,
+          deck_id: deckId,
         })
         .select()
         .single();
@@ -403,6 +410,7 @@ describe('Flashcards Integration', () => {
           front: 'fc-Teacher Card',
           back: 'Answer',
           created_by: TEST_USERS.TEACHER.id,
+          deck_id: deckId,
         })
         .select()
         .single();

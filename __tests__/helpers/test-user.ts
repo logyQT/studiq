@@ -11,6 +11,7 @@ import { POST as acceptInvitePost } from '@/app/(backend)/api/v1/organization/in
 import { POST as createInvitePost } from '@/app/(backend)/api/v1/organization/invites/route';
 import { POST as createOrgPost } from '@/app/(backend)/api/v1/organization/route';
 import { POST as createQuestionPost } from '@/app/(backend)/api/v1/questions/route';
+import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/route';
 import { POST as createAssignmentPost } from '@/app/(backend)/api/v1/teacher/assignments/route';
 import { POST as createQuizPost } from '@/app/(backend)/api/v1/teacher/quizzes/route';
 import { createServiceClient, mockUser, useRealSupabase } from '#test/integration/helpers';
@@ -355,22 +356,17 @@ export async function seedViaApi(
     });
   }
 
-  // Questions via API (bank seeded via service role — no question-bank route yet).
+  // Questions via API (bank created via the question-banks API).
   const questionCount = profile.questions ?? 0;
   if (orgId && questionCount > 0) {
-    const { data: bank, error: bankError } = await service
-      .from('question_banks')
-      .insert({
-        name: `seed-bank-${tags}`,
-        organization_id: orgId,
-        created_by: user.id,
-        visibility: 'group',
-      })
-      .select('id')
-      .single();
-    if (bankError || !bank) {
-      throw new Error(`[seed] failed to create question bank: ${bankError?.message}`);
-    }
+    const bank = await api<{ id: string }>(
+      'create-question-bank',
+      createBankPost,
+      '/api/v1/questions/banks',
+      'POST',
+      { body: { name: `seed-bank-${tags}`, visibility: 'group' } },
+      cookie,
+    );
 
     for (let i = 0; i < questionCount; i++) {
       const question = await api<{ id: string }>(

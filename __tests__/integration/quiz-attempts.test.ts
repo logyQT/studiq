@@ -11,6 +11,7 @@ import {
   cleanupSubjects,
   createServiceClient,
   mockUser,
+  seedQuestion,
   TEST_USERS,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
@@ -29,16 +30,11 @@ describe('Quiz Attempts Integration', () => {
     const supabase = createServiceClient();
 
     for (let i = 0; i < 3; i++) {
-      const { data: question, error } = await supabase
-        .from('questions')
-        .insert({
-          type: 'mcq',
-          content: `qa-Question ${i}`,
-          created_by: TEST_USERS.STUDENT.id,
-        })
-        .select()
-        .single();
-      if (error || !question) throw new Error(`Failed to create question ${i}: ${error?.message}`);
+      const question = await seedQuestion({
+        type: 'mcq',
+        content: `qa-Question ${i}`,
+        created_by: TEST_USERS.STUDENT.id,
+      });
 
       await supabase.from('question_answers').insert({
         question_id: question.id,
@@ -130,7 +126,7 @@ describe('Quiz Attempts Integration', () => {
         .eq('attempt_id', attemptId);
 
       const { data: answers } = await supabase
-        .from('question_answers')
+        .from('question_options')
         .select('id, question_id, is_correct')
         .in(
           'question_id',
@@ -169,7 +165,7 @@ describe('Quiz Attempts Integration', () => {
         .eq('attempt_id', attemptId);
 
       const { data: answers } = await supabase
-        .from('question_answers')
+        .from('question_options')
         .select('id, question_id')
         .in(
           'question_id',
