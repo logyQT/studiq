@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { vi } from 'vitest';
 import * as supabaseModule from '@/lib/supabase/server';
+import { getRegisteredMock } from '#test/helpers/concurrent';
 
 // ============================================================
 // Test User Constants (from supabase/seeds/01_users.sql)
@@ -87,6 +88,28 @@ export function useRealSupabase() {
   vi.mocked(supabaseModule.createClient).mockImplementation(async () => {
     return createRealClient();
   });
+}
+
+// ============================================================
+// Per-copy mock application (for concurrent test isolation)
+// Reads the registered mock for a copyId from the registry and
+// applies it.  Call this in per-copy `beforeEach` hooks so the
+// mock is set atomically *before* the test body runs — no race
+// condition between concurrent copies.
+// ============================================================
+export function applyRegisteredMock(copyId: string) {
+  const user = getRegisteredMock(copyId);
+  if (user === undefined) {
+    // No mock registered — fall back to real Supabase
+    useRealSupabase();
+    return;
+  }
+  if (user === null) {
+    // Explicitly registered as "use real Supabase"
+    useRealSupabase();
+    return;
+  }
+  mockUser(user);
 }
 
 // ============================================================
