@@ -373,7 +373,8 @@
     "billing": "Billing",
     "notifications": "Notifications",
     "upgrade": "Upgrade",
-    "question_banks": "Questions"
+    "question_banks": "Questions",
+    "question_reports": "Reports"
   },
   "EduOverviewPage": {
     "title": "Teacher Dashboard",
@@ -2355,6 +2356,23 @@
     "mcq": "Multiple Choice",
     "true_false_label": "True / False",
     "open_label": "Open Answer"
+  },
+  "QuestionReports": {
+    "common_loading": "Loading...",
+    "report_button_title": "Report an issue",
+    "report_dialog_title": "Report a question issue",
+    "report_dialog_description": "Describe the problem. Your message goes directly to the teacher who created this question.",
+    "report_message_placeholder": "E.g. the answer is wrong, the question is unclear...",
+    "cancel": "Cancel",
+    "send": "Send",
+    "report_sent": "Report sent",
+    "report_error": "Failed to send the report",
+    "empty_title": "No reports",
+    "empty_description": "Question issue reports will show up here.",
+    "page_title": "Reports",
+    "page_description_student": "Your question issue reports and teacher replies.",
+    "page_description_teacher": "Issue reports from students about your questions.",
+    "reply_placeholder": "Write a reply..."
   },
   "QuestionForm": {
     "create_title": "Create Question",

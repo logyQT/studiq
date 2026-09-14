@@ -52,6 +52,12 @@ export const groupKeys = {
   my: ['groups', 'my'] as const,
 };
 
+export const questionReportKeys = {
+  all: ['question-reports'] as const,
+  detail: (id: string) => ['question-reports', id] as const,
+  unreadCount: ['question-reports', 'unread-count'] as const,
+};
+
 export const assignmentKeys = {
   all: ['teacher-assignments'] as const,
   detail: (id: string) => ['teacher-assignments', id] as const,
