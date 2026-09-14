@@ -1,4 +1,4 @@
-import EduBankDetailClient from './bank-detail-client';
+import EduBankDetailClient from '@/app/(frontend)/edu/questions/[bankId]/bank-detail-client';
 
 export default async function EduQuestionBankDetailPage(props: {
   params: Promise<{ bankId: string }>;

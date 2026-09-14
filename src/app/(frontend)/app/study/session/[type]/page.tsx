@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import SessionClient from './session-client';
+import SessionClient from '@/app/(frontend)/app/study/session/[type]/session-client';
 
 const VALID_TYPES = ['review', 'new', 'cram'] as const;
 

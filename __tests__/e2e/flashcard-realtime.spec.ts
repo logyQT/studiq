@@ -1,5 +1,5 @@
 import { type BrowserContext, expect, type Page, test } from '@playwright/test';
-import { t } from './utils';
+import { t } from '#test/e2e/utils';
 
 const PASSWORD = 'pass';
 

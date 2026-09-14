@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { t } from './utils';
+import { t } from '#test/e2e/utils';
 
 const heading = t('RegisterPage.header');
 const nameLabel = t('RegisterPage.name_label');

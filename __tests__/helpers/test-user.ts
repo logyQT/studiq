@@ -13,8 +13,8 @@ import { POST as createOrgPost } from '@/app/(backend)/api/v1/organization/route
 import { POST as createQuestionPost } from '@/app/(backend)/api/v1/questions/route';
 import { POST as createAssignmentPost } from '@/app/(backend)/api/v1/teacher/assignments/route';
 import { POST as createQuizPost } from '@/app/(backend)/api/v1/teacher/quizzes/route';
-import { createServiceClient, mockUser, useRealSupabase } from '../integration/helpers';
-import { createNextRequest, createNextRequestWithParams } from '../integration/test-utils';
+import { createServiceClient, mockUser, useRealSupabase } from '#test/integration/helpers';
+import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 
 // ============================================================
 // API-first test seeding

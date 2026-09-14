@@ -17,6 +17,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { QuestionBrowser } from '@/app/(frontend)/edu/quizzes/[id]/edit/question-browser';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -27,7 +28,6 @@ import { useSidebar } from '@/components/ui/sidebar';
 import { Textarea } from '@/components/ui/textarea';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { quizKeys } from '@/lib/query-keys';
-import { QuestionBrowser } from './question-browser';
 
 interface QuizQuestion {
   question_id: string;

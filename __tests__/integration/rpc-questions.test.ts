@@ -7,7 +7,7 @@ import {
   seedOrgMembership,
   seedOrganization,
   TEST_USERS,
-} from './helpers';
+} from '#test/integration/helpers';
 
 const ORG_PREFIX = 'rpc-q-test-';
 

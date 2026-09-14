@@ -3,7 +3,7 @@ import {
   cleanupOrganizationDeep,
   createServiceClient,
   useRealSupabase,
-} from './helpers';
+} from '#test/integration/helpers';
 
 describe('Org Features (trigger)', () => {
   const PREFIX = 'of-test-org-';

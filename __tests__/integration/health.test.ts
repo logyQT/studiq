@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET } from '@/app/(backend)/api/v1/health/route';
-import { useRealSupabase } from './helpers';
+import { useRealSupabase } from '#test/integration/helpers';
 
 describe('Health Integration', () => {
   beforeEach(() => {

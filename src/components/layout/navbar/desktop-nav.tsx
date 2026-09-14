@@ -4,6 +4,7 @@ import { ChevronDown, MoreHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { NavLink } from '@/components/layout/navbar/types';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,7 +12,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import type { NavLink } from './types';
 
 interface DesktopNavProps {
   links: NavLink[];

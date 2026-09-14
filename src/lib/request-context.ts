@@ -1,5 +1,5 @@
+import type { PermissionScope } from '@/lib/permissions';
 import type { AccountType, Nullable } from '@/types';
-import type { PermissionScope } from './permissions';
 
 export interface RequestContext {
   traceId: string;

@@ -1,8 +1,8 @@
 import { AppError } from '@/lib/errors';
+import { Permission, type PermissionKey, type PermissionScope } from '@/lib/permissions';
 import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { AccountType } from '@/types';
-import { Permission, type PermissionKey, type PermissionScope } from './permissions';
 
 export type { PermissionKey, PermissionScope };
 export { Permission };

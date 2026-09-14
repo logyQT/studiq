@@ -12,8 +12,8 @@ import {
   createServiceClient,
   mockUser,
   TEST_USERS,
-} from './helpers';
-import { createNextRequest, createNextRequestWithParams } from './test-utils';
+} from '#test/integration/helpers';
+import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 
 describe('Flashcard Practice Integration', () => {
   let flashcardId: string;

@@ -5,8 +5,8 @@ import {
   PUT as update,
 } from '@/app/(backend)/api/v1/flashcards/decks/[id]/route';
 import { GET, POST } from '@/app/(backend)/api/v1/flashcards/decks/route';
-import { cleanupFlashcardDecks, createServiceClient, mockUser, TEST_USERS } from './helpers';
-import { createNextRequest, createNextRequestWithParams } from './test-utils';
+import { cleanupFlashcardDecks, createServiceClient, mockUser, TEST_USERS } from '#test/integration/helpers';
+import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 
 describe('Flashcard Decks Integration', () => {
   beforeEach(async () => {

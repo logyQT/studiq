@@ -5,9 +5,9 @@ import {
   createTestUser,
   type BeforeResult,
   type TestUserFixture,
-} from '../helpers/test-user';
-import { cleanupOrganizationByName, createServiceClient, mockUser } from './helpers';
-import { createNextRequest } from './test-utils';
+} from '#test/helpers/test-user';
+import { cleanupOrganizationByName, createServiceClient, mockUser } from '#test/integration/helpers';
+import { createNextRequest } from '#test/integration/test-utils';
 
 describe('Members Integration', () => {
   let fixture!: BeforeResult;

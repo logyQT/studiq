@@ -4,8 +4,8 @@ import { POST as logoutPost } from '@/app/(backend)/api/v1/auth/logout/route';
 import { POST as resetPost } from '@/app/(backend)/api/v1/auth/password/reset/route';
 import { POST as updatePasswordPost } from '@/app/(backend)/api/v1/auth/password/update/route';
 import { POST as registerPost } from '@/app/(backend)/api/v1/auth/register/route';
-import { mockUser, TEST_USERS, useRealSupabase } from './helpers';
-import { createNextRequest } from './test-utils';
+import { mockUser, TEST_USERS, useRealSupabase } from '#test/integration/helpers';
+import { createNextRequest } from '#test/integration/test-utils';
 
 describe('Auth Integration', () => {
   beforeEach(() => {

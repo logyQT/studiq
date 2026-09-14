@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { t } from './utils';
+import { t } from '#test/e2e/utils';
 
 const heading = t('LoginPage.header');
 const emailLabel = t('LoginPage.email_label');

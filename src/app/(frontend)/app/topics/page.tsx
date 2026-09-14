@@ -1,4 +1,4 @@
-import TopicsClient from './topics-client';
+import TopicsClient from '@/app/(frontend)/app/topics/topics-client';
 
 export default function TopicsPage() {
   return <TopicsClient />;

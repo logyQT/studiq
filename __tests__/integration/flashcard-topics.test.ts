@@ -5,8 +5,8 @@ import {
   PUT as update,
 } from '@/app/(backend)/api/v1/flashcards/topics/[id]/route';
 import { GET, POST } from '@/app/(backend)/api/v1/flashcards/topics/route';
-import { cleanupFlashcardTopics, createServiceClient, mockUser, TEST_USERS } from './helpers';
-import { createNextRequest, createNextRequestWithParams } from './test-utils';
+import { cleanupFlashcardTopics, createServiceClient, mockUser, TEST_USERS } from '#test/integration/helpers';
+import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 
 describe('Flashcard Topics Integration', () => {
   beforeEach(async () => {

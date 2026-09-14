@@ -12,8 +12,8 @@ import {
   seedOrgMembership,
   seedOrganization,
   TEST_USERS,
-} from './helpers';
-import { createNextRequest } from './test-utils';
+} from '#test/integration/helpers';
+import { createNextRequest } from '#test/integration/test-utils';
 
 const ORG_PREFIX = 'invite-test-';
 

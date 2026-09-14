@@ -3,8 +3,8 @@
 import { GraduationCap } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { LanguageToggle } from './LanguageToggle';
-import { ThemeToggle } from './ThemeToggle';
+import { LanguageToggle } from '@/components/layout/LanguageToggle';
+import { ThemeToggle } from '@/components/layout/ThemeToggle';
 
 export function Footer() {
   const t = useTranslations('Footer');

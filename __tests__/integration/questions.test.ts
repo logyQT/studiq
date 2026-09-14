@@ -9,8 +9,8 @@ import {
   seedOrgMembership,
   seedOrganization,
   TEST_USERS,
-} from './helpers';
-import { createNextRequest, createNextRequestWithParams } from './test-utils';
+} from '#test/integration/helpers';
+import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 
 const ORG_PREFIX = 'q-test-';
 

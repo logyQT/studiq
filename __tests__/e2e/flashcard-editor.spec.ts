@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { t } from './utils';
+import { t } from '#test/e2e/utils';
 
 async function login(page: import('@playwright/test').Page) {
   await page.goto('/login');

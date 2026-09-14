@@ -9,8 +9,8 @@ import {
   createServiceClient,
   mockUser,
   TEST_USERS,
-} from './helpers';
-import { createNextRequest } from './test-utils';
+} from '#test/integration/helpers';
+import { createNextRequest } from '#test/integration/test-utils';
 
 describe('Stats Integration', () => {
   beforeEach(async () => {

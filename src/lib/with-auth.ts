@@ -2,10 +2,10 @@ import { context, SpanStatusCode, trace } from '@opentelemetry/api';
 import type { NextRequest, NextResponse } from 'next/server';
 import { AppError } from '@/lib/errors';
 import { toNextResponse } from '@/lib/http-utils';
+import type { PermissionScope } from '@/lib/permissions';
 import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import type { AccountType } from '@/types';
-import type { PermissionScope } from './permissions';
 
 export interface WithAuthOptions {
   allowedAccountTypes?: AccountType[];

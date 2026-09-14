@@ -1,10 +1,10 @@
 import { evaluate } from '@/lib/authz';
 import { AppError } from '@/lib/errors';
+import type { PermissionKey, PermissionScope } from '@/lib/permissions';
+import { Permission } from '@/lib/permissions';
 import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { AccountType } from '@/types';
-import type { PermissionKey, PermissionScope } from './permissions';
-import { Permission } from './permissions';
 
 export type { PermissionKey, PermissionScope };
 export { Permission };

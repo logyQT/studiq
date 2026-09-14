@@ -1,8 +1,8 @@
 'use client';
 
 import { memo } from 'react';
+import { ChatMessage } from '@/components/ai/chat-message';
 import type { ChatMessage as ChatMessageType } from '@/hooks/use-ai-chat';
-import { ChatMessage } from './chat-message';
 
 interface ChatHistoryProps {
   messages: ChatMessageType[];

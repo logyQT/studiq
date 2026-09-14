@@ -6,13 +6,13 @@ import {
   POST as bulkPost,
 } from '@/app/(backend)/api/v1/organization/invites/bulk/route';
 import { POST as invitePost } from '@/app/(backend)/api/v1/organization/invites/route';
-import { before, createTestUser } from '../helpers/test-user';
+import { before, createTestUser } from '#test/helpers/test-user';
 import {
   cleanupOrganizationByName,
   createServiceClient,
   mockUser,
-} from './helpers';
-import { createNextRequest } from './test-utils';
+} from '#test/integration/helpers';
+import { createNextRequest } from '#test/integration/test-utils';
 
 // Regression suite for the two onboarding blockers fixed in the seed flow:
 // - 422 on bulk invite (targetOrgRoleId was sent as the role NAME 'member',

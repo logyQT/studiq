@@ -2,15 +2,15 @@
 
 import { AlertCircle, FileText, Loader2, Sparkles } from 'lucide-react';
 import { memo, useState } from 'react';
+import { FlashcardBlock } from '@/components/ai/flashcard-block';
+import { PlanBlock } from '@/components/ai/plan-block';
+import { QuestionBlock } from '@/components/ai/question-block';
+import { ThinkingBlock } from '@/components/ai/thinking-block';
+import { ToolCallBlock } from '@/components/ai/tool-call-block';
 import { CollapsibleToggle } from '@/components/shared/collapsible-toggle';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import type { ChatMessage as ChatMessageType } from '@/hooks/use-ai-chat';
 import { cn } from '@/lib/utils';
-import { FlashcardBlock } from './flashcard-block';
-import { PlanBlock } from './plan-block';
-import { QuestionBlock } from './question-block';
-import { ThinkingBlock } from './thinking-block';
-import { ToolCallBlock } from './tool-call-block';
 
 interface ChatMessageProps {
   message: ChatMessageType;

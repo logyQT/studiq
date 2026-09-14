@@ -14,7 +14,7 @@ import type {
   PracticeSummary,
   Rating,
 } from '@/server/models';
-import { flashcardSpacedRepetitionService } from './flashcard-spaced-repetition.service';
+import { flashcardSpacedRepetitionService } from '@/server/services/flashcard-spaced-repetition.service';
 
 export class FlashcardPracticeService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}

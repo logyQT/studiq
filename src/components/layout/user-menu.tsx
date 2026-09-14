@@ -1,6 +1,7 @@
 'use client';
 
 import { ChevronsUpDown } from 'lucide-react';
+import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
 import { useAuth } from '@/components/providers/AuthProvider';
 import {
   DropdownMenu,
@@ -18,7 +19,6 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { cn } from '@/lib/utils';
-import { UserMenuHeader, UserMenuItems } from './user-menu-content';
 
 interface UserMenuProps {
   className?: string;

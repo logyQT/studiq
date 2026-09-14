@@ -14,6 +14,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
+import { DesktopNav } from '@/components/layout/navbar/desktop-nav';
+import { MobileNav } from '@/components/layout/navbar/mobile-nav';
+import type { NavLink } from '@/components/layout/navbar/types';
+import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
 import { useAuth } from '@/components/providers';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,10 +28,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { AccountType } from '@/types';
-import { DesktopNav } from './navbar/desktop-nav';
-import { MobileNav } from './navbar/mobile-nav';
-import type { NavLink } from './navbar/types';
-import { UserMenuHeader, UserMenuItems } from './user-menu-content';
 
 const studentLinks: NavLink[] = [
   { labelKey: 'nav_overview', href: '/app', icon: LayoutDashboard },
