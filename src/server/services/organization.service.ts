@@ -57,15 +57,22 @@ export class OrganizationService {
     const org = base.data;
     const supabase = await this.createClient();
 
-    const { data: adminRole, error: roleError } = await supabase
+    const { data: roles, error: rolesError } = await supabase
       .from('org_roles')
-      .select('id')
+      .select('id, name')
       .eq('organization_id', org.id)
-      .eq('name', 'admin')
-      .eq('is_system', true)
-      .single();
+      .eq('is_system', true);
 
-    if (roleError || !adminRole) {
+    if (rolesError) {
+      await supabase.from('organizations').delete().eq('id', org.id);
+      return failure('INTERNAL_SERVER');
+    }
+
+    const adminRole = roles?.find((r) => r.name === 'admin');
+    const teacherRole = roles?.find((r) => r.name === 'teacher');
+    const memberRole = roles?.find((r) => r.name === 'member');
+
+    if (!adminRole || !teacherRole || !memberRole) {
       await supabase.from('organizations').delete().eq('id', org.id);
       return failure('INTERNAL_SERVER');
     }
@@ -81,7 +88,20 @@ export class OrganizationService {
       return toDbFailure(memberError);
     }
 
-    return success({ ...org, adminRoleId: adminRole.id });
+    const { data: defaultGroup } = await supabase
+      .from('groups')
+      .select('id')
+      .eq('organization_id', org.id)
+      .eq('is_default', true)
+      .maybeSingle();
+
+    return success({
+      ...org,
+      adminRoleId: adminRole.id,
+      teacherRoleId: teacherRole.id,
+      memberRoleId: memberRole.id,
+      defaultGroupId: defaultGroup?.id ?? null,
+    });
   }
 
   async getAll() {

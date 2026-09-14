@@ -110,7 +110,7 @@ export class InvitationService {
       .from('org_members')
       .select('*', { count: 'exact', head: true })
       .eq('organization_id', invite.organizationId);
-    await planResolver.checkLimit(ctx, 'max_students', memberCount ?? 0);
+    await planResolver.checkOrgLimit(invite.organizationId, 'max_students', memberCount ?? 0);
 
     const { data: org, error: orgError } = await supabase
       .from('organizations')

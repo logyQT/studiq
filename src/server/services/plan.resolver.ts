@@ -205,6 +205,51 @@ export class PlanResolver {
     }
   }
 
+  /**
+   * Org-centric limit check: capacity is governed by the organization's plan
+   * (plan_limits) plus any org_limits override, never by the acting user's
+   * personal plan. Used where the actor is not yet in the org context — e.g.
+   * a student accepting an invitation. Missing limits default to unlimited (-1).
+   */
+  async checkOrgLimit(
+    organizationId: string,
+    limitKey: string,
+    currentCount: number,
+    increment = 1,
+  ): Promise<void> {
+    const supabase = await this.createClient();
+
+    const limits: number[] = [];
+
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('plan')
+      .eq('id', organizationId)
+      .maybeSingle();
+    if (org?.plan) {
+      const { data: pl } = await supabase
+        .from('plan_limits')
+        .select('limit_value')
+        .eq('plan_key', org.plan)
+        .eq('limit_key', limitKey)
+        .maybeSingle();
+      if (pl) limits.push(pl.limit_value);
+    }
+
+    const { data: ol } = await supabase
+      .from('org_limits')
+      .select('max_value')
+      .eq('organization_id', organizationId)
+      .eq('limit_key', limitKey)
+      .maybeSingle();
+    if (ol) limits.push(ol.max_value);
+
+    const limit = limits.length === 0 ? -1 : Math.max(...limits);
+    if (limit !== -1 && currentCount + increment > limit) {
+      throw new AppError('USAGE_LIMIT_EXCEEDED');
+    }
+  }
+
   async getUsage(ctx: RequestContext, limitKey: string): Promise<UsageInfo> {
     const limit = await this.getEffectiveLimit(ctx, limitKey);
 

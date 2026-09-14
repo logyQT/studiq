@@ -20,7 +20,7 @@
 | `bun run dev` | Start dev server |
 | `bun run build` | Production build |
 | `bun run start` | Start production server |
-| `bun run lint` | **Runs `tsc --incremental --skipLibCheck --noEmit && biome ci src/`** — both typecheck AND lint in one command |
+| `bun run lint` | **Runs `tsc --incremental --skipLibCheck --noEmit && biome ci src/ && bun scripts/check-import-paths.ts`** — typecheck + lint + import-path guard in one command |
 | `bun run format` | `biome check --write src/` |
 | `bun run format:check` | `biome ci src/` (check only) |
 | `bun run clean` | Remove `.next`, `coverage`, cache |
@@ -44,9 +44,15 @@ bunx vitest run __tests__/unit/services/question.service.test.ts
 bunx vitest run -t "test name pattern"
 ```
 
-### Vitest import alias
+### Import aliases
 
-`#test` → `__tests__/` works in vitest only (not in tsconfig). Use `@/` for app imports everywhere.
+```ts
+import { z } from '@/lib/zod';        // src/lib/zod
+import { before } from '#test/helpers/test-user'; // __tests__/helpers/test-user (test-internal imports)
+```
+
+- `@/` → `src/` — works everywhere (tsc, Next, Vitest, Playwright).
+- `#test` → `__tests__/` — works in both Vitest **and** Playwright (declared in vite config + tsconfig `paths`). Use it for imports *between* test files.
 
 ---
 
@@ -235,6 +241,25 @@ UI dashboards: `/admin` (SYS_ADMIN), `/manage` (UNIVERSITY_ADMIN), `/edu` (TEACH
 - **Mock helper**: `__tests__/helpers/supabase-mock.ts`
 - Tests run sequentially (`sequence.concurrent: false`)
 - Coverage targets `src/server/**/*.ts` (excludes `index.ts`, `routes.config.ts`)
+
+---
+
+## Import Paths
+
+**Rule:** Never use relative import paths (`./...`, `../...`, `../../...`). **Always use full aliases:**
+
+| Where | Alias | Example |
+|-------|-------|---------|
+| App code | `@/` → `src/` | `import { log } from '@/lib/logger'` |
+| Test-internal (files importing other files under `__tests__/`) | `#test/` → `__tests__/` | `import { before } from '#test/helpers/test-user'` |
+
+- Mixed test files (importing both app + test code): `@/` for app modules, `#test/` for test modules — never `./` or `../`.
+- Applies to static imports, side-effect imports (`import './x'`), dynamic imports (`import('./x')`) and `require()`.
+- Enforced by two guards, both wired into `bun run lint`:
+  - **Biome** `lint/style/noRestrictedImports` (patterns `./**`, `../**`) — covers `src/`.
+  - **`bun scripts/check-import-paths.ts`** — covers `src/` + `__tests__/` (rules out relative specifiers in tests too).
+- `bun run lint` is intentionally red until all existing relative imports are migrated (see `scripts/check-import-paths.ts` output for the exact list).
+- Asset imports (`.css`, `.svg`, images) follow the same rule: `@/app/globals.css` etc.
 
 ---
 

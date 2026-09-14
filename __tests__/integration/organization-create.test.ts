@@ -75,7 +75,27 @@ describe('POST /api/v1/organization', () => {
     expect(members?.[0].org_roles.name).toBe('admin');
   });
 
-  it('returns 403 when student tries to create', async () => {
+  it('returns 201 with cookie, role ids and default group', async () => {
+      mockUser(TEST_USERS.TEACHER);
+
+      const req = createNextRequest('http://localhost/api/v1/organization', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: `${TEST_PREFIX}roles-${Date.now()}` }),
+      });
+
+      const response = await POST(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(body.success).toBe(true);
+      expect(body.data.adminRoleId).toBeDefined();
+      expect(body.data.teacherRoleId).toBeDefined();
+      expect(body.data.memberRoleId).toBeDefined();
+      expect(body.data.defaultGroupId).toBeDefined();
+    });
+
+    it('returns 403 when student tries to create', async () => {
     mockUser(TEST_USERS.STUDENT);
 
     const req = createNextRequest('http://localhost/api/v1/organization', {

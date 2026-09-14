@@ -71,6 +71,10 @@ export default function ClassroomPage() {
 
       if (!res.ok) throw new Error();
 
+      const orgBody = await res.json();
+      const memberRoleId = orgBody.data?.memberRoleId as string | undefined;
+      if (!memberRoleId) throw new Error();
+
       const filtered = values.invites.filter((i) => i.email.trim());
       if (filtered.length > 0) {
         const bulkRes = await fetch('/api/v1/organization/invites/bulk', {
@@ -79,7 +83,7 @@ export default function ClassroomPage() {
           body: JSON.stringify({
             invitations: filtered.map((i) => ({
               email: i.email,
-              targetOrgRoleId: 'member',
+              targetOrgRoleId: memberRoleId,
             })),
           }),
         });

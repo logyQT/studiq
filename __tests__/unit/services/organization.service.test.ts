@@ -58,8 +58,15 @@ describe('OrganizationService', () => {
         .mockReturnValueOnce(chain(null))
         .mockReturnValueOnce(chain({ id: 'group-1' }))
         .mockReturnValueOnce(chain(null))
-        .mockReturnValueOnce(chain({ id: 'role-1' }))
-        .mockReturnValueOnce(chain(null));
+        .mockReturnValueOnce(
+          chain([
+            { id: 'role-admin', name: 'admin' },
+            { id: 'role-teacher', name: 'teacher' },
+            { id: 'role-member', name: 'member' },
+          ]),
+        )
+        .mockReturnValueOnce(chain(null))
+        .mockReturnValueOnce(chain({ id: 'group-1' }));
 
       const result = await service.createAndJoin(ctx, { name: 'Test Org' });
 
@@ -67,7 +74,10 @@ describe('OrganizationService', () => {
       if (result.success) {
         expect(result.data.id).toBe('org-1');
         expect(result.data.name).toBe('Test Org');
-        expect(result.data.adminRoleId).toBe('role-1');
+        expect(result.data.adminRoleId).toBe('role-admin');
+        expect(result.data.teacherRoleId).toBe('role-teacher');
+        expect(result.data.memberRoleId).toBe('role-member');
+        expect(result.data.defaultGroupId).toBe('group-1');
       }
     });
 
@@ -94,9 +104,15 @@ describe('OrganizationService', () => {
         .mockReturnValueOnce(chain(null))
         .mockReturnValueOnce(chain({ id: 'group-1' }))
         .mockReturnValueOnce(chain(null))
-        .mockReturnValueOnce(chain({ id: 'role-1' }))
+        .mockReturnValueOnce(
+          chain([
+            { id: 'role-admin', name: 'admin' },
+            { id: 'role-teacher', name: 'teacher' },
+            { id: 'role-member', name: 'member' },
+          ]),
+        )
         .mockReturnValueOnce(chain(null, { code: '23505', message: 'duplicate key' }))
-        .mockReturnValueOnce(chain(null));
+        .mockReturnValueOnce(chain({ id: 'group-1' }));
 
       const result = await service.createAndJoin(ctx, { name: 'Test Org' });
 
@@ -113,8 +129,15 @@ describe('OrganizationService', () => {
         .mockReturnValueOnce(chain(null))
         .mockReturnValueOnce(chain({ id: 'group-1' }))
         .mockReturnValueOnce(chain(null))
-        .mockReturnValueOnce(chain({ id: 'role-1' }))
-        .mockReturnValueOnce(chain(null));
+        .mockReturnValueOnce(
+          chain([
+            { id: 'role-admin', name: 'admin' },
+            { id: 'role-teacher', name: 'teacher' },
+            { id: 'role-member', name: 'member' },
+          ]),
+        )
+        .mockReturnValueOnce(chain(null))
+        .mockReturnValueOnce(chain({ id: 'group-1' }));
 
       const result = await service.createAndJoin(ctx, { name: 'Valid Org' });
       expect(result.success).toBe(true);

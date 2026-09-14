@@ -1,6 +1,10 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
-  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
@@ -9,7 +13,9 @@
   },
   "linter": {
     "enabled": true,
-    "includes": ["src/**/*.{ts,tsx,js,jsx}"],
+    "includes": [
+      "src/**/*.{ts,tsx,js,jsx}"
+    ],
     "rules": {
       "preset": "recommended",
       "a11y": {
@@ -30,7 +36,26 @@
       },
       "style": {
         "noNonNullAssertion": "off",
-        "useBlockStatements": "off"
+        "useBlockStatements": "off",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "patterns": [
+              {
+                "group": [
+                  "./**"
+                ],
+                "message": "Relative import detected. Use the '@/' alias instead (e.g. '@/lib/something') \u2014 see AGENTS.md 'Import Paths'."
+              },
+              {
+                "group": [
+                  "../**"
+                ],
+                "message": "Relative import detected. Use the '@/' alias instead (e.g. '@/lib/something') \u2014 see AGENTS.md 'Import Paths'."
+              }
+            ]
+          }
+        }
       },
       "suspicious": {
         "noArrayIndexKey": "off",
@@ -43,7 +68,6 @@
       }
     }
   },
-
   "css": {
     "parser": {
       "tailwindDirectives": true

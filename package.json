@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "clean": "npx rimraf .next node_modules/.cache coverage",
-    "lint": "tsc --incremental --skipLibCheck --noEmit && biome ci src/",
+    "lint": "tsc --incremental --skipLibCheck --noEmit && biome ci src/ && bun scripts/check-import-paths.ts",
     "format": "biome check --write src/",
     "format:check": "biome ci src/",
     "test": "vitest run",
