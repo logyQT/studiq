@@ -13,6 +13,24 @@
 
 ---
 
+## Branching Workflow
+
+**`main` is the only long-lived branch.** No `dev`, no `staging`.
+
+- **Feature branches**: `feat/<short-name>` off `main`. One feature per branch, multiple commits allowed.
+- **PR to main**: Open a PR from `feat/<short-name>` → `main`. Merge via GitHub (squash or merge commit — your call per PR).
+- **Delete after merge**: Always delete the feature branch after the PR is merged.
+- **Naming**: `feat/`, `fix/`, `refactor/`, `docs/`, `test/` prefixes.
+- **Keep PRs scoped**: Aim for PRs that are reviewable. If a feature is huge, break it into stacked PRs off the same branch.
+
+```
+main ← feat/quiz-bank-ui (PR, merge, delete)
+     ← fix/flashcard-count-badge (PR, merge, delete)
+     ← refactor/import-paths (PR, merge, delete)
+```
+
+---
+
 ## Commands
 
 | Command | What it does |
