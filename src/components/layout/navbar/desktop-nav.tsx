@@ -25,7 +25,8 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
 
   useLayoutEffect(() => {
     const nav = navRef.current;
-    if (!nav || links.length === 0) return;
+    const parent = nav?.parentElement;
+    if (!nav || !parent || links.length === 0) return;
 
     const children = Array.from(nav.children).filter(
       (el) => !(el as HTMLElement).dataset.more,
@@ -35,7 +36,7 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
 
     const widths = children.map((el) => el.offsetWidth + 4);
     const moreWidth = 72;
-    const available = nav.clientWidth - moreWidth;
+    const available = parent.clientWidth - moreWidth;
     let used = 0;
     let count = links.length;
 
@@ -52,7 +53,8 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
 
   useEffect(() => {
     const nav = navRef.current;
-    if (!nav || links.length === 0) return;
+    const parent = nav?.parentElement;
+    if (!nav || !parent || links.length === 0) return;
 
     const update = () => {
       const children = Array.from(nav.children).filter(
@@ -63,7 +65,7 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
 
       const widths = children.map((el) => el.offsetWidth + 4);
       const moreWidth = 72;
-      const available = nav.clientWidth - moreWidth;
+      const available = parent.clientWidth - moreWidth;
       let used = 0;
       let count = links.length;
 
@@ -79,7 +81,7 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
     };
 
     const ro = new ResizeObserver(update);
-    ro.observe(nav);
+    ro.observe(parent);
     return () => ro.disconnect();
   }, [links]);
 
@@ -88,7 +90,7 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
   const overflow = hasOverflow ? links.slice(visibleCount) : [];
 
   return (
-    <nav ref={navRef} className="flex items-center gap-1 w-full">
+    <nav ref={navRef} className="flex items-center gap-1">
       {visible.map(({ labelKey, href, icon: Icon }) => (
         <Link
           key={labelKey}
