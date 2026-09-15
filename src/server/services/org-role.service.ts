@@ -1,12 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   CreateOrgRoleInput,
   SetRolePermissionsInput,
   UpdateOrgRoleInput,
-} from '@/server/models';
+} from '@/server/models/org-role.model';
 
 export class OrgRoleService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -269,3 +271,4 @@ export class OrgRoleService {
     return success(undefined);
   }
 }
+export const orgRoleService = wrapService(new OrgRoleService(createClient), 'org-role.service');

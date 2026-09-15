@@ -21,7 +21,11 @@ import { StatCard } from '@/components/ui/stat-card';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
-import type { CardStatsItem, CardStatsResponse, StateBreakdown } from '@/server/models';
+import type {
+  CardStatsItem,
+  CardStatsResponse,
+  StateBreakdown,
+} from '@/server/models/flashcard-practice.model';
 
 const STATE_FILTERS = ['all', 'new', 'learning', 'review', 'relearning', 'leech'] as const;
 

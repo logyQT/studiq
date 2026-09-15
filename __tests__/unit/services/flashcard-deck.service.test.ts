@@ -4,7 +4,7 @@ import type { RequestContext } from '@/lib/request-context';
 import { FlashcardDeckService } from '@/server/services/flashcard-deck.service';
 import { AccountType } from '@/types';
 
-vi.mock('@/server/services', () => ({
+vi.mock('@/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 

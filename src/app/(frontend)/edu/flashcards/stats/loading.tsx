@@ -1,4 +1,4 @@
-import { DeckDetailSkeleton } from '@/components/flashcards';
+import { DeckDetailSkeleton } from '@/components/flashcards/shared/deck-detail-skeleton';
 
 export default function EduStatsLoading() {
   return <DeckDetailSkeleton />;

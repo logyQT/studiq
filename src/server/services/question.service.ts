@@ -1,10 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { accessibleFilter, Permission } from '@/lib/authz';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { CreateQuestionInput, UpdateQuestionInput } from '@/server/models';
-import { limitsResolver } from '@/server/services';
+import type { CreateQuestionInput, UpdateQuestionInput } from '@/server/models/question.model';
+import { limitsResolver } from '@/server/services/limits.resolver';
 
 export class QuestionService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -191,3 +193,4 @@ export class QuestionService {
     return success(undefined);
   }
 }
+export const questionService = wrapService(new QuestionService(createClient), 'question.service');

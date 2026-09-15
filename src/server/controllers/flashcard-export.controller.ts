@@ -1,8 +1,12 @@
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
-import { ExportQuerySchema } from '@/server/models';
-import type { FlashcardExportService } from '@/server/services/flashcard-export.service';
+import { ExportQuerySchema } from '@/server/models/flashcard-export.model';
+import {
+  type FlashcardExportService,
+  flashcardExportService,
+} from '@/server/services/flashcard-export.service';
 
 export class FlashcardExportController {
   constructor(private flashcardExportService: FlashcardExportService) {}
@@ -41,3 +45,7 @@ export class FlashcardExportController {
     return controllerResponse.success(result.data);
   }
 }
+export const flashcardExportController = wrapService(
+  new FlashcardExportController(flashcardExportService),
+  'flashcard-export.controller',
+);

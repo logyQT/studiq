@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { AppError } from '@/lib/errors';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
+import { createClient } from '@/lib/supabase/server';
 import { getSeatPlanKey } from '@/server/services/seat.plan';
 import { AccountType } from '@/types';
 
@@ -190,3 +192,7 @@ export class LimitsResolver {
     }
   }
 }
+export const limitsResolver = wrapService(
+  new LimitsResolver(createClient),
+  'limits-resolver.service',
+);

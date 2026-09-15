@@ -13,7 +13,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { getTopicColorHex } from '@/lib/color-utils';
-import type { Flashcard, Topic } from '@/server/models';
+import type { Flashcard } from '@/server/models/flashcard.model';
+import type { Topic } from '@/server/models/topic.model';
 
 interface FlashcardCardProps {
   fc: Flashcard;

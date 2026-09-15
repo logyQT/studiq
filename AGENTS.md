@@ -135,8 +135,8 @@ src/app/(backend)/api/v1/*/route.ts
 
 ### Controller layer
 
-- Singleton: `export const fooController = new FooController()`
-- Re-exported via `src/server/controllers/index.ts`
+- Singleton: `export const fooController = wrapService(new FooController(fooService), 'foo.controller')`
+- Import directly: `import { fooController } from '@/server/controllers/foo.controller'`
 - Validate with Zod: `schema.safeParse(body)` → return error response (`{ success: false, statusCode: 422, error: 'UNPROCESSABLE_ENTITY', details }`)
 - Wrap logic in `withSupervision(async () => { ... }, { service, method })` or `wrapService(service, name)` from `@/lib/observability`
 - Use `hasPermission(ctx, Permission.XXX)` for auth checks
@@ -166,7 +166,7 @@ export type CreateFooInput = z.infer<typeof CreateFooSchema>;
 
 ### Service layer
 
-- Singleton, re-exported via `src/server/services/index.ts`
+- Singleton, re-exported via each service file
 - Create Supabase client inside each method: `const supabase = await createClient()`
 - Map DB errors: `throw mapSupabaseError(error)` (from `@/lib/supabase-errors`)
 - Throw `AppError(code)` for business logic — **code only, no message**
@@ -283,7 +283,6 @@ UI dashboards: `/admin` (SYS_ADMIN), `/manage` (UNIVERSITY_ADMIN), `/edu` (TEACH
 | Models | `*.model.ts` | `question.model.ts` |
 | Routes | `route.ts` | `api/v1/questions/route.ts` |
 | Tests | `*.test.ts` | `question.service.test.ts` |
-| Barrel files | `index.ts` | `src/server/services/index.ts` |
 | Frontend hooks | `use-*.ts` | `use-api.ts` |
 
 ---
@@ -331,4 +330,4 @@ UI dashboards: `/admin` (SYS_ADMIN), `/manage` (UNIVERSITY_ADMIN), `/edu` (TEACH
 - **Avatar route**: `/api/v1/avatar/[seed]` is public (DiceBear). `@dicebear/core` is server-only.
 - **New API endpoints**: Add a `RouteRule` to `src/server/config/routes.config.ts` if it needs protection
 - **New DB tables**: Add migration in `supabase/migrations/` and schema in `supabase/schemas/`
-- **Barrel files exist at**: `src/server/controllers/`, `src/server/services/`, `src/server/models/`, `src/server/guards/`, `src/components/layout/`, `src/components/providers/`, `src/hooks/`, `src/types/`
+- **No barrel files**: Every import uses direct file paths (e.g. `@/server/services/flashcard.service` not `@/server/services`). Biome's `noBarrelFile` and `noReExportAll` rules enforce this.

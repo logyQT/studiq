@@ -24,7 +24,8 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { apiPost } from '@/lib/api';
-import type { Deck, Question } from '@/server/models';
+import type { Deck } from '@/server/models/flashcard-deck.model';
+import type { Question } from '@/server/models/question.model';
 
 const NEW_DECK_VALUE = '__new__';
 

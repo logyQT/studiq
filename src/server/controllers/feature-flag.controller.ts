@@ -1,12 +1,16 @@
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import { isFailure } from '@/lib/service-result';
 import {
   CreateFeatureFlagSchema,
   FeatureFlagIdParamsSchema,
   UpdateFeatureFlagSchema,
-} from '@/server/models';
-import type { FeatureFlagService } from '@/server/services/feature-flag.service';
+} from '@/server/models/feature-flag.model';
+import {
+  type FeatureFlagService,
+  featureFlagService,
+} from '@/server/services/feature-flag.service';
 
 export class FeatureFlagController {
   constructor(private featureFlagService: FeatureFlagService) {}
@@ -71,3 +75,7 @@ export class FeatureFlagController {
     return { success: true, statusCode: 200, data: { success: true } };
   }
 }
+export const featureFlagController = wrapService(
+  new FeatureFlagController(featureFlagService),
+  'feature-flag.controller',
+);

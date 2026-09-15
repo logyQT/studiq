@@ -1,12 +1,16 @@
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import { isFailure } from '@/lib/service-result';
 import {
   CreateSubscriptionPlanSchema,
   SubscriptionPlanIdParamsSchema,
   UpdateSubscriptionPlanSchema,
-} from '@/server/models';
-import type { SubscriptionPlanService } from '@/server/services/subscription-plan.service';
+} from '@/server/models/subscription-plan.model';
+import {
+  type SubscriptionPlanService,
+  subscriptionPlanService,
+} from '@/server/services/subscription-plan.service';
 
 export class SubscriptionPlanAdminController {
   constructor(private subscriptionPlanService: SubscriptionPlanService) {}
@@ -76,3 +80,7 @@ export class SubscriptionPlanAdminController {
     return { success: true, statusCode: 200, data: { success: true } };
   }
 }
+export const subscriptionPlanAdminController = wrapService(
+  new SubscriptionPlanAdminController(subscriptionPlanService),
+  'subscription-plan-admin.controller',
+);

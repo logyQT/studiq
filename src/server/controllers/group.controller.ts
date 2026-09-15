@@ -1,5 +1,6 @@
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import { requireFeature } from '@/lib/features';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import {
@@ -8,7 +9,7 @@ import {
   SetGroupMembersSchema,
   UpdateGroupSchema,
 } from '@/server/models/group.model';
-import type { GroupService } from '@/server/services/group.service';
+import { type GroupService, groupService } from '@/server/services/group.service';
 
 export class GroupController {
   constructor(private groupService: GroupService) {}
@@ -137,3 +138,4 @@ export class GroupController {
     return controllerResponse.success(result.data);
   }
 }
+export const groupController = wrapService(new GroupController(groupService), 'group.controller');

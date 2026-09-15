@@ -1,7 +1,8 @@
 import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
-import { subscriptionPlanAdminController } from '@/server/controllers';
+import { subscriptionPlanAdminController } from '@/server/controllers/subscription-plan-admin.controller';
+
 import { AccountType } from '@/types';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

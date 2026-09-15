@@ -1,8 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { CreateQuestionReportInput, CreateReportMessageInput } from '@/server/models';
+import type {
+  CreateQuestionReportInput,
+  CreateReportMessageInput,
+} from '@/server/models/question-report.model';
 
 export type ReportTarget = { questionId: string } | { groupId: string };
 
@@ -223,3 +228,7 @@ export class QuestionReportService {
     return report;
   }
 }
+export const questionReportService = wrapService(
+  new QuestionReportService(createClient),
+  'question-report.service',
+);

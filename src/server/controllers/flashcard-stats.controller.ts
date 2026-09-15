@@ -1,8 +1,15 @@
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
-import { DifficultyBucketSchema, TeacherFlashcardStatsQuerySchema } from '@/server/models';
-import type { FlashcardStatsService } from '@/server/services/flashcard-stats.service';
+import {
+  DifficultyBucketSchema,
+  TeacherFlashcardStatsQuerySchema,
+} from '@/server/models/flashcard-stats.model';
+import {
+  type FlashcardStatsService,
+  flashcardStatsService,
+} from '@/server/services/flashcard-stats.service';
 
 export class FlashcardStatsController {
   constructor(private flashcardStatsService: FlashcardStatsService) {}
@@ -42,3 +49,7 @@ export class FlashcardStatsController {
     return controllerResponse.success(result.data);
   }
 }
+export const flashcardStatsController = wrapService(
+  new FlashcardStatsController(flashcardStatsService),
+  'flashcard-stats.controller',
+);

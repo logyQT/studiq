@@ -1,12 +1,17 @@
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
-import { CreateQuestionReportSchema, CreateReportMessageSchema } from '@/server/models';
+import {
+  CreateQuestionReportSchema,
+  CreateReportMessageSchema,
+} from '@/server/models/question-report.model';
 import type {
   QuestionReportService,
   ReportTarget,
 } from '@/server/services/question-report.service';
+import { questionReportService } from '@/server/services/question-report.service';
 
 export class QuestionReportController {
   constructor(private service: QuestionReportService) {}
@@ -69,3 +74,7 @@ export class QuestionReportController {
     return controllerResponse.success(result.data);
   }
 }
+export const questionReportController = wrapService(
+  new QuestionReportController(questionReportService),
+  'question-report.controller',
+);

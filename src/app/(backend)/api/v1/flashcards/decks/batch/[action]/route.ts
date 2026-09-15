@@ -3,7 +3,7 @@ import type { ControllerResponse } from '@/lib/controller-response';
 import { toNextResponse } from '@/lib/http-utils';
 import type { RequestContext } from '@/lib/request-context';
 import { withAuth } from '@/lib/with-auth';
-import { flashcardDeckController } from '@/server/controllers';
+import { flashcardDeckController } from '@/server/controllers/flashcard-deck.controller';
 
 type ActionHandler = (body: unknown, ctx: RequestContext) => Promise<ControllerResponse>;
 

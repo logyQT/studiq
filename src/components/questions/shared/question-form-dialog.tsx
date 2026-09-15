@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import type { Question } from '@/server/models';
+import type { Question } from '@/server/models/question.model';
 
 interface AnswerForm {
   content: string;

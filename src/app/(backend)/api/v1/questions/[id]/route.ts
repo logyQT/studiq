@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
-import { questionController } from '@/server/controllers';
+import { questionController } from '@/server/controllers/question.controller';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(req, async (ctx) => {

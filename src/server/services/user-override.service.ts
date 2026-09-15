@@ -1,10 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import { failure, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   CreateUserFeatureOverrideInput,
   UpdateUserFeatureOverrideInput,
-} from '@/server/models';
+} from '@/server/models/user-feature-override.model';
 
 export class UserOverrideService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -78,3 +80,7 @@ export class UserOverrideService {
     return success({ success: true });
   }
 }
+export const userOverrideService = wrapService(
+  new UserOverrideService(createClient),
+  'user-override.service',
+);

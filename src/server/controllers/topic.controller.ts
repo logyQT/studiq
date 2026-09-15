@@ -1,6 +1,7 @@
 import { can, Permission } from '@/lib/authz';
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import {
@@ -9,8 +10,8 @@ import {
   CreateTopicSchema,
   TopicListQuerySchema,
   UpdateTopicSchema,
-} from '@/server/models';
-import type { TopicService } from '@/server/services/topic.service';
+} from '@/server/models/topic.model';
+import { type TopicService, topicService } from '@/server/services/topic.service';
 
 export class TopicController {
   constructor(private topicService: TopicService) {}
@@ -115,3 +116,4 @@ export class TopicController {
     return controllerResponse.success(result.data);
   }
 }
+export const topicController = wrapService(new TopicController(topicService), 'topic.controller');

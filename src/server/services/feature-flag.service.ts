@@ -1,7 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import { failure, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { CreateFeatureFlagInput, UpdateFeatureFlagInput } from '@/server/models';
+import type {
+  CreateFeatureFlagInput,
+  UpdateFeatureFlagInput,
+} from '@/server/models/feature-flag.model';
 
 export class FeatureFlagService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -72,3 +77,7 @@ export class FeatureFlagService {
     return success({ success: true });
   }
 }
+export const featureFlagService = wrapService(
+  new FeatureFlagService(createClient),
+  'feature-flag.service',
+);

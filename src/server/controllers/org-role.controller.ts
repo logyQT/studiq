@@ -1,5 +1,6 @@
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import { requireFeature } from '@/lib/features';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import {
@@ -8,7 +9,7 @@ import {
   SetRolePermissionsSchema,
   UpdateOrgRoleSchema,
 } from '@/server/models/org-role.model';
-import type { OrgRoleService } from '@/server/services/org-role.service';
+import { type OrgRoleService, orgRoleService } from '@/server/services/org-role.service';
 
 export class OrgRoleController {
   constructor(private orgRoleService: OrgRoleService) {}
@@ -135,3 +136,7 @@ export class OrgRoleController {
     return controllerResponse.success({ success: true });
   }
 }
+export const orgRoleController = wrapService(
+  new OrgRoleController(orgRoleService),
+  'org-role.controller',
+);

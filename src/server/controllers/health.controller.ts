@@ -1,6 +1,7 @@
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
-import type { HealthService } from '@/server/services/health.service';
+import { wrapService } from '@/lib/observability';
+import { type HealthService, healthService } from '@/server/services/health.service';
 
 export class HealthController {
   constructor(private healthService: HealthService) {}
@@ -26,3 +27,7 @@ function mapStatusToHttp(status: string): number {
       return 500;
   }
 }
+export const healthController = wrapService(
+  new HealthController(healthService),
+  'health.controller',
+);

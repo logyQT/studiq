@@ -3,7 +3,10 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 import { Toaster } from 'sonner';
-import { AuthProvider, QueryProvider, ThemeProvider } from '@/components/providers';
+import { AuthProvider } from '@/components/providers/AuthProvider';
+import { QueryProvider } from '@/components/providers/QueryProvider';
+import { ThemeProvider } from '@/components/providers/ThemeProvider';
+
 import '@/app/globals.css';
 import { ToastProvider } from '@/components/ui/toast';
 

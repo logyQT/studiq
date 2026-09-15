@@ -1,4 +1,8 @@
-import type { CalculateNextReviewInput, CalculateNextReviewOutput, Rating } from '@/server/models';
+import type {
+  CalculateNextReviewInput,
+  CalculateNextReviewOutput,
+  Rating,
+} from '@/server/models/flashcard-spaced-repetition.model';
 
 export class FlashcardSpacedRepetitionService {
   private readonly MAX_INTERVAL_DAYS = 365;

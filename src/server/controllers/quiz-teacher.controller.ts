@@ -1,5 +1,6 @@
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import {
@@ -8,8 +9,9 @@ import {
   CreateQuizSchema,
   ReorderQuizQuestionsSchema,
   UpdateQuizSchema,
-} from '@/server/models';
+} from '@/server/models/quiz.model';
 import type { QuizTeacherService } from '@/server/services/quiz-teacher.service';
+import { quizTeacherService } from '@/server/services/quiz-teacher.service';
 
 export class QuizTeacherController {
   constructor(private service: QuizTeacherService) {}
@@ -127,3 +129,7 @@ export class QuizTeacherController {
     return controllerResponse.created(result.data);
   }
 }
+export const quizTeacherController = wrapService(
+  new QuizTeacherController(quizTeacherService),
+  'quiz-teacher.controller',
+);
