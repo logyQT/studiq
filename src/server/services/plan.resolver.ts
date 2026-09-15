@@ -1,32 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { AppError } from '@/lib/errors';
 import type { RequestContext } from '@/lib/request-context';
-import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { getSeatPlanKey } from '@/server/services/seat.plan';
 import { AccountType } from '@/types';
-
-// Canonical flat feature keys — the single source of truth for both the
-// application AND the database. `feature_flags`, `plan_features`,
-// `org_role_features` and `user_feature_overrides` all store these exact
-// keys (no legacy snake_case aliases, no mapping layer).
-export const FEATURES = [
-  'ai.chat',
-  'flashcards',
-  'quiz',
-  'quiz.builder',
-  'documents',
-  'org.manage',
-  'group.manage',
-  'member.manage',
-  'role.builder',
-  'advanced.stats',
-] as const;
-export type FeatureKey = (typeof FEATURES)[number];
-
-const FEATURE_KEY_SET: ReadonlySet<string> = new Set<string>(FEATURES);
-
-export function isFeatureKey(key: string): key is FeatureKey {
-  return FEATURE_KEY_SET.has(key);
-}
 
 export interface UsageInfo {
   current: number;
@@ -38,115 +14,6 @@ export interface UsageInfo {
 export class PlanResolver {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
-  private async getSeatPlanKey(ctx: RequestContext): Promise<string | null> {
-    if (!ctx.activeOrgId) return null;
-    const supabase = await this.createClient();
-
-    const { data: assignment } = await supabase
-      .from('org_seat_assignments')
-      .select('pool_id')
-      .eq('organization_id', ctx.activeOrgId)
-      .eq('user_id', ctx.userId)
-      .maybeSingle();
-
-    if (!assignment) return null;
-
-    const { data: pool } = await supabase
-      .from('org_seat_pools')
-      .select('plan_key')
-      .eq('id', assignment.pool_id)
-      .maybeSingle();
-
-    return pool?.plan_key ?? null;
-  }
-
-  async getEnabledFeatures(ctx: RequestContext): Promise<FeatureKey[]> {
-    if (ctx.accountType === AccountType.SYS_ADMIN) {
-      return Array.from(FEATURES);
-    }
-
-    const enabled = new Set<FeatureKey>();
-    const supabase = await this.createClient();
-
-    // In org context: check seat assignment first (Phase 2)
-    if (ctx.activeOrgId) {
-      const seatPlanKey = await this.getSeatPlanKey(ctx);
-
-      if (seatPlanKey) {
-        // Seated user: features come from seat's plan
-        const { data: pf } = await supabase
-          .from('plan_features')
-          .select('feature_key')
-          .eq('plan_key', seatPlanKey);
-        for (const row of pf ?? []) {
-          if (isFeatureKey(row.feature_key)) enabled.add(row.feature_key);
-        }
-      } else if (ctx.orgRoleId) {
-        // No seat: fall back to org_role_features (Phase 1)
-        const { data: roleFeatures } = await supabase
-          .from('org_role_features')
-          .select('feature_key, is_enabled')
-          .eq('org_role_id', ctx.orgRoleId);
-
-        if (roleFeatures && roleFeatures.length > 0) {
-          for (const row of roleFeatures) {
-            if (isFeatureKey(row.feature_key) && row.is_enabled) {
-              enabled.add(row.feature_key);
-            }
-          }
-        }
-      }
-    }
-
-    // Fallback: personal plan (no seat and no org_role_features, or no org context)
-    if (enabled.size === 0) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('personal_plan_key')
-        .eq('id', ctx.userId)
-        .maybeSingle();
-
-      if (profile?.personal_plan_key) {
-        const { data: pf } = await supabase
-          .from('plan_features')
-          .select('feature_key')
-          .eq('plan_key', profile.personal_plan_key);
-        for (const row of pf ?? []) {
-          if (isFeatureKey(row.feature_key)) enabled.add(row.feature_key);
-        }
-      }
-    }
-
-    // User overrides always apply on top
-    const { data: overrides } = await supabase
-      .from('user_feature_overrides')
-      .select('feature_key, is_enabled')
-      .eq('user_id', ctx.userId);
-
-    for (const row of overrides ?? []) {
-      if (isFeatureKey(row.feature_key)) {
-        if (row.is_enabled) {
-          enabled.add(row.feature_key);
-        } else {
-          enabled.delete(row.feature_key);
-        }
-      }
-    }
-
-    return Array.from(enabled);
-  }
-
-  async requireFeature(
-    ctx: RequestContext,
-    key: FeatureKey,
-  ): Promise<ServiceResult<void, 'FORBIDDEN'>> {
-    const enabled = await this.getEnabledFeatures(ctx);
-    if (!enabled.includes(key)) {
-      return failure('FORBIDDEN');
-    }
-    return success(undefined);
-  }
-
   async getEffectiveLimit(ctx: RequestContext, limitKey: string): Promise<number> {
     if (ctx.accountType === AccountType.SYS_ADMIN) return -1;
 
@@ -154,7 +21,7 @@ export class PlanResolver {
 
     // In org context: check seat assignment first (Phase 2)
     if (ctx.activeOrgId) {
-      const seatPlanKey = await this.getSeatPlanKey(ctx);
+      const seatPlanKey = await getSeatPlanKey(ctx, supabase);
 
       if (seatPlanKey) {
         // Seated user: limits come from seat's plan only

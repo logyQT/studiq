@@ -5,6 +5,7 @@ import { agentTraceService as _agentTraceService } from '@/server/services/agent
 import { chatService as _chatService } from '@/server/services/ai-chat.service';
 import { AuthService } from '@/server/services/auth.service';
 import { ClassroomService } from '@/server/services/classroom.service';
+import { FeatureResolver } from '@/server/services/feature.resolver';
 import { FeatureFlagService } from '@/server/services/feature-flag.service';
 import { FlashcardService } from '@/server/services/flashcard.service';
 import { FlashcardDeckService } from '@/server/services/flashcard-deck.service';
@@ -79,6 +80,11 @@ export const planLimitService = wrapService(
   'plan-limit.service',
 );
 export const planResolver = wrapService(new PlanResolver(createClient), 'plan-resolver.service');
+
+export const featureResolver = wrapService(
+  new FeatureResolver(createClient),
+  'feature-resolver.service',
+);
 export const chatService = wrapService(_chatService, 'ai-chat.service', { group: 'ai' });
 export const agentTraceService = wrapService(_agentTraceService, 'agent-trace.service', {
   group: 'ai',
