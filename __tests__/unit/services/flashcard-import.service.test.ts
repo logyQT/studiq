@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { FlashcardImportService } from '@/server/services/flashcard-import.service';
 import type { RequestContext } from '@/lib/request-context';
+import { FlashcardImportService } from '@/server/services/flashcard-import.service';
 
 vi.mock('@/lib/authz', () => ({
   check: vi.fn().mockResolvedValue(undefined),
@@ -89,10 +89,7 @@ describe('FlashcardImportService', () => {
       mock.from.mockReturnValueOnce(qb(newDeck)); // insert default deck
       mock.from.mockReturnValueOnce(qb(flashcards)); // insert flashcards
 
-      const result = await service.importCsv(
-        { cards: [{ front: 'Hello', back: 'Cześć' }] },
-        ctx,
-      );
+      const result = await service.importCsv({ cards: [{ front: 'Hello', back: 'Cześć' }] }, ctx);
 
       expect(result.success).toBe(true);
       expect(result.data.imported).toBe(1);
@@ -159,10 +156,7 @@ describe('FlashcardImportService', () => {
       mock.from.mockReturnValueOnce(qb(newDeck));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
-      const result = await service.importCsv(
-        { cards: [{ front: 'Hello', back: 'Cześć' }] },
-        ctx,
-      );
+      const result = await service.importCsv({ cards: [{ front: 'Hello', back: 'Cześć' }] }, ctx);
 
       expect(result.success).toBe(false);
     });

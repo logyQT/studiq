@@ -1247,6 +1247,7 @@
     "menu_topics": "Topics",
     "menu_link": "Link with Another Deck",
     "menu_copy": "Copy to Another Deck",
+    "menu_report": "Report an issue",
     "menu_delete": "Delete",
     "create_title": "Create New Flashcard",
     "create_desc": "Add a new flashcard to this deck. You can assign multiple topics.",
@@ -2343,7 +2344,22 @@
     "back_to_banks": "Back to Banks",
     "mcq": "Multiple Choice",
     "true_false_label": "True / False",
-    "open_label": "Open Answer"
+    "open_label": "Open Answer",
+    "create_flashcard_title": "Create a flashcard from this question"
+  },
+  "CreateFlashcardFromQuestion": {
+    "title": "Create Flashcard from Question",
+    "description": "The flashcard will stay linked to the question — students will be able to report an issue on it.",
+    "deck_label": "Deck",
+    "deck_placeholder": "Select a deck...",
+    "new_deck_option": "New deck",
+    "new_deck_placeholder": "New deck name...",
+    "front_label": "Front Side (Question)",
+    "back_label": "Back Side (Answer)",
+    "cancel": "Cancel",
+    "create": "Create",
+    "created": "Flashcard created",
+    "error": "Failed to create flashcard"
   },
   "QuestionReports": {
     "common_loading": "Loading...",

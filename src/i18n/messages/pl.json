@@ -1228,6 +1228,7 @@
     "menu_topics": "Tematy",
     "menu_link": "Połącz z Inną Talią",
     "menu_copy": "Kopiuj do Innej Talii",
+    "menu_report": "Zgłoś nieprawidłowość",
     "menu_delete": "Usuń",
     "create_title": "Utwórz Nową Fiszkę",
     "create_desc": "Dodaj nową fiszkę do tej talii. Możesz przypisać wiele tematów.",
@@ -2323,7 +2324,22 @@
     "back_to_banks": "Powrót do banków",
     "mcq": "Wielokrotnego wyboru",
     "true_false_label": "Prawda / Fałsz",
-    "open_label": "Otwarte"
+    "open_label": "Otwarte",
+    "create_flashcard_title": "Utwórz fiszkę z tego pytania"
+  },
+  "CreateFlashcardFromQuestion": {
+    "title": "Utwórz fiszkę z pytania",
+    "description": "Fiszka zostanie powiązana z pytaniem — studenci będą mogli zgłosić w niej nieprawidłowość.",
+    "deck_label": "Talia",
+    "deck_placeholder": "Wybierz talię...",
+    "new_deck_option": "Nowa talia",
+    "new_deck_placeholder": "Nazwa nowej talii...",
+    "front_label": "Przód (Pytanie)",
+    "back_label": "Tył (Odpowiedź)",
+    "cancel": "Anuluj",
+    "create": "Utwórz",
+    "created": "Fiszka utworzona",
+    "error": "Nie udało się utworzyć fiszki"
   },
   "QuestionReports": {
     "common_loading": "Ładowanie...",

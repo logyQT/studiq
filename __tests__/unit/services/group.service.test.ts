@@ -1,16 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { GroupService } from '@/server/services/group.service';
 import type { RequestContext } from '@/lib/request-context';
+import { GroupService } from '@/server/services/group.service';
 
 vi.mock('@/server/services', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 
 function qb(data: any, error: any = null, count?: number) {
-  const result = count !== undefined
-    ? { data: data ?? null, count, error }
-    : { data: data ?? null, error };
+  const result =
+    count !== undefined ? { data: data ?? null, count, error } : { data: data ?? null, error };
   const promise = Promise.resolve(result);
   const b: any = {};
   b.select = vi.fn(() => b);
@@ -120,7 +119,9 @@ describe('GroupService', () => {
 
   describe('updateGroup', () => {
     it('returns FORBIDDEN when no activeOrgId', async () => {
-      const result = await service.updateGroup({ ...ctx, activeOrgId: null }, 'g-1', { name: 'Updated' });
+      const result = await service.updateGroup({ ...ctx, activeOrgId: null }, 'g-1', {
+        name: 'Updated',
+      });
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
@@ -219,7 +220,9 @@ describe('GroupService', () => {
 
   describe('setGroupMembers', () => {
     it('returns FORBIDDEN when no activeOrgId', async () => {
-      const result = await service.setGroupMembers({ ...ctx, activeOrgId: null }, 'g-1', { members: [] });
+      const result = await service.setGroupMembers({ ...ctx, activeOrgId: null }, 'g-1', {
+        members: [],
+      });
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
@@ -279,7 +282,10 @@ describe('GroupService', () => {
 
   describe('getUserGroupIds', () => {
     it('returns group IDs from RPC', async () => {
-      mock.rpc.mockResolvedValueOnce({ data: [{ group_id: 'g-1' }, { group_id: 'g-2' }], error: null });
+      mock.rpc.mockResolvedValueOnce({
+        data: [{ group_id: 'g-1' }, { group_id: 'g-2' }],
+        error: null,
+      });
 
       const result = await service.getUserGroupIds(ctx);
 

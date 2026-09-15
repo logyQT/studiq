@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
-import { before, type BeforeResult } from '#test/helpers/test-user';
+import { type BeforeResult, before } from '#test/helpers/test-user';
 import {
   applyRegisteredMock,
   cleanupOrganizationDeep,

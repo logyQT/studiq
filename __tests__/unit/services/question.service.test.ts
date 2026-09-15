@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { QuestionService } from '@/server/services/question.service';
-import { success, failure } from '@/lib/service-result';
 import type { RequestContext } from '@/lib/request-context';
+import { failure, success } from '@/lib/service-result';
+import { QuestionService } from '@/server/services/question.service';
 import { AccountType } from '@/types';
 
 vi.mock('@/lib/authz', () => ({
   accessibleFilter: vi.fn().mockResolvedValue({}),
-  Permission: { QUESTION_READ: 'question.read' as const, QUESTION_UPDATE: 'question.update' as const },
+  Permission: {
+    QUESTION_READ: 'question.read' as const,
+    QUESTION_UPDATE: 'question.update' as const,
+  },
 }));
 
 vi.mock('@/server/services', () => ({
@@ -15,9 +18,8 @@ vi.mock('@/server/services', () => ({
 }));
 
 function chain(result: any, count?: number) {
-  const resolved = count !== undefined
-    ? { data: result, count, error: null }
-    : { data: result, error: null };
+  const resolved =
+    count !== undefined ? { data: result, count, error: null } : { data: result, error: null };
   const terminal = vi.fn().mockResolvedValue(resolved);
   const c: any = {};
   c.select = vi.fn(() => c);

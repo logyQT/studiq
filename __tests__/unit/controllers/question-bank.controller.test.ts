@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { QuestionBankController } from '@/server/controllers/question-bank.controller';
 import type { RequestContext } from '@/lib/request-context';
+import { QuestionBankController } from '@/server/controllers/question-bank.controller';
 
 vi.mock('@/lib/authz', () => ({
   can: vi.fn().mockResolvedValue(true),
@@ -22,8 +22,15 @@ function createMockService() {
 let mockService: ReturnType<typeof createMockService>;
 let controller: QuestionBankController;
 const mockCtx: RequestContext = {
-  traceId: 'test', userId: 'u-1', accountType: 'educator' as any,
-  orgRoleId: null, activeOrgId: 'org-1', url: '', method: 'GET', groupIds: [], permissionScopes: {},
+  traceId: 'test',
+  userId: 'u-1',
+  accountType: 'educator' as any,
+  orgRoleId: null,
+  activeOrgId: 'org-1',
+  url: '',
+  method: 'GET',
+  groupIds: [],
+  permissionScopes: {},
 };
 
 describe('QuestionBankController', () => {
@@ -111,7 +118,10 @@ describe('QuestionBankController', () => {
   describe('batchDelete', () => {
     it('batch deletes banks', async () => {
       mockService.batchDelete.mockResolvedValueOnce({ success: true, data: { deleted: 2 } });
-      const response = await controller.batchDelete({ ids: ['550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440002'] }, mockCtx);
+      const response = await controller.batchDelete(
+        { ids: ['550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440002'] },
+        mockCtx,
+      );
       expect(response.success).toBe(true);
     });
     it('returns 422 on invalid body', async () => {

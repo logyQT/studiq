@@ -4,7 +4,7 @@
  * After the fix, /setup/org/ should match the MANAGER-only rule,
  * not fall through to the EDUCATOR catch-all.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { routeRules } from '@/server/config/routes.config';
 
 function matchRule(path: string) {

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { LimitsResolver } from '@/server/services/limits.resolver';
 import type { RequestContext } from '@/lib/request-context';
+import { LimitsResolver } from '@/server/services/limits.resolver';
 import { AccountType } from '@/types';
 
 function chain(result: unknown) {
@@ -114,9 +114,7 @@ describe('LimitsResolver', () => {
         return chain(null);
       });
 
-      await expect(
-        resolver.checkLimit(baseCtx, 'max_flashcards', 50),
-      ).resolves.toBeUndefined();
+      await expect(resolver.checkLimit(baseCtx, 'max_flashcards', 50)).resolves.toBeUndefined();
     });
 
     it('throws when over limit', async () => {
@@ -126,9 +124,9 @@ describe('LimitsResolver', () => {
         return chain(null);
       });
 
-      await expect(
-        resolver.checkLimit(baseCtx, 'max_flashcards', 100),
-      ).rejects.toThrow('USAGE_LIMIT_EXCEEDED');
+      await expect(resolver.checkLimit(baseCtx, 'max_flashcards', 100)).rejects.toThrow(
+        'USAGE_LIMIT_EXCEEDED',
+      );
     });
 
     it('does not throw when limit is -1 (unlimited)', async () => {
@@ -138,9 +136,7 @@ describe('LimitsResolver', () => {
         return chain(null);
       });
 
-      await expect(
-        resolver.checkLimit(baseCtx, 'max_flashcards', 999999),
-      ).resolves.toBeUndefined();
+      await expect(resolver.checkLimit(baseCtx, 'max_flashcards', 999999)).resolves.toBeUndefined();
     });
   });
 });

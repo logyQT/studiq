@@ -8,8 +8,8 @@
  * 4. the catch-all API auth rule can't be bypassed via trailing slash
  * 5. rule ordering prevents privilege escalation via trailing slash
  */
-import { describe, it, expect } from 'vitest';
-import { routeRules, type RouteRule } from '@/server/config/routes.config';
+import { describe, expect, it } from 'vitest';
+import { type RouteRule, routeRules } from '@/server/config/routes.config';
 
 // ---- proxy.ts matcher (line 99) ----
 const proxyMatcher =
@@ -64,10 +64,7 @@ describe('routeRules — trailing slash consistency', () => {
     });
 
     it('matches /api/v1/admin/subscription-plans consistently', () => {
-      assertSameRule(
-        '/api/v1/admin/subscription-plans',
-        '/api/v1/admin/subscription-plans/',
-      );
+      assertSameRule('/api/v1/admin/subscription-plans', '/api/v1/admin/subscription-plans/');
     });
 
     it('admin rule requires auth + SYS_ADMIN', () => {
@@ -128,34 +125,26 @@ describe('routeRules — trailing slash consistency', () => {
   // --- Public API routes (should NOT match catch-all auth rule) ---
   describe('public API routes — excluded from catch-all', () => {
     it('/api/v1/auth/me excluded from catch-all auth rule', () => {
-      const catchAllRule = routeRules.find(
-        (r) => r.matcher.source.includes('auth|health|avatar'),
-      );
+      const catchAllRule = routeRules.find((r) => r.matcher.source.includes('auth|health|avatar'));
       // The catch-all uses negative lookahead to EXCLUDE auth, health, avatar
       expect(catchAllRule?.matcher.test('/api/v1/auth/me')).toBe(false);
       expect(catchAllRule?.matcher.test('/api/v1/auth/me/')).toBe(false);
     });
 
     it('/api/v1/health excluded from catch-all auth rule', () => {
-      const catchAllRule = routeRules.find(
-        (r) => r.matcher.source.includes('auth|health|avatar'),
-      );
+      const catchAllRule = routeRules.find((r) => r.matcher.source.includes('auth|health|avatar'));
       expect(catchAllRule?.matcher.test('/api/v1/health')).toBe(false);
       expect(catchAllRule?.matcher.test('/api/v1/health/')).toBe(false);
     });
 
     it('/api/v1/avatar/user/xyz excluded from catch-all auth rule', () => {
-      const catchAllRule = routeRules.find(
-        (r) => r.matcher.source.includes('auth|health|avatar'),
-      );
+      const catchAllRule = routeRules.find((r) => r.matcher.source.includes('auth|health|avatar'));
       expect(catchAllRule?.matcher.test('/api/v1/avatar/user/xyz')).toBe(false);
       expect(catchAllRule?.matcher.test('/api/v1/avatar/user/xyz/')).toBe(false);
     });
 
     it('/api/v1/stripe/webhook excluded from catch-all auth rule', () => {
-      const catchAllRule = routeRules.find(
-        (r) => r.matcher.source.includes('auth|health|avatar'),
-      );
+      const catchAllRule = routeRules.find((r) => r.matcher.source.includes('auth|health|avatar'));
       expect(catchAllRule?.matcher.test('/api/v1/stripe/webhook')).toBe(false);
       expect(catchAllRule?.matcher.test('/api/v1/stripe/webhook/')).toBe(false);
     });

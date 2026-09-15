@@ -20,11 +20,7 @@ forEachCopy((copyId) => {
       const supabase = createServiceClient();
       const name = `${PREFIX}${copyId}-${Date.now()}`;
 
-      const { data: org } = await supabase
-        .from('organizations')
-        .insert({ name })
-        .select()
-        .single();
+      const { data: org } = await supabase.from('organizations').insert({ name }).select().single();
 
       if (!org) throw new Error('Failed to create org');
       orgId = org.id;

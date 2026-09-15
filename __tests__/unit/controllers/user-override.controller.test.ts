@@ -77,7 +77,9 @@ describe('UserOverrideController', () => {
   describe('update', () => {
     it('updates an override', async () => {
       mockService.update.mockResolvedValueOnce({ success: true, data: { id: 'ov-1' } });
-      const response = await controller.update('550e8400-e29b-41d4-a716-446655440000', { isEnabled: false });
+      const response = await controller.update('550e8400-e29b-41d4-a716-446655440000', {
+        isEnabled: false,
+      });
       expect(response.success).toBe(true);
     });
     it('returns 400 on invalid id', async () => {

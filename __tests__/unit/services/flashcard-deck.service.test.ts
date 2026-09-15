@@ -1,17 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import type { RequestContext } from '@/lib/request-context';
 import { FlashcardDeckService } from '@/server/services/flashcard-deck.service';
 import { AccountType } from '@/types';
-import type { RequestContext } from '@/lib/request-context';
 
 vi.mock('@/server/services', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 
 function qb(data: any, error: any = null, count?: number) {
-  const result = count !== undefined
-    ? { data: data ?? null, count, error }
-    : { data: data ?? null, error };
+  const result =
+    count !== undefined ? { data: data ?? null, count, error } : { data: data ?? null, error };
   const promise = Promise.resolve(result);
   const b: any = {};
   b.select = vi.fn(() => b);
@@ -82,7 +81,9 @@ describe('FlashcardDeckService', () => {
 
   describe('list', () => {
     it('returns decks for user', async () => {
-      const decks = [{ id: 'd-1', name: 'Study Deck', flashcard_count: 0, groupIds: [], suspended: false }];
+      const decks = [
+        { id: 'd-1', name: 'Study Deck', flashcard_count: 0, groupIds: [], suspended: false },
+      ];
       mock.from.mockReturnValueOnce(qb([], null));
       mock.from.mockReturnValueOnce(qb(decks));
 

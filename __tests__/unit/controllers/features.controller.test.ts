@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { FeaturesController } from '@/server/controllers/features.controller';
 import type { RequestContext } from '@/lib/request-context';
+import { FeaturesController } from '@/server/controllers/features.controller';
 
 vi.mock('@/lib/features', () => ({
   resolveFeatures: vi.fn(),
@@ -9,8 +9,14 @@ vi.mock('@/lib/features', () => ({
 import { resolveFeatures } from '@/lib/features';
 
 const mockCtx: RequestContext = {
-  traceId: 'test', userId: 'u-1', accountType: 'student' as any,
-  orgRoleId: null, activeOrgId: null, url: '', method: 'GET', groupIds: [],
+  traceId: 'test',
+  userId: 'u-1',
+  accountType: 'student' as any,
+  orgRoleId: null,
+  activeOrgId: null,
+  url: '',
+  method: 'GET',
+  groupIds: [],
   permissionScopes: {},
 };
 

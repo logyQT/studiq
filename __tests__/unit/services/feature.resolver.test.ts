@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { FEATURES, FeatureResolver, rolloutBucket } from '@/server/services/feature.resolver';
 import type { RequestContext } from '@/lib/request-context';
+import { FEATURES, FeatureResolver, rolloutBucket } from '@/server/services/feature.resolver';
 import { AccountType } from '@/types';
 
 function chain(result: unknown) {
@@ -69,7 +69,14 @@ describe('FeatureResolver', () => {
 
     it('uses seat plan entitlement when the user is seated in an org', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-1' };
-      const teamFeatures = ['flashcards', 'quiz', 'quiz.builder', 'group.manage', 'member.manage', 'documents'];
+      const teamFeatures = [
+        'flashcards',
+        'quiz',
+        'quiz.builder',
+        'group.manage',
+        'member.manage',
+        'documents',
+      ];
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain({ pool_id: 'pool-1' });
@@ -85,7 +92,14 @@ describe('FeatureResolver', () => {
       // Seat plan wins over the org role features, which are never consulted
       // for a seated user. Result is FEATURES-canonical order.
       const features = await resolver.getEnabledFeatures(ctx);
-      expect(features).toEqual(['flashcards', 'quiz', 'quiz.builder', 'documents', 'group.manage', 'member.manage']);
+      expect(features).toEqual([
+        'flashcards',
+        'quiz',
+        'quiz.builder',
+        'documents',
+        'group.manage',
+        'member.manage',
+      ]);
     });
 
     it('treats org role features as the authoritative entitlement in org context', async () => {

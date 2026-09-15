@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PermissionsController } from '@/server/controllers/permissions.controller';
 import type { RequestContext } from '@/lib/request-context';
+import { PermissionsController } from '@/server/controllers/permissions.controller';
 
 const mockCtx: RequestContext = {
-  traceId: 'test', userId: 'u-1', accountType: 'student' as any,
-  orgRoleId: null, activeOrgId: null, url: '', method: 'GET', groupIds: [],
+  traceId: 'test',
+  userId: 'u-1',
+  accountType: 'student' as any,
+  orgRoleId: null,
+  activeOrgId: null,
+  url: '',
+  method: 'GET',
+  groupIds: [],
   permissionScopes: { 'flashcard.read': 'own' },
 };
 

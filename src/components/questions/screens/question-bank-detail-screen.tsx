@@ -6,6 +6,7 @@ import Link from 'next/link';
 import type { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { CreateFromQuestionDialog } from '@/components/flashcards/dialogs/create-from-question-dialog';
 import { QuestionFormDialog } from '@/components/questions/shared/question-form-dialog';
 import { QuestionTable } from '@/components/questions/shared/question-table';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
@@ -35,6 +36,7 @@ export function QuestionBankDetailScreen({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [flashcardSourceQuestion, setFlashcardSourceQuestion] = useState<Question | null>(null);
 
   const { data: bank } = useQuery({
     queryKey: questionKeys.banks.detail(bankId),
@@ -130,8 +132,17 @@ export function QuestionBankDetailScreen({
         }}
         onEdit={openEdit}
         onDelete={setDeleteId}
+        onCreateFlashcard={basePath.startsWith('/edu') ? setFlashcardSourceQuestion : undefined}
         showReportButton={basePath.startsWith('/app')}
         t={t}
+      />
+
+      <CreateFromQuestionDialog
+        question={flashcardSourceQuestion}
+        open={!!flashcardSourceQuestion}
+        onOpenChange={(open) => {
+          if (!open) setFlashcardSourceQuestion(null);
+        }}
       />
 
       <QuestionFormDialog

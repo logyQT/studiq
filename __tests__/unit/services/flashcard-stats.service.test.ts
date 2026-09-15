@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { FlashcardStatsService } from '@/server/services/flashcard-stats.service';
 import type { RequestContext } from '@/lib/request-context';
+import { FlashcardStatsService } from '@/server/services/flashcard-stats.service';
 
 vi.mock('@/lib/authz', () => ({
   buildQueryFilter: vi.fn().mockReturnValue({ created_by: 'user-1' }),
@@ -72,7 +72,15 @@ describe('FlashcardStatsService', () => {
     it('returns stats when flashcards exist', async () => {
       const flashcards = [{ id: 'fc-1' }, { id: 'fc-2' }];
       const rpcResult = {
-        summary: { totalDecks: 1, totalFlashcards: 2, totalPractices: 10, totalStudents: 5, overallAccuracy: 80, averageEasinessFactor: 2.5, difficultyBreakdown: { easy: 1, medium: 0, hard: 1, new: 0 } },
+        summary: {
+          totalDecks: 1,
+          totalFlashcards: 2,
+          totalPractices: 10,
+          totalStudents: 5,
+          overallAccuracy: 80,
+          averageEasinessFactor: 2.5,
+          difficultyBreakdown: { easy: 1, medium: 0, hard: 1, new: 0 },
+        },
         byDeck: [],
         byTopic: [],
       };
@@ -128,7 +136,9 @@ describe('FlashcardStatsService', () => {
       // topics
       mock.from.mockReturnValueOnce(qb([]));
       // practice rows
-      mock.from.mockReturnValueOnce(qb([{ flashcard_id: 'fc-1', was_correct: true, user_id: 'u-1' }]));
+      mock.from.mockReturnValueOnce(
+        qb([{ flashcard_id: 'fc-1', was_correct: true, user_id: 'u-1' }]),
+      );
 
       const result = await service.getDifficultyCards(ctx, 'new');
 

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { TopicController } from '@/server/controllers/topic.controller';
 import type { RequestContext } from '@/lib/request-context';
+import { TopicController } from '@/server/controllers/topic.controller';
 
 vi.mock('@/lib/authz', () => ({
   can: vi.fn().mockResolvedValue(true),
@@ -22,8 +22,15 @@ function createMockService() {
 let mockService: ReturnType<typeof createMockService>;
 let controller: TopicController;
 const mockCtx: RequestContext = {
-  traceId: 'test', userId: 'u-1', accountType: 'educator' as any,
-  orgRoleId: null, activeOrgId: 'org-1', url: '', method: 'GET', groupIds: [], permissionScopes: {},
+  traceId: 'test',
+  userId: 'u-1',
+  accountType: 'educator' as any,
+  orgRoleId: null,
+  activeOrgId: 'org-1',
+  url: '',
+  method: 'GET',
+  groupIds: [],
+  permissionScopes: {},
 };
 
 describe('TopicController', () => {
@@ -35,7 +42,10 @@ describe('TopicController', () => {
 
   describe('create', () => {
     it('creates a topic', async () => {
-      mockService.create.mockResolvedValueOnce({ success: true, data: { id: 't-1', name: 'Math' } });
+      mockService.create.mockResolvedValueOnce({
+        success: true,
+        data: { id: 't-1', name: 'Math' },
+      });
       const response = await controller.create({ name: 'Math' }, mockCtx);
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(201);
@@ -54,7 +64,10 @@ describe('TopicController', () => {
 
   describe('list', () => {
     it('returns topics', async () => {
-      mockService.list.mockResolvedValueOnce({ success: true, data: { items: [], nextCursor: null, hasMore: false } });
+      mockService.list.mockResolvedValueOnce({
+        success: true,
+        data: { items: [], nextCursor: null, hasMore: false },
+      });
       const response = await controller.list({}, mockCtx);
       expect(response.success).toBe(true);
     });
@@ -107,7 +120,10 @@ describe('TopicController', () => {
   describe('bulkCreate', () => {
     it('bulk creates topics', async () => {
       mockService.bulkCreate.mockResolvedValueOnce({ success: true, data: [] });
-      const response = await controller.bulkCreate({ topics: [{ name: 'T1' }, { name: 'T2' }] }, mockCtx);
+      const response = await controller.bulkCreate(
+        { topics: [{ name: 'T1' }, { name: 'T2' }] },
+        mockCtx,
+      );
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(201);
     });
@@ -121,7 +137,10 @@ describe('TopicController', () => {
   describe('batchDelete', () => {
     it('batch deletes topics', async () => {
       mockService.batchDelete.mockResolvedValueOnce({ success: true, data: { deleted: 2 } });
-      const response = await controller.batchDelete({ ids: ['550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440002'] }, mockCtx);
+      const response = await controller.batchDelete(
+        { ids: ['550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440002'] },
+        mockCtx,
+      );
       expect(response.success).toBe(true);
     });
     it('returns 422 on invalid body', async () => {

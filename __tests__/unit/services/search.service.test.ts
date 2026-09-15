@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { SearchService } from '@/server/services/search.service';
 import type { RequestContext } from '@/lib/request-context';
+import { SearchService } from '@/server/services/search.service';
 
 vi.mock('@/lib/authz', () => ({
   accessibleFilter: vi.fn().mockResolvedValue({ or: 'created_by.eq.user-1' }),
@@ -64,8 +64,22 @@ describe('SearchService', () => {
 
     it('groups results by flashcard id', async () => {
       const rows = [
-        { id: 'fc-1', front: 'Hello', back: 'Cześć', rank: 0.8, deck_id: 'd-1', deck_name: 'Deck1' },
-        { id: 'fc-1', front: 'Hello', back: 'Cześć', rank: 0.9, deck_id: 'd-2', deck_name: 'Deck2' },
+        {
+          id: 'fc-1',
+          front: 'Hello',
+          back: 'Cześć',
+          rank: 0.8,
+          deck_id: 'd-1',
+          deck_name: 'Deck1',
+        },
+        {
+          id: 'fc-1',
+          front: 'Hello',
+          back: 'Cześć',
+          rank: 0.9,
+          deck_id: 'd-2',
+          deck_name: 'Deck2',
+        },
       ];
       mock.rpc.mockReturnValueOnce(qb(rows));
 

@@ -6,6 +6,7 @@ import { CreateCardDialog } from '@/components/flashcards/dialogs/create-card-di
 import { DeckDialogs } from '@/components/flashcards/dialogs/deck-dialogs';
 import { SingleCardDialogs } from '@/components/flashcards/dialogs/single-card-dialogs';
 import { TopicDialogs } from '@/components/flashcards/dialogs/topic-dialogs';
+import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
 import { usePermission } from '@/hooks/use-permission';
 import type { Deck, Flashcard, Topic } from '@/server/models';
 
@@ -15,6 +16,7 @@ export interface DialogsState {
   deleteId: string | null;
   linkOpen: boolean;
   copyOpen: boolean;
+  reportOpen: boolean;
   copyResult: { id: string; deckId: string } | null;
   activeFlashcardId: string | null;
   linkDeckIds: string[];
@@ -44,6 +46,7 @@ export interface DialogsHandlers {
   onDeleteOpenChange: () => void;
   onLinkOpenChange: (open: boolean) => void;
   onCopyOpenChange: (open: boolean) => void;
+  onReportOpenChange: (open: boolean) => void;
   onCopyResultClose: () => void;
   onDeckEditOpenChange: (open: boolean) => void;
   onDeckDeleteOpenChange: (open: boolean) => void;
@@ -103,6 +106,8 @@ export function DeckDetailDialogs({
 
   const ownedDecks = allDecks.filter((d) => permission('deck.update', { createdBy: d.created_by }));
 
+  const activeFlashcard = flashcards.find((fc) => fc.id === state.activeFlashcardId);
+
   return (
     <>
       <CreateCardDialog
@@ -143,6 +148,14 @@ export function DeckDetailDialogs({
         onDeleteOpenChange={handlers.onDeleteOpenChange}
         onDelete={handlers.onDelete}
       />
+
+      {activeFlashcard?.question_id && (
+        <ReportQuestionDialog
+          questionId={activeFlashcard.question_id}
+          open={state.reportOpen}
+          onOpenChange={handlers.onReportOpenChange}
+        />
+      )}
 
       <DeckDialogs
         t={t}

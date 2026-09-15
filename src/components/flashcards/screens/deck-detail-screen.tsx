@@ -256,6 +256,7 @@ export function DeckDetailScreen({
     deleteId: null,
     linkOpen: false,
     copyOpen: false,
+    reportOpen: false,
     copyResult: null,
     activeFlashcardId: null,
     linkDeckIds: [],
@@ -300,6 +301,10 @@ export function DeckDetailScreen({
       copyTargetDeckId: null,
       copyOpen: true,
     }));
+  }, []);
+
+  const handleCardReport = useCallback((fc: Flashcard) => {
+    setD((prev) => ({ ...prev, activeFlashcardId: fc.id, reportOpen: true }));
   }, []);
 
   const handleCardAddTopic = useCallback((fc: Flashcard) => {
@@ -497,6 +502,7 @@ export function DeckDetailScreen({
     onDeleteOpenChange: () => setD((prev) => ({ ...prev, deleteId: null })),
     onLinkOpenChange: (open) => setD((prev) => ({ ...prev, linkOpen: open })),
     onCopyOpenChange: (open) => setD((prev) => ({ ...prev, copyOpen: open })),
+    onReportOpenChange: (open) => setD((prev) => ({ ...prev, reportOpen: open })),
     onCopyResultClose: () => setD((prev) => ({ ...prev, copyResult: null })),
     onDeckEditOpenChange: (open) => setD((prev) => ({ ...prev, deckEditOpen: open })),
     onDeckDeleteOpenChange: (open) => setD((prev) => ({ ...prev, deckDeleteOpen: open })),
@@ -819,6 +825,7 @@ export function DeckDetailScreen({
             onDelete={handleCardDelete}
             onLink={handleCardLink}
             onCopy={handleCardCopy}
+            onReport={basePath.startsWith('/app') ? handleCardReport : undefined}
             onAddTopic={handleCardAddTopic}
             onManageTopics={handleCardManageTopics}
             onViewByTopic={handleCardViewByTopic}

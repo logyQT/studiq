@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowUpDown, Pencil, Search, Trash2, X } from 'lucide-react';
+import { ArrowUpDown, Layers, Pencil, Search, Trash2, X } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
 import { Badge } from '@/components/ui/badge';
@@ -36,6 +36,7 @@ interface QuestionTableProps {
   onSortChange: (sortBy: string, sortOrder: string) => void;
   onEdit: (question: Question) => void;
   onDelete: (id: string) => void;
+  onCreateFlashcard?: (question: Question) => void;
   showReportButton?: boolean;
   t: ReturnType<typeof useTranslations>;
 }
@@ -52,6 +53,7 @@ export function QuestionTable({
   onSortChange,
   onEdit,
   onDelete,
+  onCreateFlashcard,
   showReportButton = false,
   t,
 }: QuestionTableProps) {
@@ -177,6 +179,16 @@ export function QuestionTable({
                       <ReportQuestionDialog questionId={q.id} />
                     ) : (
                       <>
+                        {onCreateFlashcard && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title={t('create_flashcard_title')}
+                            onClick={() => onCreateFlashcard(q)}
+                          >
+                            <Layers className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button variant="ghost" size="icon" onClick={() => onEdit(q)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
