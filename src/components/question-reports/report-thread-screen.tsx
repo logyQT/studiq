@@ -29,6 +29,7 @@ interface ReportDetail {
     reported_by: string;
     teacher_id: string;
     question: { id: string; content: string } | null;
+    group: { id: string; name: string } | null;
     reporter: { id: string; full_name: string | null; email: string } | null;
     teacher: { id: string; full_name: string | null; email: string } | null;
   };
@@ -94,7 +95,10 @@ export function ReportThreadScreen({ reportId, basePath }: { reportId: string; b
         <UserAvatar name={counterpart?.full_name} email={counterpart?.email} size={36} />
         <div className="min-w-0">
           <p className="font-medium text-sm">{counterpart?.full_name || counterpart?.email}</p>
-          <p className="text-xs text-muted-foreground truncate">{report.question?.content}</p>
+          <p className="text-xs text-muted-foreground truncate">
+            {report.question?.content ??
+              (report.group ? t('report_target_group', { name: report.group.name }) : '')}
+          </p>
         </div>
       </div>
 

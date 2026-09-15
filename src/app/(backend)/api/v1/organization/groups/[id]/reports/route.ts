@@ -7,8 +7,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   return withAuth(req, async (ctx) => {
     const { id } = await params;
     const body = await req.json();
-    return toNextResponse(
-      await questionReportController.createReport({ questionId: id }, body, ctx),
-    );
+    return toNextResponse(await questionReportController.createReport({ groupId: id }, body, ctx));
   });
 }

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { QuestionReportService } from '@/server/services/question-report.service';
 import type { RequestContext } from '@/lib/request-context';
+import { QuestionReportService } from '@/server/services/question-report.service';
 
 function qb(data: any, error: any = null) {
   const promise = Promise.resolve({ data: data ?? null, error });
@@ -13,6 +13,7 @@ function qb(data: any, error: any = null) {
   b.eq = vi.fn(() => b);
   b.or = vi.fn(() => b);
   b.order = vi.fn(() => b);
+  b.limit = vi.fn(() => b);
   b.single = vi.fn().mockResolvedValue({ data: data ?? null, error });
   b.maybeSingle = vi.fn().mockResolvedValue({ data: data ?? null, error });
   b.then = promise.then.bind(promise);
@@ -50,7 +51,11 @@ describe('QuestionReportService', () => {
       mock.from.mockReturnValueOnce(qb(report)); // insert report
       mock.from.mockReturnValueOnce(qb(undefined)); // insert message
 
-      const result = await service.createReport('q-1', { message: 'Wrong answer' }, ctx);
+      const result = await service.createReport(
+        { questionId: 'q-1' },
+        { message: 'Wrong answer' },
+        ctx,
+      );
 
       expect(result.success).toBe(true);
     });
@@ -59,7 +64,7 @@ describe('QuestionReportService', () => {
       const question = { id: 'q-1', created_by: 'student-1', organization_id: 'org-1' };
       mock.from.mockReturnValueOnce(qb(question));
 
-      const result = await service.createReport('q-1', { message: 'Wrong' }, ctx);
+      const result = await service.createReport({ questionId: 'q-1' }, { message: 'Wrong' }, ctx);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('BAD_REQUEST');
@@ -68,7 +73,7 @@ describe('QuestionReportService', () => {
     it('returns error on question fetch failure', async () => {
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
-      const result = await service.createReport('q-1', { message: 'Wrong' }, ctx);
+      const result = await service.createReport({ questionId: 'q-1' }, { message: 'Wrong' }, ctx);
 
       expect(result.success).toBe(false);
     });
@@ -78,7 +83,7 @@ describe('QuestionReportService', () => {
       mock.from.mockReturnValueOnce(qb(question));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
-      const result = await service.createReport('q-1', { message: 'Wrong' }, ctx);
+      const result = await service.createReport({ questionId: 'q-1' }, { message: 'Wrong' }, ctx);
 
       expect(result.success).toBe(false);
     });
@@ -90,9 +95,56 @@ describe('QuestionReportService', () => {
       mock.from.mockReturnValueOnce(qb(report));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
-      const result = await service.createReport('q-1', { message: 'Wrong' }, ctx);
+      const result = await service.createReport({ questionId: 'q-1' }, { message: 'Wrong' }, ctx);
 
       expect(result.success).toBe(false);
+    });
+
+    it('reports a group with an owner directly to that owner', async () => {
+      const group = { id: 'g-1', created_by: 'teacher-2', organization_id: 'org-1' };
+      const report = { id: 'r-1', group_id: 'g-1', reported_by: 'student-1' };
+      mock.from.mockReturnValueOnce(qb(group)); // fetch group
+      mock.from.mockReturnValueOnce(qb(report)); // insert report
+      mock.from.mockReturnValueOnce(qb(undefined)); // insert message
+
+      const result = await service.createReport({ groupId: 'g-1' }, { message: 'Wrong' }, ctx);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('routes a report on an ownerless group to the org admin', async () => {
+      const group = { id: 'g-1', created_by: null, organization_id: 'org-1' };
+      const admin = { user_id: 'admin-1' };
+      const report = { id: 'r-1', group_id: 'g-1', reported_by: 'student-1' };
+      mock.from.mockReturnValueOnce(qb(group)); // fetch group
+      mock.from.mockReturnValueOnce(qb(admin)); // find org admin
+      mock.from.mockReturnValueOnce(qb(report)); // insert report
+      mock.from.mockReturnValueOnce(qb(undefined)); // insert message
+
+      const result = await service.createReport({ groupId: 'g-1' }, { message: 'Wrong' }, ctx);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('returns NOT_FOUND when an ownerless group has no org admin to route to', async () => {
+      const group = { id: 'g-1', created_by: null, organization_id: 'org-1' };
+      mock.from.mockReturnValueOnce(qb(group));
+      mock.from.mockReturnValueOnce(qb(null, null));
+
+      const result = await service.createReport({ groupId: 'g-1' }, { message: 'Wrong' }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('returns BAD_REQUEST when reporting a group the user themselves created', async () => {
+      const group = { id: 'g-1', created_by: 'student-1', organization_id: 'org-1' };
+      mock.from.mockReturnValueOnce(qb(group));
+
+      const result = await service.createReport({ groupId: 'g-1' }, { message: 'Wrong' }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('BAD_REQUEST');
     });
   });
 
@@ -204,7 +256,14 @@ describe('QuestionReportService', () => {
   describe('unreadCount', () => {
     it('returns unread count', async () => {
       const reports = [
-        { id: 'r-1', reported_by: 'student-1', teacher_id: 'teacher-1', updated_at: '2024-01-03T00:00:00Z', reporter_last_read_at: '2024-01-01T00:00:00Z', teacher_last_read_at: '2024-01-01T00:00:00Z' },
+        {
+          id: 'r-1',
+          reported_by: 'student-1',
+          teacher_id: 'teacher-1',
+          updated_at: '2024-01-03T00:00:00Z',
+          reporter_last_read_at: '2024-01-01T00:00:00Z',
+          teacher_last_read_at: '2024-01-01T00:00:00Z',
+        },
       ];
       mock.from.mockReturnValueOnce(qb(reports));
 

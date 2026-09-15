@@ -4,6 +4,7 @@ import { Layers, Loader2, Lock, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -215,12 +216,15 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                           </Dialog>
                         </>
                       ) : (
-                        <span
-                          title={t('not_owned')}
-                          className="inline-flex h-9 w-9 items-center justify-center text-muted-foreground/50"
-                        >
-                          <Lock className="w-4 h-4" />
-                        </span>
+                        <>
+                          <span
+                            title={t('not_owned')}
+                            className="inline-flex h-9 w-9 items-center justify-center text-muted-foreground/50"
+                          >
+                            <Lock className="w-4 h-4" />
+                          </span>
+                          <ReportQuestionDialog groupId={group.id} />
+                        </>
                       )}
                     </div>
                   </TableCell>

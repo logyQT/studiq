@@ -2386,6 +2386,8 @@
     "report_button_title": "Report an issue",
     "report_dialog_title": "Report a question issue",
     "report_dialog_description": "Describe the problem. Your message goes directly to the teacher who created this question.",
+    "report_dialog_title_group": "Report a group issue",
+    "report_dialog_description_group": "Describe the problem. Your message goes directly to the group's owner or the organization admin.",
     "report_message_placeholder": "E.g. the answer is wrong, the question is unclear...",
     "cancel": "Cancel",
     "send": "Send",
@@ -2396,7 +2398,9 @@
     "page_title": "Reports",
     "page_description_student": "Your question issue reports and teacher replies.",
     "page_description_teacher": "Issue reports from students about your questions.",
-    "reply_placeholder": "Write a reply..."
+    "page_description_manager": "Reports about questions and groups in your organization.",
+    "reply_placeholder": "Write a reply...",
+    "report_target_group": "Group: {name}"
   },
   "QuestionForm": {
     "create_title": "Create Question",
