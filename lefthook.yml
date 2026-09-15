@@ -17,16 +17,16 @@ pre-push:
       run: |
         git fetch origin main --quiet 2>/dev/null || true
         if ! git merge-tree --write-tree origin/main HEAD >/dev/null 2>&1; then
-          echo ""
-          echo "  ✘ Push blocked — merge conflicts with main detected."
-          echo ""
-          echo "  Rebase or merge main and resolve conflicts before pushing:"
-          echo ""
-          echo "    git fetch origin main"
-          echo "    git merge origin/main    # resolve conflicts, commit"
-          echo "    # — or —"
-          echo "    git rebase origin/main    # resolve conflicts, continue"
-          echo ""
+          echo ''
+          echo '  X Push blocked -- merge conflicts with main detected.'
+          echo ''
+          echo '  Rebase or merge main and resolve conflicts before pushing:'
+          echo ''
+          echo '    git fetch origin main'
+          echo '    git merge origin/main    # resolve conflicts, commit'
+          echo '    # -- or --'
+          echo '    git rebase origin/main    # resolve conflicts, continue'
+          echo ''
           exit 1
         fi
     format:

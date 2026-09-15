@@ -70,6 +70,7 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
         { titleKey: 'edu_quizzes', href: '/edu/quizzes', icon: ScrollText },
         { titleKey: 'edu_assignments', href: '/edu/assignments', icon: ClipboardCheck },
         { titleKey: 'question_reports', href: '/edu/reports', icon: MessageSquareWarning },
+        { titleKey: 'edu_groups', href: '/edu/groups', icon: Users, feature: 'group.manage' },
       ],
     },
     {
@@ -164,7 +165,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const accountType = user?.app_metadata?.account_type as AccountType | undefined;
   const isSysAdmin = accountType === AccountType.SYS_ADMIN;
   const feature = useFeature();
-  const hasAiChat = feature('ai.chat');
 
   const { data: reportsUnread } = useApiQuery<{ count: number }>({
     queryKey: questionReportKeys.unreadCount,
@@ -185,11 +185,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     return raw.map((group) => ({
       ...group,
       items: group.items
-        .filter((item) => {
-          if (!item.feature) return true;
-          if (item.feature === 'ai.chat') return hasAiChat;
-          return true;
-        })
+        .filter((item) => !item.feature || feature(item.feature))
         .map((item) =>
           item.href.endsWith('/reports') ? { ...item, badge: reportsUnread?.count ?? 0 } : item,
         ),
