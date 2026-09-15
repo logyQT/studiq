@@ -1,7 +1,7 @@
 # Foundation & Agentic Testing — Execution Plan (Tracking)
 
 Status: ACTIVE
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 ## Decisions (locked)
 
@@ -10,11 +10,17 @@ Last updated: 2026-09-14
 - Tests: API-first `before()` seeding everywhere
 - Feature-flag keys: flat keys everywhere (drop `FEATURE_FLAG_TO_FEATURE_KEY`)
 - No backward-compat layers (pre-market, delete old paths cleanly)
+- Seat licensing: opt-in per-user upgrades only — NO default/seed pools at org
+  creation; everyone gets org-plan defaults (`org_role_features` + `org_limits`);
+  a seat is bought/assigned per user and upgrades only that user (e.g. extra AI
+  quota for one teacher). Seats can never grant admin-only features
+  (`org.manage`/`member.manage`/`role.builder`) to a non-admin role.
 
 ## Order
 
 - Phase A first (independent, immediate value)
 - Phase B before Phase C (de-tangle before moving code into packages)
+- Phase B.5 (seat cleanup) before Phase C — C2 extracts the post-cleanup FeatureResolver
 - Phase D last (runs on the stable foundation)
 
 ---
@@ -111,13 +117,57 @@ Status: NOT STARTED
 
 ---
 
+## Phase B.5 — Seat licensing cleanup (opt-in per-user upgrades)
+
+Status: NOT STARTED — separate PR off main, merged BEFORE Phase C starts.
+
+Why: seats are the per-headcount add-on ("green-light one teacher's AI quota,
+not an org-wide upgrade for everyone"). The current implementation is inert
+bookkeeping that conflicts with that intent: pools are pre-seeded at org
+creation from `plan_seat_allocations`, nothing can grow a pool, assignment
+isn't role-aware, and `FeatureResolver` swaps a seat plan in wholesale —
+letting a campus seat grant `org.manage`/`member.manage`/`role.builder` to a
+member. Clean the axis before C2 moves `FeatureResolver` into `packages/authz`.
+
+### Tasks (scope of the seats PR)
+- [ ] S1 Drop default pool seeding — remove seat-pool creation from
+      `handle_new_organization` (`20260708000002` + `20260714000003`) and the
+      `plan_seat_allocations` seed in `seeds/00_plans.sql`; drop the
+      `plan_seat_allocations` table (clean drop migration)
+- [ ] S2 Pools are on-demand only — `seat.service` creates a pool when a seat
+      is added/purchased (addPool), never at org creation; `listPools` shows
+      only realized purchases
+- [ ] S3 Fix `FeatureResolver` precedence: seat plan = additive upgrade over
+      the org-role base, then re-apply role restrictions per key so a
+      non-admin role can never inherit org.manage/member.manage/role.builder
+      through a seat (privilege leak)
+- [ ] S4 Role-aware assignment — `seat.service` validates pool plan vs target
+      account_type/org role (teacher→educator tier, student→student tier);
+      the seats UI suggests the compatible seat per member instead of a
+      free-for-all branded-pool menu
+- [ ] S5 Seats API + `manage/seats` page: pools = purchased quantities
+      (add-to-pool on buy; checkout wiring comes later — after the monorepo
+      PRs, mechanics first)
+- [ ] S6 Migrate tests to new semantics: `seats.test.ts` (integration),
+      `seat.service.test.ts` / `seat.controller.test.ts` (unit),
+      `feature.resolver.test.ts` seat-precedence cases; drop coverage of
+      default/seeded pools
+- [ ] Verify: lint clean + unit + integration green; seats PR merged before
+      Phase C starts
+
+### Open (deferred with billing)
+- Org-plan pricing shape (flat vs per-headcount) — interacts with seat
+  add-ons; decide together with the checkout work later.
+
+---
+
 ## Phase C — Detach admin panel (monorepo)
 
 Status: NOT STARTED
 
 ### Tasks
 - [ ] C1 Bun workspace scaffold; create `packages/authz`, `packages/ui`
-- [ ] C2 Move pure logic/constants/authz → `packages/authz`; UI primitives + shared layout → `packages/ui`
+- [ ] C2 Move pure logic/constants/authz → `packages/authz` (FeatureResolver already post-B.5 — seat-as-upgrade, no default pools); UI primitives + shared layout → `packages/ui`
 - [ ] C3 `apps/web`: remove admin; block `/admin*` + `/api/v1/admin*` in proxy
 - [ ] C4 `apps/admin`: standalone Next app; own build/domain; service-role server-side session
 - [ ] C5 PEM gate in `apps/admin/proxy.ts` (Ed25519, header signature, rotation list)
