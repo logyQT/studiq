@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# Switch branches cleanly: stash WIP → switch → pull → pop stash.
+#
+# Usage:
+#   scripts/switch-branch              # switch to main
+#   scripts/switch-branch feat/foo     # switch to feat/foo
+#   scripts/switch-branch -c new-name  # create branch from current, then switch
+#
+# Behaviour:
+#   - Only stashes if the working tree is dirty
+#   - Handles remote-only branches (creates local tracking branch)
+#   - On stash-pop conflict, leaves the stash entry so nothing is lost
+#   - Prints a clear summary of what happened
+
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
+info()  { printf "${GREEN}✔${NC} %s\n" "$*"; }
+warn()  { printf "${YELLOW}⚠${NC} %s\n" "$*"; }
+fail()  { printf "${RED}✘${NC} %s\n" "$*" >&2; exit 1; }
+
+# ── Parse flags ────────────────────────────────────────────────
+CREATE=false
+while [[ "${1:-}" == -* ]]; do
+  case "$1" in
+    -c|--create) CREATE=true; shift ;;
+    -h|--help)
+      echo "Usage: scripts/switch-branch [-c] [branch]"
+      echo "  -c, --create  Create a new branch from the current branch before switching"
+      echo "  Default branch: main"
+      exit 0
+      ;;
+    *) fail "Unknown flag: $1" ;;
+  esac
+done
+
+branch="${1:-main}"
+
+# ── Ensure clean-ish state ─────────────────────────────────────
+STASHED=false
+if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+  # Working tree is dirty — stash only tracked + untracked changes
+  git stash push -u -m "switch-branch: auto-stash" >/dev/null 2>&1
+  STASHED=true
+  info "Stashed WIP"
+fi
+
+# ── Resolve branch ─────────────────────────────────────────────
+if $CREATE; then
+  # Create new branch from current HEAD
+  git branch "$branch" 2>/dev/null || fail "Branch '$branch' already exists"
+  info "Created branch '$branch'"
+elif ! git rev-parse --verify "$branch" >/dev/null 2>&1; then
+  # Branch doesn't exist locally — check remote
+  if git ls-remote --exit-code origin "$branch" >/dev/null 2>&1; then
+    git checkout -b "$branch" "origin/$branch" --track 2>/dev/null \
+      || fail "Could not create tracking branch '$branch'"
+    info "Created local tracking branch '$branch' from origin"
+  else
+    fail "Branch '$branch' does not exist locally or on origin"
+  fi
+fi
+
+# ── Switch ─────────────────────────────────────────────────────
+current=$(git branch --show-current 2>/dev/null || echo "detached")
+if [ "$current" = "$branch" ]; then
+  warn "Already on '$branch'"
+else
+  git checkout "$branch" 2>/dev/null || fail "Could not switch to '$branch'"
+  info "Switched to '$branch'"
+fi
+
+# ── Pull fast-forward ──────────────────────────────────────────
+if git rev-parse --verify "origin/$branch" >/dev/null 2>&1; then
+  # Only pull if we're tracking a remote
+  if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$branch" 2>/dev/null)" ]; then
+    git pull --ff-only 2>/dev/null && info "Pulled latest from origin" || warn "Could not fast-forward pull — diverged?"
+  else
+    info "Already up to date"
+  fi
+fi
+
+# ── Pop stash ──────────────────────────────────────────────────
+if $STASHED; then
+  if git stash pop --index >/dev/null 2>&1; then
+    info "Stash popped cleanly"
+  else
+    warn "Stash pop had conflicts — stash entry preserved"
+    warn "Run 'git stash list' to inspect, 'git stash pop' to retry"
+  fi
+fi
