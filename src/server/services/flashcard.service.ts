@@ -54,6 +54,7 @@ export class FlashcardService {
         organization_id: ctx.activeOrgId,
         visibility: deckVisibility,
         deck_id: data.deckId ?? null,
+        question_id: data.questionId ?? null,
       })
       .select()
       .single();

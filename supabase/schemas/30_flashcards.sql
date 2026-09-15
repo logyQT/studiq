@@ -1,6 +1,6 @@
 -- ==========================================
 -- TABLE: flashcards
--- Depends on: 01_config.sql, 03_organizations.sql, 04_profiles.sql
+-- Depends on: 01_config.sql, 03_organizations.sql, 04_profiles.sql, 24_questions.sql
 -- ==========================================
 
 CREATE TABLE public.flashcards (
@@ -10,6 +10,10 @@ CREATE TABLE public.flashcards (
   front           text NOT NULL,
   back            text NOT NULL,
   visibility      visibility_type NOT NULL DEFAULT 'personal',
+  -- Set when this card was generated from an official question — lets the
+  -- card reuse that question's "report an issue" thread. NULL for
+  -- standalone/user-authored cards.
+  question_id     uuid REFERENCES public.questions(id) ON DELETE SET NULL,
   search_vector   tsvector
                   GENERATED ALWAYS AS (
                     to_tsvector('english', coalesce(front, '')) ||
@@ -32,3 +36,4 @@ CREATE INDEX idx_flashcards_owner_time ON public.flashcards (created_by, created
 CREATE INDEX idx_flashcards_org_time ON public.flashcards (organization_id, created_at DESC, id);
 CREATE INDEX idx_flashcards_deck_id ON public.flashcards(deck_id);
 CREATE INDEX idx_flashcards_visibility ON public.flashcards (organization_id, visibility);
+CREATE INDEX idx_flashcards_question_id ON public.flashcards(question_id);

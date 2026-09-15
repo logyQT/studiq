@@ -7,6 +7,7 @@ export const CreateFlashcardSchema = registry.register(
   z.object({
     topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
     deckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
+    questionId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
     front: z
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
@@ -188,6 +189,7 @@ export interface FlashcardWithAssignments {
   back: string;
   created_by: string;
   deck_id?: string | null;
+  question_id?: string | null;
   flashcard_topic_assignments?: Array<{ topic_id: string }>;
   visibility?: 'personal' | 'group';
 }
