@@ -1,27 +1,25 @@
-import path from 'node:path';
-import { loadEnv } from 'vite';
-import { defineConfig } from 'vitest/config';
+import path from "node:path";
+import { loadEnv } from "vite";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode || 'test', process.cwd(), '');
+  const env = loadEnv(mode || "test", process.cwd(), "");
   return {
     define: {
-      'process.env.NEXT_PUBLIC_SUPABASE_URL': JSON.stringify(env.NEXT_PUBLIC_SUPABASE_URL || ''),
-      'process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY': JSON.stringify(
-        env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-      ),
-      'process.env.NEXT_PUBLIC_SITE_URL': JSON.stringify(env.NEXT_PUBLIC_SITE_URL || ''),
-      'process.env.SUPABASE_SERVICE_ROLE_KEY': JSON.stringify(env.SUPABASE_SERVICE_ROLE_KEY || ''),
+      "process.env.NEXT_PUBLIC_SUPABASE_URL": JSON.stringify(env.NEXT_PUBLIC_SUPABASE_URL || ""),
+      "process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY": JSON.stringify(env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""),
+      "process.env.NEXT_PUBLIC_SITE_URL": JSON.stringify(env.NEXT_PUBLIC_SITE_URL || ""),
+      "process.env.SUPABASE_SERVICE_ROLE_KEY": JSON.stringify(env.SUPABASE_SERVICE_ROLE_KEY || ""),
     },
     test: {
       env: {
-        OTEL_SDK_DISABLED: 'true',
+        OTEL_SDK_DISABLED: "true",
       },
       globals: true,
-      environment: 'node',
-      setupFiles: ['./__tests__/setup.ts'],
-      include: ['__tests__/unit/**/*.test.ts', '__tests__/integration/**/*.test.ts'],
-      exclude: ['node_modules', 'dist', '.next'],
+      environment: "node",
+      setupFiles: ["./__tests__/setup.ts"],
+      include: ["__tests__/unit/**/*.test.ts", "__tests__/integration/**/*.test.ts"],
+      exclude: ["node_modules", "dist", ".next"],
       // ── Concurrency ──────────────────────────────────────────
       // fileParallelism: files run in parallel across workers (one worker per file).
       // sequence.concurrent: OFF — integration tests share a module-scoped mock
@@ -44,15 +42,15 @@ export default defineConfig(({ mode }) => {
         concurrent: false,
       },
       coverage: {
-        provider: 'v8',
-        include: ['src/server/**/*.ts'],
-        exclude: ['src/server/**/index.ts', 'src/server/**/routes.config.ts'],
+        provider: "v8",
+        include: ["src/server/**/*.ts"],
+        exclude: ["src/server/**/index.ts", "src/server/**/routes.config.ts"],
       },
     },
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, './src'),
-        '#test': path.resolve(__dirname, './__tests__'),
+        "@": path.resolve(__dirname, "./src"),
+        "#test": path.resolve(__dirname, "./__tests__"),
       },
     },
   };
