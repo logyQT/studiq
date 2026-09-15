@@ -91,7 +91,7 @@ export function Navbar() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* LEFT */}
-          <div className="flex items-center min-w-0">
+          <div className="flex items-center min-w-0 flex-1">
             <Link
               href="/"
               className="flex items-center gap-2 text-xl font-bold tracking-tight hover:opacity-80 transition shrink-0"
