@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
-import { flashcardExportController } from '@/server/controllers';
+import { flashcardExportController } from '@/server/controllers/flashcard-export.controller';
 
 export async function GET(req: NextRequest) {
   return withAuth(req, async (ctx) => {

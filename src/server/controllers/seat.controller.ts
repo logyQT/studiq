@@ -1,4 +1,5 @@
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import {
@@ -6,7 +7,7 @@ import {
   CreatePoolSchema,
   UpdatePoolSchema,
 } from '@/server/models/seat.model';
-import type { SeatService } from '@/server/services/seat.service';
+import { type SeatService, seatService } from '@/server/services/seat.service';
 
 export class SeatController {
   constructor(private seatService: SeatService) {}
@@ -81,3 +82,4 @@ export class SeatController {
     return controllerResponse.success(undefined);
   }
 }
+export const seatController = wrapService(new SeatController(seatService), 'seat.controller');

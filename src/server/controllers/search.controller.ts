@@ -1,9 +1,10 @@
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
-import { SearchQuerySchema } from '@/server/models';
-import type { SearchService } from '@/server/services/search.service';
+import { SearchQuerySchema } from '@/server/models/search.model';
+import { type SearchService, searchService } from '@/server/services/search.service';
 
 export class SearchController {
   constructor(private searchService: SearchService) {}
@@ -27,3 +28,7 @@ export class SearchController {
     return controllerResponse.success(result.data);
   }
 }
+export const searchController = wrapService(
+  new SearchController(searchService),
+  'search.controller',
+);

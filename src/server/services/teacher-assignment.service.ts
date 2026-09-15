@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   AddQuestionsInput,
@@ -10,7 +12,7 @@ import type {
   ReorderQuestionsInput,
   SetTargetsInput,
   UpdateTeacherAssignmentInput,
-} from '@/server/models';
+} from '@/server/models/teacher-assignment.model';
 
 export class TeacherAssignmentService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -790,3 +792,7 @@ export class TeacherAssignmentService {
     return false;
   }
 }
+export const teacherAssignmentService = wrapService(
+  new TeacherAssignmentService(createClient),
+  'teacher-assignment.service',
+);

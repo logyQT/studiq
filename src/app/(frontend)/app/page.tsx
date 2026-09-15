@@ -17,7 +17,8 @@ import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useMemo } from 'react';
 import { OnboardingChecklist } from '@/components/app/onboarding-checklist';
-import { useAuth } from '@/components/providers';
+import { useAuth } from '@/components/providers/AuthProvider';
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';

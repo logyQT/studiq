@@ -1,7 +1,8 @@
 import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
-import { featuresController } from '@/server/controllers';
+import { featuresController } from '@/server/controllers/features.controller';
+
 import type { FeatureKey } from '@/server/services/feature.resolver';
 
 export async function GET(req: NextRequest) {

@@ -30,7 +30,7 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiPost, apiPut } from '@/lib/api';
 import { flashcardKeys, groupKeys } from '@/lib/query-keys';
-import type { Deck } from '@/server/models';
+import type { Deck } from '@/server/models/flashcard-deck.model';
 
 const ImportDialog = dynamic(
   () =>

@@ -1,8 +1,12 @@
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
-import type { SubscriptionPlanService } from '@/server/services/subscription-plan.service';
+import {
+  type SubscriptionPlanService,
+  subscriptionPlanService,
+} from '@/server/services/subscription-plan.service';
 
 export class SubscriptionPlanController {
   constructor(private subscriptionPlanService: SubscriptionPlanService) {}
@@ -31,3 +35,7 @@ export class SubscriptionPlanController {
     return controllerResponse.success(result.data);
   }
 }
+export const subscriptionPlanController = wrapService(
+  new SubscriptionPlanController(subscriptionPlanService),
+  'subscription-plan.controller',
+);

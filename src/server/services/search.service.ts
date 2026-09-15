@@ -1,9 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { accessibleFilter, Permission } from '@/lib/authz';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { SearchResult } from '@/server/models';
+import type { SearchResult } from '@/server/models/search.model';
 import { AccountType } from '@/types';
 
 type RpcRow = {
@@ -85,3 +87,4 @@ export class SearchService {
     return success(Array.from(grouped.values()));
   }
 }
+export const searchService = wrapService(new SearchService(createClient), 'search.service');

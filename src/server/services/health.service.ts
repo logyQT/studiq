@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
+import { createClient } from '@/lib/supabase/server';
 import type { AppStatus, HealthStatusResponse, ServiceStatus } from '@/server/models/health.model';
 
 type HealthStatus = HealthStatusResponse;
@@ -59,3 +61,4 @@ export class HealthService {
     return 'degraded';
   }
 }
+export const healthService = wrapService(new HealthService(createClient), 'health.service');

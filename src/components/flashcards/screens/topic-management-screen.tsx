@@ -26,12 +26,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useFeature } from '@/hooks/use-feature';
-
 import { useOrgs } from '@/hooks/use-orgs';
 import { useSelection } from '@/hooks/use-selection';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { flashcardKeys, groupKeys, topicKeys } from '@/lib/query-keys';
-import type { Flashcard, Topic } from '@/server/models';
+import type { Flashcard } from '@/server/models/flashcard.model';
+import type { Topic } from '@/server/models/topic.model';
 
 interface TopicManagementScreenProps {
   apiBase: string;

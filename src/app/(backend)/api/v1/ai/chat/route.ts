@@ -6,16 +6,14 @@ import { toNextResponse } from '@/lib/http-utils';
 import { createClient } from '@/lib/supabase/server';
 import { enqueueTrace } from '@/lib/trace-queue';
 import { systemPrompt } from '@/server/agents/system';
-import {
-  askUserTool,
-  createPlanTool,
-  evaluateQualityTool,
-  extractConceptsTool,
-  fetchMaterialTool,
-  finishTool,
-  generateFlashcardsTool,
-  webfetchTool,
-} from '@/server/agents/tools/generic';
+import { askUserTool } from '@/server/agents/tools/generic/ask-user.tool';
+import { createPlanTool } from '@/server/agents/tools/generic/create-plan.tool';
+import { evaluateQualityTool } from '@/server/agents/tools/generic/evaluate-quality.tool';
+import { extractConceptsTool } from '@/server/agents/tools/generic/extract-concepts.tool';
+import { fetchMaterialTool } from '@/server/agents/tools/generic/fetch-material.tool';
+import { finishTool } from '@/server/agents/tools/generic/finish.tool';
+import { generateFlashcardsTool } from '@/server/agents/tools/generic/generate-flashcards.tool';
+import { webfetchTool } from '@/server/agents/tools/generic/webfetch.tool';
 import { chatModel, providerName, reasoningEffort } from '@/server/ai/model';
 
 export async function POST(req: NextRequest) {

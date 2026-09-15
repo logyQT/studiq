@@ -1,8 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { CreateAssignmentInput, CreatePoolInput, UpdatePoolInput } from '@/server/models';
+import type {
+  CreateAssignmentInput,
+  CreatePoolInput,
+  UpdatePoolInput,
+} from '@/server/models/seat.model';
 
 /**
  * Maps plan_key → compatible account tier. Used for role-aware seat
@@ -301,3 +307,4 @@ export class SeatService {
     return success(undefined);
   }
 }
+export const seatService = wrapService(new SeatService(createClient), 'seat.service');

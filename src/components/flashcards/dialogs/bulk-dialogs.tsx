@@ -15,7 +15,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { getGradientHex } from '@/lib/color-utils';
-import type { Deck, Topic } from '@/server/models';
+import type { Deck } from '@/server/models/flashcard-deck.model';
+import type { Topic } from '@/server/models/topic.model';
 
 interface BulkDialogsProps {
   t: ReturnType<typeof useTranslations>;

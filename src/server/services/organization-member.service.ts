@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
 
 export class OrganizationMemberService {
@@ -30,7 +32,7 @@ export class OrganizationMemberService {
     }
 
     if (ctx.accountType === 'educator' && ctx.activeOrgId) {
-      const { groupService } = await import('@/server/services');
+      const { groupService } = await import('@/server/services/group.service');
       const groupResult = await groupService.getUserGroupIds(ctx);
       if (!groupResult.success) return failure(groupResult.error);
       const groupIds = groupResult.data;
@@ -202,3 +204,7 @@ export class OrganizationMemberService {
     return success({ success: true });
   }
 }
+export const organizationMemberService = wrapService(
+  new OrganizationMemberService(createClient),
+  'organization-member.service',
+);

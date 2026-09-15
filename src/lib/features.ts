@@ -1,9 +1,7 @@
 import { AppError } from '@/lib/errors';
 import type { RequestContext } from '@/lib/request-context';
-import { featureResolver } from '@/server/services';
 import type { FeatureKey, FeatureResolution } from '@/server/services/feature.resolver';
-
-export { FEATURES, type FeatureKey, isFeatureKey } from '@/server/services/feature.resolver';
+import { featureResolver } from '@/server/services/feature.resolver';
 
 export async function resolveFeatures(ctx: RequestContext): Promise<FeatureResolution> {
   return featureResolver.resolveFeatures(ctx);

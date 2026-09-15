@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { QuestionBankDetailScreen } from '@/components/questions';
+import { QuestionBankDetailScreen } from '@/components/questions/screens/question-bank-detail-screen';
 
 export default function EduBankDetailClient({ bankId }: { bankId: string }) {
   const t = useTranslations('QuestionBankDetail');

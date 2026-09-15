@@ -1,7 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { CreatePlanFeatureInput } from '@/server/models';
+import type { CreatePlanFeatureInput } from '@/server/models/plan-feature.model';
 
 export class PlanFeatureService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -53,3 +55,7 @@ export class PlanFeatureService {
     return success(undefined);
   }
 }
+export const planFeatureService = wrapService(
+  new PlanFeatureService(createClient),
+  'plan-feature.service',
+);

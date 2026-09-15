@@ -1,12 +1,16 @@
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import {
   CreateOrganizationSchema,
   OrganizationIdParamsSchema,
   UpdateOrganizationSchema,
-} from '@/server/models';
-import type { OrganizationService } from '@/server/services/organization.service';
+} from '@/server/models/organization.model';
+import {
+  type OrganizationService,
+  organizationService,
+} from '@/server/services/organization.service';
 
 export class OrganizationController {
   constructor(private organizationService: OrganizationService) {}
@@ -149,3 +153,7 @@ export class OrganizationController {
     return controllerResponse.success({ success: true });
   }
 }
+export const organizationController = wrapService(
+  new OrganizationController(organizationService),
+  'organization.controller',
+);

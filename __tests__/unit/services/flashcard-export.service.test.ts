@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { FlashcardExportService } from '@/server/services/flashcard-export.service';
 import type { RequestContext } from '@/lib/request-context';
+import { flashcardService } from '@/server/services/flashcard.service';
+import { FlashcardExportService } from '@/server/services/flashcard-export.service';
 
-vi.mock('@/server/services', () => ({
+vi.mock('@/server/services/flashcard.service', () => ({
   flashcardService: {
     list: vi.fn(),
   },
@@ -18,8 +19,6 @@ function qb(data: any, error: any = null) {
   b.finally = promise.finally.bind(promise);
   return b;
 }
-
-import { flashcardService } from '@/server/services';
 
 describe('FlashcardExportService', () => {
   let service: FlashcardExportService;

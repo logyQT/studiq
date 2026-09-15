@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { accessibleFilter, check, Permission } from '@/lib/authz';
+import { wrapService } from '@/lib/observability';
 import { decodeCursor, encodeCursor } from '@/lib/query-list';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   BatchDeleteTopicInput,
@@ -11,7 +13,7 @@ import type {
   Topic,
   TopicListQuery,
   UpdateTopicInput,
-} from '@/server/models';
+} from '@/server/models/topic.model';
 import { AccountType } from '@/types';
 
 export class TopicService {
@@ -36,7 +38,7 @@ export class TopicService {
     if (!topic) return failure('NOT_FOUND');
 
     if ((data as any).visibility === 'group' && (data as any).groupIds?.length) {
-      const { groupService } = await import('@/server/services');
+      const { groupService } = await import('@/server/services/group.service');
       let authorized = false;
       for (const gid of (data as any).groupIds) {
         if (await groupService.isTeacherInGroup(ctx, gid)) {
@@ -264,3 +266,4 @@ export class TopicService {
     return success({ deleted: data.ids.length });
   }
 }
+export const topicService = wrapService(new TopicService(createClient), 'topic.service');

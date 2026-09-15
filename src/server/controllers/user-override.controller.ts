@@ -1,12 +1,16 @@
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import { isFailure } from '@/lib/service-result';
 import {
   CreateUserFeatureOverrideSchema,
   UpdateUserFeatureOverrideSchema,
   UserFeatureOverrideIdParamsSchema,
-} from '@/server/models';
-import type { UserOverrideService } from '@/server/services/user-override.service';
+} from '@/server/models/user-feature-override.model';
+import {
+  type UserOverrideService,
+  userOverrideService,
+} from '@/server/services/user-override.service';
 
 export class UserOverrideController {
   constructor(private userOverrideService: UserOverrideService) {}
@@ -71,3 +75,7 @@ export class UserOverrideController {
     return { success: true, statusCode: 200, data: { success: true } };
   }
 }
+export const userOverrideController = wrapService(
+  new UserOverrideController(userOverrideService),
+  'user-override.controller',
+);

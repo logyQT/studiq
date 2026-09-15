@@ -1,9 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, isFailure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { CreateGroupInput, SetGroupMembersInput, UpdateGroupInput } from '@/server/models';
-import { limitsResolver } from '@/server/services';
+import type {
+  CreateGroupInput,
+  SetGroupMembersInput,
+  UpdateGroupInput,
+} from '@/server/models/group.model';
+import { limitsResolver } from '@/server/services/limits.resolver';
 import { AccountType } from '@/types';
 
 function canManageAnyGroup(ctx: RequestContext): boolean {
@@ -304,3 +310,4 @@ export class GroupService {
     );
   }
 }
+export const groupService = wrapService(new GroupService(createClient), 'group.service');

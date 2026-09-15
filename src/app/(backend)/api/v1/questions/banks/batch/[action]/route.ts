@@ -3,7 +3,7 @@ import type { ControllerResponse } from '@/lib/controller-response';
 import { toNextResponse } from '@/lib/http-utils';
 import type { RequestContext } from '@/lib/request-context';
 import { withAuth } from '@/lib/with-auth';
-import { questionBankController } from '@/server/controllers';
+import { questionBankController } from '@/server/controllers/question-bank.controller';
 
 type ActionHandler = (body: unknown, ctx: RequestContext) => Promise<ControllerResponse>;
 

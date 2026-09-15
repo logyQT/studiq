@@ -1,14 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildQueryFilter, Permission } from '@/lib/authz';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   DifficultyBucket,
   DifficultyFlashcardDetail,
   TeacherFlashcardStatsQuery,
   TeacherFlashcardStatsResponse,
-} from '@/server/models';
+} from '@/server/models/flashcard-stats.model';
 
 export class FlashcardStatsService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -225,3 +227,7 @@ const emptyResponse: TeacherFlashcardStatsResponse = {
   byDeck: [],
   byTopic: [],
 };
+export const flashcardStatsService = wrapService(
+  new FlashcardStatsService(createClient),
+  'flashcard-stats.service',
+);
