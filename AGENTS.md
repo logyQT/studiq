@@ -55,6 +55,45 @@ main ← feat/quiz-bank-ui (PR, merge, delete)
 |-----------|-----------|
 | `commit propose` | `git diff --staged` → propose conventional commit message |
 
+### Developer workflow scripts
+
+These scripts help devs (and agents) work with feature branches and isolated worktrees:
+
+| Script | What it does |
+|--------|-------------|
+| `scripts/switch-branch [branch]` | Stash WIP → switch branch → pull → pop stash. Only stashes if dirty |
+| `scripts/switch-branch -c <name>` | Create a new branch from main, then switch to it |
+| `scripts/spin <branch>` | Create a feature branch + git worktree under `.worktrees/` |
+| `scripts/spin --list` | List all active worktrees |
+| `scripts/spin <branch> --clean` | Remove worktree and delete branch |
+| `scripts/pr [title]` | Create a PR from current branch via `gh` CLI |
+| `scripts/pr --draft` | Create a draft PR |
+| `scripts/pr --list` | List open PRs for this repo |
+
+#### Multi-worktree workflow
+
+Use worktrees to run parallel tasks (e.g. multiple agents, or dev server + tests) without conflicts:
+
+```bash
+# Spin up an isolated workspace
+scripts/spin feat/quiz-ui
+
+# Move your session into it
+cd .worktrees/feat/quiz-ui
+
+# Do work, commit, push
+git add -A && git commit -m "feat: add quiz UI"
+git push -u origin feat/quiz-ui
+
+# Create PR from inside the worktree
+scripts/pr
+
+# Clean up when merged
+scripts/spin feat/quiz-ui --clean
+```
+
+Each worktree gets its own branch, working directory, and can run `bun run dev` independently. The main checkout stays untouched.
+
 ### Running a single test
 
 ```bash
