@@ -48,7 +48,7 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 
 | Document                                       | Description                          |
 | ---------------------------------------------- | ------------------------------------ |
-| [Onboarding](docs/ONBOARDING.md)               | Local setup, Supabase, team workflow |
+| [Onboarding](docs/ONBOARDING.md)               | Local setup, Supabase, `gh` CLI, agents workflow |
 | [Architecture](docs/architecture.md)           | High-level design, layers, data flow |
 | [Authentication](docs/authentication.md)       | Auth flow, RBAC, route rules         |
 | [Database](docs/database.md)                   | Schema, migrations, seeds            |
@@ -75,6 +75,9 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 | `bun test:coverage`    | Run with coverage        |
 | `bun test:e2e`         | Run Playwright E2E tests |
 | `bun clean`            | Clean build artifacts    |
+| `scripts/spin <branch>` | Create worktree + branch for isolated work |
+| `scripts/pr`           | Create a PR from current branch via `gh` |
+| `scripts/switch-branch` | Stash, switch branch, pull, pop stash |
 
 ## Environment Variables
 
