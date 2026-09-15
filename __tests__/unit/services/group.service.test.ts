@@ -4,7 +4,7 @@ import { GroupService } from '@/server/services/group.service';
 import type { RequestContext } from '@/lib/request-context';
 
 vi.mock('@/server/services', () => ({
-  planResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
+  limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 
 function qb(data: any, error: any = null, count?: number) {

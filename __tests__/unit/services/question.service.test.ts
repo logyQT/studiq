@@ -11,7 +11,7 @@ vi.mock('@/lib/access', () => ({
 }));
 
 vi.mock('@/server/services', () => ({
-  planResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
+  limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 
 function chain(result: any, count?: number) {

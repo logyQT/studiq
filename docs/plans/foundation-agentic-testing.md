@@ -101,7 +101,7 @@ Status: NOT STARTED
 - [x] B2 `FeatureResolver`: user override → org_role override → plan entitlement → rollout% → global flag
 - [x] B3 Make `rollout_percentage` live (deterministic user_id bucketing + `X-Feature-Rollout` header)
 - [x] B4 Enforce `feature_permissions` (flag ⟹ required perms) **or** drop table — dropped (`20260915000001`); dead docs-only junction, zero read sites
-- [ ] B5 Split limits out of `PlanResolver` → `LimitsResolver`
+- [x] B5 Split limits out of `PlanResolver` → `LimitsResolver` — PlanResolver (limits-only since B2) renamed to `limits.resolver.ts` / `LimitsResolver`
 - [ ] B6 Client: `useFeature()` + `usePermission()`; delete `useCan`
 - [ ] B7 Split `/api/v1/permissions/me` → `/permissions/me` + `/features/me`
 - [ ] B8 Unify `@/lib/access.ts` + `@/lib/rbac.ts` → one `@/lib/authz`; delete `rbac.ts`

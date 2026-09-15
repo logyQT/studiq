@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { PlanResolver } from '@/server/services/plan.resolver';
+import { LimitsResolver } from '@/server/services/limits.resolver';
 import type { RequestContext } from '@/lib/request-context';
 import { AccountType } from '@/types';
 
@@ -26,9 +26,9 @@ function chain(result: unknown) {
   return c;
 }
 
-describe('PlanResolver (limits)', () => {
+describe('LimitsResolver', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
-  let resolver: PlanResolver;
+  let resolver: LimitsResolver;
 
   const baseCtx: RequestContext = {
     userId: 'user-1',
@@ -45,7 +45,7 @@ describe('PlanResolver (limits)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    resolver = new PlanResolver(async () => mock as any);
+    resolver = new LimitsResolver(async () => mock as any);
   });
 
   describe('getEffectiveLimit', () => {

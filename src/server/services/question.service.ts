@@ -4,7 +4,7 @@ import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type { CreateQuestionInput, UpdateQuestionInput } from '@/server/models';
-import { planResolver } from '@/server/services';
+import { limitsResolver } from '@/server/services';
 
 export class QuestionService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -20,7 +20,7 @@ export class QuestionService {
       .from('questions')
       .select('*', { count: 'exact', head: true })
       .eq('created_by', ctx.userId);
-    await planResolver.checkLimit(ctx, 'max_questions', questionCount ?? 0);
+    await limitsResolver.checkLimit(ctx, 'max_questions', questionCount ?? 0);
 
     const visibility = bankVisibility ?? 'personal';
 

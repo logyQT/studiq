@@ -11,7 +11,7 @@ export interface UsageInfo {
   resetsAt: string;
 }
 
-export class PlanResolver {
+export class LimitsResolver {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
   async getEffectiveLimit(ctx: RequestContext, limitKey: string): Promise<number> {

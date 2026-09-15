@@ -19,7 +19,7 @@ import type {
   UnlinkFlashcardInput,
   UpdateFlashcardInput,
 } from '@/server/models';
-import { planResolver } from '@/server/services';
+import { limitsResolver } from '@/server/services';
 
 export class FlashcardService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -31,7 +31,7 @@ export class FlashcardService {
       .from('flashcards')
       .select('*', { count: 'exact', head: true })
       .eq('created_by', ctx.userId);
-    await planResolver.checkLimit(ctx, 'max_flashcards', flashcardCount ?? 0);
+    await limitsResolver.checkLimit(ctx, 'max_flashcards', flashcardCount ?? 0);
 
     let deckVisibility: string | undefined;
     if (data.deckId) {
@@ -85,7 +85,7 @@ export class FlashcardService {
       .from('flashcards')
       .select('*', { count: 'exact', head: true })
       .eq('created_by', ctx.userId);
-    await planResolver.checkLimit(ctx, 'max_flashcards', bulkFlashcardCount ?? 0, cardCount);
+    await limitsResolver.checkLimit(ctx, 'max_flashcards', bulkFlashcardCount ?? 0, cardCount);
 
     let bulkDeckVisibilities: string[] = [];
     if (data.deckId) {

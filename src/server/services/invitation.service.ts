@@ -3,7 +3,7 @@ import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type { CreateInviteInput } from '@/server/models';
-import { planResolver } from '@/server/services';
+import { limitsResolver } from '@/server/services';
 import { AccountType } from '@/types';
 
 export class InvitationService {
@@ -110,7 +110,7 @@ export class InvitationService {
       .from('org_members')
       .select('*', { count: 'exact', head: true })
       .eq('organization_id', invite.organizationId);
-    await planResolver.checkOrgLimit(invite.organizationId, 'max_students', memberCount ?? 0);
+    await limitsResolver.checkOrgLimit(invite.organizationId, 'max_students', memberCount ?? 0);
 
     const { data: org, error: orgError } = await supabase
       .from('organizations')

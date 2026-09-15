@@ -16,6 +16,7 @@ import { FlashcardStatsService } from '@/server/services/flashcard-stats.service
 import { GroupService } from '@/server/services/group.service';
 import { HealthService } from '@/server/services/health.service';
 import { InvitationService } from '@/server/services/invitation.service';
+import { LimitsResolver } from '@/server/services/limits.resolver';
 import { MockStripeService } from '@/server/services/mock-stripe.service';
 import { OrgService } from '@/server/services/org.service';
 import { OrgRoleService } from '@/server/services/org-role.service';
@@ -23,7 +24,6 @@ import { OrganizationService } from '@/server/services/organization.service';
 import { OrganizationMemberService } from '@/server/services/organization-member.service';
 import { pdfService as _pdfService } from '@/server/services/pdf.service';
 import { pdfCacheService as _pdfCacheService } from '@/server/services/pdf-cache.service';
-import { PlanResolver } from '@/server/services/plan.resolver';
 import { PlanFeatureService } from '@/server/services/plan-feature.service';
 import { PlanLimitService } from '@/server/services/plan-limit.service';
 import { QuestionService } from '@/server/services/question.service';
@@ -79,7 +79,10 @@ export const planLimitService = wrapService(
   new PlanLimitService(createClient),
   'plan-limit.service',
 );
-export const planResolver = wrapService(new PlanResolver(createClient), 'plan-resolver.service');
+export const limitsResolver = wrapService(
+  new LimitsResolver(createClient),
+  'limits-resolver.service',
+);
 
 export const featureResolver = wrapService(
   new FeatureResolver(createClient),
