@@ -1,9 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
-import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { failure, isFailure, type ServiceResult, success } from '@/lib/service-result';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type { CreateGroupInput, SetGroupMembersInput, UpdateGroupInput } from '@/server/models';
 import { limitsResolver } from '@/server/services';
+import { AccountType } from '@/types';
+
+function canManageAnyGroup(ctx: RequestContext): boolean {
+  return ctx.accountType === AccountType.MANAGER || ctx.accountType === AccountType.SYS_ADMIN;
+}
 
 export class GroupService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -17,6 +22,7 @@ export class GroupService {
         created_at: string;
         memberCount: number;
         teacherCount: number;
+        canManage: boolean;
       }[]
     >
   > {
@@ -30,7 +36,7 @@ export class GroupService {
       .from('groups')
       .select(
         `
-        id, name, description, created_at,
+        id, name, description, created_at, created_by,
         group_members(count),
         group_members_teachers:group_members!inner(count)
       `,
@@ -39,6 +45,8 @@ export class GroupService {
       .order('created_at', { ascending: true });
 
     if (error) return toDbFailure(error);
+
+    const manageAny = canManageAnyGroup(ctx);
 
     return success(
       data.map((g) => {
@@ -52,6 +60,7 @@ export class GroupService {
           created_at: g.created_at,
           memberCount: total,
           teacherCount: teachers,
+          canManage: manageAny || g.created_by === ctx.userId,
         };
       }),
     );
@@ -77,13 +86,30 @@ export class GroupService {
 
     const { data: group, error } = await supabase
       .from('groups')
-      .insert({ organization_id: ctx.activeOrgId, ...data })
+      .insert({ organization_id: ctx.activeOrgId, created_by: ctx.userId, ...data })
       .select('id, name, description, created_at')
       .single();
 
     if (error) return toDbFailure(error);
 
     return success(group);
+  }
+
+  private async assertCanManage(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
+    if (canManageAnyGroup(ctx)) return success(undefined);
+
+    const supabase = await this.createClient();
+    const { data: group } = await supabase
+      .from('groups')
+      .select('created_by')
+      .eq('id', id)
+      .eq('organization_id', ctx.activeOrgId as string)
+      .maybeSingle();
+
+    if (!group) return failure('NOT_FOUND');
+    if (group.created_by !== ctx.userId) return failure('FORBIDDEN');
+
+    return success(undefined);
   }
 
   async updateGroup(
@@ -98,6 +124,9 @@ export class GroupService {
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
     }
+
+    const authCheck = await this.assertCanManage(ctx, id);
+    if (isFailure(authCheck)) return authCheck;
 
     const { data: group, error } = await supabase
       .from('groups')
@@ -121,6 +150,9 @@ export class GroupService {
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
     }
+
+    const authCheck = await this.assertCanManage(ctx, id);
+    if (isFailure(authCheck)) return authCheck;
 
     const { error } = await supabase
       .from('groups')
@@ -172,6 +204,9 @@ export class GroupService {
     if (!ctx.activeOrgId) {
       return failure('FORBIDDEN');
     }
+
+    const authCheck = await this.assertCanManage(ctx, groupId);
+    if (isFailure(authCheck)) return authCheck;
 
     const { data: group } = await supabase
       .from('groups')

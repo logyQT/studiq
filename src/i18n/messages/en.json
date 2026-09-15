@@ -1071,7 +1071,8 @@
     "group_deleted": "Group deleted",
     "create_failed": "Failed to create group",
     "update_failed": "Failed to update group",
-    "delete_failed": "Failed to delete group"
+    "delete_failed": "Failed to delete group",
+    "not_owned": "Created by someone else — you can't edit this group"
   },
   "ManageRolesPage": {
     "title": "Roles",

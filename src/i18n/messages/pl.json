@@ -1052,7 +1052,8 @@
     "group_deleted": "Grupa usunięta",
     "create_failed": "Nie udało się utworzyć grupy",
     "update_failed": "Nie udało się zaktualizować grupy",
-    "delete_failed": "Nie udało się usunąć grupy"
+    "delete_failed": "Nie udało się usunąć grupy",
+    "not_owned": "Grupa utworzona przez kogoś innego — nie możesz jej edytować"
   },
   "ManageRolesPage": {
     "title": "Role",

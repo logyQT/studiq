@@ -1,6 +1,6 @@
 'use client';
 
-import { Layers, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Layers, Loader2, Lock, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -34,6 +34,7 @@ interface Group {
   created_at: string;
   memberCount: number;
   teacherCount: number;
+  canManage: boolean;
 }
 
 interface GroupManagementScreenProps {
@@ -79,7 +80,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
         setCreating(false);
         load();
       } else {
-        toast.error(t(json.error === 'UNPROCESSABLE_ENTITY' ? 'create_failed' : 'update_failed'));
+        toast.error(id ? t('update_failed') : t('create_failed'));
       }
     } catch {
       toast.error(id ? t('update_failed') : t('create_failed'));
@@ -165,48 +166,62 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                   <TableCell className="text-center">{group.teacherCount}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button variant="ghost" size="icon" onClick={() => setEditing(group)}>
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>{t('edit_title')}</DialogTitle>
-                          </DialogHeader>
-                          {editing?.id === group.id && (
-                            <GroupForm
-                              initial={group}
-                              onSave={(g) => handleSave(g, group.id)}
-                              onCancel={() => setEditing(null)}
-                              t={t}
-                            />
-                          )}
-                        </DialogContent>
-                      </Dialog>
-                      <Dialog
-                        open={deleting?.id === group.id}
-                        onOpenChange={(o) => !o && setDeleting(null)}
-                      >
-                        <Button variant="ghost" size="icon" onClick={() => setDeleting(group)}>
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>{t('delete_title')}</DialogTitle>
-                            <DialogDescription>{t('delete_desc')}</DialogDescription>
-                          </DialogHeader>
-                          <DialogFooter>
-                            <Button variant="outline" onClick={() => setDeleting(null)}>
-                              {t('cancel')}
+                      {group.canManage ? (
+                        <>
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button variant="ghost" size="icon" onClick={() => setEditing(group)}>
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>{t('edit_title')}</DialogTitle>
+                              </DialogHeader>
+                              {editing?.id === group.id && (
+                                <GroupForm
+                                  initial={group}
+                                  onSave={(g) => handleSave(g, group.id)}
+                                  onCancel={() => setEditing(null)}
+                                  t={t}
+                                />
+                              )}
+                            </DialogContent>
+                          </Dialog>
+                          <Dialog
+                            open={deleting?.id === group.id}
+                            onOpenChange={(o) => !o && setDeleting(null)}
+                          >
+                            <Button variant="ghost" size="icon" onClick={() => setDeleting(group)}>
+                              <Trash2 className="w-4 h-4 text-destructive" />
                             </Button>
-                            <Button variant="destructive" onClick={() => handleDelete(group.id)}>
-                              {t('delete')}
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>{t('delete_title')}</DialogTitle>
+                                <DialogDescription>{t('delete_desc')}</DialogDescription>
+                              </DialogHeader>
+                              <DialogFooter>
+                                <Button variant="outline" onClick={() => setDeleting(null)}>
+                                  {t('cancel')}
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  onClick={() => handleDelete(group.id)}
+                                >
+                                  {t('delete')}
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+                        </>
+                      ) : (
+                        <span
+                          title={t('not_owned')}
+                          className="inline-flex h-9 w-9 items-center justify-center text-muted-foreground/50"
+                        >
+                          <Lock className="w-4 h-4" />
+                        </span>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

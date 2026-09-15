@@ -10,6 +10,7 @@ CREATE TABLE public.groups (
   name            text NOT NULL,
   description     text,
   is_default      boolean NOT NULL DEFAULT false,
+  created_by      uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
   created_at      timestamptz DEFAULT now(),
   UNIQUE(organization_id, name)
 );
