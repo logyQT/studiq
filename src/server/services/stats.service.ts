@@ -11,17 +11,15 @@ export class StatsService {
   async getTeacherStats(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const { data: questions, error: questionsError } = await supabase
-      .from('questions')
-      .select('id')
-      .eq('created_by', ctx.userId);
+    let questionsQuery = supabase.from('questions').select('id').eq('created_by', ctx.userId);
+    if (ctx.activeOrgId) questionsQuery = questionsQuery.eq('organization_id', ctx.activeOrgId);
+    const { data: questions, error: questionsError } = await questionsQuery;
 
     if (questionsError) return toDbFailure(questionsError);
 
-    const { data: flashcards, error: flashcardsError } = await supabase
-      .from('flashcards')
-      .select('id')
-      .eq('created_by', ctx.userId);
+    let flashcardsQuery = supabase.from('flashcards').select('id').eq('created_by', ctx.userId);
+    if (ctx.activeOrgId) flashcardsQuery = flashcardsQuery.eq('organization_id', ctx.activeOrgId);
+    const { data: flashcards, error: flashcardsError } = await flashcardsQuery;
 
     if (flashcardsError) return toDbFailure(flashcardsError);
 
@@ -34,6 +32,10 @@ export class StatsService {
   async getStudentStats(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
+    // quiz_attempts, flashcard_practice and flashcard_review_state carry no
+    // organization_id of their own (they're pure user-activity logs keyed by
+    // user_id/flashcard_id), so these three stay unscoped by org — a user in
+    // multiple orgs will see their activity from all of them combined here.
     const { data: attempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
       .select('score, total_questions, started_at, config')
@@ -50,24 +52,28 @@ export class StatsService {
 
     if (practiceError) return toDbFailure(practiceError);
 
-    const { data: questions, error: questionsError } = await supabase
-      .from('questions')
-      .select('id')
-      .eq('created_by', ctx.userId);
+    let questionsQuery = supabase.from('questions').select('id').eq('created_by', ctx.userId);
+    if (ctx.activeOrgId) questionsQuery = questionsQuery.eq('organization_id', ctx.activeOrgId);
+    const { data: questions, error: questionsError } = await questionsQuery;
 
     if (questionsError) return toDbFailure(questionsError);
 
-    const { count: decksCount, error: decksError } = await supabase
+    let decksQuery = supabase
       .from('flashcard_decks')
       .select('*', { count: 'exact', head: true })
       .eq('created_by', ctx.userId);
+    if (ctx.activeOrgId) decksQuery = decksQuery.eq('organization_id', ctx.activeOrgId);
+    const { count: decksCount, error: decksError } = await decksQuery;
 
     if (decksError) return toDbFailure(decksError);
 
-    const { count: flashcardsCount, error: flashcardsCountError } = await supabase
+    let flashcardsCountQuery = supabase
       .from('flashcards')
       .select('*', { count: 'exact', head: true })
       .eq('created_by', ctx.userId);
+    if (ctx.activeOrgId)
+      flashcardsCountQuery = flashcardsCountQuery.eq('organization_id', ctx.activeOrgId);
+    const { count: flashcardsCount, error: flashcardsCountError } = await flashcardsCountQuery;
 
     if (flashcardsCountError) return toDbFailure(flashcardsCountError);
 
