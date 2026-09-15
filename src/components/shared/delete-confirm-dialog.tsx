@@ -1,3 +1,5 @@
+'use client';
+
 import {
   Button,
   Dialog,
@@ -7,8 +9,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@studiq/ui';
-
-('use client');
 
 interface DeleteConfirmDialogProps {
   open: boolean;
