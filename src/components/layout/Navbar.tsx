@@ -106,7 +106,7 @@ export function Navbar() {
             </div>
 
             {/* Desktop nav */}
-            <div className="hidden lg:flex items-center ml-8 flex-1 min-w-0">
+            <div className="hidden lg:flex items-center ml-8 flex-1 min-w-0 overflow-hidden">
               {user ? (
                 <DesktopNav links={allLinks} isActive={isActive} />
               ) : (
