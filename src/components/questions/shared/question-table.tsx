@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import type { Question } from '@/server/models';
+import type { Question } from '@/server/models/question.model';
 
 interface QuestionTableProps {
   questions: Question[];

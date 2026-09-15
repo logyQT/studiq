@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { DeckDetailScreen } from '@/components/flashcards';
+import { DeckDetailScreen } from '@/components/flashcards/screens/deck-detail-screen';
 
 interface EduDeckClientProps {
   deckId: string;

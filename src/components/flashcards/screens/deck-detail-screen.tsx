@@ -50,6 +50,9 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiPost, apiPut } from '@/lib/api';
 import { flashcardKeys, groupKeys, topicKeys } from '@/lib/query-keys';
+import type { Flashcard } from '@/server/models/flashcard.model';
+import type { Deck } from '@/server/models/flashcard-deck.model';
+import type { Topic } from '@/server/models/topic.model';
 
 const DeckDetailDialogs = lazy(() =>
   import('@/components/flashcards/dialogs/deck-detail-dialogs').then((mod) => ({
@@ -68,7 +71,6 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { usePersistedState } from '@/hooks/use-persisted-state';
 import { useSelection } from '@/hooks/use-selection';
 import { getGradientHex } from '@/lib/color-utils';
-import type { Deck, Flashcard, Topic } from '@/server/models';
 
 interface DeckDetailScreenProps {
   deckId: string;

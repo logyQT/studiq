@@ -13,9 +13,7 @@
   },
   "linter": {
     "enabled": true,
-    "includes": [
-      "src/**/*.{ts,tsx,js,jsx}"
-    ],
+    "includes": ["src/**/*.{ts,tsx,js,jsx}"],
     "rules": {
       "preset": "recommended",
       "a11y": {
@@ -42,20 +40,20 @@
           "options": {
             "patterns": [
               {
-                "group": [
-                  "./**"
-                ],
+                "group": ["./**"],
                 "message": "Relative import detected. Use the '@/' alias instead (e.g. '@/lib/something') \u2014 see AGENTS.md 'Import Paths'."
               },
               {
-                "group": [
-                  "../**"
-                ],
+                "group": ["../**"],
                 "message": "Relative import detected. Use the '@/' alias instead (e.g. '@/lib/something') \u2014 see AGENTS.md 'Import Paths'."
               }
             ]
           }
         }
+      },
+      "performance": {
+        "noBarrelFile": "error",
+        "noReExportAll": "error"
       },
       "suspicious": {
         "noArrayIndexKey": "off",

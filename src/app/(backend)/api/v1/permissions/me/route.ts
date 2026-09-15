@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
-import { permissionsController } from '@/server/controllers';
+import { permissionsController } from '@/server/controllers/permissions.controller';
 
 export async function GET(req: NextRequest) {
   return withAuth(req, async (ctx) => {

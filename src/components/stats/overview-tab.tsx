@@ -11,7 +11,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { StatCard } from '@/components/ui/stat-card';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
-import type { StateBreakdown } from '@/server/models';
+import type { StateBreakdown } from '@/server/models/flashcard-practice.model';
+
 import type { ActivityResponse, WeakPointsResponse } from '@/server/models/stats.model';
 
 export function OverviewTab() {

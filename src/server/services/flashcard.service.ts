@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { accessibleFilter, check, Permission } from '@/lib/authz';
+import { wrapService } from '@/lib/observability';
 import { decodeCursor, encodeCursor } from '@/lib/query-list';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   BatchCopyInput,
@@ -18,8 +20,8 @@ import type {
   LinkFlashcardInput,
   UnlinkFlashcardInput,
   UpdateFlashcardInput,
-} from '@/server/models';
-import { limitsResolver } from '@/server/services';
+} from '@/server/models/flashcard.model';
+import { limitsResolver } from '@/server/services/limits.resolver';
 
 export class FlashcardService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -711,3 +713,7 @@ export class FlashcardService {
     return success({ copied: data.ids.length, flashcards: newFlashcards });
   }
 }
+export const flashcardService = wrapService(
+  new FlashcardService(createClient),
+  'flashcard.service',
+);

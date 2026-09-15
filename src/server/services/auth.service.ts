@@ -1,6 +1,8 @@
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
-import type { LoginInput, RegisterInput, User } from '@/server/models';
+import { createClient } from '@/lib/supabase/server';
+import type { LoginInput, RegisterInput, User } from '@/server/models/auth.model';
 
 export class AuthService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -112,3 +114,4 @@ export class AuthService {
     return success(undefined);
   }
 }
+export const authService = wrapService(new AuthService(createClient), 'auth.service');

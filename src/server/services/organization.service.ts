@@ -1,8 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { CreateOrganizationInput, UpdateOrganizationInput } from '@/server/models';
+import type {
+  CreateOrganizationInput,
+  UpdateOrganizationInput,
+} from '@/server/models/organization.model';
 
 export class OrganizationService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -291,3 +296,7 @@ export class OrganizationService {
     return success({ success: true });
   }
 }
+export const organizationService = wrapService(
+  new OrganizationService(createClient),
+  'organization.service',
+);

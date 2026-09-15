@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import type { Deck } from '@/server/models';
+import type { Deck } from '@/server/models/flashcard-deck.model';
 
 interface DeckRadioSelectorProps {
   open: boolean;

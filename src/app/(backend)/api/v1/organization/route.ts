@@ -1,7 +1,8 @@
 import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
-import { organizationController } from '@/server/controllers';
+import { organizationController } from '@/server/controllers/organization.controller';
+
 import { AccountType } from '@/types';
 
 const COOKIE_OPTIONS = { path: '/', maxAge: 60 * 60 * 24 * 365, sameSite: 'lax' as const };

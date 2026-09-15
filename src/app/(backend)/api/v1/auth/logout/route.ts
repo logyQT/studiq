@@ -1,5 +1,5 @@
 import { toNextResponse } from '@/lib/http-utils';
-import { authController } from '@/server/controllers';
+import { authController } from '@/server/controllers/auth.controller';
 
 export async function POST() {
   const response = await authController.logout();

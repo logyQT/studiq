@@ -1,5 +1,6 @@
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import { isFailure } from '@/lib/service-result';
 import {
   forgotPasswordSchema,
@@ -7,8 +8,8 @@ import {
   RegisterSchema,
   UpdateProfileSchema,
   updatePasswordSchema,
-} from '@/server/models';
-import type { AuthService } from '@/server/services/auth.service';
+} from '@/server/models/auth.model';
+import { type AuthService, authService } from '@/server/services/auth.service';
 
 export class AuthController {
   constructor(private authService: AuthService) {}
@@ -128,3 +129,4 @@ export class AuthController {
     return controllerResponse.success({ message: 'SUCCESS_PASSWORD_UPDATED' });
   }
 }
+export const authController = wrapService(new AuthController(authService), 'auth.controller');

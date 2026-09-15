@@ -1,9 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { CreateInviteInput } from '@/server/models';
-import { limitsResolver } from '@/server/services';
+import type { CreateInviteInput } from '@/server/models/invitation.model';
+import { limitsResolver } from '@/server/services/limits.resolver';
 import { AccountType } from '@/types';
 
 export class InvitationService {
@@ -242,3 +244,7 @@ export class InvitationService {
     return success(undefined);
   }
 }
+export const invitationService = wrapService(
+  new InvitationService(createClient),
+  'invitation.service',
+);

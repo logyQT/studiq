@@ -5,7 +5,9 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlashcardFlip, SessionSummaryDialog } from '@/components/flashcards';
+import { FlashcardFlip } from '@/components/flashcards/flashcard-flip';
+import { SessionSummaryDialog } from '@/components/flashcards/session-summary-dialog';
+
 import { KeyboardShortcutsPanel } from '@/components/shared/keyboard-shortcuts-panel';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import {

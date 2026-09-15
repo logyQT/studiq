@@ -1,9 +1,13 @@
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import { requireFeature } from '@/lib/features';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import { ChangeRoleSchema } from '@/server/models/organization-member.model';
-import type { OrganizationMemberService } from '@/server/services/organization-member.service';
+import {
+  type OrganizationMemberService,
+  organizationMemberService,
+} from '@/server/services/organization-member.service';
 
 export class OrganizationMemberController {
   constructor(private organizationMemberService: OrganizationMemberService) {}
@@ -61,3 +65,7 @@ export class OrganizationMemberController {
     return controllerResponse.success({ success: true });
   }
 }
+export const organizationMemberController = wrapService(
+  new OrganizationMemberController(organizationMemberService),
+  'organization-member.controller',
+);

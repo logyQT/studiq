@@ -1,6 +1,7 @@
 import { can, Permission } from '@/lib/authz';
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import { AppError } from '@/lib/errors';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import {
@@ -9,8 +10,11 @@ import {
   CreateQuestionBankSchema,
   QuestionBankListQuerySchema,
   UpdateQuestionBankSchema,
-} from '@/server/models';
-import type { QuestionBankService } from '@/server/services/question-bank.service';
+} from '@/server/models/question-bank.model';
+import {
+  type QuestionBankService,
+  questionBankService,
+} from '@/server/services/question-bank.service';
 
 export class QuestionBankController {
   constructor(private questionBankService: QuestionBankService) {}
@@ -141,3 +145,7 @@ export class QuestionBankController {
     return controllerResponse.success(result.data);
   }
 }
+export const questionBankController = wrapService(
+  new QuestionBankController(questionBankService),
+  'question-bank.controller',
+);

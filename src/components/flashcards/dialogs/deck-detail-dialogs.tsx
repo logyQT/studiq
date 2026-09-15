@@ -8,7 +8,9 @@ import { SingleCardDialogs } from '@/components/flashcards/dialogs/single-card-d
 import { TopicDialogs } from '@/components/flashcards/dialogs/topic-dialogs';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
 import { usePermission } from '@/hooks/use-permission';
-import type { Deck, Flashcard, Topic } from '@/server/models';
+import type { Flashcard } from '@/server/models/flashcard.model';
+import type { Deck } from '@/server/models/flashcard-deck.model';
+import type { Topic } from '@/server/models/topic.model';
 
 export interface DialogsState {
   createCardOpen: boolean;

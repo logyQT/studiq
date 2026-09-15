@@ -7,7 +7,8 @@ import { AiChatGreeting } from '@/components/ai/ai-chat-greeting';
 import { AiChatInput } from '@/components/ai/ai-chat-input';
 import { ChatHistory } from '@/components/ai/chat-history';
 import { UsageBadge } from '@/components/ai/usage-badge';
-import { useAuth } from '@/components/providers';
+import { useAuth } from '@/components/providers/AuthProvider';
+
 import { ScrollBackToBar } from '@/components/shared/scroll-back-to-bar';
 import { useAiChat } from '@/hooks/use-ai-chat';
 import { useScrollToBottom } from '@/hooks/use-scroll-to-bottom';

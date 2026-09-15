@@ -1,5 +1,6 @@
 import { can, Permission } from '@/lib/authz';
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import {
@@ -16,8 +17,8 @@ import {
   LinkFlashcardSchema,
   UnlinkFlashcardSchema,
   UpdateFlashcardSchema,
-} from '@/server/models';
-import type { FlashcardService } from '@/server/services/flashcard.service';
+} from '@/server/models/flashcard.model';
+import { type FlashcardService, flashcardService } from '@/server/services/flashcard.service';
 
 export class FlashcardController {
   constructor(private flashcardService: FlashcardService) {}
@@ -273,3 +274,7 @@ export class FlashcardController {
     return controllerResponse.success(result.data);
   }
 }
+export const flashcardController = wrapService(
+  new FlashcardController(flashcardService),
+  'flashcard.controller',
+);

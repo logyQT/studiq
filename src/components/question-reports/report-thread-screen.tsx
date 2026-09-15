@@ -5,7 +5,8 @@ import { ArrowLeft, Send } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
-import { useAuth } from '@/components/providers';
+import { useAuth } from '@/components/providers/AuthProvider';
+
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';

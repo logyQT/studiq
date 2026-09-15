@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { getGradientHex } from '@/lib/color-utils';
-import type { Deck } from '@/server/models';
+import type { Deck } from '@/server/models/flashcard-deck.model';
 
 interface CramDeckCardProps {
   deck: Deck;

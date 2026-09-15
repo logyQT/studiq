@@ -13,7 +13,8 @@ import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { questionKeys } from '@/lib/query-keys';
-import type { Question, QuestionBank } from '@/server/models';
+import type { Question } from '@/server/models/question.model';
+import type { QuestionBank } from '@/server/models/question-bank.model';
 
 interface QuestionBankDetailScreenProps {
   bankId: string;

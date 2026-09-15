@@ -1,9 +1,10 @@
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import { ValidationErrorCode } from '@/lib/validation-errors';
 import { z } from '@/lib/zod';
-import type { OrgService } from '@/server/services/org.service';
+import { type OrgService, orgService } from '@/server/services/org.service';
 
 const SwitchOrgSchema = z.object({
   orgId: z.uuid({ error: ValidationErrorCode.INVALID_INPUT }),
@@ -42,3 +43,4 @@ export class OrgController {
     return controllerResponse.success({ orgId: parsed.data.orgId });
   }
 }
+export const orgController = wrapService(new OrgController(orgService), 'org.controller');

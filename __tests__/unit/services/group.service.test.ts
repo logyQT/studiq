@@ -3,7 +3,7 @@ import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import type { RequestContext } from '@/lib/request-context';
 import { GroupService } from '@/server/services/group.service';
 
-vi.mock('@/server/services', () => ({
+vi.mock('@/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 

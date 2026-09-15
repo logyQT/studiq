@@ -12,7 +12,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { getGradientHex } from '@/lib/color-utils';
-import type { Flashcard, Topic } from '@/server/models';
+import type { Flashcard } from '@/server/models/flashcard.model';
+import type { Topic } from '@/server/models/topic.model';
 
 interface TopicViewDialogProps {
   viewTopic: Topic | undefined;

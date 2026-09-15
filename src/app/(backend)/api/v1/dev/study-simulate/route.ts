@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
-import { flashcardSpacedRepetitionService } from '@/server/services';
+import { flashcardSpacedRepetitionService } from '@/server/services/flashcard-spaced-repetition.service';
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];

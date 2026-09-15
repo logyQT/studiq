@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { getSeatPlanKey } from '@/server/services/seat.plan';
 import { AccountType } from '@/types';
 
@@ -232,3 +234,7 @@ export class FeatureResolver {
     }
   }
 }
+export const featureResolver = wrapService(
+  new FeatureResolver(createClient),
+  'feature-resolver.service',
+);

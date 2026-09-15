@@ -20,7 +20,8 @@ import { useMarkdownEditor } from '@/hooks/use-markdown-editor';
 import { apiPost, apiPut } from '@/lib/api';
 import { formatMarkdown } from '@/lib/format-markdown';
 import { flashcardKeys } from '@/lib/query-keys';
-import type { Flashcard, Topic } from '@/server/models';
+import type { Flashcard } from '@/server/models/flashcard.model';
+import type { Topic } from '@/server/models/topic.model';
 
 interface CreateCardDialogProps {
   deckId: string;

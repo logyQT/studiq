@@ -1,8 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { CreateSubscriptionPlanInput, UpdateSubscriptionPlanInput } from '@/server/models';
+import type {
+  CreateSubscriptionPlanInput,
+  UpdateSubscriptionPlanInput,
+} from '@/server/models/subscription-plan.model';
 
 export interface PlanInfo {
   id: string;
@@ -341,3 +346,7 @@ export class SubscriptionPlanService {
     return success({ success: true });
   }
 }
+export const subscriptionPlanService = wrapService(
+  new SubscriptionPlanService(createClient),
+  'subscription-plan.service',
+);

@@ -1,9 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { check, Permission } from '@/lib/authz';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { CsvImportInput, CsvImportResult } from '@/server/models';
+import type { CsvImportInput, CsvImportResult } from '@/server/models/flashcard-import.model';
 
 export class FlashcardImportService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -187,3 +189,7 @@ export class FlashcardImportService {
     });
   }
 }
+export const flashcardImportService = wrapService(
+  new FlashcardImportService(createClient),
+  'flashcard-import.service',
+);

@@ -1,9 +1,10 @@
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
-import { GenerateQuizSchema } from '@/server/models';
-import type { QuizService } from '@/server/services/quiz.service';
+import { GenerateQuizSchema } from '@/server/models/quiz.model';
+import { type QuizService, quizService } from '@/server/services/quiz.service';
 
 export class QuizController {
   constructor(private quizService: QuizService) {}
@@ -27,3 +28,4 @@ export class QuizController {
     return controllerResponse.created(result.data);
   }
 }
+export const quizController = wrapService(new QuizController(quizService), 'quiz.controller');

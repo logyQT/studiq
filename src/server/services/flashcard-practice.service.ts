@@ -1,7 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildQueryFilter, Permission } from '@/lib/authz';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   BatchPracticeInput,
@@ -12,8 +14,8 @@ import type {
   DueFlashcardItem,
   FlashcardRow,
   PracticeSummary,
-  Rating,
-} from '@/server/models';
+} from '@/server/models/flashcard-practice.model';
+import type { Rating } from '@/server/models/flashcard-spaced-repetition.model';
 import { flashcardSpacedRepetitionService } from '@/server/services/flashcard-spaced-repetition.service';
 
 export class FlashcardPracticeService {
@@ -758,3 +760,7 @@ function resolveFilterType(
   }
   return { filterType: 'any', organizationId: null };
 }
+export const flashcardPracticeService = wrapService(
+  new FlashcardPracticeService(createClient),
+  'flashcard-practice.service',
+);
