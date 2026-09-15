@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useFeatures } from '@/hooks/use-features';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermissions } from '@/hooks/use-permissions';
 import { evaluate } from '@/lib/authz';
@@ -18,9 +19,10 @@ export function useCan() {
   const { user } = useAuth();
   const { activeOrg } = useOrgs();
   const { data } = usePermissions();
+  const { data: featureData } = useFeatures();
 
   const pm = data?.permissions as Record<string, PermissionScope | null> | undefined;
-  const enabledFeatures = data?.features;
+  const enabledFeatures = featureData?.features;
 
   return useCallback(
     ({ permissions, features, createdBy, orgId }: CanArg): boolean => {

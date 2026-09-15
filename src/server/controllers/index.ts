@@ -3,6 +3,7 @@ import { ActivityController } from '@/server/controllers/activity.controller';
 import { AuthController } from '@/server/controllers/auth.controller';
 import { ClassroomController } from '@/server/controllers/classroom.controller';
 import { FeatureFlagController } from '@/server/controllers/feature-flag.controller';
+import { FeaturesController } from '@/server/controllers/features.controller';
 import { FlashcardController } from '@/server/controllers/flashcard.controller';
 import { FlashcardDeckController } from '@/server/controllers/flashcard-deck.controller';
 import { FlashcardExportController } from '@/server/controllers/flashcard-export.controller';
@@ -138,6 +139,7 @@ export const permissionsController = wrapService(
   new PermissionsController(),
   'permissions.controller',
 );
+export const featuresController = wrapService(new FeaturesController(), 'features.controller');
 export const planFeatureController = wrapService(
   new PlanFeatureController(planFeatureService),
   'plan-feature.controller',
