@@ -107,7 +107,7 @@ Status: NOT STARTED
 - [x] B8 Unify `@/lib/access.ts` + `@/lib/rbac.ts` → one `@/lib/authz`; delete `rbac.ts` — N+1 fixed: `buildQueryFilter`/`checkPermission`/`hasPermission` now resolve from with-auth's batched `ctx.permissionScopes` (zero per-permission DB queries); access.ts group queries stay async
 - [x] B9 Admin Rollout Control — surfaces verified complete + hardened: global toggle + rollout % (`/admin/feature-flags`), plan matrix (`/admin/subscription-plans`), user overrides (`/admin/user-overrides`), per-flag kill switch ("Stop now" = `is_enabled=false`); added canonical-key enforcement (admin create/update models now reject non-`FEATURES` keys → no silent dead rows)
 - [x] B10 Fix broken admin: removed `/admin/permissions` (matrix read dropped `role_permissions`; canonical source is `DEFAULT_ROLE_PERMISSIONS`), deleted dead `/admin/logs` + `error_logs` table (zero writers; OTEL spans are the error surface), dropped `/admin/ai` dead link; sidebar + i18n cleaned
-- [ ] Verify: unit tests for FeatureResolver precedence + rollout, RBAC union tests, lint, full suite green
+- [x] Verify: lint clean (`tsc` + biome + import-path guard), unit **961/961**, integration **558/558** green (single run; `seats` 1-test failure = documented 3× copy stress flake, 30/30 in isolation); authz union/scope tests in `__tests__/unit/lib/authz.test.ts`, FeatureResolver precedence + rollout covered in service unit tests
 
 ---
 
@@ -125,6 +125,36 @@ Status: NOT STARTED
 - [ ] C7 Two standalone builds; edge routing for `/admin*`
 - [ ] C8 Hardening: introduce RLS on user content tables (biggest security gap today)
 - [ ] Verify: PEM-gated admin smoke, main-app 404/403 on `/admin*`, all tests in both apps
+
+### Side note — GitHub-style fine-grained admin tokens
+
+When the admin panel detaches (this phase), the monolithic SYS_ADMIN-or-nothing
+PEM header looks increasingly blunt. Replace it with GitHub-style fine-grained
+tokens so an operator can grant **partial** access — e.g. "read orgs, write
+feature flags, nothing else" — without handing over the keys to the whole system:
+
+- **Token = keyed scopes, least privilege by construction**: every admin API
+  request authenticates with a bearer token carrying an explicit scope list
+  (`orgs:read`, `features:write`, `plans:read`, `overrides:write`, …). No token
+  ever implies "everything"; the intersection of scopes and the DB policy is
+  what a request can actually do. Gap = deny.
+- **Read vs write split**: each surface gets at least `:read` and `:write`
+  (write implies read). Tokens can be read-only everywhere, or mixed — the
+  checkboxes enforce it, so there's no way to mint an "all-scopes" token by
+  accident (and even if you did, that's an explicit, auditable choice).
+- **Scope set mirrors the admin surfaces 1:1** — orgs, feature-flags (rollout /
+  kill-switch), subscription plans + plan matrix, user overrides, plan limits —
+  so the generation UI's checkbox list maps directly to what the API can touch.
+- **Generation UI in `apps/admin`** ("Settings → Tokens → Generate new"):
+  name + expiry + scope checkboxes → plaintext secret shown **once** (GitHub
+  style). DB stores **only the SHA-256 hash** + `last_used_at`; an expired or
+  revoked token 401s regardless of scope. List/revoke screen stays trivial since
+  we never store plaintext.
+- **Implementation anchor**: the token middleware resolves the scope list into
+  `RequestContext.permissionScopes`, reusing the same batched map that B8's
+  `@/lib/authz` already consumes — so controllers keep calling
+  `hasPermission`/`checkPermission`/`buildQueryFilter` **unchanged**. The PEM
+  gate stays as bootstrap for the very first token mint.
 
 ---
 
