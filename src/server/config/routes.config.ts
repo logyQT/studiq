@@ -59,7 +59,7 @@ export const routeRules: RouteRule[] = [
 
   // --- ONBOARDING ROUTES ---
   {
-    matcher: /^\/setup\/org$/,
+    matcher: /^\/setup\/org\/?$/,
     requireAuth: true,
     allowedAccountTypes: [AccountType.MANAGER],
   },
