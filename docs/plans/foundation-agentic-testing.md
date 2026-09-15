@@ -1,5 +1,7 @@
 # Foundation & Agentic Testing — Execution Plan (Tracking)
 
+> **AI architecture reference:** [`docs/ai.md`](../ai.md) — unified doc covering architecture, tools, security, and extension guide.
+
 Status: ACTIVE
 Last updated: 2026-09-14
 

@@ -569,6 +569,8 @@ New page: `src/app/(frontend)/app/ai/page.tsx`
 
 # ReAct Multi-Agent Pipeline (Primary Development Track)
 
+> **Security note:** The agent system has known security gaps — see [`docs/plans/agent-security.md`](../plans/agent-security.md) for the full audit, findings (F1–F6), and hardening plan (H1–H13). Key items: the agent route lacks account type enforcement, `webfetch` has no URL allowlist, and no `RequestContext` is built for tool execution.
+
 This section describes the agentic system that replaces the Phase 1-3 modular command architecture. The agent pipeline is already live behind `FEATURE_FLAG_AGENTIC` and is the **primary development track**. The legacy tool-calling pipeline will be removed entirely within 1-2 iterations once feature parity is reached.
 
 ## Architecture
