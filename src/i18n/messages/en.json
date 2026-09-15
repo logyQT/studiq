@@ -958,6 +958,7 @@
     "member_placeholder": "Select a member",
     "plan_label": "Seat Plan",
     "plan_placeholder": "Select a plan",
+    "select_member_first": "Select a member first",
     "no_unassigned": "All members have a seat",
     "no_pools": "No seat pools configured",
     "no_assignments": "No seats assigned yet",

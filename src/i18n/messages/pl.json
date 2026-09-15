@@ -939,6 +939,7 @@
     "member_placeholder": "Wybierz członka",
     "plan_label": "Plan miejsca",
     "plan_placeholder": "Wybierz plan",
+    "select_member_first": "Najpierw wybierz członka",
     "no_unassigned": "Wszyscy członkowie mają miejsca",
     "no_pools": "Brak skonfigurowanych pul miejsc",
     "no_assignments": "Nie przydzielono jeszcze żadnych miejsc",

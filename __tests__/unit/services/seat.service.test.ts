@@ -1,13 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { SeatService } from '@/server/services/seat.service';
 import type { RequestContext } from '@/lib/request-context';
+import { SeatService } from '@/server/services/seat.service';
 
 function chain(result: any, count?: number) {
   const resolved =
-    count !== undefined
-      ? { data: result, count, error: null }
-      : { data: result, error: null };
+    count !== undefined ? { data: result, count, error: null } : { data: result, error: null };
   const terminal = vi.fn().mockResolvedValue(resolved);
   const c: any = {};
   c.select = vi.fn(() => c);
@@ -50,9 +48,7 @@ describe('SeatService', () => {
 
   describe('listPools', () => {
     it('returns pools for active org', async () => {
-      const dbRows = [
-        { id: 'pool-1', plan_key: 'launch', total: 1, assigned: 0 },
-      ];
+      const dbRows = [{ id: 'pool-1', plan_key: 'launch', total: 1, assigned: 0 }];
 
       mock.from.mockReturnValue(chain(dbRows));
 
@@ -252,8 +248,9 @@ describe('SeatService', () => {
     };
 
     it('assigns seat and returns assignment', async () => {
-      const poolRow = { id: 'pool-1', plan_key: 'launch' };
+      const poolRow = { id: 'pool-1', plan_key: 'guide' };
       const profileRow = { email: 'user@test.com' };
+      const memberRow = { org_roles: { name: 'teacher' } };
       const insertedRow = {
         id: 'assign-new',
         user_id: input.userId,
@@ -264,6 +261,7 @@ describe('SeatService', () => {
       mock.from.mockReturnValue(chain(null));
       mock.from.mockReturnValueOnce(chain(poolRow));
       mock.from.mockReturnValueOnce(chain(profileRow));
+      mock.from.mockReturnValueOnce(chain(memberRow));
       mock.from.mockReturnValueOnce(chain(null));
       mock.from.mockReturnValueOnce(chain(insertedRow));
 
@@ -275,7 +273,7 @@ describe('SeatService', () => {
         id: 'assign-new',
         userId: input.userId,
         poolId: input.poolId,
-        planKey: 'launch',
+        planKey: 'guide',
         userEmail: 'user@test.com',
         assignedAt: '2024-01-01T00:00:00Z',
       });
@@ -306,8 +304,9 @@ describe('SeatService', () => {
 
     it('returns USAGE_LIMIT_EXCEEDED when user already has a seat', async () => {
       mock.from.mockReturnValue(chain(null));
-      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'launch' }));
+      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'guide' }));
       mock.from.mockReturnValueOnce(chain({ email: 'user@test.com' }));
+      mock.from.mockReturnValueOnce(chain({ org_roles: { name: 'teacher' } }));
       mock.from.mockReturnValueOnce(chain({ id: 'existing-assign' }));
 
       const result = await service.assignSeat(ctx, input);
@@ -319,8 +318,9 @@ describe('SeatService', () => {
 
     it('returns USAGE_LIMIT_EXCEEDED when pool is full (SEAT_POOL_FULL)', async () => {
       mock.from.mockReturnValue(chain(null));
-      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'launch' }));
+      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'guide' }));
       mock.from.mockReturnValueOnce(chain({ email: 'user@test.com' }));
+      mock.from.mockReturnValueOnce(chain({ org_roles: { name: 'teacher' } }));
       mock.from.mockReturnValueOnce(chain(null));
       mock.from.mockReturnValueOnce({
         insert: vi.fn().mockReturnValue({
@@ -342,8 +342,9 @@ describe('SeatService', () => {
 
     it('returns USAGE_LIMIT_EXCEEDED when pool full (code 23514 without message)', async () => {
       mock.from.mockReturnValue(chain(null));
-      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'launch' }));
+      mock.from.mockReturnValueOnce(chain({ id: 'pool-1', plan_key: 'guide' }));
       mock.from.mockReturnValueOnce(chain({ email: 'user@test.com' }));
+      mock.from.mockReturnValueOnce(chain({ org_roles: { name: 'teacher' } }));
       mock.from.mockReturnValueOnce(chain(null));
       mock.from.mockReturnValueOnce({
         insert: vi.fn().mockReturnValue({

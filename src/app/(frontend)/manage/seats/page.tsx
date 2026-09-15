@@ -65,6 +65,29 @@ const PLAN_LABELS: Record<string, string> = {
   campus: 'StudiQ Campus',
 };
 
+/** Maps plan_key → compatible account tier (matches seat.service.ts PLAN_TIER_MAP). */
+const PLAN_TIER_MAP: Record<string, string> = {
+  base: 'student',
+  spark: 'student',
+  ace: 'student',
+  pro: 'student',
+  lite: 'educator',
+  guide: 'educator',
+  creator: 'educator',
+  master: 'educator',
+  launch: 'manager',
+  team: 'manager',
+  hub: 'manager',
+  campus: 'manager',
+};
+
+/** Maps org role name → compatible account tier. */
+const ROLE_TIER_MAP: Record<string, string> = {
+  admin: 'manager',
+  teacher: 'educator',
+  member: 'student',
+};
+
 export default function ManageSeatsPage() {
   const t = useTranslations('ManageSeatsPage');
   const [pools, setPools] = useState<Pool[]>([]);
@@ -171,7 +194,13 @@ export default function ManageSeatsPage() {
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">{t('member_label')}</label>
-                <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                <Select
+                  value={selectedUserId}
+                  onValueChange={(v) => {
+                    setSelectedUserId(v);
+                    setSelectedPoolId('');
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder={t('member_placeholder')} />
                   </SelectTrigger>
@@ -192,19 +221,36 @@ export default function ManageSeatsPage() {
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">{t('plan_label')}</label>
-                <Select value={selectedPoolId} onValueChange={setSelectedPoolId}>
+                <Select
+                  value={selectedPoolId}
+                  onValueChange={setSelectedPoolId}
+                  disabled={!selectedUserId}
+                >
                   <SelectTrigger>
-                    <SelectValue placeholder={t('plan_placeholder')} />
+                    <SelectValue
+                      placeholder={
+                        selectedUserId ? t('plan_placeholder') : t('select_member_first')
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    {pools.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {PLAN_LABELS[p.planKey] || p.planKey}
-                        <span className="text-muted-foreground ml-2">
-                          ({p.assigned}/{p.total})
-                        </span>
-                      </SelectItem>
-                    ))}
+                    {(() => {
+                      const selectedMember = members.find((m) => m.id === selectedUserId);
+                      const memberTier = selectedMember
+                        ? ROLE_TIER_MAP[selectedMember.orgRoleName]
+                        : undefined;
+                      const compatible = memberTier
+                        ? pools.filter((p) => PLAN_TIER_MAP[p.planKey] === memberTier)
+                        : pools;
+                      return compatible.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {PLAN_LABELS[p.planKey] || p.planKey}
+                          <span className="text-muted-foreground ml-2">
+                            ({p.assigned}/{p.total})
+                          </span>
+                        </SelectItem>
+                      ));
+                    })()}
                   </SelectContent>
                 </Select>
               </div>
