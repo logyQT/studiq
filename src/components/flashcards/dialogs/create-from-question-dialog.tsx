@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -24,6 +25,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { apiPost } from '@/lib/api';
 import type { Deck, Question } from '@/server/models';
+
+const NEW_DECK_VALUE = '__new__';
 
 function deriveBack(question: Question): string {
   const correct = question.question_answers?.filter((a) => a.is_correct).map((a) => a.content);
@@ -46,6 +49,8 @@ export function CreateFromQuestionDialog({
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
   const [deckId, setDeckId] = useState<string>('');
+  const [newDeckName, setNewDeckName] = useState('');
+  const isNewDeck = deckId === NEW_DECK_VALUE;
 
   const { data: decksResult } = useApiQuery<{ items: Deck[] }>({
     queryKey: ['flashcards', 'decks', 'owned-limit-200'],
@@ -58,22 +63,29 @@ export function CreateFromQuestionDialog({
     if (question) {
       setFront(question.content);
       setBack(deriveBack(question));
+      setDeckId('');
+      setNewDeckName('');
     }
   }, [question]);
 
   const create = useApiMutation<unknown, void>({
-    mutationFn: () =>
-      apiPost('/api/v1/flashcards', {
-        deckId,
+    mutationFn: async () => {
+      const targetDeckId = isNewDeck
+        ? (await apiPost<Deck>('/api/v1/flashcards/decks', { name: newDeckName.trim() })).id
+        : deckId;
+      return apiPost('/api/v1/flashcards', {
+        deckId: targetDeckId,
         front,
         back,
         questionId: question?.id,
-      }),
+      });
+    },
     invalidateKeys: [['flashcards']],
   });
 
   function handleSubmit() {
-    if (!front.trim() || !back.trim() || !deckId) return;
+    if (!front.trim() || !back.trim()) return;
+    if (isNewDeck ? !newDeckName.trim() : !deckId) return;
     create.mutate(undefined, {
       onSuccess: () => {
         toast.success(t('created'));
@@ -104,8 +116,17 @@ export function CreateFromQuestionDialog({
                     {d.name}
                   </SelectItem>
                 ))}
+                <SelectItem value={NEW_DECK_VALUE}>+ {t('new_deck_option')}</SelectItem>
               </SelectContent>
             </Select>
+            {isNewDeck && (
+              <Input
+                value={newDeckName}
+                onChange={(e) => setNewDeckName(e.target.value)}
+                placeholder={t('new_deck_placeholder')}
+                autoFocus
+              />
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -125,7 +146,12 @@ export function CreateFromQuestionDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!front.trim() || !back.trim() || !deckId || create.isPending}
+            disabled={
+              !front.trim() ||
+              !back.trim() ||
+              (isNewDeck ? !newDeckName.trim() : !deckId) ||
+              create.isPending
+            }
           >
             {t('create')}
           </Button>
