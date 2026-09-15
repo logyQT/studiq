@@ -1,5 +1,6 @@
 import { ValidationErrorCode } from '@/lib/validation-errors';
 import { registry, z } from '@/lib/zod';
+import { isFeatureKey } from '@/server/services/feature.resolver';
 
 export const CreateUserFeatureOverrideSchema = registry.register(
   'CreateUserFeatureOverrideRequest',
@@ -9,7 +10,12 @@ export const CreateUserFeatureOverrideSchema = registry.register(
       .nonempty({ error: ValidationErrorCode.REQUIRED }),
     featureKey: z
       .string({ error: ValidationErrorCode.REQUIRED })
-      .nonempty({ error: ValidationErrorCode.REQUIRED }),
+      .regex(/^[a-z][a-z0-9.]*$/, { error: ValidationErrorCode.NAME_INVALID_FORMAT })
+      .nonempty({ error: ValidationErrorCode.REQUIRED })
+      .refine((k) => isFeatureKey(k), {
+        message: ValidationErrorCode.INVALID_INPUT,
+        path: ['featureKey'],
+      }),
     isEnabled: z.boolean({ error: ValidationErrorCode.BOOL }),
     reason: z
       .string({ error: ValidationErrorCode.INVALID_INPUT })

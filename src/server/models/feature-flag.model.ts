@@ -1,5 +1,6 @@
 import { ValidationErrorCode } from '@/lib/validation-errors';
 import { registry, z } from '@/lib/zod';
+import { isFeatureKey } from '@/server/services/feature.resolver';
 
 export const CreateFeatureFlagSchema = registry.register(
   'CreateFeatureFlagRequest',
@@ -9,7 +10,11 @@ export const CreateFeatureFlagSchema = registry.register(
       .regex(/^[a-z][a-z0-9.]*$/, { error: ValidationErrorCode.NAME_INVALID_FORMAT })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(64, { error: ValidationErrorCode.TOO_LONG }),
+      .max(64, { error: ValidationErrorCode.TOO_LONG })
+      .refine((k) => isFeatureKey(k), {
+        message: ValidationErrorCode.INVALID_INPUT,
+        path: ['key'],
+      }),
     name: z
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
@@ -41,6 +46,10 @@ export const UpdateFeatureFlagSchema = registry.register(
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
       .max(64, { error: ValidationErrorCode.TOO_LONG })
+      .refine((k) => isFeatureKey(k), {
+        message: ValidationErrorCode.INVALID_INPUT,
+        path: ['key'],
+      })
       .optional(),
     name: z
       .string({ error: ValidationErrorCode.REQUIRED })
