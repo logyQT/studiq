@@ -4,8 +4,7 @@ import { useCallback } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermissions } from '@/hooks/use-permissions';
-import { evaluate } from '@/lib/authz';
-import type { PermissionScope } from '@/lib/permissions';
+import { evaluateScope, type PermissionScope } from '@/lib/permissions';
 
 export type PermissionResource = {
   createdBy?: string;
@@ -30,14 +29,10 @@ export function usePermission() {
       if (!user || !pm) return false;
       const scope = pm[permission];
       if (!scope) return false;
-      return evaluate({
-        scope,
-        userId: user.id,
-        resource: {
-          createdBy: resource?.createdBy ?? '',
-          orgId: resource?.orgId ?? null,
-          activeOrgId: activeOrg?.id ?? null,
-        },
+      return evaluateScope(scope, user.id, {
+        createdBy: resource?.createdBy ?? '',
+        orgId: resource?.orgId ?? null,
+        activeOrgId: activeOrg?.id ?? null,
       });
     },
     [pm, user, activeOrg?.id],
