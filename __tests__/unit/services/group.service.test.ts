@@ -37,7 +37,7 @@ describe('GroupService', () => {
   let service: GroupService;
   const ctx: RequestContext = {
     userId: 'test-user-id',
-    accountType: 'educator' as any,
+    accountType: 'manager' as any,
     traceId: 'test',
     url: '',
     method: 'GET',
@@ -88,6 +88,75 @@ describe('GroupService', () => {
       const result = await service.listGroups(ctx);
 
       expect(result.success).toBe(false);
+    });
+
+    it('marks every group manageable for a manager, regardless of creator', async () => {
+      const data = [
+        {
+          id: 'g-1',
+          name: 'Mine',
+          description: null,
+          created_at: '2024-01-01',
+          created_by: 'test-user-id',
+          group_members: [{ count: 0 }],
+          group_members_teachers: [{ count: 0 }],
+        },
+        {
+          id: 'g-2',
+          name: 'Theirs',
+          description: null,
+          created_at: '2024-01-01',
+          created_by: 'someone-else',
+          group_members: [{ count: 0 }],
+          group_members_teachers: [{ count: 0 }],
+        },
+      ];
+      mock.from.mockReturnValueOnce(qb(data));
+
+      const result = await service.listGroups(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data.every((g) => g.canManage)).toBe(true);
+    });
+
+    it('marks only self-created groups manageable for an educator', async () => {
+      const data = [
+        {
+          id: 'g-1',
+          name: 'Mine',
+          description: null,
+          created_at: '2024-01-01',
+          created_by: 'test-user-id',
+          group_members: [{ count: 0 }],
+          group_members_teachers: [{ count: 0 }],
+        },
+        {
+          id: 'g-2',
+          name: 'Theirs',
+          description: null,
+          created_at: '2024-01-01',
+          created_by: 'someone-else',
+          group_members: [{ count: 0 }],
+          group_members_teachers: [{ count: 0 }],
+        },
+        {
+          id: 'g-3',
+          name: 'Legacy',
+          description: null,
+          created_at: '2024-01-01',
+          created_by: null,
+          group_members: [{ count: 0 }],
+          group_members_teachers: [{ count: 0 }],
+        },
+      ];
+      mock.from.mockReturnValueOnce(qb(data));
+
+      const result = await service.listGroups({ ...ctx, accountType: 'educator' as any });
+
+      expect(result.success).toBe(true);
+      expect(result.data.find((g) => g.id === 'g-1')?.canManage).toBe(true);
+      expect(result.data.find((g) => g.id === 'g-2')?.canManage).toBe(false);
+      expect(result.data.find((g) => g.id === 'g-3')?.canManage).toBe(false);
     });
   });
 
@@ -180,6 +249,66 @@ describe('GroupService', () => {
       const result = await service.deleteGroup(ctx, 'g-1');
 
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('ownership authorization (non-manager)', () => {
+    const educatorCtx: RequestContext = { ...ctx, accountType: 'educator' as any };
+
+    it('lets an educator update a group they created', async () => {
+      mock.from.mockReturnValueOnce(qb({ created_by: 'test-user-id' })); // ownership check
+      mock.from.mockReturnValueOnce(
+        qb({ id: 'g-1', name: 'Updated', description: null, created_at: '2024-01-01' }),
+      );
+
+      const result = await service.updateGroup(educatorCtx, 'g-1', { name: 'Updated' });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('blocks an educator from updating a group created by someone else', async () => {
+      mock.from.mockReturnValueOnce(qb({ created_by: 'someone-else' }));
+
+      const result = await service.updateGroup(educatorCtx, 'g-1', { name: 'Updated' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+    });
+
+    it('blocks an educator from updating a group with no recorded creator', async () => {
+      mock.from.mockReturnValueOnce(qb({ created_by: null }));
+
+      const result = await service.updateGroup(educatorCtx, 'g-1', { name: 'Updated' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+    });
+
+    it('lets an educator delete a group they created', async () => {
+      mock.from.mockReturnValueOnce(qb({ created_by: 'test-user-id' }));
+      mock.from.mockReturnValueOnce(qb(undefined));
+
+      const result = await service.deleteGroup(educatorCtx, 'g-1');
+
+      expect(result.success).toBe(true);
+    });
+
+    it('blocks an educator from deleting a group created by someone else', async () => {
+      mock.from.mockReturnValueOnce(qb({ created_by: 'someone-else' }));
+
+      const result = await service.deleteGroup(educatorCtx, 'g-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+    });
+
+    it('returns NOT_FOUND when the group to authorize does not exist', async () => {
+      mock.from.mockReturnValueOnce(qb(null, null));
+
+      const result = await service.deleteGroup(educatorCtx, 'nonexistent');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
     });
   });
 
