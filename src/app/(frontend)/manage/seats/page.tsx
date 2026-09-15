@@ -88,6 +88,15 @@ const ROLE_TIER_MAP: Record<string, string> = {
   member: 'student',
 };
 
+/** Plans available for purchase as seat add-ons. */
+const PURCHASABLE_PLANS: { key: string; label: string; tier: string }[] = [
+  { key: 'ace', label: 'StudiQ Ace', tier: 'student' },
+  { key: 'pro', label: 'StudiQ Pro', tier: 'student' },
+  { key: 'creator', label: 'StudiQ Creator', tier: 'educator' },
+  { key: 'master', label: 'StudiQ Master', tier: 'educator' },
+  { key: 'campus', label: 'StudiQ Campus', tier: 'manager' },
+];
+
 export default function ManageSeatsPage() {
   const t = useTranslations('ManageSeatsPage');
   const [pools, setPools] = useState<Pool[]>([]);
@@ -95,9 +104,13 @@ export default function ManageSeatsPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [purchaseDialogOpen, setPurchaseDialogOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedPoolId, setSelectedPoolId] = useState('');
+  const [purchasePlanKey, setPurchasePlanKey] = useState('');
+  const [purchaseQty, setPurchaseQty] = useState(1);
   const [assigning, setAssigning] = useState(false);
+  const [purchasing, setPurchasing] = useState(false);
   const [unassigning, setUnassigning] = useState<string | null>(null);
 
   const loadData = useCallback(() => {
@@ -172,6 +185,34 @@ export default function ManageSeatsPage() {
     }
   }
 
+  async function handlePurchase() {
+    if (!purchasePlanKey || purchaseQty < 1) return;
+    setPurchasing(true);
+    try {
+      const res = await fetch('/api/v1/organization/seats/pools', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planKey: purchasePlanKey, quantity: purchaseQty }),
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        toast.error(t('purchase_failed'));
+        return;
+      }
+
+      toast.success(t('purchase_success'));
+      setPurchaseDialogOpen(false);
+      setPurchasePlanKey('');
+      setPurchaseQty(1);
+      loadData();
+    } catch {
+      toast.error(t('purchase_failed'));
+    } finally {
+      setPurchasing(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -179,96 +220,151 @@ export default function ManageSeatsPage() {
           <h1 className="text-2xl font-bold">{t('title')}</h1>
           <p className="text-muted-foreground">{t('description')}</p>
         </div>
-        <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="size-4 mr-2" />
-              {t('assign_seat')}
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t('assign_dialog_title')}</DialogTitle>
-              <DialogDescription>{t('assign_dialog_desc')}</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">{t('member_label')}</label>
-                <Select
-                  value={selectedUserId}
-                  onValueChange={(v) => {
-                    setSelectedUserId(v);
-                    setSelectedPoolId('');
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={t('member_placeholder')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {unassignedMembers.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
-                        {m.full_name || m.email}
-                        <span className="text-muted-foreground ml-2">({m.orgRoleName})</span>
-                      </SelectItem>
-                    ))}
-                    {unassignedMembers.length === 0 && (
-                      <SelectItem value="_none" disabled>
-                        {t('no_unassigned')}
-                      </SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">{t('plan_label')}</label>
-                <Select
-                  value={selectedPoolId}
-                  onValueChange={setSelectedPoolId}
-                  disabled={!selectedUserId}
-                >
-                  <SelectTrigger>
-                    <SelectValue
-                      placeholder={
-                        selectedUserId ? t('plan_placeholder') : t('select_member_first')
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(() => {
-                      const selectedMember = members.find((m) => m.id === selectedUserId);
-                      const memberTier = selectedMember
-                        ? ROLE_TIER_MAP[selectedMember.orgRoleName]
-                        : undefined;
-                      const compatible = memberTier
-                        ? pools.filter((p) => PLAN_TIER_MAP[p.planKey] === memberTier)
-                        : pools;
-                      return compatible.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {PLAN_LABELS[p.planKey] || p.planKey}
-                          <span className="text-muted-foreground ml-2">
-                            ({p.assigned}/{p.total})
-                          </span>
+        <div className="flex gap-2">
+          <Dialog open={purchaseDialogOpen} onOpenChange={setPurchaseDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Plus className="size-4 mr-2" />
+                {t('purchase_seats')}
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{t('purchase_dialog_title')}</DialogTitle>
+                <DialogDescription>{t('purchase_dialog_desc')}</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">{t('plan_label')}</label>
+                  <Select value={purchasePlanKey} onValueChange={setPurchasePlanKey}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={t('plan_placeholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PURCHASABLE_PLANS.map((p) => (
+                        <SelectItem key={p.key} value={p.key}>
+                          {p.label}
                         </SelectItem>
-                      ));
-                    })()}
-                  </SelectContent>
-                </Select>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">{t('quantity_label')}</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={purchaseQty}
+                    onChange={(e) => setPurchaseQty(Math.max(1, Number(e.target.value)))}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  />
+                </div>
               </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>
-                {t('cancel')}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setPurchaseDialogOpen(false)}>
+                  {t('cancel')}
+                </Button>
+                <Button
+                  onClick={handlePurchase}
+                  disabled={!purchasePlanKey || purchaseQty < 1 || purchasing}
+                >
+                  {purchasing && <Loader2 className="size-4 mr-2 animate-spin" />}
+                  {t('confirm_purchase')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="size-4 mr-2" />
+                {t('assign_seat')}
               </Button>
-              <Button
-                onClick={handleAssign}
-                disabled={!selectedUserId || !selectedPoolId || assigning}
-              >
-                {assigning && <Loader2 className="size-4 mr-2 animate-spin" />}
-                {t('assign')}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{t('assign_dialog_title')}</DialogTitle>
+                <DialogDescription>{t('assign_dialog_desc')}</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">{t('member_label')}</label>
+                  <Select
+                    value={selectedUserId}
+                    onValueChange={(v) => {
+                      setSelectedUserId(v);
+                      setSelectedPoolId('');
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={t('member_placeholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {unassignedMembers.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.full_name || m.email}
+                          <span className="text-muted-foreground ml-2">({m.orgRoleName})</span>
+                        </SelectItem>
+                      ))}
+                      {unassignedMembers.length === 0 && (
+                        <SelectItem value="_none" disabled>
+                          {t('no_unassigned')}
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">{t('plan_label')}</label>
+                  <Select
+                    value={selectedPoolId}
+                    onValueChange={setSelectedPoolId}
+                    disabled={!selectedUserId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          selectedUserId ? t('plan_placeholder') : t('select_member_first')
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(() => {
+                        const selectedMember = members.find((m) => m.id === selectedUserId);
+                        const memberTier = selectedMember
+                          ? ROLE_TIER_MAP[selectedMember.orgRoleName]
+                          : undefined;
+                        const compatible = memberTier
+                          ? pools.filter((p) => PLAN_TIER_MAP[p.planKey] === memberTier)
+                          : pools;
+                        return compatible.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {PLAN_LABELS[p.planKey] || p.planKey}
+                            <span className="text-muted-foreground ml-2">
+                              ({p.assigned}/{p.total})
+                            </span>
+                          </SelectItem>
+                        ));
+                      })()}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>
+                  {t('cancel')}
+                </Button>
+                <Button
+                  onClick={handleAssign}
+                  disabled={!selectedUserId || !selectedPoolId || assigning}
+                >
+                  {assigning && <Loader2 className="size-4 mr-2 animate-spin" />}
+                  {t('assign')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {loading ? (
