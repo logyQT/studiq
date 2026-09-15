@@ -412,6 +412,78 @@ describe('GroupService', () => {
     });
   });
 
+  describe('listAddableMembers', () => {
+    it('returns FORBIDDEN when no activeOrgId', async () => {
+      const result = await service.listAddableMembers({ ...ctx, activeOrgId: null }, 'g-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+    });
+
+    it('returns FORBIDDEN when the caller cannot manage the group', async () => {
+      const educatorCtx: RequestContext = { ...ctx, accountType: 'educator' as any };
+      mock.from.mockReturnValueOnce(qb({ created_by: 'someone-else' })); // ownership check
+
+      const result = await service.listAddableMembers(educatorCtx, 'g-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+    });
+
+    it('returns org members with role and profile info for a manager', async () => {
+      const data = [
+        {
+          user_id: 'u-1',
+          org_roles: { name: 'admin' },
+          profiles: { id: 'u-1', email: 'a@test.com', full_name: 'Alice' },
+        },
+        {
+          user_id: 'u-2',
+          org_roles: { name: 'member' },
+          profiles: { id: 'u-2', email: 'b@test.com', full_name: null },
+        },
+      ];
+      mock.from.mockReturnValueOnce(qb(data)); // manager: no ownership check, straight to query
+
+      const result = await service.listAddableMembers(ctx, 'g-1');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        { id: 'u-1', email: 'a@test.com', fullName: 'Alice', orgRoleName: 'admin' },
+        { id: 'u-2', email: 'b@test.com', fullName: null, orgRoleName: 'member' },
+      ]);
+    });
+
+    it('allows an educator who created the group', async () => {
+      const educatorCtx: RequestContext = { ...ctx, accountType: 'educator' as any };
+      mock.from.mockReturnValueOnce(qb({ created_by: 'test-user-id' })); // ownership check
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.listAddableMembers(educatorCtx, 'g-1');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([]);
+    });
+
+    it('returns NOT_FOUND when the group to authorize does not exist', async () => {
+      const educatorCtx: RequestContext = { ...ctx, accountType: 'educator' as any };
+      mock.from.mockReturnValueOnce(qb(null, null));
+
+      const result = await service.listAddableMembers(educatorCtx, 'nonexistent');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('returns error on DB failure', async () => {
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.listAddableMembers(ctx, 'g-1');
+
+      expect(result.success).toBe(false);
+    });
+  });
+
   describe('getUserGroupIds', () => {
     it('returns group IDs from RPC', async () => {
       mock.rpc.mockResolvedValueOnce({
