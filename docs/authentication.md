@@ -115,6 +115,10 @@ if (!user) {
 await requireRole(user.id, [UserRole.SYS_ADMIN]);
 ```
 
+### Known Gap: AI Agent Route
+
+The `POST /api/v1/ai/chat` route does **not** use `withAuth()`. It performs a manual `getUser()` check but skips `RequestContext` construction, account type enforcement, and token budget checks. See [`docs/plans/agent-security.md`](plans/agent-security.md) for the full audit and hardening plan.
+
 ## Client Auth State
 
 `AuthProvider` (`src/components/providers/AuthProvider.tsx`) exposes client-side auth state:

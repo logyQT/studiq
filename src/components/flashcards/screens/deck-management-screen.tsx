@@ -25,8 +25,9 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
-import { useCan } from '@/hooks/use-can';
+import { useFeature } from '@/hooks/use-feature';
 import { useOrgs } from '@/hooks/use-orgs';
+import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiPost, apiPut } from '@/lib/api';
 import { flashcardKeys, groupKeys } from '@/lib/query-keys';
 import type { Deck } from '@/server/models';
@@ -57,12 +58,13 @@ interface DeckManagementScreenProps {
 
 export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps) {
   const { activeOrg } = useOrgs();
-  const can = useCan();
+  const feature = useFeature();
+  const permission = usePermission();
 
   const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
     queryKey: groupKeys.list(activeOrg?.id),
     url: '/api/v1/organization/groups',
-    enabled: !!activeOrg?.id && can({ features: ['org.manage'] }),
+    enabled: !!activeOrg?.id && feature('org.manage'),
   });
   const queryClient = useQueryClient();
 
@@ -354,13 +356,11 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
             onToggleSelect={() => handleToggleSelect(deck.id)}
             basePath={basePath}
             t={t}
-            canUpdate={can({
-              permissions: ['deck.update'],
+            canUpdate={permission('deck.update', {
               createdBy: deck.created_by,
               orgId: deck.organization_id,
             })}
-            canDelete={can({
-              permissions: ['deck.delete'],
+            canDelete={permission('deck.delete', {
               createdBy: deck.created_by,
               orgId: deck.organization_id,
             })}

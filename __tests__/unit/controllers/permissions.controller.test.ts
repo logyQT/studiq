@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PermissionsController } from '@/server/controllers/permissions.controller';
 import type { RequestContext } from '@/lib/request-context';
-
-vi.mock('@/lib/features', () => ({
-  getEnabledFeatures: vi.fn().mockResolvedValue([]),
-}));
+import { PermissionsController } from '@/server/controllers/permissions.controller';
 
 const mockCtx: RequestContext = {
-  traceId: 'test', userId: 'u-1', accountType: 'student' as any,
-  orgRoleId: null, activeOrgId: null, url: '', method: 'GET', groupIds: [],
+  traceId: 'test',
+  userId: 'u-1',
+  accountType: 'student' as any,
+  orgRoleId: null,
+  activeOrgId: null,
+  url: '',
+  method: 'GET',
+  groupIds: [],
   permissionScopes: { 'flashcard.read': 'own' },
 };
 
@@ -21,13 +23,18 @@ describe('PermissionsController', () => {
   });
 
   describe('listMyPermissions', () => {
-    it('returns permissions and features', async () => {
+    it('returns the resolved permissions map', async () => {
       const response = await controller.listMyPermissions(mockCtx);
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
       expect((response as any).data.permissions).toBeDefined();
-      expect((response as any).data.features).toBeDefined();
+    });
+
+    it('returns only the permissions map (features live on /features/me)', async () => {
+      const response = await controller.listMyPermissions(mockCtx);
+
+      expect((response as any).data.features).toBeUndefined();
     });
 
     it('adds default own permissions for student', async () => {

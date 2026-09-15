@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { useApiQuery } from '@/hooks/use-api';
-import { useCan } from '@/hooks/use-can';
+import { useFeature } from '@/hooks/use-feature';
 import { apiPost } from '@/lib/api';
 
 interface QuizAttempt {
@@ -38,8 +38,8 @@ const QUESTION_TYPE_OPTIONS = [
 export function QuizContent() {
   const t = useTranslations('AppFlashcardStudyPage');
   const router = useRouter();
-  const can = useCan();
-  const hasAccess = can({ features: ['quiz'] });
+  const feature = useFeature();
+  const hasAccess = feature('quiz');
 
   const { data: attemptsData } = useApiQuery<QuizAttempt[]>({
     queryKey: ['quiz', 'attempts'],

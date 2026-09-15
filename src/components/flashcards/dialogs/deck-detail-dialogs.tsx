@@ -7,7 +7,7 @@ import { DeckDialogs } from '@/components/flashcards/dialogs/deck-dialogs';
 import { SingleCardDialogs } from '@/components/flashcards/dialogs/single-card-dialogs';
 import { TopicDialogs } from '@/components/flashcards/dialogs/topic-dialogs';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
-import { useCan } from '@/hooks/use-can';
+import { usePermission } from '@/hooks/use-permission';
 import type { Deck, Flashcard, Topic } from '@/server/models';
 
 export interface DialogsState {
@@ -102,11 +102,9 @@ export function DeckDetailDialogs({
   basePath,
   deckId,
 }: DeckDetailDialogsProps) {
-  const can = useCan();
+  const permission = usePermission();
 
-  const ownedDecks = allDecks.filter((d) =>
-    can({ permissions: ['deck.update'], createdBy: d.created_by }),
-  );
+  const ownedDecks = allDecks.filter((d) => permission('deck.update', { createdBy: d.created_by }));
 
   const activeFlashcard = flashcards.find((fc) => fc.id === state.activeFlashcardId);
 

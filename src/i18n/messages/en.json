@@ -259,8 +259,7 @@
     "go_dashboard": "Back to Dashboard",
     "try_these": "Go to:",
     "overview": "Overview",
-    "error_logs": "Error Logs",
-    "permissions": "Permissions"
+    "feature_flags": "Feature Flags"
   },
   "EntityNotFound": {
     "go_dashboard": "Dashboard",
@@ -315,8 +314,6 @@
     "app_stats": "Stats",
     "admin_overview": "Overview",
     "admin_orgs": "Organizations",
-    "admin_error_logs": "Error Logs",
-    "admin_permissions": "Permissions",
     "admin_feature_flags": "Feature Flags",
     "admin_subscription_plans": "Plans",
     "admin_user_overrides": "User Overrides",
@@ -1828,16 +1825,6 @@
     "role_system": "System",
     "roles_empty": "No roles defined",
     "system_role": "System"
-  },
-  "AdminPermissionsPage": {
-    "title": "Permission Matrix",
-    "description": "Overview of all role-permission mappings in the RBAC system",
-    "matrix_title": "Role-Based Access Control",
-    "matrix_description": "Scopes: own = own resources only, university = resources within user's university, any = all resources",
-    "role_column": "Role",
-    "resource_column": "Resource",
-    "loading": "Loading permissions…",
-    "error": "Failed to load permissions"
   },
   "AdminFeatureFlagsPage": {
     "title": "Feature Flags",

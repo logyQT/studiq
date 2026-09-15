@@ -44,6 +44,11 @@ export const permissionKeys = {
   me: ['permissions', 'me'] as const,
 };
 
+export const featureKeys = {
+  all: ['features'] as const,
+  me: ['features', 'me'] as const,
+};
+
 export const groupKeys = {
   all: ['groups'] as const,
   list: (orgId?: string) => ['groups', 'list', orgId] as const,

@@ -1,5 +1,15 @@
 import { ValidationErrorCode } from '@/lib/validation-errors';
 import { registry, z } from '@/lib/zod';
+import { isFeatureKey } from '@/server/services/feature.resolver';
+
+const PlanFeatureKeySchema = z
+  .string({ error: ValidationErrorCode.REQUIRED })
+  .regex(/^[a-z][a-z0-9.]*$/, { error: ValidationErrorCode.NAME_INVALID_FORMAT })
+  .nonempty({ error: ValidationErrorCode.REQUIRED })
+  .refine((k) => isFeatureKey(k), {
+    message: ValidationErrorCode.INVALID_INPUT,
+    path: ['featureKey'],
+  });
 
 export const CreatePlanFeatureSchema = registry.register(
   'CreatePlanFeatureRequest',
@@ -7,9 +17,7 @@ export const CreatePlanFeatureSchema = registry.register(
     planKey: z
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED }),
-    featureKey: z
-      .string({ error: ValidationErrorCode.REQUIRED })
-      .nonempty({ error: ValidationErrorCode.REQUIRED }),
+    featureKey: PlanFeatureKeySchema,
   }),
 );
 
@@ -19,9 +27,7 @@ export const DeletePlanFeatureSchema = registry.register(
     planKey: z
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED }),
-    featureKey: z
-      .string({ error: ValidationErrorCode.REQUIRED })
-      .nonempty({ error: ValidationErrorCode.REQUIRED }),
+    featureKey: PlanFeatureKeySchema,
   }),
 );
 
@@ -31,9 +37,7 @@ export const PlanFeatureParamsSchema = registry.register(
     planKey: z
       .string({ error: ValidationErrorCode.REQUIRED })
       .nonempty({ error: ValidationErrorCode.REQUIRED }),
-    featureKey: z
-      .string({ error: ValidationErrorCode.REQUIRED })
-      .nonempty({ error: ValidationErrorCode.REQUIRED }),
+    featureKey: PlanFeatureKeySchema,
   }),
 );
 

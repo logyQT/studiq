@@ -1,6 +1,10 @@
 pre-commit:
   parallel: false
   commands:
+    format:
+      glob: '*.{ts,tsx,js,jsx,mjs,cjs,json,css}'
+      run: bunx biome check --write {staged_files}
+      stage_fixed: true
     lint:
       run: bun run lint
     typecheck:
@@ -9,6 +13,8 @@ pre-commit:
 pre-push:
   parallel: false
   commands:
+    format:
+      run: bun run format:check
     lint:
       run: bun run lint
     typecheck:

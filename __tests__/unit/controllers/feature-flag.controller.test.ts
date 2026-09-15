@@ -82,6 +82,13 @@ describe('FeatureFlagController', () => {
       expect(response.statusCode).toBe(422);
     });
 
+    it('rejects non-canonical feature keys', async () => {
+      const response = await controller.create({ key: 'typo.feature', name: 'Typo' });
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+    });
+
     it('returns error on service failure', async () => {
       mockService.create.mockResolvedValueOnce({ success: false, error: 'CONFLICT' });
 
@@ -95,7 +102,9 @@ describe('FeatureFlagController', () => {
     it('updates a flag', async () => {
       mockService.update.mockResolvedValueOnce({ success: true, data: { id: 'ff-1' } });
 
-      const response = await controller.update('550e8400-e29b-41d4-a716-446655440000', { name: 'Updated' });
+      const response = await controller.update('550e8400-e29b-41d4-a716-446655440000', {
+        name: 'Updated',
+      });
 
       expect(response.success).toBe(true);
     });
@@ -108,7 +117,9 @@ describe('FeatureFlagController', () => {
     });
 
     it('returns 422 on invalid body', async () => {
-      const response = await controller.update('550e8400-e29b-41d4-a716-446655440000', { key: 'Invalid Key!' });
+      const response = await controller.update('550e8400-e29b-41d4-a716-446655440000', {
+        key: 'Invalid Key!',
+      });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
@@ -117,7 +128,9 @@ describe('FeatureFlagController', () => {
     it('returns error on service failure', async () => {
       mockService.update.mockResolvedValueOnce({ success: false, error: 'NOT_FOUND' });
 
-      const response = await controller.update('550e8400-e29b-41d4-a716-446655440000', { name: 'Updated' });
+      const response = await controller.update('550e8400-e29b-41d4-a716-446655440000', {
+        name: 'Updated',
+      });
 
       expect(response.success).toBe(false);
     });

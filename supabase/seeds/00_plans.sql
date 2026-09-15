@@ -13,9 +13,9 @@ ALTER TABLE public.organizations ALTER COLUMN plan SET DEFAULT 'launch';
 -- 3. Add new feature flags
 -- ==========================================================
 INSERT INTO public.feature_flags (key, name, description) VALUES
-  ('group_manage', 'Group Management', 'Create and manage groups'),
-  ('member_manage', 'Member Management', 'Change member roles and remove members'),
-  ('role_builder', 'Role Builder', 'Create custom roles with custom permissions')
+  ('group.manage', 'Group Management', 'Create and manage groups'),
+  ('member.manage', 'Member Management', 'Change member roles and remove members'),
+  ('role.builder', 'Role Builder', 'Create custom roles with custom permissions')
 ON CONFLICT DO NOTHING;
 
 -- ==========================================================
@@ -56,13 +56,14 @@ INSERT INTO public.plan_features (plan_key, feature_key) VALUES
   ('base', 'quiz'),
   ('lite', 'flashcards'),
   ('lite', 'quiz'),
-  ('lite', 'group_manage'),
-  ('lite', 'member_manage'),
+  ('lite', 'group.manage'),
+  ('lite', 'member.manage'),
   ('launch', 'flashcards'),
   ('launch', 'quiz'),
-  ('launch', 'group_manage'),
-  ('launch', 'member_manage'),
-  ('launch', 'documents')
+  ('launch', 'group.manage'),
+  ('launch', 'member.manage'),
+  ('launch', 'documents'),
+  ('launch', 'org.manage')
 ON CONFLICT DO NOTHING;
 
 -- Basic tier
@@ -71,14 +72,14 @@ INSERT INTO public.plan_features (plan_key, feature_key) VALUES
   ('spark', 'quiz'),
   ('guide', 'flashcards'),
   ('guide', 'quiz'),
-  ('guide', 'quiz_builder'),
-  ('guide', 'group_manage'),
-  ('guide', 'member_manage'),
+  ('guide', 'quiz.builder'),
+  ('guide', 'group.manage'),
+  ('guide', 'member.manage'),
   ('team', 'flashcards'),
   ('team', 'quiz'),
-  ('team', 'quiz_builder'),
-  ('team', 'group_manage'),
-  ('team', 'member_manage'),
+  ('team', 'quiz.builder'),
+  ('team', 'group.manage'),
+  ('team', 'member.manage'),
   ('team', 'documents')
 ON CONFLICT DO NOTHING;
 
@@ -86,24 +87,24 @@ ON CONFLICT DO NOTHING;
 INSERT INTO public.plan_features (plan_key, feature_key) VALUES
   ('ace', 'flashcards'),
   ('ace', 'quiz'),
-  ('ace', 'ai'),
-  ('ace', 'advanced_stats'),
+  ('ace', 'ai.chat'),
+  ('ace', 'advanced.stats'),
   ('creator', 'flashcards'),
   ('creator', 'quiz'),
-  ('creator', 'ai'),
-  ('creator', 'quiz_builder'),
-  ('creator', 'group_manage'),
-  ('creator', 'member_manage'),
-  ('creator', 'advanced_stats'),
+  ('creator', 'ai.chat'),
+  ('creator', 'quiz.builder'),
+  ('creator', 'group.manage'),
+  ('creator', 'member.manage'),
+  ('creator', 'advanced.stats'),
   ('creator', 'documents'),
   ('hub', 'flashcards'),
   ('hub', 'quiz'),
-  ('hub', 'ai'),
-  ('hub', 'quiz_builder'),
-  ('hub', 'group_manage'),
-  ('hub', 'member_manage'),
-  ('hub', 'role_builder'),
-  ('hub', 'advanced_stats'),
+  ('hub', 'ai.chat'),
+  ('hub', 'quiz.builder'),
+  ('hub', 'group.manage'),
+  ('hub', 'member.manage'),
+  ('hub', 'role.builder'),
+  ('hub', 'advanced.stats'),
   ('hub', 'documents')
 ON CONFLICT DO NOTHING;
 
@@ -111,26 +112,26 @@ ON CONFLICT DO NOTHING;
 INSERT INTO public.plan_features (plan_key, feature_key) VALUES
   ('pro', 'flashcards'),
   ('pro', 'quiz'),
-  ('pro', 'ai'),
-  ('pro', 'advanced_stats'),
+  ('pro', 'ai.chat'),
+  ('pro', 'advanced.stats'),
   ('pro', 'documents'),
   ('master', 'flashcards'),
   ('master', 'quiz'),
-  ('master', 'ai'),
-  ('master', 'quiz_builder'),
-  ('master', 'group_manage'),
-  ('master', 'member_manage'),
-  ('master', 'role_builder'),
-  ('master', 'advanced_stats'),
+  ('master', 'ai.chat'),
+  ('master', 'quiz.builder'),
+  ('master', 'group.manage'),
+  ('master', 'member.manage'),
+  ('master', 'role.builder'),
+  ('master', 'advanced.stats'),
   ('master', 'documents'),
   ('campus', 'flashcards'),
   ('campus', 'quiz'),
-  ('campus', 'ai'),
-  ('campus', 'quiz_builder'),
-  ('campus', 'group_manage'),
-  ('campus', 'member_manage'),
-  ('campus', 'role_builder'),
-  ('campus', 'advanced_stats'),
+  ('campus', 'ai.chat'),
+  ('campus', 'quiz.builder'),
+  ('campus', 'group.manage'),
+  ('campus', 'member.manage'),
+  ('campus', 'role.builder'),
+  ('campus', 'advanced.stats'),
   ('campus', 'documents')
 ON CONFLICT DO NOTHING;
 

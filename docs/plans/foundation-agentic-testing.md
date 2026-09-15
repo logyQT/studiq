@@ -1,7 +1,9 @@
 # Foundation & Agentic Testing — Execution Plan (Tracking)
 
+> **AI architecture reference:** [`docs/ai.md`](../ai.md) — unified doc covering architecture, tools, security, and extension guide.
+
 Status: ACTIVE
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 ## Decisions (locked)
 
@@ -10,11 +12,21 @@ Last updated: 2026-09-14
 - Tests: API-first `before()` seeding everywhere
 - Feature-flag keys: flat keys everywhere (drop `FEATURE_FLAG_TO_FEATURE_KEY`)
 - No backward-compat layers (pre-market, delete old paths cleanly)
+- Seat licensing: opt-in per-user upgrades only — NO default/seed pools at org
+  creation; everyone gets org-plan defaults (`org_role_features` + `org_limits`);
+  a seat is bought/assigned per user and upgrades only that user (e.g. extra AI
+  quota for one teacher). Seats can never grant admin-only features
+  (`org.manage`/`member.manage`/`role.builder`) to a non-admin role.
+- Admin panel is a standalone app (`apps/admin`), not sub-routes of the main app;
+  dev on `:4000` (no clash with main app's `:3000`), production on its own
+  subdomain (e.g. `internal.studiq`). Main app contains zero admin routes when
+  Phase C completes.
 
 ## Order
 
 - Phase A first (independent, immediate value)
 - Phase B before Phase C (de-tangle before moving code into packages)
+- Phase B.5 (seat cleanup) before Phase C — C2 extracts the post-cleanup FeatureResolver
 - Phase D last (runs on the stable foundation)
 
 ---
@@ -97,34 +109,110 @@ runs as 3 concurrent copies) to prove isolation and catch flakes in one pass.
 Status: NOT STARTED
 
 ### Tasks
-- [ ] B1 Flat canonical keys everywhere; delete `FEATURE_FLAG_TO_FEATURE_KEY`
-- [ ] B2 `FeatureResolver`: user override → org_role override → plan entitlement → rollout% → global flag
-- [ ] B3 Make `rollout_percentage` live (deterministic user_id bucketing + `X-Feature-Rollout` header)
-- [ ] B4 Enforce `feature_permissions` (flag ⟹ required perms) or drop table
-- [ ] B5 Split limits out of `PlanResolver` → `LimitsResolver`
-- [ ] B6 Client: `useFeature()` + `usePermission()`; delete `useCan`
-- [ ] B7 Split `/api/v1/permissions/me` → `/permissions/me` + `/features/me`
-- [ ] B8 Unify `@/lib/access.ts` + `@/lib/rbac.ts` → one `@/lib/authz`; delete `rbac.ts`
-- [ ] B9 Admin Rollout Control page (global / % / plan matrix / overrides + "Stop now")
-- [ ] B10 Fix broken admin: `/admin/permissions` (dropped table), `/admin/error-logs` route, `/admin/ai` dead link
-- [ ] Verify: unit tests for FeatureResolver precedence + rollout, RBAC union tests, lint, full suite green
+- [x] B1 Flat canonical keys everywhere; delete `FEATURE_FLAG_TO_FEATURE_KEY`
+- [x] B2 `FeatureResolver`: user override → org_role override → plan entitlement → rollout% → global flag
+- [x] B3 Make `rollout_percentage` live (deterministic user_id bucketing + `X-Feature-Rollout` header)
+- [x] B4 Enforce `feature_permissions` (flag ⟹ required perms) **or** drop table — dropped (`20260915000001`); dead docs-only junction, zero read sites
+- [x] B5 Split limits out of `PlanResolver` → `LimitsResolver` — PlanResolver (limits-only since B2) renamed to `limits.resolver.ts` / `LimitsResolver`
+- [x] B6 Client: `useFeature()` + `usePermission()`; delete `useCan`
+- [x] B7 Split `/api/v1/permissions/me` → `/permissions/me` (permissions only) + `/features/me` (features + rollout; `X-Feature-Rollout` header)
+- [x] B8 Unify `@/lib/access.ts` + `@/lib/rbac.ts` → one `@/lib/authz`; delete `rbac.ts` — N+1 fixed: `buildQueryFilter`/`checkPermission`/`hasPermission` now resolve from with-auth's batched `ctx.permissionScopes` (zero per-permission DB queries); access.ts group queries stay async
+- [x] B9 Admin Rollout Control — surfaces verified complete + hardened: global toggle + rollout % (`/admin/feature-flags`), plan matrix (`/admin/subscription-plans`), user overrides (`/admin/user-overrides`), per-flag kill switch ("Stop now" = `is_enabled=false`); added canonical-key enforcement (admin create/update models now reject non-`FEATURES` keys → no silent dead rows)
+- [x] B10 Fix broken admin: removed `/admin/permissions` (matrix read dropped `role_permissions`; canonical source is `DEFAULT_ROLE_PERMISSIONS`), deleted dead `/admin/logs` + `error_logs` table (zero writers; OTEL spans are the error surface), dropped `/admin/ai` dead link; sidebar + i18n cleaned
+- [x] Verify: lint clean (`tsc` + biome + import-path guard), unit **961/961**, integration **558/558** green (single run; `seats` 1-test failure = documented 3× copy stress flake, 30/30 in isolation); authz union/scope tests in `__tests__/unit/lib/authz.test.ts`, FeatureResolver precedence + rollout covered in service unit tests
+
+---
+
+## Phase B.5 — Seat licensing cleanup (opt-in per-user upgrades)
+
+Status: NOT STARTED — separate PR off main, merged BEFORE Phase C starts.
+
+Why: seats are the per-headcount add-on ("green-light one teacher's AI quota,
+not an org-wide upgrade for everyone"). The current implementation is inert
+bookkeeping that conflicts with that intent: pools are pre-seeded at org
+creation from `plan_seat_allocations`, nothing can grow a pool, assignment
+isn't role-aware, and `FeatureResolver` swaps a seat plan in wholesale —
+letting a campus seat grant `org.manage`/`member.manage`/`role.builder` to a
+member. Clean the axis before C2 moves `FeatureResolver` into `packages/authz`.
+
+### Tasks (scope of the seats PR)
+- [ ] S1 Drop default pool seeding — remove seat-pool creation from
+      `handle_new_organization` (`20260708000002` + `20260714000003`) and the
+      `plan_seat_allocations` seed in `seeds/00_plans.sql`; drop the
+      `plan_seat_allocations` table (clean drop migration)
+- [ ] S2 Pools are on-demand only — `seat.service` creates a pool when a seat
+      is added/purchased (addPool), never at org creation; `listPools` shows
+      only realized purchases
+- [ ] S3 Fix `FeatureResolver` precedence: seat plan = additive upgrade over
+      the org-role base, then re-apply role restrictions per key so a
+      non-admin role can never inherit org.manage/member.manage/role.builder
+      through a seat (privilege leak)
+- [ ] S4 Role-aware assignment — `seat.service` validates pool plan vs target
+      account_type/org role (teacher→educator tier, student→student tier);
+      the seats UI suggests the compatible seat per member instead of a
+      free-for-all branded-pool menu
+- [ ] S5 Seats API + `manage/seats` page: pools = purchased quantities
+      (add-to-pool on buy; checkout wiring comes later — after the monorepo
+      PRs, mechanics first)
+- [ ] S6 Migrate tests to new semantics: `seats.test.ts` (integration),
+      `seat.service.test.ts` / `seat.controller.test.ts` (unit),
+      `feature.resolver.test.ts` seat-precedence cases; drop coverage of
+      default/seeded pools
+- [ ] Verify: lint clean + unit + integration green; seats PR merged before
+      Phase C starts
+
+### Open (deferred with billing)
+- Org-plan pricing shape (flat vs per-headcount) — interacts with seat
+  add-ons; decide together with the checkout work later.
 
 ---
 
 ## Phase C — Detach admin panel (monorepo)
 
+> **Prerequisite:** Before starting C, clean up legacy AI dead code — see `docs/ai.md` → "Dead code to remove" section. The B.5 refactor agent may still be modifying some of these files.
+
 Status: NOT STARTED
 
 ### Tasks
 - [ ] C1 Bun workspace scaffold; create `packages/authz`, `packages/ui`
-- [ ] C2 Move pure logic/constants/authz → `packages/authz`; UI primitives + shared layout → `packages/ui`
-- [ ] C3 `apps/web`: remove admin; block `/admin*` + `/api/v1/admin*` in proxy
-- [ ] C4 `apps/admin`: standalone Next app; own build/domain; service-role server-side session
+- [ ] C2 Move pure logic/constants/authz → `packages/authz` (FeatureResolver already post-B.5 — seat-as-upgrade, no default pools); UI primitives + shared layout → `packages/ui`
+- [ ] C3 `apps/web`: remove the admin Next.js route segment (`src/app/(frontend)/admin/`) and any admin API routes in `(backend)` — zero `/admin*` routes remain in the main app
+- [ ] C4 `apps/admin`: standalone Next app; own build; dev on `:4000` (no clash with main app `:3000`), production on its own subdomain (e.g. `internal.studiq`); service-role server-side session
 - [ ] C5 PEM gate in `apps/admin/proxy.ts` (Ed25519, header signature, rotation list)
 - [ ] C6 Split i18n `Admin*` namespaces into `apps/admin`
-- [ ] C7 Two standalone builds; edge routing for `/admin*`
+- [ ] C7 Two standalone builds; main app has no admin routes (admin app served entirely on its own origin)
 - [ ] C8 Hardening: introduce RLS on user content tables (biggest security gap today)
-- [ ] Verify: PEM-gated admin smoke, main-app 404/403 on `/admin*`, all tests in both apps
+- [ ] Verify: PEM-gated admin smoke, main-app standard 404 on `/admin*` (no admin routes), all tests in both apps
+
+### Side note — GitHub-style fine-grained admin tokens
+
+When the admin panel detaches (this phase), the monolithic SYS_ADMIN-or-nothing
+PEM header looks increasingly blunt. Replace it with GitHub-style fine-grained
+tokens so an operator can grant **partial** access — e.g. "read orgs, write
+feature flags, nothing else" — without handing over the keys to the whole system:
+
+- **Token = keyed scopes, least privilege by construction**: every admin API
+  request authenticates with a bearer token carrying an explicit scope list
+  (`orgs:read`, `features:write`, `plans:read`, `overrides:write`, …). No token
+  ever implies "everything"; the intersection of scopes and the DB policy is
+  what a request can actually do. Gap = deny.
+- **Read vs write split**: each surface gets at least `:read` and `:write`
+  (write implies read). Tokens can be read-only everywhere, or mixed — the
+  checkboxes enforce it, so there's no way to mint an "all-scopes" token by
+  accident (and even if you did, that's an explicit, auditable choice).
+- **Scope set mirrors the admin surfaces 1:1** — orgs, feature-flags (rollout /
+  kill-switch), subscription plans + plan matrix, user overrides, plan limits —
+  so the generation UI's checkbox list maps directly to what the API can touch.
+- **Generation UI in `apps/admin`** ("Settings → Tokens → Generate new"):
+  name + expiry + scope checkboxes → plaintext secret shown **once** (GitHub
+  style). DB stores **only the SHA-256 hash** + `last_used_at`; an expired or
+  revoked token 401s regardless of scope. List/revoke screen stays trivial since
+  we never store plaintext.
+- **Implementation anchor**: the token middleware resolves the scope list into
+  `RequestContext.permissionScopes`, reusing the same batched map that B8's
+  `@/lib/authz` already consumes — so controllers keep calling
+  `hasPermission`/`checkPermission`/`buildQueryFilter` **unchanged**. The PEM
+  gate stays as bootstrap for the very first token mint.
 
 ---
 

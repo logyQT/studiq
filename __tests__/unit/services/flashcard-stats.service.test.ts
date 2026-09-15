@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { FlashcardStatsService } from '@/server/services/flashcard-stats.service';
 import type { RequestContext } from '@/lib/request-context';
+import { FlashcardStatsService } from '@/server/services/flashcard-stats.service';
 
-vi.mock('@/lib/rbac', () => ({
-  buildQueryFilter: vi.fn().mockResolvedValue({ created_by: 'user-1' }),
+vi.mock('@/lib/authz', () => ({
+  buildQueryFilter: vi.fn().mockReturnValue({ created_by: 'user-1' }),
   Permission: { FLASHCARD_READ: 'flashcard.read' },
 }));
 
@@ -51,8 +51,8 @@ describe('FlashcardStatsService', () => {
 
   describe('getTeacherStats', () => {
     it('returns empty when filter is impossible', async () => {
-      const { buildQueryFilter } = await import('@/lib/rbac');
-      vi.mocked(buildQueryFilter).mockResolvedValueOnce({ _impossible: true } as any);
+      const { buildQueryFilter } = await import('@/lib/authz');
+      vi.mocked(buildQueryFilter).mockReturnValueOnce({ _impossible: true } as any);
 
       const result = await service.getTeacherStats(ctx);
 
@@ -72,7 +72,15 @@ describe('FlashcardStatsService', () => {
     it('returns stats when flashcards exist', async () => {
       const flashcards = [{ id: 'fc-1' }, { id: 'fc-2' }];
       const rpcResult = {
-        summary: { totalDecks: 1, totalFlashcards: 2, totalPractices: 10, totalStudents: 5, overallAccuracy: 80, averageEasinessFactor: 2.5, difficultyBreakdown: { easy: 1, medium: 0, hard: 1, new: 0 } },
+        summary: {
+          totalDecks: 1,
+          totalFlashcards: 2,
+          totalPractices: 10,
+          totalStudents: 5,
+          overallAccuracy: 80,
+          averageEasinessFactor: 2.5,
+          difficultyBreakdown: { easy: 1, medium: 0, hard: 1, new: 0 },
+        },
         byDeck: [],
         byTopic: [],
       };
@@ -96,8 +104,8 @@ describe('FlashcardStatsService', () => {
 
   describe('getDifficultyCards', () => {
     it('returns empty when filter is impossible', async () => {
-      const { buildQueryFilter } = await import('@/lib/rbac');
-      vi.mocked(buildQueryFilter).mockResolvedValueOnce({ _impossible: true } as any);
+      const { buildQueryFilter } = await import('@/lib/authz');
+      vi.mocked(buildQueryFilter).mockReturnValueOnce({ _impossible: true } as any);
 
       const result = await service.getDifficultyCards(ctx, 'easy');
 
@@ -128,7 +136,9 @@ describe('FlashcardStatsService', () => {
       // topics
       mock.from.mockReturnValueOnce(qb([]));
       // practice rows
-      mock.from.mockReturnValueOnce(qb([{ flashcard_id: 'fc-1', was_correct: true, user_id: 'u-1' }]));
+      mock.from.mockReturnValueOnce(
+        qb([{ flashcard_id: 'fc-1', was_correct: true, user_id: 'u-1' }]),
+      );
 
       const result = await service.getDifficultyCards(ctx, 'new');
 

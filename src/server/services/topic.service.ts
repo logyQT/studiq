@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { accessibleFilter, check, Permission } from '@/lib/access';
+import { accessibleFilter, check, Permission } from '@/lib/authz';
 import { decodeCursor, encodeCursor } from '@/lib/query-list';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';

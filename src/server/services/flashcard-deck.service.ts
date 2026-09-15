@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { accessibleFilter, check, Permission } from '@/lib/access';
+import { accessibleFilter, check, Permission } from '@/lib/authz';
 import { decodeCursor, encodeCursor } from '@/lib/query-list';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
@@ -12,7 +12,7 @@ import type {
   DeckListQuery,
   UpdateDeckInput,
 } from '@/server/models';
-import { planResolver } from '@/server/services';
+import { limitsResolver } from '@/server/services';
 
 export class FlashcardDeckService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -24,7 +24,7 @@ export class FlashcardDeckService {
       .from('flashcard_decks')
       .select('*', { count: 'exact', head: true })
       .eq('created_by', ctx.userId);
-    await planResolver.checkLimit(ctx, 'max_decks', deckCount ?? 0);
+    await limitsResolver.checkLimit(ctx, 'max_decks', deckCount ?? 0);
 
     const { data: deck, error } = await supabase
       .from('flashcard_decks')

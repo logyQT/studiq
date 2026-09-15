@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { FlashcardService } from '@/server/services/flashcard.service';
-import { success, failure } from '@/lib/service-result';
 import type { RequestContext } from '@/lib/request-context';
+import { failure, success } from '@/lib/service-result';
+import { FlashcardService } from '@/server/services/flashcard.service';
 import { AccountType } from '@/types';
 
-vi.mock('@/lib/access', () => {
+vi.mock('@/lib/authz', () => {
   const check = vi.fn().mockResolvedValue(undefined);
   return {
     check,
@@ -21,13 +21,12 @@ vi.mock('@/lib/access', () => {
 });
 
 vi.mock('@/server/services', () => ({
-  planResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
+  limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 
 function chain(result: any, count?: number) {
-  const resolved = count !== undefined
-    ? { data: result, count, error: null }
-    : { data: result, error: null };
+  const resolved =
+    count !== undefined ? { data: result, count, error: null } : { data: result, error: null };
   const terminal = vi.fn().mockResolvedValue(resolved);
   const c: any = {};
   c.select = vi.fn(() => c);
@@ -139,10 +138,7 @@ describe('FlashcardService', () => {
       mock.from.mockReturnValueOnce(chain([], 0));
       mock.rpc.mockResolvedValue({ data: null, error: { message: 'DB error' } });
 
-      const result = await service.bulkCreate(
-        { cards: [{ front: 'Q1', back: 'A1' }] },
-        ctx,
-      );
+      const result = await service.bulkCreate({ cards: [{ front: 'Q1', back: 'A1' }] }, ctx);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');
@@ -266,11 +262,7 @@ describe('FlashcardService', () => {
       mock.from.mockReturnValueOnce(chain(null));
       mock.from.mockReturnValue(chain(updated));
 
-      const result = await service.update(
-        'fc-1',
-        { front: 'Updated', topicIds: ['t-1'] },
-        ctx,
-      );
+      const result = await service.update('fc-1', { front: 'Updated', topicIds: ['t-1'] }, ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
@@ -284,11 +276,7 @@ describe('FlashcardService', () => {
       mock.from.mockReturnValueOnce(chain(null));
       mock.from.mockReturnValue(chain(updated));
 
-      const result = await service.update(
-        'fc-1',
-        { front: 'Updated', deckId: 'd-1' },
-        ctx,
-      );
+      const result = await service.update('fc-1', { front: 'Updated', deckId: 'd-1' }, ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();

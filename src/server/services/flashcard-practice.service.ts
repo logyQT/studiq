@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { buildQueryFilter, Permission } from '@/lib/rbac';
+import { buildQueryFilter, Permission } from '@/lib/authz';
 import type { RequestContext } from '@/lib/request-context';
 import { type ServiceResult, success } from '@/lib/service-result';
 import { toDbFailure } from '@/lib/supabase-errors';
@@ -167,7 +167,7 @@ export class FlashcardPracticeService {
   }
 
   private async countNewCards(ctx: RequestContext): Promise<number> {
-    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (filter._impossible) return 0;
 
     const { filterType, organizationId } = resolveFilterType(filter, ctx);
@@ -259,7 +259,7 @@ export class FlashcardPracticeService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (filter._impossible) return success([]);
 
     const { filterType, organizationId } = resolveFilterType(filter, ctx);
@@ -289,7 +289,7 @@ export class FlashcardPracticeService {
   async getDueBreakdown(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (filter._impossible)
       return success({ total: 0, nextReviewAt: null, byTopic: {}, byDeck: {} });
 
@@ -325,7 +325,7 @@ export class FlashcardPracticeService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const rbac = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    const rbac = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (rbac._impossible) return success({ count: 0 });
 
     const { data, error } = await supabase.rpc('get_due_breakdown', {
@@ -388,7 +388,7 @@ export class FlashcardPracticeService {
   async getStateBreakdown(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
 
     if (filter._impossible) {
       return success({
@@ -476,7 +476,7 @@ export class FlashcardPracticeService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const cardFilter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    const cardFilter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     const suspendedCardIds = await this.getSuspendedCardIds(ctx);
 
     let query = supabase.from('flashcards').select('id, front, back, created_at');
@@ -600,7 +600,7 @@ export class FlashcardPracticeService {
   ): Promise<string[]> {
     const supabase = await this.createClient();
 
-    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     let query = supabase.from('flashcards').select('id');
 
     if (filter._impossible) return [];
@@ -679,7 +679,7 @@ export class FlashcardPracticeService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (filter._impossible) return success([]);
 
     const matchingIds = await this.getMatchingFlashcardIds(ctx, filters);

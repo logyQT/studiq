@@ -3,6 +3,7 @@ import { ActivityController } from '@/server/controllers/activity.controller';
 import { AuthController } from '@/server/controllers/auth.controller';
 import { ClassroomController } from '@/server/controllers/classroom.controller';
 import { FeatureFlagController } from '@/server/controllers/feature-flag.controller';
+import { FeaturesController } from '@/server/controllers/features.controller';
 import { FlashcardController } from '@/server/controllers/flashcard.controller';
 import { FlashcardDeckController } from '@/server/controllers/flashcard-deck.controller';
 import { FlashcardExportController } from '@/server/controllers/flashcard-export.controller';
@@ -16,7 +17,6 @@ import { OrgController } from '@/server/controllers/org.controller';
 import { OrgRoleController } from '@/server/controllers/org-role.controller';
 import { OrganizationController } from '@/server/controllers/organization.controller';
 import { OrganizationMemberController } from '@/server/controllers/organization-member.controller';
-import { PermissionController } from '@/server/controllers/permission.controller';
 import { PermissionsController } from '@/server/controllers/permissions.controller';
 import { PlanFeatureController } from '@/server/controllers/plan-feature.controller';
 import { PlanLimitController } from '@/server/controllers/plan-limit.controller';
@@ -130,14 +130,11 @@ export const organizationMemberController = wrapService(
   new OrganizationMemberController(organizationMemberService),
   'organization-member.controller',
 );
-export const permissionController = wrapService(
-  new PermissionController(),
-  'permission.controller',
-);
 export const permissionsController = wrapService(
   new PermissionsController(),
   'permissions.controller',
 );
+export const featuresController = wrapService(new FeaturesController(), 'features.controller');
 export const planFeatureController = wrapService(
   new PlanFeatureController(planFeatureService),
   'plan-feature.controller',

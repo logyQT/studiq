@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { ActivityService } from '@/server/services/activity.service';
 import type { RequestContext } from '@/lib/request-context';
+import { ActivityService } from '@/server/services/activity.service';
 
-vi.mock('@/lib/access', () => ({
+vi.mock('@/lib/authz', () => ({
   check: vi.fn().mockResolvedValue(undefined),
   Permission: { DECK_UPDATE: 'deck.update' },
 }));
@@ -81,22 +81,26 @@ describe('ActivityService', () => {
     it('returns activity with students and quizzes', async () => {
       const students = [{ user_id: 's-1' }];
       const profiles = [{ id: 's-1', email: 's@test.com', full_name: 'Student' }];
-      const activity = [{
-        user_id: 's-1',
-        date: new Date().toISOString().split('T')[0],
-        reviews_count: 10,
-        reviews_correct: 8,
-        quizzes_count: 2,
-        quizzes_score: 18,
-        quizzes_total: 20,
-      }];
+      const activity = [
+        {
+          user_id: 's-1',
+          date: new Date().toISOString().split('T')[0],
+          reviews_count: 10,
+          reviews_correct: 8,
+          quizzes_count: 2,
+          quizzes_score: 18,
+          quizzes_total: 20,
+        },
+      ];
       const lastPractice = [{ user_id: 's-1', practiced_at: new Date().toISOString() }];
-      const attempts = [{
-        score: 90,
-        total_questions: 10,
-        config: { difficulty: 'medium' },
-        completed_at: new Date().toISOString(),
-      }];
+      const attempts = [
+        {
+          score: 90,
+          total_questions: 10,
+          config: { difficulty: 'medium' },
+          completed_at: new Date().toISOString(),
+        },
+      ];
 
       mock.from.mockReturnValueOnce(qb(students)); // org_members
       mock.from.mockReturnValueOnce(qb(profiles)); // profiles

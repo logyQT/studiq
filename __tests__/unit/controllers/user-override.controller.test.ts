@@ -63,12 +63,23 @@ describe('UserOverrideController', () => {
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
     });
+    it('rejects non-canonical feature keys', async () => {
+      const response = await controller.create({
+        userId: '550e8400-e29b-41d4-a716-446655440000',
+        featureKey: 'typo.feature',
+        isEnabled: true,
+      });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+    });
   });
 
   describe('update', () => {
     it('updates an override', async () => {
       mockService.update.mockResolvedValueOnce({ success: true, data: { id: 'ov-1' } });
-      const response = await controller.update('550e8400-e29b-41d4-a716-446655440000', { isEnabled: false });
+      const response = await controller.update('550e8400-e29b-41d4-a716-446655440000', {
+        isEnabled: false,
+      });
       expect(response.success).toBe(true);
     });
     it('returns 400 on invalid id', async () => {

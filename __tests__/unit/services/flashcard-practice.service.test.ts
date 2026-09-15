@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { FlashcardPracticeService } from '@/server/services/flashcard-practice.service';
-import { success, failure } from '@/lib/service-result';
 import type { RequestContext } from '@/lib/request-context';
+import { failure, success } from '@/lib/service-result';
+import { FlashcardPracticeService } from '@/server/services/flashcard-practice.service';
 import { AccountType } from '@/types';
 
-vi.mock('@/lib/rbac', () => ({
-  buildQueryFilter: vi.fn().mockResolvedValue({}),
+vi.mock('@/lib/authz', () => ({
+  buildQueryFilter: vi.fn().mockReturnValue({}),
   Permission: { FLASHCARD_READ: 'flashcard.read' as const },
 }));
 
@@ -457,8 +457,14 @@ describe('FlashcardPracticeService', () => {
         data: {
           total: 2,
           nextReviewAt: null,
-          byTopic: [{ topic_id: 'topic-1', count: 1 }, { topic_id: 'topic-2', count: 1 }],
-          byDeck: [{ deck_id: 'deck-1', count: 1 }, { deck_id: 'deck-2', count: 1 }],
+          byTopic: [
+            { topic_id: 'topic-1', count: 1 },
+            { topic_id: 'topic-2', count: 1 },
+          ],
+          byDeck: [
+            { deck_id: 'deck-1', count: 1 },
+            { deck_id: 'deck-2', count: 1 },
+          ],
         },
         error: null,
       });

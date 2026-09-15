@@ -330,42 +330,49 @@ New namespaces: `QuizBuilder`, `Documents`, `TeacherDashboard` — ~60-80 keys.
 
 ## Phase 4: AI Integration 🏗️
 
-> Implement the 3-phase AI roadmap from `docs/AI-integration.md`. Parallel track — mostly independent of org hierarchy.
+> Architecture and current state: [`docs/ai.md`](ai.md). Security: [`docs/plans/agent-security.md`](plans/agent-security.md).
+> The agent pipeline (Agent Q + ReAct multi-agent) is live. Legacy pipeline in maintenance mode.
 
 **Priority**: HIGH — core product differentiator.
 
-### Subphase 4A: Basic/MVP
+### Subphase 4A: Basic/MVP ✅
 
 | Item | Status | Details |
 |------|--------|---------|
-| Flashcard generation from PDF | ✅ | SSE-streamed, OpenAI/Ollama |
-| AI question generation | 📋 | `POST /api/v1/ai/questions` — generate MCQ/TF/Open from text |
-| AI quiz generation | 📋 | `POST /api/v1/ai/quiz` — generate full quiz from subject + topic |
-| Provider interface extension | 📋 | Add `generateQuestions()`, `generateQuiz()` to `LLMProvider` |
-| `/edu/questions` AI generate button | 📋 | Teachers input text → AI creates questions |
+| Agent Q (ReAct multi-agent) | ✅ | GeneralAgent + FlashcardAgent, 14 tools, streaming |
+| Flashcard generation from text/PDF | ✅ | Via agent tool calling |
+| Chat interface with streaming | ✅ | `/app/ai`, SSE events, thinking traces |
+| Usage tracking | ⚠️ | Stubs exist, real enforcement pending |
 
-### Subphase 4B: V2 — Voice & Chat
+### Subphase 4B: V2 — Extended
 
-| Item | Details |
-|------|---------|
-| AI oral exam | Web Speech STT → AI asks questions verbally → student responds → AI evaluates |
-| AI tutor chatbot | Chat interface, RAG over university content |
-| Explain wrong answers | Post-quiz AI explanation |
-| AI summarization | Long text → bullet points, key concepts |
+| Item | Status | Details |
+|------|--------|---------|
+| QuestionAgent | 📋 | Quiz/question generation sub-agent |
+| NotesAgent | 📋 | Note-taking sub-agent |
+| YouTube/Image/Audio input | 📋 | New input processors |
+| Tutor Mode | 📋 | Interactive Q&A loop |
+| Modular commands | 📋 | `/summary`, `/quiz`, `/explain` via agent tools |
 
-### Subphase 4C: V3 — Personalization
+### Subphase 4C: V3 — Advanced
 
-| Item | Details |
-|------|---------|
-| Personalized learning paths | Recommendations from weak areas |
-| Adaptive difficulty | Quiz questions adjust based on past performance |
-| AI grading of open questions | LLM evaluates free-text answers |
+| Item | Status | Details |
+|------|--------|---------|
+| LearningPathAgent | 💤 | Personalized study paths |
+| ReportAgent | 💤 | Teacher analytics reports |
+| Multi-agent pipelines | 📋 | Curriculum builder, workflows |
+| Adaptive difficulty | 💤 | Performance-based question adjustment |
 
-### Gating
+### Security hardening
 
-All AI features behind PREMIUM tier (Phase 6). Usage limits per user per day (configurable per plan).
-
-**~15 new files, ~10 modified. Independent of Phases 1-3.**
+| Item | Status | Priority |
+|------|--------|----------|
+| Account type enforcement on agent route | 🔴 Open | P0 |
+| URL allowlist for `webfetch` (SSRF) | 🔴 Open | P0 |
+| Token budget enforcement | 🔴 Open | P0 |
+| `RequestContext` in agent execution | 🔴 Open | P1 |
+| Rate limiting | 🟡 Open | P1 |
+| `AgentScope` type for provable narrow scope | 📋 Planned | P2 |
 
 ---
 
