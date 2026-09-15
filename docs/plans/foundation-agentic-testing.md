@@ -115,6 +115,8 @@ Status: NOT STARTED
 
 ## Phase C — Detach admin panel (monorepo)
 
+> **Prerequisite:** Before starting C, clean up legacy AI dead code — see `docs/ai.md` → "Dead code to remove" section. The B.5 refactor agent may still be modifying some of these files.
+
 Status: NOT STARTED
 
 ### Tasks
