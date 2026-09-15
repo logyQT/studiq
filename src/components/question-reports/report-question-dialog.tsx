@@ -1,19 +1,19 @@
 'use client';
 
-import { Flag } from 'lucide-react';
-import { useTranslations } from 'next-intl';
-import { useState } from 'react';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
+  Textarea,
+} from '@studiq/ui';
+import { Flag } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { useState } from 'react';
+import { toast } from 'sonner';
 import { useApiMutation } from '@/hooks/use-api';
 import { apiPost } from '@/lib/api';
 import { questionReportKeys } from '@/lib/query-keys';

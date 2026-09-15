@@ -1,8 +1,7 @@
+import { AccountType, RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { QuizService } from '@/server/services/quiz.service';
-import { AccountType } from '@/types';
-import type { RequestContext } from '@/lib/request-context';
 
 function qb(data: any, error: any = null) {
   const result = { data: data ?? null, error };
@@ -61,10 +60,7 @@ describe('QuizService', () => {
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(qb(null));
 
-      const result = await service.generateQuiz(
-        { questionTypes: ['mcq'], questionCount: 2 },
-        ctx,
-      );
+      const result = await service.generateQuiz({ questionTypes: ['mcq'], questionCount: 2 }, ctx);
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
@@ -74,10 +70,7 @@ describe('QuizService', () => {
     it('returns NOT_FOUND when no questions available', async () => {
       mock.from.mockReturnValueOnce(qb([]));
 
-      const result = await service.generateQuiz(
-        { questionTypes: ['mcq'], questionCount: 5 },
-        ctx,
-      );
+      const result = await service.generateQuiz({ questionTypes: ['mcq'], questionCount: 5 }, ctx);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
@@ -86,10 +79,7 @@ describe('QuizService', () => {
     it('returns INTERNAL_SERVER when fetch fails', async () => {
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
-      const result = await service.generateQuiz(
-        { questionTypes: ['mcq'], questionCount: 5 },
-        ctx,
-      );
+      const result = await service.generateQuiz({ questionTypes: ['mcq'], questionCount: 5 }, ctx);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');

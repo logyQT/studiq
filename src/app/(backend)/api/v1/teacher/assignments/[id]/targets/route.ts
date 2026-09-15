@@ -1,9 +1,8 @@
+import { AccountType } from '@studiq/authz';
 import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
 import { teacherAssignmentController } from '@/server/controllers/teacher-assignment.controller';
-
-import { AccountType } from '@/types';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(

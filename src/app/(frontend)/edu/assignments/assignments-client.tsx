@@ -1,10 +1,9 @@
 'use client';
 
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@studiq/ui';
 import { FileText, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApiQuery } from '@/hooks/use-api';
 import { assignmentKeys } from '@/lib/query-keys';
 

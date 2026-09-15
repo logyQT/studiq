@@ -1,21 +1,21 @@
 'use client';
 
-import { useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
-import type { useTranslations } from 'next-intl';
-import { useCallback, useState } from 'react';
-import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
-import { Button } from '@/components/ui/button';
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { MultiSelect } from '@/components/ui/multi-select';
+  Input,
+  MultiSelect,
+} from '@studiq/ui';
+import { useQueryClient } from '@tanstack/react-query';
+import { Plus } from 'lucide-react';
+import type { useTranslations } from 'next-intl';
+import { useCallback, useState } from 'react';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { apiPost, apiPut } from '@/lib/api';
 import { getGradientHex } from '@/lib/color-utils';
 import { flashcardKeys, topicKeys } from '@/lib/query-keys';

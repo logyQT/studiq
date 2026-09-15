@@ -1,17 +1,17 @@
 'use client';
 
-import { Plus, Search, Sparkles, X } from 'lucide-react';
-import type { useTranslations } from 'next-intl';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
+  Button,
+  Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@studiq/ui';
+import { Plus, Search, Sparkles, X } from 'lucide-react';
+import type { useTranslations } from 'next-intl';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { useFeature } from '@/hooks/use-feature';
 import { usePermission } from '@/hooks/use-permission';
 import type { Topic } from '@/server/models/topic.model';

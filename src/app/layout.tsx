@@ -8,7 +8,7 @@ import { QueryProvider } from '@/components/providers/QueryProvider';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 
 import '@/app/globals.css';
-import { ToastProvider } from '@/components/ui/toast';
+import { ToastProvider } from '@studiq/ui';
 
 /**
  * =============================================================================

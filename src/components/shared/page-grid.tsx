@@ -1,5 +1,5 @@
+import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@studiq/ui';
 import type { ReactNode, RefObject } from 'react';
-import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 
 interface PageGridProps {
   cols?: 3 | 4;

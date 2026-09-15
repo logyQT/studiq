@@ -1,18 +1,15 @@
 'use client';
 
+import { Card, CardContent, CardHeader, CardTitle, Skeleton, StatCard } from '@studiq/ui';
 import { AlertTriangle, Brain, CalendarDays, TrendingUp } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { DailyActivityChart } from '@/components/stats/daily-activity-chart';
 import { StateBreakdownChart } from '@/components/stats/state-breakdown-chart';
 import { WeakPointsList } from '@/components/stats/weak-points-list';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { StatCard } from '@/components/ui/stat-card';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { StateBreakdown } from '@/server/models/flashcard-practice.model';
-
 import type { ActivityResponse, WeakPointsResponse } from '@/server/models/stats.model';
 
 export function OverviewTab() {

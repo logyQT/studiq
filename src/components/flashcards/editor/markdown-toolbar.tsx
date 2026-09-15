@@ -1,5 +1,6 @@
 'use client';
 
+import { Button, Popover, PopoverContent, PopoverTrigger } from '@studiq/ui';
 import {
   Bold,
   Heading1,
@@ -15,8 +16,6 @@ import {
 } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { type RefObject, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
 function generateTableMarkdown(rows: number, cols: number): string {

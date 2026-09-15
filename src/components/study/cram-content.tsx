@@ -1,12 +1,10 @@
 'use client';
 
+import { Card, Empty, EmptyHeader, EmptyMedia, EmptyTitle, Skeleton } from '@studiq/ui';
 import { FolderOpen } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { CramDeckCard } from '@/components/flashcards/cards/cram-deck-card';
-import { Card } from '@/components/ui/card';
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { Deck } from '@/server/models/flashcard-deck.model';

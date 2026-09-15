@@ -1,19 +1,19 @@
 'use client';
 
+import {
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@studiq/ui';
 import { ArrowRight, Eye, MoreVertical } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type { useTranslations } from 'next-intl';
 import { memo } from 'react';
 import { DeckContextMenu } from '@/components/flashcards/context-menus/deck-context-menu';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { getGradientHex } from '@/lib/color-utils';
 import type { Deck } from '@/server/models/flashcard-deck.model';
 

@@ -1,12 +1,10 @@
 'use client';
 
+import { Card, UserAvatar } from '@studiq/ui';
 import { MessageSquareWarning } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
-
-import { Card } from '@/components/ui/card';
-import { UserAvatar } from '@/components/ui/user-avatar';
 import { useApiQuery } from '@/hooks/use-api';
 import { questionReportKeys } from '@/lib/query-keys';
 

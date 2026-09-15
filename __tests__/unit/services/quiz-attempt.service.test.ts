@@ -1,8 +1,7 @@
+import { AccountType, RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { QuizAttemptService } from '@/server/services/quiz-attempt.service';
-import { AccountType } from '@/types';
-import type { RequestContext } from '@/lib/request-context';
 
 function qb(data: any, error: any = null) {
   const result = { data: data ?? null, error };

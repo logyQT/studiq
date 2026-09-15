@@ -1,5 +1,5 @@
+import type { RequestContext } from '@studiq/authz';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { RequestContext } from '@/lib/request-context';
 
 /**
  * Resolve the plan key a user is entitled to via seat licensing within the

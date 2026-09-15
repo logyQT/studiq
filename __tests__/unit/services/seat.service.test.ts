@@ -1,6 +1,6 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import type { RequestContext } from '@/lib/request-context';
 import { SeatService } from '@/server/services/seat.service';
 
 function chain(result: any, count?: number) {

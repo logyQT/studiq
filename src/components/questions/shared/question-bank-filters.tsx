@@ -1,16 +1,16 @@
 'use client';
 
-import { Plus, Search, X } from 'lucide-react';
-import type { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
+  Button,
+  Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@studiq/ui';
+import { Plus, Search, X } from 'lucide-react';
+import type { useTranslations } from 'next-intl';
 
 interface QuestionBankFiltersProps {
   searchInput: string;

@@ -21,9 +21,6 @@ import { BulkActionBar } from '@/components/shared/bulk-action-bar';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { PageGrid } from '@/components/shared/page-grid';
 import { SpeedDial } from '@/components/shared/speed-dial';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
 import { useOrgs } from '@/hooks/use-orgs';
@@ -45,6 +42,7 @@ const DeckFormDialog = dynamic(() =>
   })),
 );
 
+import { Button, Card, Skeleton } from '@studiq/ui';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import { useDebounce } from '@/hooks/use-debounce';
 import { usePersistedState } from '@/hooks/use-persisted-state';

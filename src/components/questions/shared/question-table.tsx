@@ -1,27 +1,25 @@
 'use client';
 
-import { ArrowUpDown, Layers, Pencil, Search, Trash2, X } from 'lucide-react';
-import type { useTranslations } from 'next-intl';
-import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import {
+  Badge,
+  Button,
+  Card,
+  Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import {
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@studiq/ui';
+import { ArrowUpDown, Layers, Pencil, Search, Trash2, X } from 'lucide-react';
+import type { useTranslations } from 'next-intl';
+import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
 import type { Question } from '@/server/models/question.model';
 
 interface QuestionTableProps {

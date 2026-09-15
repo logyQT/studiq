@@ -1,11 +1,10 @@
 'use client';
 
+import { Button, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
 import { ArrowRight, CheckCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function BillingSuccessPage() {
   const t = useTranslations('BillingSuccessPage');

@@ -1,6 +1,6 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FlashcardStatsController } from '@/server/controllers/flashcard-stats.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 function createMockService() {
   return {

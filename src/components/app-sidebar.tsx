@@ -1,5 +1,7 @@
 'use client';
 
+import { AccountType } from '@studiq/authz';
+import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail } from '@studiq/ui';
 import {
   BarChart3,
   Brain,
@@ -31,18 +33,9 @@ import { OrgSwitcher } from '@/components/layout/org-switcher';
 import { UserMenu } from '@/components/layout/user-menu';
 import { type NavItem, NavMain } from '@/components/nav-main';
 import { useAuth } from '@/components/providers/AuthProvider';
-
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarRail,
-} from '@/components/ui/sidebar';
 import { useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
 import { questionReportKeys } from '@/lib/query-keys';
-import { AccountType } from '@/types';
 
 const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
   '/edu': [

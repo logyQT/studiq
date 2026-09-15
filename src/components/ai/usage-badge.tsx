@@ -1,8 +1,8 @@
 'use client';
 
+import { Badge } from '@studiq/ui';
 import { Zap } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Badge } from '@/components/ui/badge';
 import type { UsageInfo } from '@/hooks/use-ai-chat';
 
 interface UsageBadgeProps {

@@ -1,8 +1,8 @@
 'use client';
 
+import { Input } from '@studiq/ui';
 import { Search, X } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { Input } from '@/components/ui/input';
 
 interface PageToolbarProps {
   search: {

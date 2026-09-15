@@ -1,7 +1,7 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { SubscriptionPlanService } from '@/server/services/subscription-plan.service';
-import type { RequestContext } from '@/lib/request-context';
 
 function qb(data: any, error: any = null) {
   const promise = Promise.resolve({ data: data ?? null, error });
@@ -45,7 +45,18 @@ describe('SubscriptionPlanService', () => {
 
   describe('listActive', () => {
     it('returns active plans with features and limits', async () => {
-      const plans = [{ id: 'p-1', key: 'base', name: 'Base', description: null, price_monthly: 0, currency: 'PLN', sort_order: 0, is_active: true }];
+      const plans = [
+        {
+          id: 'p-1',
+          key: 'base',
+          name: 'Base',
+          description: null,
+          price_monthly: 0,
+          currency: 'PLN',
+          sort_order: 0,
+          is_active: true,
+        },
+      ];
       const features = [{ plan_key: 'base', feature_key: 'quiz' }];
       const limits = [{ plan_key: 'base', limit_key: 'max_groups', limit_value: 3 }];
       mock.from.mockReturnValueOnce(qb(plans));
@@ -91,7 +102,16 @@ describe('SubscriptionPlanService', () => {
   describe('getMyPlan', () => {
     it('returns org plan when activeOrgId set', async () => {
       const org = { plan: 'base' };
-      const plan = { id: 'p-1', key: 'base', name: 'Base', description: null, price_monthly: 0, currency: 'PLN', sort_order: 0, is_active: true };
+      const plan = {
+        id: 'p-1',
+        key: 'base',
+        name: 'Base',
+        description: null,
+        price_monthly: 0,
+        currency: 'PLN',
+        sort_order: 0,
+        is_active: true,
+      };
       const features = [{ feature_key: 'quiz' }];
       const limits = [{ plan_key: 'base', limit_key: 'max_groups', limit_value: 3 }];
       mock.from.mockReturnValueOnce(qb(org));
@@ -107,7 +127,16 @@ describe('SubscriptionPlanService', () => {
 
     it('returns personal plan when no org', async () => {
       const profile = { personal_plan_key: 'free' };
-      const plan = { id: 'p-2', key: 'free', name: 'Free', description: null, price_monthly: 0, currency: 'PLN', sort_order: 0, is_active: true };
+      const plan = {
+        id: 'p-2',
+        key: 'free',
+        name: 'Free',
+        description: null,
+        price_monthly: 0,
+        currency: 'PLN',
+        sort_order: 0,
+        is_active: true,
+      };
       mock.from.mockReturnValueOnce(qb(profile)); // profile
       mock.from.mockReturnValueOnce(qb(plan)); // plan
       mock.from.mockReturnValueOnce(qb([])); // features
@@ -140,7 +169,16 @@ describe('SubscriptionPlanService', () => {
   describe('getPersonalPlan', () => {
     it('returns personal plan', async () => {
       const profile = { personal_plan_key: 'free' };
-      const plan = { id: 'p-2', key: 'free', name: 'Free', description: null, price_monthly: 0, currency: 'PLN', sort_order: 0, is_active: true };
+      const plan = {
+        id: 'p-2',
+        key: 'free',
+        name: 'Free',
+        description: null,
+        price_monthly: 0,
+        currency: 'PLN',
+        sort_order: 0,
+        is_active: true,
+      };
       mock.from.mockReturnValueOnce(qb(profile));
       mock.from.mockReturnValueOnce(qb(plan));
       mock.from.mockReturnValueOnce(qb([]));
@@ -175,7 +213,16 @@ describe('SubscriptionPlanService', () => {
 
   describe('getByKey', () => {
     it('returns plan by key', async () => {
-      const plan = { id: 'p-1', key: 'base', name: 'Base', description: null, price_monthly: 0, currency: 'PLN', sort_order: 0, is_active: true };
+      const plan = {
+        id: 'p-1',
+        key: 'base',
+        name: 'Base',
+        description: null,
+        price_monthly: 0,
+        currency: 'PLN',
+        sort_order: 0,
+        is_active: true,
+      };
       mock.from.mockReturnValueOnce(qb(plan));
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));

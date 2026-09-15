@@ -1,8 +1,8 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { success, failure } from '@/lib/service-result';
-import { QuizController } from '@/server/controllers/quiz.controller';
 import type { ControllerResponse } from '@/lib/controller-response';
-import type { RequestContext } from '@/lib/request-context';
+import { failure, success } from '@/lib/service-result';
+import { QuizController } from '@/server/controllers/quiz.controller';
 
 function createMockQuizService() {
   return {
@@ -44,10 +44,7 @@ describe('QuizController', () => {
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
-      const response = await controller.generate(
-        { questionTypes: [], questionCount: 0 },
-        mockCtx,
-      );
+      const response = await controller.generate({ questionTypes: [], questionCount: 0 }, mockCtx);
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);

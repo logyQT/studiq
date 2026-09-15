@@ -1,9 +1,8 @@
 'use client';
 
+import { Badge, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
 import { BarChart3, BookOpen, Brain, FileText, Sparkles, Target, Zap } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const freeFeatures = [
   { icon: FileText, titleKey: 'free_questions', descKey: 'free_questions_desc' },

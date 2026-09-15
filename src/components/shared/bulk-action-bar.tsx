@@ -1,9 +1,9 @@
 'use client';
 
+import { Button } from '@studiq/ui';
 import { X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
-import { Button } from '@/components/ui/button';
 
 interface BulkActionBarProps {
   selectedCount: number;

@@ -1,8 +1,8 @@
 'use client';
 
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@studiq/ui';
 import { Briefcase, Building2, Headphones, Mail, Phone, Shield, Users } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 const teams = [
   {

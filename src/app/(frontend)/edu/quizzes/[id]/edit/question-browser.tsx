@@ -1,10 +1,9 @@
 'use client';
 
 import { useDraggable } from '@dnd-kit/core';
+import { Badge, Input } from '@studiq/ui';
 import { GripVertical, Plus } from 'lucide-react';
 import { type ChangeEvent, useState } from 'react';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { useApiQuery } from '@/hooks/use-api';
 
 interface BrowseQuestion {

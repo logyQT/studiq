@@ -1,7 +1,7 @@
+import type { AccountType } from '@studiq/authz';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { ValidationErrorCode } from '@/lib/validation-errors';
 import { registry, z } from '@/lib/zod';
-import type { AccountType } from '@/types';
 
 export const NameSchema = z
   .string({ error: ValidationErrorCode.NAME_REQUIRED })

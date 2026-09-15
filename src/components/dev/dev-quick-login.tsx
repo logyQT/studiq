@@ -1,11 +1,10 @@
 'use client';
 
+import { Button, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
 import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const DEV_USERS = [
   { label: 'Admin', email: 'admin@dev.local' },

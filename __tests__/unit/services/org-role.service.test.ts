@@ -1,12 +1,11 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { OrgRoleService } from '@/server/services/org-role.service';
-import type { RequestContext } from '@/lib/request-context';
 
 function qb(data: any, error: any = null, count?: number) {
-  const result = count !== undefined
-    ? { data: data ?? null, count, error }
-    : { data: data ?? null, error };
+  const result =
+    count !== undefined ? { data: data ?? null, count, error } : { data: data ?? null, error };
   const promise = Promise.resolve(result);
   const b: any = {};
   b.select = vi.fn(() => b);
@@ -126,13 +125,25 @@ describe('OrgRoleService', () => {
     });
 
     it('creates a role', async () => {
-      const dbRole = { id: 'r-1', name: 'editor', display_name: 'editor', description: null, is_system: false };
+      const dbRole = {
+        id: 'r-1',
+        name: 'editor',
+        display_name: 'editor',
+        description: null,
+        is_system: false,
+      };
       mock.from.mockReturnValueOnce(qb(dbRole));
 
       const result = await service.createRole(ctx, { name: 'editor' });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual({ id: 'r-1', name: 'editor', displayName: 'editor', description: null, isSystem: false });
+      expect(result.data).toEqual({
+        id: 'r-1',
+        name: 'editor',
+        displayName: 'editor',
+        description: null,
+        isSystem: false,
+      });
     });
 
     it('returns error on DB failure', async () => {
@@ -146,7 +157,9 @@ describe('OrgRoleService', () => {
 
   describe('updateRole', () => {
     it('returns FORBIDDEN when no activeOrgId', async () => {
-      const result = await service.updateRole({ ...ctx, activeOrgId: null }, 'r-1', { name: 'editor' });
+      const result = await service.updateRole({ ...ctx, activeOrgId: null }, 'r-1', {
+        name: 'editor',
+      });
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
@@ -154,14 +167,29 @@ describe('OrgRoleService', () => {
 
     it('updates a role', async () => {
       const existing = { is_system: false };
-      const dbUpdated = { id: 'r-1', name: 'editor', display_name: 'Editor', description: null, is_system: false };
+      const dbUpdated = {
+        id: 'r-1',
+        name: 'editor',
+        display_name: 'Editor',
+        description: null,
+        is_system: false,
+      };
       mock.from.mockReturnValueOnce(qb(existing));
       mock.from.mockReturnValueOnce(qb(dbUpdated));
 
-      const result = await service.updateRole(ctx, 'r-1', { name: 'editor', displayName: 'Editor' });
+      const result = await service.updateRole(ctx, 'r-1', {
+        name: 'editor',
+        displayName: 'Editor',
+      });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual({ id: 'r-1', name: 'editor', displayName: 'Editor', description: null, isSystem: false });
+      expect(result.data).toEqual({
+        id: 'r-1',
+        name: 'editor',
+        displayName: 'Editor',
+        description: null,
+        isSystem: false,
+      });
     });
 
     it('returns FORBIDDEN when trying to rename system role', async () => {
@@ -258,7 +286,9 @@ describe('OrgRoleService', () => {
 
   describe('setPermissions', () => {
     it('returns FORBIDDEN when no activeOrgId', async () => {
-      const result = await service.setPermissions({ ...ctx, activeOrgId: null }, 'r-1', { permissions: [] });
+      const result = await service.setPermissions({ ...ctx, activeOrgId: null }, 'r-1', {
+        permissions: [],
+      });
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');

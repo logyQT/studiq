@@ -1,6 +1,6 @@
+import type { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import type { RequestContext } from '@/lib/request-context';
 import { QuestionReportService } from '@/server/services/question-report.service';
 
 function qb(data: any, error: any = null) {

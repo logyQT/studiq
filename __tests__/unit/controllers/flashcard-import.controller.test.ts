@@ -1,6 +1,6 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FlashcardImportController } from '@/server/controllers/flashcard-import.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 function createMockService() {
   return { importCsv: vi.fn() };
@@ -32,7 +32,10 @@ describe('FlashcardImportController', () => {
     it('imports CSV successfully', async () => {
       mockService.importCsv.mockResolvedValueOnce({ success: true, data: { imported: 5 } });
 
-      const response = await controller.importCsv({ cards: [{ front: 'Hello', back: 'Cześć' }] }, mockCtx);
+      const response = await controller.importCsv(
+        { cards: [{ front: 'Hello', back: 'Cześć' }] },
+        mockCtx,
+      );
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
@@ -46,9 +49,15 @@ describe('FlashcardImportController', () => {
     });
 
     it('returns error on service failure', async () => {
-      mockService.importCsv.mockResolvedValueOnce({ success: false, error: 'UNPROCESSABLE_ENTITY' });
+      mockService.importCsv.mockResolvedValueOnce({
+        success: false,
+        error: 'UNPROCESSABLE_ENTITY',
+      });
 
-      const response = await controller.importCsv({ cards: [{ front: 'Hello', back: 'Cześć' }] }, mockCtx);
+      const response = await controller.importCsv(
+        { cards: [{ front: 'Hello', back: 'Cześć' }] },
+        mockCtx,
+      );
 
       expect(response.success).toBe(false);
     });

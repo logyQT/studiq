@@ -1,10 +1,17 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { success, failure } from '@/lib/service-result';
+import { failure, success } from '@/lib/service-result';
 import { FlashcardPracticeController } from '@/server/controllers/flashcard-practice.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 function createMockService() {
-  return { log: vi.fn(), getDueCards: vi.fn(), getDueBreakdown: vi.fn(), getDueCount: vi.fn(), getStatsForFlashcard: vi.fn(), getStatsAll: vi.fn() };
+  return {
+    log: vi.fn(),
+    getDueCards: vi.fn(),
+    getDueBreakdown: vi.fn(),
+    getDueCount: vi.fn(),
+    getStatsForFlashcard: vi.fn(),
+    getStatsAll: vi.fn(),
+  };
 }
 
 let mockService: ReturnType<typeof createMockService>;

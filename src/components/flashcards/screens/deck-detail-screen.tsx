@@ -31,19 +31,6 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { BulkActionBar } from '@/components/shared/bulk-action-bar';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
 import { PageGrid } from '@/components/shared/page-grid';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
 import { useOrgs } from '@/hooks/use-orgs';
@@ -63,6 +50,22 @@ type DialogsState = import('@/components/flashcards/dialogs/deck-detail-dialogs'
 type DialogsHandlers =
   import('@/components/flashcards/dialogs/deck-detail-dialogs').DialogsHandlers;
 
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Card,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Skeleton,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@studiq/ui';
 import { ImportDialog } from '@/components/flashcards/shared/import-dialog';
 import { ScrollBackToBar } from '@/components/shared/scroll-back-to-bar';
 import { SpeedDial } from '@/components/shared/speed-dial';

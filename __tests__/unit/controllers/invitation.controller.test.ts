@@ -1,8 +1,8 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { success, failure } from '@/lib/service-result';
-import { InvitationController } from '@/server/controllers/invitation.controller';
 import type { ControllerResponse } from '@/lib/controller-response';
-import type { RequestContext } from '@/lib/request-context';
+import { failure, success } from '@/lib/service-result';
+import { InvitationController } from '@/server/controllers/invitation.controller';
 
 function createMockInvitationService() {
   return {
@@ -169,7 +169,9 @@ describe('InvitationController', () => {
       mockService.createInvitation.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
       const response = await controller.createBulk(mockCtx, {
-        invitations: [{ email: 'john@example.com', targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440001' }],
+        invitations: [
+          { email: 'john@example.com', targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440001' },
+        ],
       });
 
       expect(response.success).toBe(true);

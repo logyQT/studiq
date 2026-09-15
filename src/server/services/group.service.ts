@@ -1,6 +1,6 @@
+import { AccountType, type RequestContext } from '@studiq/authz';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { wrapService } from '@/lib/observability';
-import type { RequestContext } from '@/lib/request-context';
 import { failure, isFailure, type ServiceResult, success } from '@/lib/service-result';
 import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
@@ -10,7 +10,6 @@ import type {
   UpdateGroupInput,
 } from '@/server/models/group.model';
 import { limitsResolver } from '@/server/services/limits.resolver';
-import { AccountType } from '@/types';
 
 function canManageAnyGroup(ctx: RequestContext): boolean {
   return ctx.accountType === AccountType.MANAGER || ctx.accountType === AccountType.SYS_ADMIN;

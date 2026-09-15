@@ -1,20 +1,20 @@
 'use client';
 
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  MultiSelect,
+} from '@studiq/ui';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { MarkdownToolbar } from '@/components/flashcards/editor/markdown-toolbar';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { MultiSelect } from '@/components/ui/multi-select';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useMarkdownEditor } from '@/hooks/use-markdown-editor';
 import { apiPost, apiPut } from '@/lib/api';

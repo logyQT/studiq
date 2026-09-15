@@ -1,7 +1,7 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { success, failure } from '@/lib/service-result';
+import { failure, success } from '@/lib/service-result';
 import { TeacherAssignmentController } from '@/server/controllers/teacher-assignment.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 function createMockService() {
   return {
@@ -202,7 +202,16 @@ describe('TeacherAssignmentController', () => {
     it('returns 200 when questions added', async () => {
       mockService.addQuestions.mockResolvedValueOnce(success({ added: 2 }));
 
-      const response = await controller.addQuestions('a-1', { questionIds: ['550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440002'] }, mockCtx);
+      const response = await controller.addQuestions(
+        'a-1',
+        {
+          questionIds: [
+            '550e8400-e29b-41d4-a716-446655440001',
+            '550e8400-e29b-41d4-a716-446655440002',
+          ],
+        },
+        mockCtx,
+      );
 
       expect(response).toEqual({ success: true, statusCode: 200, data: { added: 2 } });
     });
@@ -247,7 +256,11 @@ describe('TeacherAssignmentController', () => {
     it('returns 200 when targets set', async () => {
       mockService.setTargets.mockResolvedValueOnce(success(null));
 
-      const response = await controller.setTargets('a-1', { groupIds: ['550e8400-e29b-41d4-a716-446655440000'] }, mockCtx);
+      const response = await controller.setTargets(
+        'a-1',
+        { groupIds: ['550e8400-e29b-41d4-a716-446655440000'] },
+        mockCtx,
+      );
 
       expect(response).toEqual({ success: true, statusCode: 200, data: null });
     });
@@ -279,13 +292,23 @@ describe('TeacherAssignmentController', () => {
     it('returns 200 when graded', async () => {
       mockService.gradeAnswer.mockResolvedValueOnce(success(null));
 
-      const response = await controller.gradeAnswer('a-1', 's-1', { questionId: '550e8400-e29b-41d4-a716-446655440000', points: 5 }, mockCtx);
+      const response = await controller.gradeAnswer(
+        'a-1',
+        's-1',
+        { questionId: '550e8400-e29b-41d4-a716-446655440000', points: 5 },
+        mockCtx,
+      );
 
       expect(response).toEqual({ success: true, statusCode: 200, data: null });
     });
 
     it('returns 422 with negative points', async () => {
-      const response = await controller.gradeAnswer('a-1', 's-1', { questionId: '550e8400-e29b-41d4-a716-446655440000', points: -1 }, mockCtx);
+      const response = await controller.gradeAnswer(
+        'a-1',
+        's-1',
+        { questionId: '550e8400-e29b-41d4-a716-446655440000', points: -1 },
+        mockCtx,
+      );
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
@@ -337,7 +360,13 @@ describe('TeacherAssignmentController', () => {
     it('returns 200 when image uploaded', async () => {
       mockService.uploadImage.mockResolvedValueOnce(success(null));
 
-      const response = await controller.uploadImage('a-1', 'att-1', 'q-1', 'https://img.url', mockCtx);
+      const response = await controller.uploadImage(
+        'a-1',
+        'att-1',
+        'q-1',
+        'https://img.url',
+        mockCtx,
+      );
 
       expect(response).toEqual({ success: true, statusCode: 200, data: null });
     });
@@ -345,7 +374,13 @@ describe('TeacherAssignmentController', () => {
     it('returns FORBIDDEN when service fails', async () => {
       mockService.uploadImage.mockResolvedValueOnce(failure('FORBIDDEN'));
 
-      const response = await controller.uploadImage('a-1', 'att-1', 'q-1', 'https://img.url', mockCtx);
+      const response = await controller.uploadImage(
+        'a-1',
+        'att-1',
+        'q-1',
+        'https://img.url',
+        mockCtx,
+      );
 
       expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
     });

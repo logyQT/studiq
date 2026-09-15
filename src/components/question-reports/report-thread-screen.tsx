@@ -1,16 +1,12 @@
 'use client';
 
+import { Button, Card, Textarea, UserAvatar } from '@studiq/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Send } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
-
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
-import { UserAvatar } from '@/components/ui/user-avatar';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { apiPost } from '@/lib/api';
 import { questionReportKeys } from '@/lib/query-keys';

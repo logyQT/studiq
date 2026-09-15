@@ -1,7 +1,7 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { QuizTeacherService } from '@/server/services/quiz-teacher.service';
-import type { RequestContext } from '@/lib/request-context';
 
 function chain(result: any) {
   const resolved = { data: result, error: null };
@@ -77,7 +77,12 @@ describe('QuizTeacherService', () => {
     });
 
     it('creates a quiz with description', async () => {
-      const dbRow = { id: quizId, name: 'My Quiz', description: 'A test quiz', organization_id: orgId };
+      const dbRow = {
+        id: quizId,
+        name: 'My Quiz',
+        description: 'A test quiz',
+        organization_id: orgId,
+      };
       mock.from.mockReturnValue(chain(dbRow));
 
       const result = await service.create({ name: 'My Quiz', description: 'A test quiz' }, ctx);
@@ -160,7 +165,11 @@ describe('QuizTeacherService', () => {
         .mockReturnValueOnce(chain({ id: quizId, organization_id: orgId }))
         .mockReturnValue(chain({ id: quizId, name: 'Updated Name', organization_id: orgId }));
 
-      const result = await service.update(quizId, { name: 'Updated Name', description: 'Updated desc' }, ctx);
+      const result = await service.update(
+        quizId,
+        { name: 'Updated Name', description: 'Updated desc' },
+        ctx,
+      );
 
       expect(result.success).toBe(true);
     });
@@ -236,7 +245,11 @@ describe('QuizTeacherService', () => {
     };
 
     it('saves quiz with questions successfully', async () => {
-      const updated = { id: quizId, name: 'Updated Quiz', quiz_questions: [{ question_id: 'q-1' }] };
+      const updated = {
+        id: quizId,
+        name: 'Updated Quiz',
+        quiz_questions: [{ question_id: 'q-1' }],
+      };
       mock.from
         .mockReturnValueOnce(chain({ organization_id: orgId }))
         .mockReturnValueOnce(chain(null))
@@ -330,11 +343,7 @@ describe('QuizTeacherService', () => {
     it('returns NOT_FOUND when quiz does not exist', async () => {
       mock.from.mockReturnValue(chain(null));
 
-      const result = await service.reorderQuestions(
-        quizId,
-        { questionIds: ['q-1'] },
-        ctx,
-      );
+      const result = await service.reorderQuestions(quizId, { questionIds: ['q-1'] }, ctx);
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -345,11 +354,7 @@ describe('QuizTeacherService', () => {
     it('returns NOT_FOUND when org does not match', async () => {
       mock.from.mockReturnValue(chain({ organization_id: 'other-org' }));
 
-      const result = await service.reorderQuestions(
-        quizId,
-        { questionIds: ['q-1'] },
-        ctx,
-      );
+      const result = await service.reorderQuestions(quizId, { questionIds: ['q-1'] }, ctx);
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -362,11 +367,7 @@ describe('QuizTeacherService', () => {
         .mockReturnValueOnce(chain({ organization_id: orgId }))
         .mockReturnValueOnce(chainError({ message: 'fail', code: 'XX000' }));
 
-      const result = await service.reorderQuestions(
-        quizId,
-        { questionIds: ['q-1'] },
-        ctx,
-      );
+      const result = await service.reorderQuestions(quizId, { questionIds: ['q-1'] }, ctx);
 
       expect(result.success).toBe(false);
     });

@@ -1,19 +1,22 @@
 'use client';
 
-import { BookOpen, ExternalLink, FileText, Layers, PieChart, Users } from 'lucide-react';
-import Link from 'next/link';
-import { useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { StatCard } from '@/components/ui/stat-card';
 import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  StatCard,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@studiq/ui';
+import { BookOpen, ExternalLink, FileText, Layers, PieChart, Users } from 'lucide-react';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { useEffect, useState } from 'react';
 
 interface TeacherStats {
   totalQuestions: number;

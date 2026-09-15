@@ -1,12 +1,11 @@
+import { AccountType, type RequestContext } from '@studiq/authz';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { accessibleFilter, Permission } from '@/lib/authz';
 import { wrapService } from '@/lib/observability';
-import type { RequestContext } from '@/lib/request-context';
 import { type ServiceResult, success } from '@/lib/service-result';
 import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type { SearchResult } from '@/server/models/search.model';
-import { AccountType } from '@/types';
 
 type RpcRow = {
   id: string;
