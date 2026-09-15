@@ -372,7 +372,8 @@
     "notifications": "Notifications",
     "upgrade": "Upgrade",
     "question_banks": "Questions",
-    "question_reports": "Reports"
+    "question_reports": "Reports",
+    "edu_groups": "Groups"
   },
   "EduOverviewPage": {
     "title": "Teacher Dashboard",

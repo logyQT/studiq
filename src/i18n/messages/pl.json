@@ -353,7 +353,8 @@
     "notifications": "Powiadomienia",
     "upgrade": "Wybierz plan",
     "question_banks": "Pytania",
-    "question_reports": "Zgłoszenia"
+    "question_reports": "Zgłoszenia",
+    "edu_groups": "Grupy"
   },
   "EduOverviewPage": {
     "title": "Panel Nauczyciela",
