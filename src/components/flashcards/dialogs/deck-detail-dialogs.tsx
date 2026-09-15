@@ -59,7 +59,12 @@ export interface DialogsHandlers {
   onDelete: () => void;
   onLink: () => void;
   onCopy: () => void;
-  onDeckUpdate: (data: { name: string; description: string }) => void;
+  onDeckUpdate: (data: {
+    name: string;
+    description: string;
+    visibility?: 'personal' | 'group';
+    groupIds?: string[];
+  }) => void;
   onDeckDelete: () => void;
   onAddTopicConfirm: () => void;
   onBulkDelete: () => void;
@@ -79,6 +84,11 @@ export interface DialogsHandlers {
   onBulkTopicsOpenChange: (open: boolean) => void;
 }
 
+interface GroupOption {
+  id: string;
+  name: string;
+}
+
 interface DeckDetailDialogsProps {
   state: DialogsState;
   handlers: DialogsHandlers;
@@ -86,6 +96,7 @@ interface DeckDetailDialogsProps {
   currentDeck: Deck | null;
   allDecks: Deck[];
   topics: Topic[];
+  groups?: GroupOption[];
   t: ReturnType<typeof useTranslations>;
   basePath: string;
   deckId: string;
@@ -95,9 +106,10 @@ export function DeckDetailDialogs({
   state,
   handlers,
   flashcards,
-  currentDeck: _currentDeck,
+  currentDeck,
   allDecks,
   topics,
+  groups,
   t,
   basePath,
   deckId,
@@ -165,6 +177,17 @@ export function DeckDetailDialogs({
         onDeckDeleteOpenChange={handlers.onDeckDeleteOpenChange}
         onDeckUpdate={handlers.onDeckUpdate}
         onDeckDelete={handlers.onDeckDelete}
+        initialValues={
+          currentDeck
+            ? {
+                name: currentDeck.name,
+                description: currentDeck.description ?? '',
+                visibility: currentDeck.visibility,
+                groupIds: currentDeck.groupIds ?? [],
+              }
+            : null
+        }
+        groups={groups}
       />
 
       <TopicDialogs
