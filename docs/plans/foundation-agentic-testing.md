@@ -15,6 +15,10 @@ Last updated: 2026-09-15
   a seat is bought/assigned per user and upgrades only that user (e.g. extra AI
   quota for one teacher). Seats can never grant admin-only features
   (`org.manage`/`member.manage`/`role.builder`) to a non-admin role.
+- Admin panel is a standalone app (`apps/admin`), not sub-routes of the main app;
+  dev on `:4000` (no clash with main app's `:3000`), production on its own
+  subdomain (e.g. `internal.studiq`). Main app contains zero admin routes when
+  Phase C completes.
 
 ## Order
 
@@ -168,13 +172,13 @@ Status: NOT STARTED
 ### Tasks
 - [ ] C1 Bun workspace scaffold; create `packages/authz`, `packages/ui`
 - [ ] C2 Move pure logic/constants/authz → `packages/authz` (FeatureResolver already post-B.5 — seat-as-upgrade, no default pools); UI primitives + shared layout → `packages/ui`
-- [ ] C3 `apps/web`: remove admin; block `/admin*` + `/api/v1/admin*` in proxy
-- [ ] C4 `apps/admin`: standalone Next app; own build/domain; service-role server-side session
+- [ ] C3 `apps/web`: remove the admin Next.js route segment (`src/app/(frontend)/admin/`) and any admin API routes in `(backend)` — zero `/admin*` routes remain in the main app
+- [ ] C4 `apps/admin`: standalone Next app; own build; dev on `:4000` (no clash with main app `:3000`), production on its own subdomain (e.g. `internal.studiq`); service-role server-side session
 - [ ] C5 PEM gate in `apps/admin/proxy.ts` (Ed25519, header signature, rotation list)
 - [ ] C6 Split i18n `Admin*` namespaces into `apps/admin`
-- [ ] C7 Two standalone builds; edge routing for `/admin*`
+- [ ] C7 Two standalone builds; main app has no admin routes (admin app served entirely on its own origin)
 - [ ] C8 Hardening: introduce RLS on user content tables (biggest security gap today)
-- [ ] Verify: PEM-gated admin smoke, main-app 404/403 on `/admin*`, all tests in both apps
+- [ ] Verify: PEM-gated admin smoke, main-app standard 404 on `/admin*` (no admin routes), all tests in both apps
 
 ### Side note — GitHub-style fine-grained admin tokens
 
