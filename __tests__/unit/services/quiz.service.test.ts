@@ -1,7 +1,15 @@
 import { AccountType, RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { accessibleFilter } from '@/lib/authz';
 import { QuizService } from '@/server/services/quiz.service';
+
+vi.mock('@/lib/authz', () => ({
+  accessibleFilter: vi.fn().mockResolvedValue({}),
+  Permission: {
+    QUESTION_READ: 'question.read' as const,
+  },
+}));
 
 function qb(data: any, error: any = null) {
   const result = { data: data ?? null, error };
@@ -83,6 +91,37 @@ describe('QuizService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
+    it('returns an empty quiz without querying when the caller has no access', async () => {
+      vi.mocked(accessibleFilter).mockResolvedValueOnce({ _impossible: true });
+
+      const result = await service.generateQuiz({ questionTypes: ['mcq'], questionCount: 5 }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ questions: [], attemptId: '' });
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('scopes the question query to the group-visibility filter instead of the whole org', async () => {
+      vi.mocked(accessibleFilter).mockResolvedValueOnce({
+        organization_id: 'org-1',
+        or: 'created_by.eq.test-user-id,id.in.(q-1,q-2)',
+      });
+      const questionsBuilder = qb([
+        { id: 'q-1', type: 'mcq', content: 'Q1', question_answers: [] },
+      ]);
+      mock.from.mockReturnValueOnce(questionsBuilder);
+      mock.from.mockReturnValueOnce(qb({ id: 'attempt-1', user_id: ctx.userId }));
+      mock.from.mockReturnValueOnce(qb(null));
+
+      const result = await service.generateQuiz({ questionTypes: ['mcq'], questionCount: 1 }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(questionsBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(questionsBuilder.or).toHaveBeenCalledWith(
+        'created_by.eq.test-user-id,id.in.(q-1,q-2)',
+      );
     });
   });
 });

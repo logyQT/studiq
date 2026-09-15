@@ -1053,7 +1053,15 @@
     "create_failed": "Nie udało się utworzyć grupy",
     "update_failed": "Nie udało się zaktualizować grupy",
     "delete_failed": "Nie udało się usunąć grupy",
-    "not_owned": "Grupa utworzona przez kogoś innego — nie możesz jej edytować"
+    "not_owned": "Grupa utworzona przez kogoś innego — nie możesz jej edytować",
+    "manage_members": "Zarządzaj członkami",
+    "manage_members_desc": "Wybierz, kto należy do tej grupy.",
+    "members_label": "Członkowie",
+    "members_placeholder": "Wybierz osoby...",
+    "members_empty": "Nie znaleziono osób",
+    "members_updated": "Skład grupy zaktualizowany",
+    "members_update_failed": "Nie udało się zaktualizować składu grupy",
+    "saving": "Zapisywanie..."
   },
   "ManageRolesPage": {
     "title": "Role",
@@ -2366,6 +2374,8 @@
     "report_button_title": "Zgłoś nieprawidłowość",
     "report_dialog_title": "Zgłoś nieprawidłowość pytania",
     "report_dialog_description": "Opisz, na czym polega problem. Wiadomość trafi bezpośrednio do wykładowcy, który stworzył to pytanie.",
+    "report_dialog_title_group": "Zgłoś problem z grupą",
+    "report_dialog_description_group": "Opisz, na czym polega problem. Wiadomość trafi bezpośrednio do właściciela grupy lub administratora organizacji.",
     "report_message_placeholder": "Np. odpowiedź jest błędna, treść pytania jest niejasna...",
     "cancel": "Anuluj",
     "send": "Wyślij",
@@ -2376,7 +2386,9 @@
     "page_title": "Zgłoszenia",
     "page_description_student": "Twoje zgłoszenia nieprawidłowości pytań i odpowiedzi wykładowców.",
     "page_description_teacher": "Zgłoszenia nieprawidłowości od studentów dotyczące Twoich pytań.",
-    "reply_placeholder": "Napisz odpowiedź..."
+    "page_description_manager": "Zgłoszenia dotyczące pytań i grup w Twojej organizacji.",
+    "reply_placeholder": "Napisz odpowiedź...",
+    "report_target_group": "Grupa: {name}"
   },
   "QuestionForm": {
     "create_title": "Utwórz pytanie",

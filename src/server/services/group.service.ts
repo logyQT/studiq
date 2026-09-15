@@ -47,6 +47,7 @@ export class GroupService {
       `,
       )
       .eq('organization_id', ctx.activeOrgId)
+      .eq('group_members_teachers.role', 'teacher')
       .order('created_at', { ascending: true });
 
     if (error) return toDbFailure(error);
@@ -197,6 +198,54 @@ export class GroupService {
     if (error) return toDbFailure(error);
 
     return success(data.map((m) => ({ userId: m.user_id, role: m.role })));
+  }
+
+  /**
+   * Org members a group manager can pick from when building the group's
+   * roster. Deliberately NOT scoped to the caller's existing groups (unlike
+   * organization-member.service.ts's listMembers() for educators) — the
+   * assertCanManage check below is the authorization gate, and a teacher
+   * building a brand-new group's roster needs to see students they aren't
+   * associated with yet.
+   */
+  async listAddableMembers(
+    ctx: RequestContext,
+    groupId: string,
+  ): Promise<
+    ServiceResult<{ id: string; email: string; fullName: string | null; orgRoleName: string }[]>
+  > {
+    if (!ctx.activeOrgId) {
+      return failure('FORBIDDEN');
+    }
+
+    const authCheck = await this.assertCanManage(ctx, groupId);
+    if (isFailure(authCheck)) return authCheck;
+
+    const supabase = await this.createClient();
+    const { data, error } = await supabase
+      .from('org_members')
+      .select('user_id, org_roles!inner(name), profiles!inner(id, email, full_name)')
+      .eq('organization_id', ctx.activeOrgId)
+      .order('joined_at', { ascending: false });
+
+    if (error) return toDbFailure(error);
+
+    return success(
+      data.map((m) => {
+        const profile = m.profiles as unknown as {
+          id: string;
+          email: string;
+          full_name: string | null;
+        };
+        const orgRole = m.org_roles as unknown as { name: string };
+        return {
+          id: profile.id,
+          email: profile.email,
+          fullName: profile.full_name,
+          orgRoleName: orgRole.name,
+        };
+      }),
+    );
   }
 
   async setGroupMembers(

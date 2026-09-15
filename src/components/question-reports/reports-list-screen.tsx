@@ -15,6 +15,7 @@ interface ReportRow {
   reported_by: string;
   teacher_id: string;
   question: { id: string; content: string } | null;
+  group: { id: string; name: string } | null;
   reporter: { id: string; full_name: string | null; email: string } | null;
   teacher: { id: string; full_name: string | null; email: string } | null;
 }
@@ -58,7 +59,10 @@ export function ReportsListScreen({ basePath }: { basePath: string }) {
                   </span>
                   {report.isUnread && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" />}
                 </div>
-                <p className="text-sm text-muted-foreground truncate">{report.question?.content}</p>
+                <p className="text-sm text-muted-foreground truncate">
+                  {report.question?.content ??
+                    (report.group ? t('report_target_group', { name: report.group.name }) : '')}
+                </p>
               </div>
               <span className="text-xs text-muted-foreground shrink-0">
                 {new Date(report.updated_at).toLocaleDateString()}

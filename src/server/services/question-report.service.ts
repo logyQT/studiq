@@ -9,33 +9,76 @@ import type {
   CreateReportMessageInput,
 } from '@/server/models/question-report.model';
 
+export type ReportTarget = { questionId: string } | { groupId: string };
+
 export class QuestionReportService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
   async createReport(
-    questionId: string,
+    target: ReportTarget,
     data: CreateQuestionReportInput,
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const { data: question, error: questionError } = await supabase
-      .from('questions')
-      .select('id, created_by, organization_id')
-      .eq('id', questionId)
-      .single();
+    let organizationId: string | null;
+    let recipientId: string;
+    let insertTarget:
+      | { question_id: string; group_id?: never }
+      | { group_id: string; question_id?: never };
 
-    if (questionError) return toDbFailure(questionError);
-    if (!question) return failure('NOT_FOUND');
-    if (question.created_by === ctx.userId) return failure('BAD_REQUEST');
+    if ('questionId' in target) {
+      const { data: question, error: questionError } = await supabase
+        .from('questions')
+        .select('id, created_by, organization_id')
+        .eq('id', target.questionId)
+        .single();
+
+      if (questionError) return toDbFailure(questionError);
+      if (!question) return failure('NOT_FOUND');
+      if (question.created_by === ctx.userId) return failure('BAD_REQUEST');
+
+      organizationId = question.organization_id;
+      recipientId = question.created_by;
+      insertTarget = { question_id: target.questionId };
+    } else {
+      const { data: group, error: groupError } = await supabase
+        .from('groups')
+        .select('id, created_by, organization_id')
+        .eq('id', target.groupId)
+        .single();
+
+      if (groupError) return toDbFailure(groupError);
+      if (!group) return failure('NOT_FOUND');
+      if (group.created_by === ctx.userId) return failure('BAD_REQUEST');
+
+      if (group.created_by) {
+        recipientId = group.created_by;
+      } else {
+        const { data: admin } = await supabase
+          .from('org_members')
+          .select('user_id, org_roles!inner(name)')
+          .eq('organization_id', group.organization_id)
+          .eq('org_roles.name', 'admin')
+          .order('joined_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (!admin) return failure('NOT_FOUND');
+        recipientId = admin.user_id;
+      }
+
+      organizationId = group.organization_id;
+      insertTarget = { group_id: target.groupId };
+    }
 
     const { data: report, error: reportError } = await supabase
       .from('question_reports')
       .insert({
-        question_id: questionId,
-        organization_id: question.organization_id,
+        ...insertTarget,
+        organization_id: organizationId,
         reported_by: ctx.userId,
-        teacher_id: question.created_by,
+        teacher_id: recipientId,
       })
       .select()
       .single();
@@ -60,6 +103,7 @@ export class QuestionReportService {
       .select(
         `*,
         question:question_id(id, content),
+        group:group_id(id, name),
         reporter:reported_by(id, full_name, email),
         teacher:teacher_id(id, full_name, email)`,
       )
@@ -91,6 +135,7 @@ export class QuestionReportService {
       .select(
         `*,
         question:question_id(id, content),
+        group:group_id(id, name),
         reporter:reported_by(id, full_name, email),
         teacher:teacher_id(id, full_name, email)`,
       )

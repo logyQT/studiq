@@ -1,5 +1,6 @@
 import type { RequestContext } from '@studiq/authz';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { accessibleFilter, Permission } from '@/lib/authz';
 import { wrapService } from '@/lib/observability';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
 import { createClient } from '@/lib/supabase/server';
@@ -15,16 +16,14 @@ export class QuizService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const orConditions = [];
-
-    if (ctx.activeOrgId) orConditions.push(`organization_id.eq.${ctx.activeOrgId}`);
-    if (ctx.userId) orConditions.push(`created_by.eq.${ctx.userId}`);
+    const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
+    if (filter._impossible) return success({ questions: [], attemptId: '' });
 
     let query = supabase.from('questions').select('*, question_answers:question_options(*)');
 
-    if (orConditions.length > 0) {
-      query = query.or(orConditions.join(','));
-    }
+    if (filter.or) query = query.or(filter.or);
+    if (filter.created_by) query = query.eq('created_by', filter.created_by);
+    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
     query = query.in('type', config.questionTypes);
 

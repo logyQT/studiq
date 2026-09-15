@@ -7,14 +7,17 @@ import {
   CreateQuestionReportSchema,
   CreateReportMessageSchema,
 } from '@/server/models/question-report.model';
-import type { QuestionReportService } from '@/server/services/question-report.service';
+import type {
+  QuestionReportService,
+  ReportTarget,
+} from '@/server/services/question-report.service';
 import { questionReportService } from '@/server/services/question-report.service';
 
 export class QuestionReportController {
   constructor(private service: QuestionReportService) {}
 
   async createReport(
-    questionId: string,
+    target: ReportTarget,
     body: unknown,
     ctx: RequestContext,
   ): Promise<ControllerResponse> {
@@ -27,7 +30,7 @@ export class QuestionReportController {
         details: parsed.error.issues,
       };
     }
-    const result = await this.service.createReport(questionId, parsed.data, ctx);
+    const result = await this.service.createReport(target, parsed.data, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.created(result.data);
   }

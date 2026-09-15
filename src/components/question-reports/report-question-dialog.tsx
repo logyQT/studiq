@@ -18,15 +18,15 @@ import { useApiMutation } from '@/hooks/use-api';
 import { apiPost } from '@/lib/api';
 import { questionReportKeys } from '@/lib/query-keys';
 
-interface ReportQuestionDialogProps {
-  questionId: string;
+type ReportQuestionDialogProps = {
   /** Controlled mode: hides the built-in flag-icon trigger, caller drives open state. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-}
+} & ({ questionId: string; groupId?: never } | { groupId: string; questionId?: never });
 
 export function ReportQuestionDialog({
   questionId,
+  groupId,
   open: controlledOpen,
   onOpenChange,
 }: ReportQuestionDialogProps) {
@@ -37,8 +37,12 @@ export function ReportQuestionDialog({
   const setOpen = isControlled ? (onOpenChange ?? (() => {})) : setUncontrolledOpen;
   const [message, setMessage] = useState('');
 
+  const reportUrl = questionId
+    ? `/api/v1/questions/${questionId}/reports`
+    : `/api/v1/organization/groups/${groupId}/reports`;
+
   const submit = useApiMutation<unknown, string>({
-    mutationFn: (body) => apiPost(`/api/v1/questions/${questionId}/reports`, { message: body }),
+    mutationFn: (body) => apiPost(reportUrl, { message: body }),
     invalidateKeys: [questionReportKeys.all, questionReportKeys.unreadCount],
   });
 
@@ -71,8 +75,12 @@ export function ReportQuestionDialog({
       )}
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t('report_dialog_title')}</DialogTitle>
-          <DialogDescription>{t('report_dialog_description')}</DialogDescription>
+          <DialogTitle>
+            {t(questionId ? 'report_dialog_title' : 'report_dialog_title_group')}
+          </DialogTitle>
+          <DialogDescription>
+            {t(questionId ? 'report_dialog_description' : 'report_dialog_description_group')}
+          </DialogDescription>
         </DialogHeader>
         <Textarea
           value={message}

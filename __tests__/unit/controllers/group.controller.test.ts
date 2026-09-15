@@ -1,4 +1,4 @@
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GroupController } from '@/server/controllers/group.controller';
 
@@ -13,6 +13,7 @@ function createMockService() {
     updateGroup: vi.fn(),
     deleteGroup: vi.fn(),
     getGroupMembers: vi.fn(),
+    listAddableMembers: vi.fn(),
     setGroupMembers: vi.fn(),
     listMyGroups: vi.fn(),
   };
@@ -185,6 +186,39 @@ describe('GroupController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(400);
+    });
+  });
+
+  describe('listAddableMembers', () => {
+    it('returns addable members', async () => {
+      mockService.listAddableMembers.mockResolvedValueOnce({ success: true, data: [] });
+
+      const response = await controller.listAddableMembers(
+        mockCtx,
+        '550e8400-e29b-41d4-a716-446655440000',
+      );
+
+      expect(response.success).toBe(true);
+      expect(response.statusCode).toBe(200);
+    });
+
+    it('returns 400 on invalid params', async () => {
+      const response = await controller.listAddableMembers(mockCtx, 'invalid');
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('returns error on service failure', async () => {
+      mockService.listAddableMembers.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
+
+      const response = await controller.listAddableMembers(
+        mockCtx,
+        '550e8400-e29b-41d4-a716-446655440000',
+      );
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(403);
     });
   });
 
