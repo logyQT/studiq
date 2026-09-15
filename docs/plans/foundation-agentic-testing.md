@@ -105,8 +105,8 @@ Status: NOT STARTED
 - [x] B6 Client: `useFeature()` + `usePermission()`; delete `useCan`
 - [x] B7 Split `/api/v1/permissions/me` → `/permissions/me` (permissions only) + `/features/me` (features + rollout; `X-Feature-Rollout` header)
 - [x] B8 Unify `@/lib/access.ts` + `@/lib/rbac.ts` → one `@/lib/authz`; delete `rbac.ts` — N+1 fixed: `buildQueryFilter`/`checkPermission`/`hasPermission` now resolve from with-auth's batched `ctx.permissionScopes` (zero per-permission DB queries); access.ts group queries stay async
-- [ ] B9 Admin Rollout Control page (global / % / plan matrix / overrides + "Stop now")
-- [ ] B10 Fix broken admin: `/admin/permissions` (dropped table), `/admin/error-logs` route, `/admin/ai` dead link
+- [x] B9 Admin Rollout Control — surfaces verified complete + hardened: global toggle + rollout % (`/admin/feature-flags`), plan matrix (`/admin/subscription-plans`), user overrides (`/admin/user-overrides`), per-flag kill switch ("Stop now" = `is_enabled=false`); added canonical-key enforcement (admin create/update models now reject non-`FEATURES` keys → no silent dead rows)
+- [x] B10 Fix broken admin: removed `/admin/permissions` (matrix read dropped `role_permissions`; canonical source is `DEFAULT_ROLE_PERMISSIONS`), deleted dead `/admin/logs` + `error_logs` table (zero writers; OTEL spans are the error surface), dropped `/admin/ai` dead link; sidebar + i18n cleaned
 - [ ] Verify: unit tests for FeatureResolver precedence + rollout, RBAC union tests, lint, full suite green
 
 ---

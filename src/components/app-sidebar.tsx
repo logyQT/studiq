@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  AlertTriangle,
   BarChart3,
   Brain,
   ClipboardCheck,
@@ -140,17 +139,12 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
   '/admin': [
     {
       label: 'sidebar_main',
-      items: [
-        { titleKey: 'admin_overview', href: '/admin', icon: LayoutDashboard },
-        { titleKey: 'ai_chat', href: '/admin/ai', icon: Sparkles },
-      ],
+      items: [{ titleKey: 'admin_overview', href: '/admin', icon: LayoutDashboard }],
     },
     {
       label: 'sidebar_system',
       items: [
         { titleKey: 'admin_orgs', href: '/admin/orgs', icon: GraduationCap },
-        { titleKey: 'admin_error_logs', href: '/admin/logs', icon: AlertTriangle },
-        { titleKey: 'admin_permissions', href: '/admin/permissions', icon: ShieldCheck },
         { titleKey: 'admin_feature_flags', href: '/admin/feature-flags', icon: Flag },
         {
           titleKey: 'admin_subscription_plans',

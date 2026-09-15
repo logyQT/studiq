@@ -118,8 +118,7 @@
     "go_dashboard": "Wróć do panelu",
     "try_these": "Przejdź do:",
     "overview": "Przegląd",
-    "error_logs": "Logi błędów",
-    "permissions": "Uprawnienia"
+    "feature_flags": "Funkcje systemowe"
   },
   "EntityNotFound": {
     "go_dashboard": "Panel",
@@ -297,8 +296,6 @@
     "app_stats": "Statystyki",
     "admin_overview": "Przegląd",
     "admin_orgs": "Organizacje",
-    "admin_error_logs": "Logi błędów",
-    "admin_permissions": "Uprawnienia",
     "admin_feature_flags": "Funkcje",
     "admin_subscription_plans": "Plany",
     "admin_user_overrides": "Nadpisania",
@@ -1807,16 +1804,6 @@
     "role_system": "Systemowa",
     "roles_empty": "Brak zdefiniowanych ról",
     "system_role": "Systemowa"
-  },
-  "AdminPermissionsPage": {
-    "title": "Macierz Uprawnień",
-    "description": "Przegląd wszystkich mapowań ról i uprawnień w systemie RBAC",
-    "matrix_title": "Kontrola Dostępu (RBAC)",
-    "matrix_description": "Zakresy: own = tylko własne zasoby, university = zasoby w obrębie uczelni, any = wszystkie zasoby",
-    "role_column": "Rola",
-    "resource_column": "Zasób",
-    "loading": "Ładowanie uprawnień…",
-    "error": "Nie udało się załadować uprawnień"
   },
   "AdminFeatureFlagsPage": {
     "title": "Funkcje systemowe",

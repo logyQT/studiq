@@ -17,7 +17,6 @@ import { OrgController } from '@/server/controllers/org.controller';
 import { OrgRoleController } from '@/server/controllers/org-role.controller';
 import { OrganizationController } from '@/server/controllers/organization.controller';
 import { OrganizationMemberController } from '@/server/controllers/organization-member.controller';
-import { PermissionController } from '@/server/controllers/permission.controller';
 import { PermissionsController } from '@/server/controllers/permissions.controller';
 import { PlanFeatureController } from '@/server/controllers/plan-feature.controller';
 import { PlanLimitController } from '@/server/controllers/plan-limit.controller';
@@ -130,10 +129,6 @@ export const organizationController = wrapService(
 export const organizationMemberController = wrapService(
   new OrganizationMemberController(organizationMemberService),
   'organization-member.controller',
-);
-export const permissionController = wrapService(
-  new PermissionController(),
-  'permission.controller',
 );
 export const permissionsController = wrapService(
   new PermissionsController(),

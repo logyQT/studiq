@@ -1,6 +1,6 @@
 'use client';
 
-import { LayoutDashboard, Monitor, ScrollText, Shield } from 'lucide-react';
+import { Flag, LayoutDashboard, Monitor } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 
@@ -38,18 +38,11 @@ export default function AdminNotFound() {
               {t('overview')}
             </Link>
             <Link
-              href="/admin/logs"
+              href="/admin/feature-flags"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
             >
-              <ScrollText className="h-3.5 w-3.5" />
-              {t('error_logs')}
-            </Link>
-            <Link
-              href="/admin/permissions"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
-            >
-              <Shield className="h-3.5 w-3.5" />
-              {t('permissions')}
+              <Flag className="h-3.5 w-3.5" />
+              {t('feature_flags')}
             </Link>
           </div>
         </div>
