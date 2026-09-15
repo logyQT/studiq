@@ -8,7 +8,7 @@
     "start": "next start",
     "clean": "npx rimraf .next node_modules/.cache coverage",
     "typecheck": "tsc --incremental --skipLibCheck --noEmit",
-    "lint": "biome ci src/ && bun scripts/check-import-paths.ts",
+    "lint": "biome ci src/ && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts",
     "lint:all": "bun run typecheck && bun run lint",
     "format": "biome check --write src/",
     "format:check": "biome ci src/",
