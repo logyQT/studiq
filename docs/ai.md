@@ -233,23 +233,23 @@ export const agentModels = {
 | P3 | Conversation state persistence to PostgreSQL | 💤 Deferred |
 | P3 | Trace viewer UI | 💤 Deferred |
 
-### Dead code to remove (before stage C of agentic-testing)
+### Dead code removed ✅
 
-The legacy pipeline was fully replaced by the agent pipeline but these files still exist. **Do not touch until agent worktree (B.5) is merged** — that agent may modify some of these files.
+The legacy pipeline was fully replaced by the agent pipeline. These files were removed in `refactor/remove-legacy-ai-pipeline` (PR #56):
 
-| File | Lines | Status |
-|------|-------|--------|
-| `src/server/controllers/ai-chat.controller.ts` | 54 | Orphaned — not imported by any route |
-| `src/server/services/ai-chat.service.ts` | 114 | Orphaned — not imported by any route |
-| `src/server/models/ai-chat.model.ts` | — | Only used by orphaned controller/service |
-| `src/server/services/ai-prompts.ts` | — | Only used by deleted `ai-command.service.ts` — verify before removing |
-| `src/server/services/ai-utils.ts` | — | Only used by deleted `ai-command.service.ts` — verify before removing |
-| `src/components/ai/flashcard-generation-status.tsx` | — | Was used by deprecated `frompdf` SSE hook |
-| `src/hooks/use-flashcard-generation.ts` | — | Deprecated SSE hook for `frompdf` endpoint |
-| `src/app/(frontend)/app/flashcards/ai/page.tsx` | — | Deprecated PDF upload page |
-| Barrel re-exports in `src/server/services/index.ts` (line 5) and `src/server/controllers/index.ts` (line 198) | — | Remove corresponding import/export lines |
+| File | Status |
+|------|--------|
+| `src/server/controllers/ai-chat.controller.ts` | ✅ Removed — orphaned, no route imports |
+| `src/server/services/ai-chat.service.ts` | ✅ Removed — orphaned, no route imports |
+| `src/server/models/ai-chat.model.ts` | ✅ Removed — only used by deleted controller/service |
+| `src/components/ai/flashcard-generation-status.tsx` | ✅ Removed — was used by deprecated `frompdf` SSE hook |
+| `src/hooks/use-flashcard-generation.ts` | ✅ Removed — deprecated SSE hook for `frompdf` endpoint |
+| `src/app/(frontend)/app/flashcards/ai/page.tsx` | ✅ Removed — deprecated PDF upload page |
+| Barrel re-exports in `services/index.ts` + `controllers/index.ts` + `models/index.ts` + `components/ai/index.ts` | ✅ Cleaned |
 
-**Verification before deletion:** grep each file's exports across the codebase to confirm zero live consumers. The `ai-prompts.ts` and `ai-utils.ts` files may have been refactored into agent code — check if any agent tool imports from them.
+**Kept** (still used by agent tools):
+- `src/server/services/ai-prompts.ts` — imported by `fetch-material.tool.ts`
+- `src/server/services/ai-utils.ts` — imported by `generate-flashcards.tool.ts`
 
 **Security hardening plan:** [`docs/plans/agent-security.md`](plans/agent-security.md)
 

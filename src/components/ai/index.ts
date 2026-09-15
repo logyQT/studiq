@@ -5,7 +5,6 @@ export { AiChatScreen } from '@/components/ai/ai-chat-screen';
 export { ChatHistory } from '@/components/ai/chat-history';
 export { ChatMessage } from '@/components/ai/chat-message';
 export { FlashcardBlock } from '@/components/ai/flashcard-block';
-export { FlashcardGenerationStatus } from '@/components/ai/flashcard-generation-status';
 export { PlanBlock } from '@/components/ai/plan-block';
 export { ThinkingBlock } from '@/components/ai/thinking-block';
 export { UsageBadge } from '@/components/ai/usage-badge';
