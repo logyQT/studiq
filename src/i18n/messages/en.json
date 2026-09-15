@@ -1072,7 +1072,15 @@
     "create_failed": "Failed to create group",
     "update_failed": "Failed to update group",
     "delete_failed": "Failed to delete group",
-    "not_owned": "Created by someone else — you can't edit this group"
+    "not_owned": "Created by someone else — you can't edit this group",
+    "manage_members": "Manage members",
+    "manage_members_desc": "Choose who belongs to this group.",
+    "members_label": "Members",
+    "members_placeholder": "Select people...",
+    "members_empty": "No people found",
+    "members_updated": "Group members updated",
+    "members_update_failed": "Failed to update group members",
+    "saving": "Saving..."
   },
   "ManageRolesPage": {
     "title": "Roles",

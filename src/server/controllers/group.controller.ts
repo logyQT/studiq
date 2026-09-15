@@ -100,6 +100,22 @@ export class GroupController {
     return controllerResponse.success(result.data);
   }
 
+  async listAddableMembers(ctx: RequestContext, groupId: string): Promise<ControllerResponse> {
+    const paramsParsed = GroupIdParamsSchema.safeParse({ id: groupId });
+
+    if (!paramsParsed.success) {
+      return controllerResponse.error('BAD_REQUEST');
+    }
+
+    const result = await this.groupService.listAddableMembers(ctx, paramsParsed.data.id);
+
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error);
+    }
+
+    return controllerResponse.success(result.data);
+  }
+
   async setGroupMembers(
     ctx: RequestContext,
     groupId: string,

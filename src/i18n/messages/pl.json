@@ -1053,7 +1053,15 @@
     "create_failed": "Nie udało się utworzyć grupy",
     "update_failed": "Nie udało się zaktualizować grupy",
     "delete_failed": "Nie udało się usunąć grupy",
-    "not_owned": "Grupa utworzona przez kogoś innego — nie możesz jej edytować"
+    "not_owned": "Grupa utworzona przez kogoś innego — nie możesz jej edytować",
+    "manage_members": "Zarządzaj członkami",
+    "manage_members_desc": "Wybierz, kto należy do tej grupy.",
+    "members_label": "Członkowie",
+    "members_placeholder": "Wybierz osoby...",
+    "members_empty": "Nie znaleziono osób",
+    "members_updated": "Skład grupy zaktualizowany",
+    "members_update_failed": "Nie udało się zaktualizować składu grupy",
+    "saving": "Zapisywanie..."
   },
   "ManageRolesPage": {
     "title": "Role",

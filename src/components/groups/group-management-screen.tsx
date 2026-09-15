@@ -1,6 +1,6 @@
 'use client';
 
-import { Layers, Loader2, Lock, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Layers, Loader2, Lock, Pencil, Plus, Trash2, Users } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { MultiSelect } from '@/components/ui/multi-select';
 import {
   Table,
   TableBody,
@@ -48,6 +49,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
   const [editing, setEditing] = useState<Group | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<Group | null>(null);
+  const [managingMembers, setManagingMembers] = useState<Group | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -169,6 +171,14 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                     <div className="flex justify-end gap-1">
                       {group.canManage ? (
                         <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title={t('manage_members')}
+                            onClick={() => setManagingMembers(group)}
+                          >
+                            <Users className="w-4 h-4" />
+                          </Button>
                           <Dialog>
                             <DialogTrigger asChild>
                               <Button variant="ghost" size="icon" onClick={() => setEditing(group)}>
@@ -241,6 +251,147 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={!!managingMembers} onOpenChange={(o) => !o && setManagingMembers(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t('manage_members')}</DialogTitle>
+            <DialogDescription>{t('manage_members_desc')}</DialogDescription>
+          </DialogHeader>
+          {managingMembers && (
+            <ManageMembersForm
+              group={managingMembers}
+              onDone={() => {
+                setManagingMembers(null);
+                load();
+              }}
+              t={t}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function ManageMembersForm({
+  group,
+  onDone,
+  t,
+}: {
+  group: Group;
+  onDone: () => void;
+  t: (key: string) => string;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [options, setOptions] = useState<{ label: string; value: string }[]>([]);
+  const [roleByUserId, setRoleByUserId] = useState<Record<string, 'teacher' | 'member'>>({});
+  const [selected, setSelected] = useState<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      setLoading(true);
+      try {
+        const [addableRes, currentRes] = await Promise.all([
+          fetch(`/api/v1/organization/groups/${group.id}/addable-members`),
+          fetch(`/api/v1/organization/groups/${group.id}/members`),
+        ]);
+        const addableJson = await addableRes.json();
+        const currentJson = await currentRes.json();
+        if (cancelled) return;
+
+        if (addableJson.success) {
+          setOptions(
+            addableJson.data.map((m: { id: string; email: string; fullName: string | null }) => ({
+              label: m.fullName ? `${m.fullName} (${m.email})` : m.email,
+              value: m.id,
+            })),
+          );
+        }
+        if (currentJson.success) {
+          const roles: Record<string, 'teacher' | 'member'> = {};
+          for (const m of currentJson.data as { userId: string; role: 'teacher' | 'member' }[]) {
+            roles[m.userId] = m.role;
+          }
+          setRoleByUserId(roles);
+          setSelected(Object.keys(roles));
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [group.id]);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const members = selected.map((userId) => ({
+        userId,
+        role: roleByUserId[userId] ?? 'member',
+      }));
+      const res = await fetch(`/api/v1/organization/groups/${group.id}/members`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ members }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(t('members_updated'));
+        onDone();
+      } else {
+        toast.error(t('members_update_failed'));
+      }
+    } catch {
+      toast.error(t('members_update_failed'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8 text-muted-foreground">
+        <Loader2 className="size-5 animate-spin mr-2" />
+        {t('common_loading')}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label>{t('members_label')}</Label>
+        <MultiSelect
+          options={options}
+          selected={selected}
+          onChange={(ids) => {
+            setSelected(ids);
+            setRoleByUserId((prev) => {
+              const next = { ...prev };
+              for (const id of ids) {
+                if (!next[id]) next[id] = 'member';
+              }
+              return next;
+            });
+          }}
+          placeholder={t('members_placeholder')}
+          emptyText={t('members_empty')}
+        />
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onDone}>
+          {t('cancel')}
+        </Button>
+        <Button onClick={handleSave} disabled={saving}>
+          {saving ? t('saving') : t('save')}
+        </Button>
+      </DialogFooter>
     </div>
   );
 }
