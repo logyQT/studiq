@@ -73,7 +73,7 @@ export class GroupService {
       .from('groups')
       .select('*', { count: 'exact', head: true })
       .eq('organization_id', ctx.activeOrgId);
-    await limitsResolver.checkLimit(ctx, 'max_groups', groupCount ?? 0);
+    await limitsResolver.checkOrgLimit(ctx.activeOrgId, 'max_groups', groupCount ?? 0);
 
     const { data: group, error } = await supabase
       .from('groups')
