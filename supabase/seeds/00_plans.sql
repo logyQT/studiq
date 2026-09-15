@@ -297,16 +297,5 @@ INSERT INTO public.plan_limits (plan_key, limit_key, limit_value) VALUES
   ('sysadmin', 'max_storage_mb', -1)
 ON CONFLICT DO NOTHING;
 
--- ==========================================================
--- 8. Plan seat allocations (Phase 2 — seat-based licensing)
--- ==========================================================
-DELETE FROM public.plan_seat_allocations;
-
-INSERT INTO public.plan_seat_allocations (org_plan, seat_plan, default_qty) VALUES
-  ('launch', 'launch', 1),
-  ('team',   'team',   5),
-  ('hub',    'hub',    20),
-  ('campus', 'pro',    50),
-  ('campus', 'master', 10),
-  ('campus', 'campus', 5)
-ON CONFLICT DO NOTHING;
+-- NOTE: Section 8 (plan_seat_allocations) removed in Phase B.5.
+-- Seat pools are created on-demand, never seeded at org creation.
