@@ -2,7 +2,6 @@ import { wrapService } from '@/lib/observability';
 import { createClient } from '@/lib/supabase/server';
 import { ActivityService } from '@/server/services/activity.service';
 import { agentTraceService as _agentTraceService } from '@/server/services/agent-trace.service';
-import { chatService as _chatService } from '@/server/services/ai-chat.service';
 import { AuthService } from '@/server/services/auth.service';
 import { ClassroomService } from '@/server/services/classroom.service';
 import { FeatureResolver } from '@/server/services/feature.resolver';
@@ -88,7 +87,6 @@ export const featureResolver = wrapService(
   new FeatureResolver(createClient),
   'feature-resolver.service',
 );
-export const chatService = wrapService(_chatService, 'ai-chat.service', { group: 'ai' });
 export const agentTraceService = wrapService(_agentTraceService, 'agent-trace.service', {
   group: 'ai',
 });

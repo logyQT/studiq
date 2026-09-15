@@ -191,5 +191,3 @@ export const userOverrideController = wrapService(
   new UserOverrideController(userOverrideService),
   'user-override.controller',
 );
-
-export * from '@/server/controllers/ai-chat.controller';

@@ -1,4 +1,3 @@
-export * from '@/server/models/ai-chat.model';
 export * from '@/server/models/auth.model';
 export * from '@/server/models/classroom.model';
 export * from '@/server/models/feature-flag.model';
