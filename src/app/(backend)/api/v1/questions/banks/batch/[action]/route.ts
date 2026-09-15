@@ -1,7 +1,7 @@
+import type { RequestContext } from '@studiq/authz';
 import type { NextRequest } from 'next/server';
 import type { ControllerResponse } from '@/lib/controller-response';
 import { toNextResponse } from '@/lib/http-utils';
-import type { RequestContext } from '@/lib/request-context';
 import { withAuth } from '@/lib/with-auth';
 import { questionBankController } from '@/server/controllers/question-bank.controller';
 

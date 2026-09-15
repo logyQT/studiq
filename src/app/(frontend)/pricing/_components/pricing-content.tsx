@@ -1,16 +1,12 @@
 'use client';
 
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Separator } from '@studiq/ui';
 import { Check, Loader2, Minus, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { MainLayout } from '@/components/layout/MainLayout';
-
 import { CheckoutButton } from '@/components/pricing/checkout-button';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { useApiQuery } from '@/hooks/use-api';
 import type { PlanInfo } from '@/server/services/subscription-plan.service';
 

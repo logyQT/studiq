@@ -1,11 +1,10 @@
 'use client';
 
+import { InputOTP, InputOTPGroup, InputOTPSlot, Label } from '@studiq/ui';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
-import { Label } from '@/components/ui/label';
 
 export default function LiveClient() {
   const t = useTranslations('AppLiveStudyPage');

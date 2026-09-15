@@ -1,14 +1,14 @@
 'use client';
 
-import { Globe } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
 import {
+  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from '@studiq/ui';
+import { Globe } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 type Locale = 'pl' | 'en';
 

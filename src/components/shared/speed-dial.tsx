@@ -1,10 +1,10 @@
 'use client';
 
+import { Tooltip, TooltipContent, TooltipTrigger } from '@studiq/ui';
 import type { LucideIcon } from 'lucide-react';
 import { Plus } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useCallback, useEffect, useState } from 'react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface SpeedDialItem {
   icon: LucideIcon;

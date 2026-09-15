@@ -1,16 +1,16 @@
 'use client';
 
-import { ChevronDown, MoreHorizontal } from 'lucide-react';
-import Link from 'next/link';
-import { useTranslations } from 'next-intl';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { NavLink } from '@/components/layout/navbar/types';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from '@studiq/ui';
+import { ChevronDown, MoreHorizontal } from 'lucide-react';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { NavLink } from '@/components/layout/navbar/types';
 import { cn } from '@/lib/utils';
 
 interface DesktopNavProps {

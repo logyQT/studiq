@@ -1,6 +1,6 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ClassroomController } from '@/server/controllers/classroom.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 function createMockService() {
   return { create: vi.fn() };
@@ -30,7 +30,10 @@ describe('ClassroomController', () => {
 
   describe('create', () => {
     it('creates a classroom', async () => {
-      mockService.create.mockResolvedValueOnce({ success: true, data: { id: 'org-1', name: 'Class 1' } });
+      mockService.create.mockResolvedValueOnce({
+        success: true,
+        data: { id: 'org-1', name: 'Class 1' },
+      });
 
       const response = await controller.create(mockCtx, { name: 'Class 1' });
 

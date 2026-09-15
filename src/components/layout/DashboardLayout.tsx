@@ -1,9 +1,5 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
-import React from 'react';
-import { AppSidebar } from '@/components/app-sidebar';
-import { AppSearch } from '@/components/layout/app-search';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -11,9 +7,15 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb';
-import { Separator } from '@/components/ui/separator';
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+  Separator,
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from '@studiq/ui';
+import { usePathname } from 'next/navigation';
+import React from 'react';
+import { AppSidebar } from '@/components/app-sidebar';
+import { AppSearch } from '@/components/layout/app-search';
 import { cn } from '@/lib/utils';
 
 export function DashboardLayout({

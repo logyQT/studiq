@@ -1,12 +1,11 @@
 'use client';
 
+import { Button, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
 import { ArrowLeft, Clock, FileQuestion, Lock, Timer } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { timeUntil } from '@/lib/datetime';
 import { studentAssignmentKeys } from '@/lib/query-keys';

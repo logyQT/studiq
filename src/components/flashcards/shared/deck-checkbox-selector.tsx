@@ -1,15 +1,15 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
+  Button,
+  Checkbox,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from '@studiq/ui';
 import type { Deck } from '@/server/models/flashcard-deck.model';
 
 interface DeckCheckboxSelectorProps {

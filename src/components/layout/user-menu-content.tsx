@@ -1,5 +1,7 @@
 'use client';
 
+import { AccountType } from '@studiq/authz';
+import { UserAvatar } from '@studiq/ui';
 import {
   BadgeCheck,
   Bell,
@@ -15,8 +17,6 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { UserAvatar } from '@/components/ui/user-avatar';
-import { AccountType } from '@/types';
 
 type Locale = 'pl' | 'en';
 

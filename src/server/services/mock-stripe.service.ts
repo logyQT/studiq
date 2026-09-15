@@ -1,9 +1,9 @@
+import type { Nullable } from '@studiq/authz';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { wrapService } from '@/lib/observability';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
 import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { Nullable } from '@/types';
 
 export type MockCheckoutSession = {
   id: string;

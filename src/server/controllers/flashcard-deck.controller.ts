@@ -1,7 +1,7 @@
+import type { RequestContext } from '@studiq/authz';
 import { can, Permission } from '@/lib/authz';
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import { wrapService } from '@/lib/observability';
-import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import {
   BatchDeleteDeckSchema,

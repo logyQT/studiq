@@ -1,5 +1,16 @@
 'use client';
 
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  MultiSelect,
+} from '@studiq/ui';
 import { ArrowLeft, BarChart3, Filter, Layers, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -7,11 +18,6 @@ import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 import { DeckDetailSkeleton } from '@/components/flashcards/shared/deck-detail-skeleton';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
-import { MultiSelect } from '@/components/ui/multi-select';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { DifficultyFlashcardDetail } from '@/server/models/flashcard-stats.model';

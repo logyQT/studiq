@@ -21,9 +21,20 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
+      "@studiq/authz": ["./packages/authz/src/index.ts"],
+      "@studiq/authz/*": ["./packages/authz/src/*"],
+      "@studiq/ui": ["./packages/ui/src/index.ts"],
+      "@studiq/ui/*": ["./packages/ui/src/*"],
+      "@/utils": ["./packages/ui/src/utils.ts"],
       "#test/*": ["./__tests__/*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
   "exclude": ["node_modules", ".next", "__test__", "__tests__", "__tests__/e2e"]
 }

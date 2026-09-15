@@ -1,13 +1,11 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { TeacherAssignmentService } from '@/server/services/teacher-assignment.service';
-import type { RequestContext } from '@/lib/request-context';
 
 function chain(result: any, count?: number) {
   const resolved =
-    count !== undefined
-      ? { data: result, count, error: null }
-      : { data: result, error: null };
+    count !== undefined ? { data: result, count, error: null } : { data: result, error: null };
   const terminal = vi.fn().mockResolvedValue(resolved);
   const c: any = {};
   c.select = vi.fn(() => c);
@@ -74,7 +72,13 @@ describe('TeacherAssignmentService', () => {
       mock.from.mockReturnValue(chain(dbRow));
 
       const result = await service.create(
-        { title: 'Quiz 1', shuffleQuestions: true, shuffleAnswers: false, showResults: false, maxAttempts: 1 },
+        {
+          title: 'Quiz 1',
+          shuffleQuestions: true,
+          shuffleAnswers: false,
+          showResults: false,
+          maxAttempts: 1,
+        },
         ctx,
       );
 
@@ -88,13 +92,21 @@ describe('TeacherAssignmentService', () => {
       mock.from.mockReturnValue({
         insert: vi.fn(() => ({
           select: vi.fn(() => ({
-            single: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error', code: 'XXX' } }),
+            single: vi
+              .fn()
+              .mockResolvedValue({ data: null, error: { message: 'DB error', code: 'XXX' } }),
           })),
         })),
       });
 
       const result = await service.create(
-        { title: 'Quiz 1', shuffleQuestions: true, shuffleAnswers: false, showResults: false, maxAttempts: 1 },
+        {
+          title: 'Quiz 1',
+          shuffleQuestions: true,
+          shuffleAnswers: false,
+          showResults: false,
+          maxAttempts: 1,
+        },
         ctx,
       );
 
@@ -141,7 +153,9 @@ describe('TeacherAssignmentService', () => {
     });
 
     it('returns FORBIDDEN when not owner and no org scope', async () => {
-      mock.from.mockReturnValue(chain({ ...assignment, created_by: 'other-user', organization_id: orgId }));
+      mock.from.mockReturnValue(
+        chain({ ...assignment, created_by: 'other-user', organization_id: orgId }),
+      );
 
       const result = await service.getById(assignmentId, ctx);
 
@@ -150,7 +164,9 @@ describe('TeacherAssignmentService', () => {
     });
 
     it('returns FORBIDDEN when org scope but wrong org', async () => {
-      mock.from.mockReturnValue(chain({ ...assignment, created_by: 'other-user', organization_id: 'other-org' }));
+      mock.from.mockReturnValue(
+        chain({ ...assignment, created_by: 'other-user', organization_id: 'other-org' }),
+      );
 
       const result = await service.getById(assignmentId, withOrgScope());
 
@@ -226,7 +242,9 @@ describe('TeacherAssignmentService', () => {
     it('updates assignment successfully', async () => {
       const updated = { id: assignmentId, title: 'Updated Title' };
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValue(chain(updated));
 
       const result = await service.update(assignmentId, { title: 'Updated Title' }, ctx);
@@ -247,7 +265,9 @@ describe('TeacherAssignmentService', () => {
 
     it('returns INTERNAL_SERVER on DB error', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValue({
           update: vi.fn(() => ({
             eq: vi.fn(() => ({
@@ -268,7 +288,9 @@ describe('TeacherAssignmentService', () => {
   describe('delete', () => {
     it('deletes assignment successfully', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValue(chain(null));
 
       const result = await service.delete(assignmentId, ctx);
@@ -287,7 +309,9 @@ describe('TeacherAssignmentService', () => {
 
     it('returns INTERNAL_SERVER on DB error', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValue({
           delete: vi.fn(() => ({
             eq: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
@@ -305,10 +329,17 @@ describe('TeacherAssignmentService', () => {
     it('publishes assignment with deadline', async () => {
       const published = { id: assignmentId, status: 'published' };
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValue(chain(published));
 
-      const result = await service.publish(assignmentId, '2026-07-20T00:00:00.000Z', undefined, ctx);
+      const result = await service.publish(
+        assignmentId,
+        '2026-07-20T00:00:00.000Z',
+        undefined,
+        ctx,
+      );
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data.status).toBe('published');
@@ -316,7 +347,9 @@ describe('TeacherAssignmentService', () => {
 
     it('publishes assignment without deadline', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValue(chain({ id: assignmentId, status: 'published' }));
 
       const result = await service.publish(assignmentId, undefined, undefined, ctx);
@@ -327,10 +360,19 @@ describe('TeacherAssignmentService', () => {
 
     it('publishes assignment with startTime', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
-        .mockReturnValue(chain({ id: assignmentId, status: 'published', start_time: '2026-09-01T08:00:00.000Z' }));
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValue(
+          chain({ id: assignmentId, status: 'published', start_time: '2026-09-01T08:00:00.000Z' }),
+        );
 
-      const result = await service.publish(assignmentId, undefined, '2026-09-01T08:00:00.000Z', ctx);
+      const result = await service.publish(
+        assignmentId,
+        undefined,
+        '2026-09-01T08:00:00.000Z',
+        ctx,
+      );
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data.start_time).toBe('2026-09-01T08:00:00.000Z');
@@ -350,7 +392,9 @@ describe('TeacherAssignmentService', () => {
     it('unpublishes a published assignment', async () => {
       const draft = { id: assignmentId, status: 'draft' };
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValueOnce(chain({ id: assignmentId, status: 'published' }))
         .mockReturnValue(chain(draft));
 
@@ -362,7 +406,9 @@ describe('TeacherAssignmentService', () => {
 
     it('returns BAD_REQUEST when assignment is already draft', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValue(chain({ id: assignmentId, status: 'draft' }));
 
       const result = await service.unpublish(assignmentId, ctx);
@@ -384,7 +430,9 @@ describe('TeacherAssignmentService', () => {
   describe('addQuestions', () => {
     it('adds new questions', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([]))
         .mockReturnValue(chain(null));
@@ -397,7 +445,9 @@ describe('TeacherAssignmentService', () => {
 
     it('skips already-added questions', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValueOnce(chain([{ question_id: 'q-1' }]))
         .mockReturnValueOnce(chain([{ order_index: 0 }]))
         .mockReturnValue(chain(null));
@@ -410,7 +460,9 @@ describe('TeacherAssignmentService', () => {
 
     it('returns success with 0 when all already exist', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValueOnce(chain([{ question_id: 'q-1' }]));
 
       const result = await service.addQuestions(assignmentId, { questionIds: ['q-1'] }, ctx);
@@ -432,7 +484,9 @@ describe('TeacherAssignmentService', () => {
   describe('removeQuestion', () => {
     it('removes question successfully', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValue(chain(null));
 
       const result = await service.removeQuestion(assignmentId, 'q-1', ctx);
@@ -452,7 +506,9 @@ describe('TeacherAssignmentService', () => {
   describe('randomize', () => {
     it('selects random questions from bank source', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValueOnce(chain([{ id: 'q-1' }, { id: 'q-2' }]))
         .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([]))
@@ -470,17 +526,15 @@ describe('TeacherAssignmentService', () => {
 
     it('returns success with 0 when no available questions', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([]))
         .mockReturnValueOnce(chain([{ order_index: 0 }]))
         .mockReturnValue(chain(null));
 
-      const result = await service.randomize(
-        assignmentId,
-        { source: 'all', count: 5 },
-        ctx,
-      );
+      const result = await service.randomize(assignmentId, { source: 'all', count: 5 }, ctx);
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data).toEqual({ added: 0 });
@@ -499,7 +553,9 @@ describe('TeacherAssignmentService', () => {
   describe('setTargets', () => {
     it('sets group and student targets', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValueOnce(chain(null))
         .mockReturnValue(chain(null));
 
@@ -514,7 +570,9 @@ describe('TeacherAssignmentService', () => {
 
     it('clears targets when no groups or students', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValue(chain(null));
 
       const result = await service.setTargets(assignmentId, {}, ctx);
@@ -546,7 +604,9 @@ describe('TeacherAssignmentService', () => {
 
     it('returns attempts for assignment', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValue(chain(attempts));
 
       const result = await service.getResults(assignmentId, ctx);
@@ -557,7 +617,9 @@ describe('TeacherAssignmentService', () => {
 
     it('returns empty array when no attempts', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValue(chain([]));
 
       const result = await service.getResults(assignmentId, ctx);
@@ -588,7 +650,9 @@ describe('TeacherAssignmentService', () => {
 
     it('returns student answers', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValue(chain(attempt));
 
       const result = await service.getStudentAnswers(assignmentId, 'student-1', ctx);
@@ -599,7 +663,9 @@ describe('TeacherAssignmentService', () => {
 
     it('returns NOT_FOUND when no attempt', async () => {
       mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }))
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
         .mockReturnValue(chain(null));
 
       const result = await service.getStudentAnswers(assignmentId, 'student-1', ctx);
@@ -619,8 +685,9 @@ describe('TeacherAssignmentService', () => {
 
   describe('gradeAnswer', () => {
     const baseSetup = () => {
-      mock.from
-        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: orgId }));
+      mock.from.mockReturnValueOnce(
+        chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+      );
     };
 
     it('updates existing answer grade', async () => {
@@ -699,7 +766,14 @@ describe('TeacherAssignmentService', () => {
         status: 'published',
         assignment_targets: [{ group_id: 'g-1', student_id: null }],
       };
-      const attemptRow = { assignment_id: assignmentId, id: 'a-1', score: 5, total_questions: 10, completed_at: null, started_at: '2026-07-13T00:00:00Z' };
+      const attemptRow = {
+        assignment_id: assignmentId,
+        id: 'a-1',
+        score: 5,
+        total_questions: 10,
+        completed_at: null,
+        started_at: '2026-07-13T00:00:00Z',
+      };
 
       mock.from
         .mockReturnValueOnce(chain([groupRow]))
@@ -861,7 +935,12 @@ describe('TeacherAssignmentService', () => {
       mock.from
         .mockReturnValueOnce(chain(shuffleAssignment))
         .mockReturnValueOnce(chain([]))
-        .mockReturnValueOnce(chain([{ id: 'q-1', content: 'Q1', question_answers: [] }, { id: 'q-2', content: 'Q2', question_answers: [] }]))
+        .mockReturnValueOnce(
+          chain([
+            { id: 'q-1', content: 'Q1', question_answers: [] },
+            { id: 'q-2', content: 'Q2', question_answers: [] },
+          ]),
+        )
         .mockReturnValueOnce(chain({ id: 'attempt-1' }))
         .mockReturnValue(chain(null));
 
@@ -878,7 +957,13 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(chain({ id: 'attempt-1', user_id: userId }))
         .mockReturnValue(chain(null));
 
-      const result = await service.uploadImage(assignmentId, 'attempt-1', 'q-1', 'https://example.com/img.png', ctx);
+      const result = await service.uploadImage(
+        assignmentId,
+        'attempt-1',
+        'q-1',
+        'https://example.com/img.png',
+        ctx,
+      );
 
       expect(result.success).toBe(true);
     });
@@ -886,7 +971,13 @@ describe('TeacherAssignmentService', () => {
     it('returns FORBIDDEN when attempt belongs to another user', async () => {
       mock.from.mockReturnValueOnce(chain({ id: 'attempt-1', user_id: 'other-student' }));
 
-      const result = await service.uploadImage(assignmentId, 'attempt-1', 'q-1', 'https://example.com/img.png', ctx);
+      const result = await service.uploadImage(
+        assignmentId,
+        'attempt-1',
+        'q-1',
+        'https://example.com/img.png',
+        ctx,
+      );
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('FORBIDDEN');
@@ -895,7 +986,13 @@ describe('TeacherAssignmentService', () => {
     it('returns NOT_FOUND when attempt does not exist', async () => {
       mock.from.mockReturnValueOnce(chain(null));
 
-      const result = await service.uploadImage(assignmentId, 'nonexistent', 'q-1', 'https://example.com/img.png', ctx);
+      const result = await service.uploadImage(
+        assignmentId,
+        'nonexistent',
+        'q-1',
+        'https://example.com/img.png',
+        ctx,
+      );
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('NOT_FOUND');

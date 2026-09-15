@@ -1,16 +1,16 @@
 'use client';
 
-import type { useTranslations } from 'next-intl';
-import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
-import { Button } from '@/components/ui/button';
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from '@studiq/ui';
+import type { useTranslations } from 'next-intl';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { getGradientHex } from '@/lib/color-utils';
 import type { Flashcard } from '@/server/models/flashcard.model';
 import type { Topic } from '@/server/models/topic.model';

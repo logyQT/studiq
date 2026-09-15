@@ -1,6 +1,6 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QuestionReportController } from '@/server/controllers/question-report.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 function createMockService() {
   return {
@@ -81,7 +81,10 @@ describe('QuestionReportController', () => {
 
   describe('getById', () => {
     it('returns report by id', async () => {
-      mockService.getById.mockResolvedValueOnce({ success: true, data: { report: {}, messages: [] } });
+      mockService.getById.mockResolvedValueOnce({
+        success: true,
+        data: { report: {}, messages: [] },
+      });
 
       const response = await controller.getById('r-1', mockCtx);
 

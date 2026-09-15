@@ -1,17 +1,17 @@
 'use client';
 
-import { ArrowLeft, RotateCcw } from 'lucide-react';
-import { useTranslations } from 'next-intl';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
+  Badge,
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from '@studiq/ui';
+import { ArrowLeft, RotateCcw } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 interface SessionSummaryData {
   cardsStudied: number;

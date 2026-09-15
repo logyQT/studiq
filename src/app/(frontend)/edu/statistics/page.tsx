@@ -1,10 +1,9 @@
 'use client';
 
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, StatCard } from '@studiq/ui';
 import { FileText, Layers, TrendingDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { StatCard } from '@/components/ui/stat-card';
 
 interface TeacherStats {
   totalQuestions: number;

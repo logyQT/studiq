@@ -1,19 +1,19 @@
 'use client';
 
-import { ArrowRight, Eye, MoreVertical } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import type { useTranslations } from 'next-intl';
-import { memo } from 'react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
+  Badge,
+  Button,
+  Card,
+  Checkbox,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from '@studiq/ui';
+import { ArrowRight, Eye, MoreVertical } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import type { useTranslations } from 'next-intl';
+import { memo } from 'react';
 import { getGradientHex } from '@/lib/color-utils';
 import type { QuestionBank } from '@/server/models/question-bank.model';
 

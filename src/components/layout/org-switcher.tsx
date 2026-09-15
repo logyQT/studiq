@@ -1,9 +1,5 @@
 'use client';
 
-import { Building2, Check, ChevronsUpDown, LogIn } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
-import { useAuth } from '@/components/providers/AuthProvider';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,15 +7,17 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { OrgAvatar } from '@/components/ui/org-avatar';
-import {
+  OrgAvatar,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  Skeleton,
   useSidebar,
-} from '@/components/ui/sidebar';
-import { Skeleton } from '@/components/ui/skeleton';
+} from '@studiq/ui';
+import { Building2, Check, ChevronsUpDown, LogIn } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { useOrgs } from '@/hooks/use-orgs';
 
 function displayRole(name: string | undefined | null, fallback: string): string {

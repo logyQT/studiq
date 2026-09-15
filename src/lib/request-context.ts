@@ -1,5 +1,4 @@
-import type { PermissionScope } from '@/lib/permissions';
-import type { AccountType, Nullable } from '@/types';
+import type { AccountType, Nullable, PermissionScope } from '@studiq/authz';
 
 export interface RequestContext {
   traceId: string;

@@ -1,17 +1,24 @@
 'use client';
 
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+  Label,
+  Progress,
+  RadioGroup,
+  RadioGroupItem,
+  Textarea,
+} from '@studiq/ui';
 import { ArrowLeft, ArrowRight, Send } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Textarea } from '@/components/ui/textarea';
 import { apiGet, apiPost } from '@/lib/api';
 
 interface Question {

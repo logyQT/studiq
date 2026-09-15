@@ -1,17 +1,17 @@
 'use client';
 
-import { CheckSquare, Eye, MoreVertical, Pencil, Trash2 } from 'lucide-react';
-import type { useTranslations } from 'next-intl';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
+  Badge,
+  Button,
+  Card,
+  Checkbox,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from '@studiq/ui';
+import { CheckSquare, Eye, MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import type { useTranslations } from 'next-intl';
 import { getGradientHex } from '@/lib/color-utils';
 import type { Topic } from '@/server/models/topic.model';
 

@@ -1,9 +1,9 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createClient } from '@/lib/supabase/server';
-import { success, failure } from '@/lib/service-result';
-import { QuestionController } from '@/server/controllers/question.controller';
 import type { ControllerResponse } from '@/lib/controller-response';
-import type { RequestContext } from '@/lib/request-context';
+import { failure, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
+import { QuestionController } from '@/server/controllers/question.controller';
 
 function createMockQuestionService() {
   return {
@@ -42,7 +42,12 @@ describe('QuestionController', () => {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({
-        data: { id: bankId, created_by: mockCtx.userId, organization_id: null, visibility: 'personal' },
+        data: {
+          id: bankId,
+          created_by: mockCtx.userId,
+          organization_id: null,
+          visibility: 'personal',
+        },
         error: null,
       }),
     };
@@ -82,7 +87,12 @@ describe('QuestionController', () => {
       mockService.create.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
       const response = await controller.create(
-        { bankId: VALID_BANK_ID, type: 'mcq', content: 'Q', answers: [{ content: 'A', isCorrect: true }] },
+        {
+          bankId: VALID_BANK_ID,
+          type: 'mcq',
+          content: 'Q',
+          answers: [{ content: 'A', isCorrect: true }],
+        },
         mockCtx,
       );
 
@@ -104,7 +114,12 @@ describe('QuestionController', () => {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
         single: vi.fn().mockResolvedValue({
-          data: { id: bankId, created_by: mockCtx.userId, organization_id: null, visibility: 'personal' },
+          data: {
+            id: bankId,
+            created_by: mockCtx.userId,
+            organization_id: null,
+            visibility: 'personal',
+          },
           error: null,
         }),
       };
@@ -114,7 +129,11 @@ describe('QuestionController', () => {
       const response = await controller.create(body, mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 201, data: created });
-      expect(mockService.create).toHaveBeenCalledWith(expect.objectContaining({ bankId }), mockCtx, 'personal');
+      expect(mockService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ bankId }),
+        mockCtx,
+        'personal',
+      );
     });
   });
 

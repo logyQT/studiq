@@ -1,5 +1,6 @@
 'use client';
 
+import { Button, Card, Skeleton } from '@studiq/ui';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { CheckSquare, Database, Plus, SquarePen } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -13,9 +14,6 @@ import { BulkActionBar } from '@/components/shared/bulk-action-bar';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { PageGrid } from '@/components/shared/page-grid';
 import { SpeedDial } from '@/components/shared/speed-dial';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
 import { useOrgs } from '@/hooks/use-orgs';

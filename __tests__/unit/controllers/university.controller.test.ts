@@ -1,7 +1,7 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { success, failure } from '@/lib/service-result';
+import { failure, success } from '@/lib/service-result';
 import { OrganizationController } from '@/server/controllers/organization.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 function createMockService() {
   return { create: vi.fn(), getAll: vi.fn(), getById: vi.fn(), update: vi.fn(), delete: vi.fn() };
@@ -34,10 +34,13 @@ describe('OrganizationController', () => {
       const university = { id: 'uni-1', name: 'Test University', slug: 'test' };
       mockService.create.mockResolvedValueOnce(success(university));
 
-      const response = await controller.create({
-        name: 'Test University',
-        slug: 'test',
-      }, mockCtx);
+      const response = await controller.create(
+        {
+          name: 'Test University',
+          slug: 'test',
+        },
+        mockCtx,
+      );
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(201);

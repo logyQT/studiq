@@ -1,6 +1,15 @@
 'use client';
 
 import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  StatCard,
+} from '@studiq/ui';
+import {
   ArrowRight,
   BookOpen,
   Brain,
@@ -18,10 +27,6 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useMemo } from 'react';
 import { OnboardingChecklist } from '@/components/app/onboarding-checklist';
 import { useAuth } from '@/components/providers/AuthProvider';
-
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { StatCard } from '@/components/ui/stat-card';
 import { useApiQuery } from '@/hooks/use-api';
 
 interface StudentStats {

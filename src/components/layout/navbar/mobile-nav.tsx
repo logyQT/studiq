@@ -1,20 +1,20 @@
 'use client';
 
-import type { LucideIcon } from 'lucide-react';
-import { GraduationCap, Menu } from 'lucide-react';
-import Link from 'next/link';
-import { useTranslations } from 'next-intl';
-import { useState } from 'react';
-import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
-import { Button } from '@/components/ui/button';
 import {
+  Button,
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from '@/components/ui/sheet';
+} from '@studiq/ui';
+import type { LucideIcon } from 'lucide-react';
+import { GraduationCap, Menu } from 'lucide-react';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { useState } from 'react';
+import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
 import { cn } from '@/lib/utils';
 
 interface MobileNavItem {

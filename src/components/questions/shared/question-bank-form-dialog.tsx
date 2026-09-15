@@ -1,20 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { MultiSelect } from '@/components/ui/multi-select';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Textarea } from '@/components/ui/textarea';
+  Input,
+  Label,
+  MultiSelect,
+  RadioGroup,
+  RadioGroupItem,
+  Textarea,
+} from '@studiq/ui';
+import { useEffect, useState } from 'react';
 
 interface GroupOption {
   id: string;

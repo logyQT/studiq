@@ -1,5 +1,6 @@
 'use client';
 
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
 import {
   ArrowRight,
   BarChart3,
@@ -18,10 +19,6 @@ import {
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { MainLayout } from '@/components/layout/MainLayout';
-
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const FREE = 'free';
 const PREMIUM = 'premium';

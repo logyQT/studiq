@@ -1,9 +1,5 @@
 'use client';
 
-import { BookOpen } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
 import {
   CommandDialog,
   CommandEmpty,
@@ -11,7 +7,11 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from '@/components/ui/command';
+} from '@studiq/ui';
+import { BookOpen } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { useEffect, useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
 import { useDebounce } from '@/hooks/use-debounce';
 import type { SearchResult } from '@/server/models/search.model';

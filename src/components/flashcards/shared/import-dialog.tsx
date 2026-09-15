@@ -1,27 +1,25 @@
 'use client';
 
-import { useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, CheckCircle2, FileText, Loader2, Upload } from 'lucide-react';
-import type { useTranslations } from 'next-intl';
-import { useCallback, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import {
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@studiq/ui';
+import { useQueryClient } from '@tanstack/react-query';
+import { AlertCircle, CheckCircle2, FileText, Loader2, Upload } from 'lucide-react';
+import type { useTranslations } from 'next-intl';
+import { useCallback, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { flashcardKeys } from '@/lib/query-keys';
 
 type CsvPreviewRow = Record<string, string>;

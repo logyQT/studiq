@@ -1,5 +1,5 @@
+import type { RequestContext } from '@studiq/authz';
 import { AppError } from '@/lib/errors';
-import type { RequestContext } from '@/lib/request-context';
 import type { FeatureKey, FeatureResolution } from '@/server/services/feature.resolver';
 import { featureResolver } from '@/server/services/feature.resolver';
 

@@ -1,8 +1,8 @@
 'use client';
 
+import { DropdownMenuItem, DropdownMenuSeparator } from '@studiq/ui';
 import { CheckSquare, Eye, EyeOff, FileDown, Pencil, Trash2 } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
-import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 
 interface DeckContextMenuProps {
   t: ReturnType<typeof useTranslations>;

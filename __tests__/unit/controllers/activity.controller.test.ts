@@ -1,6 +1,6 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActivityController } from '@/server/controllers/activity.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 function createMockService() {
   return { getClassActivity: vi.fn() };
@@ -30,9 +30,14 @@ describe('ActivityController', () => {
 
   describe('getActivity', () => {
     it('returns activity data', async () => {
-      mockService.getClassActivity.mockResolvedValueOnce({ success: true, data: { activities: [] } });
+      mockService.getClassActivity.mockResolvedValueOnce({
+        success: true,
+        data: { activities: [] },
+      });
 
-      const response = await controller.getActivity(mockCtx, { groupId: '550e8400-e29b-41d4-a716-446655440000' });
+      const response = await controller.getActivity(mockCtx, {
+        groupId: '550e8400-e29b-41d4-a716-446655440000',
+      });
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
@@ -48,7 +53,9 @@ describe('ActivityController', () => {
     it('returns error on service failure', async () => {
       mockService.getClassActivity.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
 
-      const response = await controller.getActivity(mockCtx, { groupId: '550e8400-e29b-41d4-a716-446655440000' });
+      const response = await controller.getActivity(mockCtx, {
+        groupId: '550e8400-e29b-41d4-a716-446655440000',
+      });
 
       expect(response.success).toBe(false);
     });

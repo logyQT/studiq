@@ -1,14 +1,14 @@
-'use client';
-
-import { Button } from '@/components/ui/button';
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from '@studiq/ui';
+
+('use client');
 
 interface DeleteConfirmDialogProps {
   open: boolean;

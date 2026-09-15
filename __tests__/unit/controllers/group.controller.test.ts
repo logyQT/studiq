@@ -1,6 +1,6 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GroupController } from '@/server/controllers/group.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 vi.mock('@/lib/features', () => ({
   requireFeature: vi.fn().mockResolvedValue(undefined),
@@ -94,14 +94,22 @@ describe('GroupController', () => {
       const group = { id: 'g-1', name: 'Updated', description: null, created_at: '2024-01-01' };
       mockService.updateGroup.mockResolvedValueOnce({ success: true, data: group });
 
-      const response = await controller.updateGroup(mockCtx, '550e8400-e29b-41d4-a716-446655440000', { name: 'Updated' });
+      const response = await controller.updateGroup(
+        mockCtx,
+        '550e8400-e29b-41d4-a716-446655440000',
+        { name: 'Updated' },
+      );
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
     });
 
     it('returns 422 on invalid body', async () => {
-      const response = await controller.updateGroup(mockCtx, '550e8400-e29b-41d4-a716-446655440000', { name: '' });
+      const response = await controller.updateGroup(
+        mockCtx,
+        '550e8400-e29b-41d4-a716-446655440000',
+        { name: '' },
+      );
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
@@ -117,7 +125,11 @@ describe('GroupController', () => {
     it('returns error on service failure', async () => {
       mockService.updateGroup.mockResolvedValueOnce({ success: false, error: 'NOT_FOUND' });
 
-      const response = await controller.updateGroup(mockCtx, '550e8400-e29b-41d4-a716-446655440000', { name: 'Updated' });
+      const response = await controller.updateGroup(
+        mockCtx,
+        '550e8400-e29b-41d4-a716-446655440000',
+        { name: 'Updated' },
+      );
 
       expect(response.success).toBe(false);
     });
@@ -127,7 +139,10 @@ describe('GroupController', () => {
     it('returns success', async () => {
       mockService.deleteGroup.mockResolvedValueOnce({ success: true, data: undefined });
 
-      const response = await controller.deleteGroup(mockCtx, '550e8400-e29b-41d4-a716-446655440000');
+      const response = await controller.deleteGroup(
+        mockCtx,
+        '550e8400-e29b-41d4-a716-446655440000',
+      );
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
@@ -143,7 +158,10 @@ describe('GroupController', () => {
     it('returns error on service failure', async () => {
       mockService.deleteGroup.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
 
-      const response = await controller.deleteGroup(mockCtx, '550e8400-e29b-41d4-a716-446655440000');
+      const response = await controller.deleteGroup(
+        mockCtx,
+        '550e8400-e29b-41d4-a716-446655440000',
+      );
 
       expect(response.success).toBe(false);
     });
@@ -153,7 +171,10 @@ describe('GroupController', () => {
     it('returns members', async () => {
       mockService.getGroupMembers.mockResolvedValueOnce({ success: true, data: [] });
 
-      const response = await controller.getGroupMembers(mockCtx, '550e8400-e29b-41d4-a716-446655440000');
+      const response = await controller.getGroupMembers(
+        mockCtx,
+        '550e8400-e29b-41d4-a716-446655440000',
+      );
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
@@ -171,17 +192,25 @@ describe('GroupController', () => {
     it('returns success', async () => {
       mockService.setGroupMembers.mockResolvedValueOnce({ success: true, data: undefined });
 
-      const response = await controller.setGroupMembers(mockCtx, '550e8400-e29b-41d4-a716-446655440000', {
-        members: [{ userId: '550e8400-e29b-41d4-a716-446655440001', role: 'teacher' }],
-      });
+      const response = await controller.setGroupMembers(
+        mockCtx,
+        '550e8400-e29b-41d4-a716-446655440000',
+        {
+          members: [{ userId: '550e8400-e29b-41d4-a716-446655440001', role: 'teacher' }],
+        },
+      );
 
       expect(response.success).toBe(true);
     });
 
     it('returns 422 on invalid body', async () => {
-      const response = await controller.setGroupMembers(mockCtx, '550e8400-e29b-41d4-a716-446655440000', {
-        members: 'invalid',
-      });
+      const response = await controller.setGroupMembers(
+        mockCtx,
+        '550e8400-e29b-41d4-a716-446655440000',
+        {
+          members: 'invalid',
+        },
+      );
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);

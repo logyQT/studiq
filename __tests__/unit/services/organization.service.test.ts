@@ -1,13 +1,9 @@
+import { AccountType, RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { OrganizationService } from '@/server/services/organization.service';
-import type { RequestContext } from '@/lib/request-context';
-import { AccountType } from '@/types';
 
-function chain(
-  data: unknown,
-  error: { code: string; message: string } | null = null,
-) {
+function chain(data: unknown, error: { code: string; message: string } | null = null) {
   const resolved = { data, error };
   const terminal = vi.fn().mockResolvedValue(resolved);
   const c: Record<string, unknown> = {};

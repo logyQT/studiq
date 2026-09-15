@@ -1,6 +1,6 @@
+import type { RequestContext } from '@studiq/authz';
 import type { NextRequest } from 'next/server';
 import { handleApiError, toNextResponse } from '@/lib/http-utils';
-import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/with-auth';
 

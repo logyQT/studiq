@@ -1,6 +1,13 @@
 'use client';
 
 import {
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from '@studiq/ui';
+import {
   CheckSquare,
   Copy,
   ExternalLink,
@@ -13,13 +20,6 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
-import {
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-} from '@/components/ui/dropdown-menu';
 
 interface FlashcardContextMenuProps {
   t: ReturnType<typeof useTranslations>;

@@ -1,11 +1,10 @@
 'use client';
 
+import { Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
 import { Building2, GraduationCap, User } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { MainLayout } from '@/components/layout/MainLayout';
-
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const TILES = [
   {

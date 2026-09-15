@@ -1,13 +1,11 @@
 'use client';
 
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
 import { ArrowLeft, Edit, ScrollText, Send, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { quizKeys } from '@/lib/query-keys';
 

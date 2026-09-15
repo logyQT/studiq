@@ -1,6 +1,25 @@
 'use client';
 
 import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  StatCard,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@studiq/ui';
+import {
   ArrowLeft,
   BarChart3,
   BookOpen,
@@ -14,24 +33,6 @@ import {
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { DeckDetailSkeleton } from '@/components/flashcards/shared/deck-detail-skeleton';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty';
-import { StatCard } from '@/components/ui/stat-card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import type { TeacherFlashcardStatsResponse } from '@/server/models/flashcard-stats.model';

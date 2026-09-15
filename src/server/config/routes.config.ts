@@ -1,4 +1,4 @@
-import { AccountType } from '@/types';
+import { AccountType } from '@studiq/authz';
 
 export type RouteRule = {
   /** The Regex pattern to match the pathname */

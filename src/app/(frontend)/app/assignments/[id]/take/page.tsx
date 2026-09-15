@@ -1,14 +1,11 @@
 'use client';
 
+import { Button, Label, RadioGroup, RadioGroupItem, Textarea } from '@studiq/ui';
 import { ArrowLeft, Check, Clock, ImagePlus, Upload } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Textarea } from '@/components/ui/textarea';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 
 interface AttemptData {

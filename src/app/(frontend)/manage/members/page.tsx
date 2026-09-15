@@ -1,10 +1,5 @@
 'use client';
 
-import { Search, Shield, UserMinus } from 'lucide-react';
-import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { useAuth } from '@/components/providers/AuthProvider';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,36 +9,35 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
+  Badge,
+  Button,
+  Card,
+  Checkbox,
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
+  Input,
+  Label,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import {
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { UserAvatar } from '@/components/ui/user-avatar';
+  UserAvatar,
+} from '@studiq/ui';
+import { Search, Shield, UserMinus } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { useAuth } from '@/components/providers/AuthProvider';
 
 interface GroupInfo {
   id: string;

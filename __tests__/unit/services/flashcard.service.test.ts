@@ -1,9 +1,8 @@
+import { AccountType, RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import type { RequestContext } from '@/lib/request-context';
 import { failure, success } from '@/lib/service-result';
 import { FlashcardService } from '@/server/services/flashcard.service';
-import { AccountType } from '@/types';
 
 vi.mock('@/lib/authz', () => {
   const check = vi.fn().mockResolvedValue(undefined);

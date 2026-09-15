@@ -1,7 +1,7 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { success, failure } from '@/lib/service-result';
+import { failure, success } from '@/lib/service-result';
 import { OrganizationMemberController } from '@/server/controllers/organization-member.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 vi.mock('@/lib/features', () => ({
   requireFeature: vi.fn().mockResolvedValue(undefined),
@@ -69,7 +69,10 @@ describe('OrganizationMemberController', () => {
 
   describe('changeRole', () => {
     it('returns success when service changes role successfully', async () => {
-      const body = { targetUserId: validUserId, newOrgRoleId: '00000000-0000-4000-8000-000000000001' };
+      const body = {
+        targetUserId: validUserId,
+        newOrgRoleId: '00000000-0000-4000-8000-000000000001',
+      };
       mockService.changeRole.mockResolvedValueOnce(success(undefined));
 
       const response = await controller.changeRole(mockCtx, body);

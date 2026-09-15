@@ -1,7 +1,7 @@
+import type { RequestContext } from '@studiq/authz';
 import { NextResponse } from 'next/server';
 import type { ControllerResponse } from '@/lib/controller-response';
 import { APP_ERRORS, AppError, type AppErrorCode } from '@/lib/errors';
-import type { RequestContext } from '@/lib/request-context';
 import { z } from '@/lib/zod';
 
 export function toNextResponse<T>(response: ControllerResponse<T>): NextResponse {

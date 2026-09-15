@@ -1,10 +1,10 @@
 'use client';
 
+import { evaluateScope, type PermissionScope } from '@studiq/authz';
 import { useCallback } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermissions } from '@/hooks/use-permissions';
-import { evaluateScope, type PermissionScope } from '@/lib/permissions';
 
 export type PermissionResource = {
   createdBy?: string;

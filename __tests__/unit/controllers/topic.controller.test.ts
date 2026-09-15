@@ -1,5 +1,5 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RequestContext } from '@/lib/request-context';
 import { TopicController } from '@/server/controllers/topic.controller';
 
 vi.mock('@/lib/authz', () => ({
