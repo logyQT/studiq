@@ -4,6 +4,21 @@ import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { failure, success } from '@/lib/service-result';
 import { StatsService } from '@/server/services/stats.service';
 
+function qb(data: any, error: any = null, count?: number) {
+  const result =
+    count !== undefined ? { data: data ?? null, count, error } : { data: data ?? null, error };
+  const promise = Promise.resolve(result);
+  const b: any = {};
+  b.select = vi.fn(() => b);
+  b.eq = vi.fn(() => b);
+  b.order = vi.fn(() => b);
+  b.lte = vi.fn(() => b);
+  b.then = promise.then.bind(promise);
+  b.catch = promise.catch.bind(promise);
+  b.finally = promise.finally.bind(promise);
+  return b;
+}
+
 describe('StatsService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
   const ctx: RequestContext = {
@@ -42,6 +57,20 @@ describe('StatsService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({ totalQuestions: 1, totalFlashcards: 1 });
+    });
+
+    it('scopes question/flashcard counts to the active organization', async () => {
+      const orgCtx: RequestContext = { ...ctx, activeOrgId: 'org-1' };
+      const questionsBuilder = qb([{ id: 'q-1' }]);
+      const flashcardsBuilder = qb([{ id: 'fc-1' }]);
+      mock.from.mockReturnValueOnce(questionsBuilder);
+      mock.from.mockReturnValueOnce(flashcardsBuilder);
+
+      const result = await service.getTeacherStats(orgCtx);
+
+      expect(result.success).toBe(true);
+      expect(questionsBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(flashcardsBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
     });
   });
 
@@ -125,6 +154,32 @@ describe('StatsService', () => {
       expect(result.data.avgScore).toBe(0);
       expect(result.data.flashcardsPracticed).toBe(0);
       expect(result.data.flashcardAccuracy).toBe(0);
+    });
+
+    it('scopes content counts to the active organization, but not activity logs', async () => {
+      const orgCtx: RequestContext = { ...ctx, activeOrgId: 'org-1' };
+      const attemptsBuilder = qb([]);
+      const practiceBuilder = qb([]);
+      const questionsBuilder = qb([{ id: 'q-1' }]);
+      const decksBuilder = qb([], null, 0);
+      const flashcardsBuilder = qb([], null, 0);
+      const reviewStateBuilder = qb([], null, 0);
+      mock.from.mockReturnValueOnce(attemptsBuilder);
+      mock.from.mockReturnValueOnce(practiceBuilder);
+      mock.from.mockReturnValueOnce(questionsBuilder);
+      mock.from.mockReturnValueOnce(decksBuilder);
+      mock.from.mockReturnValueOnce(flashcardsBuilder);
+      mock.from.mockReturnValueOnce(reviewStateBuilder);
+
+      const result = await service.getStudentStats(orgCtx);
+
+      expect(result.success).toBe(true);
+      expect(questionsBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(decksBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(flashcardsBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(attemptsBuilder.eq).not.toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(practiceBuilder.eq).not.toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(reviewStateBuilder.eq).not.toHaveBeenCalledWith('organization_id', 'org-1');
     });
   });
 });
