@@ -28,6 +28,17 @@ export function isFeatureKey(key: string): key is FeatureKey {
   return FEATURE_KEY_SET.has(key);
 }
 
+/**
+ * Features that should never be granted to non-admin org roles through seat
+ * upgrades. These are management/structure privileges that belong to the org
+ * admin role only.
+ */
+const ADMIN_ONLY_FEATURES: ReadonlySet<FeatureKey> = new Set<FeatureKey>([
+  'org.manage',
+  'member.manage',
+  'role.builder',
+]);
+
 export interface FeatureResolution {
   /** Enabled feature keys, ordered by `FEATURES`. */
   features: FeatureKey[];
@@ -86,25 +97,44 @@ export class FeatureResolver {
     const enabled = new Set<FeatureKey>();
 
     // ── 1. Plan entitlement (base set) ───────────────────────────────────
-    if (ctx.activeOrgId) {
-      const seatPlanKey = await getSeatPlanKey(ctx, supabase);
+    let isSeatedAdmin = false;
 
-      if (seatPlanKey) {
-        // Seated user: seat plan entitles the feature set.
-        await this.addPlanFeatures(enabled, seatPlanKey, supabase);
-      } else if (ctx.orgRoleId) {
-        // Not seated: the org role's features are the entitlement. Rows are
-        // seeded by the org trigger from the org's plan with role filtering,
-        // so this layer encodes plan gating AND role restrictions. When a
-        // role has rows they are authoritative (missing keys = disabled).
+    if (ctx.activeOrgId) {
+      // Load org-role features first (the role-based entitlement).
+      let orgRoleFeatures: FeatureRow[] = [];
+      if (ctx.orgRoleId) {
         const { data: roleFeatures } = await supabase
           .from('org_role_features')
           .select('feature_key, is_enabled')
           .eq('org_role_id', ctx.orgRoleId);
 
-        if (roleFeatures && roleFeatures.length > 0) {
-          this.applyRows(enabled, roleFeatures);
+        orgRoleFeatures = roleFeatures ?? [];
+      }
+
+      const seatPlanKey = await getSeatPlanKey(ctx, supabase);
+
+      if (seatPlanKey) {
+        // Seated user: org-role features are the base, seat plan is an
+        // additive upgrade. Admin-only features are then stripped for
+        // non-admin roles to prevent privilege escalation through seats.
+        if (orgRoleFeatures.length > 0) {
+          this.applyRows(enabled, orgRoleFeatures);
+          isSeatedAdmin = orgRoleFeatures.some(
+            (r) => r.feature_key === 'org.manage' && r.is_enabled !== false,
+          );
         }
+        await this.addPlanFeatures(enabled, seatPlanKey, supabase);
+        if (!isSeatedAdmin) {
+          for (const key of ADMIN_ONLY_FEATURES) {
+            enabled.delete(key);
+          }
+        }
+      } else if (orgRoleFeatures.length > 0) {
+        // Not seated: the org role's features are the entitlement. Rows are
+        // seeded by the org trigger from the org's plan with role filtering,
+        // so this layer encodes plan gating AND role restrictions. When a
+        // role has rows they are authoritative (missing keys = disabled).
+        this.applyRows(enabled, orgRoleFeatures);
       }
     }
 

@@ -1,7 +1,11 @@
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
-import { CreateAssignmentSchema, UpdatePoolSchema } from '@/server/models/seat.model';
+import {
+  CreateAssignmentSchema,
+  CreatePoolSchema,
+  UpdatePoolSchema,
+} from '@/server/models/seat.model';
 import type { SeatService } from '@/server/services/seat.service';
 
 export class SeatController {
@@ -11,6 +15,22 @@ export class SeatController {
     const result = await this.seatService.listPools(ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
+  }
+
+  async createPool(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
+    const parsed = CreatePoolSchema.safeParse(body);
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
+
+    const result = await this.seatService.addPool(ctx, parsed.data);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.created(result.data);
   }
 
   async updatePool(

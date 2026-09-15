@@ -2,7 +2,36 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { CreateAssignmentInput, UpdatePoolInput } from '@/server/models';
+import type { CreateAssignmentInput, CreatePoolInput, UpdatePoolInput } from '@/server/models';
+
+/**
+ * Maps plan_key → compatible account tier. Used for role-aware seat
+ * assignment: a teacher (educator tier) should only get educator-tier seats,
+ * a student (student tier) should only get student-tier seats, etc.
+ */
+const PLAN_TIER_MAP: Record<string, string> = {
+  base: 'student',
+  spark: 'student',
+  ace: 'student',
+  pro: 'student',
+  lite: 'educator',
+  guide: 'educator',
+  creator: 'educator',
+  master: 'educator',
+  launch: 'manager',
+  team: 'manager',
+  hub: 'manager',
+  campus: 'manager',
+};
+
+/**
+ * Maps org role name → compatible account tier.
+ */
+const ROLE_TIER_MAP: Record<string, string> = {
+  admin: 'manager',
+  teacher: 'educator',
+  member: 'student',
+};
 
 export class SeatService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -29,6 +58,62 @@ export class SeatService {
         assigned: p.assigned,
       })),
     );
+  }
+
+  async addPool(
+    ctx: RequestContext,
+    input: CreatePoolInput,
+  ): Promise<ServiceResult<{ id: string; planKey: string; total: number; assigned: number }>> {
+    if (!ctx.activeOrgId) return failure('FORBIDDEN');
+
+    const supabase = await this.createClient();
+
+    // Upsert: if a pool for this plan already exists, increment its total.
+    const { data: existing } = await supabase
+      .from('org_seat_pools')
+      .select('id, total')
+      .eq('organization_id', ctx.activeOrgId)
+      .eq('plan_key', input.planKey)
+      .maybeSingle();
+
+    if (existing) {
+      const { data, error } = await supabase
+        .from('org_seat_pools')
+        .update({ total: existing.total + input.quantity })
+        .eq('id', existing.id)
+        .select('id, plan_key, total, assigned')
+        .maybeSingle();
+
+      if (error) return toDbFailure(error);
+      if (!data) return failure('INTERNAL_SERVER');
+
+      return success({
+        id: data.id,
+        planKey: data.plan_key,
+        total: data.total,
+        assigned: data.assigned,
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('org_seat_pools')
+      .insert({
+        organization_id: ctx.activeOrgId,
+        plan_key: input.planKey,
+        total: input.quantity,
+      })
+      .select('id, plan_key, total, assigned')
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!data) return failure('INTERNAL_SERVER');
+
+    return success({
+      id: data.id,
+      planKey: data.plan_key,
+      total: data.total,
+      assigned: data.assigned,
+    });
   }
 
   async updatePool(
@@ -138,6 +223,24 @@ export class SeatService {
 
     if (profileErr) return toDbFailure(profileErr);
     if (!profile) return failure('NOT_FOUND');
+
+    // Role-aware validation: pool plan tier must match target user's org role tier
+    const poolTier = PLAN_TIER_MAP[pool.plan_key];
+    if (poolTier) {
+      const { data: member } = await supabase
+        .from('org_members')
+        .select('org_roles!inner(name)')
+        .eq('organization_id', ctx.activeOrgId)
+        .eq('user_id', input.userId)
+        .maybeSingle();
+
+      const roleName = (member?.org_roles as unknown as { name: string })?.name;
+      const userTier = roleName ? ROLE_TIER_MAP[roleName] : undefined;
+
+      if (userTier && userTier !== poolTier) {
+        return failure('BAD_REQUEST');
+      }
+    }
 
     // Check if user already has a seat in this org (will be caught by unique constraint, but let's be explicit)
     const { data: existing } = await supabase

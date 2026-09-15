@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SeatController } from '@/server/controllers/seat.controller';
 import type { RequestContext } from '@/lib/request-context';
+import { SeatController } from '@/server/controllers/seat.controller';
 
 function createMockService() {
   return {
     listPools: vi.fn(),
+    addPool: vi.fn(),
     updatePool: vi.fn(),
     listAssignments: vi.fn(),
     assignSeat: vi.fn(),
@@ -15,8 +16,15 @@ function createMockService() {
 let mockService: ReturnType<typeof createMockService>;
 let controller: SeatController;
 const mockCtx: RequestContext = {
-  traceId: 'test', userId: 'u-1', accountType: 'educator' as any,
-  orgRoleId: null, activeOrgId: 'org-1', url: '', method: 'GET', groupIds: [], permissionScopes: {},
+  traceId: 'test',
+  userId: 'u-1',
+  accountType: 'educator' as any,
+  orgRoleId: null,
+  activeOrgId: 'org-1',
+  url: '',
+  method: 'GET',
+  groupIds: [],
+  permissionScopes: {},
 };
 
 describe('SeatController', () => {
@@ -36,6 +44,26 @@ describe('SeatController', () => {
       mockService.listPools.mockResolvedValueOnce({ success: false, error: 'INTERNAL_SERVER' });
       const response = await controller.listPools(mockCtx);
       expect(response.success).toBe(false);
+    });
+  });
+
+  describe('createPool', () => {
+    it('creates a pool and returns 201', async () => {
+      mockService.addPool.mockResolvedValueOnce({
+        success: true,
+        data: { id: 'p-1', planKey: 'ace', total: 10, assigned: 0 },
+      });
+      const response = await controller.createPool(mockCtx, {
+        planKey: 'ace',
+        quantity: 10,
+      });
+      expect(response.success).toBe(true);
+      expect(response.statusCode).toBe(201);
+    });
+    it('returns 422 on invalid body', async () => {
+      const response = await controller.createPool(mockCtx, { planKey: '' });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
     });
   });
 

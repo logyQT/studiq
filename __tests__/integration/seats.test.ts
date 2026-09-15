@@ -1,16 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
-import { GET as getPools } from '@/app/(backend)/api/v1/organization/seats/pools/route';
-import { PUT as updatePool } from '@/app/(backend)/api/v1/organization/seats/pools/[id]/route';
 import {
-  GET as getAssignments,
-  POST as createAssignment,
-} from '@/app/(backend)/api/v1/organization/seats/assignments/route';
-import { DELETE as deleteAssignment } from '@/app/(backend)/api/v1/organization/seats/assignments/[id]/route';
-import {
+  type BeforeResult,
   before,
   createTestUser,
-  type BeforeResult,
   type TestUserFixture,
 } from '#test/helpers/test-user';
 import {
@@ -20,21 +13,16 @@ import {
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
-
-/**
- * Fetches the launch seat pool ID for the current test org.
- */
-async function getLaunchPoolId(orgId: string): Promise<string> {
-  const supabase = createServiceClient();
-  const { data: pool } = await supabase
-    .from('org_seat_pools')
-    .select('id')
-    .eq('organization_id', orgId)
-    .eq('plan_key', 'launch')
-    .single();
-  if (!pool) throw new Error('Launch pool not found — trigger may not have run');
-  return pool.id;
-}
+import { DELETE as deleteAssignment } from '@/app/(backend)/api/v1/organization/seats/assignments/[id]/route';
+import {
+  POST as createAssignment,
+  GET as getAssignments,
+} from '@/app/(backend)/api/v1/organization/seats/assignments/route';
+import { PUT as updatePool } from '@/app/(backend)/api/v1/organization/seats/pools/[id]/route';
+import {
+  POST as createPool,
+  GET as getPools,
+} from '@/app/(backend)/api/v1/organization/seats/pools/route';
 
 forEachCopy((copyId) => {
   describe(`Seats Integration [${copyId}]`, () => {
@@ -51,11 +39,25 @@ forEachCopy((copyId) => {
     const orgCookies = () => ({ active_org_id: orgId });
 
     beforeAll(async () => {
-      // Manager creates the org via the API (launch plan by default) →
-      // the handle_new_organization trigger seeds the launch seat pool.
+      // Manager creates the org via the API (launch plan by default).
       fixture = await before({ role: 'manager', org: true });
       orgId = fixture.orgId!;
-      poolId = await getLaunchPoolId(orgId);
+
+      // Create a pool via the API (no default pools after S1).
+      // Use 'guide' plan (educator tier) for educator-role test users.
+      mockUser(fixture.user);
+      const createReq = createNextRequest(
+        'http://localhost/api/v1/organization/seats/pools',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planKey: 'guide', quantity: 10 }),
+        },
+        orgCookies(),
+      );
+      const createRes = await createPool(createReq);
+      const createBody = await createRes.json();
+      poolId = createBody.data.id;
 
       // Unique assignee users per copy (org_seat_assignments
       // has a UNIQUE(organization_id, user_id) constraint).
@@ -94,9 +96,9 @@ forEachCopy((copyId) => {
         expect(body.data).toBeInstanceOf(Array);
         expect(body.data.length).toBeGreaterThanOrEqual(1);
 
-        const pool = body.data.find((p: any) => p.planKey === 'launch');
+        const pool = body.data.find((p: any) => p.planKey === 'guide');
         expect(pool).toBeDefined();
-        expect(pool.total).toBe(1);
+        expect(pool.total).toBe(10);
         expect(pool.assigned).toBe(0);
       });
 
@@ -115,6 +117,52 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(403);
         expect(body.success).toBe(false);
         expect(body.error).toBe('FORBIDDEN');
+      });
+    });
+
+    describe('POST /pools', () => {
+      it('creates a new pool', async () => {
+        mockUser(fixture.user);
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/seats/pools',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ planKey: 'ace', quantity: 5 }),
+          },
+          orgCookies(),
+        );
+
+        const response = await createPool(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(201);
+        expect(body.success).toBe(true);
+        expect(body.data.planKey).toBe('ace');
+        expect(body.data.total).toBe(5);
+      });
+
+      it('increments existing pool on duplicate plan_key', async () => {
+        mockUser(fixture.user);
+
+        // Create second pool with same plan_key
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/seats/pools',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ planKey: 'ace', quantity: 3 }),
+          },
+          orgCookies(),
+        );
+
+        const response = await createPool(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(201);
+        expect(body.success).toBe(true);
+        expect(body.data.total).toBe(8); // 5 + 3
       });
     });
 
@@ -311,10 +359,7 @@ forEachCopy((copyId) => {
     describe('Hard block: pool capacity', () => {
       beforeEach(async () => {
         const supabase = createServiceClient();
-        await supabase
-          .from('org_seat_pools')
-          .update({ total: 0 })
-          .eq('id', poolId);
+        await supabase.from('org_seat_pools').update({ total: 0 }).eq('id', poolId);
       });
 
       it('returns USAGE_LIMIT_EXCEEDED when pool is full', async () => {
