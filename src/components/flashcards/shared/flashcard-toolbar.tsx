@@ -12,7 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useCan } from '@/hooks/use-can';
+import { useFeature } from '@/hooks/use-feature';
+import { usePermission } from '@/hooks/use-permission';
 import type { Topic } from '@/server/models';
 
 interface FlashcardToolbarProps {
@@ -47,9 +48,10 @@ export function FlashcardToolbar({
   t,
 }: FlashcardToolbarProps) {
   const { user } = useAuth();
-  const can = useCan();
-  const canCreate = can({ permissions: ['flashcard.create'], createdBy: user?.id });
-  const hasAiAccess = can({ features: ['ai.chat'] });
+  const permission = usePermission();
+  const feature = useFeature();
+  const canCreate = permission('flashcard.create', { createdBy: user?.id });
+  const hasAiAccess = feature('ai.chat');
   const hasAccessGenerate = canCreate && hasAiAccess;
 
   return (

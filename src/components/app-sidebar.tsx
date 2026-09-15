@@ -40,7 +40,7 @@ import {
   SidebarRail,
 } from '@/components/ui/sidebar';
 import { useApiQuery } from '@/hooks/use-api';
-import { useCan } from '@/hooks/use-can';
+import { useFeature } from '@/hooks/use-feature';
 import { questionReportKeys } from '@/lib/query-keys';
 import { AccountType } from '@/types';
 
@@ -168,8 +168,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { user } = useAuth();
   const accountType = user?.app_metadata?.account_type as AccountType | undefined;
   const isSysAdmin = accountType === AccountType.SYS_ADMIN;
-  const can = useCan();
-  const hasAiChat = can({ features: ['ai.chat'] });
+  const feature = useFeature();
+  const hasAiChat = feature('ai.chat');
 
   const { data: reportsUnread } = useApiQuery<{ count: number }>({
     queryKey: questionReportKeys.unreadCount,

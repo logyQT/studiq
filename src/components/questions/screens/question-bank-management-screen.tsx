@@ -17,8 +17,9 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
-import { useCan } from '@/hooks/use-can';
+import { useFeature } from '@/hooks/use-feature';
 import { useOrgs } from '@/hooks/use-orgs';
+import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { groupKeys, questionKeys } from '@/lib/query-keys';
 import type { QuestionBank } from '@/server/models';
@@ -46,12 +47,13 @@ function loadPersistedFilters() {
 export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManagementScreenProps) {
   const _router = useRouter();
   const { activeOrg } = useOrgs();
-  const can = useCan();
+  const feature = useFeature();
+  const permission = usePermission();
 
   const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
     queryKey: groupKeys.list(activeOrg?.id),
     url: '/api/v1/organization/groups',
-    enabled: !!activeOrg?.id && can({ features: ['org.manage'] }),
+    enabled: !!activeOrg?.id && feature('org.manage'),
   });
   const persisted = loadPersistedFilters();
 
@@ -328,8 +330,8 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
             onToggleSelect={() => handleToggleSelect(bank.id)}
             basePath={basePath}
             t={t}
-            canUpdate={can({ permissions: ['question_bank.update'], createdBy: bank.created_by })}
-            canDelete={can({ permissions: ['question_bank.delete'], createdBy: bank.created_by })}
+            canUpdate={permission('question_bank.update', { createdBy: bank.created_by })}
+            canDelete={permission('question_bank.delete', { createdBy: bank.created_by })}
             onEdit={() => openEdit(bank)}
             onDelete={() => setDeleteId(bank.id)}
             onSelect={() => setIsSelecting(true)}
