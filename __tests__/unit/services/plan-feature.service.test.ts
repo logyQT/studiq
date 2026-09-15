@@ -1,0 +1,124 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { PlanFeatureService } from '@/server/services/plan-feature.service';
+
+function qb(data: any, error: any = null) {
+  const promise = Promise.resolve({ data: data ?? null, error });
+  const b: any = {};
+  b.select = vi.fn(() => b);
+  b.insert = vi.fn(() => b);
+  b.update = vi.fn(() => b);
+  b.delete = vi.fn(() => b);
+  b.eq = vi.fn(() => b);
+  b.order = vi.fn(() => b);
+  b.single = vi.fn().mockResolvedValue({ data: data ?? null, error });
+  b.maybeSingle = vi.fn().mockResolvedValue({ data: data ?? null, error });
+  b.then = promise.then.bind(promise);
+  b.catch = promise.catch.bind(promise);
+  b.finally = promise.finally.bind(promise);
+  return b;
+}
+
+describe('PlanFeatureService', () => {
+  let mock: ReturnType<typeof mockSupabaseClient>;
+  let service: PlanFeatureService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mock = mockSupabaseClient();
+    service = new PlanFeatureService(async () => mock as any);
+  });
+
+  describe('getAll', () => {
+    it('returns all plan features', async () => {
+      const features = [{ id: 'f-1', plan_key: 'base', feature_key: 'quiz' }];
+      mock.from.mockReturnValueOnce(qb(features));
+
+      const result = await service.getAll();
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(features);
+    });
+
+    it('returns error on DB failure', async () => {
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.getAll();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+    });
+  });
+
+  describe('getByPlanKey', () => {
+    it('returns features for plan key', async () => {
+      const features = [{ id: 'f-1', plan_key: 'base', feature_key: 'quiz' }];
+      mock.from.mockReturnValueOnce(qb(features));
+
+      const result = await service.getByPlanKey('base');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(features);
+    });
+
+    it('returns error on DB failure', async () => {
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.getByPlanKey('base');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+    });
+  });
+
+  describe('create', () => {
+    it('creates a plan feature', async () => {
+      const feature = { id: 'f-1', plan_key: 'base', feature_key: 'quiz' };
+      mock.from.mockReturnValueOnce(qb(feature));
+
+      const result = await service.create({ planKey: 'base', featureKey: 'quiz' });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(feature);
+    });
+
+    it('returns error on DB failure', async () => {
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.create({ planKey: 'base', featureKey: 'quiz' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+    });
+  });
+
+  describe('delete', () => {
+    it('deletes an existing plan feature', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'f-1' }));
+      mock.from.mockReturnValueOnce(qb(undefined));
+
+      const result = await service.delete('f-1');
+
+      expect(result.success).toBe(true);
+    });
+
+    it('returns NOT_FOUND when feature does not exist', async () => {
+      mock.from.mockReturnValueOnce(qb(null, null));
+
+      const result = await service.delete('nonexistent');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('returns error on delete failure', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'f-1' }));
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.delete('f-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+    });
+  });
+});
