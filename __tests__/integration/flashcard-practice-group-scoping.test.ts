@@ -42,7 +42,14 @@ forEachCopy((copyId) => {
     let flashcardId!: string;
 
     beforeAll(async () => {
-      teacher = await before({ role: 'educator', org: true, groups: 2 });
+      // A distinct org name (not the "seed-org-" prefix `before()` uses by
+      // default) so questions.test.ts's cleanupOrganizationByName('seed-org-')
+      // can't race-delete this org out from under a concurrently running copy.
+      teacher = await before({
+        role: 'educator',
+        org: `group-scope-org-${copyId}`,
+        groups: 2,
+      });
       const orgId = teacher.orgId;
       if (!orgId) throw new Error('[setup] org not created');
       groupA = teacher.groups[1];
