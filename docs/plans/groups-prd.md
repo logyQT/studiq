@@ -17,7 +17,7 @@ Sub-orgs would require 300 duplicated `org_members` rows and students would see 
 ## Design Principles
 
 1. **Groups organize people, not content** — P1 is about member management only. Content scoping by group is deferred to P2.
-2. **Students see everything** — all org content, from all groups. Groups are invisible to students.
+2. **Students see everything** — all org content, from all groups. Groups are invisible to students. ⚠️ Superseded by P2 (see [p2-groups-prd.md](p2-groups-prd.md)) — students are now scoped by group membership, same as the P2 content-scoping model.
 3. **Teachers manage their groups** — teachers see and manage members of their assigned groups only.
 4. **Managers manage everything** — `org.manage` permission gives full access to all groups and members.
 5. **No hierarchy** — groups are flat within an org. No nesting.

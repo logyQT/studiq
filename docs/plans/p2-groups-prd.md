@@ -1,7 +1,7 @@
 # Groups P2: Content Scoping + Teacher Isolation
 
 **Feature:** Scope content by group membership; isolate teachers to their groups
-**Status:** Draft for review
+**Status:** ✅ Implemented (design has since diverged from this draft — see note below)
 **Date:** 2026-07-06
 **Depends on:** P1 (groups + group_members tables, CRUD API, management UI)
 
@@ -10,9 +10,11 @@
 ## Design Principles
 
 1. **Content follows group membership** — teachers see content from groups they belong to + own personal content. Admin sees everything.
-2. **Students see everything** — all org content. Groups remain invisible to students.
+2. **Students are scoped by group** — a student sees their own content plus content shared to groups they belong to, not the whole org. (Confirmed 2026-09-15: the earlier "students see everything" principle below was superseded — restricting by group is the intended behavior, matching how `flashcard-practice.service.ts`'s spaced-repetition RPCs, `question.service.ts`, and `quiz.service.ts`'s `generateQuiz()` all resolve `'member'`'s `flashcard.read`/`question.read` scope to `'group'` in [permissions.ts](../../src/lib/permissions.ts). This doc's original wording — "Students see everything — all org content. Groups remain invisible to students" — is stale and superseded.)
 3. **No data migration** — pre-market app. Adjust seed data only.
-4. **Group creation stays `org.manage`** — teacher group creation deferred to P3.
+4. **Group creation stays `org.manage`** — teacher group creation deferred to P3. (Superseded: teacher-initiated group creation shipped in PR #64, gated by the `group.manage` feature flag instead.)
+
+> **Note (2026-09-15):** This document predates several changes and no longer matches the implementation 1:1 — e.g. `groups`/`group_members` (not `study_groups`), teacher group creation and ownership (PR #64, #66), group-based issue reporting and member management (PR #68). One open discrepancy not yet resolved: `permissions.ts` gives the `teacher` org role `'own'` scope for `flashcard.read`/`question.read`/etc. (only their own content), where principle #1 above says teachers should get `'group'` scope. Not yet confirmed which is intended — flagging for a future pass rather than fixing silently.
 
 ---
 
