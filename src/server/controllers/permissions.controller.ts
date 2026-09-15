@@ -1,5 +1,6 @@
 import { Permission } from '@/lib/authz';
 import type { ControllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 
 export class PermissionsController {
@@ -24,3 +25,7 @@ export class PermissionsController {
     return { success: true, statusCode: 200, data: { permissions } };
   }
 }
+export const permissionsController = wrapService(
+  new PermissionsController(),
+  'permissions.controller',
+);

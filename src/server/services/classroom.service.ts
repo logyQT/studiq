@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { CreateClassroomInput } from '@/server/models';
+import type { CreateClassroomInput } from '@/server/models/classroom.model';
 
 export class ClassroomService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -44,3 +46,7 @@ export class ClassroomService {
     return success({ ...org, adminRoleId: adminRole.id });
   }
 }
+export const classroomService = wrapService(
+  new ClassroomService(createClient),
+  'classroom.service',
+);

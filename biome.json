@@ -51,6 +51,10 @@
           }
         }
       },
+      "performance": {
+        "noBarrelFile": "error",
+        "noReExportAll": "error"
+      },
       "suspicious": {
         "noArrayIndexKey": "off",
         "noDocumentCookie": "off",

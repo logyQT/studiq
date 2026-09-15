@@ -1,9 +1,10 @@
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import { CreateClassroomSchema } from '@/server/models/classroom.model';
-import type { ClassroomService } from '@/server/services/classroom.service';
+import { type ClassroomService, classroomService } from '@/server/services/classroom.service';
 
 export class ClassroomController {
   constructor(private classroomService: ClassroomService) {}
@@ -27,3 +28,7 @@ export class ClassroomController {
     return controllerResponse.created(result.data);
   }
 }
+export const classroomController = wrapService(
+  new ClassroomController(classroomService),
+  'classroom.controller',
+);

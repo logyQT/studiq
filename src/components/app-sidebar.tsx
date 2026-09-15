@@ -30,7 +30,8 @@ import { usePathname } from 'next/navigation';
 import { OrgSwitcher } from '@/components/layout/org-switcher';
 import { UserMenu } from '@/components/layout/user-menu';
 import { type NavItem, NavMain } from '@/components/nav-main';
-import { useAuth } from '@/components/providers';
+import { useAuth } from '@/components/providers/AuthProvider';
+
 import {
   Sidebar,
   SidebarContent,

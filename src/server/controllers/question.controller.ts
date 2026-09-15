@@ -1,11 +1,12 @@
 import { can, check, Permission } from '@/lib/authz';
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import { AppError } from '@/lib/errors';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import { createClient } from '@/lib/supabase/server';
-import { CreateQuestionSchema, UpdateQuestionSchema } from '@/server/models';
-import type { QuestionService } from '@/server/services/question.service';
+import { CreateQuestionSchema, UpdateQuestionSchema } from '@/server/models/question.model';
+import { type QuestionService, questionService } from '@/server/services/question.service';
 
 export class QuestionController {
   constructor(private questionService: QuestionService) {}
@@ -116,3 +117,7 @@ export class QuestionController {
     return controllerResponse.success({ success: true });
   }
 }
+export const questionController = wrapService(
+  new QuestionController(questionService),
+  'question.controller',
+);

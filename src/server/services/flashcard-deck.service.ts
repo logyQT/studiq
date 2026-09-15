@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { accessibleFilter, check, Permission } from '@/lib/authz';
+import { wrapService } from '@/lib/observability';
 import { decodeCursor, encodeCursor } from '@/lib/query-list';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   BatchDeleteDeckInput,
@@ -11,8 +13,8 @@ import type {
   Deck,
   DeckListQuery,
   UpdateDeckInput,
-} from '@/server/models';
-import { limitsResolver } from '@/server/services';
+} from '@/server/models/flashcard-deck.model';
+import { limitsResolver } from '@/server/services/limits.resolver';
 
 export class FlashcardDeckService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -42,7 +44,7 @@ export class FlashcardDeckService {
     if (!deck) return failure('NOT_FOUND');
 
     if ((data as any).visibility === 'group' && (data as any).groupIds?.length) {
-      const { groupService } = await import('@/server/services');
+      const { groupService } = await import('@/server/services/group.service');
       let authorized = false;
       for (const gid of (data as any).groupIds) {
         if (await groupService.isTeacherInGroup(ctx, gid)) {
@@ -385,3 +387,7 @@ export class FlashcardDeckService {
     return success({ updated: data.deckIds.length });
   }
 }
+export const flashcardDeckService = wrapService(
+  new FlashcardDeckService(createClient),
+  'flashcard-deck.service',
+);

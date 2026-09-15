@@ -1,6 +1,6 @@
 'use client';
 
-import { MainLayout } from '@/components';
+import { MainLayout } from '@/components/layout/MainLayout';
 import { CtaBanner } from '@/components/marketing/cta-banner';
 import { Features } from '@/components/marketing/features';
 import { Hero } from '@/components/marketing/hero';

@@ -13,7 +13,7 @@ vi.mock('@/lib/authz', () => ({
   },
 }));
 
-vi.mock('@/server/services', () => ({
+vi.mock('@/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 

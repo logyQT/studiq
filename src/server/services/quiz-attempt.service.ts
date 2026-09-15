@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { SubmitQuizAttemptInput } from '@/server/models';
+import type { SubmitQuizAttemptInput } from '@/server/models/quiz-attempt.model';
 
 export class QuizAttemptService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -142,3 +144,7 @@ export class QuizAttemptService {
     return success({ score, totalQuestions: data.answers.length });
   }
 }
+export const quizAttemptService = wrapService(
+  new QuizAttemptService(createClient),
+  'quiz-attempt.service',
+);

@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   AddQuizQuestionsInput,
@@ -8,7 +10,7 @@ import type {
   CreateQuizInput,
   ReorderQuizQuestionsInput,
   UpdateQuizInput,
-} from '@/server/models';
+} from '@/server/models/quiz.model';
 
 export class QuizTeacherService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -329,3 +331,7 @@ export class QuizTeacherService {
     return success(assignment);
   }
 }
+export const quizTeacherService = wrapService(
+  new QuizTeacherService(createClient),
+  'quiz-teacher.service',
+);

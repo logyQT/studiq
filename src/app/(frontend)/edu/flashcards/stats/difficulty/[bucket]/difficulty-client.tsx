@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
-import { DeckDetailSkeleton } from '@/components/flashcards';
+import { DeckDetailSkeleton } from '@/components/flashcards/shared/deck-detail-skeleton';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,7 @@ import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empt
 import { MultiSelect } from '@/components/ui/multi-select';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
-import type { DifficultyFlashcardDetail } from '@/server/models';
+import type { DifficultyFlashcardDetail } from '@/server/models/flashcard-stats.model';
 
 type NamedItem = { id: string; name: string };
 

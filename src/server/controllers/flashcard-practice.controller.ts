@@ -1,8 +1,16 @@
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
-import { BatchPracticeSchema, CompleteSessionSchema, LogPracticeSchema } from '@/server/models';
-import type { FlashcardPracticeService } from '@/server/services/flashcard-practice.service';
+import {
+  BatchPracticeSchema,
+  CompleteSessionSchema,
+  LogPracticeSchema,
+} from '@/server/models/flashcard-practice.model';
+import {
+  type FlashcardPracticeService,
+  flashcardPracticeService,
+} from '@/server/services/flashcard-practice.service';
 
 export class FlashcardPracticeController {
   constructor(private flashcardPracticeService: FlashcardPracticeService) {}
@@ -177,3 +185,7 @@ export class FlashcardPracticeController {
     return controllerResponse.success(result.data);
   }
 }
+export const flashcardPracticeController = wrapService(
+  new FlashcardPracticeController(flashcardPracticeService),
+  'flashcard-practice.controller',
+);

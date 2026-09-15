@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { accessibleFilter, check, Permission } from '@/lib/authz';
+import { wrapService } from '@/lib/observability';
 import { decodeCursor, encodeCursor } from '@/lib/query-list';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   BatchDeleteQuestionBankInput,
@@ -11,7 +13,7 @@ import type {
   QuestionBank,
   QuestionBankListQuery,
   UpdateQuestionBankInput,
-} from '@/server/models';
+} from '@/server/models/question-bank.model';
 
 export class QuestionBankService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -37,7 +39,7 @@ export class QuestionBankService {
     if (!bank) return failure('NOT_FOUND');
 
     if ((data as any).visibility === 'group' && (data as any).groupIds?.length) {
-      const { groupService } = await import('@/server/services');
+      const { groupService } = await import('@/server/services/group.service');
       let authorized = false;
       for (const gid of (data as any).groupIds) {
         if (await groupService.isTeacherInGroup(ctx, gid)) {
@@ -302,3 +304,7 @@ export class QuestionBankService {
     return success({ deleted: data.ids.length });
   }
 }
+export const questionBankService = wrapService(
+  new QuestionBankService(createClient),
+  'question-bank.service',
+);

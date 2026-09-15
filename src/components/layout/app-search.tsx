@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/command';
 import { useApiQuery } from '@/hooks/use-api';
 import { useDebounce } from '@/hooks/use-debounce';
-import type { SearchResult } from '@/server/models';
+import type { SearchResult } from '@/server/models/search.model';
 
 export function AppSearch() {
   const t = useTranslations('DashboardLayout');

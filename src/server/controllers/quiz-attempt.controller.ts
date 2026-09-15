@@ -1,9 +1,13 @@
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
-import { SubmitQuizAttemptSchema } from '@/server/models';
-import type { QuizAttemptService } from '@/server/services/quiz-attempt.service';
+import { SubmitQuizAttemptSchema } from '@/server/models/quiz-attempt.model';
+import {
+  type QuizAttemptService,
+  quizAttemptService,
+} from '@/server/services/quiz-attempt.service';
 
 export class QuizAttemptController {
   constructor(private quizAttemptService: QuizAttemptService) {}
@@ -46,3 +50,7 @@ export class QuizAttemptController {
     return controllerResponse.success(result.data);
   }
 }
+export const quizAttemptController = wrapService(
+  new QuizAttemptController(quizAttemptService),
+  'quiz-attempt.controller',
+);

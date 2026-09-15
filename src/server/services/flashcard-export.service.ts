@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
-import type { Flashcard } from '@/server/models';
-import { flashcardService } from '@/server/services';
+import { createClient } from '@/lib/supabase/server';
+import type { Flashcard } from '@/server/models/flashcard.model';
+import { flashcardService } from '@/server/services/flashcard.service';
 
 type FlashcardWithAssignments = Flashcard & {
   flashcard_topic_assignments: Array<{ topic_id: string }>;
@@ -102,3 +104,7 @@ export class FlashcardExportService {
     return value;
   }
 }
+export const flashcardExportService = wrapService(
+  new FlashcardExportService(createClient),
+  'flashcard-export.service',
+);

@@ -18,7 +18,8 @@ import { DesktopNav } from '@/components/layout/navbar/desktop-nav';
 import { MobileNav } from '@/components/layout/navbar/mobile-nav';
 import type { NavLink } from '@/components/layout/navbar/types';
 import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
-import { useAuth } from '@/components/providers';
+import { useAuth } from '@/components/providers/AuthProvider';
+
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,

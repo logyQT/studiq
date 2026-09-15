@@ -22,7 +22,7 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { groupKeys, questionKeys } from '@/lib/query-keys';
-import type { QuestionBank } from '@/server/models';
+import type { QuestionBank } from '@/server/models/question-bank.model';
 
 interface QuestionBankManagementScreenProps {
   apiBase: string;

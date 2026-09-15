@@ -1,7 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { CreatePlanLimitInput, UpdatePlanLimitInput } from '@/server/models';
+import type { CreatePlanLimitInput, UpdatePlanLimitInput } from '@/server/models/plan-limit.model';
 
 export class PlanLimitService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -63,3 +65,7 @@ export class PlanLimitService {
     return success(undefined);
   }
 }
+export const planLimitService = wrapService(
+  new PlanLimitService(createClient),
+  'plan-limit.service',
+);

@@ -1,7 +1,14 @@
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import { isFailure } from '@/lib/service-result';
-import { CreatePlanFeatureSchema, PlanFeatureIdParamsSchema } from '@/server/models';
-import type { PlanFeatureService } from '@/server/services/plan-feature.service';
+import {
+  CreatePlanFeatureSchema,
+  PlanFeatureIdParamsSchema,
+} from '@/server/models/plan-feature.model';
+import {
+  type PlanFeatureService,
+  planFeatureService,
+} from '@/server/services/plan-feature.service';
 
 export class PlanFeatureController {
   constructor(private planFeatureService: PlanFeatureService) {}
@@ -51,3 +58,7 @@ export class PlanFeatureController {
     return controllerResponse.success({ success: true });
   }
 }
+export const planFeatureController = wrapService(
+  new PlanFeatureController(planFeatureService),
+  'plan-feature.controller',
+);

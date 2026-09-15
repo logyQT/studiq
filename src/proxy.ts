@@ -2,7 +2,9 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { APP_ERRORS } from '@/lib/errors';
 import { updateSession } from '@/lib/supabase/session';
 import { routeRules } from '@/server/config/routes.config';
-import { authGuard, roleGuard } from '@/server/guards';
+import { authGuard } from '@/server/guards/auth.guard';
+import { roleGuard } from '@/server/guards/role.guard';
+
 import { AccountType } from '@/types';
 
 const ACCOUNT_TYPE_REDIRECTS: Record<string, string> = {

@@ -1,7 +1,8 @@
 import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
-import { orgRoleController } from '@/server/controllers';
+import { orgRoleController } from '@/server/controllers/org-role.controller';
+
 import { AccountType } from '@/types';
 
 export async function GET(req: NextRequest) {

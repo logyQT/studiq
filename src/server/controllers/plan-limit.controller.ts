@@ -1,11 +1,12 @@
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import { isFailure } from '@/lib/service-result';
 import {
   CreatePlanLimitSchema,
   PlanLimitIdParamsSchema,
   UpdatePlanLimitSchema,
-} from '@/server/models';
-import type { PlanLimitService } from '@/server/services/plan-limit.service';
+} from '@/server/models/plan-limit.model';
+import { type PlanLimitService, planLimitService } from '@/server/services/plan-limit.service';
 
 export class PlanLimitController {
   constructor(private planLimitService: PlanLimitService) {}
@@ -81,3 +82,7 @@ export class PlanLimitController {
     return controllerResponse.success({ success: true });
   }
 }
+export const planLimitController = wrapService(
+  new PlanLimitController(planLimitService),
+  'plan-limit.controller',
+);

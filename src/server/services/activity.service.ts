@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type {
   ActivityQuery,
@@ -288,3 +290,4 @@ export class ActivityService {
     });
   }
 }
+export const activityService = wrapService(new ActivityService(createClient), 'activity.service');

@@ -1,4 +1,5 @@
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import {
@@ -7,7 +8,7 @@ import {
   InvitationListQuerySchema,
   UpdateInviteSchema,
 } from '@/server/models/invitation.model';
-import type { InvitationService } from '@/server/services/invitation.service';
+import { type InvitationService, invitationService } from '@/server/services/invitation.service';
 
 export class InvitationController {
   constructor(private invitationService: InvitationService) {}
@@ -122,3 +123,7 @@ export class InvitationController {
     return controllerResponse.success({ results });
   }
 }
+export const invitationController = wrapService(
+  new InvitationController(invitationService),
+  'invitation.controller',
+);

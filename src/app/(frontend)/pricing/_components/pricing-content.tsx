@@ -3,7 +3,8 @@
 import { Check, Loader2, Minus, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { MainLayout } from '@/components';
+import { MainLayout } from '@/components/layout/MainLayout';
+
 import { CheckoutButton } from '@/components/pricing/checkout-button';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Badge } from '@/components/ui/badge';

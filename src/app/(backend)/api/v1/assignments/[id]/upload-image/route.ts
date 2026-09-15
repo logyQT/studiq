@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
-import { teacherAssignmentController } from '@/server/controllers';
-import { storageService } from '@/server/services';
+import { teacherAssignmentController } from '@/server/controllers/teacher-assignment.controller';
+import { storageService } from '@/server/services/storage.service';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(req, async (ctx) => {

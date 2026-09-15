@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
 
 export class StatsService {
@@ -253,3 +255,4 @@ export class StatsService {
     return success({ weakDecks: weakDecksResult, weakTopics: weakTopicsResult });
   }
 }
+export const statsService = wrapService(new StatsService(createClient), 'stats.service');

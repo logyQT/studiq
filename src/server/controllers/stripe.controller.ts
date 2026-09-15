@@ -1,8 +1,9 @@
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
-import type { MockStripeService } from '@/server/services/mock-stripe.service';
+import { type MockStripeService, mockStripeService } from '@/server/services/mock-stripe.service';
 
 export class StripeController {
   constructor(private mockStripeService: MockStripeService) {}
@@ -56,3 +57,7 @@ export class StripeController {
     return controllerResponse.success(result.data);
   }
 }
+export const stripeController = wrapService(
+  new StripeController(mockStripeService),
+  'stripe.controller',
+);

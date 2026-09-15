@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { wrapService } from '@/lib/observability';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
+import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type { Nullable } from '@/types';
 
@@ -63,3 +65,7 @@ export class MockStripeService {
     return success({ url: `${baseUrl}/app/billing` });
   }
 }
+export const mockStripeService = wrapService(
+  new MockStripeService(createClient),
+  'mock-stripe.service',
+);

@@ -1,5 +1,6 @@
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
+import { wrapService } from '@/lib/observability';
 import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import {
@@ -11,8 +12,9 @@ import {
   ReorderQuestionsSchema,
   SetTargetsSchema,
   UpdateTeacherAssignmentSchema,
-} from '@/server/models';
+} from '@/server/models/teacher-assignment.model';
 import type { TeacherAssignmentService } from '@/server/services/teacher-assignment.service';
+import { teacherAssignmentService } from '@/server/services/teacher-assignment.service';
 
 export class TeacherAssignmentController {
   constructor(private service: TeacherAssignmentService) {}
@@ -236,3 +238,7 @@ export class TeacherAssignmentController {
     return controllerResponse.success(result.data);
   }
 }
+export const teacherAssignmentController = wrapService(
+  new TeacherAssignmentController(teacherAssignmentService),
+  'teacher-assignment.controller',
+);

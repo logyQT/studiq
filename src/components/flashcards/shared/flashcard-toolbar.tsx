@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select';
 import { useFeature } from '@/hooks/use-feature';
 import { usePermission } from '@/hooks/use-permission';
-import type { Topic } from '@/server/models';
+import type { Topic } from '@/server/models/topic.model';
 
 interface FlashcardToolbarProps {
   searchInput: string;
