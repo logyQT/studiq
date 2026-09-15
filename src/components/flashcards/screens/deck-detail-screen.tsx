@@ -46,9 +46,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
+import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiPost, apiPut } from '@/lib/api';
-import { flashcardKeys, topicKeys } from '@/lib/query-keys';
+import { flashcardKeys, groupKeys, topicKeys } from '@/lib/query-keys';
 
 const DeckDetailDialogs = lazy(() =>
   import('@/components/flashcards/dialogs/deck-detail-dialogs').then((mod) => ({
@@ -88,6 +89,7 @@ export function DeckDetailScreen({
   const queryClient = useQueryClient();
   const permission = usePermission();
   const feature = useFeature();
+  const { activeOrg } = useOrgs();
   const { user } = useAuth();
   const headerGrad = getGradientHex(deckId);
 
@@ -147,6 +149,12 @@ export function DeckDetailScreen({
     url: '/api/v1/flashcards/decks?limit=200',
   });
 
+  const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
+    queryKey: groupKeys.list(activeOrg?.id),
+    url: '/api/v1/organization/groups',
+    enabled: !!activeOrg?.id && feature('group.manage'),
+  });
+
   const deckLoading = decksLoading;
   const deckError = !decksLoading && !currentDeck;
   const topics = topicsData?.items ?? [];
@@ -178,8 +186,16 @@ export function DeckDetailScreen({
     invalidateKeys: [flashcardQueryKey],
   });
   const updateDeck = useApiMutation({
-    mutationFn: ({ id, ...data }: { id: string; name: string; description?: string }) =>
-      apiPut<Deck>(`/api/v1/flashcards/decks/${id}`, data),
+    mutationFn: ({
+      id,
+      ...data
+    }: {
+      id: string;
+      name: string;
+      description?: string;
+      visibility?: 'personal' | 'group';
+      groupIds?: string[];
+    }) => apiPut<Deck>(`/api/v1/flashcards/decks/${id}`, data),
     invalidateKeys: [flashcardKeys.decks.all, flashcardKeys.decks.detail(deckId)],
     onMutate: async ({ id: _id, ...data }) => {
       const detailKey = flashcardKeys.decks.detail(deckId);
@@ -376,7 +392,12 @@ export function DeckDetailScreen({
     }
   }
 
-  async function handleDeckUpdate(data: { name: string; description: string }) {
+  async function handleDeckUpdate(data: {
+    name: string;
+    description: string;
+    visibility?: 'personal' | 'group';
+    groupIds?: string[];
+  }) {
     if (!data.name.trim()) {
       toast.error(t('name_required'));
       return;
@@ -387,6 +408,8 @@ export function DeckDetailScreen({
         id: deckId,
         name: data.name,
         description: data.description || undefined,
+        visibility: data.visibility,
+        groupIds: data.visibility === 'group' ? data.groupIds : [],
       });
       toast.success(t('deck_updated'));
     } catch {
@@ -948,6 +971,7 @@ export function DeckDetailScreen({
           currentDeck={currentDeck ?? null}
           allDecks={allDecks}
           topics={topics}
+          groups={groupsData}
           t={t}
           basePath={basePath}
           deckId={deckId}
