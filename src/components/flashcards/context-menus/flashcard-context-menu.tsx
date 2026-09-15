@@ -4,6 +4,7 @@ import {
   CheckSquare,
   Copy,
   ExternalLink,
+  Flag,
   Link2,
   Pencil,
   Plus,
@@ -30,6 +31,7 @@ interface FlashcardContextMenuProps {
   onViewByTopic?: () => void;
   onLink: () => void;
   onCopy: () => void;
+  onReport?: (() => void) | null;
   onDelete?: (() => void) | null;
 }
 
@@ -43,6 +45,7 @@ export function FlashcardContextMenu({
   onViewByTopic,
   onLink,
   onCopy,
+  onReport,
   onDelete,
 }: FlashcardContextMenuProps) {
   return (
@@ -116,6 +119,16 @@ export function FlashcardContextMenu({
       >
         <Copy className="mr-2 h-4 w-4" /> {t('menu_copy')}
       </DropdownMenuItem>
+      {onReport && (
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            onReport();
+          }}
+        >
+          <Flag className="mr-2 h-4 w-4" /> {t('menu_report')}
+        </DropdownMenuItem>
+      )}
       {onDelete && (
         <>
           <DropdownMenuSeparator />

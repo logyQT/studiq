@@ -29,6 +29,7 @@ interface FlashcardCardProps {
   onDelete: (id: string) => void;
   onLink: (fc: Flashcard) => void;
   onCopy: (fc: Flashcard) => void;
+  onReport?: (fc: Flashcard) => void;
   onAddTopic: (fc: Flashcard) => void;
   onManageTopics: (fc: Flashcard) => void;
   onViewByTopic: (fc: Flashcard, topicId: string) => void;
@@ -48,6 +49,7 @@ export const FlashcardCard = memo(function FlashcardCard({
   onDelete,
   onLink,
   onCopy,
+  onReport,
   onAddTopic,
   onManageTopics,
   onViewByTopic,
@@ -113,6 +115,7 @@ export const FlashcardCard = memo(function FlashcardCard({
                       : undefined
                   }
                   onLink={() => onLink(fc)}
+                  onReport={fc.question_id ? () => onReport?.(fc) : undefined}
                   onCopy={() => onCopy(fc)}
                   onDelete={canDelete ? () => onDelete(fc.id) : null}
                 />
@@ -187,6 +190,7 @@ export const FlashcardCard = memo(function FlashcardCard({
                       : undefined
                   }
                   onLink={() => onLink(fc)}
+                  onReport={fc.question_id ? () => onReport?.(fc) : undefined}
                   onCopy={() => onCopy(fc)}
                   onDelete={canDelete ? () => onDelete(fc.id) : null}
                 />

@@ -18,9 +18,23 @@ import { useApiMutation } from '@/hooks/use-api';
 import { apiPost } from '@/lib/api';
 import { questionReportKeys } from '@/lib/query-keys';
 
-export function ReportQuestionDialog({ questionId }: { questionId: string }) {
+interface ReportQuestionDialogProps {
+  questionId: string;
+  /** Controlled mode: hides the built-in flag-icon trigger, caller drives open state. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+export function ReportQuestionDialog({
+  questionId,
+  open: controlledOpen,
+  onOpenChange,
+}: ReportQuestionDialogProps) {
   const t = useTranslations('QuestionReports');
-  const [open, setOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = isControlled ? controlledOpen : uncontrolledOpen;
+  const setOpen = isControlled ? (onOpenChange ?? (() => {})) : setUncontrolledOpen;
   const [message, setMessage] = useState('');
 
   const submit = useApiMutation<unknown, string>({
@@ -42,17 +56,19 @@ export function ReportQuestionDialog({ questionId }: { questionId: string }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <Button
-        variant="ghost"
-        size="icon"
-        title={t('report_button_title')}
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen(true);
-        }}
-      >
-        <Flag className="h-4 w-4" />
-      </Button>
+      {!isControlled && (
+        <Button
+          variant="ghost"
+          size="icon"
+          title={t('report_button_title')}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(true);
+          }}
+        >
+          <Flag className="h-4 w-4" />
+        </Button>
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t('report_dialog_title')}</DialogTitle>
