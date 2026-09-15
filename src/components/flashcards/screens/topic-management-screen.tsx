@@ -46,7 +46,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
     queryKey: groupKeys.list(activeOrg?.id),
     url: '/api/v1/organization/groups',
-    enabled: !!activeOrg?.id && feature('org.manage'),
+    enabled: !!activeOrg?.id && feature('group.manage'),
   });
 
   const [searchInput, setSearchInput] = useState('');
