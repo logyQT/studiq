@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# Create a git worktree on a new feature branch for isolated agent work.
+#
+# Usage:
+#   scripts/spin feat/my-feature          # create branch + worktree
+#   scripts/spin feat/my-feature --clean  # remove worktree + branch
+#   scripts/spin --list                   # list all worktrees
+#
+# The worktree is created as a sibling directory:
+#   ../studiq-feat-my-feature/
+#
+# After creating, move your OpenCode session into the worktree:
+#   /session-move <worktree-path>
+
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+info()  { printf "${GREEN}✔${NC} %s\n" "$*"; }
+warn()  { printf "${YELLOW}⚠${NC} %s\n" "$*"; }
+fail()  { printf "${RED}✘${NC} %s\n" "$*" >&2; exit 1; }
+header(){ printf "\n${CYAN}▸${NC} %s\n" "$*"; }
+
+# ── Ensure we're in a git repo ─────────────────────────────────
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || fail "Not inside a git repository"
+REPO_NAME=$(basename "$REPO_ROOT")
+REPO_PARENT=$(dirname "$REPO_ROOT")
+
+# ── Parse flags ────────────────────────────────────────────────
+case "${1:-}" in
+  --list|-l)
+    header "Active worktrees"
+    git -C "$REPO_ROOT" worktree list
+    exit 0
+    ;;
+  --help|-h)
+    echo "Usage: scripts/spin <branch-name> [--clean]"
+    echo "       scripts/spin --list"
+    echo ""
+    echo "  <branch-name>   Feature branch name (e.g. feat/my-feature)"
+    echo "  --clean         Remove the worktree and delete the branch"
+    echo "  --list, -l      List all worktrees"
+    echo ""
+    echo "Worktrees are created under .worktrees/ inside the repo."
+    exit 0
+    ;;
+  "") fail "Missing branch name. Usage: scripts/spin <branch-name>" ;;
+esac
+
+BRANCH="$1"
+CLEAN=false
+[[ "${2:-}" == "--clean" ]] && CLEAN=true
+
+# ── Derive worktree path ───────────────────────────────────────
+# Worktrees live inside the repo under .worktrees/
+# feat/my-feature → .worktrees/feat-my-feature
+WORKTREE_ROOT="${REPO_ROOT}/.worktrees"
+WORKTREE_PATH="${WORKTREE_ROOT}/${BRANCH}"
+
+# ── Clean mode ─────────────────────────────────────────────────
+if $CLEAN; then
+  header "Cleaning up worktree for '$BRANCH'"
+
+  if [ ! -d "$WORKTREE_PATH" ]; then
+    warn "Worktree directory not found: $WORKTREE_PATH"
+  else
+    git -C "$REPO_ROOT" worktree remove "$WORKTREE_PATH" --force 2>/dev/null \
+      && info "Removed worktree: $WORKTREE_PATH" \
+      || fail "Could not remove worktree: $WORKTREE_PATH"
+  fi
+
+  # Delete the branch if it exists
+  if git -C "$REPO_ROOT" branch --list "$BRANCH" | grep -q .; then
+    git -C "$REPO_ROOT" branch -D "$BRANCH" 2>/dev/null \
+      && info "Deleted branch: $BRANCH" \
+      || warn "Could not delete branch (may have unmerged changes)"
+  else
+    warn "Branch '$BRANCH' does not exist"
+  fi
+
+  # Cleanup stale worktree metadata
+  git -C "$REPO_ROOT" worktree prune 2>/dev/null && info "Pruned stale worktree entries"
+  exit 0
+fi
+
+# ── Check branch doesn't already exist ─────────────────────────
+if git -C "$REPO_ROOT" branch --list "$BRANCH" | grep -q .; then
+  fail "Branch '$BRANCH' already exists. Use it directly or pick a different name."
+fi
+
+# ── Check worktree path doesn't already exist ──────────────────
+if [ -d "$WORKTREE_PATH" ]; then
+  fail "Directory already exists: $WORKTREE_PATH"
+fi
+
+# ── Ensure .worktrees dir exists ───────────────────────────────
+mkdir -p "$WORKTREE_ROOT"
+
+# ── Create branch + worktree ───────────────────────────────────
+header "Creating branch '$BRANCH' from main"
+git -C "$REPO_ROOT" branch "$BRANCH" main 2>/dev/null \
+  || fail "Could not create branch '$BRANCH'"
+info "Created branch '$BRANCH'"
+
+header "Creating worktree"
+git -C "$REPO_ROOT" worktree add "$WORKTREE_PATH" "$BRANCH" 2>/dev/null \
+  || fail "Could not create worktree at $WORKTREE_PATH"
+info "Worktree ready at $WORKTREE_PATH"
+
+# ── Summary ────────────────────────────────────────────────────
+header "Done"
+echo ""
+printf "  Branch:   ${CYAN}%s${NC}\n" "$BRANCH"
+printf "  Worktree: ${CYAN}%s${NC}\n" "$WORKTREE_PATH"
+echo ""
+echo "  Next steps:"
+echo "    1. cd $WORKTREE_PATH"
+echo "    2. Open an agent session in the worktree"
+echo "    3. When done: scripts/spin $BRANCH --clean"
+echo ""

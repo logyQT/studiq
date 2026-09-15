@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# Create a pull request from the current branch using GitHub CLI.
+#
+# Usage:
+#   scripts/pr                        # create PR with auto-generated title/body
+#   scripts/pr "fix: resolve login bug"  # create PR with custom title
+#   scripts/pr --draft                # create as draft PR
+#   scripts/pr --list                 # list open PRs for this repo
+#   scripts/pr --view                 # open the PR page in browser
+#
+# Requires: gh (GitHub CLI, authenticated)
+
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+info()  { printf "${GREEN}✔${NC} %s\n" "$*"; }
+warn()  { printf "${YELLOW}⚠${NC} %s\n" "$*"; }
+fail()  { printf "${RED}✘${NC} %s\n" "$*" >&2; exit 1; }
+
+# ── Preflight checks ───────────────────────────────────────────
+command -v gh >/dev/null 2>&1 || fail "GitHub CLI (gh) not installed. Install: https://cli.github.com/"
+gh auth status >/dev/null 2>&1 || fail "Not authenticated. Run: gh auth login"
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || fail "Not inside a git repository"
+cd "$REPO_ROOT"
+
+CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)
+[ -n "$CURRENT_BRANCH" ] || fail "Not on a branch (detached HEAD)"
+[ "$CURRENT_BRANCH" != "main" ] || warn "Creating PR from main — probably not what you want"
+
+BASE_BRANCH="main"
+
+# ── Parse flags ────────────────────────────────────────────────
+DRAFT=false
+ACTION="create"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --draft|-d) DRAFT=true; shift ;;
+    --list|-l)  ACTION="list"; shift ;;
+    --view|-v)  ACTION="view"; shift ;;
+    --help|-h)
+      echo "Usage: scripts/pr [title] [--draft] [--list] [--view]"
+      echo ""
+      echo "  [title]      PR title (auto-generated from commits if omitted)"
+      echo "  --draft, -d  Create as draft PR"
+      echo "  --list, -l   List open PRs for this repo"
+      echo "  --view, -v   Open PR page in browser"
+      echo ""
+      echo "Branch must be pushed to origin before creating PR."
+      exit 0
+      ;;
+    *) TITLE="$1"; shift ;;
+  esac
+done
+
+# ── List mode ──────────────────────────────────────────────────
+if [ "$ACTION" = "list" ]; then
+  echo ""
+  gh pr list --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" 2>/dev/null \
+    || gh pr list
+  exit 0
+fi
+
+# ── View mode ──────────────────────────────────────────────────
+if [ "$ACTION" = "view" ]; then
+  PR_URL=$(gh pr view "$CURRENT_BRANCH" --json url -q .url 2>/dev/null) \
+    || fail "No PR found for branch '$CURRENT_BRANCH'"
+  echo "$PR_URL"
+  exit 0
+fi
+
+# ── Ensure branch is pushed ────────────────────────────────────
+if ! git ls-remote --exit-code origin "$CURRENT_BRANCH" >/dev/null 2>&1; then
+  warn "Branch not pushed yet — pushing now"
+  git push -u origin "$CURRENT_BRANCH" 2>/dev/null \
+    || fail "Could not push branch. Check remote access."
+  info "Pushed '$CURRENT_BRANCH' to origin"
+fi
+
+# ── Check for existing PR ──────────────────────────────────────
+EXISTING_PR=$(gh pr list --head "$CURRENT_BRANCH" --json number -q '.[0].number' 2>/dev/null || echo "")
+if [ -n "$EXISTING_PR" ]; then
+  PR_URL=$(gh pr view "$EXISTING_PR" --json url -q .url 2>/dev/null)
+  warn "PR #$EXISTING_PR already exists for this branch"
+  echo "  $PR_URL"
+  exit 0
+fi
+
+# ── Generate title from commits if not provided ────────────────
+if [ -z "${TITLE:-}" ]; then
+  # Get commit messages since diverging from base
+  MERGE_BASE=$(git merge-base "$BASE_BRANCH" "$CURRENT_BRANCH" 2>/dev/null || echo "")
+  if [ -n "$MERGE_BASE" ]; then
+    TITLE=$(git log --pretty=format:"%s" "$MERGE_BASE..$CURRENT_BRANCH" | head -1)
+  fi
+  [ -n "$TITLE" ] || TITLE="chore: update from $CURRENT_BRANCH"
+fi
+
+# ── Generate body from commit list ─────────────────────────────
+MERGE_BASE=$(git merge-base "$BASE_BRANCH" "$CURRENT_BRANCH" 2>/dev/null || echo "")
+if [ -n "$MERGE_BASE" ]; then
+  BODY=$(git log --pretty=format:"- %s (%h)" "$MERGE_BASE..$CURRENT_BRANCH")
+else
+  BODY=$(git log --pretty=format:"- %s (%h)" -5)
+fi
+
+# ── Create PR ──────────────────────────────────────────────────
+DRAFT_FLAG=""
+$DRAFT && DRAFT_FLAG="--draft"
+
+echo ""
+printf "  ${CYAN}Base:${NC}   %s\n" "$BASE_BRANCH"
+printf "  ${CYAN}Head:${NC}   %s\n" "$CURRENT_BRANCH"
+printf "  ${CYAN}Title:${NC}  %s\n" "$TITLE"
+echo ""
+
+PR_URL=$(gh pr create \
+  --base "$BASE_BRANCH" \
+  --head "$CURRENT_BRANCH" \
+  --title "$TITLE" \
+  --body "$BODY" \
+  $DRAFT_FLAG \
+  2>&1) || fail "Failed to create PR: $PR_URL"
+
+info "PR created: $PR_URL"
+echo ""
