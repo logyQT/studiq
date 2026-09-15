@@ -1,10 +1,9 @@
 'use client';
 
+import { Badge, Button } from '@studiq/ui';
 import { ArrowRight, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 
 export function Hero() {
   const t = useTranslations('LandingPage');

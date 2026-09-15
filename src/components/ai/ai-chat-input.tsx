@@ -1,17 +1,17 @@
 'use client';
 
-import { ArrowUp, FileText, Mic, Plus, Square, Upload, X } from 'lucide-react';
-import { motion } from 'motion/react';
-import { useTranslations } from 'next-intl';
-import { useCallback, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
 import {
+  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from '@studiq/ui';
+import { ArrowUp, FileText, Mic, Plus, Square, Upload, X } from 'lucide-react';
+import { motion } from 'motion/react';
+import { useTranslations } from 'next-intl';
+import { useCallback, useRef, useState } from 'react';
 import { useAutoResize } from '@/hooks/use-auto-resize';
 import { cn } from '@/lib/utils';
 

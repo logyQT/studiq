@@ -1,15 +1,15 @@
-import { AppError } from '@/lib/errors';
 import {
+  AccountType,
   DEFAULT_ROLE_PERMISSIONS,
   evaluateScope,
   Permission,
   type PermissionKey,
   type PermissionScope,
+  type RequestContext,
   type ResourceAccess,
-} from '@/lib/permissions';
-import type { RequestContext } from '@/lib/request-context';
+} from '@studiq/authz';
+import { AppError } from '@/lib/errors';
 import { createClient } from '@/lib/supabase/server';
-import { AccountType } from '@/types';
 
 export type { PermissionKey, PermissionScope, ResourceAccess };
 // ── Re-exports (single frontend + backend surface) ────────────────────────

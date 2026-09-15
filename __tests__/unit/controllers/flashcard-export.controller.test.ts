@@ -1,6 +1,6 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FlashcardExportController } from '@/server/controllers/flashcard-export.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 function createMockService() {
   return { exportCsv: vi.fn() };
@@ -42,7 +42,9 @@ describe('FlashcardExportController', () => {
 
       await controller.exportCsv({ deckId: '550e8400-e29b-41d4-a716-446655440000' }, mockCtx);
 
-      expect(mockService.exportCsv).toHaveBeenCalledWith(mockCtx, { deckIds: ['550e8400-e29b-41d4-a716-446655440000'] });
+      expect(mockService.exportCsv).toHaveBeenCalledWith(mockCtx, {
+        deckIds: ['550e8400-e29b-41d4-a716-446655440000'],
+      });
     });
 
     it('filters by ids', async () => {

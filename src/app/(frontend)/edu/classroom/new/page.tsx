@@ -1,21 +1,25 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowLeft, Loader2, School } from 'lucide-react';
-import Link from 'next/link';
-import { useTranslations } from 'next-intl';
-import { useForm } from 'react-hook-form';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
   Form,
   FormControl,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
+  Input,
+} from '@studiq/ui';
+import { ArrowLeft, Loader2, School } from 'lucide-react';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { useForm } from 'react-hook-form';
 import { useCreateClassroom } from '@/hooks/use-create-classroom';
 import { z } from '@/lib/zod';
 

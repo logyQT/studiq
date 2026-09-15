@@ -12,20 +12,26 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Textarea,
+  useSidebar,
+} from '@studiq/ui';
 import { GripVertical, Plus, ScrollText, Trash2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { QuestionBrowser } from '@/app/(frontend)/edu/quizzes/[id]/edit/question-browser';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useSidebar } from '@/components/ui/sidebar';
-import { Textarea } from '@/components/ui/textarea';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { quizKeys } from '@/lib/query-keys';
 

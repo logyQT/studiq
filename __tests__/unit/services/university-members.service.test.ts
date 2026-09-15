@@ -1,9 +1,8 @@
+import { AccountType, RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+import { failure, success } from '@/lib/service-result';
 import { OrganizationMemberService } from '@/server/services/organization-member.service';
-import { success, failure } from '@/lib/service-result';
-import type { RequestContext } from '@/lib/request-context';
-import { AccountType } from '@/types';
 
 function chain(result: any) {
   const resolved = { data: result, error: null };
@@ -75,7 +74,12 @@ describe('OrganizationMemberService', () => {
   describe('listMembers', () => {
     it('returns members for organization', async () => {
       const orgRole = { name: 'student' };
-      const profile = { id: 'user-1', email: 'test@test.com', full_name: null, created_at: '2024-01-01' };
+      const profile = {
+        id: 'user-1',
+        email: 'test@test.com',
+        full_name: null,
+        created_at: '2024-01-01',
+      };
       const members = [
         {
           user_id: 'user-1',

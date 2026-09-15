@@ -1,7 +1,7 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { QuestionReportService } from '@/server/services/question-report.service';
-import type { RequestContext } from '@/lib/request-context';
 
 function qb(data: any, error: any = null) {
   const promise = Promise.resolve({ data: data ?? null, error });
@@ -204,7 +204,14 @@ describe('QuestionReportService', () => {
   describe('unreadCount', () => {
     it('returns unread count', async () => {
       const reports = [
-        { id: 'r-1', reported_by: 'student-1', teacher_id: 'teacher-1', updated_at: '2024-01-03T00:00:00Z', reporter_last_read_at: '2024-01-01T00:00:00Z', teacher_last_read_at: '2024-01-01T00:00:00Z' },
+        {
+          id: 'r-1',
+          reported_by: 'student-1',
+          teacher_id: 'teacher-1',
+          updated_at: '2024-01-03T00:00:00Z',
+          reporter_last_read_at: '2024-01-01T00:00:00Z',
+          teacher_last_read_at: '2024-01-01T00:00:00Z',
+        },
       ];
       mock.from.mockReturnValueOnce(qb(reports));
 

@@ -1,5 +1,4 @@
-import { Card } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Card, Skeleton } from '@studiq/ui';
 
 export default function AppBankDetailLoading() {
   return (

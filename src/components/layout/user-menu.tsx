@@ -1,23 +1,21 @@
 'use client';
 
-import { ChevronsUpDown } from 'lucide-react';
-import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
-import { useAuth } from '@/components/providers/AuthProvider';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  Skeleton,
+  UserAvatar,
   useSidebar,
-} from '@/components/ui/sidebar';
-import { Skeleton } from '@/components/ui/skeleton';
-import { UserAvatar } from '@/components/ui/user-avatar';
+} from '@studiq/ui';
+import { ChevronsUpDown } from 'lucide-react';
+import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { cn } from '@/lib/utils';
 
 interface UserMenuProps {

@@ -1,8 +1,8 @@
 'use client';
 
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@studiq/ui';
 import { Keyboard } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 
 interface Shortcut {
   key: string;

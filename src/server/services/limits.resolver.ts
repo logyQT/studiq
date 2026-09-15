@@ -1,10 +1,9 @@
+import { AccountType, type RequestContext } from '@studiq/authz';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { AppError } from '@/lib/errors';
 import { wrapService } from '@/lib/observability';
-import type { RequestContext } from '@/lib/request-context';
 import { createClient } from '@/lib/supabase/server';
 import { getSeatPlanKey } from '@/server/services/seat.plan';
-import { AccountType } from '@/types';
 
 export interface UsageInfo {
   current: number;

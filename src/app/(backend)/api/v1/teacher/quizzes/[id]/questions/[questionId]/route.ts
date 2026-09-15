@@ -1,9 +1,8 @@
+import { AccountType } from '@studiq/authz';
 import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
 import { quizTeacherController } from '@/server/controllers/quiz-teacher.controller';
-
-import { AccountType } from '@/types';
 
 export async function DELETE(
   req: NextRequest,

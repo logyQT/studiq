@@ -1,33 +1,39 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Building2, GraduationCap, Loader2, Lock, Mail, User } from 'lucide-react';
-import Link from 'next/link';
-import { useTranslations } from 'next-intl';
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { toast } from 'sonner';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
+  Alert,
+  AlertDescription,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
   Form,
   FormControl,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Item, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item';
-import {
+  Input,
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemTitle,
   Select,
   SelectContent,
   SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@studiq/ui';
+import { Building2, GraduationCap, Loader2, Lock, Mail, User } from 'lucide-react';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 import { APP_ERRORS } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 import { type RegisterInput, RegisterSchema } from '@/server/models/auth.model';

@@ -1,17 +1,17 @@
 'use client';
 
+import {
+  Button,
+  Card,
+  Checkbox,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@studiq/ui';
 import { MoreVertical } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { memo } from 'react';
 import { FlashcardContextMenu } from '@/components/flashcards/context-menus/flashcard-context-menu';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { getTopicColorHex } from '@/lib/color-utils';
 import type { Flashcard } from '@/server/models/flashcard.model';
 import type { Topic } from '@/server/models/topic.model';

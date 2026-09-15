@@ -1,8 +1,8 @@
 'use client';
 
+import { Button } from '@studiq/ui';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
 
 export default function SetupLandingPage() {
   const t = useTranslations('SetupPage');

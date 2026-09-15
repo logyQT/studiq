@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RequestContext } from '@/lib/request-context';
 import { FeaturesController } from '@/server/controllers/features.controller';
 
 vi.mock('@/lib/features', () => ({
   resolveFeatures: vi.fn(),
 }));
 
+import { RequestContext } from '@studiq/authz';
 import { resolveFeatures } from '@/lib/features';
 
 const mockCtx: RequestContext = {

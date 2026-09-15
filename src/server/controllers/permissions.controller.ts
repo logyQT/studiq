@@ -1,7 +1,7 @@
+import type { RequestContext } from '@studiq/authz';
 import { Permission } from '@/lib/authz';
 import type { ControllerResponse } from '@/lib/controller-response';
 import { wrapService } from '@/lib/observability';
-import type { RequestContext } from '@/lib/request-context';
 
 export class PermissionsController {
   async listMyPermissions(ctx: RequestContext): Promise<ControllerResponse> {

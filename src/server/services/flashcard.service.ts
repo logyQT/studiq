@@ -1,8 +1,8 @@
+import type { RequestContext } from '@studiq/authz';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { accessibleFilter, check, Permission } from '@/lib/authz';
 import { wrapService } from '@/lib/observability';
 import { decodeCursor, encodeCursor } from '@/lib/query-list';
-import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
 import { createClient } from '@/lib/supabase/server';
 import { toDbFailure } from '@/lib/supabase-errors';

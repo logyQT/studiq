@@ -1,5 +1,15 @@
 'use client';
 
+import {
+  Button,
+  Card,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Skeleton,
+} from '@studiq/ui';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCheck, CheckSquare, Plus, SquarePen, Tags, Trash2 } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
@@ -13,16 +23,6 @@ import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { PageGrid } from '@/components/shared/page-grid';
 import { PageToolbar } from '@/components/shared/page-toolbar';
 import { SpeedDial } from '@/components/shared/speed-dial';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useFeature } from '@/hooks/use-feature';

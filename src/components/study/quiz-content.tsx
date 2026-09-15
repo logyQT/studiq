@@ -1,18 +1,26 @@
 'use client';
 
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Checkbox,
+  Field,
+  FieldContent,
+  FieldGroup,
+  FieldLabel,
+  Input,
+  Label,
+  Slider,
+} from '@studiq/ui';
 import { ListChecks, Lock, Play, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Field, FieldContent, FieldGroup, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
 import { useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
 import { apiPost } from '@/lib/api';

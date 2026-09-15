@@ -1,9 +1,8 @@
+import { AccountType } from '@studiq/authz';
 import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
 import { featureFlagController } from '@/server/controllers/feature-flag.controller';
-
-import { AccountType } from '@/types';
 
 export async function GET(_req: NextRequest) {
   return withAuth(

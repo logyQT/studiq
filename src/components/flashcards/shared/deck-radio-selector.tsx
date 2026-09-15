@@ -1,15 +1,15 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
+  Badge,
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from '@studiq/ui';
 import type { Deck } from '@/server/models/flashcard-deck.model';
 
 interface DeckRadioSelectorProps {

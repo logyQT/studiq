@@ -1,9 +1,8 @@
+import { AccountType } from '@studiq/authz';
 import type { NextRequest } from 'next/server';
 import { toNextResponse } from '@/lib/http-utils';
 import { withAuth } from '@/lib/with-auth';
 import { classroomController } from '@/server/controllers/classroom.controller';
-
-import { AccountType } from '@/types';
 
 const COOKIE_OPTIONS = { path: '/', maxAge: 60 * 60 * 24 * 365, sameSite: 'lax' as const };
 

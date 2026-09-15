@@ -1,11 +1,9 @@
 'use client';
 
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
 import { ArrowRight, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export function Pricing() {
   const t = useTranslations('LandingPage');

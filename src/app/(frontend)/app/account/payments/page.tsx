@@ -1,10 +1,9 @@
 'use client';
 
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@studiq/ui';
 import { CreditCard } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function AppAccountPaymentsPage() {
   const t = useTranslations('AccountPage');

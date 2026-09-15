@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@studiq/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Plus } from 'lucide-react';
 import Link from 'next/link';
@@ -10,7 +11,6 @@ import { CreateFromQuestionDialog } from '@/components/flashcards/dialogs/create
 import { QuestionFormDialog } from '@/components/questions/shared/question-form-dialog';
 import { QuestionTable } from '@/components/questions/shared/question-table';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
-import { Button } from '@/components/ui/button';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { questionKeys } from '@/lib/query-keys';
 import type { Question } from '@/server/models/question.model';

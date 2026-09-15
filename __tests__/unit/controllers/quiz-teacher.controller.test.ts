@@ -1,7 +1,7 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { success, failure } from '@/lib/service-result';
+import { failure, success } from '@/lib/service-result';
 import { QuizTeacherController } from '@/server/controllers/quiz-teacher.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 function createMockService() {
   return {
@@ -123,11 +123,7 @@ describe('QuizTeacherController', () => {
     });
 
     it('returns 422 when name is empty', async () => {
-      const response = await controller.bulkSave(
-        'quiz-1',
-        { name: '', questions: [] },
-        mockCtx,
-      );
+      const response = await controller.bulkSave('quiz-1', { name: '', questions: [] }, mockCtx);
 
       expect(response.success).toBe(false);
       if (!response.success) {
@@ -209,7 +205,11 @@ describe('QuizTeacherController', () => {
     it('reorders questions successfully', async () => {
       mockService.reorderQuestions.mockResolvedValueOnce(success(null));
 
-      const response = await controller.reorderQuestions('quiz-1', { questionIds: [uuid] }, mockCtx);
+      const response = await controller.reorderQuestions(
+        'quiz-1',
+        { questionIds: [uuid] },
+        mockCtx,
+      );
 
       expect(response).toEqual({ success: true, statusCode: 200, data: null });
     });

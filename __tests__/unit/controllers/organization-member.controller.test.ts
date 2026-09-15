@@ -1,6 +1,6 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OrganizationMemberController } from '@/server/controllers/organization-member.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 vi.mock('@/lib/features', () => ({
   requireFeature: vi.fn().mockResolvedValue(undefined),
@@ -17,8 +17,15 @@ function createMockService() {
 let mockService: ReturnType<typeof createMockService>;
 let controller: OrganizationMemberController;
 const mockCtx: RequestContext = {
-  traceId: 'test', userId: 'u-1', accountType: 'educator' as any,
-  orgRoleId: null, activeOrgId: 'org-1', url: '', method: 'GET', groupIds: [], permissionScopes: {},
+  traceId: 'test',
+  userId: 'u-1',
+  accountType: 'educator' as any,
+  orgRoleId: null,
+  activeOrgId: 'org-1',
+  url: '',
+  method: 'GET',
+  groupIds: [],
+  permissionScopes: {},
 };
 
 describe('OrganizationMemberController', () => {
@@ -66,7 +73,10 @@ describe('OrganizationMemberController', () => {
   describe('removeMember', () => {
     it('removes a member', async () => {
       mockService.removeMember.mockResolvedValueOnce({ success: true, data: undefined });
-      const response = await controller.removeMember(mockCtx, '550e8400-e29b-41d4-a716-446655440000');
+      const response = await controller.removeMember(
+        mockCtx,
+        '550e8400-e29b-41d4-a716-446655440000',
+      );
       expect(response.success).toBe(true);
     });
     it('returns 400 when targetUserId is empty', async () => {
@@ -76,7 +86,10 @@ describe('OrganizationMemberController', () => {
     });
     it('returns error on failure', async () => {
       mockService.removeMember.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
-      const response = await controller.removeMember(mockCtx, '550e8400-e29b-41d4-a716-446655440000');
+      const response = await controller.removeMember(
+        mockCtx,
+        '550e8400-e29b-41d4-a716-446655440000',
+      );
       expect(response.success).toBe(false);
     });
   });

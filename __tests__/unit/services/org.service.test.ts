@@ -1,7 +1,7 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { OrgService } from '@/server/services/org.service';
-import type { RequestContext } from '@/lib/request-context';
 
 function qb(data: any, error: any = null) {
   const promise = Promise.resolve({ data: data ?? null, error });
@@ -45,7 +45,11 @@ describe('OrgService', () => {
   describe('listOrgs', () => {
     it('returns orgs for user', async () => {
       const memberships = [
-        { organization_id: 'org-1', org_role_id: 'r-1', org_roles: [{ name: 'admin', display_name: 'Admin' }] },
+        {
+          organization_id: 'org-1',
+          org_role_id: 'r-1',
+          org_roles: [{ name: 'admin', display_name: 'Admin' }],
+        },
       ];
       const orgs = [{ id: 'org-1', name: 'Test Org' }];
       mock.from.mockReturnValueOnce(qb(memberships));

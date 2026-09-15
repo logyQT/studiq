@@ -1,20 +1,21 @@
 'use client';
 
-import type { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import {
+  Button,
+  Card,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { MultiSelect } from '@/components/ui/multi-select';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+  Input,
+  Label,
+  MultiSelect,
+  RadioGroup,
+  RadioGroupItem,
+} from '@studiq/ui';
+import type { useTranslations } from 'next-intl';
 import { DIALOG_GRADIENT_HEX } from '@/lib/color-utils';
 import type { Topic } from '@/server/models/topic.model';
 

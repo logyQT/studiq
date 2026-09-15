@@ -1,10 +1,17 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { success, failure } from '@/lib/service-result';
+import { failure, success } from '@/lib/service-result';
 import { FlashcardController } from '@/server/controllers/flashcard.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 function createMockService() {
-  return { create: vi.fn(), list: vi.fn(), bulkCreate: vi.fn(), getById: vi.fn(), update: vi.fn(), delete: vi.fn() };
+  return {
+    create: vi.fn(),
+    list: vi.fn(),
+    bulkCreate: vi.fn(),
+    getById: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+  };
 }
 
 let mockService: ReturnType<typeof createMockService>;
@@ -45,7 +52,10 @@ describe('FlashcardController', () => {
     });
 
     it('returns UNPROCESSABLE_ENTITY when body fails validation', async () => {
-      const response = await controller.create({ front: '', back: 'A', deckId: validDeckId }, mockCtx);
+      const response = await controller.create(
+        { front: '', back: 'A', deckId: validDeckId },
+        mockCtx,
+      );
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
@@ -55,7 +65,10 @@ describe('FlashcardController', () => {
     it('returns error when service returns failure', async () => {
       mockService.create.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-      const response = await controller.create({ front: 'Q', back: 'A', deckId: validDeckId }, mockCtx);
+      const response = await controller.create(
+        { front: 'Q', back: 'A', deckId: validDeckId },
+        mockCtx,
+      );
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
@@ -68,27 +81,40 @@ describe('FlashcardController', () => {
       const flashcards = [{ id: 'fc-1', front: 'Q', back: 'A' }];
       mockService.list.mockResolvedValueOnce(success(flashcards));
 
-      const response = await controller.list(mockCtx, { topicIds: ['550e8400-e29b-41d4-a716-446655440001'] });
+      const response = await controller.list(mockCtx, {
+        topicIds: ['550e8400-e29b-41d4-a716-446655440001'],
+      });
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
       expect((response as any).data).toEqual(flashcards);
-      expect(mockService.list).toHaveBeenCalledWith(mockCtx, expect.objectContaining({ topicIds: ['550e8400-e29b-41d4-a716-446655440001'] }));
+      expect(mockService.list).toHaveBeenCalledWith(
+        mockCtx,
+        expect.objectContaining({ topicIds: ['550e8400-e29b-41d4-a716-446655440001'] }),
+      );
     });
 
     it('passes filters and context to service', async () => {
       mockService.list.mockResolvedValueOnce(success([]));
 
-      await controller.list(mockCtx, { topicIds: ['550e8400-e29b-41d4-a716-446655440001'], deckIds: ['550e8400-e29b-41d4-a716-446655440002'] });
-
-      expect(mockService.list).toHaveBeenCalledWith(mockCtx, expect.objectContaining({
+      await controller.list(mockCtx, {
         topicIds: ['550e8400-e29b-41d4-a716-446655440001'],
         deckIds: ['550e8400-e29b-41d4-a716-446655440002'],
-      }));
+      });
+
+      expect(mockService.list).toHaveBeenCalledWith(
+        mockCtx,
+        expect.objectContaining({
+          topicIds: ['550e8400-e29b-41d4-a716-446655440001'],
+          deckIds: ['550e8400-e29b-41d4-a716-446655440002'],
+        }),
+      );
     });
 
     it('returns success when no filters provided', async () => {
-      mockService.list.mockResolvedValueOnce(success({ items: [], nextCursor: null, hasMore: false }));
+      mockService.list.mockResolvedValueOnce(
+        success({ items: [], nextCursor: null, hasMore: false }),
+      );
 
       const response = await controller.list(mockCtx);
 

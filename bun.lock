@@ -165,6 +165,7 @@
         "embla-carousel-react": "8.6.0",
         "input-otp": "1.4.2",
         "lucide-react": "^0.564.0",
+        "motion": "^12.15.0",
         "react": "^19.3.0",
         "react-day-picker": "9.13.2",
         "recharts": "2.15.0",
@@ -178,6 +179,16 @@
         "@types/react-dom": "^19.3.0",
         "typescript": "^7.0.2",
       },
+      "peerDependencies": {
+        "@studiq/authz": "workspace:*",
+        "next-intl": "*",
+        "next-themes": "*",
+      },
+      "optionalPeers": [
+        "@studiq/authz",
+        "next-intl",
+        "next-themes",
+      ],
     },
   },
   "packages": {

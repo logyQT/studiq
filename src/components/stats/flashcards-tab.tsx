@@ -1,5 +1,6 @@
 'use client';
 
+import { Badge, Button, Card, CardContent, Skeleton, StatCard } from '@studiq/ui';
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -13,11 +14,6 @@ import {
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { StatCard } from '@/components/ui/stat-card';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';

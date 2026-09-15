@@ -1,11 +1,10 @@
 'use client';
 
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@studiq/ui';
 import { Check, ChevronRight, Rocket, X } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApiQuery } from '@/hooks/use-api';
 
 const DISMISS_KEY = 'app_onboarding_dismissed';

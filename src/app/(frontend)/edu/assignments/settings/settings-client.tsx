@@ -1,11 +1,8 @@
 'use client';
 
+import { Button, Card, CardContent, CardHeader, CardTitle, Label, Switch } from '@studiq/ui';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 
 interface PrintSettings {
   showNameField: boolean;

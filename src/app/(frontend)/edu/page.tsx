@@ -1,12 +1,11 @@
 'use client';
 
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, StatCard } from '@studiq/ui';
 import { ArrowRight, FileText, Layers, Plus, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { OnboardingChecklist } from '@/components/edu/onboarding-checklist';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { StatCard } from '@/components/ui/stat-card';
 
 interface TeacherStats {
   totalQuestions: number;

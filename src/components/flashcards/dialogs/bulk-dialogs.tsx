@@ -1,19 +1,19 @@
 'use client';
 
-import type { useTranslations } from 'next-intl';
-import { DeckCheckboxSelector } from '@/components/flashcards/shared/deck-checkbox-selector';
-import { DeckRadioSelector } from '@/components/flashcards/shared/deck-radio-selector';
-import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
+  Button,
+  Checkbox,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from '@studiq/ui';
+import type { useTranslations } from 'next-intl';
+import { DeckCheckboxSelector } from '@/components/flashcards/shared/deck-checkbox-selector';
+import { DeckRadioSelector } from '@/components/flashcards/shared/deck-radio-selector';
+import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { getGradientHex } from '@/lib/color-utils';
 import type { Deck } from '@/server/models/flashcard-deck.model';
 import type { Topic } from '@/server/models/topic.model';

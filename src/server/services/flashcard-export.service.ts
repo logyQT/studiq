@@ -1,6 +1,6 @@
+import type { RequestContext } from '@studiq/authz';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { wrapService } from '@/lib/observability';
-import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
 import { createClient } from '@/lib/supabase/server';
 import type { Flashcard } from '@/server/models/flashcard.model';

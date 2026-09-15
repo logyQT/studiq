@@ -1,6 +1,6 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SearchController } from '@/server/controllers/search.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 function createMockService() {
   return { search: vi.fn() };

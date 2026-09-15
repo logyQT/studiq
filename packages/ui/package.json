@@ -7,6 +7,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./utils": "./src/utils.ts",
     "./globals.css": "./src/globals.css",
     "./package.json": "./package.json"
   },
@@ -48,6 +49,7 @@
     "embla-carousel-react": "8.6.0",
     "input-otp": "1.4.2",
     "lucide-react": "^0.564.0",
+    "motion": "^12.15.0",
     "react": "^19.3.0",
     "react-day-picker": "9.13.2",
     "recharts": "2.15.0",
@@ -55,6 +57,22 @@
     "tailwind-merge": "^3.7.0",
     "tw-animate-css": "1.3.3",
     "vaul": "^1.1.2"
+  },
+  "peerDependencies": {
+    "next-intl": "*",
+    "next-themes": "*",
+    "@studiq/authz": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "next-intl": {
+      "optional": true
+    },
+    "next-themes": {
+      "optional": true
+    },
+    "@studiq/authz": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/react": "19.2.14",

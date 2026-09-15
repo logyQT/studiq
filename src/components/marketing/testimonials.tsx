@@ -1,8 +1,8 @@
 'use client';
 
+import { Card, CardContent } from '@studiq/ui';
 import { Quote } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Card, CardContent } from '@/components/ui/card';
 
 const testimonials = [
   {

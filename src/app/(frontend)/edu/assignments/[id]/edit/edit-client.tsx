@@ -1,14 +1,19 @@
 'use client';
 
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Switch,
+  Textarea,
+} from '@studiq/ui';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { dbToDatetimeLocal } from '@/lib/datetime';
 import { assignmentKeys } from '@/lib/query-keys';

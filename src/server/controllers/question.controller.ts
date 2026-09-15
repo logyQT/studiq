@@ -1,8 +1,8 @@
+import type { RequestContext } from '@studiq/authz';
 import { can, check, Permission } from '@/lib/authz';
 import { type ControllerResponse, controllerResponse } from '@/lib/controller-response';
 import { AppError } from '@/lib/errors';
 import { wrapService } from '@/lib/observability';
-import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import { createClient } from '@/lib/supabase/server';
 import { CreateQuestionSchema, UpdateQuestionSchema } from '@/server/models/question.model';

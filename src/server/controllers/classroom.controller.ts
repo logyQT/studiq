@@ -1,7 +1,7 @@
+import type { RequestContext } from '@studiq/authz';
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
 import { wrapService } from '@/lib/observability';
-import type { RequestContext } from '@/lib/request-context';
 import { isFailure } from '@/lib/service-result';
 import { CreateClassroomSchema } from '@/server/models/classroom.model';
 import { type ClassroomService, classroomService } from '@/server/services/classroom.service';

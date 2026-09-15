@@ -1,10 +1,9 @@
 'use client';
 
+import { Button, Card, CardContent } from '@studiq/ui';
 import { FileX, Home } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 
 type Props = {
   titleKey: string;

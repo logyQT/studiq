@@ -1,13 +1,12 @@
 'use client';
 
+import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from '@studiq/ui';
 import { ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type { useTranslations } from 'next-intl';
 import { DeckCheckboxSelector } from '@/components/flashcards/shared/deck-checkbox-selector';
 import { DeckRadioSelector } from '@/components/flashcards/shared/deck-radio-selector';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { Deck } from '@/server/models/flashcard-deck.model';
 
 interface SingleCardDialogsProps {

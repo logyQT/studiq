@@ -1,6 +1,6 @@
+import { RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SubscriptionPlanController } from '@/server/controllers/subscription-plan.controller';
-import type { RequestContext } from '@/lib/request-context';
 
 function createMockService() {
   return {
@@ -14,8 +14,15 @@ function createMockService() {
 let mockService: ReturnType<typeof createMockService>;
 let controller: SubscriptionPlanController;
 const mockCtx: RequestContext = {
-  traceId: 'test', userId: 'u-1', accountType: 'student' as any,
-  orgRoleId: null, activeOrgId: null, url: '', method: 'GET', groupIds: [], permissionScopes: {},
+  traceId: 'test',
+  userId: 'u-1',
+  accountType: 'student' as any,
+  orgRoleId: null,
+  activeOrgId: null,
+  url: '',
+  method: 'GET',
+  groupIds: [],
+  permissionScopes: {},
 };
 
 describe('SubscriptionPlanController', () => {

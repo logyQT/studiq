@@ -1,8 +1,7 @@
+import { AccountType, RequestContext } from '@studiq/authz';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import type { RequestContext } from '@/lib/request-context';
 import { FlashcardDeckService } from '@/server/services/flashcard-deck.service';
-import { AccountType } from '@/types';
 
 vi.mock('@/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },

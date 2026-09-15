@@ -1,13 +1,13 @@
 'use client';
 
-import { CreditCard, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { useLocale, useTranslations } from 'next-intl';
-import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -15,16 +15,18 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
+  Input,
+  Label,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@studiq/ui';
+import { CreditCard, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { useLocale, useTranslations } from 'next-intl';
+import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import type { PlanInfo } from '@/server/services/subscription-plan.service';
 
 interface PlanFeature {
