@@ -5,8 +5,8 @@ import { success, failure } from '@/lib/service-result';
 import type { RequestContext } from '@/lib/request-context';
 import { AccountType } from '@/types';
 
-vi.mock('@/lib/rbac', () => ({
-  buildQueryFilter: vi.fn().mockResolvedValue({}),
+vi.mock('@/lib/authz', () => ({
+  buildQueryFilter: vi.fn().mockReturnValue({}),
   Permission: { FLASHCARD_READ: 'flashcard.read' as const },
 }));
 

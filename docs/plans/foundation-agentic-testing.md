@@ -104,7 +104,7 @@ Status: NOT STARTED
 - [x] B5 Split limits out of `PlanResolver` → `LimitsResolver` — PlanResolver (limits-only since B2) renamed to `limits.resolver.ts` / `LimitsResolver`
 - [x] B6 Client: `useFeature()` + `usePermission()`; delete `useCan`
 - [x] B7 Split `/api/v1/permissions/me` → `/permissions/me` (permissions only) + `/features/me` (features + rollout; `X-Feature-Rollout` header)
-- [ ] B8 Unify `@/lib/access.ts` + `@/lib/rbac.ts` → one `@/lib/authz`; delete `rbac.ts`
+- [x] B8 Unify `@/lib/access.ts` + `@/lib/rbac.ts` → one `@/lib/authz`; delete `rbac.ts` — N+1 fixed: `buildQueryFilter`/`checkPermission`/`hasPermission` now resolve from with-auth's batched `ctx.permissionScopes` (zero per-permission DB queries); access.ts group queries stay async
 - [ ] B9 Admin Rollout Control page (global / % / plan matrix / overrides + "Stop now")
 - [ ] B10 Fix broken admin: `/admin/permissions` (dropped table), `/admin/error-logs` route, `/admin/ai` dead link
 - [ ] Verify: unit tests for FeatureResolver precedence + rollout, RBAC union tests, lint, full suite green

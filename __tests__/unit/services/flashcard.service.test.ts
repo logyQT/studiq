@@ -5,7 +5,7 @@ import { success, failure } from '@/lib/service-result';
 import type { RequestContext } from '@/lib/request-context';
 import { AccountType } from '@/types';
 
-vi.mock('@/lib/access', () => {
+vi.mock('@/lib/authz', () => {
   const check = vi.fn().mockResolvedValue(undefined);
   return {
     check,

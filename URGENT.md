@@ -1,4 +1,12 @@
-# URGENT: N+1 Permission Check
+# ~~URGENT~~ RESOLVED: N+1 Permission Check
+
+> **Status: RESOLVED** — fixed in `refactor/phase-b-decouple` B8 (`@/lib/authz`).
+> `withAuth` loads every `org_role_permissions` row for the request's role in a single
+> batched query into `ctx.permissionScopes`; `buildQueryFilter`, `checkPermission` and
+> `hasPermission` now resolve scopes from that in-memory map (zero DB round-trips).
+> The per-permission `getScope()` query loop in the old `@/lib/rbac.ts` is deleted.
+
+## Original report
 
 Each API request fires **20+ separate Supabase REST queries** for permission checks — one per permission name:
 

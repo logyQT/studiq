@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { buildQueryFilter, Permission } from '@/lib/rbac';
+import { buildQueryFilter, Permission } from '@/lib/authz';
 import type { RequestContext } from '@/lib/request-context';
 import { type ServiceResult, success } from '@/lib/service-result';
 import { toDbFailure } from '@/lib/supabase-errors';
@@ -19,7 +19,7 @@ export class FlashcardStatsService {
   ): Promise<ServiceResult<TeacherFlashcardStatsResponse>> {
     const supabase = await this.createClient();
 
-    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (filter._impossible) {
       return success(emptyResponse);
     }
@@ -57,7 +57,7 @@ export class FlashcardStatsService {
   ): Promise<ServiceResult<DifficultyFlashcardDetail[]>> {
     const supabase = await this.createClient();
 
-    const filter = await buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (filter._impossible) return success([]);
 
     let flashcardQuery = supabase.from('flashcards').select('id, front, back');

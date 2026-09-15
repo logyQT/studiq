@@ -1,4 +1,4 @@
-import { can, Permission } from '@/lib/access';
+import { can, Permission } from '@/lib/authz';
 import type { ControllerResponse } from '@/lib/controller-response';
 import { controllerResponse } from '@/lib/controller-response';
 import type { RequestContext } from '@/lib/request-context';

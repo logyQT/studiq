@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TopicController } from '@/server/controllers/topic.controller';
 import type { RequestContext } from '@/lib/request-context';
 
-vi.mock('@/lib/access', () => ({
+vi.mock('@/lib/authz', () => ({
   can: vi.fn().mockResolvedValue(true),
   Permission: { TOPIC_CREATE: 'topic.create', TOPIC_READ: 'topic.read' },
 }));

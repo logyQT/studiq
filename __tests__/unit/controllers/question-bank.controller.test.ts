@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QuestionBankController } from '@/server/controllers/question-bank.controller';
 import type { RequestContext } from '@/lib/request-context';
 
-vi.mock('@/lib/access', () => ({
+vi.mock('@/lib/authz', () => ({
   can: vi.fn().mockResolvedValue(true),
   Permission: { QUESTION_BANK_CREATE: 'question_bank.create' },
 }));
