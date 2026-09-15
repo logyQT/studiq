@@ -8,7 +8,6 @@ type PermissionsMap = Record<string, string | null>;
 export function usePermissions() {
   return useApiQuery<{
     permissions: PermissionsMap;
-    features: string[];
   }>({
     queryKey: permissionKeys.me,
     url: '/api/v1/permissions/me',

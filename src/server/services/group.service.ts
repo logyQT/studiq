@@ -3,7 +3,7 @@ import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
 import { toDbFailure } from '@/lib/supabase-errors';
 import type { CreateGroupInput, SetGroupMembersInput, UpdateGroupInput } from '@/server/models';
-import { planResolver } from '@/server/services';
+import { limitsResolver } from '@/server/services';
 
 export class GroupService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -73,7 +73,7 @@ export class GroupService {
       .from('groups')
       .select('*', { count: 'exact', head: true })
       .eq('organization_id', ctx.activeOrgId);
-    await planResolver.checkLimit(ctx, 'max_groups', groupCount ?? 0);
+    await limitsResolver.checkLimit(ctx, 'max_groups', groupCount ?? 0);
 
     const { data: group, error } = await supabase
       .from('groups')

@@ -1,6 +1,6 @@
 import type { RequestContext } from '@/lib/request-context';
 import { ChatRequestSchema } from '@/server/models/ai-chat.model';
-import { planResolver } from '@/server/services';
+import { limitsResolver } from '@/server/services';
 import { chatService } from '@/server/services/ai-chat.service';
 
 export interface ChatStreamCallbacks {
@@ -23,7 +23,7 @@ export class ChatController {
     const { text, file, messages, conversationId } = parsed.data;
 
     // Check token budget before starting
-    const usage = await planResolver.getUsage(ctx, 'max_ai_tokens_per_day');
+    const usage = await limitsResolver.getUsage(ctx, 'max_ai_tokens_per_day');
     callbacks.onUsage(usage);
 
     if (usage.limit !== -1 && usage.current >= usage.limit) {
@@ -38,7 +38,7 @@ export class ChatController {
       onComplete: (summary, tokenUsage) => {
         // Track actual token usage after completion
         if (tokenUsage) {
-          planResolver.trackTokenUsage(
+          limitsResolver.trackTokenUsage(
             ctx,
             tokenUsage.inputTokens ?? 0,
             tokenUsage.outputTokens ?? 0,

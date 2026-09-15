@@ -63,6 +63,15 @@ describe('UserOverrideController', () => {
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
     });
+    it('rejects non-canonical feature keys', async () => {
+      const response = await controller.create({
+        userId: '550e8400-e29b-41d4-a716-446655440000',
+        featureKey: 'typo.feature',
+        isEnabled: true,
+      });
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+    });
   });
 
   describe('update', () => {

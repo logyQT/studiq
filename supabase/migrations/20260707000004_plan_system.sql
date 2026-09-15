@@ -31,7 +31,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO public.plan_features (plan_key, feature_key) VALUES
   ('free_educator', 'flashcards'),
   ('free_educator', 'quiz'),
-  ('free_educator', 'org_manage')
+  ('free_educator', 'org.manage')
 ON CONFLICT DO NOTHING;
 
 -- 6. Seed plan limits

@@ -82,6 +82,13 @@ describe('FeatureFlagController', () => {
       expect(response.statusCode).toBe(422);
     });
 
+    it('rejects non-canonical feature keys', async () => {
+      const response = await controller.create({ key: 'typo.feature', name: 'Typo' });
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+    });
+
     it('returns error on service failure', async () => {
       mockService.create.mockResolvedValueOnce({ success: false, error: 'CONFLICT' });
 

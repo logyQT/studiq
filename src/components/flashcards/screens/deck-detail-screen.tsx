@@ -45,7 +45,8 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
-import { useCan } from '@/hooks/use-can';
+import { useFeature } from '@/hooks/use-feature';
+import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiPost, apiPut } from '@/lib/api';
 import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 
@@ -85,7 +86,8 @@ export function DeckDetailScreen({
 }: DeckDetailScreenProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const can = useCan();
+  const permission = usePermission();
+  const feature = useFeature();
   const { user } = useAuth();
   const headerGrad = getGradientHex(deckId);
 
@@ -555,8 +557,8 @@ export function DeckDetailScreen({
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key !== 'n') return;
       if (
-        !can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) ||
-        !can({ permissions: ['flashcard.create'], createdBy: user?.id })
+        !permission('deck.update', { createdBy: currentDeck?.created_by }) ||
+        !permission('flashcard.create', { createdBy: user?.id })
       )
         return;
       e.preventDefault();
@@ -565,7 +567,7 @@ export function DeckDetailScreen({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [currentDeck?.created_by, user?.id, can]);
+  }, [currentDeck?.created_by, user?.id, permission]);
 
   if (deckError || (!deckLoading && !currentDeck)) {
     return (
@@ -590,7 +592,7 @@ export function DeckDetailScreen({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) && (
+              {permission('deck.update', { createdBy: currentDeck?.created_by }) && (
                 <DropdownMenuItem
                   onClick={() =>
                     setD((prev) => ({
@@ -602,7 +604,7 @@ export function DeckDetailScreen({
                   <Pencil className="h-4 w-4 mr-2" /> {t('menu_edit')}
                 </DropdownMenuItem>
               )}
-              {can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) && (
+              {permission('deck.update', { createdBy: currentDeck?.created_by }) && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setImportOpen(true)}>
@@ -629,7 +631,7 @@ export function DeckDetailScreen({
               >
                 <FileDown className="h-4 w-4 mr-2" /> {t('common_export')}
               </DropdownMenuItem>
-              {can({ permissions: ['deck.delete'], createdBy: currentDeck?.created_by }) && (
+              {permission('deck.delete', { createdBy: currentDeck?.created_by }) && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -733,10 +735,10 @@ export function DeckDetailScreen({
           setSortOrder(so);
         }}
         topics={topics}
-        canGenerate={can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by })}
+        canGenerate={permission('deck.update', { createdBy: currentDeck?.created_by })}
         canAddCard={
-          can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) &&
-          can({ permissions: ['flashcard.create'], createdBy: user?.id })
+          permission('deck.update', { createdBy: currentDeck?.created_by }) &&
+          permission('flashcard.create', { createdBy: user?.id })
         }
         onGenerate={() => router.push(`/app/ai?deckId=${deckId}`)}
         onCreateNew={() => setD((prev) => ({ ...prev, createCardOpen: true }))}
@@ -788,8 +790,8 @@ export function DeckDetailScreen({
         emptyIcon={<Layers className="h-10 w-10 text-muted-foreground" />}
         emptyTitle={t('no_flashcards')}
         emptyAction={
-          can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) &&
-          can({ permissions: ['flashcard.create'], createdBy: user?.id }) ? (
+          permission('deck.update', { createdBy: currentDeck?.created_by }) &&
+          permission('flashcard.create', { createdBy: user?.id }) ? (
             <Button
               variant="outline"
               size="sm"
@@ -805,8 +807,8 @@ export function DeckDetailScreen({
           <FlashcardCard
             key={fc.id}
             fc={fc}
-            canUpdate={can({ permissions: ['flashcard.update'], createdBy: fc.created_by })}
-            canDelete={can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by })}
+            canUpdate={permission('flashcard.update', { createdBy: fc.created_by })}
+            canDelete={permission('deck.update', { createdBy: currentDeck?.created_by })}
             topics={topics}
             t={t}
             selected={selection.selectedIds.has(fc.id)}
@@ -829,12 +831,12 @@ export function DeckDetailScreen({
         const canBulkTopics =
           selectedFlashcards.length > 0 &&
           selectedFlashcards.every((fc) =>
-            can({ permissions: ['flashcard.update'], createdBy: fc.created_by }),
+            permission('flashcard.update', { createdBy: fc.created_by }),
           );
         const canBulkMove =
-          can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) &&
+          permission('deck.update', { createdBy: currentDeck?.created_by }) &&
           selectedFlashcards.every((fc) =>
-            can({ permissions: ['flashcard.update'], createdBy: fc.created_by }),
+            permission('flashcard.update', { createdBy: fc.created_by }),
           );
         return (
           <BulkActionBar
@@ -912,7 +914,7 @@ export function DeckDetailScreen({
             >
               <Link2 className="mr-1.5 h-4 w-4" /> {t('link')}
             </Button>
-            {can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) && (
+            {permission('deck.update', { createdBy: currentDeck?.created_by }) && (
               <Button
                 variant="destructive"
                 size="sm"
@@ -951,8 +953,8 @@ export function DeckDetailScreen({
         <div className="sm:hidden">
           <SpeedDial
             items={[
-              ...(can({ permissions: ['deck.update'], createdBy: currentDeck?.created_by }) &&
-              can({ permissions: ['flashcard.create'], createdBy: user?.id })
+              ...(permission('deck.update', { createdBy: currentDeck?.created_by }) &&
+              permission('flashcard.create', { createdBy: user?.id })
                 ? [
                     {
                       icon: Plus,
@@ -961,7 +963,7 @@ export function DeckDetailScreen({
                     },
                   ]
                 : []),
-              ...(can({ features: ['ai.chat'] })
+              ...(feature('ai.chat')
                 ? [
                     {
                       icon: Sparkles,

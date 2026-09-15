@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { check, Permission } from '@/lib/access';
+import { check, Permission } from '@/lib/authz';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
 import { toDbFailure } from '@/lib/supabase-errors';

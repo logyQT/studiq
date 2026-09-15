@@ -13,7 +13,7 @@ import {
 //        create a second group (429 USAGE_LIMIT_EXCEEDED). Raised to 3.
 // D1 hardening: 'base' (default student plan) now carries max_students/max_groups
 //        = -1 so personal-plan paths never resolve org-management limits to 0.
-//        (Primary D1 fix is PlanResolver.checkOrgLimit + invite-accept.test.ts.)
+//        (Primary D1 fix is LimitsResolver.checkOrgLimit + invite-accept.test.ts.)
 forEachCopy((copyId) => {
   describe(`Plan limit fixes [${copyId}]`, () => {
     registerMock(copyId, null);

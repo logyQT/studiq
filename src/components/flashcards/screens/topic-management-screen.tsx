@@ -24,8 +24,8 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
-import { useCan } from '@/hooks/use-can';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useFeature } from '@/hooks/use-feature';
 
 import { useOrgs } from '@/hooks/use-orgs';
 import { useSelection } from '@/hooks/use-selection';
@@ -41,12 +41,12 @@ interface TopicManagementScreenProps {
 export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   const queryClient = useQueryClient();
   const { activeOrg } = useOrgs();
-  const can = useCan();
+  const feature = useFeature();
 
   const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
     queryKey: groupKeys.list(activeOrg?.id),
     url: '/api/v1/organization/groups',
-    enabled: !!activeOrg?.id && can({ features: ['org.manage'] }),
+    enabled: !!activeOrg?.id && feature('org.manage'),
   });
 
   const [searchInput, setSearchInput] = useState('');

@@ -5,13 +5,13 @@ import { success, failure } from '@/lib/service-result';
 import type { RequestContext } from '@/lib/request-context';
 import { AccountType } from '@/types';
 
-vi.mock('@/lib/access', () => ({
+vi.mock('@/lib/authz', () => ({
   accessibleFilter: vi.fn().mockResolvedValue({}),
   Permission: { QUESTION_READ: 'question.read' as const, QUESTION_UPDATE: 'question.update' as const },
 }));
 
 vi.mock('@/server/services', () => ({
-  planResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
+  limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 
 function chain(result: any, count?: number) {

@@ -3,7 +3,7 @@ import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 import { ActivityService } from '@/server/services/activity.service';
 import type { RequestContext } from '@/lib/request-context';
 
-vi.mock('@/lib/access', () => ({
+vi.mock('@/lib/authz', () => ({
   check: vi.fn().mockResolvedValue(undefined),
   Permission: { DECK_UPDATE: 'deck.update' },
 }));

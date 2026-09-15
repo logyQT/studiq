@@ -5,6 +5,7 @@ import { agentTraceService as _agentTraceService } from '@/server/services/agent
 import { chatService as _chatService } from '@/server/services/ai-chat.service';
 import { AuthService } from '@/server/services/auth.service';
 import { ClassroomService } from '@/server/services/classroom.service';
+import { FeatureResolver } from '@/server/services/feature.resolver';
 import { FeatureFlagService } from '@/server/services/feature-flag.service';
 import { FlashcardService } from '@/server/services/flashcard.service';
 import { FlashcardDeckService } from '@/server/services/flashcard-deck.service';
@@ -15,6 +16,7 @@ import { FlashcardStatsService } from '@/server/services/flashcard-stats.service
 import { GroupService } from '@/server/services/group.service';
 import { HealthService } from '@/server/services/health.service';
 import { InvitationService } from '@/server/services/invitation.service';
+import { LimitsResolver } from '@/server/services/limits.resolver';
 import { MockStripeService } from '@/server/services/mock-stripe.service';
 import { OrgService } from '@/server/services/org.service';
 import { OrgRoleService } from '@/server/services/org-role.service';
@@ -22,7 +24,6 @@ import { OrganizationService } from '@/server/services/organization.service';
 import { OrganizationMemberService } from '@/server/services/organization-member.service';
 import { pdfService as _pdfService } from '@/server/services/pdf.service';
 import { pdfCacheService as _pdfCacheService } from '@/server/services/pdf-cache.service';
-import { PlanResolver } from '@/server/services/plan.resolver';
 import { PlanFeatureService } from '@/server/services/plan-feature.service';
 import { PlanLimitService } from '@/server/services/plan-limit.service';
 import { QuestionService } from '@/server/services/question.service';
@@ -78,7 +79,15 @@ export const planLimitService = wrapService(
   new PlanLimitService(createClient),
   'plan-limit.service',
 );
-export const planResolver = wrapService(new PlanResolver(createClient), 'plan-resolver.service');
+export const limitsResolver = wrapService(
+  new LimitsResolver(createClient),
+  'limits-resolver.service',
+);
+
+export const featureResolver = wrapService(
+  new FeatureResolver(createClient),
+  'feature-resolver.service',
+);
 export const chatService = wrapService(_chatService, 'ai-chat.service', { group: 'ai' });
 export const agentTraceService = wrapService(_agentTraceService, 'agent-trace.service', {
   group: 'ai',

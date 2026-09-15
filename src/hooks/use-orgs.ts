@@ -58,12 +58,11 @@ export function useOrgs() {
 
   useEffect(() => {
     if (needsOnboarding) return;
-    if (jwtAccountType === 'manager') return;
     if (!isLoading && orgs.length > 0 && !activeOrg && !hasAutoSelected.current) {
       hasAutoSelected.current = true;
       switchOrgMutation.mutate(orgs[0].id);
     }
-  }, [needsOnboarding, jwtAccountType, orgs, activeOrg, isLoading, switchOrgMutation]);
+  }, [needsOnboarding, orgs, activeOrg, isLoading, switchOrgMutation]);
 
   return {
     orgs,
