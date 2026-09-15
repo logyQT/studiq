@@ -1,5 +1,7 @@
 # Foundation & Agentic Testing — Execution Plan (Tracking)
 
+> **AI architecture reference:** [`docs/ai.md`](../ai.md) — unified doc covering architecture, tools, security, and extension guide.
+
 Status: ACTIVE
 Last updated: 2026-09-15
 
@@ -166,6 +168,8 @@ member. Clean the axis before C2 moves `FeatureResolver` into `packages/authz`.
 ---
 
 ## Phase C — Detach admin panel (monorepo)
+
+> **Prerequisite:** Before starting C, clean up legacy AI dead code — see `docs/ai.md` → "Dead code to remove" section. The B.5 refactor agent may still be modifying some of these files.
 
 Status: NOT STARTED
 
