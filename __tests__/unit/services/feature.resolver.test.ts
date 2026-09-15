@@ -67,39 +67,96 @@ describe('FeatureResolver', () => {
       expect(res.rollout).toEqual({});
     });
 
-    it('uses seat plan entitlement when the user is seated in an org', async () => {
-      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-1' };
-      const teamFeatures = [
-        'flashcards',
-        'quiz',
-        'quiz.builder',
-        'group.manage',
-        'member.manage',
-        'documents',
-      ];
+    it('adds seat plan features on top of org-role base (additive upgrade)', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-admin' };
+      const seatFeatures = ['flashcards', 'quiz', 'quiz.builder', 'documents', 'ai.chat'];
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain({ pool_id: 'pool-1' });
         if (table === 'org_seat_pools') return chain({ plan_key: 'team' });
+        if (table === 'org_role_features') {
+          // Admin role has org.manage, so isSeatedAdmin = true
+          return chain([
+            { feature_key: 'org.manage', is_enabled: true },
+            { feature_key: 'flashcards', is_enabled: true },
+            { feature_key: 'quiz', is_enabled: true },
+          ]);
+        }
         if (table === 'plan_features') {
-          return chain(teamFeatures.map((f) => ({ feature_key: f })));
+          return chain(seatFeatures.map((f) => ({ feature_key: f })));
         }
         if (table === 'user_feature_overrides') return chain([]);
         if (table === 'feature_flags') return chain(allFlagsOn());
         return chain(null);
       });
 
-      // Seat plan wins over the org role features, which are never consulted
-      // for a seated user. Result is FEATURES-canonical order.
       const features = await resolver.getEnabledFeatures(ctx);
-      expect(features).toEqual([
+      // Seat features added on top; org.manage kept because admin
+      expect(features).toContain('ai.chat');
+      expect(features).toContain('org.manage');
+      expect(features).toContain('flashcards');
+    });
+
+    it('strips admin-only features from seat upgrade for non-admin roles', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-teacher' };
+      const seatFeatures = [
         'flashcards',
         'quiz',
         'quiz.builder',
         'documents',
-        'group.manage',
+        'ai.chat',
+        'org.manage',
         'member.manage',
-      ]);
+        'role.builder',
+      ];
+
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'org_seat_assignments') return chain({ pool_id: 'pool-1' });
+        if (table === 'org_seat_pools') return chain({ plan_key: 'campus' });
+        if (table === 'org_role_features') {
+          // Teacher role: no org.manage → not admin
+          return chain([
+            { feature_key: 'flashcards', is_enabled: true },
+            { feature_key: 'quiz', is_enabled: true },
+          ]);
+        }
+        if (table === 'plan_features') {
+          return chain(seatFeatures.map((f) => ({ feature_key: f })));
+        }
+        if (table === 'user_feature_overrides') return chain([]);
+        if (table === 'feature_flags') return chain(allFlagsOn());
+        return chain(null);
+      });
+
+      const features = await resolver.getEnabledFeatures(ctx);
+      // Seat plan grants org.manage/member.manage/role.builder, but they
+      // must be stripped for a non-admin role.
+      expect(features).not.toContain('org.manage');
+      expect(features).not.toContain('member.manage');
+      expect(features).not.toContain('role.builder');
+      // Non-admin features from the seat should still be present
+      expect(features).toContain('ai.chat');
+      expect(features).toContain('flashcards');
+    });
+
+    it('gives seat plan features when user has no org-role features', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-orphan' };
+      const seatFeatures = ['flashcards', 'quiz', 'ai.chat'];
+
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'org_seat_assignments') return chain({ pool_id: 'pool-1' });
+        if (table === 'org_seat_pools') return chain({ plan_key: 'ace' });
+        if (table === 'org_role_features') return chain([]);
+        if (table === 'plan_features') {
+          return chain(seatFeatures.map((f) => ({ feature_key: f })));
+        }
+        if (table === 'user_feature_overrides') return chain([]);
+        if (table === 'feature_flags') return chain(allFlagsOn());
+        return chain(null);
+      });
+
+      const features = await resolver.getEnabledFeatures(ctx);
+      expect(features).toEqual(['ai.chat', 'flashcards', 'quiz']);
     });
 
     it('treats org role features as the authoritative entitlement in org context', async () => {
