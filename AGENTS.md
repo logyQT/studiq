@@ -17,6 +17,8 @@
 
 **`main` is the only long-lived branch.** No `dev`, no `staging`.
 
+> **Agent rule: always work in a worktree.** Never make changes directly on `main`. Before doing any work, run `scripts/spin <branch-name>` to create an isolated worktree, then move your session into it. The only exception is read-only tasks (code review, exploration, grep) where no files are modified.
+
 - **Feature branches**: `feat/<short-name>` off `main`. One feature per branch, multiple commits allowed.
 - **PR to main**: Open a PR from `feat/<short-name>` → `main`. Merge via GitHub (squash or merge commit — your call per PR).
 - **Delete after merge**: Always delete the feature branch after the PR is merged.
