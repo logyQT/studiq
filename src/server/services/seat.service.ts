@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
 import { toDbFailure } from '@/lib/supabase-errors';
-import type { CreateAssignmentInput, UpdatePoolInput } from '@/server/models';
+import type { CreateAssignmentInput, CreatePoolInput, UpdatePoolInput } from '@/server/models';
 
 export class SeatService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -29,6 +29,62 @@ export class SeatService {
         assigned: p.assigned,
       })),
     );
+  }
+
+  async addPool(
+    ctx: RequestContext,
+    input: CreatePoolInput,
+  ): Promise<ServiceResult<{ id: string; planKey: string; total: number; assigned: number }>> {
+    if (!ctx.activeOrgId) return failure('FORBIDDEN');
+
+    const supabase = await this.createClient();
+
+    // Upsert: if a pool for this plan already exists, increment its total.
+    const { data: existing } = await supabase
+      .from('org_seat_pools')
+      .select('id, total')
+      .eq('organization_id', ctx.activeOrgId)
+      .eq('plan_key', input.planKey)
+      .maybeSingle();
+
+    if (existing) {
+      const { data, error } = await supabase
+        .from('org_seat_pools')
+        .update({ total: existing.total + input.quantity })
+        .eq('id', existing.id)
+        .select('id, plan_key, total, assigned')
+        .maybeSingle();
+
+      if (error) return toDbFailure(error);
+      if (!data) return failure('INTERNAL_SERVER');
+
+      return success({
+        id: data.id,
+        planKey: data.plan_key,
+        total: data.total,
+        assigned: data.assigned,
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('org_seat_pools')
+      .insert({
+        organization_id: ctx.activeOrgId,
+        plan_key: input.planKey,
+        total: input.quantity,
+      })
+      .select('id, plan_key, total, assigned')
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!data) return failure('INTERNAL_SERVER');
+
+    return success({
+      id: data.id,
+      planKey: data.plan_key,
+      total: data.total,
+      assigned: data.assigned,
+    });
   }
 
   async updatePool(

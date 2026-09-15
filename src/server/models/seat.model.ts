@@ -9,6 +9,15 @@ export const CreateAssignmentSchema = registry.register(
 );
 export type CreateAssignmentInput = z.infer<typeof CreateAssignmentSchema>;
 
+export const CreatePoolSchema = registry.register(
+  'CreatePoolRequest',
+  z.object({
+    planKey: z.string().nonempty(),
+    quantity: z.number().int().positive(),
+  }),
+);
+export type CreatePoolInput = z.infer<typeof CreatePoolSchema>;
+
 export const UpdatePoolSchema = registry.register(
   'UpdatePoolRequest',
   z.object({

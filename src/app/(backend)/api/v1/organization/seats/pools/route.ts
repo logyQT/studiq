@@ -13,3 +13,14 @@ export async function GET(req: NextRequest) {
     { allowedAccountTypes: [AccountType.MANAGER] },
   );
 }
+
+export async function POST(req: NextRequest) {
+  return withAuth(
+    req,
+    async (ctx) => {
+      const body = await req.json();
+      return toNextResponse(await seatController.createPool(ctx, body));
+    },
+    { allowedAccountTypes: [AccountType.MANAGER] },
+  );
+}
