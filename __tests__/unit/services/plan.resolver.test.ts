@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { PlanResolver } from '@/server/services/plan.resolver';
+import { PlanResolver, FEATURES } from '@/server/services/plan.resolver';
 import type { RequestContext } from '@/lib/request-context';
 import { AccountType } from '@/types';
 
@@ -52,7 +52,7 @@ describe('PlanResolver', () => {
     it('returns all features for SYS_ADMIN', async () => {
       const ctx = { ...baseCtx, accountType: AccountType.SYS_ADMIN };
       const features = await resolver.getEnabledFeatures(ctx);
-      expect(features).toEqual(['ai.chat', 'group.manage', 'member.manage', 'role.builder']);
+      expect(features).toEqual([...FEATURES]);
     });
 
     it('returns features from org_role_features when in org context', async () => {
@@ -61,9 +61,9 @@ describe('PlanResolver', () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_role_features') {
           return chain([
-            { feature_key: 'group_manage', is_enabled: true },
-            { feature_key: 'member_manage', is_enabled: false },
-            { feature_key: 'ai', is_enabled: true },
+            { feature_key: 'group.manage', is_enabled: true },
+            { feature_key: 'member.manage', is_enabled: false },
+            { feature_key: 'ai.chat', is_enabled: true },
           ]);
         }
         return chain(null);
@@ -83,7 +83,7 @@ describe('PlanResolver', () => {
           return chain([
             { feature_key: 'flashcards' },
             { feature_key: 'quiz' },
-            { feature_key: 'group_manage' },
+            { feature_key: 'group.manage' },
           ]);
         }
         if (table === 'user_feature_overrides') return chain([]);
@@ -91,7 +91,7 @@ describe('PlanResolver', () => {
       });
 
       const features = await resolver.getEnabledFeatures(ctx);
-      expect(features).toEqual(['group.manage']);
+      expect(features).toEqual(['flashcards', 'quiz', 'group.manage']);
     });
 
     it('returns personal plan features when not in org context', async () => {
@@ -101,8 +101,8 @@ describe('PlanResolver', () => {
           return chain([
             { feature_key: 'flashcards' },
             { feature_key: 'quiz' },
-            { feature_key: 'ai' },
-            { feature_key: 'advanced_stats' },
+            { feature_key: 'ai.chat' },
+            { feature_key: 'advanced.stats' },
           ]);
         }
         if (table === 'user_feature_overrides') return chain([]);
@@ -110,7 +110,7 @@ describe('PlanResolver', () => {
       });
 
       const features = await resolver.getEnabledFeatures(baseCtx);
-      expect(features).toEqual(['ai.chat']);
+      expect(features).toEqual(['flashcards', 'quiz', 'ai.chat', 'advanced.stats']);
     });
 
     it('applies user_feature_overrides on top of role features', async () => {
@@ -119,7 +119,7 @@ describe('PlanResolver', () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_role_features') {
           return chain([
-            { feature_key: 'group_manage', is_enabled: true },
+            { feature_key: 'group.manage', is_enabled: true },
           ]);
         }
         return chain(null);
@@ -127,8 +127,8 @@ describe('PlanResolver', () => {
 
       // Overrides query is called after the role features check returns
       const overridesData = [
-        { feature_key: 'group_manage', is_enabled: false },
-        { feature_key: 'ai', is_enabled: true },
+        { feature_key: 'group.manage', is_enabled: false },
+        { feature_key: 'ai.chat', is_enabled: true },
       ];
 
       // After the first call (org_role_features) returns, we need user_feature_overrides
@@ -136,7 +136,7 @@ describe('PlanResolver', () => {
       // We know the 2nd call to .from() with user_feature_overrides should get this
       mock.from.mockReturnValueOnce(
         // org_role_features
-        chain([{ feature_key: 'group_manage', is_enabled: true }]),
+        chain([{ feature_key: 'group.manage', is_enabled: true }]),
       );
 
       // Manually construct the flow
@@ -166,7 +166,7 @@ describe('PlanResolver', () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_role_features') {
           return chain([
-            { feature_key: 'group_manage', is_enabled: true },
+            { feature_key: 'group.manage', is_enabled: true },
           ]);
         }
         return chain(null);
@@ -182,7 +182,7 @@ describe('PlanResolver', () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_role_features') {
           return chain([
-            { feature_key: 'group_manage', is_enabled: true },
+            { feature_key: 'group.manage', is_enabled: true },
           ]);
         }
         return chain(null);

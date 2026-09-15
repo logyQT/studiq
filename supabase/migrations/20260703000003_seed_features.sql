@@ -7,14 +7,15 @@
 -- ==========================================
 -- FEATURE FLAGS
 -- ==========================================
+-- Keys use the canonical flat form (see src/server/services/plan.resolver.ts).
 INSERT INTO public.feature_flags (key, name, description, is_enabled, rollout_percentage) VALUES
   ('flashcards', 'Flashcards', 'Create, organize, and study flashcards with spaced repetition', true, 100),
   ('quiz', 'Quizzes', 'Create and take quizzes', true, 100),
-  ('ai', 'AI Assistant', 'AI-powered chat, flashcard generation, and explanations', true, 100),
-  ('quiz_builder', 'Quiz Builder', 'Create and manage quizzes as a teacher', true, 100),
+  ('ai.chat', 'AI Assistant', 'AI-powered chat, flashcard generation, and explanations', true, 100),
+  ('quiz.builder', 'Quiz Builder', 'Create and manage quizzes as a teacher', true, 100),
   ('documents', 'Documents', 'Upload and manage documents (coming soon)', true, 100),
-  ('org_manage', 'Organization Management', 'Manage members, invitations, and org settings', true, 100),
-  ('advanced_stats', 'Advanced Statistics', 'Detailed learning analytics and trend charts', true, 100)
+  ('org.manage', 'Organization Management', 'Manage members, invitations, and org settings', true, 100),
+  ('advanced.stats', 'Advanced Statistics', 'Detailed learning analytics and trend charts', true, 100)
 ON CONFLICT DO NOTHING;
 
 -- ==========================================
@@ -37,23 +38,23 @@ INSERT INTO public.plan_features (plan_key, feature_key) VALUES
   -- Premium tier
   ('premium', 'flashcards'),
   ('premium', 'quiz'),
-  ('premium', 'ai'),
-  ('premium', 'advanced_stats'),
+  ('premium', 'ai.chat'),
+  ('premium', 'advanced.stats'),
   -- School tier
   ('school', 'flashcards'),
   ('school', 'quiz'),
-  ('school', 'ai'),
-  ('school', 'quiz_builder'),
+  ('school', 'ai.chat'),
+  ('school', 'quiz.builder'),
   ('school', 'documents'),
-  ('school', 'org_manage'),
-  ('school', 'advanced_stats'),
+  ('school', 'org.manage'),
+  ('school', 'advanced.stats'),
   -- Sysadmin (internal)
   ('sysadmin', 'flashcards'),
   ('sysadmin', 'quiz'),
-  ('sysadmin', 'ai'),
-  ('sysadmin', 'quiz_builder'),
+  ('sysadmin', 'ai.chat'),
+  ('sysadmin', 'quiz.builder'),
   ('sysadmin', 'documents'),
-  ('sysadmin', 'org_manage'),
-  ('sysadmin', 'advanced_stats')
+  ('sysadmin', 'org.manage'),
+  ('sysadmin', 'advanced.stats')
 ON CONFLICT DO NOTHING;
 

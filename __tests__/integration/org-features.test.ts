@@ -102,11 +102,11 @@ forEachCopy((copyId) => {
       expect(features?.length).toBeGreaterThanOrEqual(5);
       expect(features?.every((f) => f.is_enabled)).toBe(true);
       expect(features?.map((f) => f.feature_key)).toContain('flashcards');
-      expect(features?.map((f) => f.feature_key)).toContain('group_manage');
-      expect(features?.map((f) => f.feature_key)).toContain('member_manage');
+      expect(features?.map((f) => f.feature_key)).toContain('group.manage');
+      expect(features?.map((f) => f.feature_key)).toContain('member.manage');
     });
 
-    it('seeds features for teacher role excluding member_manage and role_builder', async () => {
+    it('seeds features for teacher role excluding member.manage and role.builder', async () => {
       const supabase = createServiceClient();
 
       const { data: teacherRole } = await supabase
@@ -123,9 +123,9 @@ forEachCopy((copyId) => {
 
       const featureKeys = features?.map((f) => f.feature_key) ?? [];
       expect(featureKeys).toContain('flashcards');
-      expect(featureKeys).toContain('group_manage');
-      expect(featureKeys).not.toContain('member_manage');
-      expect(featureKeys).not.toContain('role_builder');
+      expect(featureKeys).toContain('group.manage');
+      expect(featureKeys).not.toContain('member.manage');
+      expect(featureKeys).not.toContain('role.builder');
       expect(features?.every((f) => f.is_enabled)).toBe(true);
     });
 

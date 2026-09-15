@@ -4,8 +4,29 @@ import type { RequestContext } from '@/lib/request-context';
 import { failure, type ServiceResult, success } from '@/lib/service-result';
 import { AccountType } from '@/types';
 
-export const FEATURES = ['ai.chat', 'group.manage', 'member.manage', 'role.builder'] as const;
+// Canonical flat feature keys — the single source of truth for both the
+// application AND the database. `feature_flags`, `plan_features`,
+// `org_role_features` and `user_feature_overrides` all store these exact
+// keys (no legacy snake_case aliases, no mapping layer).
+export const FEATURES = [
+  'ai.chat',
+  'flashcards',
+  'quiz',
+  'quiz.builder',
+  'documents',
+  'org.manage',
+  'group.manage',
+  'member.manage',
+  'role.builder',
+  'advanced.stats',
+] as const;
 export type FeatureKey = (typeof FEATURES)[number];
+
+const FEATURE_KEY_SET: ReadonlySet<string> = new Set<string>(FEATURES);
+
+export function isFeatureKey(key: string): key is FeatureKey {
+  return FEATURE_KEY_SET.has(key);
+}
 
 export interface UsageInfo {
   current: number;
@@ -13,13 +34,6 @@ export interface UsageInfo {
   plan: string;
   resetsAt: string;
 }
-
-const FEATURE_FLAG_TO_FEATURE_KEY: Record<string, FeatureKey> = {
-  ai: 'ai.chat',
-  group_manage: 'group.manage',
-  member_manage: 'member.manage',
-  role_builder: 'role.builder',
-};
 
 export class PlanResolver {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -65,8 +79,7 @@ export class PlanResolver {
           .select('feature_key')
           .eq('plan_key', seatPlanKey);
         for (const row of pf ?? []) {
-          const mapped = FEATURE_FLAG_TO_FEATURE_KEY[row.feature_key];
-          if (mapped) enabled.add(mapped);
+          if (isFeatureKey(row.feature_key)) enabled.add(row.feature_key);
         }
       } else if (ctx.orgRoleId) {
         // No seat: fall back to org_role_features (Phase 1)
@@ -77,9 +90,8 @@ export class PlanResolver {
 
         if (roleFeatures && roleFeatures.length > 0) {
           for (const row of roleFeatures) {
-            const mapped = FEATURE_FLAG_TO_FEATURE_KEY[row.feature_key];
-            if (mapped && row.is_enabled) {
-              enabled.add(mapped);
+            if (isFeatureKey(row.feature_key) && row.is_enabled) {
+              enabled.add(row.feature_key);
             }
           }
         }
@@ -100,8 +112,7 @@ export class PlanResolver {
           .select('feature_key')
           .eq('plan_key', profile.personal_plan_key);
         for (const row of pf ?? []) {
-          const mapped = FEATURE_FLAG_TO_FEATURE_KEY[row.feature_key];
-          if (mapped) enabled.add(mapped);
+          if (isFeatureKey(row.feature_key)) enabled.add(row.feature_key);
         }
       }
     }
@@ -113,12 +124,11 @@ export class PlanResolver {
       .eq('user_id', ctx.userId);
 
     for (const row of overrides ?? []) {
-      const mapped = FEATURE_FLAG_TO_FEATURE_KEY[row.feature_key];
-      if (mapped) {
+      if (isFeatureKey(row.feature_key)) {
         if (row.is_enabled) {
-          enabled.add(mapped);
+          enabled.add(row.feature_key);
         } else {
-          enabled.delete(mapped);
+          enabled.delete(row.feature_key);
         }
       }
     }

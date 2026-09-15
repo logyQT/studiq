@@ -6,7 +6,7 @@ export const CreateFeatureFlagSchema = registry.register(
   z.object({
     key: z
       .string({ error: ValidationErrorCode.REQUIRED })
-      .regex(/^[a-z_]+$/, { error: ValidationErrorCode.NAME_INVALID_FORMAT })
+      .regex(/^[a-z][a-z0-9.]*$/, { error: ValidationErrorCode.NAME_INVALID_FORMAT })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
       .max(64, { error: ValidationErrorCode.TOO_LONG }),
@@ -37,7 +37,7 @@ export const UpdateFeatureFlagSchema = registry.register(
   z.object({
     key: z
       .string({ error: ValidationErrorCode.REQUIRED })
-      .regex(/^[a-z_]+$/, { error: ValidationErrorCode.NAME_INVALID_FORMAT })
+      .regex(/^[a-z][a-z0-9.]*$/, { error: ValidationErrorCode.NAME_INVALID_FORMAT })
       .nonempty({ error: ValidationErrorCode.REQUIRED })
       .min(1, { error: ValidationErrorCode.TOO_SHORT })
       .max(64, { error: ValidationErrorCode.TOO_LONG })

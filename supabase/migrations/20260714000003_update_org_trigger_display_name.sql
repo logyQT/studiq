@@ -58,14 +58,14 @@ BEGIN
     ON CONFLICT DO NOTHING;
 
     -- teacher: everything except member_manage and role_builder
-    IF v_rec.feature_key NOT IN ('member_manage', 'role_builder') THEN
+    IF v_rec.feature_key NOT IN ('member.manage', 'role.builder') THEN
       INSERT INTO public.org_role_features (org_role_id, feature_key, is_enabled)
       VALUES (v_teacher_id, v_rec.feature_key, true)
       ON CONFLICT DO NOTHING;
     END IF;
 
     -- member: only flashcards, quiz, ai, documents
-    IF v_rec.feature_key IN ('flashcards', 'quiz', 'ai', 'documents') THEN
+    IF v_rec.feature_key IN ('flashcards', 'quiz', 'ai.chat', 'documents') THEN
       INSERT INTO public.org_role_features (org_role_id, feature_key, is_enabled)
       VALUES (v_member_id, v_rec.feature_key, true)
       ON CONFLICT DO NOTHING;
