@@ -17,12 +17,6 @@ export type RouteRule = {
 export const routeRules: RouteRule[] = [
   // --- API ROUTES ---
   {
-    matcher: /^\/api\/v1\/admin(\/.*)?$/,
-    requireAuth: true,
-    allowedAccountTypes: [AccountType.SYS_ADMIN],
-    isApi: true,
-  },
-  {
     matcher: /^\/api\/v1\/teacher(\/.*)?$/,
     requireAuth: true,
     allowedAccountTypes: [AccountType.EDUCATOR, AccountType.MANAGER],
@@ -50,7 +44,6 @@ export const routeRules: RouteRule[] = [
   {
     matcher: /^\/(login|register)(\/.*)?$/,
     redirectIfAuthenticatedByAccountType: {
-      [AccountType.SYS_ADMIN]: '/admin',
       [AccountType.MANAGER]: '/manage',
       [AccountType.EDUCATOR]: '/edu',
       [AccountType.STUDENT]: '/app',
@@ -70,11 +63,6 @@ export const routeRules: RouteRule[] = [
   },
 
   // --- UI DASHBOARD ROUTES ---
-  {
-    matcher: /^\/admin(\/.*)?$/,
-    requireAuth: true,
-    allowedAccountTypes: [AccountType.SYS_ADMIN],
-  },
   {
     matcher: /^\/manage(\/.*)?$/,
     requireAuth: true,
