@@ -21,7 +21,12 @@
     "test:integration": "vitest run __tests__/integration",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "dev:admin": "bun run --filter @studiq/admin dev",
+    "build:admin": "bun run --filter @studiq/admin build",
+    "start:admin": "bun run --filter @studiq/admin start",
+    "lint:admin": "bun run --filter @studiq/admin lint",
+    "typecheck:admin": "bun run --filter @studiq/admin typecheck"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.112",
