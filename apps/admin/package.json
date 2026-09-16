@@ -1,0 +1,32 @@
+{
+  "name": "@studiq/admin",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 4000",
+    "build": "next build",
+    "start": "next start -p 4000",
+    "clean": "npx rimraf .next",
+    "typecheck": "tsc --incremental --skipLibCheck --noEmit",
+    "lint": "biome ci src/"
+  },
+  "dependencies": {
+    "@studiq/authz": "workspace:*",
+    "@studiq/ui": "workspace:*",
+    "@supabase/supabase-js": "^2.116.0",
+    "next": "16.3.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22.20.2",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "^19.3.0",
+    "postcss": "8.5.10",
+    "tailwindcss": "^4.3.3",
+    "tw-animate-css": "1.3.3",
+    "typescript": "^7.0.2"
+  }
+}
