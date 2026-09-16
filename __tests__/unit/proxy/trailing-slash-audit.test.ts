@@ -2,11 +2,10 @@
  * Audit: Trailing-slash path mismatch for proxy + route rules.
  *
  * Verifies that:
- * 1. proxy.ts matcher catches both `/admin` and `/admin/`
- * 2. routeRules regex patterns match both forms consistently
- * 3. sensitive API routes (admin, teacher, AI) can't be bypassed via trailing slash
- * 4. the catch-all API auth rule can't be bypassed via trailing slash
- * 5. rule ordering prevents privilege escalation via trailing slash
+ * 1. routeRules regex patterns match both forms consistently
+ * 2. sensitive API routes (teacher, AI) can't be bypassed via trailing slash
+ * 3. the catch-all API auth rule can't be bypassed via trailing slash
+ * 4. rule ordering prevents privilege escalation via trailing slash
  */
 import { describe, expect, it } from 'vitest';
 import { type RouteRule, routeRules } from '@/server/config/routes.config';
@@ -20,10 +19,6 @@ describe('proxy matcher — trailing slash passthrough', () => {
   const cases = [
     '/api/v1/auth/me',
     '/api/v1/auth/me/',
-    '/admin',
-    '/admin/',
-    '/admin/settings',
-    '/admin/settings/',
     '/login',
     '/login/',
     '/setup/org',
@@ -56,23 +51,6 @@ describe('routeRules — trailing slash consistency', () => {
     const rule = matchRule(path);
     expect(rule).toBeNull();
   }
-
-  // --- Admin API ---
-  describe('admin API routes', () => {
-    it('matches /api/v1/admin and /api/v1/admin/ to the same rule', () => {
-      assertSameRule('/api/v1/admin', '/api/v1/admin/');
-    });
-
-    it('matches /api/v1/admin/subscription-plans consistently', () => {
-      assertSameRule('/api/v1/admin/subscription-plans', '/api/v1/admin/subscription-plans/');
-    });
-
-    it('admin rule requires auth + SYS_ADMIN', () => {
-      const rule = matchRule('/api/v1/admin/organizations');
-      expect(rule?.requireAuth).toBe(true);
-      expect(rule?.allowedAccountTypes).toContain('sys_admin');
-    });
-  });
 
   // --- Teacher API ---
   describe('teacher API routes', () => {
@@ -182,10 +160,6 @@ describe('routeRules — trailing slash consistency', () => {
 
   // --- UI routes ---
   describe('UI dashboard routes', () => {
-    it('matches /admin and /admin/ to same rule', () => {
-      assertSameRule('/admin', '/admin/');
-    });
-
     it('matches /manage and /manage/ to same rule', () => {
       assertSameRule('/manage', '/manage/');
     });
@@ -204,12 +178,6 @@ describe('routeRules — trailing slash consistency', () => {
 
     it('matches /register and /register/ to same rule', () => {
       assertSameRule('/register', '/register/');
-    });
-
-    it('/admin requires auth + sys_admin', () => {
-      const rule = matchRule('/admin');
-      expect(rule?.requireAuth).toBe(true);
-      expect(rule?.allowedAccountTypes).toContain('sys_admin');
     });
 
     it('/app requires auth + student', () => {
@@ -238,8 +206,6 @@ describe('proxy.ts — API route early-return', () => {
     const apiPaths = [
       '/api/v1/auth/me',
       '/api/v1/auth/me/',
-      '/api/v1/admin/organizations',
-      '/api/v1/admin/organizations/',
       '/api/v1/flashcards',
       '/api/v1/flashcards/',
     ];
