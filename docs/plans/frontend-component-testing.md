@@ -1,8 +1,53 @@
 # Frontend Component Testing — Discussion Document
 
-> Status: DRAFT — open for discussion. Do not implement until `docs/plans/foundation-agentic-testing.md` Phase C (monorepo restructure) is complete.
+> Status: DECISIONS LOCKED (Q1-Q7 resolved). Do not implement until `docs/plans/foundation-agentic-testing.md` Phase C (monorepo restructure) is complete.
 >
-> Created: 2026-09-16
+> Created: 2026-09-16 | Last updated: 2026-09-16
+
+---
+
+## Chosen approach: Vitest Browser Mode
+
+**`@vitest/browser` + `vitest-browser-react`** — component tests run in a real browser via Playwright. This replaces jsdom/happy-dom entirely.
+
+### Why this over jsdom/happy-dom
+
+1. **Playwright already installed** — `@vitest/browser-playwright` reuses the same browser binaries, zero extra installs
+2. **Radix UI everywhere** — shadcn/ui uses portals, focus trapping, overlays. jsdom/happy-dom notoriously struggle with these; real browser = no issues
+3. **Single test runner** — same Vitest, same config, no separate toolchain
+4. **Stable since Vitest 4.0** (Oct 2025, now at v5.0.1) — not experimental
+5. **Built-in extras** — auto-retrying assertions (`expect.element()`), ARIA snapshots, visual browser UI for debugging, built-in `userEvent` via CDP (higher fidelity than jsdom's synthetic dispatch)
+
+### Dependencies to install
+
+```bash
+bun add -d @vitest/browser @vitest/browser-playwright vitest-browser-react
+```
+
+No `happy-dom`, `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`, or `@testing-library/user-event` needed — browser mode replaces all of them.
+
+### API surface (replaces Testing Library)
+
+```ts
+// Instead of 3 Testing Library packages:
+import { render } from 'vitest-browser-react';
+import { page, userEvent } from 'vitest/browser';
+
+// Auto-retrying assertions (replaces waitFor + toBeInTheDocument):
+await expect.element(page.getByText('Save')).toBeInTheDocument();
+
+// Real browser interactions via page locators (replaces userEvent from RTL):
+await page.getByRole('button', { name: /submit/i }).click();
+await page.getByLabelText(/email/i).fill('user@example.com');
+```
+
+### Open items specific to browser mode
+
+- **Provider wrappers** still needed (QueryClient, next-intl, next/navigation, etc.) — same regardless of DOM approach
+- **MSW (Mock Service Worker)** is Vitest's recommended approach for API mocking in browser mode; evaluate whether to adopt or stick with `vi.mock()`
+- **Speed trade-off** — real browser has startup overhead per file, but still much faster than Playwright E2E. Component tests run in isolation (single component in iframe) vs full page navigation. **Not a concern for us** — CI runs locally (lefthook pre-push), there's no remote CI bottleneck or merge queue waiting on test results. Accuracy matters more than shaving seconds off a local run.
+
+---
 
 ---
 
@@ -20,11 +65,11 @@ The `flashcard-testing-pipeline.md` doc already scoped a focused test effort for
 
 | What exists | What's missing |
 |---|---|
-| Vitest with `node` environment | No DOM environment (jsdom / happy-dom) |
+| Vitest with `node` environment | No browser mode config for component tests |
 | 116 server tests (services, controllers, models, guards) | Zero `.test.tsx` files |
-| 100+ app components (`src/components/`) | No `@testing-library/react` |
-| 30+ UI primitives (`packages/ui/src/components/ui/`) | No rendering helpers / provider wrappers |
-| `@/` and `#test/` aliases in Vitest + tsconfig | No component test setup file |
+| 100+ app components (`src/components/`) | No `vitest-browser-react` or rendering helpers |
+| 30+ UI primitives (`packages/ui/src/components/ui/`) | No provider wrappers (QueryClient, next-intl, etc.) |
+| `@/` and `#test/` aliases in Vitest + tsconfig | No component test setup |
 | 10 Playwright E2E specs (`__tests__/e2e/`) | No component-level interaction tests |
 | `flashcard-testing-pipeline.md` scoped for AI chat | Not yet executed |
 
@@ -32,45 +77,33 @@ The `flashcard-testing-pipeline.md` doc already scoped a focused test effort for
 
 ## Open questions (need discussion)
 
-### Q1: DOM environment — jsdom vs happy-dom
+### Q1: DOM environment ✅ DECIDED — Vitest Browser Mode
 
-| | `jsdom` | `happy-dom` |
+**Decision:** Neither jsdom nor happy-dom. We use `@vitest/browser` with Playwright — components run in a real browser.
+
+This eliminates the jsdom/happy-dom trade-off entirely. Radix portals, focus management, CSS layout, `getBoundingClientRect`, etc. all work correctly out of the box.
+
+### Q2: Test library stack ✅ DECIDED — vitest-browser-react
+
+**Decision:** `vitest-browser-react` replaces `@testing-library/react` + `@testing-library/jest-dom` + `@testing-library/user-event`. No Testing Library packages needed.
+
+| Old (Testing Library) | New (Browser Mode) | Replacement |
 |---|---|---|
-| **Speed** | Slower (full DOM emulation) | ~2-3x faster |
-| **Accuracy** | Very close to real browsers | Good enough for most components; edge cases in layout/CSS |
-| **Community** | Larger, more `@testing-library/*` compat testing | Growing, occasional gaps with complex Radix UI portals |
-| **Bundle size** | Heavier | Lighter |
-| **Used by** | Most tutorials, CRA defaults, Testing Library docs | Vitest community, newer projects |
+| `@testing-library/react` (`render`, `screen`) | `vitest-browser-react` (`render`) + `page` from `vitest/browser` | Direct replacement |
+| `@testing-library/jest-dom` (`.toBeInTheDocument()`) | `expect.element()` auto-retrying assertions | Built into Vitest browser assertions |
+| `@testing-library/user-event` | `userEvent` from `vitest/browser` | Higher fidelity — drives events via CDP, not synthetic dispatch |
 
-**Trade-off:** happy-dom's speed advantage is significant in CI. jsdom's accuracy advantage matters if we test complex Radix portal behavior (dialogs, dropdowns, popovers). Most component tests don't need pixel-perfect layout — they verify rendered text, callback invocations, and conditional visibility.
+**Rejected alternatives:**
 
-**Questions for discussion:**
-- Do we expect to test Radix dialog/popover open/close behavior at the component level, or is that covered by Playwright?
-- Is CI speed a priority vs. accuracy guarantees?
+| Alternative | Why rejected |
+|---|---|
+| **Testing Library with jsdom/happy-dom** | We chose browser mode; Testing Library is redundant |
+| **Storybook interaction tests** | Separate build system; underpowered vs Vitest; adds maintenance burden |
+| **React `test-utils`** | `act()` only, no query helpers, no matchers — not worth it |
 
-### Q2: Test library stack
+### Q3: Where do component tests live? — STILL OPEN (browser mode doesn't change this)
 
-The obvious choices:
-
-| Package | Purpose | Notes |
-|---|---|---|
-| `@testing-library/react` | `render()`, `screen`, `fireEvent`, `waitFor`, `act` | Standard, well-documented |
-| `@testing-library/jest-dom` | `.toBeInTheDocument()`, `.toHaveClass()`, etc. | Extends `expect` with DOM matchers |
-| `@testing-library/user-event` | Realistic user interactions (click, type, keyboard, tab) | Much better than raw `fireEvent` |
-| `@testing-library/user-event` v14 | Latest major version, ESM-first | Requires Vitest ESM support (we have it) |
-
-**Alternatives to consider:**
-
-| Alternative | Why consider it | Why maybe not |
-|---|---|---|
-| **No testing library at all** (React's built-in `test-utils`) | Zero deps | `act()` is painful, no query helpers, no matchers — not worth it |
-| **`@testing-library/preact`** | N/A — we use React | Not applicable |
-| **`maestro` / `k6`** | Mobile/E2E focus | Wrong layer — we need component-level tests |
-| **Storybook + interaction tests** | Visual + test in one | Adds a whole parallel build; we'd have two test surfaces to maintain |
-
-**Question:** Is there any appetite for Storybook, or is "Vitest + Testing Library" the right scope?
-
-### Q3: Where do component tests live?
+Browser mode doesn't affect file locations — this remains a monorepo structure question for Phase C.
 
 Currently server tests live under `__tests__/`. After Phase C, the monorepo has `packages/ui/` and `apps/web/` (plus `apps/admin/`). Several options:
 
@@ -167,14 +200,16 @@ The testing pyramid for frontend:
 - Or do we push into Tier 3 for critical user flows (deck CRUD, flashcard save)?
 - Is the `flashcard-testing-pipeline.md` scope (AI chat components) Tier 2 or Tier 3?
 
-### Q7: Snapshot / visual testing?
+### Q7: Snapshot / visual testing? — PARTIALLY DECIDED
 
-| Approach | Tool | Pros | Cons |
-|---|---|---|---|
-| **No snapshots** | — | No snapshot maintenance burden | No visual regression guard |
-| **DOM snapshots** | Vitest built-in `toMatchSnapshot()` | Captures rendered HTML; catches structural changes | Brittle to CSS/classname changes; high maintenance; noisy diffs |
-| **Visual regression** | Chromatic, Percy, Playwright screenshot comparison | Catches actual visual regressions | Requires browser; heavy CI cost; separate toolchain |
-| **Accessibility snapshots** | `@storybook/addon-a11y` or `jest-axe` | Tests a11y without visual snapshots | Different concern; can be added independently |
+**Decision:** Browser mode's built-in ARIA snapshots (`toMatchInlineAriaSnapshot`) replace `jest-axe` for accessibility testing — no extra dependency needed.
+
+| Approach | Tool | Status |
+|---|---|---|
+| **ARIA snapshots** | `expect.element(modal).toMatchInlineAriaSnapshot()` — built into Vitest browser mode | ✅ Use this |
+| **DOM snapshots** | `toMatchSnapshot()` | ❌ Brittle to CSS/classname changes; skip |
+| **Visual regression** | Chromatic, Percy, Playwright screenshot | ❌ Heavy CI cost; revisit when design system is mature |
+| **jest-axe** | Accessibility assertions | ❌ Redundant — ARIA snapshots cover this in browser mode |
 
 **Question:** Do we want DOM snapshots at all, or is "assert specific elements exist" sufficient? Should we add `jest-axe` for accessibility checks as a separate concern?
 
@@ -214,13 +249,13 @@ This is **not a plan** — it's a sequence of decisions to make and work to do, 
 
 ### Decision phase
 
-1. **Lock DOM environment:** jsdom or happy-dom (Q1)
-2. **Lock test library stack:** Testing Library + jest-dom + user-event, or alternatives (Q2)
-3. **Lock test file locations:** Where do component tests live post-monorepo (Q3)
-4. **Lock Vitest config approach:** Multi-project vs workspace vs docblock (Q4)
-5. **Lock provider mocking default:** next-intl strategy especially (Q5)
-6. **Lock testing scope:** Tiers 0-2 only, or deeper (Q6)
-7. **Decide on snapshots/a11y:** DOM snapshots, jest-axe, or neither (Q7)
+1. ~~**Lock DOM environment:** jsdom or happy-dom (Q1)~~ → ✅ Vitest Browser Mode
+2. ~~**Lock test library stack:** Testing Library + jest-dom + user-event, or alternatives (Q2)~~ → ✅ `vitest-browser-react` + built-in `page`/`userEvent`
+3. **Lock test file locations:** Where do component tests live post-monorepo (Q3) — still open, depends on Phase C
+4. **Lock Vitest config approach:** Multi-project vs workspace vs docblock (Q4) — browser mode uses `browser.enabled` config, not environment strings
+5. **Lock provider mocking default:** next-intl strategy especially (Q5) — still open
+6. **Lock testing scope:** Tiers 0-2 only, or deeper (Q6) — still open
+7. ~~**Decide on snapshots/a11y:** DOM snapshots, jest-axe, or neither (Q7)~~ → ✅ ARIA snapshots (built-in), skip DOM/visual snapshots
 
 ### Infrastructure phase (once decisions are locked)
 
@@ -248,11 +283,14 @@ This is **not a plan** — it's a sequence of decisions to make and work to do, 
 
 | Alternative | Why rejected |
 |---|---|
-| **Cypress Component Testing** | Different toolchain from existing Vitest; heavier runner; no benefit over Vitest + Testing Library for our needs |
+| **jsdom** | Simulated DOM — Radix portals, focus management, CSS layout don't work correctly. Redundant with browser mode which gives us a real browser for free (Playwright already installed) |
+| **happy-dom** | Same as jsdom — simulated DOM, lighter but still inaccurate. No advantage over browser mode when Playwright is already in the stack |
+| **Testing Library + jsdom/happy-dom** | We chose browser mode; `vitest-browser-react` replaces the entire Testing Library stack |
+| **Cypress Component Testing** | Different toolchain from existing Vitest; heavier runner; no benefit over Vitest browser mode for our needs |
 | **Storybook as primary test surface** | Adds a parallel build system, separate config, and a whole UI to maintain. Interaction tests in Storybook are underpowered vs. Vitest. Could be added later for documentation/design system purposes, but not as a testing strategy |
 | **Skip component tests, rely only on E2E** | E2E is slow, flaky by nature, and expensive to maintain. Can't test edge cases, error states, or accessibility at scale. Component tests are the fast feedback loop |
 | **Only test `packages/ui` (skip app components)** | Misses the actual bug surface — all past frontend bugs were in app components (`src/components/ai/`), not in shadcn primitives |
-| **Full visual regression (Chromatic/Percy)** | Heavy CI cost, requires dedicated infrastructure, overkill for current project stage. Revisit when design system is mature |
+| **Full visual regression (Chromatic/Percy)** | Heavy CI cost, requires dedicated infrastructure, overkill for current project stage. Browser mode's ARIA snapshots cover accessibility; revisit visual regression when design system is mature |
 
 ---
 
@@ -261,7 +299,6 @@ This is **not a plan** — it's a sequence of decisions to make and work to do, 
 | Risk | Impact | Mitigation |
 |---|---|---|
 | Phase C takes longer than expected | Component testing delayed further | Start with `flashcard-testing-pipeline.md` scope (AI chat) as a narrow proof of concept that's less affected by restructure |
-| happy-dom has Radix UI portal issues | Dialog/popover tests fail | Fall back to jsdom for those specific tests via `@vitest-environment jsdom` docblock |
 | Provider mocking becomes a maintenance burden | Tests break when providers change | Keep the wrapper thin; prefer real providers over mocks where possible (QueryClient is real, not mocked) |
 | Team adoption: writing tests is slower than writing code | Feature velocity concern | Start with Tier 0-1 (fast, obvious value); make it easy to run (`bun test:components`); demonstrate bug-catching ROI early |
 
