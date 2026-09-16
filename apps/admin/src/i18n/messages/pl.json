@@ -1,0 +1,32 @@
+{
+  "Common": {
+    "loading": "Ładowanie...",
+    "error": "Błąd",
+    "save": "Zapisz",
+    "cancel": "Anuluj",
+    "confirm": "Potwierdź",
+    "delete": "Usuń",
+    "edit": "Edytuj",
+    "back": "Wstecz",
+    "none": "Brak"
+  },
+  "DashboardLayout": {
+    "admin_overview": "Przegląd",
+    "admin_orgs": "Organizacje",
+    "admin_feature_flags": "Funkcje",
+    "admin_subscription_plans": "Plany",
+    "admin_user_overrides": "Nadpisania",
+    "admin_system": "System",
+    "sys_admin_dashboard": "Administracja Systemem",
+    "role_sys_admin": "Admin Systemu",
+    "logout": "Wyloguj",
+    "theme_toggle": "Przełącz motyw"
+  },
+  "AdminDashboard": {
+    "title": "Administracja Systemem",
+    "description": "Zarządzaj platformą StudiQ",
+    "adminPanel": "Panel Admina",
+    "standaloneApp": "Samodzielna aplikacja administracyjna",
+    "portInfo": "Ten panel administracyjny działa niezależnie na porcie 4000."
+  }
+}

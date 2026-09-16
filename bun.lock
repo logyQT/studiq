@@ -125,6 +125,7 @@
         "@studiq/ui": "workspace:*",
         "@supabase/supabase-js": "^2.116.0",
         "next": "16.3.5",
+        "next-intl": "^4.14.5",
         "react": "^19.3.0",
         "react-dom": "^19.3.0",
         "zod": "^4.6.5",
