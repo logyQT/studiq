@@ -16,12 +16,12 @@ ON CONFLICT DO NOTHING;
 
 -- Org 2
 INSERT INTO "public"."organizations" ("id", "name", "plan") VALUES
-  ('00000000-0000-4000-8000-00000000000A', 'UE Wroc\u0142aw', 'launch')
+  ('00000000-0000-4000-8000-00000000000A', 'UE Wrocław', 'launch')
 ON CONFLICT DO NOTHING;
 
 -- Org 3
 INSERT INTO "public"."organizations" ("id", "name", "plan") VALUES
-  ('00000000-0000-4000-8000-00000000000E', 'Akademia G\u00f3rnicza', 'launch')
+  ('00000000-0000-4000-8000-00000000000E', 'Akademia Górnicza', 'launch')
 ON CONFLICT DO NOTHING;
 
 -- Org roles for Org 1
