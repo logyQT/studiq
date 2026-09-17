@@ -1,3 +1,4 @@
+import { createClient } from '@admin/lib/supabase/admin-client';
 import {
   type ControllerResponse,
   controllerResponse,
@@ -9,7 +10,6 @@ import {
   OrganizationService,
   type OrganizationService as OrganizationServiceType,
 } from '@studiq/server/services/organization.service';
-import { createClient } from '@/lib/supabase/admin-client';
 
 export class OrganizationAdminController {
   constructor(private organizationService: OrganizationServiceType) {}

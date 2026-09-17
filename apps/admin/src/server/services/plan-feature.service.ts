@@ -1,9 +1,9 @@
+import { createClient } from '@admin/lib/supabase/admin-client';
 import type { CreatePlanFeatureInput } from '@admin/server/models/plan-feature.model';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/admin-client';
 
 export class PlanFeatureService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}

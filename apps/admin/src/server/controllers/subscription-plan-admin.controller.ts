@@ -1,3 +1,4 @@
+import { createClient } from '@admin/lib/supabase/admin-client';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { controllerResponse } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
@@ -11,7 +12,6 @@ import {
   SubscriptionPlanService,
   type SubscriptionPlanService as SubscriptionPlanServiceType,
 } from '@studiq/server/services/subscription-plan.service';
-import { createClient } from '@/lib/supabase/admin-client';
 
 export class SubscriptionPlanAdminController {
   constructor(private subscriptionPlanService: SubscriptionPlanService) {}

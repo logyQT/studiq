@@ -1,3 +1,4 @@
+import { createClient } from '@admin/lib/supabase/admin-client';
 import type {
   CreatePlanLimitInput,
   UpdatePlanLimitInput,
@@ -6,7 +7,6 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/admin-client';
 
 export class PlanLimitService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
