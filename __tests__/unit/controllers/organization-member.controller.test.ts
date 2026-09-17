@@ -2,7 +2,7 @@ import { RequestContext } from '@studiq/authz';
 import { OrganizationMemberController } from '@studiq/server/controllers/organization-member.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/features', () => ({
+vi.mock('@studiq/server/lib/features', () => ({
   requireFeature: vi.fn().mockResolvedValue(undefined),
 }));
 

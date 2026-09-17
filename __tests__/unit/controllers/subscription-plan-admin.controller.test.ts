@@ -1,4 +1,4 @@
-import { SubscriptionPlanAdminController } from '@studiq/server/controllers/subscription-plan-admin.controller';
+import { SubscriptionPlanAdminController } from '@admin/server/controllers/subscription-plan-admin.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {

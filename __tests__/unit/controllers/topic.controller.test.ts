@@ -2,7 +2,7 @@ import { RequestContext } from '@studiq/authz';
 import { TopicController } from '@studiq/server/controllers/topic.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/authz', () => ({
+vi.mock('@studiq/server/lib/authz', () => ({
   can: vi.fn().mockResolvedValue(true),
   Permission: { TOPIC_CREATE: 'topic.create', TOPIC_READ: 'topic.read' },
 }));

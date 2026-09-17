@@ -1,4 +1,4 @@
-import { PlanFeatureController } from '@studiq/server/controllers/plan-feature.controller';
+import { PlanFeatureController } from '@admin/server/controllers/plan-feature.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {

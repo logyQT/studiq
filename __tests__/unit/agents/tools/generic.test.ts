@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/zod', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/zod')>();
+vi.mock('@studiq/server/lib/zod', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@studiq/server/lib/zod')>();
   return { ...actual, registry: { register: vi.fn() } };
 });
 

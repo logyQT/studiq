@@ -3,7 +3,7 @@ import { FlashcardStatsService } from '@studiq/server/services/flashcard-stats.s
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-vi.mock('@/lib/authz', () => ({
+vi.mock('@studiq/server/lib/authz', () => ({
   buildQueryFilter: vi.fn().mockReturnValue({ created_by: 'user-1' }),
   Permission: { FLASHCARD_READ: 'flashcard.read' },
 }));
@@ -51,7 +51,7 @@ describe('FlashcardStatsService', () => {
 
   describe('getTeacherStats', () => {
     it('returns empty when filter is impossible', async () => {
-      const { buildQueryFilter } = await import('@/lib/authz');
+      const { buildQueryFilter } = await import('@studiq/server/lib/authz');
       vi.mocked(buildQueryFilter).mockReturnValueOnce({ _impossible: true } as any);
 
       const result = await service.getTeacherStats(ctx);
@@ -104,7 +104,7 @@ describe('FlashcardStatsService', () => {
 
   describe('getDifficultyCards', () => {
     it('returns empty when filter is impossible', async () => {
-      const { buildQueryFilter } = await import('@/lib/authz');
+      const { buildQueryFilter } = await import('@studiq/server/lib/authz');
       vi.mocked(buildQueryFilter).mockReturnValueOnce({ _impossible: true } as any);
 
       const result = await service.getDifficultyCards(ctx, 'easy');

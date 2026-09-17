@@ -15,11 +15,10 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-const ROOTS = ['src', '__tests__'];
+const ROOTS = ['apps/web/src', 'apps/admin/src', '__tests__'];
 const CODE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs)$/;
 // Static `from '...'`, side-effect `import '...'`, dynamic `import('...')`, `require('...')`
-const RELATIVE_IMPORT_RE =
-  /(?:from\s+|import[\s(]+|require\s*\()['"](\.{1,2}(?:\/[^'"\n]*)?)['"]/g;
+const RELATIVE_IMPORT_RE = /(?:from\s+|import[\s(]+|require\s*\()['"](\.{1,2}(?:\/[^'"\n]*)?)['"]/g;
 
 function* walk(dir: string): Generator<string> {
   for (const entry of readdirSync(dir)) {

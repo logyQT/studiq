@@ -1,4 +1,4 @@
-import { PlanLimitController } from '@studiq/server/controllers/plan-limit.controller';
+import { PlanLimitController } from '@admin/server/controllers/plan-limit.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {

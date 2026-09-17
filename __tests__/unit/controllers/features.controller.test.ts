@@ -1,7 +1,7 @@
 import { FeaturesController } from '@studiq/server/controllers/features.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/features', () => ({
+vi.mock('@studiq/server/lib/features', () => ({
   resolveFeatures: vi.fn(),
 }));
 

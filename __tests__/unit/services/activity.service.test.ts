@@ -3,7 +3,7 @@ import { ActivityService } from '@studiq/server/services/activity.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-vi.mock('@/lib/authz', () => ({
+vi.mock('@studiq/server/lib/authz', () => ({
   check: vi.fn().mockResolvedValue(undefined),
   Permission: { DECK_UPDATE: 'deck.update' },
 }));

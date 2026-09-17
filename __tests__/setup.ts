@@ -5,8 +5,8 @@ import { vi } from 'vitest';
  * The default implementation wraps the real createClient — integration tests
  * hit the real database, unit tests override via mockSupabaseClient().
  */
-vi.mock('@/lib/supabase/server', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/supabase/server')>();
+vi.mock('@studiq/server/lib/supabase/server', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@studiq/server/lib/supabase/server')>();
   return {
     createClient: vi.fn(actual.createClient),
   };

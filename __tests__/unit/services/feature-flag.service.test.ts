@@ -1,4 +1,4 @@
-import { FeatureFlagService } from '@studiq/server/services/feature-flag.service';
+import { FeatureFlagService } from '@admin/server/services/feature-flag.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 

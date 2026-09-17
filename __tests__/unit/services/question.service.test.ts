@@ -4,7 +4,7 @@ import { QuestionService } from '@studiq/server/services/question.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-vi.mock('@/lib/authz', () => ({
+vi.mock('@studiq/server/lib/authz', () => ({
   accessibleFilter: vi.fn().mockResolvedValue({}),
   Permission: {
     QUESTION_READ: 'question.read' as const,
@@ -12,7 +12,7 @@ vi.mock('@/lib/authz', () => ({
   },
 }));
 
-vi.mock('@/server/services/limits.resolver', () => ({
+vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 

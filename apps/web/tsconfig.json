@@ -20,16 +20,15 @@
       }
     ],
     "paths": {
-      "@/*": ["./apps/web/src/*"],
-      "@studiq/authz": ["./packages/authz/src/index.ts"],
-      "@studiq/authz/*": ["./packages/authz/src/*"],
-      "@studiq/ui": ["./packages/ui/src/index.ts"],
-      "@studiq/ui/*": ["./packages/ui/src/*"],
-      "@studiq/server": ["./packages/server/src/index.ts"],
-      "@studiq/server/*": ["./packages/server/src/*"],
-      "@/utils": ["./packages/ui/src/utils.ts"],
-      "#test/*": ["./__tests__/*"],
-      "@admin/*": ["./apps/admin/src/*"]
+      "@/*": ["./src/*"],
+      "@studiq/authz": ["../../packages/authz/src/index.ts"],
+      "@studiq/authz/*": ["../../packages/authz/src/*"],
+      "@studiq/server": ["../../packages/server/src/index.ts"],
+      "@studiq/server/*": ["../../packages/server/src/*"],
+      "@studiq/ui": ["../../packages/ui/src/index.ts"],
+      "@studiq/ui/*": ["../../packages/ui/src/*"],
+      "@/utils": ["../../packages/ui/src/utils.ts"],
+      "#test/*": ["../../__tests__/*"]
     }
   },
   "include": [
@@ -39,5 +38,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", ".next", "__test__", "__tests__", "__tests__/e2e"]
+  "exclude": ["node_modules", ".next"]
 }

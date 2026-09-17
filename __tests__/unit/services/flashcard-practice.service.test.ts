@@ -4,7 +4,7 @@ import { FlashcardPracticeService } from '@studiq/server/services/flashcard-prac
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-vi.mock('@/lib/authz', () => ({
+vi.mock('@studiq/server/lib/authz', () => ({
   buildQueryFilter: vi.fn().mockReturnValue({}),
   Permission: { FLASHCARD_READ: 'flashcard.read' as const },
 }));

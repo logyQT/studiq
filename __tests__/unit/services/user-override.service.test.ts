@@ -1,4 +1,4 @@
-import { UserOverrideService } from '@studiq/server/services/user-override.service';
+import { UserOverrideService } from '@admin/server/services/user-override.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 

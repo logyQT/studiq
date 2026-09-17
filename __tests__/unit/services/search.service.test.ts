@@ -3,7 +3,7 @@ import { SearchService } from '@studiq/server/services/search.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
-vi.mock('@/lib/authz', () => ({
+vi.mock('@studiq/server/lib/authz', () => ({
   accessibleFilter: vi.fn().mockResolvedValue({ or: 'created_by.eq.user-1' }),
   Permission: { FLASHCARD_READ: 'flashcard.read' },
 }));
@@ -41,7 +41,7 @@ describe('SearchService', () => {
 
   describe('search', () => {
     it('returns empty when filter is impossible', async () => {
-      const { accessibleFilter } = await import('@/lib/authz');
+      const { accessibleFilter } = await import('@studiq/server/lib/authz');
       vi.mocked(accessibleFilter).mockResolvedValueOnce({ _impossible: true } as any);
 
       const result = await service.search('test', ctx);

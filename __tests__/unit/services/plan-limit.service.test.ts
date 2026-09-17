@@ -1,4 +1,4 @@
-import { PlanLimitService } from '@studiq/server/services/plan-limit.service';
+import { PlanLimitService } from '@admin/server/services/plan-limit.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 

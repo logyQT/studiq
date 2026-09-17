@@ -1,4 +1,4 @@
-import { PlanFeatureService } from '@studiq/server/services/plan-feature.service';
+import { PlanFeatureService } from '@admin/server/services/plan-feature.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 

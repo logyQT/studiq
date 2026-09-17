@@ -3,7 +3,7 @@ import { OrganizationMemberController } from '@studiq/server/controllers/organiz
 import { failure, success } from '@studiq/server/lib/service-result';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/features', () => ({
+vi.mock('@studiq/server/lib/features', () => ({
   requireFeature: vi.fn().mockResolvedValue(undefined),
   getEnabledFeatures: vi.fn().mockResolvedValue([]),
 }));

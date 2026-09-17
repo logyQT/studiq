@@ -3,7 +3,7 @@ import { flashcardService } from '@studiq/server/services/flashcard.service';
 import { FlashcardExportService } from '@studiq/server/services/flashcard-export.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/server/services/flashcard.service', () => ({
+vi.mock('@studiq/server/services/flashcard.service', () => ({
   flashcardService: {
     list: vi.fn(),
   },

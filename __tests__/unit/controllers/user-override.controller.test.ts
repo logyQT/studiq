@@ -1,4 +1,4 @@
-import { UserOverrideController } from '@studiq/server/controllers/user-override.controller';
+import { UserOverrideController } from '@admin/server/controllers/user-override.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
