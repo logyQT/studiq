@@ -3,11 +3,11 @@
 > **AI architecture reference:** [`docs/ai.md`](../ai.md) — unified doc covering architecture, tools, security, and extension guide.
 
 Status: ACTIVE
-Last updated: 2026-09-15
+Last updated: 2026-09-17
 
 ## Decisions (locked)
 
-- Monorepo 2 apps: `packages/authz` + `packages/ui` + `apps/web` + `apps/admin`
+- Monorepo 3 apps: `packages/authz` + `packages/ui` + `packages/server` + `apps/web` + `apps/admin`
 - Admin auth: app-level signed header (Ed25519 PEM keypair, verified in admin proxy)
 - Tests: API-first `before()` seeding everywhere
 - Feature-flag keys: flat keys everywhere (drop `FEATURE_FLAG_TO_FEATURE_KEY`)
@@ -21,13 +21,24 @@ Last updated: 2026-09-15
   dev on `:4000` (no clash with main app's `:3000`), production on its own
   subdomain (e.g. `internal.studiq`). Main app contains zero admin routes when
   Phase C completes.
+- **RLS deferred** — app-layer auth (`buildQueryFilter`/`checkPermission`) is the
+  sole authorization mechanism. RLS is a last-stage concern; the multi-tenancy
+  complexity (orgs, groups, visibility, role hierarchy) makes DB-level policies
+  high-cost/low-value until the app is near-shipped. Revisit post-launch if
+  direct API bypass becomes a real threat vector.
+- **Admin data access** — admin app queries Supabase directly via service-role
+  client; admin-specific controllers/services live in `apps/admin/src/server/`.
+  Shared services (orgs, subscription plans) stay in `packages/server/` and are
+  imported by both apps.
 
 ## Order
 
-- Phase A first (independent, immediate value)
-- Phase B before Phase C (de-tangle before moving code into packages)
+- Phase A first (independent, immediate value) ✅
+- Phase B before Phase C (de-tangle before moving code into packages) ✅
 - Phase B.5 (seat cleanup) before Phase C — C2 extracts the post-cleanup FeatureResolver
-- Phase D last (runs on the stable foundation)
+- Phase C: monorepo scaffold + admin detach (C1-C7 done) ✅, admin rebuild + server extraction next
+- Phase E: move main app to `apps/web/` (after admin is stable)
+- Phase D: agentic testing — **deferred**; see [PR #77](https://github.com/logyQT/studiq/pull/77)
 
 ---
 
@@ -171,18 +182,65 @@ member. Clean the axis before C2 moves `FeatureResolver` into `packages/authz`.
 
 > **Prerequisite:** Before starting C, clean up legacy AI dead code — see `docs/ai.md` → "Dead code to remove" section. The B.5 refactor agent may still be modifying some of these files.
 
-Status: NOT STARTED
+Status: C1-C7 COMPLETE, C8 DEFERRED (see decisions), C9-C12 IN PROGRESS
 
-### Tasks
-- [ ] C1 Bun workspace scaffold; create `packages/authz`, `packages/ui`
-- [ ] C2 Move pure logic/constants/authz → `packages/authz` (FeatureResolver already post-B.5 — seat-as-upgrade, no default pools); UI primitives + shared layout → `packages/ui`
-- [ ] C3 `apps/web`: remove the admin Next.js route segment (`src/app/(frontend)/admin/`) and any admin API routes in `(backend)` — zero `/admin*` routes remain in the main app
-- [ ] C4 `apps/admin`: standalone Next app; own build; dev on `:4000` (no clash with main app `:3000`), production on its own subdomain (e.g. `internal.studiq`); service-role server-side session
-- [ ] C5 PEM gate in `apps/admin/proxy.ts` (Ed25519, header signature, rotation list)
-- [ ] C6 Split i18n `Admin*` namespaces into `apps/admin`
-- [ ] C7 Two standalone builds; main app has no admin routes (admin app served entirely on its own origin)
-- [ ] C8 Hardening: introduce RLS on user content tables (biggest security gap today)
-- [ ] Verify: PEM-gated admin smoke, main-app standard 404 on `/admin*` (no admin routes), all tests in both apps
+### Tasks — scaffold & detach (COMPLETE)
+- [x] C1 Bun workspace scaffold; create `packages/authz`, `packages/ui`
+- [x] C2 Move pure logic/constants/authz → `packages/authz` (FeatureResolver already post-B.5 — seat-as-upgrade, no default pools); UI primitives + shared layout → `packages/ui`
+- [x] C3 `apps/web`: remove the admin Next.js route segment (`src/app/(frontend)/admin/`) and any admin API routes in `(backend)` — zero `/admin*` routes remain in the main app
+- [x] C4 `apps/admin`: standalone Next app; own build; dev on `:4000` (no clash with main app `:3000`), production on its own subdomain (e.g. `internal.studiq`); service-role server-side session
+- [x] C5 PEM gate in `apps/admin/proxy.ts` (Ed25519, header signature, rotation list)
+- [x] C6 Split i18n `Admin*` namespaces into `apps/admin` — PR [#78](https://github.com/logyQT/studiq/pull/78)
+- [x] C7 Two standalone builds; main app has no admin routes (admin app served entirely on its own origin)
+- [ ] C8 ~~Hardening: introduce RLS on user content tables~~ — **DEFERRED** (see decisions). App-layer auth is sufficient for now; RLS complexity (orgs/groups/visibility/roles) is high-cost/low-value pre-launch.
+
+### Tasks — rebuild admin UI (NEXT)
+
+Admin pages deleted in C3 need rebuilding in `apps/admin/`. The old pages
+called the main app's API routes (also deleted). New architecture:
+
+- Admin app queries Supabase **directly** via service-role client (no cross-origin calls)
+- Admin-specific controllers/services live in `apps/admin/src/server/`
+- Shared services live in `packages/server/` (extracted from main app)
+- Admin frontend calls its own `/api/` routes (same origin)
+
+#### Admin pages to rebuild
+
+| Page | Route | Source (old) | Notes |
+|------|-------|-------------|-------|
+| Orgs list | `/admin/orgs` | `admin/orgs/page.tsx` (299 lines) | List all orgs: avatar, name, plan, members, groups, roles |
+| Org detail | `/admin/orgs/[id]` | `admin/orgs/[id]/page.tsx` (283 lines) | Overview + members/groups/roles tables |
+| Feature flags | `/admin/feature-flags` | `admin/feature-flags/page.tsx` (314 lines) | CRUD: key, name, description, enabled, rollout% |
+| Subscription plans | `/admin/subscription-plans` | `admin/subscription-plans/page.tsx` (596 lines) | Plans + feature assignments + limits |
+| User overrides | `/admin/user-overrides` | `admin/user-overrides/page.tsx` (308 lines) | Per-user feature overrides |
+
+#### Extraction plan
+
+**To `apps/admin/src/server/`** (admin-only, zero cross-deps):
+- `feature-flag.service.ts` + `feature-flag.controller.ts` + `feature-flag.model.ts`
+- `plan-feature.service.ts` + `plan-feature.controller.ts` + `plan-feature.model.ts`
+- `plan-limit.service.ts` + `plan-limit.controller.ts` + `plan-limit.model.ts`
+- `user-override.service.ts` + `user-override.controller.ts` + `user-feature-override.model.ts`
+- `subscription-plan-admin.controller.ts` (uses shared `subscription-plan.service`)
+
+**To `packages/server/`** (shared, imported by both apps):
+- All models (`src/server/models/*.ts`)
+- Shared services (org, subscription-plan, group, seat, etc.)
+- Server utilities (`src/lib/errors.ts`, `supabase-errors.ts`, `authz.ts`, `observability.ts`, `service-result.ts`, `controller-response.ts`, `with-auth.ts`, `http-utils.ts`, `request-context.ts`, etc.)
+- Guards (`src/server/guards/`)
+- Config (`src/server/config/`)
+
+### Tasks — server extraction (after admin rebuild)
+
+- [ ] C9 Create `packages/server/` with shared services, models, lib utilities
+- [ ] C10 Update main app imports: `@/server/*` → `@studiq/server/*` (or package-relative)
+- [ ] C11 Move admin-only services/controllers from main app `src/server/` to `apps/admin/src/server/`
+- [ ] C12 Clean up dead code in main app (admin controllers/services no longer imported)
+
+### Tasks — move main app to apps/web (after extraction)
+
+- [ ] C13 Move `src/` → `apps/web/src/`, update workspace config, update root scripts
+- [ ] C14 Verify: `bun run build` (main), `bun run build:admin` (admin), both dev servers independent
 
 ### Side note — GitHub-style fine-grained admin tokens
 
@@ -218,7 +276,11 @@ feature flags, nothing else" — without handing over the keys to the whole syst
 
 ## Phase D — Agentic testing on the foundation
 
-Status: NOT STARTED
+Status: **DEFERRED** — see [PR #77](https://github.com/logyQT/studiq/pull/77) for
+the agentic testing infrastructure work. Phase D will pick up from that PR's
+foundation once the admin rebuild and server extraction (C9-C14) are complete.
+The testing framework depends on a stable monorepo structure, so it runs after
+the structural refactors are done.
 
 ### Tasks
 - [ ] D1 Manifest `tests/features/manifest.yaml` (roles, routes, flags, plan, before(profile))
@@ -233,3 +295,6 @@ Status: NOT STARTED
 - `bun run lint` clean in all packages
 - All unit + integration tests green
 - No orphan tables/dead code left (per AGENTS.md ethos)
+- Admin app: all 5 pages functional, dev server on `:4000`, PEM-gated
+- `packages/server/` extracted, both apps import from it
+- Main app moved to `apps/web/`, zero cross-app imports
