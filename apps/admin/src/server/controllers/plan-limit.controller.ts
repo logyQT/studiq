@@ -1,18 +1,15 @@
 import {
+  CreatePlanLimitSchema,
+  PlanLimitIdParamsSchema,
+  UpdatePlanLimitSchema,
+} from '@admin/server/models/plan-limit.model';
+import { type PlanLimitService, planLimitService } from '@admin/server/services/plan-limit.service';
+import {
   type ControllerResponse,
   controllerResponse,
 } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
-import {
-  CreatePlanLimitSchema,
-  PlanLimitIdParamsSchema,
-  UpdatePlanLimitSchema,
-} from '@studiq/server/models/plan-limit.model';
-import {
-  type PlanLimitService,
-  planLimitService,
-} from '@studiq/server/services/plan-limit.service';
 
 export class PlanLimitController {
   constructor(private planLimitService: PlanLimitService) {}

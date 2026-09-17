@@ -21,6 +21,7 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
+      "@admin/*": ["./src/*"],
       "@studiq/authz": ["../../packages/authz/src/index.ts"],
       "@studiq/authz/*": ["../../packages/authz/src/*"],
       "@studiq/server": ["../../packages/server/src/index.ts"],

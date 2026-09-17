@@ -1,17 +1,17 @@
 import {
+  CreatePlanFeatureSchema,
+  PlanFeatureIdParamsSchema,
+} from '@admin/server/models/plan-feature.model';
+import {
+  type PlanFeatureService,
+  planFeatureService,
+} from '@admin/server/services/plan-feature.service';
+import {
   type ControllerResponse,
   controllerResponse,
 } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
-import {
-  CreatePlanFeatureSchema,
-  PlanFeatureIdParamsSchema,
-} from '@studiq/server/models/plan-feature.model';
-import {
-  type PlanFeatureService,
-  planFeatureService,
-} from '@studiq/server/services/plan-feature.service';
 
 export class PlanFeatureController {
   constructor(private planFeatureService: PlanFeatureService) {}

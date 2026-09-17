@@ -1,16 +1,16 @@
-import type { ControllerResponse } from '@studiq/server/lib/controller-response';
-import { controllerResponse } from '@studiq/server/lib/controller-response';
-import { wrapService } from '@studiq/server/lib/observability';
-import { isFailure } from '@studiq/server/lib/service-result';
 import {
   CreateFeatureFlagSchema,
   FeatureFlagIdParamsSchema,
   UpdateFeatureFlagSchema,
-} from '@studiq/server/models/feature-flag.model';
+} from '@admin/server/models/feature-flag.model';
 import {
   type FeatureFlagService,
   featureFlagService,
-} from '@studiq/server/services/feature-flag.service';
+} from '@admin/server/services/feature-flag.service';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
+import { controllerResponse } from '@studiq/server/lib/controller-response';
+import { wrapService } from '@studiq/server/lib/observability';
+import { isFailure } from '@studiq/server/lib/service-result';
 
 export class FeatureFlagController {
   constructor(private featureFlagService: FeatureFlagService) {}

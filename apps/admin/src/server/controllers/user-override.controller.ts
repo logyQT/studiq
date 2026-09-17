@@ -1,16 +1,16 @@
-import type { ControllerResponse } from '@studiq/server/lib/controller-response';
-import { controllerResponse } from '@studiq/server/lib/controller-response';
-import { wrapService } from '@studiq/server/lib/observability';
-import { isFailure } from '@studiq/server/lib/service-result';
 import {
   CreateUserFeatureOverrideSchema,
   UpdateUserFeatureOverrideSchema,
   UserFeatureOverrideIdParamsSchema,
-} from '@studiq/server/models/user-feature-override.model';
+} from '@admin/server/models/user-feature-override.model';
 import {
   type UserOverrideService,
   userOverrideService,
-} from '@studiq/server/services/user-override.service';
+} from '@admin/server/services/user-override.service';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
+import { controllerResponse } from '@studiq/server/lib/controller-response';
+import { wrapService } from '@studiq/server/lib/observability';
+import { isFailure } from '@studiq/server/lib/service-result';
 
 export class UserOverrideController {
   constructor(private userOverrideService: UserOverrideService) {}

@@ -1,11 +1,11 @@
+import type {
+  CreateUserFeatureOverrideInput,
+  UpdateUserFeatureOverrideInput,
+} from '@admin/server/models/user-feature-override.model';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
-import type {
-  CreateUserFeatureOverrideInput,
-  UpdateUserFeatureOverrideInput,
-} from '@studiq/server/models/user-feature-override.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class UserOverrideService {
