@@ -4,9 +4,9 @@ import type {
 } from '@admin/server/models/plan-limit.model';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
-import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/admin-client';
 
 export class PlanLimitService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}

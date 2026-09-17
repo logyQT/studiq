@@ -6,12 +6,13 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
 import { OrganizationIdParamsSchema } from '@studiq/server/models/organization.model';
 import {
-  type OrganizationService,
-  organizationService,
+  OrganizationService,
+  type OrganizationService as OrganizationServiceType,
 } from '@studiq/server/services/organization.service';
+import { createClient } from '@/lib/supabase/admin-client';
 
 export class OrganizationAdminController {
-  constructor(private organizationService: OrganizationService) {}
+  constructor(private organizationService: OrganizationServiceType) {}
 
   async getAll(): Promise<ControllerResponse> {
     const result = await this.organizationService.getAll();
@@ -40,6 +41,6 @@ export class OrganizationAdminController {
   }
 }
 export const organizationAdminController = wrapService(
-  new OrganizationAdminController(organizationService),
+  new OrganizationAdminController(new OrganizationService(createClient)),
   'organization-admin.controller',
 );
