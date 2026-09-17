@@ -1,5 +1,6 @@
 'use client';
 
+import type { QuestionBank } from '@studiq/server/models/question-bank.model';
 import {
   Badge,
   Button,
@@ -15,7 +16,6 @@ import { useRouter } from 'next/navigation';
 import type { useTranslations } from 'next-intl';
 import { memo } from 'react';
 import { getGradientHex } from '@/lib/color-utils';
-import type { QuestionBank } from '@/server/models/question-bank.model';
 
 interface QuestionBankCardProps {
   bank: QuestionBank;

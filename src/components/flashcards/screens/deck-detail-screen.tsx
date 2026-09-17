@@ -1,5 +1,8 @@
 'use client';
 
+import type { Flashcard } from '@studiq/server/models/flashcard.model';
+import type { Deck } from '@studiq/server/models/flashcard-deck.model';
+import type { Topic } from '@studiq/server/models/topic.model';
 import type { QueryKey } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -37,9 +40,6 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiPost, apiPut } from '@/lib/api';
 import { flashcardKeys, groupKeys, topicKeys } from '@/lib/query-keys';
-import type { Flashcard } from '@/server/models/flashcard.model';
-import type { Deck } from '@/server/models/flashcard-deck.model';
-import type { Topic } from '@/server/models/topic.model';
 
 const DeckDetailDialogs = lazy(() =>
   import('@/components/flashcards/dialogs/deck-detail-dialogs').then((mod) => ({

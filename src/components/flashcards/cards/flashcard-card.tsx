@@ -1,5 +1,7 @@
 'use client';
 
+import type { Flashcard } from '@studiq/server/models/flashcard.model';
+import type { Topic } from '@studiq/server/models/topic.model';
 import {
   Button,
   Card,
@@ -13,8 +15,6 @@ import type { useTranslations } from 'next-intl';
 import { memo } from 'react';
 import { FlashcardContextMenu } from '@/components/flashcards/context-menus/flashcard-context-menu';
 import { getTopicColorHex } from '@/lib/color-utils';
-import type { Flashcard } from '@/server/models/flashcard.model';
-import type { Topic } from '@/server/models/topic.model';
 
 interface FlashcardCardProps {
   fc: Flashcard;

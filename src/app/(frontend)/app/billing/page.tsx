@@ -1,5 +1,6 @@
 'use client';
 
+import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import {
   Badge,
   Button,
@@ -14,7 +15,6 @@ import { Loader2, Minus } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
-import type { PlanInfo } from '@/server/services/subscription-plan.service';
 
 const SORTED_LIMIT_KEYS = [
   'max_flashcards',

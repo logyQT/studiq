@@ -1,6 +1,6 @@
+import { HealthController } from '@studiq/server/controllers/health.controller';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { HealthController } from '@/server/controllers/health.controller';
-import type { ControllerResponse } from '@/lib/controller-response';
 
 function createMockHealthService() {
   return {

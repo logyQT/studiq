@@ -1,5 +1,7 @@
 'use client';
 
+import type { Flashcard } from '@studiq/server/models/flashcard.model';
+import type { Topic } from '@studiq/server/models/topic.model';
 import {
   Button,
   Card,
@@ -30,8 +32,6 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { useSelection } from '@/hooks/use-selection';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { flashcardKeys, groupKeys, topicKeys } from '@/lib/query-keys';
-import type { Flashcard } from '@/server/models/flashcard.model';
-import type { Topic } from '@/server/models/topic.model';
 
 interface TopicManagementScreenProps {
   apiBase: string;

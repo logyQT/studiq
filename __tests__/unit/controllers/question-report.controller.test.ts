@@ -1,6 +1,6 @@
 import { RequestContext } from '@studiq/authz';
+import { QuestionReportController } from '@studiq/server/controllers/question-report.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { QuestionReportController } from '@/server/controllers/question-report.controller';
 
 function createMockService() {
   return {

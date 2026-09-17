@@ -1,5 +1,10 @@
 'use client';
 
+import type {
+  CardStatsItem,
+  CardStatsResponse,
+  StateBreakdown,
+} from '@studiq/server/models/flashcard-practice.model';
 import { Badge, Button, Card, CardContent, Skeleton, StatCard } from '@studiq/ui';
 import {
   AlertTriangle,
@@ -17,11 +22,6 @@ import { useMemo, useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
-import type {
-  CardStatsItem,
-  CardStatsResponse,
-  StateBreakdown,
-} from '@/server/models/flashcard-practice.model';
 
 const STATE_FILTERS = ['all', 'new', 'learning', 'review', 'relearning', 'leech'] as const;
 

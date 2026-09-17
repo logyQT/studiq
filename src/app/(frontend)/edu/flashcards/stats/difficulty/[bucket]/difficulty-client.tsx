@@ -1,5 +1,6 @@
 'use client';
 
+import type { DifficultyFlashcardDetail } from '@studiq/server/models/flashcard-stats.model';
 import {
   Badge,
   Button,
@@ -20,7 +21,6 @@ import { DeckDetailSkeleton } from '@/components/flashcards/shared/deck-detail-s
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
-import type { DifficultyFlashcardDetail } from '@/server/models/flashcard-stats.model';
 
 type NamedItem = { id: string; name: string };
 

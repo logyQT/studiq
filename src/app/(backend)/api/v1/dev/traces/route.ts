@@ -1,6 +1,6 @@
+import { SERVER_SESSION_ID } from '@studiq/server/lib/server-session';
+import { agentTraceService, type TraceFilters } from '@studiq/server/services/agent-trace.service';
 import type { NextRequest } from 'next/server';
-import { SERVER_SESSION_ID } from '@/lib/server-session';
-import { agentTraceService, type TraceFilters } from '@/server/services/agent-trace.service';
 
 export async function GET(req: NextRequest) {
   if (process.env.NODE_ENV !== 'development') {

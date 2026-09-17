@@ -1,7 +1,7 @@
+import { activityController } from '@studiq/server/controllers/activity.controller';
+import { toNextResponse } from '@studiq/server/lib/http-utils';
+import { withAuth } from '@studiq/server/lib/with-auth';
 import type { NextRequest } from 'next/server';
-import { toNextResponse } from '@/lib/http-utils';
-import { withAuth } from '@/lib/with-auth';
-import { activityController } from '@/server/controllers/activity.controller';
 
 export async function GET(req: NextRequest) {
   return withAuth(req, async (ctx) => {

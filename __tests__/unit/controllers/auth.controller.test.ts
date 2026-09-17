@@ -1,6 +1,6 @@
+import { AuthController } from '@studiq/server/controllers/auth.controller';
+import { failure, success } from '@studiq/server/lib/service-result';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { success, failure } from '@/lib/service-result';
-import { AuthController } from '@/server/controllers/auth.controller';
 
 function createMockAuthService() {
   return {
@@ -68,7 +68,9 @@ describe('AuthController', () => {
     const mockUser = { id: 'user-1', email: 'john@example.com' };
 
     it('returns user when login succeeds', async () => {
-      mockService.login.mockResolvedValueOnce(success({ user: mockUser as any, session: mockSession as any }));
+      mockService.login.mockResolvedValueOnce(
+        success({ user: mockUser as any, session: mockSession as any }),
+      );
 
       const response = await controller.login({
         email: 'john@example.com',

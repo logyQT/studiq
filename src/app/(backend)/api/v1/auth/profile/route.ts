@@ -1,7 +1,7 @@
+import { authController } from '@studiq/server/controllers/auth.controller';
+import { toNextResponse } from '@studiq/server/lib/http-utils';
+import { withAuth } from '@studiq/server/lib/with-auth';
 import type { NextRequest } from 'next/server';
-import { toNextResponse } from '@/lib/http-utils';
-import { withAuth } from '@/lib/with-auth';
-import { authController } from '@/server/controllers/auth.controller';
 
 export async function PUT(req: NextRequest) {
   return withAuth(req, async () => {

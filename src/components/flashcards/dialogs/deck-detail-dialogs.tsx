@@ -1,5 +1,8 @@
 'use client';
 
+import type { Flashcard } from '@studiq/server/models/flashcard.model';
+import type { Deck } from '@studiq/server/models/flashcard-deck.model';
+import type { Topic } from '@studiq/server/models/topic.model';
 import type { useTranslations } from 'next-intl';
 import { BulkDialogs } from '@/components/flashcards/dialogs/bulk-dialogs';
 import { CreateCardDialog } from '@/components/flashcards/dialogs/create-card-dialog';
@@ -8,9 +11,6 @@ import { SingleCardDialogs } from '@/components/flashcards/dialogs/single-card-d
 import { TopicDialogs } from '@/components/flashcards/dialogs/topic-dialogs';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
 import { usePermission } from '@/hooks/use-permission';
-import type { Flashcard } from '@/server/models/flashcard.model';
-import type { Deck } from '@/server/models/flashcard-deck.model';
-import type { Topic } from '@/server/models/topic.model';
 
 export interface DialogsState {
   createCardOpen: boolean;

@@ -1,5 +1,6 @@
 'use client';
 
+import type { Question } from '@studiq/server/models/question.model';
 import {
   Badge,
   Button,
@@ -20,7 +21,6 @@ import {
 import { ArrowUpDown, Layers, Pencil, Search, Trash2, X } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
-import type { Question } from '@/server/models/question.model';
 
 interface QuestionTableProps {
   questions: Question[];

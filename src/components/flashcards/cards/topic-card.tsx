@@ -1,5 +1,6 @@
 'use client';
 
+import type { Topic } from '@studiq/server/models/topic.model';
 import {
   Badge,
   Button,
@@ -13,7 +14,6 @@ import {
 import { CheckSquare, Eye, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { getGradientHex } from '@/lib/color-utils';
-import type { Topic } from '@/server/models/topic.model';
 
 interface TopicCardProps {
   topic: Topic;

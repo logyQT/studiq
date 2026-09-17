@@ -1,6 +1,6 @@
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
+import { CreateDeckSchema, UpdateDeckSchema } from '@studiq/server/models/flashcard-deck.model';
 import { describe, expect, it } from 'vitest';
-import { ValidationErrorCode } from '@/lib/validation-errors';
-import { CreateDeckSchema, UpdateDeckSchema } from '@/server/models/flashcard-deck.model';
 
 describe('CreateDeckSchema', () => {
   it('passes with valid input', () => {

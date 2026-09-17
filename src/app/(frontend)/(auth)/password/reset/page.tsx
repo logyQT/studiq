@@ -1,6 +1,8 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { APP_ERRORS } from '@studiq/server/lib/errors';
+import { type ForgotPasswordInput, forgotPasswordSchema } from '@studiq/server/models/auth.model';
 import {
   Alert,
   AlertDescription,
@@ -24,8 +26,6 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import { APP_ERRORS } from '@/lib/errors';
-import { type ForgotPasswordInput, forgotPasswordSchema } from '@/server/models/auth.model';
 
 export default function PasswordResetPage() {
   const t = useTranslations('PasswordResetPage');

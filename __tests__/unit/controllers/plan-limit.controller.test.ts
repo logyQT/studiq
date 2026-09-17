@@ -1,5 +1,5 @@
+import { PlanLimitController } from '@studiq/server/controllers/plan-limit.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PlanLimitController } from '@/server/controllers/plan-limit.controller';
 
 function createMockService() {
   return {
@@ -54,14 +54,22 @@ describe('PlanLimitController', () => {
       const limit = { id: 'l-1', plan_key: 'base', limit_key: 'max_groups', limit_value: 3 };
       mockService.create.mockResolvedValueOnce({ success: true, data: limit });
 
-      const response = await controller.create({ planKey: 'base', limitKey: 'max_groups', limitValue: 3 });
+      const response = await controller.create({
+        planKey: 'base',
+        limitKey: 'max_groups',
+        limitValue: 3,
+      });
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(201);
     });
 
     it('returns 422 on invalid body', async () => {
-      const response = await controller.create({ planKey: '', limitKey: '', limitValue: 'invalid' });
+      const response = await controller.create({
+        planKey: '',
+        limitKey: '',
+        limitValue: 'invalid',
+      });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
@@ -70,7 +78,11 @@ describe('PlanLimitController', () => {
     it('returns error on service failure', async () => {
       mockService.create.mockResolvedValueOnce({ success: false, error: 'CONFLICT' });
 
-      const response = await controller.create({ planKey: 'base', limitKey: 'max_groups', limitValue: 3 });
+      const response = await controller.create({
+        planKey: 'base',
+        limitKey: 'max_groups',
+        limitValue: 3,
+      });
 
       expect(response.success).toBe(false);
     });
@@ -80,7 +92,9 @@ describe('PlanLimitController', () => {
     it('updates a limit', async () => {
       mockService.update.mockResolvedValueOnce({ success: true, data: { id: 'l-1' } });
 
-      const response = await controller.update('550e8400-e29b-41d4-a716-446655440000', { limitValue: 5 });
+      const response = await controller.update('550e8400-e29b-41d4-a716-446655440000', {
+        limitValue: 5,
+      });
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
@@ -94,7 +108,9 @@ describe('PlanLimitController', () => {
     });
 
     it('returns 422 on invalid body', async () => {
-      const response = await controller.update('550e8400-e29b-41d4-a716-446655440000', { limitValue: 'invalid' });
+      const response = await controller.update('550e8400-e29b-41d4-a716-446655440000', {
+        limitValue: 'invalid',
+      });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);

@@ -1,8 +1,8 @@
 import { AccountType } from '@studiq/authz';
+import { seatController } from '@studiq/server/controllers/seat.controller';
+import { toNextResponse } from '@studiq/server/lib/http-utils';
+import { withAuth } from '@studiq/server/lib/with-auth';
 import type { NextRequest } from 'next/server';
-import { toNextResponse } from '@/lib/http-utils';
-import { withAuth } from '@/lib/with-auth';
-import { seatController } from '@/server/controllers/seat.controller';
 
 export async function GET(req: NextRequest) {
   return withAuth(

@@ -1,7 +1,7 @@
+import { groupController } from '@studiq/server/controllers/group.controller';
+import { toNextResponse } from '@studiq/server/lib/http-utils';
+import { withAuth } from '@studiq/server/lib/with-auth';
 import type { NextRequest } from 'next/server';
-import { toNextResponse } from '@/lib/http-utils';
-import { withAuth } from '@/lib/with-auth';
-import { groupController } from '@/server/controllers/group.controller';
 import { AccountType } from '@/types';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

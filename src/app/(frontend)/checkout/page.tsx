@@ -1,5 +1,6 @@
 'use client';
 
+import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import {
   Button,
   Card,
@@ -18,7 +19,6 @@ import { Suspense, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { apiGet, apiPost } from '@/lib/api';
-import type { PlanInfo } from '@/server/services/subscription-plan.service';
 
 const SORTED_LIMIT_KEYS = [
   'max_flashcards',

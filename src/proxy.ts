@@ -1,10 +1,10 @@
 import { AccountType } from '@studiq/authz';
+import { routeRules } from '@studiq/server/config/routes.config';
+import { authGuard } from '@studiq/server/guards/auth.guard';
+import { roleGuard } from '@studiq/server/guards/role.guard';
+import { APP_ERRORS } from '@studiq/server/lib/errors';
+import { updateSession } from '@studiq/server/lib/supabase/session';
 import { type NextRequest, NextResponse } from 'next/server';
-import { APP_ERRORS } from '@/lib/errors';
-import { updateSession } from '@/lib/supabase/session';
-import { routeRules } from '@/server/config/routes.config';
-import { authGuard } from '@/server/guards/auth.guard';
-import { roleGuard } from '@/server/guards/role.guard';
 
 const ACCOUNT_TYPE_REDIRECTS: Record<string, string> = {
   [AccountType.SYS_ADMIN]: '/admin',

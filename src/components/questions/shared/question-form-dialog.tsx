@@ -1,5 +1,6 @@
 'use client';
 
+import type { Question } from '@studiq/server/models/question.model';
 import {
   Button,
   Dialog,
@@ -20,7 +21,6 @@ import {
 import { Plus, X } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
-import type { Question } from '@/server/models/question.model';
 
 interface AnswerForm {
   content: string;

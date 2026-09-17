@@ -1,5 +1,6 @@
 'use client';
 
+import type { Deck } from '@studiq/server/models/flashcard-deck.model';
 import { Card, Empty, EmptyHeader, EmptyMedia, EmptyTitle, Skeleton } from '@studiq/ui';
 import { FolderOpen } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -7,7 +8,6 @@ import { useTranslations } from 'next-intl';
 import { CramDeckCard } from '@/components/flashcards/cards/cram-deck-card';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
-import type { Deck } from '@/server/models/flashcard-deck.model';
 
 export function CramContent() {
   const t = useTranslations('AppFlashcardStudyPage');

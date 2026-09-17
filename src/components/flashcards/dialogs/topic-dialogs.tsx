@@ -1,5 +1,7 @@
 'use client';
 
+import type { Flashcard } from '@studiq/server/models/flashcard.model';
+import type { Topic } from '@studiq/server/models/topic.model';
 import {
   Button,
   Dialog,
@@ -19,8 +21,6 @@ import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { apiPost, apiPut } from '@/lib/api';
 import { getGradientHex } from '@/lib/color-utils';
 import { flashcardKeys, topicKeys } from '@/lib/query-keys';
-import type { Flashcard } from '@/server/models/flashcard.model';
-import type { Topic } from '@/server/models/topic.model';
 
 interface TopicDialogsProps {
   t: ReturnType<typeof useTranslations>;

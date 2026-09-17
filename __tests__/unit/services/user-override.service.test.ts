@@ -1,6 +1,6 @@
+import { UserOverrideService } from '@studiq/server/services/user-override.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { UserOverrideService } from '@/server/services/user-override.service';
 
 function qb(data: any, error: any = null) {
   const promise = Promise.resolve({ data: data ?? null, error });

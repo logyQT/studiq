@@ -1,10 +1,10 @@
 'use client';
 
+import type { Deck } from '@studiq/server/models/flashcard-deck.model';
 import { Badge, Button, Card } from '@studiq/ui';
 import { Play } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { getGradientHex } from '@/lib/color-utils';
-import type { Deck } from '@/server/models/flashcard-deck.model';
 
 interface CramDeckCardProps {
   deck: Deck;

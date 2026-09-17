@@ -1,5 +1,7 @@
 'use client';
 
+import type { Deck } from '@studiq/server/models/flashcard-deck.model';
+import type { Question } from '@studiq/server/models/question.model';
 import {
   Button,
   Dialog,
@@ -22,8 +24,6 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { apiPost } from '@/lib/api';
-import type { Deck } from '@/server/models/flashcard-deck.model';
-import type { Question } from '@/server/models/question.model';
 
 const NEW_DECK_VALUE = '__new__';
 

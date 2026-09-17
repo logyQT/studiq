@@ -1,6 +1,6 @@
+import { AuthService } from '@studiq/server/services/auth.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { AuthService } from '@/server/services/auth.service';
 
 describe('AuthService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
@@ -14,7 +14,10 @@ describe('AuthService', () => {
 
   describe('register', () => {
     it('calls signUp with correct data', async () => {
-      mock.auth.signUp.mockResolvedValueOnce({ data: { user: { id: '00000000-0000-0000-0000-000000000001' } }, error: null });
+      mock.auth.signUp.mockResolvedValueOnce({
+        data: { user: { id: '00000000-0000-0000-0000-000000000001' } },
+        error: null,
+      });
 
       const result = await service.register({
         name: 'John Doe',

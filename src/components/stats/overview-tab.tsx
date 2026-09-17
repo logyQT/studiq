@@ -1,5 +1,7 @@
 'use client';
 
+import type { StateBreakdown } from '@studiq/server/models/flashcard-practice.model';
+import type { ActivityResponse, WeakPointsResponse } from '@studiq/server/models/stats.model';
 import { Card, CardContent, CardHeader, CardTitle, Skeleton, StatCard } from '@studiq/ui';
 import { AlertTriangle, Brain, CalendarDays, TrendingUp } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -9,8 +11,6 @@ import { StateBreakdownChart } from '@/components/stats/state-breakdown-chart';
 import { WeakPointsList } from '@/components/stats/weak-points-list';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
-import type { StateBreakdown } from '@/server/models/flashcard-practice.model';
-import type { ActivityResponse, WeakPointsResponse } from '@/server/models/stats.model';
 
 export function OverviewTab() {
   const t = useTranslations('AppStatsPage');

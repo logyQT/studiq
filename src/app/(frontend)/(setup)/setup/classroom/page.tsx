@@ -1,6 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from '@studiq/server/lib/zod';
 import {
   Button,
   Card,
@@ -22,7 +23,6 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import { z } from '@/lib/zod';
 
 const ClassroomFormSchema = z.object({
   name: z

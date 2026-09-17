@@ -1,6 +1,6 @@
+import { createServiceClient } from '@studiq/server/lib/supabase/service';
+import { flashcardSpacedRepetitionService } from '@studiq/server/services/flashcard-spaced-repetition.service';
 import { type NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase/service';
-import { flashcardSpacedRepetitionService } from '@/server/services/flashcard-spaced-repetition.service';
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];

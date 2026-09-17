@@ -1,5 +1,6 @@
 'use client';
 
+import type { Topic } from '@studiq/server/models/topic.model';
 import {
   Button,
   Input,
@@ -14,7 +15,6 @@ import type { useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useFeature } from '@/hooks/use-feature';
 import { usePermission } from '@/hooks/use-permission';
-import type { Topic } from '@/server/models/topic.model';
 
 interface FlashcardToolbarProps {
   searchInput: string;

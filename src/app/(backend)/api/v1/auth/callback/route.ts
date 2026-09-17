@@ -1,7 +1,7 @@
+import { APP_ERRORS } from '@studiq/server/lib/errors';
+import { createClient } from '@studiq/server/lib/supabase/server';
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { type NextRequest, NextResponse } from 'next/server';
-import { APP_ERRORS } from '@/lib/errors';
-import { createClient } from '@/lib/supabase/server';
 
 const FALLBACK_REDIRECT = '/';
 

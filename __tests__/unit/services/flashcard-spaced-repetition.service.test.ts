@@ -1,7 +1,6 @@
+import type { Rating } from '@studiq/server/models/flashcard-spaced-repetition.model';
+import { flashcardSpacedRepetitionService } from '@studiq/server/services/flashcard-spaced-repetition.service';
 import { describe, expect, it } from 'vitest';
-import type { Rating } from '@/server/models/flashcard-spaced-repetition.model';
-
-import { flashcardSpacedRepetitionService } from '@/server/services/flashcard-spaced-repetition.service';
 
 const reviewInput = (
   overrides: Partial<{

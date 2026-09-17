@@ -1,5 +1,6 @@
 'use client';
 
+import { APP_ERRORS } from '@studiq/server/lib/errors';
 import {
   Button,
   Card,
@@ -15,7 +16,6 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { APP_ERRORS } from '@/lib/errors';
 
 export default function OrgSetupPage() {
   const t = useTranslations('Onboarding');

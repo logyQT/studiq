@@ -1,5 +1,6 @@
 'use client';
 
+import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Separator } from '@studiq/ui';
 import { Check, Loader2, Minus, Sparkles } from 'lucide-react';
 import Link from 'next/link';
@@ -8,7 +9,6 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { CheckoutButton } from '@/components/pricing/checkout-button';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
-import type { PlanInfo } from '@/server/services/subscription-plan.service';
 
 const PLAN_ID_MAP: Record<string, string | null> = {
   base: null,

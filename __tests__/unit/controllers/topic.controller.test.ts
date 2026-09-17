@@ -1,6 +1,6 @@
 import { RequestContext } from '@studiq/authz';
+import { TopicController } from '@studiq/server/controllers/topic.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { TopicController } from '@/server/controllers/topic.controller';
 
 vi.mock('@/lib/authz', () => ({
   can: vi.fn().mockResolvedValue(true),

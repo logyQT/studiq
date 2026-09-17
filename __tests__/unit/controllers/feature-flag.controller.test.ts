@@ -1,5 +1,5 @@
+import { FeatureFlagController } from '@studiq/server/controllers/feature-flag.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { FeatureFlagController } from '@/server/controllers/feature-flag.controller';
 
 function createMockService() {
   return {

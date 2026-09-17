@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { PdfCacheService } from '@/server/services/pdf-cache.service';
+import { PdfCacheService } from '@studiq/server/services/pdf-cache.service';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('PdfCacheService', () => {
   let service: PdfCacheService;

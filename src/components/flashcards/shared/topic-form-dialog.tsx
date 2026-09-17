@@ -1,5 +1,6 @@
 'use client';
 
+import type { Topic } from '@studiq/server/models/topic.model';
 import {
   Button,
   Card,
@@ -17,7 +18,6 @@ import {
 } from '@studiq/ui';
 import type { useTranslations } from 'next-intl';
 import { DIALOG_GRADIENT_HEX } from '@/lib/color-utils';
-import type { Topic } from '@/server/models/topic.model';
 
 interface GroupOption {
   id: string;

@@ -1,5 +1,6 @@
 'use client';
 
+import type { Deck } from '@studiq/server/models/flashcard-deck.model';
 import {
   Badge,
   Button,
@@ -15,7 +16,6 @@ import type { useTranslations } from 'next-intl';
 import { memo } from 'react';
 import { DeckContextMenu } from '@/components/flashcards/context-menus/deck-context-menu';
 import { getGradientHex } from '@/lib/color-utils';
-import type { Deck } from '@/server/models/flashcard-deck.model';
 
 interface DeckCardProps {
   deck: Deck;

@@ -1,9 +1,9 @@
 import type { RequestContext } from '@studiq/authz';
+import { flashcardDeckController } from '@studiq/server/controllers/flashcard-deck.controller';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
+import { toNextResponse } from '@studiq/server/lib/http-utils';
+import { withAuth } from '@studiq/server/lib/with-auth';
 import type { NextRequest } from 'next/server';
-import type { ControllerResponse } from '@/lib/controller-response';
-import { toNextResponse } from '@/lib/http-utils';
-import { withAuth } from '@/lib/with-auth';
-import { flashcardDeckController } from '@/server/controllers/flashcard-deck.controller';
 
 type ActionHandler = (body: unknown, ctx: RequestContext) => Promise<ControllerResponse>;
 

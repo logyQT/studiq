@@ -1,8 +1,8 @@
 import { AccountType, RequestContext } from '@studiq/authz';
+import { failure, success } from '@studiq/server/lib/service-result';
+import { OrganizationMemberService } from '@studiq/server/services/organization-member.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { failure, success } from '@/lib/service-result';
-import { OrganizationMemberService } from '@/server/services/organization-member.service';
 
 function chain(result: any) {
   const resolved = { data: result, error: null };

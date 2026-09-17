@@ -1,7 +1,7 @@
 import { RequestContext } from '@studiq/authz';
+import { FlashcardDeckController } from '@studiq/server/controllers/flashcard-deck.controller';
+import { failure, success } from '@studiq/server/lib/service-result';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { failure, success } from '@/lib/service-result';
-import { FlashcardDeckController } from '@/server/controllers/flashcard-deck.controller';
 
 function createMockService() {
   return { create: vi.fn(), list: vi.fn(), getById: vi.fn(), update: vi.fn(), delete: vi.fn() };

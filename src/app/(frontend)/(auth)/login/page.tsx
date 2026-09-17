@@ -1,6 +1,8 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { APP_ERRORS } from '@studiq/server/lib/errors';
+import { type LoginInput, LoginSchema } from '@studiq/server/models/auth.model';
 import {
   Alert,
   AlertDescription,
@@ -26,9 +28,7 @@ import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { DevQuickLogin } from '@/components/dev/dev-quick-login';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { APP_ERRORS } from '@/lib/errors';
 import { cn } from '@/lib/utils';
-import { type LoginInput, LoginSchema } from '@/server/models/auth.model';
 
 export default function LoginPage() {
   const t = useTranslations('LoginPage');

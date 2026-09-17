@@ -1,7 +1,7 @@
+import * as supabaseModule from '@studiq/server/lib/supabase/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { vi } from 'vitest';
-import * as supabaseModule from '@/lib/supabase/server';
 import { getRegisteredMock } from '#test/helpers/concurrent';
 
 // ============================================================
@@ -202,11 +202,7 @@ export async function seedOrgMembership(data: {
   if (error) throw new Error(`Failed to create org membership: ${error.message}`);
 }
 
-export async function seedGroupMembership(data: {
-  groupId: string;
-  userId: string;
-  role: string;
-}) {
+export async function seedGroupMembership(data: { groupId: string; userId: string; role: string }) {
   const supabase = createServiceClient();
   const { error } = await supabase.from('group_members').upsert(
     {
@@ -222,12 +218,23 @@ export async function seedGroupMembership(data: {
 /** Deep-clean an org: deletes all related rows + the org itself. */
 export async function cleanupOrganizationDeep(orgId: string) {
   const supabase = createServiceClient();
-  const roleIds = (await supabase.from('org_roles').select('id').eq('organization_id', orgId)).data?.map(r => r.id) ?? [];
+  const roleIds =
+    (await supabase.from('org_roles').select('id').eq('organization_id', orgId)).data?.map(
+      (r) => r.id,
+    ) ?? [];
 
   await supabase.from('org_seat_assignments').delete().eq('organization_id', orgId);
   await supabase.from('org_seat_pools').delete().eq('organization_id', orgId);
   await supabase.from('org_members').delete().eq('organization_id', orgId);
-  await supabase.from('group_members').delete().in('group_id', (await supabase.from('groups').select('id').eq('organization_id', orgId)).data?.map(g => g.id) ?? []);
+  await supabase
+    .from('group_members')
+    .delete()
+    .in(
+      'group_id',
+      (await supabase.from('groups').select('id').eq('organization_id', orgId)).data?.map(
+        (g) => g.id,
+      ) ?? [],
+    );
   await supabase.from('groups').delete().eq('organization_id', orgId);
   if (roleIds.length > 0) {
     await supabase.from('org_role_features').delete().in('org_role_id', roleIds);
@@ -241,7 +248,10 @@ export async function cleanupOrganizationDeep(orgId: string) {
 /** Cleanup orgs created during tests by name prefix. */
 export async function cleanupOrganizationByName(namePrefix: string) {
   const supabase = createServiceClient();
-  const { data: orgs } = await supabase.from('organizations').select('id').ilike('name', `${namePrefix}%`);
+  const { data: orgs } = await supabase
+    .from('organizations')
+    .select('id')
+    .ilike('name', `${namePrefix}%`);
   for (const org of orgs ?? []) {
     await cleanupOrganizationDeep(org.id);
   }

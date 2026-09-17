@@ -47,6 +47,7 @@
         "@radix-ui/react-toggle": "1.1.10",
         "@radix-ui/react-toggle-group": "1.1.11",
         "@radix-ui/react-tooltip": "1.2.8",
+        "@studiq/server": "workspace:*",
         "@supabase/ssr": "^0.10.3",
         "@supabase/supabase-js": "^2.116.0",
         "@tanstack/react-query": "^5.102.8",
@@ -122,6 +123,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@studiq/authz": "workspace:*",
+        "@studiq/server": "workspace:*",
         "@studiq/ui": "workspace:*",
         "@supabase/supabase-js": "^2.116.0",
         "next": "16.3.5",
@@ -146,6 +148,22 @@
       "version": "0.0.1",
       "dependencies": {
         "@supabase/supabase-js": "^2.116.0",
+        "zod": "^4.6.5",
+      },
+      "devDependencies": {
+        "typescript": "^7.0.2",
+      },
+    },
+    "packages/server": {
+      "name": "@studiq/server",
+      "version": "0.0.1",
+      "dependencies": {
+        "@opentelemetry/api": "^1.9.1",
+        "@studiq/authz": "workspace:*",
+        "@supabase/ssr": "^0.10.3",
+        "@supabase/supabase-js": "^2.116.0",
+        "ai": "^6.0.283",
+        "consola": "^3.4.2",
         "zod": "^4.6.5",
       },
       "devDependencies": {
@@ -846,6 +864,8 @@
 
     "@studiq/authz": ["@studiq/authz@workspace:packages/authz"],
 
+    "@studiq/server": ["@studiq/server@workspace:packages/server"],
+
     "@studiq/ui": ["@studiq/ui@workspace:packages/ui"],
 
     "@supabase/auth-js": ["@supabase/auth-js@2.116.0", "", { "dependencies": { "tslib": "2.8.1" } }, "sha512-Cmosty12gyKGK9N3bQb+lMmuAFev5nmUzaR1AsmZHqKOAGzqX1VQzmp49CNPwOx/pw0H9Qqk4rs9yhwTlKpfDg=="],
@@ -1201,6 +1221,8 @@
     "comma-separated-tokens": ["comma-separated-tokens@2.0.3", "", {}, "sha512-Fu4hJdvzeylCfQPp9SGWidpzrMs7tTrlu6Vb8XGaRGck8QSNZJJp538Wrb60Lax4fPwR64ViY468OIUTbRlGZg=="],
 
     "commander": ["commander@8.3.0", "", {}, "sha512-OkTL9umf+He2DZkUq8f8J9of7yL6RJKI24dVITBmNfZBmri9zYZQrKkuXiKhyfPSu8tUhnVBB1iKXevvnlR4Ww=="],
+
+    "consola": ["consola@3.4.2", "", {}, "sha512-5IKcdX0nnYavi6G7TtOhwkYzyjfJlatbjMjuLSfE2kYT5pMDOilZ4OvMhi637CcDICTmz3wARPoyhqyX1Y+XvA=="],
 
     "convert-source-map": ["convert-source-map@2.0.0", "", {}, "sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg=="],
 

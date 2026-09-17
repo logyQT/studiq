@@ -1,7 +1,7 @@
 import { RequestContext } from '@studiq/authz';
+import { ActivityService } from '@studiq/server/services/activity.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { ActivityService } from '@/server/services/activity.service';
 
 vi.mock('@/lib/authz', () => ({
   check: vi.fn().mockResolvedValue(undefined),

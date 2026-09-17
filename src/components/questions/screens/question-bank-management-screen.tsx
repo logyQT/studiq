@@ -1,5 +1,6 @@
 'use client';
 
+import type { QuestionBank } from '@studiq/server/models/question-bank.model';
 import { Button, Card, Skeleton } from '@studiq/ui';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { CheckSquare, Database, Plus, SquarePen } from 'lucide-react';
@@ -20,7 +21,6 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { groupKeys, questionKeys } from '@/lib/query-keys';
-import type { QuestionBank } from '@/server/models/question-bank.model';
 
 interface QuestionBankManagementScreenProps {
   apiBase: string;

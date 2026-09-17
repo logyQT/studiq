@@ -1,5 +1,6 @@
 'use client';
 
+import type { DailyActivityItem } from '@studiq/server/models/stats.model';
 import { Button, ChartContainer, ChartTooltipContent } from '@studiq/ui';
 import { useTranslations } from 'next-intl';
 import {
@@ -13,7 +14,6 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import type { DailyActivityItem } from '@/server/models/stats.model';
 
 interface DailyActivityChartProps {
   data: DailyActivityItem[];

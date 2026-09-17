@@ -1,5 +1,6 @@
 'use client';
 
+import type { SearchResult } from '@studiq/server/models/search.model';
 import {
   CommandDialog,
   CommandEmpty,
@@ -14,7 +15,6 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
 import { useDebounce } from '@/hooks/use-debounce';
-import type { SearchResult } from '@/server/models/search.model';
 
 export function AppSearch() {
   const t = useTranslations('DashboardLayout');

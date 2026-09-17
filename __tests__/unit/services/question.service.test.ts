@@ -1,8 +1,8 @@
 import { AccountType, RequestContext } from '@studiq/authz';
+import { failure, success } from '@studiq/server/lib/service-result';
+import { QuestionService } from '@studiq/server/services/question.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { failure, success } from '@/lib/service-result';
-import { QuestionService } from '@/server/services/question.service';
 
 vi.mock('@/lib/authz', () => ({
   accessibleFilter: vi.fn().mockResolvedValue({}),

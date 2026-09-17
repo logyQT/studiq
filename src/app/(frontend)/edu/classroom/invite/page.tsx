@@ -2,6 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AccountType } from '@studiq/authz';
+import { z } from '@studiq/server/lib/zod';
 import {
   Button,
   Card,
@@ -23,7 +24,6 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import { z } from '@/lib/zod';
 
 const InviteFormSchema = z.object({
   name: z.string().nonempty().min(1).max(100),

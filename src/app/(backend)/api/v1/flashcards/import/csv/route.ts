@@ -1,7 +1,7 @@
+import { flashcardImportController } from '@studiq/server/controllers/flashcard-import.controller';
+import { toNextResponse } from '@studiq/server/lib/http-utils';
+import { withAuth } from '@studiq/server/lib/with-auth';
 import type { NextRequest } from 'next/server';
-import { toNextResponse } from '@/lib/http-utils';
-import { withAuth } from '@/lib/with-auth';
-import { flashcardImportController } from '@/server/controllers/flashcard-import.controller';
 
 export async function POST(req: NextRequest) {
   return withAuth(req, async (ctx) => {

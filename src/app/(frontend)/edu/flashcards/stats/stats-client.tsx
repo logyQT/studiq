@@ -1,5 +1,6 @@
 'use client';
 
+import type { TeacherFlashcardStatsResponse } from '@studiq/server/models/flashcard-stats.model';
 import {
   Button,
   Card,
@@ -35,7 +36,6 @@ import { useTranslations } from 'next-intl';
 import { DeckDetailSkeleton } from '@/components/flashcards/shared/deck-detail-skeleton';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
-import type { TeacherFlashcardStatsResponse } from '@/server/models/flashcard-stats.model';
 
 export default function EduFlashcardStatsClient() {
   const t = useTranslations('EduFlashcardStatsPage');

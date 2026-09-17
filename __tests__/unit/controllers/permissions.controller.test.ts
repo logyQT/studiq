@@ -1,6 +1,6 @@
 import { RequestContext } from '@studiq/authz';
+import { PermissionsController } from '@studiq/server/controllers/permissions.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PermissionsController } from '@/server/controllers/permissions.controller';
 
 const mockCtx: RequestContext = {
   traceId: 'test',

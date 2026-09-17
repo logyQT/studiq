@@ -1,6 +1,8 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { APP_ERRORS } from '@studiq/server/lib/errors';
+import { type UpdatePasswordInput, updatePasswordSchema } from '@studiq/server/models/auth.model';
 import {
   Button,
   Card,
@@ -21,9 +23,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import { APP_ERRORS } from '@/lib/errors';
 import { cn } from '@/lib/utils';
-import { type UpdatePasswordInput, updatePasswordSchema } from '@/server/models/auth.model';
 
 export default function PasswordUpdatePage() {
   const t = useTranslations('PasswordUpdatePage');

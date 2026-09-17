@@ -1,8 +1,8 @@
 import { RequestContext } from '@studiq/authz';
+import { InvitationController } from '@studiq/server/controllers/invitation.controller';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
+import { failure, success } from '@studiq/server/lib/service-result';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ControllerResponse } from '@/lib/controller-response';
-import { failure, success } from '@/lib/service-result';
-import { InvitationController } from '@/server/controllers/invitation.controller';
 
 function createMockInvitationService() {
   return {

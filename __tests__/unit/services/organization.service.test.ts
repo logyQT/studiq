@@ -1,7 +1,7 @@
 import { AccountType, RequestContext } from '@studiq/authz';
+import { OrganizationService } from '@studiq/server/services/organization.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { OrganizationService } from '@/server/services/organization.service';
 
 function chain(data: unknown, error: { code: string; message: string } | null = null) {
   const resolved = { data, error };

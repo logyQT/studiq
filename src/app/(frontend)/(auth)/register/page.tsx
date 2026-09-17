@@ -1,6 +1,8 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { APP_ERRORS } from '@studiq/server/lib/errors';
+import { type RegisterInput, RegisterSchema } from '@studiq/server/models/auth.model';
 import {
   Alert,
   AlertDescription,
@@ -34,9 +36,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import { APP_ERRORS } from '@/lib/errors';
 import { cn } from '@/lib/utils';
-import { type RegisterInput, RegisterSchema } from '@/server/models/auth.model';
 
 export default function RegisterPage() {
   const t = useTranslations('RegisterPage');

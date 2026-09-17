@@ -1,5 +1,7 @@
 'use client';
 
+import type { Deck } from '@studiq/server/models/flashcard-deck.model';
+import type { Topic } from '@studiq/server/models/topic.model';
 import {
   Button,
   Checkbox,
@@ -15,8 +17,6 @@ import { DeckCheckboxSelector } from '@/components/flashcards/shared/deck-checkb
 import { DeckRadioSelector } from '@/components/flashcards/shared/deck-radio-selector';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { getGradientHex } from '@/lib/color-utils';
-import type { Deck } from '@/server/models/flashcard-deck.model';
-import type { Topic } from '@/server/models/topic.model';
 
 interface BulkDialogsProps {
   t: ReturnType<typeof useTranslations>;

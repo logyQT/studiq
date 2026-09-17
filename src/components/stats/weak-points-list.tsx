@@ -1,8 +1,8 @@
 'use client';
 
+import type { WeakItem } from '@studiq/server/models/stats.model';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
-import type { WeakItem } from '@/server/models/stats.model';
 
 interface WeakPointsListProps {
   items: WeakItem[];

@@ -1,20 +1,20 @@
+import { systemPrompt } from '@studiq/server/agents/system';
+import { askUserTool } from '@studiq/server/agents/tools/generic/ask-user.tool';
+import { createPlanTool } from '@studiq/server/agents/tools/generic/create-plan.tool';
+import { evaluateQualityTool } from '@studiq/server/agents/tools/generic/evaluate-quality.tool';
+import { extractConceptsTool } from '@studiq/server/agents/tools/generic/extract-concepts.tool';
+import { fetchMaterialTool } from '@studiq/server/agents/tools/generic/fetch-material.tool';
+import { finishTool } from '@studiq/server/agents/tools/generic/finish.tool';
+import { generateFlashcardsTool } from '@studiq/server/agents/tools/generic/generate-flashcards.tool';
+import { webfetchTool } from '@studiq/server/agents/tools/generic/webfetch.tool';
+import { chatModel, providerName, reasoningEffort } from '@studiq/server/ai/model';
+import { conversationStorage } from '@studiq/server/lib/conversation-context';
+import { toNextResponse } from '@studiq/server/lib/http-utils';
+import { createClient } from '@studiq/server/lib/supabase/server';
+import { enqueueTrace } from '@studiq/server/lib/trace-queue';
 import type { UIMessage } from 'ai';
 import { convertToModelMessages, hasToolCall, stepCountIs, streamText } from 'ai';
 import type { NextRequest } from 'next/server';
-import { conversationStorage } from '@/lib/conversation-context';
-import { toNextResponse } from '@/lib/http-utils';
-import { createClient } from '@/lib/supabase/server';
-import { enqueueTrace } from '@/lib/trace-queue';
-import { systemPrompt } from '@/server/agents/system';
-import { askUserTool } from '@/server/agents/tools/generic/ask-user.tool';
-import { createPlanTool } from '@/server/agents/tools/generic/create-plan.tool';
-import { evaluateQualityTool } from '@/server/agents/tools/generic/evaluate-quality.tool';
-import { extractConceptsTool } from '@/server/agents/tools/generic/extract-concepts.tool';
-import { fetchMaterialTool } from '@/server/agents/tools/generic/fetch-material.tool';
-import { finishTool } from '@/server/agents/tools/generic/finish.tool';
-import { generateFlashcardsTool } from '@/server/agents/tools/generic/generate-flashcards.tool';
-import { webfetchTool } from '@/server/agents/tools/generic/webfetch.tool';
-import { chatModel, providerName, reasoningEffort } from '@/server/ai/model';
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();

@@ -1,7 +1,7 @@
 import { RequestContext } from '@studiq/authz';
+import { QuizTeacherController } from '@studiq/server/controllers/quiz-teacher.controller';
+import { failure, success } from '@studiq/server/lib/service-result';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { failure, success } from '@/lib/service-result';
-import { QuizTeacherController } from '@/server/controllers/quiz-teacher.controller';
 
 function createMockService() {
   return {

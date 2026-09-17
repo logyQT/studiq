@@ -1,8 +1,8 @@
 import { AccountType } from '@studiq/authz';
+import { teacherAssignmentController } from '@studiq/server/controllers/teacher-assignment.controller';
+import { toNextResponse } from '@studiq/server/lib/http-utils';
+import { withAuth } from '@studiq/server/lib/with-auth';
 import type { NextRequest } from 'next/server';
-import { toNextResponse } from '@/lib/http-utils';
-import { withAuth } from '@/lib/with-auth';
-import { teacherAssignmentController } from '@/server/controllers/teacher-assignment.controller';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(

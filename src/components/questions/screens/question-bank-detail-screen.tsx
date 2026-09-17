@@ -1,5 +1,7 @@
 'use client';
 
+import type { Question } from '@studiq/server/models/question.model';
+import type { QuestionBank } from '@studiq/server/models/question-bank.model';
 import { Button } from '@studiq/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Plus } from 'lucide-react';
@@ -13,8 +15,6 @@ import { QuestionTable } from '@/components/questions/shared/question-table';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { questionKeys } from '@/lib/query-keys';
-import type { Question } from '@/server/models/question.model';
-import type { QuestionBank } from '@/server/models/question-bank.model';
 
 interface QuestionBankDetailScreenProps {
   bankId: string;

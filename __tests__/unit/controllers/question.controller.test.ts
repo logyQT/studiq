@@ -1,9 +1,9 @@
 import { RequestContext } from '@studiq/authz';
+import { QuestionController } from '@studiq/server/controllers/question.controller';
+import type { ControllerResponse } from '@studiq/server/lib/controller-response';
+import { failure, success } from '@studiq/server/lib/service-result';
+import { createClient } from '@studiq/server/lib/supabase/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ControllerResponse } from '@/lib/controller-response';
-import { failure, success } from '@/lib/service-result';
-import { createClient } from '@/lib/supabase/server';
-import { QuestionController } from '@/server/controllers/question.controller';
 
 function createMockQuestionService() {
   return {

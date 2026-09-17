@@ -1,6 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from '@studiq/server/lib/zod';
 import {
   Button,
   Card,
@@ -21,7 +22,6 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { useCreateClassroom } from '@/hooks/use-create-classroom';
-import { z } from '@/lib/zod';
 
 const CreateClassroomFormSchema = z.object({
   name: z.string().nonempty().min(2).max(64),

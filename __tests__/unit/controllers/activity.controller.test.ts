@@ -1,6 +1,6 @@
 import { RequestContext } from '@studiq/authz';
+import { ActivityController } from '@studiq/server/controllers/activity.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ActivityController } from '@/server/controllers/activity.controller';
 
 function createMockService() {
   return { getClassActivity: vi.fn() };

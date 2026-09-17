@@ -1,11 +1,11 @@
 'use client';
 
+import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import { Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { PlanCard } from '@/app/(frontend)/pricing/_components/pricing-content';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
-import type { PlanInfo } from '@/server/services/subscription-plan.service';
 
 export default function AppUpgradePage() {
   const ut = useTranslations('UpgradePage');

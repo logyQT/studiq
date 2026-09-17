@@ -1,8 +1,8 @@
 'use client';
 
+import type { StateBreakdown } from '@studiq/server/models/flashcard-practice.model';
 import { useTranslations } from 'next-intl';
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
-import type { StateBreakdown } from '@/server/models/flashcard-practice.model';
 
 interface StateBreakdownChartProps {
   states: StateBreakdown;

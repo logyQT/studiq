@@ -1,5 +1,6 @@
 'use client';
 
+import type { Deck } from '@studiq/server/models/flashcard-deck.model';
 import {
   Button,
   Checkbox,
@@ -10,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@studiq/ui';
-import type { Deck } from '@/server/models/flashcard-deck.model';
 
 interface DeckCheckboxSelectorProps {
   open: boolean;

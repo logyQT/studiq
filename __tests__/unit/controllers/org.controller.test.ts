@@ -1,6 +1,6 @@
 import { RequestContext } from '@studiq/authz';
+import { OrgController } from '@studiq/server/controllers/org.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { OrgController } from '@/server/controllers/org.controller';
 
 function createMockService() {
   return { listOrgs: vi.fn(), verifyMembership: vi.fn() };

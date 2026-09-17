@@ -1,5 +1,5 @@
+import * as supabaseModule from '@studiq/server/lib/supabase/server';
 import { vi } from 'vitest';
-import * as supabaseModule from '@/lib/supabase/server';
 
 /**
  * Creates a mock Supabase client and wires it to createClient.

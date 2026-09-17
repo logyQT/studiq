@@ -1,7 +1,7 @@
 import { AccountType, RequestContext } from '@studiq/authz';
+import { FEATURES, FeatureResolver, rolloutBucket } from '@studiq/server/services/feature.resolver';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { FEATURES, FeatureResolver, rolloutBucket } from '@/server/services/feature.resolver';
 
 function chain(result: unknown) {
   const resolved = { data: result, error: null };

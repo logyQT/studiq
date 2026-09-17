@@ -1,7 +1,7 @@
 import { RequestContext } from '@studiq/authz';
+import { FlashcardStatsService } from '@studiq/server/services/flashcard-stats.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { FlashcardStatsService } from '@/server/services/flashcard-stats.service';
 
 vi.mock('@/lib/authz', () => ({
   buildQueryFilter: vi.fn().mockReturnValue({ created_by: 'user-1' }),

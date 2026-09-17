@@ -1,8 +1,8 @@
 import type { RequestContext } from '@studiq/authz';
+import { handleApiError, toNextResponse } from '@studiq/server/lib/http-utils';
+import { createClient } from '@studiq/server/lib/supabase/server';
+import { withAuth } from '@studiq/server/lib/with-auth';
 import type { NextRequest } from 'next/server';
-import { handleApiError, toNextResponse } from '@/lib/http-utils';
-import { createClient } from '@/lib/supabase/server';
-import { withAuth } from '@/lib/with-auth';
 
 export async function GET(req: NextRequest) {
   return withAuth(req, async (ctx: RequestContext) => {
