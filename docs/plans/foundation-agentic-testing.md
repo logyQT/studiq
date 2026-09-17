@@ -182,7 +182,7 @@ member. Clean the axis before C2 moves `FeatureResolver` into `packages/authz`.
 
 > **Prerequisite:** Before starting C, clean up legacy AI dead code — see `docs/ai.md` → "Dead code to remove" section. The B.5 refactor agent may still be modifying some of these files.
 
-Status: C1-C7 COMPLETE, C8 DEFERRED (see decisions), C9-C12 IN PROGRESS
+Status: C1-C14 COMPLETE, C8 DEFERRED (see decisions)
 
 ### Tasks — scaffold & detach (COMPLETE)
 - [x] C1 Bun workspace scaffold; create `packages/authz`, `packages/ui`
@@ -194,53 +194,72 @@ Status: C1-C7 COMPLETE, C8 DEFERRED (see decisions), C9-C12 IN PROGRESS
 - [x] C7 Two standalone builds; main app has no admin routes (admin app served entirely on its own origin)
 - [ ] C8 ~~Hardening: introduce RLS on user content tables~~ — **DEFERRED** (see decisions). App-layer auth is sufficient for now; RLS complexity (orgs/groups/visibility/roles) is high-cost/low-value pre-launch.
 
-### Tasks — rebuild admin UI (NEXT)
+### Tasks — server extraction & move (COMPLETE)
+- [x] C9 Create `packages/server/` with shared services, models, lib utilities — PR [#80](https://github.com/logyQT/studiq/pull/80)
+- [x] C10 Update main app imports: `@/server/*` → `@studiq/server/*`, `@/lib/*` (moved) → `@studiq/server/lib/*` — PR [#80](https://github.com/logyQT/studiq/pull/80)
+- [x] C11 Move admin-only services/controllers from packages/server to `apps/admin/src/server/` — PR [#80](https://github.com/logyQT/studiq/pull/80)
+- [x] C12 Clean up dead code in main app — PR [#80](https://github.com/logyQT/studiq/pull/80)
+- [x] C13 Move `src/` → `apps/web/src/`, update workspace config, update root scripts — PR [#80](https://github.com/logyQT/studiq/pull/80)
+- [x] C14 Verify: `bun run build` (main), `bun run build:admin` (admin), both dev servers independent — PR [#80](https://github.com/logyQT/studiq/pull/80)
 
-Admin pages deleted in C3 need rebuilding in `apps/admin/`. The old pages
-called the main app's API routes (also deleted). New architecture:
+### Tasks — rebuild admin API & UI (NEXT)
 
+Admin pages deleted in C3 need rebuilding in `apps/admin/`. Server-side
+controllers and services are ready in `apps/admin/src/server/`. What's
+missing: API route handlers that wire controllers to HTTP, and frontend
+pages that consume them.
+
+**Architecture:**
 - Admin app queries Supabase **directly** via service-role client (no cross-origin calls)
 - Admin-specific controllers/services live in `apps/admin/src/server/`
-- Shared services live in `packages/server/` (extracted from main app)
+- Shared services live in `packages/server/`
 - Admin frontend calls its own `/api/` routes (same origin)
 
-#### Admin pages to rebuild
+#### C15 — Admin API routes
+
+Create `apps/admin/src/app/(backend)/api/v1/` route handlers that:
+1. Accept requests (no auth — PEM gate handles it at proxy level)
+2. Parse input with Zod (reuse existing models)
+3. Call the corresponding controller
+4. Return JSON via `toNextResponse()`
+
+Route handlers needed:
+
+| Route | Controller | Methods |
+|-------|-----------|---------|
+| `/api/v1/feature-flags` | `featureFlagController` | GET (list), POST (create) |
+| `/api/v1/feature-flags/[key]` | `featureFlagController` | GET (one), PUT (update), DELETE |
+| `/api/v1/plan-features` | `planFeatureController` | GET, POST |
+| `/api/v1/plan-features/[id]` | `planFeatureController` | GET, DELETE |
+| `/api/v1/plan-limits` | `planLimitController` | GET, POST |
+| `/api/v1/plan-limits/[id]` | `planLimitController` | GET, PUT, DELETE |
+| `/api/v1/user-overrides` | `userOverrideController` | GET, POST |
+| `/api/v1/user-overrides/[id]` | `userOverrideController` | GET, PUT, DELETE |
+| `/api/v1/subscription-plans` | `subscriptionPlanAdminController` | GET, POST |
+| `/api/v1/subscription-plans/[key]` | `subscriptionPlanAdminController` | GET, PUT, DELETE |
+
+**Auth for admin API routes**: No `withAuth` wrapper — the PEM proxy
+gates all `/api/*` requests. Controllers run with full service-role
+permissions. If fine-grained tokens are added later (see "Side note"
+below), add a lightweight scope check middleware.
+
+#### C16 — Admin frontend pages
+
+Create `apps/admin/src/app/(frontend)/` pages using `@studiq/ui`
+components + `next-intl` translations:
 
 | Page | Route | Source (old) | Notes |
 |------|-------|-------------|-------|
-| Orgs list | `/admin/orgs` | `admin/orgs/page.tsx` (299 lines) | List all orgs: avatar, name, plan, members, groups, roles |
-| Org detail | `/admin/orgs/[id]` | `admin/orgs/[id]/page.tsx` (283 lines) | Overview + members/groups/roles tables |
-| Feature flags | `/admin/feature-flags` | `admin/feature-flags/page.tsx` (314 lines) | CRUD: key, name, description, enabled, rollout% |
-| Subscription plans | `/admin/subscription-plans` | `admin/subscription-plans/page.tsx` (596 lines) | Plans + feature assignments + limits |
-| User overrides | `/admin/user-overrides` | `admin/user-overrides/page.tsx` (308 lines) | Per-user feature overrides |
+| Orgs list | `/orgs` | `admin/orgs/page.tsx` (299 lines) | List all orgs: avatar, name, plan, members, groups, roles |
+| Org detail | `/orgs/[id]` | `admin/orgs/[id]/page.tsx` (283 lines) | Overview + members/groups/roles tables |
+| Feature flags | `/feature-flags` | `admin/feature-flags/page.tsx` (314 lines) | CRUD: key, name, description, enabled, rollout% |
+| Subscription plans | `/subscription-plans` | `admin/subscription-plans/page.tsx` (596 lines) | Plans + feature assignments + limits |
+| User overrides | `/user-overrides` | `admin/user-overrides/page.tsx` (308 lines) | Per-user feature overrides |
 
-#### Extraction plan
+Old page content viewable via: `git show 5fdae54^:src/app/\(frontend\)/admin/<path>`
 
-**To `apps/admin/src/server/`** (admin-only, zero cross-deps):
-- `feature-flag.service.ts` + `feature-flag.controller.ts` + `feature-flag.model.ts`
-- `plan-feature.service.ts` + `plan-feature.controller.ts` + `plan-feature.model.ts`
-- `plan-limit.service.ts` + `plan-limit.controller.ts` + `plan-limit.model.ts`
-- `user-override.service.ts` + `user-override.controller.ts` + `user-feature-override.model.ts`
-- `subscription-plan-admin.controller.ts` (uses shared `subscription-plan.service`)
-
-**To `packages/server/`** (shared, imported by both apps):
-- All models (`src/server/models/*.ts`)
-- Shared services (org, subscription-plan, group, seat, etc.)
-- Server utilities (`src/lib/errors.ts`, `supabase-errors.ts`, `authz.ts`, `observability.ts`, `service-result.ts`, `controller-response.ts`, `with-auth.ts`, `http-utils.ts`, `request-context.ts`, etc.)
-- Guards (`src/server/guards/`)
-- Config (`src/server/config/`)
-
-### Tasks — server extraction (after admin rebuild)
-
-- [ ] C9 Create `packages/server/` with shared services, models, lib utilities
-- [ ] C10 Update main app imports: `@/server/*` → `@studiq/server/*` (or package-relative)
-- [ ] C11 Move admin-only services/controllers from main app `src/server/` to `apps/admin/src/server/`
-- [ ] C12 Clean up dead code in main app (admin controllers/services no longer imported)
-
-### Tasks — move main app to apps/web (after extraction)
-
-- [ ] C13 Move `src/` → `apps/web/src/`, update workspace config, update root scripts
-- [ ] C14 Verify: `bun run build` (main), `bun run build:admin` (admin), both dev servers independent
+Pages should use `useApiQuery`/`useApiMutation` from the shared pattern
+(or admin-local equivalents calling `/api/v1/*` on same origin).
 
 ### Side note — GitHub-style fine-grained admin tokens
 

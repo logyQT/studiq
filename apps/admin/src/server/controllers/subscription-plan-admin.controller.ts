@@ -1,3 +1,4 @@
+import { createClient } from '@admin/lib/supabase/admin-client';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { controllerResponse } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
@@ -8,8 +9,8 @@ import {
   UpdateSubscriptionPlanSchema,
 } from '@studiq/server/models/subscription-plan.model';
 import {
-  type SubscriptionPlanService,
-  subscriptionPlanService,
+  SubscriptionPlanService,
+  type SubscriptionPlanService as SubscriptionPlanServiceType,
 } from '@studiq/server/services/subscription-plan.service';
 
 export class SubscriptionPlanAdminController {
@@ -81,6 +82,6 @@ export class SubscriptionPlanAdminController {
   }
 }
 export const subscriptionPlanAdminController = wrapService(
-  new SubscriptionPlanAdminController(subscriptionPlanService),
+  new SubscriptionPlanAdminController(new SubscriptionPlanService(createClient)),
   'subscription-plan-admin.controller',
 );

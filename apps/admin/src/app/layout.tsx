@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 
+import { Providers } from '@/lib/providers';
 import '@/app/globals.css';
 
 const geistSans = Geist({
@@ -43,7 +44,9 @@ export default async function RootLayout({
   return (
     <html lang={locale} className="bg-background" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
-        <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
+        <NextIntlClientProvider messages={messages}>
+          <Providers>{children}</Providers>
+        </NextIntlClientProvider>
       </body>
     </html>
   );
