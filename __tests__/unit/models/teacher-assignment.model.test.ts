@@ -1,15 +1,15 @@
-import { describe, expect, it } from 'vitest';
-import { ValidationErrorCode } from '@/lib/validation-errors';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import {
-  CreateTeacherAssignmentSchema,
-  UpdateTeacherAssignmentSchema,
   AddQuestionsSchema,
-  RemoveQuestionSchema,
-  RandomizeSchema,
-  SetTargetsSchema,
+  CreateTeacherAssignmentSchema,
   GradeAnswerSchema,
   PublishAssignmentSchema,
-} from '@/server/models/teacher-assignment.model';
+  RandomizeSchema,
+  RemoveQuestionSchema,
+  SetTargetsSchema,
+  UpdateTeacherAssignmentSchema,
+} from '@studiq/server/models/teacher-assignment.model';
+import { describe, expect, it } from 'vitest';
 
 describe('CreateTeacherAssignmentSchema', () => {
   const minimal = {

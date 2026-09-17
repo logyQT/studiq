@@ -1,10 +1,10 @@
 import { AccountType, RequestContext } from '@studiq/authz';
+import { accessibleFilter } from '@studiq/server/lib/authz';
+import { QuizService } from '@studiq/server/services/quiz.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { accessibleFilter } from '@/lib/authz';
-import { QuizService } from '@/server/services/quiz.service';
 
-vi.mock('@/lib/authz', () => ({
+vi.mock('@studiq/server/lib/authz', () => ({
   accessibleFilter: vi.fn().mockResolvedValue({}),
   Permission: {
     QUESTION_READ: 'question.read' as const,

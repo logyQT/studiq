@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    "types": ["bun"],
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "target": "ES2022",
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@studiq/authz": ["../../packages/authz/src/index.ts"],
+      "@studiq/authz/*": ["../../packages/authz/src/*"],
+      "@studiq/server": ["../../packages/server/src/index.ts"],
+      "@studiq/server/*": ["../../packages/server/src/*"],
+      "@studiq/ui": ["../../packages/ui/src/index.ts"],
+      "@studiq/ui/*": ["../../packages/ui/src/*"],
+      "@/utils": ["../../packages/ui/src/utils.ts"],
+      "#test/*": ["../../__tests__/*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", ".next"]
+}

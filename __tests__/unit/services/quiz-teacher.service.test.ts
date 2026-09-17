@@ -1,7 +1,7 @@
 import { RequestContext } from '@studiq/authz';
+import { QuizTeacherService } from '@studiq/server/services/quiz-teacher.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { QuizTeacherService } from '@/server/services/quiz-teacher.service';
 
 function chain(result: any) {
   const resolved = { data: result, error: null };

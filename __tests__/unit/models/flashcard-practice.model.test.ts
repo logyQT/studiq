@@ -1,5 +1,5 @@
+import { LogPracticeSchema } from '@studiq/server/models/flashcard-practice.model';
 import { describe, expect, it } from 'vitest';
-import { LogPracticeSchema } from '@/server/models/flashcard-practice.model';
 
 describe('LogPracticeSchema', () => {
   it('passes with valid input', () => {

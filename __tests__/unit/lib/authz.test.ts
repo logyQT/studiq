@@ -1,12 +1,12 @@
 import { AccountType, RequestContext } from '@studiq/authz';
-import { describe, expect, it } from 'vitest';
 import {
   buildQueryFilter,
   checkPermission,
   evaluate,
   hasPermission,
   resolveScope,
-} from '@/lib/authz';
+} from '@studiq/server/lib/authz';
+import { describe, expect, it } from 'vitest';
 
 const baseCtx: RequestContext = {
   userId: 'user-1',

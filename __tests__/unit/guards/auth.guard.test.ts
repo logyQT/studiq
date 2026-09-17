@@ -1,5 +1,5 @@
+import { authGuard } from '@studiq/server/guards/auth.guard';
 import { describe, expect, it } from 'vitest';
-import { authGuard } from '@/server/guards/auth.guard';
 
 describe('authGuard', () => {
   it('returns true when user is provided', () => {

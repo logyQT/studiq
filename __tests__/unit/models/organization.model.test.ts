@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { ValidationErrorCode } from '@/lib/validation-errors';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import {
   CreateOrganizationSchema,
   OrganizationIdParamsSchema,
   UpdateOrganizationSchema,
-} from '@/server/models/organization.model';
+} from '@studiq/server/models/organization.model';
+import { describe, expect, it } from 'vitest';
 
 describe('CreateOrganizationSchema', () => {
   it('passes with valid input', () => {

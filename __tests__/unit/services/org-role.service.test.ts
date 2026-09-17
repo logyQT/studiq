@@ -1,7 +1,7 @@
 import { RequestContext } from '@studiq/authz';
+import { OrgRoleService } from '@studiq/server/services/org-role.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { OrgRoleService } from '@/server/services/org-role.service';
 
 function qb(data: any, error: any = null, count?: number) {
   const result =

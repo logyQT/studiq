@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
+import { forEachCopy, registerMock } from '#test/helpers/concurrent';
+import { applyRegisteredMock, mockUser, TEST_USERS } from '#test/integration/helpers';
+import { createNextRequest } from '#test/integration/test-utils';
 import { POST as loginPost } from '@/app/(backend)/api/v1/auth/login/route';
 import { POST as logoutPost } from '@/app/(backend)/api/v1/auth/logout/route';
 import { POST as resetPost } from '@/app/(backend)/api/v1/auth/password/reset/route';
 import { POST as updatePasswordPost } from '@/app/(backend)/api/v1/auth/password/update/route';
 import { POST as registerPost } from '@/app/(backend)/api/v1/auth/register/route';
-import { applyRegisteredMock, mockUser, TEST_USERS } from '#test/integration/helpers';
-import { createNextRequest } from '#test/integration/test-utils';
-import { forEachCopy, registerMock } from '#test/helpers/concurrent';
 
 // Auth tests: register creates users with Date.now() emails (already unique).
 // Login/logout/reset use seed users (read-only).
@@ -84,7 +84,7 @@ forEachCopy((copyId) => {
       });
 
       it('assigns correct brand plan key via handle_new_user trigger', async () => {
-        const { createServiceClient } = await import('@/lib/supabase/service');
+        const { createServiceClient } = await import('@studiq/server/lib/supabase/service');
         const serviceClient = createServiceClient();
         const uniqueEmail = `plan-test-${copyId}-${Date.now()}@example.com`;
 

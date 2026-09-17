@@ -1,6 +1,6 @@
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
+import { CreateQuestionSchema, UpdateQuestionSchema } from '@studiq/server/models/question.model';
 import { describe, expect, it } from 'vitest';
-import { ValidationErrorCode } from '@/lib/validation-errors';
-import { CreateQuestionSchema, UpdateQuestionSchema } from '@/server/models/question.model';
 
 const VALID_BANK_ID = '00000000-0000-4000-8020-000000000001';
 
@@ -69,7 +69,6 @@ describe('CreateQuestionSchema', () => {
     });
     expect(result.success).toBe(false);
   });
-
 });
 
 describe('UpdateQuestionSchema', () => {

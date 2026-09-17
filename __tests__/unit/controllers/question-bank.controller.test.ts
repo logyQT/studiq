@@ -1,8 +1,8 @@
 import { RequestContext } from '@studiq/authz';
+import { QuestionBankController } from '@studiq/server/controllers/question-bank.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { QuestionBankController } from '@/server/controllers/question-bank.controller';
 
-vi.mock('@/lib/authz', () => ({
+vi.mock('@studiq/server/lib/authz', () => ({
   can: vi.fn().mockResolvedValue(true),
   Permission: { QUESTION_BANK_CREATE: 'question_bank.create' },
 }));

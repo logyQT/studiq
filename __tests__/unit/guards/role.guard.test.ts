@@ -1,6 +1,6 @@
 import { AccountType } from '@studiq/authz';
+import { roleGuard } from '@studiq/server/guards/role.guard';
 import { describe, expect, it } from 'vitest';
-import { roleGuard } from '@/server/guards/role.guard';
 
 describe('roleGuard', () => {
   it('returns false when role is undefined', () => {

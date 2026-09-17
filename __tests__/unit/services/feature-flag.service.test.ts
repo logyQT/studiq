@@ -1,6 +1,6 @@
+import { FeatureFlagService } from '@admin/server/services/feature-flag.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { FeatureFlagService } from '@/server/services/feature-flag.service';
 
 function qb(data: any, error: any = null) {
   const promise = Promise.resolve({ data: data ?? null, error });
@@ -73,7 +73,13 @@ describe('FeatureFlagService', () => {
 
   describe('create', () => {
     it('creates a feature flag', async () => {
-      const flag = { id: 'ff-1', key: 'quiz', name: 'Quiz', is_enabled: true, rollout_percentage: 100 };
+      const flag = {
+        id: 'ff-1',
+        key: 'quiz',
+        name: 'Quiz',
+        is_enabled: true,
+        rollout_percentage: 100,
+      };
       mock.from.mockReturnValueOnce(qb(flag));
 
       const result = await service.create({ key: 'quiz', name: 'Quiz' });

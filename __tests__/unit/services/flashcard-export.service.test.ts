@@ -1,9 +1,9 @@
 import { RequestContext } from '@studiq/authz';
+import { flashcardService } from '@studiq/server/services/flashcard.service';
+import { FlashcardExportService } from '@studiq/server/services/flashcard-export.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { flashcardService } from '@/server/services/flashcard.service';
-import { FlashcardExportService } from '@/server/services/flashcard-export.service';
 
-vi.mock('@/server/services/flashcard.service', () => ({
+vi.mock('@studiq/server/services/flashcard.service', () => ({
   flashcardService: {
     list: vi.fn(),
   },

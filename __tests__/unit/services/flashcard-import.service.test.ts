@@ -1,9 +1,9 @@
 import { RequestContext } from '@studiq/authz';
+import { FlashcardImportService } from '@studiq/server/services/flashcard-import.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { FlashcardImportService } from '@/server/services/flashcard-import.service';
 
-vi.mock('@/lib/authz', () => ({
+vi.mock('@studiq/server/lib/authz', () => ({
   check: vi.fn().mockResolvedValue(undefined),
   Permission: { DECK_UPDATE: 'deck.update' },
 }));

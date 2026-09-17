@@ -1,5 +1,5 @@
+import { UserOverrideController } from '@admin/server/controllers/user-override.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserOverrideController } from '@/server/controllers/user-override.controller';
 
 function createMockService() {
   return {

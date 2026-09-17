@@ -1,10 +1,10 @@
 import { AccountType, RequestContext } from '@studiq/authz';
+import { failure, success } from '@studiq/server/lib/service-result';
+import { FlashcardPracticeService } from '@studiq/server/services/flashcard-practice.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { failure, success } from '@/lib/service-result';
-import { FlashcardPracticeService } from '@/server/services/flashcard-practice.service';
 
-vi.mock('@/lib/authz', () => ({
+vi.mock('@studiq/server/lib/authz', () => ({
   buildQueryFilter: vi.fn().mockReturnValue({}),
   Permission: { FLASHCARD_READ: 'flashcard.read' as const },
 }));

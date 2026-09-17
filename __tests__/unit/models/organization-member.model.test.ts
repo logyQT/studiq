@@ -1,6 +1,9 @@
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
+import {
+  ChangeRoleSchema,
+  RemoveMemberSchema,
+} from '@studiq/server/models/organization-member.model';
 import { describe, expect, it } from 'vitest';
-import { ValidationErrorCode } from '@/lib/validation-errors';
-import { ChangeRoleSchema, RemoveMemberSchema } from '@/server/models/organization-member.model';
 
 const VALID_UUID = '00000000-0000-4000-8000-000000000001';
 

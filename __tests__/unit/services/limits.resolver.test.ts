@@ -1,7 +1,7 @@
 import { AccountType, RequestContext } from '@studiq/authz';
+import { LimitsResolver } from '@studiq/server/services/limits.resolver';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { LimitsResolver } from '@/server/services/limits.resolver';
 
 function chain(result: unknown) {
   const resolved = { data: result, error: null };

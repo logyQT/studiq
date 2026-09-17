@@ -1,5 +1,4 @@
-import { describe, expect, it } from 'vitest';
-import { ValidationErrorCode } from '@/lib/validation-errors';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import {
   forgotPasswordSchema,
   LoginSchema,
@@ -7,7 +6,8 @@ import {
   passwordSchema,
   RegisterSchema,
   updatePasswordSchema,
-} from '@/server/models/auth.model';
+} from '@studiq/server/models/auth.model';
+import { describe, expect, it } from 'vitest';
 
 describe('NameSchema', () => {
   it('passes with valid name', () => {

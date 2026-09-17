@@ -4,8 +4,9 @@
  * After the fix, /setup/org/ should match the MANAGER-only rule,
  * not fall through to the EDUCATOR catch-all.
  */
+
+import { routeRules } from '@studiq/server/config/routes.config';
 import { describe, expect, it } from 'vitest';
-import { routeRules } from '@/server/config/routes.config';
 
 function matchRule(path: string) {
   return routeRules.find((rule) => rule.matcher.test(path)) ?? null;

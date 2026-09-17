@@ -1,6 +1,6 @@
+import { PlanFeatureService } from '@admin/server/services/plan-feature.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { PlanFeatureService } from '@/server/services/plan-feature.service';
 
 function qb(data: any, error: any = null) {
   const promise = Promise.resolve({ data: data ?? null, error });

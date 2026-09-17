@@ -45,15 +45,37 @@ export default defineConfig(({ mode }) => {
       },
       coverage: {
         provider: 'v8',
-        include: ['src/server/**/*.ts'],
-        exclude: ['src/server/**/routes.config.ts'],
+        include: ['packages/server/src/**/*.ts'],
+        exclude: ['packages/server/src/**/routes.config.ts'],
       },
     },
     resolve: {
-      alias: {
-        '@': path.resolve(__dirname, './src'),
-        '#test': path.resolve(__dirname, './__tests__'),
-      },
+      alias: [
+        { find: /^@admin\/(.*)/, replacement: path.resolve(__dirname, './apps/admin/src/$1') },
+        {
+          find: /^@studiq\/server\/(.*)/,
+          replacement: path.resolve(__dirname, './packages/server/src/$1'),
+        },
+        {
+          find: '@studiq/server',
+          replacement: path.resolve(__dirname, './packages/server/src/index.ts'),
+        },
+        {
+          find: /^@studiq\/authz\/(.*)/,
+          replacement: path.resolve(__dirname, './packages/authz/src/$1'),
+        },
+        {
+          find: '@studiq/authz',
+          replacement: path.resolve(__dirname, './packages/authz/src/index.ts'),
+        },
+        {
+          find: /^@studiq\/ui\/(.*)/,
+          replacement: path.resolve(__dirname, './packages/ui/src/$1'),
+        },
+        { find: '@studiq/ui', replacement: path.resolve(__dirname, './packages/ui/src/index.ts') },
+        { find: '#test', replacement: path.resolve(__dirname, './__tests__') },
+        { find: '@', replacement: path.resolve(__dirname, './apps/web/src') },
+      ],
     },
   };
 });

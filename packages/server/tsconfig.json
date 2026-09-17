@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig/base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "noEmit": true,
+    "paths": {
+      "@studiq/authz": ["../../packages/authz/src/index.ts"],
+      "@studiq/authz/*": ["../../packages/authz/src/*"],
+      "@studiq/server": ["./src/index.ts"],
+      "@studiq/server/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

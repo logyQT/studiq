@@ -1,5 +1,5 @@
+import { SubmitQuizAttemptSchema } from '@studiq/server/models/quiz-attempt.model';
 import { describe, expect, it } from 'vitest';
-import { SubmitQuizAttemptSchema } from '@/server/models/quiz-attempt.model';
 
 describe('SubmitQuizAttemptSchema', () => {
   it('passes with valid input', () => {

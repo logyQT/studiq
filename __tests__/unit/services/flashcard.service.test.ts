@@ -1,10 +1,10 @@
 import { AccountType, RequestContext } from '@studiq/authz';
+import { failure, success } from '@studiq/server/lib/service-result';
+import { FlashcardService } from '@studiq/server/services/flashcard.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { failure, success } from '@/lib/service-result';
-import { FlashcardService } from '@/server/services/flashcard.service';
 
-vi.mock('@/lib/authz', () => {
+vi.mock('@studiq/server/lib/authz', () => {
   const check = vi.fn().mockResolvedValue(undefined);
   return {
     check,
@@ -19,7 +19,7 @@ vi.mock('@/lib/authz', () => {
   };
 });
 
-vi.mock('@/server/services/limits.resolver', () => ({
+vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
 }));
 

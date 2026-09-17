@@ -1,12 +1,12 @@
+import { FeaturesController } from '@studiq/server/controllers/features.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { FeaturesController } from '@/server/controllers/features.controller';
 
-vi.mock('@/lib/features', () => ({
+vi.mock('@studiq/server/lib/features', () => ({
   resolveFeatures: vi.fn(),
 }));
 
 import { RequestContext } from '@studiq/authz';
-import { resolveFeatures } from '@/lib/features';
+import { resolveFeatures } from '@studiq/server/lib/features';
 
 const mockCtx: RequestContext = {
   traceId: 'test',

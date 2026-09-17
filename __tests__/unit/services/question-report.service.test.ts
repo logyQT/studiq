@@ -1,7 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
+import { QuestionReportService } from '@studiq/server/services/question-report.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
-import { QuestionReportService } from '@/server/services/question-report.service';
 
 function qb(data: any, error: any = null) {
   const promise = Promise.resolve({ data: data ?? null, error });

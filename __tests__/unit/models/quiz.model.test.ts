@@ -1,6 +1,6 @@
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
+import { GenerateQuizSchema } from '@studiq/server/models/quiz.model';
 import { describe, expect, it } from 'vitest';
-import { ValidationErrorCode } from '@/lib/validation-errors';
-import { GenerateQuizSchema } from '@/server/models/quiz.model';
 
 describe('GenerateQuizSchema', () => {
   it('passes with valid input', () => {

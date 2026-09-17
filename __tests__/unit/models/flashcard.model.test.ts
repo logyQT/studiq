@@ -1,13 +1,17 @@
-import { describe, expect, it } from 'vitest';
 import {
   BulkCreateFlashcardsSchema,
   CreateFlashcardSchema,
   UpdateFlashcardSchema,
-} from '@/server/models/flashcard.model';
+} from '@studiq/server/models/flashcard.model';
+import { describe, expect, it } from 'vitest';
 
 describe('CreateFlashcardSchema', () => {
   it('passes with valid input', () => {
-    const result = CreateFlashcardSchema.safeParse({ front: 'Q', back: 'A', deckId: '550e8400-e29b-41d4-a716-446655440000' });
+    const result = CreateFlashcardSchema.safeParse({
+      front: 'Q',
+      back: 'A',
+      deckId: '550e8400-e29b-41d4-a716-446655440000',
+    });
     expect(result.success).toBe(true);
   });
 

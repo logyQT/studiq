@@ -7,8 +7,9 @@
  * 3. the catch-all API auth rule can't be bypassed via trailing slash
  * 4. rule ordering prevents privilege escalation via trailing slash
  */
+
+import { type RouteRule, routeRules } from '@studiq/server/config/routes.config';
 import { describe, expect, it } from 'vitest';
-import { type RouteRule, routeRules } from '@/server/config/routes.config';
 
 // ---- proxy.ts matcher (line 99) ----
 const proxyMatcher =

@@ -1,0 +1,194 @@
+'use client';
+
+import { zodResolver } from '@hookform/resolvers/zod';
+import { APP_ERRORS } from '@studiq/server/lib/errors';
+import { type LoginInput, LoginSchema } from '@studiq/server/models/auth.model';
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  Input,
+} from '@studiq/ui';
+import { AlertCircle, Loader2, Lock, Mail } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
+import { DevQuickLogin } from '@/components/dev/dev-quick-login';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { cn } from '@/lib/utils';
+
+export default function LoginPage() {
+  const t = useTranslations('LoginPage');
+  const tErr = useTranslations('Errors');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { refresh } = useAuth();
+
+  const errorParam = searchParams.get('error');
+
+  const rawNext = searchParams.get('next');
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+
+  let nextParam: string | null = null;
+  if (rawNext && URL.canParse(rawNext, origin)) {
+    const parsed = new URL(rawNext, origin);
+    if (parsed.origin === origin) {
+      nextParam = parsed.pathname + parsed.search + parsed.hash;
+    }
+  }
+
+  const form = useForm<LoginInput>({
+    resolver: zodResolver(LoginSchema),
+    defaultValues: { email: '', password: '' },
+  });
+
+  const isLoading = form.formState.isSubmitting;
+
+  async function onSubmit(data: LoginInput) {
+    try {
+      const response = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        toast.error(tErr(result.error || APP_ERRORS.INTERNAL_SERVER.code));
+        return;
+      }
+
+      await refresh();
+
+      if (nextParam) {
+        router.push(nextParam);
+      } else {
+        router.refresh();
+      }
+    } catch {
+      toast.error(tErr(APP_ERRORS.INTERNAL_SERVER.code));
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center gap-6 bg-background p-6">
+      <Card className="w-full max-w-md shadow-lg border-sidebar-border bg-sidebar">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl text-center">{t('header')}</CardTitle>
+          <CardDescription className="text-center">{t('sub_header')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {errorParam && (
+            <Alert
+              variant="destructive"
+              className="mb-6 bg-destructive/10 text-destructive border-destructive/20"
+            >
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="font-medium">
+                {tErr(errorParam || APP_ERRORS.INTERNAL_SERVER.code)}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormLabel htmlFor={field.name}>{t('email_label')}</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          autoComplete="email"
+                          id={field.name}
+                          placeholder={t('email_placeholder')}
+                          className={cn(
+                            'pl-9',
+                            fieldState.error && 'border-destructive focus-visible:ring-destructive',
+                          )}
+                          disabled={isLoading}
+                          {...field}
+                        />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <div className="flex items-center justify-between">
+                      <FormLabel htmlFor={field.name}>{t('password_label')}</FormLabel>
+                      <Link
+                        href="/password/reset"
+                        className="text-sm font-medium text-muted-foreground hover:text-primary underline-offset-4 hover:underline"
+                        tabIndex={-1}
+                      >
+                        {t('forgot_password')}
+                      </Link>
+                    </div>
+                    <FormControl>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          type="password"
+                          id={field.name}
+                          placeholder="••••••••"
+                          className={cn(
+                            'pl-9',
+                            fieldState.error && 'border-destructive focus-visible:ring-destructive',
+                          )}
+                          disabled={isLoading}
+                          {...field}
+                        />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <Button
+                type="submit"
+                className="w-full flex items-center gap-2 mt-2"
+                disabled={isLoading}
+              >
+                {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                {t('login_button')}
+              </Button>
+            </form>
+          </Form>
+
+          <div className="mt-6 text-center text-sm">
+            <span className="text-muted-foreground">{t('no_account')} </span>
+            <Link href="/register" className="font-medium hover:underline underline-offset-4">
+              {t('register_link')}
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+      <DevQuickLogin />
+    </div>
+  );
+}
