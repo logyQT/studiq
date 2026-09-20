@@ -67,8 +67,11 @@ export async function proxy(request: NextRequest) {
 
   const keys = loadPublicKeys();
 
-  // No keys configured → fail-closed (nothing gets through)
+  // No keys configured → allow all in development (admin app is trusted)
   if (keys.length === 0) {
+    if (process.env.NODE_ENV !== 'production') {
+      return NextResponse.next();
+    }
     return NextResponse.json({ success: false, error: 'ERROR_UNAUTHORIZED' }, { status: 401 });
   }
 

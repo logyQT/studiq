@@ -1,10 +1,10 @@
+import { createClient } from '@admin/lib/supabase/admin-client';
 import type {
   CreateFeatureFlagInput,
   UpdateFeatureFlagInput,
 } from '@admin/server/models/feature-flag.model';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, success } from '@studiq/server/lib/service-result';
-import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
 

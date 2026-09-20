@@ -55,3 +55,4 @@ test-results
 # dev artifacts
 .dev/
 .worktrees
+apps/admin/.env.local
