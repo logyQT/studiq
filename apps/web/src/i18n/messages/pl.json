@@ -1106,7 +1106,17 @@
     "subscription": "Subskrypcja",
     "subscription_desc": "Aktualny plan i informacje o rozliczeniach",
     "basic_plan": "Plan Basic",
-    "managed_by_admins": "Zarządzane przez administratorów systemowych"
+    "managed_by_admins": "Zarządzane przez administratorów systemowych",
+    "logo_label": "Logo",
+    "no_logo": "Brak logo",
+    "upload_logo": "Wgraj logo",
+    "uploading": "Wgrywanie...",
+    "logo_updated": "Logo zaktualizowane",
+    "brand_color_label": "Kolor marki",
+    "save_button": "Zapisz",
+    "saving": "Zapisywanie...",
+    "color_updated": "Kolor zaktualizowany",
+    "save_failed": "Nie udało się zapisać"
   },
   "AppOnboarding": {
     "title": "Pierwsze kroki",

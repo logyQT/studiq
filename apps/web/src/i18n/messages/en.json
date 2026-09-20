@@ -1125,7 +1125,17 @@
     "subscription": "Subscription",
     "subscription_desc": "Current plan and billing info",
     "basic_plan": "Basic Plan",
-    "managed_by_admins": "Managed by system administrators"
+    "managed_by_admins": "Managed by system administrators",
+    "logo_label": "Logo",
+    "no_logo": "No logo",
+    "upload_logo": "Upload logo",
+    "uploading": "Uploading...",
+    "logo_updated": "Logo updated",
+    "brand_color_label": "Brand color",
+    "save_button": "Save",
+    "saving": "Saving...",
+    "color_updated": "Color updated",
+    "save_failed": "Failed to save"
   },
   "AppOnboarding": {
     "title": "Getting Started",
