@@ -10,8 +10,10 @@ vi.mock('@studiq/server/services/limits.resolver', () => ({
 }));
 
 let capturedOnFinish: ((result: unknown) => void) | undefined;
+let capturedStoreAtCallTime: unknown;
 const streamTextMock = vi.fn((config: { onFinish?: (result: unknown) => void }) => {
   capturedOnFinish = config.onFinish;
+  capturedStoreAtCallTime = conversationStorage.getStore();
   return { toUIMessageStreamResponse: () => new Response('stream', { status: 200 }) };
 });
 vi.mock('ai', async (importOriginal) => {
@@ -42,6 +44,7 @@ vi.mock('@studiq/server/lib/with-auth', () => ({
   },
 }));
 
+import { conversationStorage } from '@studiq/server/lib/conversation-context';
 import { POST } from '@/app/(backend)/api/v1/ai/chat/route';
 
 function jsonRequest(body: unknown) {
@@ -56,7 +59,22 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedOnFinish = undefined;
+    capturedStoreAtCallTime = undefined;
     mockCtx = { userId: 'user-1', accountType: 'student', activeOrgId: null };
+  });
+
+  it('exposes the RequestContext to tool executions via conversationStorage', async () => {
+    getUsageMock.mockResolvedValue({ current: 0, limit: 200000, plan: 'ace', resetsAt: '' });
+
+    await POST(
+      jsonRequest({ messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
+    );
+
+    expect(capturedStoreAtCallTime).toEqual({
+      conversationId: '1',
+      requestContext: mockCtx,
+    });
+    expect(conversationStorage.getStore()).toBeUndefined();
   });
 
   it('blocks with 429 before calling the model when usage is at the limit', async () => {

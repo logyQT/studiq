@@ -64,7 +64,7 @@ async function runAgentChat(
     data: { messageCount: messages.length, lastRole: messages[messages.length - 1]?.role },
   });
 
-  return conversationStorage.run({ conversationId }, async () => {
+  return conversationStorage.run({ conversationId, requestContext: ctx }, async () => {
     const result = streamText({
       model: chatModel,
       system: systemPrompt,
