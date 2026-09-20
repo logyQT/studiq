@@ -12,6 +12,7 @@ import { chatModel, providerName, reasoningEffort } from '@studiq/server/ai/mode
 import { conversationStorage } from '@studiq/server/lib/conversation-context';
 import { AppError } from '@studiq/server/lib/errors';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
+import { createRateLimiter } from '@studiq/server/lib/rate-limiter';
 import { enqueueTrace } from '@studiq/server/lib/trace-queue';
 import { withAuth } from '@studiq/server/lib/with-auth';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
@@ -21,10 +22,17 @@ import type { NextRequest } from 'next/server';
 
 const AI_TOKENS_LIMIT_KEY = 'max_ai_tokens_per_day';
 
+const rateLimiter = createRateLimiter(60_000, 20);
+
 export async function POST(req: NextRequest) {
   return withAuth(
     req,
     async (ctx) => {
+      const rateLimit = rateLimiter.check(ctx.userId);
+      if (!rateLimit.allowed) {
+        throw new AppError('RATE_LIMITED');
+      }
+
       let body: unknown;
       try {
         body = await req.json();

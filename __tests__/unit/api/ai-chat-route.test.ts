@@ -9,6 +9,11 @@ vi.mock('@studiq/server/services/limits.resolver', () => ({
   },
 }));
 
+const rateLimitCheckMock = vi.fn().mockReturnValue({ allowed: true });
+vi.mock('@studiq/server/lib/rate-limiter', () => ({
+  createRateLimiter: () => ({ check: (...args: unknown[]) => rateLimitCheckMock(...args) }),
+}));
+
 let capturedOnFinish: ((result: unknown) => void) | undefined;
 let capturedStoreAtCallTime: unknown;
 const streamTextMock = vi.fn((config: { onFinish?: (result: unknown) => void }) => {
@@ -61,6 +66,21 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
     capturedOnFinish = undefined;
     capturedStoreAtCallTime = undefined;
     mockCtx = { userId: 'user-1', accountType: 'student', activeOrgId: null };
+    rateLimitCheckMock.mockReturnValue({ allowed: true });
+  });
+
+  it('blocks with 429 before checking usage or calling the model when rate limited', async () => {
+    rateLimitCheckMock.mockReturnValue({ allowed: false, retryAfterMs: 5000 });
+
+    const res = await POST(
+      jsonRequest({ messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
+    );
+
+    expect(res.status).toBe(429);
+    const body = await res.json();
+    expect(body.error).toBe('RATE_LIMITED');
+    expect(getUsageMock).not.toHaveBeenCalled();
+    expect(streamTextMock).not.toHaveBeenCalled();
   });
 
   it('exposes the RequestContext to tool executions via conversationStorage', async () => {
