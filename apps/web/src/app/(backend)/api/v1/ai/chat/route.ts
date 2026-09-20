@@ -1,4 +1,4 @@
-import { AccountType } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { systemPrompt } from '@studiq/server/agents/system';
 import { askUserTool } from '@studiq/server/agents/tools/generic/ask-user.tool';
 import { createPlanTool } from '@studiq/server/agents/tools/generic/create-plan.tool';
@@ -10,12 +10,16 @@ import { generateFlashcardsTool } from '@studiq/server/agents/tools/generic/gene
 import { webfetchTool } from '@studiq/server/agents/tools/generic/webfetch.tool';
 import { chatModel, providerName, reasoningEffort } from '@studiq/server/ai/model';
 import { conversationStorage } from '@studiq/server/lib/conversation-context';
+import { AppError } from '@studiq/server/lib/errors';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
 import { enqueueTrace } from '@studiq/server/lib/trace-queue';
 import { withAuth } from '@studiq/server/lib/with-auth';
+import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { UIMessage } from 'ai';
 import { convertToModelMessages, hasToolCall, stepCountIs, streamText } from 'ai';
 import type { NextRequest } from 'next/server';
+
+const AI_TOKENS_LIMIT_KEY = 'max_ai_tokens_per_day';
 
 export async function POST(req: NextRequest) {
   return withAuth(
@@ -33,17 +37,22 @@ export async function POST(req: NextRequest) {
         return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
       }
 
+      const usage = await limitsResolver.getUsage(ctx, AI_TOKENS_LIMIT_KEY);
+      if (usage.limit !== -1 && usage.current >= usage.limit) {
+        throw new AppError('USAGE_LIMIT_EXCEEDED');
+      }
+
       const conversationId =
         ((messages[0] as Record<string, unknown>)?.id as string) || crypto.randomUUID();
 
-      return runAgentChat(ctx.userId, conversationId, messages);
+      return runAgentChat(ctx, conversationId, messages);
     },
     { allowedAccountTypes: [AccountType.STUDENT, AccountType.EDUCATOR] },
   );
 }
 
 async function runAgentChat(
-  _userId: string,
+  ctx: RequestContext,
   conversationId: string,
   messages: Array<Record<string, unknown>>,
 ) {
@@ -145,6 +154,21 @@ async function runAgentChat(
             finalTextLength: result.text?.length ?? 0,
           },
         });
+        limitsResolver
+          .trackTokenUsage(
+            ctx,
+            result.totalUsage?.inputTokens ?? 0,
+            result.totalUsage?.outputTokens ?? 0,
+          )
+          .catch((error) => {
+            enqueueTrace({
+              conversationId,
+              agentName: 'general',
+              eventType: 'step',
+              label: 'trackTokenUsage failed',
+              data: { error: error instanceof Error ? error.message : String(error) },
+            });
+          });
       },
     });
 
