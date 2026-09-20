@@ -31,6 +31,7 @@ interface DeckCardProps {
   onExport: () => void;
   onSelect: () => void;
   onToggleSuspend: () => void;
+  groupNames?: string[];
 }
 
 export const DeckCard = memo(
@@ -48,6 +49,7 @@ export const DeckCard = memo(
     onExport,
     onSelect,
     onToggleSuspend,
+    groupNames,
   }: DeckCardProps) {
     const router = useRouter();
     const gradientHex = getGradientHex(deck.id);
@@ -115,6 +117,15 @@ export const DeckCard = memo(
                     {t('suspended')}
                   </Badge>
                 )}
+                {groupNames?.map((name) => (
+                  <Badge
+                    key={name}
+                    variant="outline"
+                    className="text-[11px] font-medium leading-none px-1.5 py-0.5 text-muted-foreground"
+                  >
+                    {name}
+                  </Badge>
+                ))}
                 {!canUpdate && (
                   <span className="flex items-center text-[11px] text-muted-foreground/60 gap-0.5 font-medium ml-0.5">
                     <Eye className="h-3 w-3" /> {t('common_view')}
@@ -252,6 +263,15 @@ export const DeckCard = memo(
                   {t('suspended')}
                 </Badge>
               )}
+              {groupNames?.map((name) => (
+                <Badge
+                  key={name}
+                  variant="outline"
+                  className="font-medium px-2.5 py-0.5 text-muted-foreground"
+                >
+                  {name}
+                </Badge>
+              ))}
             </div>
 
             <Button
@@ -281,7 +301,8 @@ export const DeckCard = memo(
       prev.canUpdate === next.canUpdate &&
       prev.canDelete === next.canDelete &&
       prev.isSelecting === next.isSelecting &&
-      prev.isSelected === next.isSelected
+      prev.isSelected === next.isSelected &&
+      prev.groupNames?.join(',') === next.groupNames?.join(',')
     );
   },
 );

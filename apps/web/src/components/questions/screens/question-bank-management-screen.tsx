@@ -31,15 +31,15 @@ interface QuestionBankManagementScreenProps {
 const STORAGE_KEY = 'question_banks_filters';
 
 function loadPersistedFilters() {
-  if (typeof window === 'undefined')
-    return { owner: 'all', sortBy: 'created_at', sortOrder: 'desc' };
+  const defaults = { owner: 'all', groupFilter: 'all', sortBy: 'created_at', sortOrder: 'desc' };
+  if (typeof window === 'undefined') return defaults;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) return { ...defaults, ...JSON.parse(raw) };
   } catch {
     /* ignore */
   }
-  return { owner: 'all', sortBy: 'created_at', sortOrder: 'desc' };
+  return defaults;
 }
 
 export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManagementScreenProps) {
@@ -53,11 +53,24 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     url: '/api/v1/organization/groups',
     enabled: !!activeOrg?.id && feature('group.manage'),
   });
+  const { data: myGroupsData } = useApiQuery<
+    Array<{ id: string; name: string; organizationId: string }>
+  >({
+    queryKey: groupKeys.my,
+    url: '/api/v1/me/groups',
+  });
+  const myGroupsInOrg = (myGroupsData ?? []).filter((g) => g.organizationId === activeOrg?.id);
+  const groupNameMap = new Map<string, string>([
+    ...myGroupsInOrg.map((g) => [g.id, g.name] as const),
+    ...(groupsData ?? []).map((g) => [g.id, g.name] as const),
+  ]);
+  const showGroupFilter = myGroupsInOrg.length > 0 || (groupsData?.length ?? 0) > 0;
   const persisted = loadPersistedFilters();
 
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [owner, setOwner] = useState(persisted.owner);
+  const [groupFilter, setGroupFilter] = useState(persisted.groupFilter);
   const [sortBy, setSortBy] = useState(persisted.sortBy);
   const [sortOrder, setSortOrder] = useState(persisted.sortOrder);
   const [isSelecting, setIsSelecting] = useState(false);
@@ -74,6 +87,7 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
   const filters = {
     q: debouncedSearch || undefined,
     owner: owner !== 'all' ? owner : undefined,
+    groupFilter: groupFilter !== 'all' ? groupFilter : undefined,
     sortBy,
     sortOrder,
   };
@@ -121,9 +135,12 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     return () => observer.disconnect();
   }, [handleObserver]);
 
-  function persistFilters(o: string, sb: string, so: string) {
+  function persistFilters(o: string, gf: string, sb: string, so: string) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ owner: o, sortBy: sb, sortOrder: so }));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ owner: o, groupFilter: gf, sortBy: sb, sortOrder: so }),
+      );
     } catch {
       /* ignore */
     }
@@ -264,14 +281,20 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
         owner={owner}
         onOwnerChange={(v) => {
           setOwner(v);
-          persistFilters(v, sortBy, sortOrder);
+          persistFilters(v, groupFilter, sortBy, sortOrder);
         }}
+        groupFilter={groupFilter}
+        onGroupFilterChange={(v) => {
+          setGroupFilter(v);
+          persistFilters(owner, v, sortBy, sortOrder);
+        }}
+        showGroupFilter={showGroupFilter}
         sortBy={sortBy}
         sortOrder={sortOrder}
         onSortChange={(sb, so) => {
           setSortBy(sb);
           setSortOrder(so);
-          persistFilters(owner, sb, so);
+          persistFilters(owner, groupFilter, sb, so);
         }}
         onCreateNew={openCreate}
         t={t}
@@ -333,6 +356,11 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
             onEdit={() => openEdit(bank)}
             onDelete={() => setDeleteId(bank.id)}
             onSelect={() => setIsSelecting(true)}
+            groupNames={
+              bank.groupIds?.map((id) => groupNameMap.get(id)).filter(Boolean) as
+                | string[]
+                | undefined
+            }
           />
         ))}
       </PageGrid>

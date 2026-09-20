@@ -123,6 +123,19 @@ export class FlashcardDeckService {
       }
     }
 
+    // Filter to decks shared with a group the caller belongs to
+    if (queryParams?.groupFilter === 'mine') {
+      if (ctx.groupIds.length === 0)
+        return success({ items: [], nextCursor: null, hasMore: false });
+      const { data: groupDecks } = await supabase
+        .from('deck_groups')
+        .select('deck_id')
+        .in('group_id', ctx.groupIds);
+      const deckIds = [...new Set((groupDecks ?? []).map((r) => r.deck_id as string))];
+      if (deckIds.length === 0) return success({ items: [], nextCursor: null, hasMore: false });
+      query = query.in('id', deckIds);
+    }
+
     // Apply search
     if (queryParams?.q) {
       query = query.or(`name.ilike.%${queryParams.q}%,description.ilike.%${queryParams.q}%`);
