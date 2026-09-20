@@ -436,7 +436,8 @@
     "all_done_desc": "You've completed all the steps. Dismiss this card.",
     "create_classroom": "Create your first classroom",
     "invite_students": "Invite your first students",
-    "create_content": "Create your first flashcard deck"
+    "create_content": "Create your first flashcard deck",
+    "create_group": "Create your first group"
   },
   "TeacherStatsOverview": {
     "title": "Statistics Overview",

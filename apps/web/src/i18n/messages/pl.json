@@ -417,7 +417,8 @@
     "all_done_desc": "Wykonałeś wszystkie kroki. Możesz ukryć tę kartę.",
     "create_classroom": "Utwórz swoją pierwszą klasę",
     "invite_students": "Zaproś pierwszych studentów",
-    "create_content": "Utwórz swoją pierwszą talię fiszek"
+    "create_content": "Utwórz swoją pierwszą talię fiszek",
+    "create_group": "Utwórz swoją pierwszą grupę"
   },
   "TeacherStatsOverview": {
     "title": "Przegląd statystyk",

@@ -20,7 +20,7 @@ type ChecklistItem = {
 export function OnboardingChecklist() {
   const t = useTranslations('OnboardingChecklist');
   const { user } = useAuth();
-  const { orgs, activeOrg } = useOrgs();
+  const { orgs } = useOrgs();
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -29,38 +29,44 @@ export function OnboardingChecklist() {
       return false;
     }
   });
-  const [_memberCount, setMemberCount] = useState(0);
+  const [memberCount, setMemberCount] = useState(0);
+  const [groupCount, setGroupCount] = useState(0);
+  const [hasContent, setHasContent] = useState(false);
 
   useEffect(() => {
     if (orgs.length === 0) return;
-    if (
-      (activeOrg?.orgRoleName ?? user?.app_metadata?.account_type) !== 'educator' &&
-      (activeOrg?.orgRoleName ?? user?.app_metadata?.account_type) !== 'manager'
-    )
-      return;
+    // orgRoleName is the org_roles row name ('admin'/'teacher'/'member'),
+    // a different concept from account_type ('educator'/'manager') — only
+    // account_type is meaningful to compare against those two literals.
+    const accountType = user?.app_metadata?.account_type;
+    if (accountType !== 'educator' && accountType !== 'manager') return;
     fetch('/api/v1/organization/members')
       .then((r) => r.json())
       .then((d) => setMemberCount(d.data?.length || 0))
       .catch(() => {});
-  }, [orgs, user, activeOrg?.orgRoleName]);
+    fetch('/api/v1/organization/groups')
+      .then((r) => r.json())
+      .then((d) => setGroupCount(d.data?.length || 0))
+      .catch(() => {});
+    fetch('/api/v1/stats/teacher')
+      .then((r) => r.json())
+      .then((d) =>
+        setHasContent((d.data?.totalQuestions ?? 0) + (d.data?.totalFlashcards ?? 0) > 0),
+      )
+      .catch(() => {});
+  }, [orgs, user]);
 
   if (dismissed || orgs.length === 0) return null;
 
   const items: ChecklistItem[] = [
-    // UI_HIDDEN: classroom section — stale for org-managed flow
-    // {
-    //   key: 'create_org',
-    //   labelKey: 'create_classroom',
-    //   href: '/edu/classroom/new',
-    //   done: orgs.length > 0,
-    // },
-    // {
-    //   key: 'invite',
-    //   labelKey: 'invite_students',
-    //   href: '/edu/classroom/invite',
-    //   done: memberCount > 1,
-    // },
-    { key: 'content', labelKey: 'create_content', href: '/edu/flashcards', done: false },
+    { key: 'content', labelKey: 'create_content', href: '/edu/flashcards', done: hasContent },
+    { key: 'group', labelKey: 'create_group', href: '/edu/groups', done: groupCount > 0 },
+    {
+      key: 'invite',
+      labelKey: 'invite_students',
+      href: '/edu/groups',
+      done: memberCount > 1,
+    },
   ];
 
   const allDone = items.every((i) => i.done);
