@@ -307,4 +307,23 @@ describe('FlashcardSpacedRepetitionService', () => {
       expect(flashcardSpacedRepetitionService.mapToQuality(4)).toBe(5);
     });
   });
+
+  describe('getFuzzRangeDays', () => {
+    it('returns 0 below the minimum fuzzable interval', () => {
+      expect(flashcardSpacedRepetitionService.getFuzzRangeDays(0)).toBe(0);
+      expect(flashcardSpacedRepetitionService.getFuzzRangeDays(1)).toBe(0);
+      expect(flashcardSpacedRepetitionService.getFuzzRangeDays(2)).toBe(0);
+    });
+
+    it('returns at least 1 day once the interval is fuzzable', () => {
+      expect(flashcardSpacedRepetitionService.getFuzzRangeDays(3)).toBe(1);
+      expect(flashcardSpacedRepetitionService.getFuzzRangeDays(6)).toBe(1);
+    });
+
+    it('scales with the interval but caps at 3 days', () => {
+      expect(flashcardSpacedRepetitionService.getFuzzRangeDays(40)).toBe(2);
+      expect(flashcardSpacedRepetitionService.getFuzzRangeDays(100)).toBe(3);
+      expect(flashcardSpacedRepetitionService.getFuzzRangeDays(365)).toBe(3);
+    });
+  });
 });

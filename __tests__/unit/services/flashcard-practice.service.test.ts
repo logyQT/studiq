@@ -478,4 +478,37 @@ describe('FlashcardPracticeService', () => {
       expect(result.data.byDeck).toEqual({ 'deck-1': 1, 'deck-2': 1 });
     });
   });
+
+  describe('pickLoadBalancedDate (SRS load balancing)', () => {
+    function lbChain(rows: Array<{ next_review_at: string }>) {
+      const c: any = {};
+      c.eq = vi.fn(() => c);
+      c.gte = vi.fn(() => c);
+      c.lt = vi.fn().mockResolvedValue({ data: rows, error: null });
+      return c;
+    }
+
+    it('keeps the base date when nothing else is scheduled nearby', async () => {
+      mock.from.mockReturnValue({ select: vi.fn(() => lbChain([])) });
+
+      const base = new Date('2026-01-10T00:00:00.000Z');
+      const result = await (service as any).pickLoadBalancedDate(ctx, base, 2);
+
+      expect(result.toISOString()).toBe(base.toISOString());
+    });
+
+    it('shifts to the least-loaded day within the fuzz window, tie-broken toward the base date', async () => {
+      const base = new Date('2026-01-10T00:00:00.000Z');
+      const rows = [
+        { next_review_at: new Date('2026-01-10T00:00:00.000Z').toISOString() },
+        { next_review_at: new Date('2026-01-10T00:00:00.000Z').toISOString() },
+        { next_review_at: new Date('2026-01-11T00:00:00.000Z').toISOString() },
+      ];
+      mock.from.mockReturnValue({ select: vi.fn(() => lbChain(rows)) });
+
+      const result = await (service as any).pickLoadBalancedDate(ctx, base, 2);
+
+      expect(result.toISOString()).toBe(new Date('2026-01-09T00:00:00.000Z').toISOString());
+    });
+  });
 });
