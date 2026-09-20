@@ -1,3 +1,4 @@
+import { AccountType } from '@studiq/authz';
 import { systemPrompt } from '@studiq/server/agents/system';
 import { askUserTool } from '@studiq/server/agents/tools/generic/ask-user.tool';
 import { createPlanTool } from '@studiq/server/agents/tools/generic/create-plan.tool';
@@ -10,37 +11,42 @@ import { webfetchTool } from '@studiq/server/agents/tools/generic/webfetch.tool'
 import { chatModel, providerName, reasoningEffort } from '@studiq/server/ai/model';
 import { conversationStorage } from '@studiq/server/lib/conversation-context';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { createClient } from '@studiq/server/lib/supabase/server';
 import { enqueueTrace } from '@studiq/server/lib/trace-queue';
+import { withAuth } from '@studiq/server/lib/with-auth';
 import type { UIMessage } from 'ai';
 import { convertToModelMessages, hasToolCall, stepCountIs, streamText } from 'ai';
 import type { NextRequest } from 'next/server';
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  return withAuth(
+    req,
+    async (ctx) => {
+      let body: unknown;
+      try {
+        body = await req.json();
+      } catch {
+        return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
+      }
 
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
+      const { messages } = body as { messages?: Array<Record<string, unknown>> };
+      if (!messages?.length) {
+        return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
+      }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
-  }
+      const conversationId =
+        ((messages[0] as Record<string, unknown>)?.id as string) || crypto.randomUUID();
 
-  const { messages } = body as { messages?: Array<Record<string, unknown>> };
-  if (!messages?.length) {
-    return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
-  }
+      return runAgentChat(ctx.userId, conversationId, messages);
+    },
+    { allowedAccountTypes: [AccountType.STUDENT, AccountType.EDUCATOR] },
+  );
+}
 
-  const conversationId =
-    ((messages[0] as Record<string, unknown>)?.id as string) || crypto.randomUUID();
-
+async function runAgentChat(
+  _userId: string,
+  conversationId: string,
+  messages: Array<Record<string, unknown>>,
+) {
   enqueueTrace({
     conversationId,
     agentName: 'general',

@@ -11,9 +11,9 @@ export interface WithAuthOptions {
 
 export async function withAuth(
   req: NextRequest,
-  handler: (ctx: RequestContext) => Promise<NextResponse>,
+  handler: (ctx: RequestContext) => Promise<NextResponse | Response>,
   options?: WithAuthOptions,
-): Promise<NextResponse> {
+): Promise<NextResponse | Response> {
   const tracer = trace.getTracer('api');
   const span = tracer.startSpan(`${req.method} /api/**`, {
     attributes: {
