@@ -436,7 +436,8 @@
     "all_done_desc": "You've completed all the steps. Dismiss this card.",
     "create_classroom": "Create your first classroom",
     "invite_students": "Invite your first students",
-    "create_content": "Create your first flashcard deck"
+    "create_content": "Create your first flashcard deck",
+    "create_group": "Create your first group"
   },
   "TeacherStatsOverview": {
     "title": "Statistics Overview",
@@ -645,6 +646,8 @@
     "owner_mine": "My Decks",
     "owner_group": "Groups",
     "owner_shared": "Shared",
+    "group_filter_all": "All groups",
+    "group_filter_mine": "My groups",
     "sort_newest": "Newest First",
     "sort_recent": "Recently Edited",
     "sort_oldest": "Oldest First",
@@ -1123,7 +1126,17 @@
     "subscription": "Subscription",
     "subscription_desc": "Current plan and billing info",
     "basic_plan": "Basic Plan",
-    "managed_by_admins": "Managed by system administrators"
+    "managed_by_admins": "Managed by system administrators",
+    "logo_label": "Logo",
+    "no_logo": "No logo",
+    "upload_logo": "Upload logo",
+    "uploading": "Uploading...",
+    "logo_updated": "Logo updated",
+    "brand_color_label": "Brand color",
+    "save_button": "Save",
+    "saving": "Saving...",
+    "color_updated": "Color updated",
+    "save_failed": "Failed to save"
   },
   "AppOnboarding": {
     "title": "Getting Started",
@@ -2027,6 +2040,8 @@
     "owner_mine": "My Decks",
     "owner_group": "Groups",
     "owner_shared": "Shared",
+    "group_filter_all": "All groups",
+    "group_filter_mine": "My groups",
     "sort_newest": "Newest First",
     "sort_recent": "Recently Edited",
     "sort_oldest": "Oldest First",
@@ -2190,6 +2205,8 @@
     "owner_all": "All",
     "owner_mine": "Mine",
     "owner_group": "Groups",
+    "group_filter_all": "All groups",
+    "group_filter_mine": "My groups",
     "sort_name_asc": "Name A-Z",
     "sort_name_desc": "Name Z-A",
     "sort_newest": "Newest",

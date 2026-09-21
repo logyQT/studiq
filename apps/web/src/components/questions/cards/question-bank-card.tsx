@@ -29,6 +29,7 @@ interface QuestionBankCardProps {
   onEdit: () => void;
   onDelete: () => void;
   onSelect: () => void;
+  groupNames?: string[];
 }
 
 export const QuestionBankCard = memo(
@@ -44,6 +45,7 @@ export const QuestionBankCard = memo(
     onEdit,
     onDelete,
     onSelect,
+    groupNames,
   }: QuestionBankCardProps) {
     const router = useRouter();
     const gradientHex = getGradientHex(bank.id);
@@ -120,6 +122,15 @@ export const QuestionBankCard = memo(
                 >
                   {t('n_questions', { count: bank.question_count })}
                 </Badge>
+                {groupNames?.map((name) => (
+                  <Badge
+                    key={name}
+                    variant="outline"
+                    className="text-[11px] font-medium leading-none px-1.5 py-0.5 text-muted-foreground"
+                  >
+                    {name}
+                  </Badge>
+                ))}
               </div>
             </div>
           </div>
@@ -265,6 +276,15 @@ export const QuestionBankCard = memo(
               >
                 {t('n_questions', { count: bank.question_count })}
               </Badge>
+              {groupNames?.map((name) => (
+                <Badge
+                  key={name}
+                  variant="outline"
+                  className="font-medium px-2.5 py-0.5 text-muted-foreground"
+                >
+                  {name}
+                </Badge>
+              ))}
             </div>
 
             <Button
@@ -291,7 +311,8 @@ export const QuestionBankCard = memo(
       prev.bank.name === next.bank.name &&
       prev.bank.description === next.bank.description &&
       prev.isSelecting === next.isSelecting &&
-      prev.isSelected === next.isSelected
+      prev.isSelected === next.isSelected &&
+      prev.groupNames?.join(',') === next.groupNames?.join(',')
     );
   },
 );

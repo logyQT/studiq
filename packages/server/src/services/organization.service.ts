@@ -261,8 +261,13 @@ export class OrganizationService {
   async update(id: string, data: UpdateOrganizationInput) {
     const supabase = await this.createClient();
 
-    const updateData: Partial<CreateOrganizationInput> = {};
+    const updateData: Partial<CreateOrganizationInput> & {
+      logo_url?: string;
+      brand_color?: string;
+    } = {};
     if (data.name !== undefined) updateData.name = data.name;
+    if (data.logoUrl !== undefined) updateData.logo_url = data.logoUrl;
+    if (data.brandColor !== undefined) updateData.brand_color = data.brandColor;
 
     const { data: organization, error } = await supabase
       .from('organizations')

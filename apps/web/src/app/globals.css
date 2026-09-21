@@ -2,6 +2,16 @@
 @import "tw-animate-css";
 @import "../styles/highlight.css";
 
+/*
+ * Tailwind v4's automatic content detection doesn't reach outside this
+ * app's own directory into sibling workspace packages. Without this,
+ * any class used only inside a @studiq/ui component (e.g. StatCard's
+ * opacity-[0.06] watermark icon) never gets generated — the class is
+ * silently dropped rather than erroring, so the failure only shows up
+ * as visually broken components.
+ */
+@source "../../../../packages/ui/src";
+
 @custom-variant dark (&:is(.dark *));
 
 /**

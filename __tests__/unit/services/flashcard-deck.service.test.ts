@@ -101,6 +101,31 @@ describe('FlashcardDeckService', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');
     });
+
+    it('returns empty result for groupFilter=mine when the caller has no groups', async () => {
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb([], null));
+
+      const result = await service.list(ctx, { groupFilter: 'mine' } as any);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false });
+    });
+
+    it('filters to decks shared with the caller groups when groupFilter=mine', async () => {
+      const groupCtx = { ...ctx, groupIds: ['g-1'] };
+      const decks = [
+        { id: 'd-1', name: 'Group Deck', flashcard_count: 0, groupIds: ['g-1'], suspended: false },
+      ];
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }], null));
+      mock.from.mockReturnValueOnce(qb(decks));
+
+      const result = await service.list(groupCtx, { groupFilter: 'mine' } as any);
+
+      expect(result.success).toBe(true);
+      expect(mock.from).toHaveBeenCalledWith('deck_groups');
+    });
   });
 
   describe('getById', () => {

@@ -6,6 +6,21 @@ import type {
 
 export class FlashcardSpacedRepetitionService {
   private readonly MAX_INTERVAL_DAYS = 365;
+  private readonly FUZZ_MIN_INTERVAL_DAYS = 3;
+
+  /**
+   * Days of slack around a review-state interval that the caller may shift
+   * next_review_at within (load balancing picks the least-crowded day in
+   * this window instead of pure random fuzz). Zero below
+   * FUZZ_MIN_INTERVAL_DAYS — fuzzing very short intervals risks moving a
+   * review to today/yesterday. 5% of the interval, floor 1, cap 3 days,
+   * mirroring the fuzz ranges other SM-2 implementations use to avoid
+   * cards scheduled together clumping onto the same day indefinitely.
+   */
+  getFuzzRangeDays(intervalDays: number): number {
+    if (intervalDays < this.FUZZ_MIN_INTERVAL_DAYS) return 0;
+    return Math.max(1, Math.min(Math.round(intervalDays * 0.05), 3));
+  }
 
   calculateNextReview(input: CalculateNextReviewInput): CalculateNextReviewOutput {
     switch (input.learningState) {

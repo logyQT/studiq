@@ -21,6 +21,11 @@ export const UpdateOrganizationSchema = registry.register(
       .min(3, { error: ValidationErrorCode.TOO_SHORT })
       .max(64, { error: ValidationErrorCode.TOO_LONG })
       .optional(),
+    logoUrl: z.url({ error: ValidationErrorCode.INVALID_INPUT }).optional(),
+    brandColor: z
+      .string()
+      .regex(/^#[0-9A-Fa-f]{6}$/, { error: ValidationErrorCode.INVALID_INPUT })
+      .optional(),
   }),
 );
 

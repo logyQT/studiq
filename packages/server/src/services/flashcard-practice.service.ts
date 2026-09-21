@@ -216,6 +216,14 @@ export class FlashcardPracticeService {
 
     const quality = flashcardSpacedRepetitionService.mapToQuality(rating);
 
+    let nextReviewAt = result.nextReviewAt;
+    if (result.learningState === 'review') {
+      const fuzzRangeDays = flashcardSpacedRepetitionService.getFuzzRangeDays(result.newInterval);
+      if (fuzzRangeDays > 0) {
+        nextReviewAt = await this.pickLoadBalancedDate(ctx, result.nextReviewAt, fuzzRangeDays);
+      }
+    }
+
     const { data: reviewState, error } = await supabase
       .from('flashcard_review_state')
       .upsert(
@@ -225,7 +233,7 @@ export class FlashcardPracticeService {
           easiness_factor: result.newEasinessFactor,
           interval_days: result.newInterval,
           repetitions: result.newRepetitions,
-          next_review_at: result.nextReviewAt.toISOString(),
+          next_review_at: nextReviewAt.toISOString(),
           last_reviewed_at: new Date().toISOString(),
           last_quality: quality,
           learning_state: result.learningState,
@@ -251,6 +259,61 @@ export class FlashcardPracticeService {
     }
 
     return success(reviewState);
+  }
+
+  /**
+   * Load balancing: within ±fuzzRangeDays of the naturally-computed due
+   * date, picks whichever day already has the fewest cards due for this
+   * user (ties broken toward the natural date) instead of always landing
+   * on the same day as every other card scheduled in the same session.
+   * Prevents "clumping" — e.g. reviewing 20 cards together all graduating
+   * to a 6-day interval would otherwise all come due on the exact same
+   * future day.
+   */
+  private async pickLoadBalancedDate(
+    ctx: RequestContext,
+    baseDate: Date,
+    fuzzRangeDays: number,
+  ): Promise<Date> {
+    const supabase = await this.createClient();
+
+    const windowStart = new Date(baseDate);
+    windowStart.setDate(windowStart.getDate() - fuzzRangeDays);
+    const windowEnd = new Date(baseDate);
+    windowEnd.setDate(windowEnd.getDate() + fuzzRangeDays + 1);
+
+    const { data } = await supabase
+      .from('flashcard_review_state')
+      .select('next_review_at')
+      .eq('user_id', ctx.userId)
+      .gte('next_review_at', windowStart.toISOString())
+      .lt('next_review_at', windowEnd.toISOString());
+
+    const dayMs = 24 * 60 * 60 * 1000;
+    const countsByOffset = new Map<number, number>();
+    for (const row of (data ?? []) as { next_review_at: string }[]) {
+      const offset = Math.round(
+        (new Date(row.next_review_at).getTime() - baseDate.getTime()) / dayMs,
+      );
+      countsByOffset.set(offset, (countsByOffset.get(offset) ?? 0) + 1);
+    }
+
+    let bestOffset = 0;
+    let bestCount = countsByOffset.get(0) ?? 0;
+    let bestAbs = 0;
+    for (let offset = -fuzzRangeDays; offset <= fuzzRangeDays; offset++) {
+      const count = countsByOffset.get(offset) ?? 0;
+      const abs = Math.abs(offset);
+      if (count < bestCount || (count === bestCount && abs < bestAbs)) {
+        bestCount = count;
+        bestOffset = offset;
+        bestAbs = abs;
+      }
+    }
+
+    const picked = new Date(baseDate);
+    picked.setDate(picked.getDate() + bestOffset);
+    return picked;
   }
 
   async getDueCards(

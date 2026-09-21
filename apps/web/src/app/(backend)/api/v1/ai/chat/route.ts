@@ -1,3 +1,4 @@
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { systemPrompt } from '@studiq/server/agents/system';
 import { askUserTool } from '@studiq/server/agents/tools/generic/ask-user.tool';
 import { createPlanTool } from '@studiq/server/agents/tools/generic/create-plan.tool';
@@ -9,38 +10,60 @@ import { generateFlashcardsTool } from '@studiq/server/agents/tools/generic/gene
 import { webfetchTool } from '@studiq/server/agents/tools/generic/webfetch.tool';
 import { chatModel, providerName, reasoningEffort } from '@studiq/server/ai/model';
 import { conversationStorage } from '@studiq/server/lib/conversation-context';
+import { AppError } from '@studiq/server/lib/errors';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { createClient } from '@studiq/server/lib/supabase/server';
+import { createRateLimiter } from '@studiq/server/lib/rate-limiter';
 import { enqueueTrace } from '@studiq/server/lib/trace-queue';
+import { withAuth } from '@studiq/server/lib/with-auth';
+import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { UIMessage } from 'ai';
 import { convertToModelMessages, hasToolCall, stepCountIs, streamText } from 'ai';
 import type { NextRequest } from 'next/server';
 
+const AI_TOKENS_LIMIT_KEY = 'max_ai_tokens_per_day';
+
+const rateLimiter = createRateLimiter(60_000, 20);
+
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  return withAuth(
+    req,
+    async (ctx) => {
+      const rateLimit = rateLimiter.check(ctx.userId);
+      if (!rateLimit.allowed) {
+        throw new AppError('RATE_LIMITED');
+      }
 
-  if (!user) {
-    return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
-  }
+      let body: unknown;
+      try {
+        body = await req.json();
+      } catch {
+        return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
+      }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
-  }
+      const { messages } = body as { messages?: Array<Record<string, unknown>> };
+      if (!messages?.length) {
+        return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
+      }
 
-  const { messages } = body as { messages?: Array<Record<string, unknown>> };
-  if (!messages?.length) {
-    return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
-  }
+      const usage = await limitsResolver.getUsage(ctx, AI_TOKENS_LIMIT_KEY);
+      if (usage.limit !== -1 && usage.current >= usage.limit) {
+        throw new AppError('USAGE_LIMIT_EXCEEDED');
+      }
 
-  const conversationId =
-    ((messages[0] as Record<string, unknown>)?.id as string) || crypto.randomUUID();
+      const conversationId =
+        ((messages[0] as Record<string, unknown>)?.id as string) || crypto.randomUUID();
 
+      return runAgentChat(ctx, conversationId, messages);
+    },
+    { allowedAccountTypes: [AccountType.STUDENT, AccountType.EDUCATOR] },
+  );
+}
+
+async function runAgentChat(
+  ctx: RequestContext,
+  conversationId: string,
+  messages: Array<Record<string, unknown>>,
+) {
   enqueueTrace({
     conversationId,
     agentName: 'general',
@@ -49,7 +72,7 @@ export async function POST(req: NextRequest) {
     data: { messageCount: messages.length, lastRole: messages[messages.length - 1]?.role },
   });
 
-  return conversationStorage.run({ conversationId }, async () => {
+  return conversationStorage.run({ conversationId, requestContext: ctx }, async () => {
     const result = streamText({
       model: chatModel,
       system: systemPrompt,
@@ -139,6 +162,21 @@ export async function POST(req: NextRequest) {
             finalTextLength: result.text?.length ?? 0,
           },
         });
+        limitsResolver
+          .trackTokenUsage(
+            ctx,
+            result.totalUsage?.inputTokens ?? 0,
+            result.totalUsage?.outputTokens ?? 0,
+          )
+          .catch((error) => {
+            enqueueTrace({
+              conversationId,
+              agentName: 'general',
+              eventType: 'step',
+              label: 'trackTokenUsage failed',
+              data: { error: error instanceof Error ? error.message : String(error) },
+            });
+          });
       },
     });
 

@@ -50,6 +50,7 @@ export const DeckListQuerySchema = registry.register(
     maxLimit: 500,
   }).extend({
     owner: z.enum(['all', 'mine', 'group', 'shared']).optional().default('all'),
+    groupFilter: z.enum(['all', 'mine']).optional().default('all'),
     includeSuspended: z.coerce.boolean().optional().default(false),
   }),
 );

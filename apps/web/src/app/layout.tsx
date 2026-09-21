@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
-import { getLocale, getMessages } from 'next-intl/server';
+import { getLocale, getMessages, getTranslations } from 'next-intl/server';
 import { Toaster } from 'sonner';
 import { AuthProvider } from '@/components/providers/AuthProvider';
 import { QueryProvider } from '@/components/providers/QueryProvider';
@@ -29,19 +29,44 @@ const geistMono = Geist_Mono({
  * =============================================================================
  * METADATA
  * =============================================================================
- * Konfiguracja SEO - dostosuj pod swój projekt.
  * Dokumentacja: https://nextjs.org/docs/app/api-reference/functions/generate-metadata
  */
-export const metadata: Metadata = {
-  title: {
-    default: 'Studiq',
-    template: '%s | Studiq',
-  },
-  description: 'Professional Next.js 14+ boilerplate with TypeScript and Tailwind CSS',
-  keywords: ['Next.js', 'React', 'TypeScript', 'Tailwind CSS'],
-  authors: [{ name: 'Your Name' }],
-  creator: 'Your Name',
-};
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  const t = await getTranslations({ locale, namespace: 'LandingPage' });
+
+  const title = { default: 'StudiQ', template: '%s | StudiQ' };
+  const description = t('hero_subtitle');
+
+  return {
+    metadataBase: new URL(siteUrl),
+    title,
+    description,
+    keywords: ['fiszki', 'quizy', 'nauka', 'AI', 'studia', 'flashcards', 'quizzes', 'studying'],
+    icons: {
+      icon: [
+        { url: '/icon-light-32x32.png', media: '(prefers-color-scheme: light)' },
+        { url: '/icon-dark-32x32.png', media: '(prefers-color-scheme: dark)' },
+      ],
+      apple: '/apple-icon.png',
+    },
+    openGraph: {
+      type: 'website',
+      locale,
+      url: siteUrl,
+      siteName: 'StudiQ',
+      title: title.default,
+      description,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: title.default,
+      description,
+    },
+  };
+}
 
 /**
  * =============================================================================
