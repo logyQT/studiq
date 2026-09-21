@@ -1,16 +1,9 @@
 'use client';
 
-import {
-  Button,
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@studiq/ui';
-import { Plus, Search, X } from 'lucide-react';
+import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@studiq/ui';
+import { Plus } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
+import { PageToolbar } from '@/components/shared/page-toolbar';
 
 interface QuestionBankFiltersProps {
   searchInput: string;
@@ -42,25 +35,19 @@ export function QuestionBankFilters({
   t,
 }: QuestionBankFiltersProps) {
   return (
-    <div className="flex flex-wrap items-center gap-3 max-sm:hidden">
-      <div className="relative flex-1 basis-full lg:basis-auto lg:max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          value={searchInput}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder={t('search_placeholder')}
-          className="pl-9 pr-9"
-        />
-        {searchInput && (
-          <button
-            onClick={() => onSearchChange('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </div>
-      <Select value={owner} onValueChange={(v) => onOwnerChange(v)}>
+    <PageToolbar
+      search={{
+        value: searchInput,
+        onChange: onSearchChange,
+        placeholder: t('search_placeholder'),
+      }}
+      actions={
+        <Button className="justify-start" onClick={onCreateNew}>
+          <Plus className="h-4 w-4" /> {t('new_bank')}
+        </Button>
+      }
+    >
+      <Select value={owner} onValueChange={onOwnerChange}>
         <SelectTrigger className="w-35 truncate">
           <SelectValue placeholder={t('owner_all')} />
         </SelectTrigger>
@@ -98,11 +85,6 @@ export function QuestionBankFilters({
           <SelectItem value="name:desc">{t('sort_name_desc')}</SelectItem>
         </SelectContent>
       </Select>
-      <div className="flex items-center gap-2 sm:ml-auto">
-        <Button className="justify-start" onClick={onCreateNew}>
-          <Plus className="h-4 w-4" /> {t('new_bank')}
-        </Button>
-      </div>
-    </div>
+    </PageToolbar>
   );
 }

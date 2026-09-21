@@ -1,18 +1,11 @@
 'use client';
 
 import type { Topic } from '@studiq/server/models/topic.model';
-import {
-  Button,
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@studiq/ui';
-import { Plus, Search, Sparkles, X } from 'lucide-react';
+import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@studiq/ui';
+import { Plus, Sparkles } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { PageToolbar } from '@/components/shared/page-toolbar';
 import { useFeature } from '@/hooks/use-feature';
 import { usePermission } from '@/hooks/use-permission';
 
@@ -55,24 +48,27 @@ export function FlashcardToolbar({
   const hasAccessGenerate = canCreate && hasAiAccess;
 
   return (
-    <div className="flex flex-wrap items-center gap-3 max-sm:hidden">
-      <div className="relative flex-1 basis-full lg:basis-auto lg:max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          value={searchInput}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder={t('search_placeholder')}
-          className="pl-9 pr-9"
-        />
-        {searchInput && (
-          <button
-            onClick={() => onSearchChange('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </div>
+    <PageToolbar
+      search={{
+        value: searchInput,
+        onChange: onSearchChange,
+        placeholder: t('search_placeholder'),
+      }}
+      actions={
+        <>
+          {canGenerate && hasAccessGenerate && (
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={onGenerate}>
+              <Sparkles className="h-4 w-4" /> {t('generate')}
+            </Button>
+          )}
+          {(canAddCard ?? canCreate) && (
+            <Button size="sm" className="gap-1.5" onClick={onCreateNew}>
+              <Plus className="h-4 w-4" /> {t('new_flashcard')}
+            </Button>
+          )}
+        </>
+      }
+    >
       {topics.length > 0 && (
         <Select value={topicFilter} onValueChange={onTopicFilterChange}>
           <SelectTrigger className="w-40 truncate">
@@ -105,18 +101,6 @@ export function FlashcardToolbar({
           <SelectItem value="front:desc">{t('sort_name_desc')}</SelectItem>
         </SelectContent>
       </Select>
-      <div className="flex items-center gap-2 sm:ml-auto">
-        {canGenerate && hasAccessGenerate && (
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={onGenerate}>
-            <Sparkles className="h-4 w-4" /> {t('generate')}
-          </Button>
-        )}
-        {(canAddCard ?? canCreate) && (
-          <Button size="sm" className="gap-1.5" onClick={onCreateNew}>
-            <Plus className="h-4 w-4" /> {t('new_flashcard')}
-          </Button>
-        )}
-      </div>
-    </div>
+    </PageToolbar>
   );
 }
