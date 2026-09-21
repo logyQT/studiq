@@ -1,3 +1,4 @@
+import { assertSafeExternalUrl } from '@studiq/server/agents/tools/generic/url-guard';
 import { conversationStorage } from '@studiq/server/lib/conversation-context';
 import { enqueueTrace } from '@studiq/server/lib/trace-queue';
 import { z } from '@studiq/server/lib/zod';
@@ -18,6 +19,7 @@ export const webfetchTool = tool({
       data: { url },
     });
     try {
+      await assertSafeExternalUrl(url);
       const res = await fetch(url);
       if (!res.ok) {
         return {

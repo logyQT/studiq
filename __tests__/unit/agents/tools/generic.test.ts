@@ -13,6 +13,14 @@ vi.mock('ai', async (importOriginal) => {
   };
 });
 
+// webfetchTool resolves DNS via assertSafeExternalUrl before fetching — mock it
+// so these tests don't depend on real network/DNS. Public IP by default; tests
+// that need a different resolution override with mockResolvedValueOnce.
+const dnsLookupMock = vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+vi.mock('node:dns/promises', () => ({
+  lookup: (...args: unknown[]) => dnsLookupMock(...args),
+}));
+
 import { askUserTool } from '@studiq/server/agents/tools/generic/ask-user.tool';
 import { createPlanTool } from '@studiq/server/agents/tools/generic/create-plan.tool';
 import { evaluateQualityTool } from '@studiq/server/agents/tools/generic/evaluate-quality.tool';
@@ -190,6 +198,25 @@ describe('webfetchTool', () => {
     (global.fetch as any).mockResolvedValue({ ok: true, text: () => Promise.resolve('content') });
     const result = await webfetchTool.execute({ url: 'https://example.com/article' }, ctx);
     expect(result.url).toBe('https://example.com/article');
+  });
+
+  it('blocks SSRF: never calls fetch for a private/internal target', async () => {
+    const ctx = mockCtx();
+    const result = await webfetchTool.execute(
+      { url: 'http://169.254.169.254/latest/meta-data/' },
+      ctx,
+    );
+    expect(result.content).toBe('');
+    expect(result.error).toContain('private/internal address');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('blocks SSRF via DNS rebinding: a public-looking hostname resolving to a private IP', async () => {
+    dnsLookupMock.mockResolvedValueOnce([{ address: '127.0.0.1', family: 4 }]);
+    const ctx = mockCtx();
+    const result = await webfetchTool.execute({ url: 'https://looks-safe.example.com/' }, ctx);
+    expect(result.error).toContain('private/internal address');
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 
