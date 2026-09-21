@@ -331,3 +331,37 @@ UI dashboards: `/admin` (SYS_ADMIN), `/manage` (UNIVERSITY_ADMIN), `/edu` (TEACH
 - **New API endpoints**: Add a `RouteRule` to `src/server/config/routes.config.ts` if it needs protection
 - **New DB tables**: Add migration in `supabase/migrations/` and schema in `supabase/schemas/`
 - **No barrel files**: Every import uses direct file paths (e.g. `@/server/services/flashcard.service` not `@/server/services`). Biome's `noBarrelFile` and `noReExportAll` rules enforce this.
+
+---
+
+## Code Review Checklist
+
+When reviewing PRs (especially stacked PRs), follow this process to avoid false positives:
+
+### Setup
+
+1. **Check out the top PR's branch** (not `main`) to see the full cumulative state:
+   ```bash
+   gh pr checkout <top-pr-number> --repo logyQT/studiq
+   ```
+2. **For stacked PRs**, identify the stack order from the `stack` field in the GitHub API response, or from each PR's base branch.
+
+### For each PR in the stack
+
+1. **Fetch the diff** — `gh pr diff <number> --repo logyQT/studiq`
+2. **Verify against the actual file on the PR's head branch** — `git show <head-sha>:<path>` or just `cat` the file. Diffs show *changes relative to the PR's base*, not relative to `main`. A line can appear as "added" in the diff while already existing on `main`.
+3. **Check what the PR claims to change** against what the diff actually changes. If a PR says "adds X" but the diff only shows X being modified (not added), the feature likely already existed.
+4. **Run the test suite** if touching business logic — `bun test:unit`
+5. **Run the linter** — `bun run lint`
+
+### Common false-positive patterns in stacked PR diffs
+
+| Diff shows | Looks like | Actually is |
+|------------|-----------|-------------|
+| `+` line that also appears in an earlier PR in the stack | "PR adds this" | Earlier PR added it; this PR just touched the same area |
+| No diff for a file the PR description mentions | "PR forgot the file" | Change is in a different file (e.g. model vs service) |
+| `+/-` on the same line | "PR broke something" | Formatting-only change (Biome/Prettier) |
+
+### Rule of thumb
+
+> **Diffs tell you what changed. Files tell you what exists. Always check both.**
