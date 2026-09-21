@@ -77,7 +77,9 @@ export class QuestionBankService {
     const filter = await accessibleFilter(ctx, Permission.QUESTION_BANK_READ, 'question_bank');
     if (filter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
 
-    let query = supabase.from('question_banks').select('*, question_count:questions(count)');
+    let query = supabase
+      .from('question_banks')
+      .select('*, question_count:questions(count), bank_groups(group_id)');
 
     if (filter.or) query = query.or(filter.or);
     if (filter.created_by) query = query.eq('created_by', filter.created_by);
@@ -96,6 +98,19 @@ export class QuestionBankService {
           return success({ items: [], nextCursor: null, hasMore: false });
         }
       }
+    }
+
+    // Filter to banks shared with a group the caller belongs to
+    if (queryParams?.groupFilter === 'mine') {
+      if (ctx.groupIds.length === 0)
+        return success({ items: [], nextCursor: null, hasMore: false });
+      const { data: groupBanks } = await supabase
+        .from('bank_groups')
+        .select('bank_id')
+        .in('group_id', ctx.groupIds);
+      const bankIds = [...new Set((groupBanks ?? []).map((r) => r.bank_id as string))];
+      if (bankIds.length === 0) return success({ items: [], nextCursor: null, hasMore: false });
+      query = query.in('id', bankIds);
     }
 
     if (queryParams?.q) {
@@ -126,7 +141,12 @@ export class QuestionBankService {
     const sliced = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
     const items = sliced.map((item) => {
       const countArr = item.question_count as { count: number }[] | undefined;
-      return { ...item, question_count: countArr?.[0]?.count ?? 0 };
+      const groups = item.bank_groups as { group_id: string }[] | undefined;
+      return {
+        ...item,
+        question_count: countArr?.[0]?.count ?? 0,
+        groupIds: groups?.map((g) => g.group_id) ?? [],
+      };
     });
     const nextCursor = hasMore
       ? encodeCursor(sliced[sliced.length - 1][sortBy], sliced[sliced.length - 1].id)
@@ -147,7 +167,7 @@ export class QuestionBankService {
 
     let query = supabase
       .from('question_banks')
-      .select('*, question_count:questions(count)')
+      .select('*, question_count:questions(count), bank_groups(group_id)')
       .eq('id', id);
 
     if (filter.or) query = query.or(filter.or);
@@ -160,9 +180,13 @@ export class QuestionBankService {
     const countArr = (bank as Record<string, unknown>).question_count as
       | { count: number }[]
       | undefined;
+    const groups = (bank as Record<string, unknown>).bank_groups as
+      | { group_id: string }[]
+      | undefined;
     return success({
       ...bank,
       question_count: countArr?.[0]?.count ?? 0,
+      groupIds: groups?.map((g) => g.group_id) ?? [],
     } as unknown as QuestionBank);
   }
 

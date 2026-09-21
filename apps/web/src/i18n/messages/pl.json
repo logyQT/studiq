@@ -417,7 +417,8 @@
     "all_done_desc": "Wykonałeś wszystkie kroki. Możesz ukryć tę kartę.",
     "create_classroom": "Utwórz swoją pierwszą klasę",
     "invite_students": "Zaproś pierwszych studentów",
-    "create_content": "Utwórz swoją pierwszą talię fiszek"
+    "create_content": "Utwórz swoją pierwszą talię fiszek",
+    "create_group": "Utwórz swoją pierwszą grupę"
   },
   "TeacherStatsOverview": {
     "title": "Przegląd statystyk",
@@ -626,6 +627,8 @@
     "owner_mine": "Moje",
     "owner_group": "Grupy",
     "owner_shared": "Udostępnione",
+    "group_filter_all": "Wszystkie grupy",
+    "group_filter_mine": "Moje grupy",
     "sort_newest": "Od najnowszych",
     "sort_recent": "Ostatnio edytowane",
     "sort_oldest": "Od najstarszych",
@@ -1104,7 +1107,17 @@
     "subscription": "Subskrypcja",
     "subscription_desc": "Aktualny plan i informacje o rozliczeniach",
     "basic_plan": "Plan Basic",
-    "managed_by_admins": "Zarządzane przez administratorów systemowych"
+    "managed_by_admins": "Zarządzane przez administratorów systemowych",
+    "logo_label": "Logo",
+    "no_logo": "Brak logo",
+    "upload_logo": "Wgraj logo",
+    "uploading": "Wgrywanie...",
+    "logo_updated": "Logo zaktualizowane",
+    "brand_color_label": "Kolor marki",
+    "save_button": "Zapisz",
+    "saving": "Zapisywanie...",
+    "color_updated": "Kolor zaktualizowany",
+    "save_failed": "Nie udało się zapisać"
   },
   "AppOnboarding": {
     "title": "Pierwsze kroki",
@@ -2007,6 +2020,8 @@
     "owner_mine": "Moje",
     "owner_group": "Grupy",
     "owner_shared": "Udostępnione",
+    "group_filter_all": "Wszystkie grupy",
+    "group_filter_mine": "Moje grupy",
     "sort_newest": "Od najnowszych",
     "sort_recent": "Ostatnio edytowane",
     "sort_oldest": "Od najstarszych",
@@ -2170,6 +2185,8 @@
     "owner_all": "Wszystkie",
     "owner_mine": "Moje",
     "owner_group": "Grupy",
+    "group_filter_all": "Wszystkie grupy",
+    "group_filter_mine": "Moje grupy",
     "sort_name_asc": "Nazwa A-Z",
     "sort_name_desc": "Nazwa Z-A",
     "sort_newest": "Najnowsze",

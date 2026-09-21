@@ -152,4 +152,46 @@ describe('OrganizationService', () => {
       }
     });
   });
+
+  describe('update', () => {
+    it('writes logo_url and brand_color when provided', async () => {
+      let capturedUpdate: unknown;
+      const c = chain({
+        id: 'org-1',
+        name: 'Org',
+        logo_url: 'https://x/logo.png',
+        brand_color: '#112233',
+      });
+      c.update = vi.fn((data: unknown) => {
+        capturedUpdate = data;
+        return c;
+      });
+      mock.from.mockReturnValueOnce(c);
+
+      const result = await service.update('org-1', {
+        logoUrl: 'https://x/logo.png',
+        brandColor: '#112233',
+      });
+
+      expect(result.success).toBe(true);
+      expect(capturedUpdate).toEqual({
+        logo_url: 'https://x/logo.png',
+        brand_color: '#112233',
+      });
+    });
+
+    it('only writes fields that are actually provided', async () => {
+      let capturedUpdate: unknown;
+      const c = chain({ id: 'org-1', name: 'Renamed' });
+      c.update = vi.fn((data: unknown) => {
+        capturedUpdate = data;
+        return c;
+      });
+      mock.from.mockReturnValueOnce(c);
+
+      await service.update('org-1', { name: 'Renamed' });
+
+      expect(capturedUpdate).toEqual({ name: 'Renamed' });
+    });
+  });
 });

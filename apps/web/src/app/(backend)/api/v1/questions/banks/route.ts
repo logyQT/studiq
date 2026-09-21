@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     const query = {
       q: searchParams.get('q') ?? undefined,
       owner: searchParams.get('owner') ?? undefined,
+      groupFilter: searchParams.get('groupFilter') ?? undefined,
       sortBy: searchParams.get('sortBy') ?? undefined,
       sortOrder: searchParams.get('sortOrder') ?? undefined,
       cursor: searchParams.get('cursor') ?? undefined,

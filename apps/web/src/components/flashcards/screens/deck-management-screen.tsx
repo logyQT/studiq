@@ -64,11 +64,24 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     url: '/api/v1/organization/groups',
     enabled: !!activeOrg?.id && feature('group.manage'),
   });
+  const { data: myGroupsData } = useApiQuery<
+    Array<{ id: string; name: string; organizationId: string }>
+  >({
+    queryKey: groupKeys.my,
+    url: '/api/v1/me/groups',
+  });
+  const myGroupsInOrg = (myGroupsData ?? []).filter((g) => g.organizationId === activeOrg?.id);
+  const groupNameMap = new Map<string, string>([
+    ...myGroupsInOrg.map((g) => [g.id, g.name] as const),
+    ...(groupsData ?? []).map((g) => [g.id, g.name] as const),
+  ]);
+  const showGroupFilter = myGroupsInOrg.length > 0 || (groupsData?.length ?? 0) > 0;
   const queryClient = useQueryClient();
 
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebounce(searchInput, 300);
   const [owner, setOwner] = usePersistedState('flashcard_decks_owner', 'all');
+  const [groupFilter, setGroupFilter] = usePersistedState('flashcard_decks_group_filter', 'all');
   const [sortBy, setSortBy] = usePersistedState('flashcard_decks_sort_by', 'created_at');
   const [sortOrder, setSortOrder] = usePersistedState('flashcard_decks_sort_order', 'desc');
   const [includeSuspended, setIncludeSuspended] = useState(false);
@@ -83,6 +96,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     queryKey: flashcardKeys.decks.paginated({
       q: debouncedSearch,
       owner,
+      groupFilter,
       sortBy,
       sortOrder,
       includeSuspended: includeSuspended ? 'true' : undefined,
@@ -91,6 +105,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     filters: {
       q: debouncedSearch || undefined,
       owner: owner !== 'all' ? owner : undefined,
+      groupFilter: groupFilter !== 'all' ? groupFilter : undefined,
       sortBy,
       sortOrder,
       includeSuspended: includeSuspended ? 'true' : undefined,
@@ -288,6 +303,9 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         onOwnerChange={(v) => {
           setOwner(v);
         }}
+        groupFilter={groupFilter}
+        onGroupFilterChange={setGroupFilter}
+        showGroupFilter={showGroupFilter}
         sortBy={sortBy}
         sortOrder={sortOrder}
         onSortChange={(sb, so) => {
@@ -369,6 +387,11 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
             }
             onSelect={() => selection.setIsSelecting(true)}
             onToggleSuspend={() => handleToggleSuspend(deck)}
+            groupNames={
+              deck.groupIds?.map((id) => groupNameMap.get(id)).filter(Boolean) as
+                | string[]
+                | undefined
+            }
           />
         ))}
       </PageGrid>

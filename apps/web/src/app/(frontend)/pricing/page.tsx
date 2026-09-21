@@ -1,10 +1,23 @@
-'use client';
-
 import { Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
 import { Building2, GraduationCap, User } from 'lucide-react';
+import type { Metadata } from 'next';
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { MainLayout } from '@/components/layout/MainLayout';
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  const t = await getTranslations({ locale, namespace: 'PricingPage' });
+  const title = t('title');
+  const description = t('subtitle');
+
+  return {
+    title,
+    description,
+    openGraph: { title, description },
+    twitter: { card: 'summary_large_image', title, description },
+  };
+}
 
 const TILES = [
   {
@@ -27,8 +40,9 @@ const TILES = [
   },
 ];
 
-export default function PricingPickerPage() {
-  const t = useTranslations('PricingPage');
+export default async function PricingPickerPage() {
+  const locale = await getLocale();
+  const t = await getTranslations({ locale, namespace: 'PricingPage' });
 
   return (
     <MainLayout>

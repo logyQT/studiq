@@ -49,6 +49,7 @@ export const QuestionBankListQuerySchema = registry.register(
     maxLimit: 500,
   }).extend({
     owner: z.enum(['all', 'mine', 'group']).optional().default('all'),
+    groupFilter: z.enum(['all', 'mine']).optional().default('all'),
   }),
 );
 
@@ -87,4 +88,5 @@ export interface QuestionBank {
   created_at: string;
   updated_at: string;
   visibility?: 'personal' | 'group';
+  groupIds?: string[];
 }

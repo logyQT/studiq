@@ -17,6 +17,9 @@ interface QuestionBankFiltersProps {
   onSearchChange: (value: string) => void;
   owner: string;
   onOwnerChange: (value: string) => void;
+  groupFilter?: string;
+  onGroupFilterChange?: (value: string) => void;
+  showGroupFilter?: boolean;
   sortBy: string;
   sortOrder: string;
   onSortChange: (sortBy: string, sortOrder: string) => void;
@@ -29,6 +32,9 @@ export function QuestionBankFilters({
   onSearchChange,
   owner,
   onOwnerChange,
+  groupFilter,
+  onGroupFilterChange,
+  showGroupFilter,
   sortBy,
   sortOrder,
   onSortChange,
@@ -63,6 +69,17 @@ export function QuestionBankFilters({
           <SelectItem value="mine">{t('owner_mine')}</SelectItem>
         </SelectContent>
       </Select>
+      {showGroupFilter && onGroupFilterChange && (
+        <Select value={groupFilter} onValueChange={onGroupFilterChange}>
+          <SelectTrigger className="w-38 truncate">
+            <SelectValue placeholder={t('group_filter_all')} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t('group_filter_all')}</SelectItem>
+            <SelectItem value="mine">{t('group_filter_mine')}</SelectItem>
+          </SelectContent>
+        </Select>
+      )}
       <Select
         value={`${sortBy}:${sortOrder}`}
         onValueChange={(v) => {
