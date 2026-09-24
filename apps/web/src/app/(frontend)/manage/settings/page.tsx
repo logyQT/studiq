@@ -14,7 +14,7 @@ import {
 } from '@studiq/ui';
 import Image from 'next/image';
 import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useOrgs } from '@/hooks/use-orgs';
@@ -44,6 +44,10 @@ export default function SettingsPage() {
   });
 
   const [brandColor, setBrandColor] = useState('#000000');
+
+  useEffect(() => {
+    if (organization?.brand_color) setBrandColor(organization.brand_color);
+  }, [organization?.brand_color]);
 
   const updateColor = useApiMutation({
     mutationFn: (color: string) =>
