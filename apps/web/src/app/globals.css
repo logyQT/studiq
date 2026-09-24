@@ -24,6 +24,22 @@
   --primary: oklch(0.546 0.245 265);
   --primary-foreground: oklch(0.985 0 0);
 
+  /*
+   * Org brand accent (issue #108). Defaults to --primary so apps render
+   * identically to default StudiQ branding. BrandAccent.tsx overrides this
+   * with the org's brand_color only when the `branding` feature is enabled.
+   * Scoped consumers only — deliberately NOT aliased onto --primary/--accent,
+   * which would retheme every surface in the app.
+   */
+  --brand-accent: var(--primary);
+  /*
+   * Soft/highlight variants default to the EXACT colors the nav and sidebar
+   * already use, so orgs without branding render pixel-identically to today.
+   * BrandAccent.tsx blends the org color into each base when branding is on.
+   */
+  --brand-accent-soft: var(--accent);
+  --brand-accent-sidebar: var(--sidebar-accent);
+
   /* Secondary: violet (for AI / premium features) */
   --secondary: oklch(0.94 0.035 265);
   --secondary-foreground: oklch(0.32 0.12 265);

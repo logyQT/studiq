@@ -13,6 +13,9 @@ export type OrgMembership = {
   orgRoleName: string;
   orgRoleId: string;
   isActive: boolean;
+  /** Org branding (issue #108) — only honored when the `branding` feature is on. */
+  logo_url?: string | null;
+  brand_color?: string | null;
 };
 
 export function useOrgs() {

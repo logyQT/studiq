@@ -1,7 +1,15 @@
 import { RequestContext } from '@studiq/authz';
 import { OrganizationController } from '@studiq/server/controllers/organization.controller';
+import { AppError } from '@studiq/server/lib/errors';
+import { requireFeature } from '@studiq/server/lib/features';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@studiq/server/lib/features', () => ({
+  requireFeature: vi.fn().mockResolvedValue(undefined),
+}));
+
+const mockRequireFeature = vi.mocked(requireFeature);
 
 function createMockService() {
   return { create: vi.fn(), getAll: vi.fn(), getById: vi.fn(), update: vi.fn(), delete: vi.fn() };
@@ -152,7 +160,7 @@ describe('OrganizationController', () => {
       const updated = { id: validId, name: 'Updated Name', slug: 'test' };
       mockService.update.mockResolvedValueOnce(success(updated));
 
-      const response = await controller.update(validId, { name: 'Updated Name' });
+      const response = await controller.update(mockCtx, validId, { name: 'Updated Name' });
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
@@ -160,7 +168,7 @@ describe('OrganizationController', () => {
     });
 
     it('returns BAD_REQUEST for invalid UUID', async () => {
-      const response = await controller.update('not-a-uuid', { name: 'Updated' });
+      const response = await controller.update(mockCtx, 'not-a-uuid', { name: 'Updated' });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(400);
@@ -168,7 +176,7 @@ describe('OrganizationController', () => {
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid body', async () => {
-      const response = await controller.update(validId, { name: 'AB' });
+      const response = await controller.update(mockCtx, validId, { name: 'AB' });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
@@ -178,7 +186,7 @@ describe('OrganizationController', () => {
     it('returns CONFLICT when slug already exists', async () => {
       mockService.update.mockResolvedValueOnce(failure('CONFLICT'));
 
-      const response = await controller.update(validId, { slug: 'taken' });
+      const response = await controller.update(mockCtx, validId, { slug: 'taken' });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(409);
@@ -188,7 +196,7 @@ describe('OrganizationController', () => {
     it('returns NOT_FOUND when university does not exist', async () => {
       mockService.update.mockResolvedValueOnce(failure('NOT_FOUND'));
 
-      const response = await controller.update(validId, { name: 'New' });
+      const response = await controller.update(mockCtx, validId, { name: 'New' });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(404);
@@ -198,11 +206,75 @@ describe('OrganizationController', () => {
     it('returns error when service returns failure', async () => {
       mockService.update.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-      const response = await controller.update(validId, { name: 'New' });
+      const response = await controller.update(mockCtx, validId, { name: 'New' });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
       expect((response as any).error).toBe('INTERNAL_SERVER');
+    });
+  });
+
+  describe('update — branding feature gate (issue #108)', () => {
+    const validId = '550e8400-e29b-41d4-a716-446655440000';
+
+    it('gates the request when body carries logoUrl', async () => {
+      mockService.update.mockResolvedValueOnce(success({ id: validId }));
+
+      const response = await controller.update(mockCtx, validId, {
+        logoUrl: 'https://cdn.example.com/logo.png',
+      });
+
+      expect(response.success).toBe(true);
+      expect(mockRequireFeature).toHaveBeenCalledTimes(1);
+      expect(mockRequireFeature).toHaveBeenCalledWith(mockCtx, 'branding');
+    });
+
+    it('gates the request when body carries brandColor', async () => {
+      mockService.update.mockResolvedValueOnce(success({ id: validId }));
+
+      const response = await controller.update(mockCtx, validId, { brandColor: '#FF6600' });
+
+      expect(response.success).toBe(true);
+      expect(mockRequireFeature).toHaveBeenCalledWith(mockCtx, 'branding');
+    });
+
+    it('does NOT gate a plain rename — non-branding updates stay unaffected', async () => {
+      mockService.update.mockResolvedValueOnce(success({ id: validId, name: 'Renamed' }));
+
+      const response = await controller.update(mockCtx, validId, { name: 'Renamed University' });
+
+      expect(response.success).toBe(true);
+      expect(mockRequireFeature).not.toHaveBeenCalled();
+      expect(mockService.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects with FORBIDDEN before touching the service when the feature is off', async () => {
+      mockRequireFeature.mockRejectedValueOnce(new AppError('FORBIDDEN'));
+
+      await expect(controller.update(mockCtx, validId, { brandColor: '#FF6600' })).rejects.toThrow(
+        'FORBIDDEN',
+      );
+
+      expect(mockService.update).not.toHaveBeenCalled();
+    });
+
+    it('still enforces input validation for branding payloads once entitled', async () => {
+      const response = await controller.update(mockCtx, validId, {
+        brandColor: 'not-a-hex-color',
+      });
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect(mockRequireFeature).toHaveBeenCalledWith(mockCtx, 'branding');
+      expect(mockService.update).not.toHaveBeenCalled();
+    });
+
+    it('does not gate when branding keys are absent but other fields are present', async () => {
+      mockService.update.mockResolvedValueOnce(success({ id: validId }));
+
+      await controller.update(mockCtx, validId, { name: 'Only a name', slug: 'only-a-slug' });
+
+      expect(mockRequireFeature).not.toHaveBeenCalled();
     });
   });
 

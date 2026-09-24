@@ -1136,7 +1136,10 @@
     "save_button": "Save",
     "saving": "Saving...",
     "color_updated": "Color updated",
-    "save_failed": "Failed to save"
+    "save_failed": "Failed to save",
+    "branding_locked_title": "Custom branding",
+    "branding_locked_desc": "Upgrade to access custom branding",
+    "branding_locked_cta": "View plans"
   },
   "AppOnboarding": {
     "title": "Getting Started",
@@ -1661,6 +1664,7 @@
     "feature_group_manage": "Group Management",
     "feature_member_manage": "Member Management",
     "feature_role_builder": "Role Builder",
+    "feature_branding": "Custom branding",
     "limit_unlimited": "Unlimited",
     "limit_max_flashcards": "Max Flashcards",
     "limit_max_decks": "Max Decks",

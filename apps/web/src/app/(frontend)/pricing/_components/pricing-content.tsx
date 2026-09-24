@@ -64,6 +64,7 @@ function getFeatureLabel(key: string, t: (k: string) => string): string {
     group_manage: t('feature_group_manage'),
     member_manage: t('feature_member_manage'),
     role_builder: t('feature_role_builder'),
+    branding: t('feature_branding'),
   };
   return labels[key] ?? key;
 }

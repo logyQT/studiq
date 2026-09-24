@@ -98,7 +98,7 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
           className={cn(
             'flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition shrink-0',
             isActive(href)
-              ? 'bg-accent text-foreground'
+              ? 'bg-[var(--brand-accent-soft)] text-foreground'
               : 'text-muted-foreground hover:text-foreground hover:bg-accent',
           )}
         >

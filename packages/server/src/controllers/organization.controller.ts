@@ -3,6 +3,7 @@ import {
   type ControllerResponse,
   controllerResponse,
 } from '@studiq/server/lib/controller-response';
+import { requireFeature } from '@studiq/server/lib/features';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
 import {
@@ -89,7 +90,17 @@ export class OrganizationController {
     return controllerResponse.success(organization.data);
   }
 
-  async update(id: string, body: unknown): Promise<ControllerResponse> {
+  async update(ctx: RequestContext, id: string, body: unknown): Promise<ControllerResponse> {
+    // Branding is plan-gated, but a plain org rename is not — only gate the
+    // request when it actually carries branding fields. Checked on the raw
+    // body (before validation) so a disabled feature fails closed rather than
+    // leaking a 422 for a payload the org was never allowed to send.
+    const rawBody =
+      typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+    if ('logoUrl' in rawBody || 'brandColor' in rawBody) {
+      await requireFeature(ctx, 'branding');
+    }
+
     const parsedId = OrganizationIdParamsSchema.safeParse({ id });
     if (!parsedId.success) {
       return {

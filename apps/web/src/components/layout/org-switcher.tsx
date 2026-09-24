@@ -15,9 +15,11 @@ import {
   useSidebar,
 } from '@studiq/ui';
 import { Building2, Check, ChevronsUpDown, LogIn } from 'lucide-react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useBranding } from '@/hooks/use-branding';
 import { useOrgs } from '@/hooks/use-orgs';
 
 function displayRole(name: string | undefined | null, fallback: string): string {
@@ -31,6 +33,9 @@ export function OrgSwitcher() {
   const { orgs, activeOrg, switchOrg, isSwitching, isLoading } = useOrgs();
   const router = useRouter();
   const { isMobile } = useSidebar();
+  // Feature-gated inside the hook: null unless the org's plan entitles it,
+  // so a stale logo_url never shows for a plan that lost branding (issue #108).
+  const { logoUrl } = useBranding();
 
   if (isLoading || !user) {
     return (
@@ -108,10 +113,17 @@ export function OrgSwitcher() {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg">
-                {activeOrg ? (
-                  <OrgAvatar orgId={activeOrg.id} name={activeOrg.name} size={32} />
+                {logoUrl ? (
+                  <Image
+                    src={logoUrl}
+                    alt=""
+                    width={32}
+                    height={32}
+                    className="size-8 rounded-md border object-contain"
+                    unoptimized
+                  />
                 ) : (
-                  <Building2 className="size-6 text-muted-foreground" />
+                  <OrgAvatar orgId={activeOrg.id} name={activeOrg.name} size={32} />
                 )}
               </div>
               <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">

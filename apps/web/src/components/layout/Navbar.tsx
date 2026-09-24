@@ -19,6 +19,7 @@ import {
   Sparkles,
   Users,
 } from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -28,6 +29,7 @@ import { MobileNav } from '@/components/layout/navbar/mobile-nav';
 import type { NavLink } from '@/components/layout/navbar/types';
 import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useBranding } from '@/hooks/use-branding';
 
 const studentLinks: NavLink[] = [
   { labelKey: 'nav_overview', href: '/app', icon: LayoutDashboard },
@@ -65,6 +67,7 @@ export function Navbar() {
   const { user, isLoading } = useAuth();
   const pathname = usePathname();
   const [avatarOpen, setAvatarOpen] = useState(false);
+  const { logoUrl } = useBranding();
 
   const accountType = user?.app_metadata?.account_type as AccountType | undefined;
 
@@ -96,7 +99,21 @@ export function Navbar() {
               href="/"
               className="flex items-center gap-2 text-xl font-bold tracking-tight hover:opacity-80 transition shrink-0"
             >
-              <GraduationCap className="h-6 w-6 text-primary" />
+              {/* Org logo replaces the default icon only when the `branding`
+                  feature is on AND a logo is set; otherwise fall back to the
+                  GraduationCap so default StudiQ branding is untouched. */}
+              {logoUrl ? (
+                <Image
+                  src={logoUrl}
+                  alt=""
+                  width={24}
+                  height={24}
+                  className="h-6 w-6 rounded-sm object-contain"
+                  unoptimized
+                />
+              ) : (
+                <GraduationCap className="h-6 w-6 text-primary" />
+              )}
               {t('logo')}
             </Link>
 

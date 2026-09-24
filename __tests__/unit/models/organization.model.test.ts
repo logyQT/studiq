@@ -39,6 +39,28 @@ describe('UpdateOrganizationSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('passes with valid branding fields', () => {
+    const logo = UpdateOrganizationSchema.safeParse({
+      logoUrl: 'https://cdn.example.com/logo.png',
+    });
+    expect(logo.success).toBe(true);
+
+    const color = UpdateOrganizationSchema.safeParse({ brandColor: '#FF6600' });
+    expect(color.success).toBe(true);
+  });
+
+  it('rejects a brandColor that is not a 6-digit hex color', () => {
+    for (const bad of ['FF6600', '#FF660', '#GGGGGG', 'red']) {
+      const result = UpdateOrganizationSchema.safeParse({ brandColor: bad });
+      expect(result.success).toBe(false);
+    }
+  });
+
+  it('rejects a malformed logoUrl', () => {
+    const result = UpdateOrganizationSchema.safeParse({ logoUrl: 'not-a-url' });
+    expect(result.success).toBe(false);
+  });
+
   it('passes with empty object (all optional)', () => {
     const result = UpdateOrganizationSchema.safeParse({});
     expect(result.success).toBe(true);

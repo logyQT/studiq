@@ -11,10 +11,12 @@ import {
 } from '@studiq/ui';
 import type { LucideIcon } from 'lucide-react';
 import { GraduationCap, Menu } from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
+import { useBranding } from '@/hooks/use-branding';
 import { cn } from '@/lib/utils';
 
 interface MobileNavItem {
@@ -32,6 +34,7 @@ interface MobileNavProps {
 export function MobileNav({ items, isActive, isLoggedIn }: MobileNavProps) {
   const t = useTranslations('Navbar');
   const [open, setOpen] = useState(false);
+  const { logoUrl } = useBranding();
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -48,7 +51,18 @@ export function MobileNav({ items, isActive, isLoggedIn }: MobileNavProps) {
 
         {/* Header */}
         <div className="flex items-center gap-2 p-4 border-b shrink-0">
-          <GraduationCap className="h-5 w-5 text-primary" />
+          {logoUrl ? (
+            <Image
+              src={logoUrl}
+              alt=""
+              width={20}
+              height={20}
+              className="h-5 w-5 rounded-sm object-contain"
+              unoptimized
+            />
+          ) : (
+            <GraduationCap className="h-5 w-5 text-primary" />
+          )}
           <span className="text-lg font-bold">{t('logo')}</span>
         </div>
 
@@ -62,7 +76,7 @@ export function MobileNav({ items, isActive, isLoggedIn }: MobileNavProps) {
               className={cn(
                 'flex items-center gap-2 px-3 py-3 rounded-md text-sm font-medium transition',
                 isActive(href)
-                  ? 'bg-accent text-foreground'
+                  ? 'bg-[var(--brand-accent-soft)] text-foreground'
                   : 'text-muted-foreground hover:text-foreground hover:bg-accent',
               )}
             >
