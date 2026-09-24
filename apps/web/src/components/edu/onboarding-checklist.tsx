@@ -40,20 +40,25 @@ export function OnboardingChecklist() {
     // account_type is meaningful to compare against those two literals.
     const accountType = user?.app_metadata?.account_type;
     if (accountType !== 'educator' && accountType !== 'manager') return;
-    fetch('/api/v1/organization/members')
+
+    const controller = new AbortController();
+
+    fetch('/api/v1/organization/members', { signal: controller.signal })
       .then((r) => r.json())
       .then((d) => setMemberCount(d.data?.length || 0))
       .catch(() => {});
-    fetch('/api/v1/organization/groups')
+    fetch('/api/v1/organization/groups', { signal: controller.signal })
       .then((r) => r.json())
       .then((d) => setGroupCount(d.data?.length || 0))
       .catch(() => {});
-    fetch('/api/v1/stats/teacher')
+    fetch('/api/v1/stats/teacher', { signal: controller.signal })
       .then((r) => r.json())
       .then((d) =>
         setHasContent((d.data?.totalQuestions ?? 0) + (d.data?.totalFlashcards ?? 0) > 0),
       )
       .catch(() => {});
+
+    return () => controller.abort();
   }, [orgs, user]);
 
   if (dismissed || orgs.length === 0) return null;
