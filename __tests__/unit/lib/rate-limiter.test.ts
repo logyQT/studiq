@@ -57,4 +57,20 @@ describe('createRateLimiter', () => {
     expect(second.allowed).toBe(false);
     expect(second.retryAfterMs!).toBeLessThan(first.retryAfterMs!);
   });
+
+  it('clears the whole map once it grows past 10,000 distinct keys', () => {
+    const limiter = createRateLimiter(60_000, 1);
+    const now = 1_000_000;
+
+    for (let i = 0; i < 10_000; i++) {
+      limiter.check(`user-${i}`, now);
+    }
+    // user-1 already used its one allowed request above.
+    expect(limiter.check('user-1', now + 1).allowed).toBe(false);
+
+    // Crossing the 10,000 threshold clears the map, so a key that was
+    // previously rate-limited is allowed again.
+    limiter.check('user-10000', now + 2);
+    expect(limiter.check('user-1', now + 3).allowed).toBe(true);
+  });
 });

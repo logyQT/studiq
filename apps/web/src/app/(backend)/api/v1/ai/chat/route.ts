@@ -18,7 +18,7 @@ import { withAuth } from '@studiq/server/lib/with-auth';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { UIMessage } from 'ai';
 import { convertToModelMessages, hasToolCall, stepCountIs, streamText } from 'ai';
-import type { NextRequest } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 
 const AI_TOKENS_LIMIT_KEY = 'max_ai_tokens_per_day';
 
@@ -30,7 +30,10 @@ export async function POST(req: NextRequest) {
     async (ctx) => {
       const rateLimit = rateLimiter.check(ctx.userId);
       if (!rateLimit.allowed) {
-        throw new AppError('RATE_LIMITED');
+        return NextResponse.json(
+          { success: false, error: 'RATE_LIMITED', retryAfterMs: rateLimit.retryAfterMs },
+          { status: 429 },
+        );
       }
 
       let body: unknown;

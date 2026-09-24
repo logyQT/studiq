@@ -79,6 +79,7 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
     expect(res.status).toBe(429);
     const body = await res.json();
     expect(body.error).toBe('RATE_LIMITED');
+    expect(body.retryAfterMs).toBe(5000);
     expect(getUsageMock).not.toHaveBeenCalled();
     expect(streamTextMock).not.toHaveBeenCalled();
   });
