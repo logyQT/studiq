@@ -15,6 +15,7 @@ export interface PlanInfo {
   name: string;
   description: string | null;
   priceMonthly: number;
+  priceYearly: number;
   currency: string;
   features: string[];
   limits: Record<string, number>;
@@ -55,6 +56,7 @@ export class SubscriptionPlanService {
       name: plan.name as string,
       description: (plan.description as string) ?? null,
       priceMonthly: (plan.price_monthly as number) ?? 0,
+      priceYearly: (plan.price_yearly as number) ?? 0,
       currency: (plan.currency as string) ?? 'PLN',
       sortOrder: (plan.sort_order as number) ?? 0,
       isActive: (plan.is_active as boolean) ?? true,
