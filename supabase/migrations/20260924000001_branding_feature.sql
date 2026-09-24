@@ -33,11 +33,18 @@ VALUES (
 )
 ON CONFLICT (key) DO NOTHING;
 
--- 2. Plan entitlement — hub + campus (product decision, issue #108)
+-- 2. Plan entitlement — hub + campus (product decision, issue #108).
+--    Guarded: the `hub`/`campus` subscription_plans rows are created by
+--    seeds (00_plans.sql), and seeds run AFTER migrations — a hardcoded
+--    VALUES insert would abort this migration with an FK violation on any
+--    fresh database. Seeding from existing plan rows no-ops where the plans
+--    are absent (the seed delivers them moments later) while still applying
+--    the entitlements on already-provisioned databases, which never re-run
+--    seeds.
 INSERT INTO public.plan_features (plan_key, feature_key)
-VALUES
-  ('hub', 'branding'),
-  ('campus', 'branding')
+SELECT p.key, 'branding'
+FROM public.subscription_plans p
+WHERE p.key IN ('hub', 'campus')
 ON CONFLICT (plan_key, feature_key) DO NOTHING;
 
 -- 3. Keep sysadmin consistent with the seed's "sysadmin gets everything"
