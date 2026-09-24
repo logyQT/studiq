@@ -28,7 +28,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       const { id } = await params;
       if (id !== ctx.activeOrgId || !ctx.orgRoleId) throw new AppError('FORBIDDEN');
       const body = await req.json();
-      return toNextResponse(await organizationController.update(id, body));
+      return toNextResponse(await organizationController.update(ctx, id, body));
     },
     { allowedAccountTypes: [AccountType.MANAGER] },
   );

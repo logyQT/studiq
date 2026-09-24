@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages, getTranslations } from 'next-intl/server';
 import { Toaster } from 'sonner';
 import { AuthProvider } from '@/components/providers/AuthProvider';
+import { BrandAccent } from '@/components/providers/BrandAccent';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 
@@ -114,6 +115,7 @@ export default async function RootLayout({
           <NextIntlClientProvider messages={messages}>
             <QueryProvider>
               <AuthProvider>
+                <BrandAccent />
                 <ToastProvider>{children}</ToastProvider>
                 <Toaster
                   position="top-center"

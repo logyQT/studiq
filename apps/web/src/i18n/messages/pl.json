@@ -1117,7 +1117,10 @@
     "save_button": "Zapisz",
     "saving": "Zapisywanie...",
     "color_updated": "Kolor zaktualizowany",
-    "save_failed": "Nie udało się zapisać"
+    "save_failed": "Nie udało się zapisać",
+    "branding_locked_title": "Własny branding",
+    "branding_locked_desc": "Ulepsz plan, aby uzyskać dostęp do własnego brandingu",
+    "branding_locked_cta": "Zobacz plany"
   },
   "AppOnboarding": {
     "title": "Pierwsze kroki",

@@ -20,6 +20,7 @@ export const FEATURES = [
   'member.manage',
   'role.builder',
   'advanced.stats',
+  'branding',
 ] as const;
 export type FeatureKey = (typeof FEATURES)[number];
 

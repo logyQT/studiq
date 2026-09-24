@@ -54,7 +54,11 @@ export function NavMain({
               >
                 <SidebarMenuItem>
                   <CollapsibleTrigger asChild>
-                    <SidebarMenuButton tooltip={t(item.titleKey)} isActive={isParentActive}>
+                    <SidebarMenuButton
+                      tooltip={t(item.titleKey)}
+                      isActive={isParentActive}
+                      className="data-[active=true]:bg-[var(--brand-accent-sidebar)]"
+                    >
                       {item.icon && <item.icon />}
                       <span>{t(item.titleKey)}</span>
                       <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
@@ -67,7 +71,11 @@ export function NavMain({
                           pathname === child.href || pathname.startsWith(`${child.href}/`);
                         return (
                           <SidebarMenuSubItem key={child.titleKey}>
-                            <SidebarMenuSubButton asChild isActive={isChildActive}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={isChildActive}
+                              className="data-[active=true]:bg-[var(--brand-accent-sidebar)]"
+                            >
                               <Link href={child.href}>
                                 <span>{t(child.titleKey)}</span>
                               </Link>
@@ -85,7 +93,12 @@ export function NavMain({
           const isActive = item.href === activeHref;
           return (
             <SidebarMenuItem key={item.titleKey}>
-              <SidebarMenuButton asChild isActive={isActive} tooltip={t(item.titleKey)}>
+              <SidebarMenuButton
+                asChild
+                isActive={isActive}
+                tooltip={t(item.titleKey)}
+                className="data-[active=true]:bg-[var(--brand-accent-sidebar)]"
+              >
                 <Link href={item.href}>
                   {item.icon && <item.icon />}
                   <span className="flex-1">{t(item.titleKey)}</span>

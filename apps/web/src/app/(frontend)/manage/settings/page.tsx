@@ -12,11 +12,14 @@ import {
   Label,
   Skeleton,
 } from '@studiq/ui';
+import { Lock } from 'lucide-react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useFeature } from '@/hooks/use-feature';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiPut, apiUploadFile } from '@/lib/api';
 
@@ -28,10 +31,39 @@ interface OrganizationDetail {
   brand_color: string | null;
 }
 
+/**
+ * Locked state shown when the org's plan lacks the `branding` feature.
+ * Mirrors the existing ai.chat upgrade affordance: disabled control with a
+ * Lock icon, routed to the pricing page.
+ */
+function BrandingLockedCard({ onUpgrade }: { onUpgrade: () => void }) {
+  const t = useTranslations('ManageSettingsPage');
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-dashed bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-2">
+        <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <div>
+          <p className="text-sm font-medium">{t('branding_locked_title')}</p>
+          <p className="text-sm text-muted-foreground">{t('branding_locked_desc')}</p>
+        </div>
+      </div>
+      <Button variant="outline" size="sm" onClick={onUpgrade}>
+        {t('branding_locked_cta')}
+      </Button>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const t = useTranslations('ManageSettingsPage');
+  const router = useRouter();
   const { activeOrg } = useOrgs();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Branding controls are plan-gated (issue #108). Org name and the
+  // subscription badge below stay visible either way — only the logo
+  // upload and color picker are withheld.
+  const canBrand = useFeature()('branding');
 
   const {
     data: organization,
@@ -78,7 +110,6 @@ export default function SettingsPage() {
   }
 
   const displayColor = organization?.brand_color ?? brandColor;
-
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">{t('title')}</h2>
@@ -113,57 +144,66 @@ export default function SettingsPage() {
 
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-2">{t('logo_label')}</p>
-                <div className="flex items-center gap-3">
-                  {organization.logo_url ? (
-                    <Image
-                      src={organization.logo_url}
-                      alt={organization.name}
-                      width={48}
-                      height={48}
-                      className="rounded-md border object-contain"
-                      unoptimized
+                {!canBrand ? (
+                  <BrandingLockedCard onUpgrade={() => router.push('/pricing')} />
+                ) : (
+                  <div className="flex items-center gap-3">
+                    {organization.logo_url ? (
+                      <Image
+                        src={organization.logo_url}
+                        alt={organization.name}
+                        width={48}
+                        height={48}
+                        className="rounded-md border object-contain"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="h-12 w-12 rounded-md border border-dashed flex items-center justify-center text-xs text-muted-foreground">
+                        {t('no_logo')}
+                      </div>
+                    )}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/gif,image/webp"
+                      className="hidden"
+                      onChange={handleLogoChange}
                     />
-                  ) : (
-                    <div className="h-12 w-12 rounded-md border border-dashed flex items-center justify-center text-xs text-muted-foreground">
-                      {t('no_logo')}
-                    </div>
-                  )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/gif,image/webp"
-                    className="hidden"
-                    onChange={handleLogoChange}
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={uploadLogo.isPending}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    {uploadLogo.isPending ? t('uploading') : t('upload_logo')}
-                  </Button>
-                </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={uploadLogo.isPending}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {uploadLogo.isPending ? t('uploading') : t('upload_logo')}
+                    </Button>
+                  </div>
+                )}
               </div>
 
-              <div>
-                <Label htmlFor="brand-color" className="text-sm font-medium text-muted-foreground">
-                  {t('brand_color_label')}
-                </Label>
-                <div className="flex items-center gap-2 mt-2">
-                  <Input
-                    id="brand-color"
-                    type="color"
-                    value={displayColor}
-                    onChange={(e) => setBrandColor(e.target.value)}
-                    className="h-9 w-16 p-1"
-                  />
-                  <span className="text-sm text-muted-foreground">{displayColor}</span>
-                  <Button size="sm" disabled={updateColor.isPending} onClick={handleColorSave}>
-                    {updateColor.isPending ? t('saving') : t('save_button')}
-                  </Button>
+              {canBrand && (
+                <div>
+                  <Label
+                    htmlFor="brand-color"
+                    className="text-sm font-medium text-muted-foreground"
+                  >
+                    {t('brand_color_label')}
+                  </Label>
+                  <div className="flex items-center gap-2 mt-2">
+                    <Input
+                      id="brand-color"
+                      type="color"
+                      value={displayColor}
+                      onChange={(e) => setBrandColor(e.target.value)}
+                      className="h-9 w-16 p-1"
+                    />
+                    <span className="text-sm text-muted-foreground">{displayColor}</span>
+                    <Button size="sm" disabled={updateColor.isPending} onClick={handleColorSave}>
+                      {updateColor.isPending ? t('saving') : t('save_button')}
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           ) : (
             <p className="text-muted-foreground">{t('no_university')}</p>

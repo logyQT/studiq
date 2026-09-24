@@ -8,11 +8,17 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export class OrgService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
-  async listOrgs(
-    ctx: RequestContext,
-  ): Promise<
+  async listOrgs(ctx: RequestContext): Promise<
     ServiceResult<
-      { id: string; name: string; orgRoleName: string; orgRoleId: string; isActive: boolean }[]
+      {
+        id: string;
+        name: string;
+        orgRoleName: string;
+        orgRoleId: string;
+        isActive: boolean;
+        logo_url: string | null;
+        brand_color: string | null;
+      }[]
     >
   > {
     const supabase = await this.createClient();
@@ -30,9 +36,11 @@ export class OrgService {
 
     const orgIds = memberships.map((m) => m.organization_id);
 
+    // logo_url/brand_color ride along so the navbar can render org branding
+    // without a second request (issue #108).
     const { data: orgs, error: oError } = await supabase
       .from('organizations')
-      .select('id, name')
+      .select('id, name, logo_url, brand_color')
       .in('id', orgIds);
 
     if (oError) return toDbFailure(oError);
@@ -51,6 +59,8 @@ export class OrgService {
           orgRoleDisplayName: roles[0]?.display_name ?? roleName,
           orgRoleId: m.org_role_id,
           isActive: m.organization_id === ctx.activeOrgId,
+          logo_url: org?.logo_url ?? null,
+          brand_color: org?.brand_color ?? null,
         };
       }),
     );

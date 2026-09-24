@@ -62,6 +62,51 @@ describe('OrgService', () => {
       expect(result.data[0].name).toBe('Test Org');
     });
 
+    it('surfaces org branding fields for the navbar (issue #108)', async () => {
+      const memberships = [
+        {
+          organization_id: 'org-1',
+          org_role_id: 'r-1',
+          org_roles: [{ name: 'admin', display_name: 'Admin' }],
+        },
+      ];
+      const orgs = [
+        {
+          id: 'org-1',
+          name: 'Branded Org',
+          logo_url: 'https://cdn.example.com/logo.png',
+          brand_color: '#FF6600',
+        },
+      ];
+      mock.from.mockReturnValueOnce(qb(memberships));
+      mock.from.mockReturnValueOnce(qb(orgs));
+
+      const result = await service.listOrgs(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data[0].logo_url).toBe('https://cdn.example.com/logo.png');
+      expect(result.data[0].brand_color).toBe('#FF6600');
+    });
+
+    it('defaults branding fields to null when the org has none set', async () => {
+      const memberships = [
+        {
+          organization_id: 'org-1',
+          org_role_id: 'r-1',
+          org_roles: [{ name: 'admin', display_name: 'Admin' }],
+        },
+      ];
+      const orgs = [{ id: 'org-1', name: 'Plain Org', logo_url: null, brand_color: null }];
+      mock.from.mockReturnValueOnce(qb(memberships));
+      mock.from.mockReturnValueOnce(qb(orgs));
+
+      const result = await service.listOrgs(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data[0].logo_url).toBeNull();
+      expect(result.data[0].brand_color).toBeNull();
+    });
+
     it('returns empty when no memberships', async () => {
       mock.from.mockReturnValueOnce(qb([]));
 

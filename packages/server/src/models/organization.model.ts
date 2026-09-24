@@ -46,6 +46,12 @@ export const OrganizationResponseSchema = registry.register(
       .min(3, { error: ValidationErrorCode.TOO_SHORT })
       .max(64, { error: ValidationErrorCode.TOO_LONG }),
     created_at: z.iso.datetime(),
+    logo_url: z.url({ error: ValidationErrorCode.INVALID_INPUT }).nullable().optional(),
+    brand_color: z
+      .string()
+      .regex(/^#[0-9A-Fa-f]{6}$/, { error: ValidationErrorCode.INVALID_INPUT })
+      .nullable()
+      .optional(),
   }),
 );
 
