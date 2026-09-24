@@ -17,6 +17,8 @@ export function createRateLimiter(windowMs: number, maxRequests: number) {
 
   return {
     check(key: string, now: number = Date.now()): RateLimitResult {
+      if (requestLog.size > 10_000) requestLog.clear();
+
       const recent = (requestLog.get(key) ?? []).filter((t) => now - t < windowMs);
 
       if (recent.length >= maxRequests) {
