@@ -85,11 +85,15 @@ export default function SettingsPage() {
   const updateColor = useApiMutation({
     mutationFn: (color: string) =>
       apiPut(`/api/v1/organization/${activeOrg?.id}`, { brandColor: color }),
+    // Branding is read through useBranding() → useOrgs()' `['orgs']` query;
+    // invalidate it so the sidebar/navbar pick the change up without a reload.
+    invalidateKeys: [['orgs']],
     onSettled: () => refetch(),
   });
 
   const uploadLogo = useApiMutation({
     mutationFn: (file: File) => apiUploadFile(`/api/v1/organization/${activeOrg?.id}/logo`, file),
+    invalidateKeys: [['orgs']],
     onSettled: () => refetch(),
   });
 
