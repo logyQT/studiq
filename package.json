@@ -139,7 +139,7 @@
     "knip": "^6.35.1",
     "lefthook": "^2.1.14",
     "playwright": "^1.63.0",
-    "postcss": "8.5.10",
+    "postcss": "8.5.23",
     "postcss-load-config": "^6.0.1",
     "supabase": "^2.117.0",
     "tailwindcss": "^4.3.3",
