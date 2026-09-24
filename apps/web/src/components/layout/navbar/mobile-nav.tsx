@@ -54,7 +54,7 @@ export function MobileNav({ items, isActive, isLoggedIn }: MobileNavProps) {
           {logoUrl ? (
             <Image
               src={logoUrl}
-              alt={t('logo')}
+              alt=""
               width={20}
               height={20}
               className="h-5 w-5 rounded-sm object-contain"

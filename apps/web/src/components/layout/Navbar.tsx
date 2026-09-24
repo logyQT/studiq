@@ -105,7 +105,7 @@ export function Navbar() {
               {logoUrl ? (
                 <Image
                   src={logoUrl}
-                  alt={t('logo')}
+                  alt=""
                   width={24}
                   height={24}
                   className="h-6 w-6 rounded-sm object-contain"

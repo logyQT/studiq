@@ -4,13 +4,13 @@ import { useEffect } from 'react';
 import { useBranding } from '@/hooks/use-branding';
 
 /**
- * Injects the active org's brand color as the `--brand-accent` CSS custom
- * property (issue #108).
+ * Injects the active org's brand color as CSS custom properties (issue #108).
  *
- * Scoped by design: this only sets `--brand-accent`, which defaults to
- * `--primary` in globals.css. Components opt in explicitly, so an org color
- * tints a chosen set of accents (active nav, sidebar active state) rather than
- * retheming the whole app.
+ * Scoped by design: it sets `--brand-accent` (which defaults to `--primary`
+ * in globals.css) plus the derived `--brand-accent-soft` and
+ * `--brand-accent-sidebar` tokens. Components opt in explicitly, so an org
+ * color tints a chosen set of accents (active nav, sidebar active state)
+ * rather than retheming the whole app.
  *
  * Not applied on the server — the org's feature set is only known client-side
  * after `/api/v1/features/me` resolves, so this is effect-driven and renders
@@ -35,19 +35,16 @@ export function BrandAccent() {
         '--brand-accent-sidebar',
         `color-mix(in oklab, ${brandColor} 25%, var(--sidebar-accent))`,
       );
-      root.dataset.branded = 'true';
     } else {
       root.style.removeProperty('--brand-accent');
       root.style.removeProperty('--brand-accent-soft');
       root.style.removeProperty('--brand-accent-sidebar');
-      delete root.dataset.branded;
     }
 
     return () => {
       root.style.removeProperty('--brand-accent');
       root.style.removeProperty('--brand-accent-soft');
       root.style.removeProperty('--brand-accent-sidebar');
-      delete root.dataset.branded;
     };
   }, [isEnabled, brandColor]);
 
