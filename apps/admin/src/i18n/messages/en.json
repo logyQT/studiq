@@ -16,6 +16,7 @@
     "admin_feature_flags": "Feature Flags",
     "admin_subscription_plans": "Plans",
     "admin_user_overrides": "User Overrides",
+    "admin_settings": "Settings",
     "admin_system": "System",
     "sys_admin_dashboard": "System Administration",
     "role_sys_admin": "System Admin",
@@ -125,5 +126,23 @@
     "no_members": "No members in this organization.",
     "no_groups": "No groups in this organization.",
     "no_roles": "No roles in this organization."
+  },
+  "LoginPage": {
+    "header": "StudiQ Admin",
+    "sub_header": "Sign in with your system administrator account",
+    "email_label": "Email",
+    "password_label": "Password",
+    "login_button": "Sign in",
+    "error_invalid": "Invalid email or password."
+  },
+  "Settings": {
+    "title": "Settings",
+    "account_title": "Account",
+    "signed_in_as": "Signed in as",
+    "password_title": "Change password",
+    "new_password_label": "New password",
+    "password_update_button": "Update password",
+    "password_update_success": "Password updated successfully.",
+    "password_update_error": "Failed to update password."
   }
 }

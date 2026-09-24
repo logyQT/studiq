@@ -1,9 +1,19 @@
 import { createPublicKey, type KeyObject, verify } from 'node:crypto';
+import { AccountType } from '@studiq/authz';
+import { roleGuard } from '@studiq/server/guards/role.guard';
+import { updateSession } from '@studiq/server/lib/supabase/session';
 import { type NextRequest, NextResponse } from 'next/server';
 
 const SIGNATURE_HEADER = 'x-admin-signature';
 const TIMESTAMP_HEADER = 'x-admin-timestamp';
 const MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+
+function preserveCookies(originalResponse: NextResponse, newResponse: NextResponse) {
+  originalResponse.cookies.getAll().forEach((cookie) => {
+    newResponse.cookies.set(cookie.name, cookie.value);
+  });
+  return newResponse;
+}
 
 // ---------------------------------------------------------------------------
 // Key loading — called once per cold start, cached in module scope
@@ -58,9 +68,25 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // UI pages — pass through (C6 adds i18n; C5 doesn't gate these)
+  // UI pages — require an authenticated sys_admin session
   if (!path.startsWith('/api/')) {
-    return NextResponse.next();
+    const { user, response } = await updateSession(request);
+    const accountType = user?.app_metadata?.account_type as AccountType | undefined;
+    const isSysAdmin = roleGuard(accountType, [AccountType.SYS_ADMIN]);
+
+    if (path === '/login') {
+      if (user && isSysAdmin) {
+        return preserveCookies(response, NextResponse.redirect(new URL('/', request.url)));
+      }
+      return response;
+    }
+
+    if (!user || !isSysAdmin) {
+      const loginUrl = new URL('/login', request.url);
+      return preserveCookies(response, NextResponse.redirect(loginUrl));
+    }
+
+    return response;
   }
 
   // --- API routes: PEM gate --------------------------------------------------

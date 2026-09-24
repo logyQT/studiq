@@ -16,6 +16,7 @@
     "admin_feature_flags": "Funkcje",
     "admin_subscription_plans": "Plany",
     "admin_user_overrides": "Nadpisania",
+    "admin_settings": "Ustawienia",
     "admin_system": "System",
     "sys_admin_dashboard": "Administracja Systemem",
     "role_sys_admin": "Admin Systemu",
@@ -125,5 +126,23 @@
     "no_members": "Brak członków w tej organizacji.",
     "no_groups": "Brak grup w tej organizacji.",
     "no_roles": "Brak ról w tej organizacji."
+  },
+  "LoginPage": {
+    "header": "StudiQ Admin",
+    "sub_header": "Zaloguj się kontem administratora systemu",
+    "email_label": "Email",
+    "password_label": "Hasło",
+    "login_button": "Zaloguj się",
+    "error_invalid": "Nieprawidłowy email lub hasło."
+  },
+  "Settings": {
+    "title": "Ustawienia",
+    "account_title": "Konto",
+    "signed_in_as": "Zalogowano jako",
+    "password_title": "Zmiana hasła",
+    "new_password_label": "Nowe hasło",
+    "password_update_button": "Zaktualizuj hasło",
+    "password_update_success": "Hasło zostało zaktualizowane.",
+    "password_update_error": "Nie udało się zaktualizować hasła."
   }
 }
