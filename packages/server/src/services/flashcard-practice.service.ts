@@ -278,9 +278,9 @@ export class FlashcardPracticeService {
     const supabase = await this.createClient();
 
     const windowStart = new Date(baseDate);
-    windowStart.setDate(windowStart.getDate() - fuzzRangeDays);
+    windowStart.setUTCDate(windowStart.getUTCDate() - fuzzRangeDays);
     const windowEnd = new Date(baseDate);
-    windowEnd.setDate(windowEnd.getDate() + fuzzRangeDays + 1);
+    windowEnd.setUTCDate(windowEnd.getUTCDate() + fuzzRangeDays + 1);
 
     const { data } = await supabase
       .from('flashcard_review_state')
@@ -312,7 +312,7 @@ export class FlashcardPracticeService {
     }
 
     const picked = new Date(baseDate);
-    picked.setDate(picked.getDate() + bestOffset);
+    picked.setUTCDate(picked.getUTCDate() + bestOffset);
     return picked;
   }
 
