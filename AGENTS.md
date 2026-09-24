@@ -3,13 +3,49 @@
 ## Project Identity
 
 - **Runtime**: Bun (package manager, script runner)
-- **Framework**: Next.js 16 (App Router), TypeScript 6
+- **Framework**: Next.js 16 (App Router), TypeScript 7
+- **Repo shape**: Bun-workspaces **monorepo** — there is **no root `src/`** (see [Repository Layout](#repository-layout))
 - **Database**: Supabase (PostgreSQL 17) + Supabase Auth
 - **Styling**: Tailwind CSS v4 + shadcn/ui (New York style)
 - **i18n**: next-intl (`en`, `pl`), locale from `NEXT_LOCALE` cookie, defaults to `'pl'`
 - **State/Data**: TanStack React Query v5
 - **Forms**: React Hook Form + Zod v4
 - **Testing**: Vitest (unit + integration) + Playwright (E2E)
+
+---
+
+## Repository Layout
+
+```
+studiq/
+├── apps/
+│   ├── web/                        # Main app, port 3000 — package `@studiq/web`
+│   │   └── src/
+│   │       ├── app/(backend)/api/v1/*/route.ts   # Thin API routes
+│   │       ├── app/(frontend)/                   # UI pages (landing, /app, /edu, /manage, ...)
+│   │       ├── components/ hooks/ lib/ i18n/ types/ styles/
+│   │       └── proxy.ts                          # Next.js 16 proxy (session + route rules)
+│   └── admin/                      # Standalone admin panel, port 4000 — package `@studiq/admin`
+│       └── src/
+│           ├── app/(backend)/api/v1/*            # Admin API routes (PEM-signed requests)
+│           ├── app/(frontend)/                   # Admin pages
+│           ├── server/{controllers,models,services}   # Admin-only backend (imports via `@admin/*`)
+│           ├── lib/ i18n/
+│           └── proxy.ts                          # Ed25519 signature gate for `/api/*`
+├── packages/
+│   ├── server/    # `@studiq/server` — shared backend: controllers, models, services, guards, config, lib
+│   ├── authz/     # `@studiq/authz` — RBAC primitives: AccountType, Permission, scopes, feature keys
+│   ├── ui/        # `@studiq/ui` — shared shadcn/ui components
+│   └── tsconfig/  # Shared tsconfig base (`base.json`)
+├── __tests__/     # Root-level tests: unit/, integration/, e2e/, helpers/, mocks/, setup.ts
+├── supabase/      # migrations/, schemas/, seeds/, templates/, config.toml
+├── scripts/       # Dev workflow scripts (spin, pr, import + migration guards)
+└── docs/          # Project documentation
+```
+
+- Main app code: `apps/web/src/…` — shared backend code: `packages/server/src/…`
+- Each workspace has its **own** `tsconfig.json` and `package.json` scripts; typecheck each workspace with its own script (see Commands).
+- Cross-package imports always go through workspace names (`@studiq/server`, `@studiq/authz`, `@studiq/ui`) or the `@admin/*` alias — never deep relative paths.
 
 ---
 
@@ -35,21 +71,29 @@ main ← feat/quiz-bank-ui (PR, merge, delete)
 
 ## Commands
 
+`package.json` at the repo root is the **source of truth** — if anything below disagrees with it, trust `package.json`.
+
 | Command | What it does |
 |---------|-------------|
-| `bun run dev` | Start dev server |
-| `bun run build` | Production build |
-| `bun run start` | Start production server |
-| `bun run lint` | **Runs `tsc --incremental --skipLibCheck --noEmit && biome ci src/ && bun scripts/check-import-paths.ts`** — typecheck + lint + import-path guard in one command |
-| `bun run format` | `biome check --write src/` |
-| `bun run format:check` | `biome ci src/` (check only) |
+| `bun run dev` | Web dev server (port 3000) |
+| `bun run dev:admin` | Admin dev server (port 4000) |
+| `bun run build` / `bun run start` | Production build / start for web (`build:admin`, `start:admin` for admin) |
+| `bun run lint` | `biome ci apps/web/src/ && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts` — Biome + import-path guard + migration-timestamp guard. **Contains no `tsc` step.** |
+| `bun run lint:all` | `bun run typecheck && bun run lint` — typecheck + lint in one command |
+| `bun run typecheck` | `tsc --incremental --skipLibCheck --noEmit` for **`apps/web` only** (`bun run typecheck:admin` covers `apps/admin`) |
+| `bun run format` | `biome check --write apps/web/src/` |
+| `bun run format:check` | `biome ci apps/web/src/` (check only) |
 | `bun run clean` | Remove `.next`, `coverage`, cache |
-| `bun test` | `vitest run` — runs all tests (unit + integration) |
-| `bun test:unit` | `vitest run __tests__/unit/` |
-| `bun test:integration` | `vitest run __tests__/integration` |
-| `bun test:watch` | `vitest` (watch mode) |
-| `bun test:coverage` | `vitest run --coverage` |
-| `bun test:e2e` | `playwright test` — runs `__tests__/e2e/` specs |
+| `bun run test` | `vitest run` — runs all tests (unit + integration) |
+| `bun run test:unit` | `vitest run __tests__/unit/` |
+| `bun run test:integration` | `vitest run __tests__/integration` (needs a local Supabase instance) |
+| `bun run test:watch` | `vitest` (watch mode) |
+| `bun run test:coverage` | `vitest run --coverage` |
+| `bun run test:e2e` | `playwright test` — runs `__tests__/e2e/` specs |
+
+> **Footgun — bare `bun test` is NOT Vitest.** `bun test` starts **Bun's built-in test runner**, which scans the whole repo (including integration tests that need live Supabase) and reports differently. Always use `bun run test` / `bun run test:unit`. Bare `bun <script>` shorthand does work for other scripts (e.g. `bun test:unit`).
+
+Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs format-on-staged + `bun run lint` + `bun run typecheck`; **pre-push** runs `format:check`, `lint`, `typecheck`, `test:unit`, plus a merge-conflict check against `origin/main`.
 
 ### Custom agent commands
 
@@ -106,41 +150,58 @@ bunx vitest run -t "test name pattern"
 ### Import aliases
 
 ```ts
-import { z } from '@/lib/zod';        // src/lib/zod
+import { flashcardController } from '@studiq/server/controllers/flashcard.controller'; // app code → packages/server
 import { before } from '#test/helpers/test-user'; // __tests__/helpers/test-user (test-internal imports)
 ```
 
-- `@/` → `src/` — works everywhere (tsc, Next, Vitest, Playwright).
+- `@/` → `src/` **of the workspace the file lives in**: `apps/web/src`, `apps/admin/src` (and `packages/authz/src`, `packages/ui/src` inside those packages). It is **not** mapped in `packages/server` — server code imports itself as `@studiq/server/...`. In root-level files (`scripts/`, root configs) and in Vitest, `@/` resolves to `apps/web/src`.
+- `@studiq/server/*`, `@studiq/authz`, `@studiq/ui` → `packages/*/src/*` — wired in every app `tsconfig.json` and `vitest.config.ts`.
+- `@admin/*` → `apps/admin/src/*` (admin app code; also usable from root-level tests).
 - `#test` → `__tests__/` — works in both Vitest **and** Playwright (declared in vite config + tsconfig `paths`). Use it for imports *between* test files.
 
 ---
 
 ## Architecture: Route → Controller → Model → Service
 
-All backend logic follows this strict 4-layer flow:
+All main-app backend logic follows this strict 4-layer flow:
 
 ```
-src/app/(backend)/api/v1/*/route.ts
-  → src/server/controllers/*.ts     (validate input, call service)
-    → src/server/models/*.ts         (Zod schemas + inferred types)
-      → src/server/services/*.ts     (business logic + DB queries)
+apps/web/src/app/(backend)/api/v1/*/route.ts
+  → packages/server/src/controllers/*.controller.ts  (validate input, call service)
+    → packages/server/src/models/*.model.ts          (Zod schemas + inferred types)
+      → packages/server/src/services/*.service.ts    (business logic + DB queries)
 ```
+
+The admin app mirrors the same pattern inside its own workspace: `apps/admin/src/app/(backend)/api/v1/*/route.ts` → `apps/admin/src/server/{controllers,models,services}` (imported as `@admin/server/...`, see [Admin app notes](#admin-app-notes)).
 
 ### Route layer
 
 - Named exports: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`
-- `withAuth(req, handler, { allowedRoles? })` builds `RequestContext`, wraps handler
+- `withAuth(req, handler, { allowedAccountTypes? })` from `@studiq/server/lib/with-auth` builds the `RequestContext` (`traceId`, `userId`, `accountType`, `orgRoleId`, `activeOrgId`, `groupIds`, `permissionScopes`) and wraps the handler
 - Handler receives **only `ctx`** — access `req` via closure
-- Return `toNextResponse(await controller.method(data, ctx))`
+- Return `toNextResponse(await controller.method(data, ctx))` (`toNextResponse` from `@studiq/server/lib/http-utils`)
+
+```typescript
+// apps/web/src/app/(backend)/api/v1/flashcards/route.ts
+import { flashcardController } from '@studiq/server/controllers/flashcard.controller';
+import { toNextResponse } from '@studiq/server/lib/http-utils';
+import { withAuth } from '@studiq/server/lib/with-auth';
+
+export async function GET(req: NextRequest) {
+  return withAuth(req, async (ctx) => toNextResponse(await flashcardController.list(ctx)));
+}
+```
+
+> **API routes are only protected by `withAuth()` in the route file** — the proxy skips `/api/*` (see Route Protection). A new API route that doesn't call `withAuth` is public.
 
 ### Controller layer
 
-- Singleton: `export const fooController = wrapService(new FooController(fooService), 'foo.controller')`
-- Import directly: `import { fooController } from '@/server/controllers/foo.controller'`
-- Validate with Zod: `schema.safeParse(body)` → return error response (`{ success: false, statusCode: 422, error: 'UNPROCESSABLE_ENTITY', details }`)
-- Wrap logic in `withSupervision(async () => { ... }, { service, method })` or `wrapService(service, name)` from `@/lib/observability`
-- Use `hasPermission(ctx, Permission.XXX)` for auth checks
-- Never throw — always return `ControllerResponse` object literal
+- Singleton: `export const flashcardController = wrapService(new FlashcardController(flashcardService), 'flashcard.controller')` (`wrapService` from `@studiq/server/lib/observability`)
+- Import directly: `import { flashcardController } from '@studiq/server/controllers/flashcard.controller'`
+- Auth check: `if (!(await can(ctx, Permission.FLASHCARD_CREATE))) return controllerResponse.error('FORBIDDEN')` — `can`/`Permission` from `@studiq/server/lib/authz`
+- Validate with Zod: `CreateFooSchema.safeParse(body)` → `controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues)`
+- Services return a `ServiceResult`; map it with `isFailure(result)` → `controllerResponse.error(result.error)`, else `controllerResponse.success(result.data)` / `.created(...)`
+- Never throw — always return a `ControllerResponse` object literal (`controllerResponse` helpers live in `@studiq/server/lib/controller-response`)
 - Response shape:
 
 ```typescript
@@ -152,113 +213,117 @@ type ControllerResponse<T = unknown> =
 ### Model layer
 
 ```typescript
-import { z, registry } from '@/lib/zod';   // NOT from 'zod' directly
-import { ValidationErrorCode } from '@/lib/validation-errors';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
+import { registry, z } from '@studiq/server/lib/zod';
 
-export const CreateFooSchema = registry.register('CreateFooRequest', z.object({
-  name: z.string().nonempty({ error: ValidationErrorCode.INVALID_INPUT }),
-}));
+export const CreateFooSchema = registry.register(
+  'CreateFooRequest',
+  z.object({
+    name: z.string().nonempty({ error: ValidationErrorCode.REQUIRED }),
+  }),
+);
 export type CreateFooInput = z.infer<typeof CreateFooSchema>;
 ```
 
 - Zod v4 API: `{ error: ValidationErrorCode.XXX }` instead of string messages
-- Register every schema with `registry.register()` for OpenAPI doc generation
+- Always import `{ z, registry }` from `@studiq/server/lib/zod` (never from `'zod'` directly) so schemas share one Zod instance
+- Register every request schema with `registry.register()` — it keeps a central catalog of all request schemas (`registry.definitions`)
 
 ### Service layer
 
-- Singleton, re-exported via each service file
-- Create Supabase client inside each method: `const supabase = await createClient()`
-- Map DB errors: `throw mapSupabaseError(error)` (from `@/lib/supabase-errors`)
-- Throw `AppError(code)` for business logic — **code only, no message**
-- Use `checkPermission(ctx, Permission.XXX, resource)` for resource-scoped auth
-- Use `buildQueryFilter(ctx, Permission.XXX)` for RLS-safe DB filters
+- Class + singleton re-exported at the bottom of each file:
+  `export const flashcardService = wrapService(new FlashcardService(createClient), 'flashcard.service')`
+- Create the Supabase client inside each method: `const supabase = await createClient()` from `@studiq/server/lib/supabase/server`
+- Return a `ServiceResult` — `success(data)` / `failure(code)` from `@studiq/server/lib/service-result` — or `throw new AppError(code)` for hard failures (code only, no message)
+- Map DB errors: `toDbFailure(error)` (→ `ServiceResult`) or `mapSupabaseError(error)` (→ throws `AppError`) from `@studiq/server/lib/supabase-errors`
+- Permission checks (all from `@studiq/server/lib/authz`):
+  - `await check(ctx, Permission.XXX, resource)` — throws `AppError('FORBIDDEN')` on mismatch
+  - `await accessibleFilter(ctx, Permission.XXX, resourceType)` / `buildQueryFilter(ctx, Permission.XXX)` — RLS-safe filters for list queries
+  - `hasPermission(ctx, Permission.XXX)` / `checkPermission(ctx, Permission.XXX, resource)` — synchronous ctx-only variants
+
+### Admin app notes
+
+- Admin API routes skip `withAuth` — they're gated by Ed25519 PEM signature verification in `apps/admin/src/proxy.ts` (see Route Protection)
+- Admin controllers/services live in `apps/admin/src/server/*`, imported as `@admin/server/controllers/*.controller`
+- Admin services use the service-role client: `@admin/lib/supabase/admin-client` (no user JWT, no RLS context)
 
 ---
 
 ## Error Handling
 
-- `AppError(code: AppErrorCode)` — thrown by services, caught by `withAuth` (routes) and `withSupervision`/`wrapService` (services)
-- Error codes → HTTP status via `APP_ERRORS` in `src/lib/errors.ts`:
-  `BAD_REQUEST` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `CONFLICT` (409), `GONE` (410), `UNPROCESSABLE_ENTITY` (422), `RATE_LIMITED` (429), `INTERNAL_SERVER` (500), `SERVICE_UNAVAILABLE` (503)
-- `mapSupabaseError(error)` maps PG codes: PGRST116→NOT_FOUND, 23505→CONFLICT, etc.
-- Unhandled `INTERNAL_SERVER` and `SyntaxError` recorded as OTEL spans via `withSupervision`/`wrapService` in `@/lib/observability`
+- `AppError(code: AppErrorCode)` — thrown by services (e.g. `check()` on a permission mismatch). `withAuth`'s catch block maps it to its HTTP status (`SyntaxError` → 400, anything else → 500 + `console.error`); routes can also catch explicitly with `handleApiError(error, fallback, ctx)` from `@studiq/server/lib/http-utils`. `withSupervision`/`wrapService` record failures as OTEL span errors
+- Error codes → HTTP status via `APP_ERRORS` in `@studiq/server/lib/errors`:
+  `BAD_REQUEST` (400), `UNAUTHORIZED` (401), `FEATURE_REQUIRES_UPGRADE` (402), `FORBIDDEN` (403), `NOT_FOUND` (404), `CONFLICT` (409), `GONE` (410), `UNPROCESSABLE_ENTITY` (422), `RATE_LIMITED` (429), `USAGE_LIMIT_EXCEEDED` (429), `INTERNAL_SERVER` (500), `SERVICE_UNAVAILABLE` (503)
+- `mapSupabaseError` / `toDbFailure` map PG codes via `PG_ERROR_MAP`: PGRST116→NOT_FOUND, 23505→CONFLICT, 23503/23502/23514→BAD_REQUEST; anything else becomes a `DatabaseError` / `INTERNAL_SERVER`
+- Business failures travel as `ServiceResult` (`success`/`failure`), not exceptions — see the Service layer
 
 ---
 
-## Logging & Tracing
+## Observability (OTel tracing)
 
-### Logger (`src/lib/logger.ts`)
+There is **no logger module** — observability is OpenTelemetry spans (do not invent `@/lib/logger` imports).
 
-All logging via `log` singleton (consola-based). Named loggers:
-
-| Name | Purpose | Enabled in production |
-|------|---------|----------------------|
-| `api` | Route-level request/response | Always |
-| `auth` | Authentication events | Always |
-| `ai` / `providers` | AI/LLM | Always |
-| `pdf` / `cache` | PDF processing | Always |
-| `system` | System events | Always |
-| `trace` | Per-layer traces (Route → Controller → Service) | Dev only (noop in prod) |
-
-```typescript
-import { log } from '@/lib/logger';
-log.api.info('request started', { metadata: { traceId } });
-log.trace.info('slow query', { metadata: { table: 'flashcards' }, durationMs: 1500 });
-```
-
-- `log.trace.*` is a **noop logger** in production — V8 inlines empty functions
-- Gate: `NODE_ENV !== 'production' || TRACE_ENABLED === 'true'`
-- `.enabled` is `false` only for `trace` in production. Guard expensive metadata prep behind `if (log.trace.enabled)`
-- `durationMs` field is displayed as `(150ms)` in console
-- Every authenticated request gets a `traceId` (UUID) in `RequestContext`
+- SDK is bootstrapped in `apps/web/src/instrumentation.ts` (NodeSDK + OTLP exporter); disabled when `OTEL_SDK_DISABLED=true` (unit tests set this)
+- `withAuth` starts a span per API request; `withSupervision` / `wrapService` (`@studiq/server/lib/observability`) wrap every controller/service method — span name `service.method`, attributes include `duration.ms` and `error.code`
+- Every authenticated request gets a `traceId` (UUID) on the `RequestContext`
+- Agent step/tool traces are persisted via `enqueueTrace` (`@studiq/server/lib/trace-queue`) → `agent-trace.service`
 
 ---
 
 ## Supabase Clients
 
-Three contexts, use the right one:
+Use the right client for the context — there is **no browser-side Supabase client**; the frontend talks to the REST API via `apps/web/src/lib/api.ts`:
 
 | File | When | How |
 |------|------|-----|
-| `src/lib/supabase/client.ts` | Browser (React components, hooks) | `createBrowserClient` |
-| `src/lib/supabase/server.ts` | Server (API routes, services) | `createServerClient` with cookie handling |
-| `src/lib/supabase/service.ts` | Admin/service role (migrations, webhooks) | Service role key, `autoRefreshToken: false`, `persistSession: false` |
+| `packages/server/src/lib/supabase/server.ts` (`@studiq/server/lib/supabase/server`) | Server: API routes, services | `createServerClient` with cookie handling |
+| `packages/server/src/lib/supabase/service.ts` (`@studiq/server/lib/supabase/service`) | Service role (migrations, admin ops) | Service role key, `autoRefreshToken: false`, `persistSession: false` |
+| `packages/server/src/lib/supabase/session.ts` (`@studiq/server/lib/supabase/session`) | Web proxy session refresh | `updateSession(request)` |
+| `apps/admin/src/lib/supabase/{service,admin-client}.ts` (`@admin/lib/supabase/...`) | Admin app | Service-role client (no user JWT) |
 
 ---
 
-## Route Protection (Middleware)
+## Route Protection (proxy)
 
-Next.js 16 requires `src/proxy.ts` — **do NOT rename to `middleware.ts`**.
+Next.js 16 uses `proxy.ts` — **do NOT rename it to `middleware.ts`**:
 
-Rules in `src/server/config/routes.config.ts` — evaluated in order:
-1. If `redirectIfAuthenticatedByRole` matches → redirect by role
-2. If `requireAuth` + no session → 401 (API) or redirect to `/login` (UI)
-3. If `allowedRoles` + role mismatch → 403 (API) or redirect by role dashboard
+- `apps/web/src/proxy.ts` — main app: refreshes the Supabase session, then applies `routeRules`. It **skips `/api/*` entirely** — API auth is enforced per route by `withAuth()`.
+- `apps/admin/src/proxy.ts` — admin app: Ed25519 PEM signature gate (`x-admin-signature` / `x-admin-timestamp` headers) for `/api/*`; UI pages pass through. Empty `ADMIN_PEM_KEYS` = allow-all in dev, deny-all in production.
 
-API catch-all: `/api/v1/` (except `auth`, `health`, `avatar`, `stripe/webhook`) requires auth.
-UI dashboards: `/admin` (SYS_ADMIN), `/manage` (UNIVERSITY_ADMIN), `/edu` (TEACHER), `/app` (STUDENT/FREE/PREMIUM).
+Rules live in `packages/server/src/config/routes.config.ts` (`routeRules`) — evaluated in order:
+1. If the user is logged in and `redirectIfAuthenticatedByAccountType` / `redirectIfAuthenticated` matches → redirect by account type
+2. If `requireAuth` + no session → 401 (API) or redirect to `/login?next=…` (UI)
+3. If `allowedAccountTypes` + account type mismatch → 403 (API) or redirect to the account-type dashboard (UI)
+
+API catch-all rule (documents which API routes are public by design): `/api/v1/` requires auth except `auth`, `health`, `avatar`, `stripe/webhook`.
+
+UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/register redirect logged-in users by account type. The system admin panel is the **separate `apps/admin` app** (port 4000), not a route in `apps/web`.
 
 ---
 
 ## RBAC
 
-**Roles** (`UserRole` enum in `src/types/`): `FREE | PREMIUM | STUDENT | TEACHER | UNIVERSITY_ADMIN | SYS_ADMIN`
+**Account types** (`AccountType` enum in `@studiq/authz` — `packages/authz/src/types.ts`, mirrored in `apps/web/src/types/index.ts`):
+`STUDENT | EDUCATOR | MANAGER | SYS_ADMIN`
 
-- Backend: Permissions loaded from DB (`role_permissions` + `permissions` tables) with in-memory cache
-- `hasPermission(ctx, 'flashcard.read')` — boolean check (controllers)
-- `checkPermission(ctx, 'flashcard.read', resource)` — throws FORBIDDEN on mismatch (services)
-- `buildQueryFilter(ctx, 'flashcard.read')` — returns Supabase filter based on scope (services)
-- Frontend: **`useCan()` hook is the single source of truth** for both RBAC permissions and feature flags — use `can({ permissions: [...] })` for scoped resource checks and `can({ features: [...] })` for boolean feature gating
+- `RequestContext.accountType` carries the caller's type (from `app_metadata.account_type` in the JWT)
+- **Permissions**: `Permission` map + `PermissionScope` (`own | group | organization | any`) in `@studiq/authz` (`packages/authz/src/lib/permissions.ts`)
+- Scopes are resolved per request by `withAuth` from `org_role_permissions` for the active org (`active_org_id` cookie); students/educators default to `own` for CRUD actions outside an org role
+- Server helpers (`@studiq/server/lib/authz`):
+  - `can(ctx, permission, resource?)` / `check(ctx, permission, resource)` — async resource-aware checks (`check` throws `FORBIDDEN`) — **this is what controllers and services use**
+  - `accessibleFilter(ctx, permission, resourceType)` / `buildQueryFilter(ctx, permission)` — RLS-safe query filters
+  - `hasPermission(ctx, permission)` / `checkPermission(ctx, permission, resource)` — synchronous ctx-only variants
+- Frontend: **`usePermission()` (`apps/web/src/hooks/use-permission.ts`) is the single source of truth for permission gating** — it returns a checker for one permission (`permission('deck.update', { createdBy })`) backed by `/api/v1/permissions/me`. Feature flags: `useFeature()` (`apps/web/src/hooks/use-feature.ts`) backed by `/api/v1/features/me` (`feature('ai.chat')`)
 
 ---
 
 ## i18n
 
-- `next-intl` with `getRequestConfig` pulling locale from `NEXT_LOCALE` cookie (defaults `'pl'`)
-- Messages in `src/i18n/messages/{locale}.json` — nested per component/page
+- `next-intl` with `getRequestConfig` pulling locale from the `NEXT_LOCALE` cookie (defaults `'pl'`) — config in `apps/web/src/i18n/request.ts` and `apps/admin/src/i18n/request.ts`
+- Messages in `apps/web/src/i18n/messages/{locale}.json` (admin: `apps/admin/src/i18n/messages/{locale}.json`) — nested per component/page
 - ICU message format for plurals
-- Error message keys match `APP_ERRORS` constants
-- `Common` namespace auto-merged into all other namespaces
+- Server error codes are returned as `APP_ERRORS` codes (e.g. `ERROR_FORBIDDEN`); message files carry `ERROR_*` keys for most of them
+- `Common` namespace auto-merged into all other namespaces (`mergeCommon` in `request.ts`)
 
 ---
 
@@ -266,11 +331,10 @@ UI dashboards: `/admin` (SYS_ADMIN), `/manage` (UNIVERSITY_ADMIN), `/edu` (TEACH
 
 ### Data fetching
 
-- `useApiQuery<T>({ queryKey, url, enabled?, staleTime?, gcTime? })` — wraps `useQuery`, default `staleTime: Infinity`, `gcTime: 30 min`
-- `useApiMutation<TData, TVars>({ mutationFn, invalidateKeys? })` — wraps `useMutation`, auto-invalidates keys on success
-- `apiGet`, `apiPost`, `apiPut`, `apiDelete`, `apiUploadFile` — raw fetch wrappers in `src/lib/api.ts`
-- Query keys in `src/lib/query-keys.ts` — hierarchical `as const` assertions
-- Realtime: builder pattern via `useRealtimeChannel`: `channel('name').listen(table, handler)`
+- `useApiQuery<T>({ queryKey, url, enabled?, staleTime?, gcTime? })` — wraps `useQuery`, default `staleTime: Infinity`, `gcTime: 30 min` (`apps/web/src/hooks/use-api.ts`)
+- `useApiMutation<TData, TVars>({ mutationFn, invalidateKeys?, optimisticUpdate?, onMutate?, onError?, onSettled? })` — wraps `useMutation`, auto-invalidates keys on success and supports optimistic snapshots
+- `apiGet`, `apiPost`, `apiPut`, `apiDelete`, `apiUploadFile` — raw fetch wrappers in `apps/web/src/lib/api.ts`
+- Query keys in `apps/web/src/lib/query-keys.ts` — hierarchical `as const` assertions
 
 ---
 
@@ -281,7 +345,7 @@ UI dashboards: `/admin` (SYS_ADMIN), `/manage` (UNIVERSITY_ADMIN), `/edu` (TEACH
 | Services | `*.service.ts` | `question.service.ts` |
 | Controllers | `*.controller.ts` | `question.controller.ts` |
 | Models | `*.model.ts` | `question.model.ts` |
-| Routes | `route.ts` | `api/v1/questions/route.ts` |
+| Routes | `route.ts` | `apps/web/src/app/(backend)/api/v1/questions/route.ts` |
 | Tests | `*.test.ts` | `question.service.test.ts` |
 | Frontend hooks | `use-*.ts` | `use-api.ts` |
 
@@ -295,10 +359,10 @@ UI dashboards: `/admin` (SYS_ADMIN), `/manage` (UNIVERSITY_ADMIN), `/edu` (TEACH
 | Integration | Vitest | `__tests__/integration/` | Real local Supabase instance |
 | E2E | Playwright | `__tests__/e2e/` | Chromium, Firefox, WebKit |
 
-- **Mock**: `__tests__/mocks/supabase.ts` — `vi.mock('@/lib/supabase/server')` in `__tests__/setup.ts`
+- **Mock**: `vi.mock('@studiq/server/lib/supabase/server')` is registered in `__tests__/setup.ts` — unit tests override via the `mockSupabaseClient()` helper
 - **Mock helper**: `__tests__/helpers/supabase-mock.ts`
-- Tests run sequentially (`sequence.concurrent: false`)
-- Coverage targets `src/server/**/*.ts` (excludes `index.ts`, `routes.config.ts`)
+- Tests run sequentially within files (`sequence.concurrent: false`); file-level parallelism is on (`fileParallelism: true`)
+- Coverage targets `packages/server/src/**/*.ts` (excludes `routes.config.ts`)
 
 ---
 
@@ -308,29 +372,34 @@ UI dashboards: `/admin` (SYS_ADMIN), `/manage` (UNIVERSITY_ADMIN), `/edu` (TEACH
 
 | Where | Alias | Example |
 |-------|-------|---------|
-| App code | `@/` → `src/` | `import { log } from '@/lib/logger'` |
+| App code (web) | `@/` → `apps/web/src/` | `import { cn } from '@/lib/utils'` |
+| App code (admin) | `@/` / `@admin/` → `apps/admin/src/` | `import { featureFlagController } from '@admin/server/controllers/feature-flag.controller'` |
+| Shared backend | `@studiq/server/*` → `packages/server/src/*` | `import { withAuth } from '@studiq/server/lib/with-auth'` |
 | Test-internal (files importing other files under `__tests__/`) | `#test/` → `__tests__/` | `import { before } from '#test/helpers/test-user'` |
 
-- Mixed test files (importing both app + test code): `@/` for app modules, `#test/` for test modules — never `./` or `../`.
+- Mixed test files (importing both app + test code): `@/` (or `@studiq/*`) for app modules, `#test/` for test modules — never `./` or `../`.
 - Applies to static imports, side-effect imports (`import './x'`), dynamic imports (`import('./x')`) and `require()`.
 - Enforced by two guards, both wired into `bun run lint`:
-  - **Biome** `lint/style/noRestrictedImports` (patterns `./**`, `../**`) — covers `src/`.
-  - **`bun scripts/check-import-paths.ts`** — covers `src/` + `__tests__/` (rules out relative specifiers in tests too).
-- `bun run lint` is intentionally red until all existing relative imports are migrated (see `scripts/check-import-paths.ts` output for the exact list).
+  - **Biome** `lint/style/noRestrictedImports` (patterns `./**`, `../**`) — the root lint run covers `apps/web/src/` (packages have their own `biome ci src/` scripts).
+  - **`bun scripts/check-import-paths.ts`** — covers `apps/web/src/`, `apps/admin/src/` and `__tests__/`.
+- **`bun run lint` is expected to be green on `main`** — treat any failure as a real regression, not known debt.
 - Asset imports (`.css`, `.svg`, images) follow the same rule: `@/app/globals.css` etc.
 
 ---
 
 ## Key Gotchas
 
-- **`bun test:unit`** runs `vitest run __tests__/unit/`
-- **`proxy.ts`**: Next.js 16 uses `src/proxy.ts` (not `middleware.ts`). Do not rename.
-- **`@/lib/zod`**: Always import `{ z, registry }` from here, not from `'zod'` — enables OpenAPI schema registration
+- **Bare `bun test` ≠ Vitest** — it starts Bun's built-in test runner. Use `bun run test` / `bun run test:unit` (`vitest run __tests__/unit/`).
+- **`lint` has no typecheck step** — run `bun run lint:all` (or `bun run typecheck`) when you need `tsc`.
+- **`proxy.ts`**: Next.js 16 uses `proxy.ts` (not `middleware.ts`) — `apps/web/src/proxy.ts` (route rules) and `apps/admin/src/proxy.ts` (PEM signature gate). Do not rename.
+- **`@studiq/server/lib/zod`**: Always import `{ z, registry }` from here, not from `'zod'` — shares one Zod instance and the schema registry
 - **No backward compatibility layers**: Pre-market app. Delete old code paths and deprecated keys cleanly, never keep them "just in case"
-- **Avatar route**: `/api/v1/avatar/[seed]` is public (DiceBear). `@dicebear/core` is server-only.
-- **New API endpoints**: Add a `RouteRule` to `src/server/config/routes.config.ts` if it needs protection
-- **New DB tables**: Add migration in `supabase/migrations/` and schema in `supabase/schemas/`
-- **No barrel files**: Every import uses direct file paths (e.g. `@/server/services/flashcard.service` not `@/server/services`). Biome's `noBarrelFile` and `noReExportAll` rules enforce this.
+- **Avatar routes**: `/api/v1/avatar/user/[seed]` and `/api/v1/avatar/org/[seed]` are public (DiceBear). `@dicebear/core` is server-only.
+- **New API endpoints**: wrap every handler in `withAuth()` — the proxy skips `/api/*`, so a route without `withAuth` is public. Public-by-design prefixes must be added to the catch-all exclusion in `packages/server/src/config/routes.config.ts`.
+- **New UI routes**: add a `RouteRule` to `packages/server/src/config/routes.config.ts` if the route needs auth, account-type restrictions, or a logged-in redirect.
+- **New DB tables**: add a migration in `supabase/migrations/` (unique timestamp prefix — `bun run lint` enforces it) and schema in `supabase/schemas/`
+- **No barrel files**: Every import uses direct file paths (e.g. `@studiq/server/services/flashcard.service` not `@studiq/server/services`). Biome's `noBarrelFile` and `noReExportAll` rules enforce this.
+- **Root `tsconfig.json`** excludes `apps/admin` (it has its own config and `typecheck:admin` script) — hand-run root `bunx tsc --noEmit` must stay at zero errors; use the per-workspace scripts for app code.
 
 ---
 
@@ -351,7 +420,7 @@ When reviewing PRs (especially stacked PRs), follow this process to avoid false 
 1. **Fetch the diff** — `gh pr diff <number> --repo logyQT/studiq`
 2. **Verify against the actual file on the PR's head branch** — `git show <head-sha>:<path>` or just `cat` the file. Diffs show *changes relative to the PR's base*, not relative to `main`. A line can appear as "added" in the diff while already existing on `main`.
 3. **Check what the PR claims to change** against what the diff actually changes. If a PR says "adds X" but the diff only shows X being modified (not added), the feature likely already existed.
-4. **Run the test suite** if touching business logic — `bun test:unit`
+4. **Run the test suite** if touching business logic — `bun run test:unit`
 5. **Run the linter** — `bun run lint`
 
 ### Common false-positive patterns in stacked PR diffs
