@@ -15,7 +15,8 @@ ALTER TABLE public.organizations ALTER COLUMN plan SET DEFAULT 'launch';
 INSERT INTO public.feature_flags (key, name, description) VALUES
   ('group.manage', 'Group Management', 'Create and manage groups'),
   ('member.manage', 'Member Management', 'Change member roles and remove members'),
-  ('role.builder', 'Role Builder', 'Create custom roles with custom permissions')
+  ('role.builder', 'Role Builder', 'Create custom roles with custom permissions'),
+  ('branding', 'Custom Branding', 'Organization logo + brand color')
 ON CONFLICT DO NOTHING;
 
 -- ==========================================================
@@ -105,7 +106,8 @@ INSERT INTO public.plan_features (plan_key, feature_key) VALUES
   ('hub', 'member.manage'),
   ('hub', 'role.builder'),
   ('hub', 'advanced.stats'),
-  ('hub', 'documents')
+  ('hub', 'documents'),
+  ('hub', 'branding')
 ON CONFLICT DO NOTHING;
 
 -- Advanced tier
@@ -132,7 +134,8 @@ INSERT INTO public.plan_features (plan_key, feature_key) VALUES
   ('campus', 'member.manage'),
   ('campus', 'role.builder'),
   ('campus', 'advanced.stats'),
-  ('campus', 'documents')
+  ('campus', 'documents'),
+  ('campus', 'branding')
 ON CONFLICT DO NOTHING;
 
 -- Sysadmin (everything)

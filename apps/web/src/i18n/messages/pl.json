@@ -1117,7 +1117,10 @@
     "save_button": "Zapisz",
     "saving": "Zapisywanie...",
     "color_updated": "Kolor zaktualizowany",
-    "save_failed": "Nie udało się zapisać"
+    "save_failed": "Nie udało się zapisać",
+    "branding_locked_title": "Branding niestandardowy",
+    "branding_locked_desc": "Przejdź na plan Hub lub Campus, aby ustawić logo i kolor marki organizacji.",
+    "upgrade_cta": "Ulepsz plan"
   },
   "AppOnboarding": {
     "title": "Pierwsze kroki",

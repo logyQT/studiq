@@ -3,6 +3,7 @@ import {
   type ControllerResponse,
   controllerResponse,
 } from '@studiq/server/lib/controller-response';
+import { requireFeature } from '@studiq/server/lib/features';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
 import {
@@ -89,7 +90,7 @@ export class OrganizationController {
     return controllerResponse.success(organization.data);
   }
 
-  async update(id: string, body: unknown): Promise<ControllerResponse> {
+  async update(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     const parsedId = OrganizationIdParamsSchema.safeParse({ id });
     if (!parsedId.success) {
       return {
@@ -107,6 +108,10 @@ export class OrganizationController {
         error: 'UNPROCESSABLE_ENTITY',
         details: parsedData.error.issues,
       };
+    }
+
+    if (parsedData.data.logoUrl !== undefined || parsedData.data.brandColor !== undefined) {
+      await requireFeature(ctx, 'branding');
     }
 
     const result = await this.organizationService.update(parsedId.data.id, parsedData.data);

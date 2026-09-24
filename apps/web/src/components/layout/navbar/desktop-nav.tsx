@@ -91,21 +91,30 @@ export function DesktopNav({ links, isActive }: DesktopNavProps) {
 
   return (
     <nav ref={navRef} className="flex items-center gap-1">
-      {visible.map(({ labelKey, href, icon: Icon }) => (
-        <Link
-          key={labelKey}
-          href={href}
-          className={cn(
-            'flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition shrink-0',
-            isActive(href)
-              ? 'bg-accent text-foreground'
-              : 'text-muted-foreground hover:text-foreground hover:bg-accent',
-          )}
-        >
-          <Icon className="h-4 w-4" />
-          {t(labelKey)}
-        </Link>
-      ))}
+      {visible.map(({ labelKey, href, icon: Icon }) => {
+        const active = isActive(href);
+        return (
+          <Link
+            key={labelKey}
+            href={href}
+            // `--brand-accent` is set on the header wrapper only when the
+            // org has the branding feature + a saved color; the `transparent`
+            // fallback makes this a no-op otherwise.
+            style={
+              active ? { boxShadow: 'inset 0 -2px 0 var(--brand-accent, transparent)' } : undefined
+            }
+            className={cn(
+              'flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition shrink-0',
+              active
+                ? 'bg-accent text-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {t(labelKey)}
+          </Link>
+        );
+      })}
 
       {hasOverflow && (
         <DropdownMenu>

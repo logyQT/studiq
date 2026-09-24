@@ -12,11 +12,14 @@ import {
   Label,
   Skeleton,
 } from '@studiq/ui';
+import { Lock } from 'lucide-react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useFeature } from '@/hooks/use-feature';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiPut, apiUploadFile } from '@/lib/api';
 
@@ -32,6 +35,8 @@ export default function SettingsPage() {
   const t = useTranslations('ManageSettingsPage');
   const { activeOrg } = useOrgs();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const feature = useFeature();
+  const hasBranding = feature('branding');
 
   const {
     data: organization,
@@ -115,59 +120,80 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              <div>
-                <p className="text-sm font-medium text-muted-foreground mb-2">{t('logo_label')}</p>
-                <div className="flex items-center gap-3">
-                  {organization.logo_url ? (
-                    <Image
-                      src={organization.logo_url}
-                      alt={organization.name}
-                      width={48}
-                      height={48}
-                      className="rounded-md border object-contain"
-                      unoptimized
-                    />
-                  ) : (
-                    <div className="h-12 w-12 rounded-md border border-dashed flex items-center justify-center text-xs text-muted-foreground">
-                      {t('no_logo')}
+              {hasBranding ? (
+                <>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground mb-2">
+                      {t('logo_label')}
+                    </p>
+                    <div className="flex items-center gap-3">
+                      {organization.logo_url ? (
+                        <Image
+                          src={organization.logo_url}
+                          alt={organization.name}
+                          width={48}
+                          height={48}
+                          className="rounded-md border object-contain"
+                          unoptimized
+                        />
+                      ) : (
+                        <div className="h-12 w-12 rounded-md border border-dashed flex items-center justify-center text-xs text-muted-foreground">
+                          {t('no_logo')}
+                        </div>
+                      )}
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/gif,image/webp"
+                        className="hidden"
+                        onChange={handleLogoChange}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={uploadLogo.isPending}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        {uploadLogo.isPending ? t('uploading') : t('upload_logo')}
+                      </Button>
                     </div>
-                  )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/gif,image/webp"
-                    className="hidden"
-                    onChange={handleLogoChange}
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={uploadLogo.isPending}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    {uploadLogo.isPending ? t('uploading') : t('upload_logo')}
-                  </Button>
-                </div>
-              </div>
+                  </div>
 
-              <div>
-                <Label htmlFor="brand-color" className="text-sm font-medium text-muted-foreground">
-                  {t('brand_color_label')}
-                </Label>
-                <div className="flex items-center gap-2 mt-2">
-                  <Input
-                    id="brand-color"
-                    type="color"
-                    value={displayColor}
-                    onChange={(e) => setBrandColor(e.target.value)}
-                    className="h-9 w-16 p-1"
-                  />
-                  <span className="text-sm text-muted-foreground">{displayColor}</span>
-                  <Button size="sm" disabled={updateColor.isPending} onClick={handleColorSave}>
-                    {updateColor.isPending ? t('saving') : t('save_button')}
+                  <div>
+                    <Label
+                      htmlFor="brand-color"
+                      className="text-sm font-medium text-muted-foreground"
+                    >
+                      {t('brand_color_label')}
+                    </Label>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Input
+                        id="brand-color"
+                        type="color"
+                        value={displayColor}
+                        onChange={(e) => setBrandColor(e.target.value)}
+                        className="h-9 w-16 p-1"
+                      />
+                      <span className="text-sm text-muted-foreground">{displayColor}</span>
+                      <Button size="sm" disabled={updateColor.isPending} onClick={handleColorSave}>
+                        {updateColor.isPending ? t('saving') : t('save_button')}
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-lg border border-dashed p-4 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium">{t('branding_locked_title')}</p>
+                    <p className="text-sm text-muted-foreground">{t('branding_locked_desc')}</p>
+                  </div>
+                  <Button size="sm" variant="outline" asChild>
+                    <Link href="/pricing">
+                      <Lock className="size-3" /> {t('upgrade_cta')}
+                    </Link>
                   </Button>
                 </div>
-              </div>
+              )}
             </div>
           ) : (
             <p className="text-muted-foreground">{t('no_university')}</p>

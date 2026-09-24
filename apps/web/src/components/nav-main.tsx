@@ -85,7 +85,19 @@ export function NavMain({
           const isActive = item.href === activeHref;
           return (
             <SidebarMenuItem key={item.titleKey}>
-              <SidebarMenuButton asChild isActive={isActive} tooltip={t(item.titleKey)}>
+              <SidebarMenuButton
+                asChild
+                isActive={isActive}
+                tooltip={t(item.titleKey)}
+                // `--brand-accent` is set on the <Sidebar> root only when the
+                // org has the branding feature + a saved color; the
+                // `transparent` fallback makes this a no-op otherwise.
+                style={
+                  isActive
+                    ? { boxShadow: 'inset 2px 0 0 var(--brand-accent, transparent)' }
+                    : undefined
+                }
+              >
                 <Link href={item.href}>
                   {item.icon && <item.icon />}
                   <span className="flex-1">{t(item.titleKey)}</span>

@@ -19,6 +19,7 @@ import {
   Sparkles,
   Users,
 } from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -28,6 +29,9 @@ import { MobileNav } from '@/components/layout/navbar/mobile-nav';
 import type { NavLink } from '@/components/layout/navbar/types';
 import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useApiQuery } from '@/hooks/use-api';
+import { useFeature } from '@/hooks/use-feature';
+import { useOrgs } from '@/hooks/use-orgs';
 
 const studentLinks: NavLink[] = [
   { labelKey: 'nav_overview', href: '/app', icon: LayoutDashboard },
@@ -65,6 +69,21 @@ export function Navbar() {
   const { user, isLoading } = useAuth();
   const pathname = usePathname();
   const [avatarOpen, setAvatarOpen] = useState(false);
+  const { activeOrg } = useOrgs();
+  const feature = useFeature();
+  const hasBranding = feature('branding');
+
+  const { data: orgBranding } = useApiQuery<{
+    logo_url: string | null;
+    brand_color: string | null;
+  }>({
+    queryKey: ['organization', activeOrg?.id],
+    url: `/api/v1/organization/${activeOrg?.id}`,
+    enabled: hasBranding && !!activeOrg?.id,
+  });
+
+  const brandLogo = hasBranding ? orgBranding?.logo_url : null;
+  const brandColor = hasBranding ? orgBranding?.brand_color : null;
 
   const accountType = user?.app_metadata?.account_type as AccountType | undefined;
 
@@ -87,7 +106,10 @@ export function Navbar() {
   const allLinks = user ? [...extraLinks, ...navLinks] : [];
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/70 backdrop-blur-xl">
+    <header
+      className="sticky top-0 z-50 w-full border-b bg-background/70 backdrop-blur-xl"
+      style={brandColor ? ({ '--brand-accent': brandColor } as React.CSSProperties) : undefined}
+    >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* LEFT */}
@@ -96,7 +118,18 @@ export function Navbar() {
               href="/"
               className="flex items-center gap-2 text-xl font-bold tracking-tight hover:opacity-80 transition shrink-0"
             >
-              <GraduationCap className="h-6 w-6 text-primary" />
+              {brandLogo ? (
+                <Image
+                  src={brandLogo}
+                  alt=""
+                  width={24}
+                  height={24}
+                  className="h-6 w-6 rounded object-contain"
+                  unoptimized
+                />
+              ) : (
+                <GraduationCap className="h-6 w-6 text-primary" />
+              )}
               {t('logo')}
             </Link>
 

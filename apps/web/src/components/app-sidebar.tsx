@@ -35,6 +35,7 @@ import { type NavItem, NavMain } from '@/components/nav-main';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
+import { useOrgs } from '@/hooks/use-orgs';
 import { questionReportKeys } from '@/lib/query-keys';
 
 const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
@@ -159,6 +160,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const accountType = user?.app_metadata?.account_type as AccountType | undefined;
   const isSysAdmin = accountType === AccountType.SYS_ADMIN;
   const feature = useFeature();
+  const hasBranding = feature('branding');
+  const { activeOrg } = useOrgs();
+
+  const { data: orgBranding } = useApiQuery<{ brand_color: string | null }>({
+    queryKey: ['organization', activeOrg?.id],
+    url: `/api/v1/organization/${activeOrg?.id}`,
+    enabled: hasBranding && !!activeOrg?.id,
+  });
+  const brandColor = hasBranding ? orgBranding?.brand_color : null;
 
   const { data: reportsUnread } = useApiQuery<{ count: number }>({
     queryKey: questionReportKeys.unreadCount,
@@ -201,7 +211,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   })();
 
   return (
-    <Sidebar collapsible="icon" {...props}>
+    <Sidebar
+      collapsible="icon"
+      style={brandColor ? ({ '--brand-accent': brandColor } as React.CSSProperties) : undefined}
+      {...props}
+    >
       <SidebarHeader>{!isSysAdmin && <OrgSwitcher />}</SidebarHeader>
       <SidebarContent>
         {groups.map((group) => (

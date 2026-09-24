@@ -1136,7 +1136,10 @@
     "save_button": "Save",
     "saving": "Saving...",
     "color_updated": "Color updated",
-    "save_failed": "Failed to save"
+    "save_failed": "Failed to save",
+    "branding_locked_title": "Custom branding",
+    "branding_locked_desc": "Upgrade to Hub or Campus to set your organization's logo and brand color.",
+    "upgrade_cta": "Upgrade"
   },
   "AppOnboarding": {
     "title": "Getting Started",

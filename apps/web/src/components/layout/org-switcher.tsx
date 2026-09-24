@@ -18,6 +18,8 @@ import { Building2, Check, ChevronsUpDown, LogIn } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useApiQuery } from '@/hooks/use-api';
+import { useFeature } from '@/hooks/use-feature';
 import { useOrgs } from '@/hooks/use-orgs';
 
 function displayRole(name: string | undefined | null, fallback: string): string {
@@ -31,6 +33,15 @@ export function OrgSwitcher() {
   const { orgs, activeOrg, switchOrg, isSwitching, isLoading } = useOrgs();
   const router = useRouter();
   const { isMobile } = useSidebar();
+  const feature = useFeature();
+  const hasBranding = feature('branding');
+
+  const { data: orgBranding } = useApiQuery<{ logo_url: string | null }>({
+    queryKey: ['organization', activeOrg?.id],
+    url: `/api/v1/organization/${activeOrg?.id}`,
+    enabled: hasBranding && !!activeOrg?.id,
+  });
+  const activeLogoUrl = hasBranding ? orgBranding?.logo_url : null;
 
   if (isLoading || !user) {
     return (
@@ -109,7 +120,12 @@ export function OrgSwitcher() {
             >
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg">
                 {activeOrg ? (
-                  <OrgAvatar orgId={activeOrg.id} name={activeOrg.name} size={32} />
+                  <OrgAvatar
+                    orgId={activeOrg.id}
+                    name={activeOrg.name}
+                    size={32}
+                    logoUrl={activeLogoUrl}
+                  />
                 ) : (
                   <Building2 className="size-6 text-muted-foreground" />
                 )}

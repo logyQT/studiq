@@ -46,6 +46,8 @@ export const OrganizationResponseSchema = registry.register(
       .min(3, { error: ValidationErrorCode.TOO_SHORT })
       .max(64, { error: ValidationErrorCode.TOO_LONG }),
     created_at: z.iso.datetime(),
+    logo_url: z.string().nullable().optional(),
+    brand_color: z.string().nullable().optional(),
   }),
 );
 

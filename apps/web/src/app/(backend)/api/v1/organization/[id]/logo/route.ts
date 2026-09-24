@@ -1,5 +1,6 @@
 import { AccountType } from '@studiq/authz';
 import { organizationController } from '@studiq/server/controllers/organization.controller';
+import { requireFeature } from '@studiq/server/lib/features';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
 import { withAuth } from '@studiq/server/lib/with-auth';
 import { storageService } from '@studiq/server/services/storage.service';
@@ -18,6 +19,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         return NextResponse.json({ success: false, error: 'FORBIDDEN' }, { status: 403 });
       }
 
+      await requireFeature(ctx, 'branding');
+
       const formData = await req.formData();
       const file = formData.get('file') as File | null;
       if (!file) {
@@ -26,7 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       try {
         const { url } = await storageService.uploadToBucket(ctx.userId, file, 'org-logos', id);
-        return toNextResponse(await organizationController.update(id, { logoUrl: url }));
+        return toNextResponse(await organizationController.update(id, { logoUrl: url }, ctx));
       } catch {
         return NextResponse.json({ success: false, error: 'INTERNAL_SERVER' }, { status: 500 });
       }
