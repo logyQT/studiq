@@ -222,6 +222,74 @@ describe('FeatureResolver', () => {
       expect(features).toEqual(['ai.chat', 'flashcards', 'quiz', 'advanced.stats']);
     });
 
+    it('falls back to the org plan when the org role has zero rows (custom role)', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-custom' };
+
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_role_features') return chain([]);
+        if (table === 'organizations') return chain({ plan: 'hub' });
+        if (table === 'plan_features') {
+          return chain([
+            { feature_key: 'flashcards' },
+            { feature_key: 'quiz' },
+            { feature_key: 'branding' },
+          ]);
+        }
+        if (table === 'user_feature_overrides') return chain([]);
+        if (table === 'feature_flags') return chain(allFlagsOn());
+        return chain(null);
+      });
+
+      const features = await resolver.getEnabledFeatures(ctx);
+      expect(features).toEqual(['flashcards', 'quiz', 'branding']);
+      // Org plan yielded features, so the personal plan must not be consulted.
+      expect(mock.from).not.toHaveBeenCalledWith('profiles');
+    });
+
+    it('still applies the personal plan when there is no active org', async () => {
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'profiles') return chain({ personal_plan_key: 'ace' });
+        if (table === 'plan_features') {
+          return chain([{ feature_key: 'flashcards' }, { feature_key: 'branding' }]);
+        }
+        if (table === 'user_feature_overrides') return chain([]);
+        if (table === 'feature_flags') return chain(allFlagsOn());
+        return chain(null);
+      });
+
+      const features = await resolver.getEnabledFeatures(baseCtx);
+      expect(features).toEqual(['flashcards', 'branding']);
+      // No active org → the org-plan layer is skipped entirely.
+      expect(mock.from).not.toHaveBeenCalledWith('organizations');
+    });
+
+    it('keeps role rows authoritative over the org plan when present', async () => {
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-1' };
+
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_role_features') {
+          return chain([
+            { feature_key: 'flashcards', is_enabled: true },
+            { feature_key: 'quiz', is_enabled: true },
+          ]);
+        }
+        // The org plan would grant branding — role rows must still win.
+        if (table === 'organizations') return chain({ plan: 'hub' });
+        if (table === 'plan_features') return chain([{ feature_key: 'branding' }]);
+        if (table === 'user_feature_overrides') return chain([]);
+        if (table === 'feature_flags') return chain(allFlagsOn());
+        return chain(null);
+      });
+
+      const features = await resolver.getEnabledFeatures(ctx);
+      expect(features).toEqual(['flashcards', 'quiz']);
+      expect(features).not.toContain('branding');
+      // Role rows are non-empty → the org-plan layer is never consulted.
+      expect(mock.from).not.toHaveBeenCalledWith('organizations');
+    });
+
     it('applies user_feature_overrides as the strongest layer', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-1' };
 

@@ -78,7 +78,8 @@ export class FeatureResolver {
    *
    *   1. Plan entitlement  — seat plan (seated in org) → org role features
    *      (the role's plan-seeded entitlement; authoritative when present) →
-   *      personal plan (no org context / nothing org-derived).
+   *      org plan (active org whose role has no feature rows, e.g. custom
+   *      roles) → personal plan (no org context / nothing org-derived).
    *   2. Org role override — `org_role_features` rows for the user's role
    *      win over the underlying plan for that key.
    *   3. User override    — `user_feature_overrides` rows are the strongest
@@ -137,6 +138,23 @@ export class FeatureResolver {
         // so this layer encodes plan gating AND role restrictions. When a
         // role has rows they are authoritative (missing keys = disabled).
         this.applyRows(enabled, orgRoleFeatures);
+      } else {
+        // Behavior change: custom org roles (OrgRoleService.createRole seeds
+        // no org_role_features rows) previously fell through to the personal
+        // plan and never received the org's entitlements (e.g. `branding`).
+        // A role with zero rows now inherits the org's plan entitlements,
+        // consistent with system-role holders. The personal-plan fallback
+        // below still applies when there is no active org, or when the org's
+        // plan has no feature rows.
+        const { data: org } = await supabase
+          .from('organizations')
+          .select('plan')
+          .eq('id', ctx.activeOrgId)
+          .maybeSingle();
+
+        if (org?.plan) {
+          await this.addPlanFeatures(enabled, org.plan, supabase);
+        }
       }
     }
 
