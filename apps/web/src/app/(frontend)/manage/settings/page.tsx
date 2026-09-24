@@ -20,6 +20,7 @@ import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
+import { useFeatures } from '@/hooks/use-features';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiPut, apiUploadFile } from '@/lib/api';
 
@@ -64,6 +65,10 @@ export default function SettingsPage() {
   // subscription badge below stay visible either way — only the logo
   // upload and color picker are withheld.
   const canBrand = useFeature()('branding');
+  // Same query as useFeature() — while it's in flight `canBrand` is a
+  // provisional `false`, so the pending state shares the org-loading
+  // skeleton below and entitled orgs never flash the locked card.
+  const { isPending: featuresPending } = useFeatures();
 
   const {
     data: organization,
@@ -120,7 +125,7 @@ export default function SettingsPage() {
           <CardDescription>{t('university_desc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {isLoading ? (
+          {isLoading || featuresPending ? (
             <div className="space-y-3">
               <Skeleton className="h-4 w-48" />
               <Skeleton className="h-4 w-32" />
