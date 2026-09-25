@@ -1,6 +1,5 @@
 'use client';
 
-import { AccountType } from '@studiq/authz';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail } from '@studiq/ui';
 import {
   BarChart3,
@@ -10,9 +9,7 @@ import {
   CreditCard,
   Database,
   Dumbbell,
-  Flag,
   Folder,
-  GraduationCap,
   Layers,
   LayoutDashboard,
   Mail,
@@ -25,7 +22,6 @@ import {
   Sparkles,
   Tag,
   TrendingUp,
-  UserCog,
   Users,
 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
@@ -132,32 +128,11 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
       ],
     },
   ],
-  '/admin': [
-    {
-      label: 'sidebar_main',
-      items: [{ titleKey: 'admin_overview', href: '/admin', icon: LayoutDashboard }],
-    },
-    {
-      label: 'sidebar_system',
-      items: [
-        { titleKey: 'admin_orgs', href: '/admin/orgs', icon: GraduationCap },
-        { titleKey: 'admin_feature_flags', href: '/admin/feature-flags', icon: Flag },
-        {
-          titleKey: 'admin_subscription_plans',
-          href: '/admin/subscription-plans',
-          icon: CreditCard,
-        },
-        { titleKey: 'admin_user_overrides', href: '/admin/user-overrides', icon: UserCog },
-      ],
-    },
-  ],
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const accountType = user?.app_metadata?.account_type as AccountType | undefined;
-  const isSysAdmin = accountType === AccountType.SYS_ADMIN;
   const feature = useFeature();
 
   const { data: reportsUnread } = useApiQuery<{ count: number }>({
@@ -172,7 +147,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       if (pathname.startsWith('/edu')) return NAV_ITEMS['/edu'];
       if (pathname.startsWith('/manage')) return NAV_ITEMS['/manage'];
       if (pathname.startsWith('/app')) return NAV_ITEMS['/app'];
-      if (pathname.startsWith('/admin')) return NAV_ITEMS['/admin'];
       return [];
     })();
 
@@ -202,7 +176,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>{!isSysAdmin && <OrgSwitcher />}</SidebarHeader>
+      <SidebarHeader>
+        <OrgSwitcher />
+      </SidebarHeader>
       <SidebarContent>
         {groups.map((group) => (
           <NavMain

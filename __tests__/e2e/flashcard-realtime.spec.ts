@@ -3,9 +3,15 @@ import { t } from '#test/e2e/utils';
 
 const PASSWORD = 'pass';
 
-const TEACHER_1_EMAIL = 'e2e-teacher1@test.local';
-const TEACHER_2_EMAIL = 'e2e-teacher2@test.local';
-const STUDENT_EMAILS = Array.from({ length: 5 }, (_, i) => `e2e-student${i + 1}@test.local`);
+const TEACHER_1_EMAIL = 'teacher1@dev.local';
+const TEACHER_2_EMAIL = 'teacher2@dev.local';
+const STUDENT_EMAILS = [
+  'student1@dev.local',
+  'student2@dev.local',
+  'student3@dev.local',
+  'test-student@dev.local',
+  'student-classroom@dev.local',
+];
 
 const FLASHCARD_IDS = Array.from(
   { length: 100 },

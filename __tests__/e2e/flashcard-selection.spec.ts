@@ -13,7 +13,7 @@ async function login(page: import('@playwright/test').Page, email: string, redir
 
 test.describe('Flashcard Selection Mode', () => {
   test('flashcard enters selection mode from context menu', async ({ page }) => {
-    await login(page, 'e2e-teacher1@test.local', /\/edu/);
+    await login(page, 'teacher1@dev.local', /\/edu/);
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
@@ -38,7 +38,7 @@ test.describe('Flashcard Selection Mode', () => {
   });
 
   test('toggle individual flashcard selection', async ({ page }) => {
-    await login(page, 'e2e-teacher1@test.local', /\/edu/);
+    await login(page, 'teacher1@dev.local', /\/edu/);
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
@@ -63,7 +63,7 @@ test.describe('Flashcard Selection Mode', () => {
   });
 
   test('select all / deselect all flashcards', async ({ page }) => {
-    await login(page, 'e2e-teacher1@test.local', /\/edu/);
+    await login(page, 'teacher1@dev.local', /\/edu/);
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
@@ -96,7 +96,7 @@ test.describe('Flashcard Selection Mode', () => {
   });
 
   test('escape key clears flashcard selection', async ({ page }) => {
-    await login(page, 'e2e-teacher1@test.local', /\/edu/);
+    await login(page, 'teacher1@dev.local', /\/edu/);
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
@@ -120,7 +120,7 @@ test.describe('Flashcard Selection Mode', () => {
   });
 
   test('bulk actions bar appears when flashcards are selected', async ({ page }) => {
-    await login(page, 'e2e-teacher1@test.local', /\/edu/);
+    await login(page, 'teacher1@dev.local', /\/edu/);
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
@@ -146,7 +146,7 @@ test.describe('Flashcard Selection Mode', () => {
   });
 
   test('bulk delete flashcards removes them', async ({ page }) => {
-    await login(page, 'student@dev.local', /\/app/);
+    await login(page, 'student1@dev.local', /\/app/);
     await page.goto('/app/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
@@ -190,7 +190,7 @@ test.describe('Flashcard Selection Mode', () => {
   });
 
   test('topic enters selection mode and clears on escape', async ({ page }) => {
-    await login(page, 'e2e-teacher1@test.local', /\/edu/);
+    await login(page, 'teacher1@dev.local', /\/edu/);
     await page.goto('/edu/flashcards/topics');
     await page.waitForLoadState('networkidle');
 
@@ -211,7 +211,7 @@ test.describe('Flashcard Selection Mode', () => {
   });
 
   test('deck enters selection mode from context menu (mobile)', async ({ page }) => {
-    await login(page, 'e2e-teacher1@test.local', /\/edu/);
+    await login(page, 'teacher1@dev.local', /\/edu/);
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 

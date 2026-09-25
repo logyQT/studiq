@@ -7,7 +7,6 @@ import { useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 
 const DEV_USERS = [
-  { label: 'Admin', email: 'admin@dev.local' },
   { label: 'M1', email: 'manager@dev.local' },
   { label: 'M2', email: 'manager2@dev.local' },
   { label: 'T1', email: 'teacher1@dev.local' },

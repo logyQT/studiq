@@ -36,8 +36,9 @@ describe('authz (unified lib)', () => {
       expect(resolveScope(baseCtx, 'flashcard.create')).toBe('own');
       expect(resolveScope(baseCtx, 'deck.delete')).toBe('own');
 
-      const sysadmin = { ...baseCtx, accountType: AccountType.SYS_ADMIN };
-      expect(resolveScope(sysadmin, 'flashcard.create')).toBeNull();
+      // Managers get no implicit CRUD default — only the stored batch applies.
+      const manager = { ...baseCtx, accountType: AccountType.MANAGER };
+      expect(resolveScope(manager, 'flashcard.create')).toBeNull();
     });
 
     it('returns null for unknown permissions', () => {

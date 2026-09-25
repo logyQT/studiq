@@ -4,7 +4,7 @@ Private edtech platform with quizzes, flashcards, AI-powered learning flows, and
 
 ## Features
 
-- Authentication with role-based access control (student, teacher, university admin, sys admin)
+- Authentication with role-based access control (student, educator, manager)
 - Quiz engine with attempt tracking and review
 - Flashcard practice with SM-2 spaced repetition algorithm
 - AI-powered flashcard generation from PDFs (SSE streaming)
@@ -15,7 +15,7 @@ Private edtech platform with quizzes, flashcards, AI-powered learning flows, and
 - Invitation system with token-based registration
 - Developer study simulator for testing SM-2 at scale
 - Multi-language support (en, pl) via next-intl
-- System administration panel (logs, permissions)
+- Standalone system administration panel (`apps/admin`, port 4000, PEM-gated)
 
 ## Tech Stack
 

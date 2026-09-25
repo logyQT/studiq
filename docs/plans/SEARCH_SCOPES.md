@@ -7,7 +7,6 @@ Per-role search vision for the StudiQ global search bar.
 | STUDENT / FREE / PREMIUM | Student    | `/app`    | Flashcards | Topics                    | Notes, questions                      | AI-powered discovery   |
 | TEACHER                  | Education  | `/edu`    | Flashcards | Topics, class decks       | Shared resources, student submissions | Cross-course analytics |
 | UNIVERSITY_ADMIN         | Management | `/manage` | — (hidden) | Members, invitations      | University-wide content               | Audit logs             |
-| SYS_ADMIN                | Admin      | `/admin`  | — (hidden) | Organizations, sys admins | Pending invites, error logs           | Permissions, settings  |
 
 ---
 
@@ -77,10 +76,9 @@ Search all flashcards, decks, and topics within the university. Same as the `/ed
 
 ## Phase 3
 
-### Everything else (`/admin`, `/manage` audit, AI discovery)
+### Everything else (`/manage` audit, AI discovery)
 
 - **Organizations**: search `universities` table by name, domain, status
-- **Sys admins**: search `profiles` with `role = SYS_ADMIN`
 - **Pending invites**: search `invitations` by email, status, role
 - **Error logs**: search `error_logs` by message, code, user, time range
 - **Permissions**: search `permissions` / `role_permissions` by name, role, scope

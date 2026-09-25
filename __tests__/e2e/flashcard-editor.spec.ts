@@ -3,7 +3,7 @@ import { t } from '#test/e2e/utils';
 
 async function login(page: import('@playwright/test').Page) {
   await page.goto('/login');
-  await page.getByLabel(t('LoginPage.email_label')).fill('student@dev.local');
+  await page.getByLabel(t('LoginPage.email_label')).fill('student1@dev.local');
   await page.getByLabel(t('LoginPage.password_label')).fill('pass');
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
   await page.waitForURL(/\/app/);

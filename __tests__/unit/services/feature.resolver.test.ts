@@ -54,18 +54,6 @@ describe('FeatureResolver', () => {
   });
 
   describe('precedence chain', () => {
-    it('returns all features for SYS_ADMIN with no rollout gating', async () => {
-      mock.from.mockImplementation((table: string) => {
-        if (table === 'feature_flags') return chain(allFlagsOn());
-        return chain(null);
-      });
-
-      const ctx = { ...baseCtx, accountType: AccountType.SYS_ADMIN };
-      const res = await resolver.resolveFeatures(ctx);
-      expect(res.features).toEqual([...FEATURES]);
-      expect(res.rollout).toEqual({});
-    });
-
     it('adds seat plan features on top of org-role base (additive upgrade)', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-admin' };
       const seatFeatures = ['flashcards', 'quiz', 'quiz.builder', 'documents', 'ai.chat'];

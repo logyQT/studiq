@@ -34,7 +34,7 @@
 | Email/password auth (Supabase) | ✅ | No SSO/OAuth |
 | Invitation flow with role selection | ✅ | `/manage/invitations`, token-based, 7-day expiry |
 | Registration with/without invite | ✅ | Invite → sets `target_role` + `university_id`; self-reg → `free` role |
-| 6 user roles | ✅ | `FREE`, `PREMIUM`, `STUDENT`, `TEACHER`, `UNIVERSITY_ADMIN`, `SYS_ADMIN` |
+| 3 account types | ✅ | `STUDENT`, `EDUCATOR`, `MANAGER` |
 | Role-change RPC (`admin_change_role`) | ✅ | Security definer, checks caller permissions |
 
 ### RBAC
@@ -433,17 +433,17 @@ New namespaces: `QuizBuilder`, `Documents`, `TeacherDashboard` — ~60-80 keys.
 
 ### Gating Matrix (proposed)
 
-| Feature | Free | Premium | Student | Teacher | Univ Admin | Sys Admin |
-|---------|------|---------|---------|---------|------------|-----------|
-| Basic flashcards | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Basic quizzes | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Groups | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| AI flashcards | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| AI quiz gen | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| AI oral exam | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
-| Quiz builder | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| Documents | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| Advanced stats | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Feature | Free | Premium | Student | Teacher | Univ Admin |
+|---------|------|---------|---------|---------|------------|
+| Basic flashcards | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Basic quizzes | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Groups | ❌ | ❌ | ✅ | ✅ | ✅ |
+| AI flashcards | ❌ | ✅ | ✅ | ✅ | ✅ |
+| AI quiz gen | ❌ | ✅ | ✅ | ✅ | ✅ |
+| AI oral exam | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Quiz builder | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Documents | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Advanced stats | ❌ | ✅ | ✅ | ✅ | ✅ |
 
 ### University Plan Gating
 
@@ -470,7 +470,7 @@ New namespaces: `QuizBuilder`, `Documents`, `TeacherDashboard` — ~60-80 keys.
 
 ## Phase 7: Admin Dashboard & Analytics 📋
 
-> Sys admin visibility into platform usage, user management across orgs, system health.
+> Platform visibility into usage, user management across orgs, system health.
 
 **Priority**: LOW — operational tooling.
 

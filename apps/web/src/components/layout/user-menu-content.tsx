@@ -59,8 +59,6 @@ export function UserMenuItems({ onItemClick }: { onItemClick?: () => void }) {
     switch (accountType) {
       case AccountType.EDUCATOR:
         return '/edu';
-      case AccountType.SYS_ADMIN:
-        return '/admin';
       case AccountType.MANAGER:
         return '/manage';
       default:

@@ -17,8 +17,8 @@
     "admin_subscription_plans": "Plans",
     "admin_user_overrides": "User Overrides",
     "admin_system": "System",
-    "sys_admin_dashboard": "System Administration",
-    "role_sys_admin": "System Admin",
+    "admin_panel_title": "System Administration",
+    "admin_panel_subtitle": "System Admin",
     "logout": "Logout",
     "theme_toggle": "Toggle theme"
   },

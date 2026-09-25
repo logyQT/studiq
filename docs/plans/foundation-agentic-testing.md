@@ -98,7 +98,6 @@ themselves — they are not API-flow suites and intentionally stay on service-ro
 
 | Suite | Reason retained |
 |-------|-----------------|
-| `university` | SYS_ADMIN flows + role-id matrix (`org_roles`) exercised via service-role lookups; SYS_ADMIN not in the `before()` role set |
 | `org-features` | DB trigger test (`handle_new_organization` default roles) — org inserted directly to assert trigger output |
 | `rpc-questions` | RPC subject (`list_questions` pgSQL with `p_*` params + explicit created_by/user_id) — DB-level, not route-level |
 | `auth` | Tests register/login/session flows themselves — the `before()` helper depends on these routes |
@@ -263,8 +262,8 @@ Pages should use `useApiQuery`/`useApiMutation` from the shared pattern
 
 ### Side note — GitHub-style fine-grained admin tokens
 
-When the admin panel detaches (this phase), the monolithic SYS_ADMIN-or-nothing
-PEM header looks increasingly blunt. Replace it with GitHub-style fine-grained
+When the admin panel detaches (this phase), the monolithic PEM header looks
+increasingly blunt. Replace it with GitHub-style fine-grained
 tokens so an operator can grant **partial** access — e.g. "read orgs, write
 feature flags, nothing else" — without handing over the keys to the whole system:
 

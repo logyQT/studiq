@@ -112,9 +112,7 @@ Route rules are defined in `src/server/config/routes.config.ts`:
 
 ```typescript
 export const routeRules: RouteRule[] = [
-  { matcher: /^\/api\/v1\/admin(\/.*)?$/, requireAuth: true, allowedRoles: [UserRole.SYS_ADMIN], isApi: true },
-  { matcher: /^\/api\/v1\/teacher(\/.*)?$/, requireAuth: true, allowedRoles: [UserRole.TEACHER, UserRole.SYS_ADMIN], isApi: true },
-  { matcher: /^\/admin(\/.*)?$/, requireAuth: true, allowedRoles: [UserRole.SYS_ADMIN] },
+  { matcher: /^\/api\/v1\/teacher(\/.*)?$/, requireAuth: true, allowedRoles: [UserRole.TEACHER], isApi: true },
   { matcher: /^\/edu(\/.*)?$/, requireAuth: true, allowedRoles: [UserRole.TEACHER] },
   { matcher: /^\/app(\/.*)?$/, requireAuth: true, allowedRoles: [UserRole.STUDENT, UserRole.FREE, UserRole.PREMIUM] },
   // ...

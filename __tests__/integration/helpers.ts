@@ -9,12 +9,6 @@ import { getRegisteredMock } from '#test/helpers/concurrent';
 // Password for all accounts: 'pass'
 // ============================================================
 export const TEST_USERS = {
-  SYS_ADMIN: {
-    id: '00000000-0000-4000-8001-000000000001',
-    email: 'admin@dev.local',
-    password: 'pass',
-    role: 'sys_admin',
-  },
   UNIVERSITY_ADMIN: {
     id: '00000000-0000-4000-8001-000000000002',
     email: 'manager@dev.local',
