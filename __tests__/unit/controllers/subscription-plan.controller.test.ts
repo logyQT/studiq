@@ -1,4 +1,4 @@
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { SubscriptionPlanController } from '@studiq/server/controllers/subscription-plan.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

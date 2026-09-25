@@ -1,4 +1,4 @@
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { TeacherAssignmentService } from '@studiq/server/services/teacher-assignment.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
@@ -40,10 +40,6 @@ const ctx: RequestContext = {
   groupIds: [],
   permissionScopes: {},
 };
-
-function ownCtx(overrides?: Partial<RequestContext>): RequestContext {
-  return { ...ctx, ...overrides };
-}
 
 function withOrgScope(): RequestContext {
   return {

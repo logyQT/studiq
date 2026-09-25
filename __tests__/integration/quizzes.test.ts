@@ -1,10 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
-import { POST } from '@/app/(backend)/api/v1/quiz/new/route';
-import {
-  before,
-  type BeforeResult,
-} from '#test/helpers/test-user';
+import { type BeforeResult, before } from '#test/helpers/test-user';
 import {
   applyRegisteredMock,
   cleanupQuestions,
@@ -12,6 +8,7 @@ import {
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
+import { POST } from '@/app/(backend)/api/v1/quiz/new/route';
 
 forEachCopy((copyId) => {
   describe(`Quizzes Integration [${copyId}]`, () => {

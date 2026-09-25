@@ -1,17 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
-import { POST } from '@/app/(backend)/api/v1/organization/route';
+import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
 import {
   applyRegisteredMock,
   cleanupOrganizationDeep,
   createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
-import {
-  createTestUser,
-  type TestUserFixture,
-} from '#test/helpers/test-user';
 import { createNextRequest } from '#test/integration/test-utils';
+import { POST } from '@/app/(backend)/api/v1/organization/route';
 
 forEachCopy((copyId) => {
   describe(`POST /api/v1/organization [${copyId}]`, () => {

@@ -1,4 +1,4 @@
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { OrganizationMemberController } from '@studiq/server/controllers/organization-member.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

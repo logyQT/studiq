@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GET } from '@/app/(backend)/api/v1/health/route';
-import { applyRegisteredMock } from '#test/integration/helpers';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
+import { applyRegisteredMock } from '#test/integration/helpers';
+import { GET } from '@/app/(backend)/api/v1/health/route';
 
 // Health is pure-read — no DB writes, no data isolation concerns.
 // 3× wrapper proves mock isolation (useRealSupabase × 3).

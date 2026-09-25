@@ -1,14 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
-import { POST as bulkPost } from '@/app/(backend)/api/v1/organization/invites/bulk/route';
 import {
-  GET as inviteGet,
-  POST as invitePost,
-} from '@/app/(backend)/api/v1/organization/invites/route';
-import {
+  type BeforeResult,
   before,
   createTestUser,
-  type BeforeResult,
   type TestUserFixture,
 } from '#test/helpers/test-user';
 import {
@@ -19,6 +14,11 @@ import {
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
+import { POST as bulkPost } from '@/app/(backend)/api/v1/organization/invites/bulk/route';
+import {
+  GET as inviteGet,
+  POST as invitePost,
+} from '@/app/(backend)/api/v1/organization/invites/route';
 
 forEachCopy((copyId) => {
   describe(`Invitations Integration [${copyId}]`, () => {
@@ -63,15 +63,19 @@ forEachCopy((copyId) => {
       it('creates an invitation as manager and returns 201', async () => {
         mockUser(fixture.user);
 
-        const req = createNextRequest('http://localhost/api/v1/organization/invites', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: `invite-${copyId}-${Date.now()}@example.com`,
-            targetOrgRoleId: adminRoleId,
-            organizationId: orgId,
-          }),
-        }, { active_org_id: orgId });
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: `invite-${copyId}-${Date.now()}@example.com`,
+              targetOrgRoleId: adminRoleId,
+              organizationId: orgId,
+            }),
+          },
+          { active_org_id: orgId },
+        );
 
         const response = await invitePost(req);
         const body = await response.json();
@@ -83,11 +87,15 @@ forEachCopy((copyId) => {
       it('returns 422 when email is invalid', async () => {
         mockUser(fixture.user);
 
-        const req = createNextRequest('http://localhost/api/v1/organization/invites', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: 'not-an-email', targetOrgRoleId: adminRoleId }),
-        }, { active_org_id: orgId });
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: 'not-an-email', targetOrgRoleId: adminRoleId }),
+          },
+          { active_org_id: orgId },
+        );
 
         const response = await invitePost(req);
         const body = await response.json();
@@ -115,11 +123,15 @@ forEachCopy((copyId) => {
       it('returns 403 when student tries to invite', async () => {
         mockUser(student);
 
-        const req = createNextRequest('http://localhost/api/v1/organization/invites', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: 'test@example.com', targetOrgRoleId: adminRoleId }),
-        }, { active_org_id: orgId });
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: 'test@example.com', targetOrgRoleId: adminRoleId }),
+          },
+          { active_org_id: orgId },
+        );
 
         const response = await invitePost(req);
         const body = await response.json();
@@ -215,16 +227,26 @@ forEachCopy((copyId) => {
       it('bulk creates invitations and returns 200', async () => {
         mockUser(fixture.user);
 
-        const req = createNextRequest('http://localhost/api/v1/organization/invites/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            invitations: [
-              { email: `bulk1-${copyId}-${Date.now()}@example.com`, targetOrgRoleId: adminRoleId },
-              { email: `bulk2-${copyId}-${Date.now()}@example.com`, targetOrgRoleId: adminRoleId },
-            ],
-          }),
-        }, { active_org_id: orgId });
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites/bulk',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              invitations: [
+                {
+                  email: `bulk1-${copyId}-${Date.now()}@example.com`,
+                  targetOrgRoleId: adminRoleId,
+                },
+                {
+                  email: `bulk2-${copyId}-${Date.now()}@example.com`,
+                  targetOrgRoleId: adminRoleId,
+                },
+              ],
+            }),
+          },
+          { active_org_id: orgId },
+        );
 
         const response = await bulkPost(req);
         const body = await response.json();
@@ -237,11 +259,15 @@ forEachCopy((copyId) => {
       it('returns 422 when invitations array is empty', async () => {
         mockUser(fixture.user);
 
-        const req = createNextRequest('http://localhost/api/v1/organization/invites/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ invitations: [] }),
-        }, { active_org_id: orgId });
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites/bulk',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ invitations: [] }),
+          },
+          { active_org_id: orgId },
+        );
 
         const response = await bulkPost(req);
         const body = await response.json();

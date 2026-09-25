@@ -7,7 +7,6 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  Separator,
   Table,
   TableBody,
   TableCell,

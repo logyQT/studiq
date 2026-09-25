@@ -1,4 +1,4 @@
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { OrganizationController } from '@studiq/server/controllers/organization.controller';
 import { AppError } from '@studiq/server/lib/errors';
 import { requireFeature } from '@studiq/server/lib/features';

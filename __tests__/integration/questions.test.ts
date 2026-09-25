@@ -1,12 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
-import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/questions/[id]/route';
-import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/route';
-import { GET as GET_LIST, POST } from '@/app/(backend)/api/v1/questions/route';
 import {
+  type BeforeResult,
   before,
   createTestUser,
-  type BeforeResult,
   type TestUserFixture,
 } from '#test/helpers/test-user';
 import {
@@ -16,6 +13,9 @@ import {
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/questions/[id]/route';
+import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/route';
+import { GET as GET_LIST, POST } from '@/app/(backend)/api/v1/questions/route';
 
 forEachCopy((copyId) => {
   describe(`Questions Integration [${copyId}]`, () => {
@@ -110,19 +110,23 @@ forEachCopy((copyId) => {
         expect(bankRes.status).toBe(201);
         expect(bankBody.data.id).toBeDefined();
 
-        const req = createNextRequest('http://localhost/api/v1/questions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            bankId: bankBody.data.id,
-            type: 'mcq',
-            content: `copy-${copyId}-What is 2+2?`,
-            answers: [
-              { content: '4', isCorrect: true, orderIndex: 0 },
-              { content: '5', isCorrect: false, orderIndex: 1 },
-            ],
-          }),
-        }, orgCookies());
+        const req = createNextRequest(
+          'http://localhost/api/v1/questions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bankId: bankBody.data.id,
+              type: 'mcq',
+              content: `copy-${copyId}-What is 2+2?`,
+              answers: [
+                { content: '4', isCorrect: true, orderIndex: 0 },
+                { content: '5', isCorrect: false, orderIndex: 1 },
+              ],
+            }),
+          },
+          orgCookies(),
+        );
 
         const response = await POST(req);
         const body = await response.json();
@@ -136,16 +140,20 @@ forEachCopy((copyId) => {
       it('returns 422 when content is empty', async () => {
         mockUser(educator.user);
 
-        const req = createNextRequest('http://localhost/api/v1/questions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            bankId: '00000000-0000-4000-8000-000000000099',
-            type: 'mcq',
-            content: '',
-            answers: [{ content: 'Answer', isCorrect: true }],
-          }),
-        }, orgCookies());
+        const req = createNextRequest(
+          'http://localhost/api/v1/questions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bankId: '00000000-0000-4000-8000-000000000099',
+              type: 'mcq',
+              content: '',
+              answers: [{ content: 'Answer', isCorrect: true }],
+            }),
+          },
+          orgCookies(),
+        );
 
         const response = await POST(req);
         const body = await response.json();
@@ -157,16 +165,20 @@ forEachCopy((copyId) => {
       it('returns 422 when answers array is empty', async () => {
         mockUser(educator.user);
 
-        const req = createNextRequest('http://localhost/api/v1/questions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            bankId: '00000000-0000-4000-8000-000000000099',
-            type: 'mcq',
-            content: 'Question',
-            answers: [],
-          }),
-        }, orgCookies());
+        const req = createNextRequest(
+          'http://localhost/api/v1/questions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bankId: '00000000-0000-4000-8000-000000000099',
+              type: 'mcq',
+              content: 'Question',
+              answers: [],
+            }),
+          },
+          orgCookies(),
+        );
 
         const response = await POST(req);
         const body = await response.json();
@@ -202,16 +214,20 @@ forEachCopy((copyId) => {
 
         mockUser(student);
 
-        const req = createNextRequest('http://localhost/api/v1/questions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'mcq',
-            content: 'Question',
-            bankId,
-            answers: [{ content: 'Answer', isCorrect: true }],
-          }),
-        }, orgCookies());
+        const req = createNextRequest(
+          'http://localhost/api/v1/questions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'mcq',
+              content: 'Question',
+              bankId,
+              answers: [{ content: 'Answer', isCorrect: true }],
+            }),
+          },
+          orgCookies(),
+        );
 
         const response = await POST(req);
         const body = await response.json();
@@ -223,16 +239,20 @@ forEachCopy((copyId) => {
       it('returns 404 when bankId does not exist', async () => {
         mockUser(educator.user);
 
-        const req = createNextRequest('http://localhost/api/v1/questions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'mcq',
-            content: 'Question',
-            bankId: '00000000-0000-4000-8000-000000000099',
-            answers: [{ content: 'Answer', isCorrect: true }],
-          }),
-        }, orgCookies());
+        const req = createNextRequest(
+          'http://localhost/api/v1/questions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'mcq',
+              content: 'Question',
+              bankId: '00000000-0000-4000-8000-000000000099',
+              answers: [{ content: 'Answer', isCorrect: true }],
+            }),
+          },
+          orgCookies(),
+        );
 
         const response = await POST(req);
         const body = await response.json();
@@ -259,7 +279,11 @@ forEachCopy((copyId) => {
         await createQuestion('True or False?', { type: 'true_false' });
 
         mockUser(educator.user);
-        const req = createNextRequest('http://localhost/api/v1/questions?type=true_false', undefined, orgCookies());
+        const req = createNextRequest(
+          'http://localhost/api/v1/questions?type=true_false',
+          undefined,
+          orgCookies(),
+        );
         const response = await GET_LIST(req);
         const body = await response.json();
 

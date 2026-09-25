@@ -27,7 +27,6 @@
       "@studiq/server/*": ["../../packages/server/src/*"],
       "@studiq/ui": ["../../packages/ui/src/index.ts"],
       "@studiq/ui/*": ["../../packages/ui/src/*"],
-      "@/utils": ["../../packages/ui/src/utils.ts"],
       "#test/*": ["../../__tests__/*"]
     }
   },

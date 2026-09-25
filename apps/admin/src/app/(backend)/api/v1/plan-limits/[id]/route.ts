@@ -3,8 +3,7 @@ import { toNextResponse } from '@studiq/server/lib/http-utils';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-export async function GET(_request: Request, { params }: RouteContext) {
-  const { id } = await params;
+export async function GET() {
   return toNextResponse(await planLimitController.getAll());
 }
 

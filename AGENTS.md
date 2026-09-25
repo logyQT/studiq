@@ -78,11 +78,12 @@ main ← feat/quiz-bank-ui (PR, merge, delete)
 | `bun run dev` | Web dev server (port 3000) |
 | `bun run dev:admin` | Admin dev server (port 4000) |
 | `bun run build` / `bun run start` | Production build / start for web (`build:admin`, `start:admin` for admin) |
-| `bun run lint` | `biome ci apps/web/src/ && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts` — Biome + import-path guard + migration-timestamp guard. **Contains no `tsc` step.** |
-| `bun run lint:all` | `bun run typecheck && bun run lint` — typecheck + lint in one command |
-| `bun run typecheck` | `tsc --incremental --skipLibCheck --noEmit` for **`apps/web` only** (`bun run typecheck:admin` covers `apps/admin`) |
-| `bun run format` | `biome check --write apps/web/src/` |
-| `bun run format:check` | `biome ci apps/web/src/` (check only) |
+| `bun run lint` | `biome ci . && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts` — **whole-repo** Biome (apps, packages, tests) + import-path guard + migration-timestamp guard. **Contains no `tsc` step.** |
+| `bun run lint:all` | `bun run typecheck:all && bun run lint` — all typechecks + lint in one command |
+| `bun run typecheck` | `tsc --incremental --skipLibCheck --noEmit` for **`apps/web` only** (`typecheck:admin` → `apps/admin`, `typecheck:packages` → `packages/{server,authz,ui}`) |
+| `bun run typecheck:all` | `typecheck` + `typecheck:admin` + `typecheck:packages` — everything the hooks run |
+| `bun run format` | `biome check --write .` (whole repo — applies safe fixes + formatting) |
+| `bun run format:check` | `biome ci .` (whole repo, check only) |
 | `bun run clean` | Remove `.next`, `coverage`, cache |
 | `bun run test` | `vitest run` — runs all tests (unit + integration) |
 | `bun run test:unit` | `vitest run __tests__/unit/` |
@@ -93,7 +94,7 @@ main ← feat/quiz-bank-ui (PR, merge, delete)
 
 > **Footgun — bare `bun test` is NOT Vitest.** `bun test` starts **Bun's built-in test runner**, which scans the whole repo (including integration tests that need live Supabase) and reports differently. Always use `bun run test` / `bun run test:unit`. Bare `bun <script>` shorthand does work for other scripts (e.g. `bun test:unit`).
 
-Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs format-on-staged + `bun run lint` + `bun run typecheck`; **pre-push** runs `format:check`, `lint`, `typecheck`, `test:unit`, plus a merge-conflict check against `origin/main`.
+Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs format-on-staged + `bun run lint` + `bun run typecheck:all`; **pre-push** runs `format:check`, `lint`, `typecheck:all`, `test:unit`, plus a merge-conflict check against `origin/main`. The staged-file formatter and `bun run lint` check the **same** Biome scope (`.`), so a commit can never pass the hook and fail the script (or vice versa).
 
 ### Custom agent commands
 
@@ -154,7 +155,7 @@ import { flashcardController } from '@studiq/server/controllers/flashcard.contro
 import { before } from '#test/helpers/test-user'; // __tests__/helpers/test-user (test-internal imports)
 ```
 
-- `@/` → `src/` **of the workspace the file lives in**: `apps/web/src`, `apps/admin/src` (and `packages/authz/src`, `packages/ui/src` inside those packages). It is **not** mapped in `packages/server` — server code imports itself as `@studiq/server/...`. In root-level files (`scripts/`, root configs) and in Vitest, `@/` resolves to `apps/web/src`.
+- `@/` → `src/` **of the app the file lives in**: `apps/web/src`, `apps/admin/src`. In root-level files (`scripts/`, root configs) and in Vitest, `@/` resolves to `apps/web/src`. It is **not** mapped inside `packages/*` — a package-local `@/` would resolve to the *consuming app's* `src/` (wrong module, sometimes silently), so package code never uses `@/` (see Import Paths below).
 - `@studiq/server/*`, `@studiq/authz`, `@studiq/ui` → `packages/*/src/*` — wired in every app `tsconfig.json` and `vitest.config.ts`.
 - `@admin/*` → `apps/admin/src/*` (admin app code; also usable from root-level tests).
 - `#test` → `__tests__/` — works in both Vitest **and** Playwright (declared in vite config + tsconfig `paths`). Use it for imports *between* test files.
@@ -375,13 +376,15 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 | App code (web) | `@/` → `apps/web/src/` | `import { cn } from '@/lib/utils'` |
 | App code (admin) | `@/` / `@admin/` → `apps/admin/src/` | `import { featureFlagController } from '@admin/server/controllers/feature-flag.controller'` |
 | Shared backend | `@studiq/server/*` → `packages/server/src/*` | `import { withAuth } from '@studiq/server/lib/with-auth'` |
+| Inside a package (`packages/*`) | relative (`./`, `../`) — **within the same package only** | `import { PermissionScope } from './permissions'` |
 | Test-internal (files importing other files under `__tests__/`) | `#test/` → `__tests__/` | `import { before } from '#test/helpers/test-user'` |
 
 - Mixed test files (importing both app + test code): `@/` (or `@studiq/*`) for app modules, `#test/` for test modules — never `./` or `../`.
 - Applies to static imports, side-effect imports (`import './x'`), dynamic imports (`import('./x')`) and `require()`.
 - Enforced by two guards, both wired into `bun run lint`:
-  - **Biome** `lint/style/noRestrictedImports` (patterns `./**`, `../**`) — the root lint run covers `apps/web/src/` (packages have their own `biome ci src/` scripts).
-  - **`bun scripts/check-import-paths.ts`** — covers `apps/web/src/`, `apps/admin/src/` and `__tests__/`.
+  - **Biome** `lint/style/noRestrictedImports` (patterns `./**`, `../**`) — enabled for `apps/web/src`, `apps/admin/src` and `__tests__`; **disabled for `packages/**`** (a package must use relative imports internally — see the table above).
+  - **`bun scripts/check-import-paths.ts`** — bans *all* relative imports in `apps/web/src`, `apps/admin/src` and `__tests__`, and bans *cross-package* relative imports in `packages/*` (intra-package relatives are allowed).
+- `bun run lint` runs `biome ci .` over the whole repo, so packages and tests are linted by the same command the hooks run.
 - **`bun run lint` is expected to be green on `main`** — treat any failure as a real regression, not known debt.
 - Asset imports (`.css`, `.svg`, images) follow the same rule: `@/app/globals.css` etc.
 
@@ -398,7 +401,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 - **New API endpoints**: wrap every handler in `withAuth()` — the proxy skips `/api/*`, so a route without `withAuth` is public. Public-by-design prefixes must be added to the catch-all exclusion in `packages/server/src/config/routes.config.ts`.
 - **New UI routes**: add a `RouteRule` to `packages/server/src/config/routes.config.ts` if the route needs auth, account-type restrictions, or a logged-in redirect.
 - **New DB tables**: add a migration in `supabase/migrations/` (unique timestamp prefix — `bun run lint` enforces it) and schema in `supabase/schemas/`
-- **No barrel files**: Every import uses direct file paths (e.g. `@studiq/server/services/flashcard.service` not `@studiq/server/services`). Biome's `noBarrelFile` and `noReExportAll` rules enforce this.
+- **No barrel files**: Every import uses direct file paths (e.g. `@studiq/server/services/flashcard.service` not `@studiq/server/services`). Biome's `noBarrelFile` and `noReExportAll` rules enforce this. Sole exception: a package entrypoint (`packages/<name>/src/index.ts`) must re-export its public surface — `noBarrelFile` is disabled for those two files.
 - **Root `tsconfig.json`** excludes `apps/admin` (it has its own config and `typecheck:admin` script) — hand-run root `bunx tsc --noEmit` must stay at zero errors; use the per-workspace scripts for app code.
 
 ---

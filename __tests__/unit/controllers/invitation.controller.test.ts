@@ -1,6 +1,5 @@
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { InvitationController } from '@studiq/server/controllers/invitation.controller';
-import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

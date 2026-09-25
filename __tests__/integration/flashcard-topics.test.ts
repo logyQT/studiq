@@ -1,23 +1,19 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
 import {
+  type BeforeResult,
+  before,
+  createTestUser,
+  type TestUserFixture,
+} from '#test/helpers/test-user';
+import { applyRegisteredMock, cleanupFlashcardTopics, mockUser } from '#test/integration/helpers';
+import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
   DELETE as deleteFn,
   GET as getById,
   PUT as update,
 } from '@/app/(backend)/api/v1/flashcards/topics/[id]/route';
 import { GET, POST } from '@/app/(backend)/api/v1/flashcards/topics/route';
-import {
-  applyRegisteredMock,
-  cleanupFlashcardTopics,
-  mockUser,
-} from '#test/integration/helpers';
-import {
-  before,
-  createTestUser,
-  type BeforeResult,
-  type TestUserFixture,
-} from '#test/helpers/test-user';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 
 forEachCopy((copyId) => {
   describe(`Flashcard Topics Integration [${copyId}]`, () => {

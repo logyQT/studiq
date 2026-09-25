@@ -8,7 +8,7 @@
  * 4. rule ordering prevents privilege escalation via trailing slash
  */
 
-import { type RouteRule, routeRules } from '@studiq/server/config/routes.config';
+import { routeRules } from '@studiq/server/config/routes.config';
 import { describe, expect, it } from 'vitest';
 
 // ---- proxy.ts matcher (line 99) ----
@@ -45,12 +45,6 @@ describe('routeRules — trailing slash consistency', () => {
     expect(ruleA).not.toBeNull();
     expect(ruleB).not.toBeNull();
     expect(ruleA?.matcher.source).toBe(ruleB?.matcher.source);
-  }
-
-  // Helper: test that a path does NOT match any rule
-  function assertNoRule(path: string) {
-    const rule = matchRule(path);
-    expect(rule).toBeNull();
   }
 
   // --- Teacher API ---

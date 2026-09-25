@@ -1,6 +1,5 @@
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { QuestionController } from '@studiq/server/controllers/question.controller';
-import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

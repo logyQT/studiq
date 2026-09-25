@@ -13,7 +13,12 @@
   },
   "linter": {
     "enabled": true,
-    "includes": ["apps/web/src/**/*.{ts,tsx,js,jsx}", "packages/**/*.{ts,tsx,js,jsx}"],
+    "includes": [
+      "apps/web/src/**/*.{ts,tsx,js,jsx}",
+      "apps/admin/src/**/*.{ts,tsx,js,jsx}",
+      "packages/**/*.{ts,tsx,js,jsx}",
+      "__tests__/**/*.{ts,tsx,js,jsx}"
+    ],
     "rules": {
       "preset": "recommended",
       "a11y": {
@@ -66,6 +71,41 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["packages/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/*/src/index.ts"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["__tests__/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noThenProperty": "off"
+          },
+          "correctness": {
+            "useHookAtTopLevel": "off"
+          }
+        }
+      }
+    }
+  ],
   "css": {
     "parser": {
       "tailwindDirectives": true

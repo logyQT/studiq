@@ -1,4 +1,4 @@
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { QuestionBankController } from '@studiq/server/controllers/question-bank.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

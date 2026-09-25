@@ -57,9 +57,8 @@ forEachCopy((copyId) => {
         .select('id, name')
         .eq('organization_id', orgId);
 
-      const roleIds = (roles ?? []).reduce(
-        (acc, r) => ({ ...acc, [r.name]: r.id }),
-        {} as Record<string, string>,
+      const roleIds: Record<string, string> = Object.fromEntries(
+        (roles ?? []).map((r) => [r.name, r.id]),
       );
 
       for (const [roleName, expectedScopeFn] of Object.entries({
