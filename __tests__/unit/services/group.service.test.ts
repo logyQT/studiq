@@ -1,4 +1,4 @@
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { GroupService } from '@studiq/server/services/group.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';

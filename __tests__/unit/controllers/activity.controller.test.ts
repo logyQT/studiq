@@ -1,4 +1,4 @@
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { ActivityController } from '@studiq/server/controllers/activity.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

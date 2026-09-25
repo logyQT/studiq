@@ -1,4 +1,4 @@
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { flashcardService } from '@studiq/server/services/flashcard.service';
 import { FlashcardExportService } from '@studiq/server/services/flashcard-export.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

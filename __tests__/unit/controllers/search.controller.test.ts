@@ -1,4 +1,4 @@
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { SearchController } from '@studiq/server/controllers/search.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

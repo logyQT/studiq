@@ -69,12 +69,12 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 | `bun start`                          | Start the web app production server — same as `bun start:web`           |
 | `bun start:admin`                    | Start the admin app production server                                   |
 | `bun lint`                           | Lint only: Biome + import-path guard + migration-timestamp guard (**no typecheck**) |
-| `bun typecheck`                      | TypeScript typecheck for the web app                                    |
-| `bun lint:all`                       | `typecheck` + `lint` in one run                                         |
+| `bun typecheck`                      | TypeScript typecheck for the web app (`typecheck:all` = every workspace)|
+| `bun lint:all`                       | `typecheck:all` + `lint` in one run                                      |
 | `bun lint:web` / `bun typecheck:web` | Lint / typecheck the web app only                                       |
 | `bun lint:admin` / `bun typecheck:admin` | Lint / typecheck the admin app only                                 |
-| `bun format`                         | Format with **Biome** (writes: `biome check --write apps/web/src/`)      |
-| `bun format:check`                   | Check formatting with Biome (no writes)                                 |
+| `bun format`                         | Format with **Biome** (writes, whole repo: `biome check --write .`)      |
+| `bun format:check`                   | Check formatting with Biome (no writes, whole repo: `biome ci .`)        |
 | `bun test`                           | Run all Vitest tests (unit + integration)                               |
 | `bun test:unit`                      | Run unit tests                                                          |
 | `bun test:integration`               | Run integration tests (requires local Supabase)                         |

@@ -1,12 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
-import {
-  POST as acceptPost,
-} from '@/app/(backend)/api/v1/organization/invites/accept/route';
-import {
-  POST as bulkPost,
-} from '@/app/(backend)/api/v1/organization/invites/bulk/route';
-import { POST as invitePost } from '@/app/(backend)/api/v1/organization/invites/route';
 import { before, createTestUser } from '#test/helpers/test-user';
 import {
   applyRegisteredMock,
@@ -15,6 +8,9 @@ import {
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
+import { POST as acceptPost } from '@/app/(backend)/api/v1/organization/invites/accept/route';
+import { POST as bulkPost } from '@/app/(backend)/api/v1/organization/invites/bulk/route';
+import { POST as invitePost } from '@/app/(backend)/api/v1/organization/invites/route';
 
 // Regression suite for the two onboarding blockers fixed in the seed flow:
 // - 422 on bulk invite (targetOrgRoleId was sent as the role NAME 'member',
@@ -60,16 +56,23 @@ forEachCopy((copyId) => {
       const { memberRoleId } = await roleIds(fixture.orgId!);
 
       mockUser(fixture.user);
-      const req = createNextRequest('http://localhost/api/v1/organization/invites/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          invitations: [
-            { email: `bulk-${copyId}-${Date.now()}@example.com`, targetOrgRoleId: memberRoleId },
-            { email: `bulk-${copyId}-${Date.now()}-2@example.com`, targetOrgRoleId: memberRoleId },
-          ],
-        }),
-      }, { active_org_id: fixture.orgId! });
+      const req = createNextRequest(
+        'http://localhost/api/v1/organization/invites/bulk',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            invitations: [
+              { email: `bulk-${copyId}-${Date.now()}@example.com`, targetOrgRoleId: memberRoleId },
+              {
+                email: `bulk-${copyId}-${Date.now()}-2@example.com`,
+                targetOrgRoleId: memberRoleId,
+              },
+            ],
+          }),
+        },
+        { active_org_id: fixture.orgId! },
+      );
 
       const response = await bulkPost(req);
       const body = await response.json();
@@ -87,14 +90,18 @@ forEachCopy((copyId) => {
       const { memberRoleId } = await roleIds(fixture.orgId!);
 
       mockUser(fixture.user);
-      const inviteReq = createNextRequest('http://localhost/api/v1/organization/invites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: student.email,
-          targetOrgRoleId: memberRoleId,
-        }),
-      }, { active_org_id: fixture.orgId! });
+      const inviteReq = createNextRequest(
+        'http://localhost/api/v1/organization/invites',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: student.email,
+            targetOrgRoleId: memberRoleId,
+          }),
+        },
+        { active_org_id: fixture.orgId! },
+      );
       const inviteRes = await invitePost(inviteReq);
       expect(inviteRes.status).toBe(201);
 

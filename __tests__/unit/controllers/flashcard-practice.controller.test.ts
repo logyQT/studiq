@@ -1,4 +1,4 @@
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { FlashcardPracticeController } from '@studiq/server/controllers/flashcard-practice.controller';
 import { failure, success } from '@studiq/server/lib/service-result';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

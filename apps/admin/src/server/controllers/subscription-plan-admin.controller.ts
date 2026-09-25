@@ -8,10 +8,7 @@ import {
   SubscriptionPlanIdParamsSchema,
   UpdateSubscriptionPlanSchema,
 } from '@studiq/server/models/subscription-plan.model';
-import {
-  SubscriptionPlanService,
-  type SubscriptionPlanService as SubscriptionPlanServiceType,
-} from '@studiq/server/services/subscription-plan.service';
+import { SubscriptionPlanService } from '@studiq/server/services/subscription-plan.service';
 
 export class SubscriptionPlanAdminController {
   constructor(private subscriptionPlanService: SubscriptionPlanService) {}

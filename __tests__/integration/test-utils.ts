@@ -30,7 +30,11 @@ function toNextRequest(req: Request, cookies?: Record<string, string>): NextRequ
   return req as unknown as NextRequest;
 }
 
-export function createNextRequest(url: string, init?: RequestInit, cookies?: Record<string, string>): NextRequest {
+export function createNextRequest(
+  url: string,
+  init?: RequestInit,
+  cookies?: Record<string, string>,
+): NextRequest {
   return toNextRequest(new Request(url, init), cookies);
 }
 

@@ -1,4 +1,4 @@
-import { AccountType, RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { OrganizationService } from '@studiq/server/services/organization.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';

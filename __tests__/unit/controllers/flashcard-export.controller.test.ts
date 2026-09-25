@@ -1,4 +1,4 @@
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { FlashcardExportController } from '@studiq/server/controllers/flashcard-export.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

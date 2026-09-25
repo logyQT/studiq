@@ -137,10 +137,7 @@ export function uniqueName(copyId: string, ...parts: string[]): string {
  * });
  * ```
  */
-export function forEachCopy(
-  setup: (copyId: string) => void,
-  count = 3,
-): void {
+export function forEachCopy(setup: (copyId: string) => void, count = 3): void {
   const ids = generateCopyIds(count);
   for (const copyId of ids) {
     setup(copyId);

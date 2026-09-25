@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
-import { GET as studentGet } from '@/app/(backend)/api/v1/stats/student/route';
-import { GET as teacherGet } from '@/app/(backend)/api/v1/stats/teacher/route';
+import { type BeforeResult, before } from '#test/helpers/test-user';
 import {
   applyRegisteredMock,
   cleanupFlashcards,
@@ -9,8 +8,9 @@ import {
   cleanupQuizAttempts,
   mockUser,
 } from '#test/integration/helpers';
-import { before, type BeforeResult } from '#test/helpers/test-user';
 import { createNextRequest } from '#test/integration/test-utils';
+import { GET as studentGet } from '@/app/(backend)/api/v1/stats/student/route';
+import { GET as teacherGet } from '@/app/(backend)/api/v1/stats/teacher/route';
 
 forEachCopy((copyId) => {
   describe(`Stats Integration [${copyId}]`, () => {

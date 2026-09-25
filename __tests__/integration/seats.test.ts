@@ -235,7 +235,7 @@ forEachCopy((copyId) => {
       it('creates an assignment', async () => {
         mockUser(fixture.user);
 
-        const { request, params } = createNextRequestWithParams(
+        const { request } = createNextRequestWithParams(
           'http://localhost/api/v1/organization/seats/assignments',
           {},
           {

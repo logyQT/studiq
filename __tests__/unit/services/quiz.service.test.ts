@@ -1,4 +1,4 @@
-import { AccountType, RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { accessibleFilter } from '@studiq/server/lib/authz';
 import { QuizService } from '@studiq/server/services/quiz.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

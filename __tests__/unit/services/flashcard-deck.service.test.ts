@@ -1,4 +1,4 @@
-import { AccountType, RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { FlashcardDeckService } from '@studiq/server/services/flashcard-deck.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';

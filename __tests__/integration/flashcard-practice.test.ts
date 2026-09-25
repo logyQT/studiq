@@ -1,15 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
-import { POST as logPractice } from '@/app/(backend)/api/v1/flashcards/[id]/practice/route';
-import { GET as getStatsForCard } from '@/app/(backend)/api/v1/flashcards/[id]/practice/stats/route';
-import { GET as getDueBreakdown } from '@/app/(backend)/api/v1/flashcards/practice/due/breakdown/route';
-import { GET as getDueCount } from '@/app/(backend)/api/v1/flashcards/practice/due/count/route';
-import { GET as getDueCards } from '@/app/(backend)/api/v1/flashcards/practice/new/route';
-import { GET as getStatsAll } from '@/app/(backend)/api/v1/flashcards/practice/stats/route';
-import {
-  before,
-  type BeforeResult,
-} from '#test/helpers/test-user';
+import { type BeforeResult, before } from '#test/helpers/test-user';
 import {
   applyRegisteredMock,
   cleanupFlashcardPractice,
@@ -18,6 +9,12 @@ import {
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import { POST as logPractice } from '@/app/(backend)/api/v1/flashcards/[id]/practice/route';
+import { GET as getStatsForCard } from '@/app/(backend)/api/v1/flashcards/[id]/practice/stats/route';
+import { GET as getDueBreakdown } from '@/app/(backend)/api/v1/flashcards/practice/due/breakdown/route';
+import { GET as getDueCount } from '@/app/(backend)/api/v1/flashcards/practice/due/count/route';
+import { GET as getDueCards } from '@/app/(backend)/api/v1/flashcards/practice/new/route';
+import { GET as getStatsAll } from '@/app/(backend)/api/v1/flashcards/practice/stats/route';
 
 forEachCopy((copyId) => {
   describe(`Flashcard Practice Integration [${copyId}]`, () => {
@@ -151,7 +148,9 @@ forEachCopy((copyId) => {
       it('returns new flashcards for user', async () => {
         mockUser(student.user);
 
-        const request = createNextRequest(`http://localhost/api/v1/flashcards/practice/new?limit=10`);
+        const request = createNextRequest(
+          `http://localhost/api/v1/flashcards/practice/new?limit=10`,
+        );
 
         const response = await getDueCards(request);
         const body = await response.json();

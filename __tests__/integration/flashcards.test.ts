@@ -1,12 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
 import {
-  DELETE as deleteFn,
-  GET as getById,
-  PUT as update,
-} from '@/app/(backend)/api/v1/flashcards/[id]/route';
-import { POST as bulkCreate } from '@/app/(backend)/api/v1/flashcards/batch/[action]/route';
-import { GET, POST } from '@/app/(backend)/api/v1/flashcards/route';
+  type BeforeResult,
+  before,
+  createTestUser,
+  type TestUserFixture,
+} from '#test/helpers/test-user';
 import {
   applyRegisteredMock,
   cleanupFlashcardDecks,
@@ -14,13 +13,14 @@ import {
   cleanupFlashcardTopics,
   mockUser,
 } from '#test/integration/helpers';
-import {
-  before,
-  createTestUser,
-  type BeforeResult,
-  type TestUserFixture,
-} from '#test/helpers/test-user';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  DELETE as deleteFn,
+  GET as getById,
+  PUT as update,
+} from '@/app/(backend)/api/v1/flashcards/[id]/route';
+import { POST as bulkCreate } from '@/app/(backend)/api/v1/flashcards/batch/[action]/route';
+import { GET, POST } from '@/app/(backend)/api/v1/flashcards/route';
 
 forEachCopy((copyId) => {
   describe(`Flashcards Integration [${copyId}]`, () => {
@@ -86,7 +86,12 @@ forEachCopy((copyId) => {
         const req = createNextRequest('http://localhost/api/v1/flashcards', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ front: `fc-${copyId}-Topic Card`, back: 'Answer', topicIds: [topicId], deckId }),
+          body: JSON.stringify({
+            front: `fc-${copyId}-Topic Card`,
+            back: 'Answer',
+            topicIds: [topicId],
+            deckId,
+          }),
         });
 
         const response = await POST(req);
@@ -175,7 +180,12 @@ forEachCopy((copyId) => {
           createNextRequest('http://localhost/api/v1/flashcards', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ front: `fc-${copyId}-Filtered Card`, back: 'Answer', topicIds: [topicId], deckId }),
+            body: JSON.stringify({
+              front: `fc-${copyId}-Filtered Card`,
+              back: 'Answer',
+              topicIds: [topicId],
+              deckId,
+            }),
           }),
         );
 

@@ -5,7 +5,7 @@ vi.mock('@studiq/server/lib/features', () => ({
   resolveFeatures: vi.fn(),
 }));
 
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { resolveFeatures } from '@studiq/server/lib/features';
 
 const mockCtx: RequestContext = {

@@ -1,21 +1,19 @@
 import type { NextRequest } from 'next/server';
+import { createServiceClient, mockUser, useRealSupabase } from '#test/integration/helpers';
+import { createNextRequest } from '#test/integration/test-utils';
 import { POST as registerPost } from '@/app/(backend)/api/v1/auth/register/route';
 import { POST as createDeckPost } from '@/app/(backend)/api/v1/flashcards/decks/route';
 import { POST as createFlashcardPost } from '@/app/(backend)/api/v1/flashcards/route';
 import { POST as createTopicPost } from '@/app/(backend)/api/v1/flashcards/topics/route';
-import {
-  PUT as setGroupMembersPut,
-} from '@/app/(backend)/api/v1/organization/groups/[id]/members/route';
+import { PUT as setGroupMembersPut } from '@/app/(backend)/api/v1/organization/groups/[id]/members/route';
 import { POST as createGroupPost } from '@/app/(backend)/api/v1/organization/groups/route';
 import { POST as acceptInvitePost } from '@/app/(backend)/api/v1/organization/invites/accept/route';
 import { POST as createInvitePost } from '@/app/(backend)/api/v1/organization/invites/route';
 import { POST as createOrgPost } from '@/app/(backend)/api/v1/organization/route';
-import { POST as createQuestionPost } from '@/app/(backend)/api/v1/questions/route';
 import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/route';
+import { POST as createQuestionPost } from '@/app/(backend)/api/v1/questions/route';
 import { POST as createAssignmentPost } from '@/app/(backend)/api/v1/teacher/assignments/route';
 import { POST as createQuizPost } from '@/app/(backend)/api/v1/teacher/quizzes/route';
-import { createServiceClient, mockUser, useRealSupabase } from '#test/integration/helpers';
-import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 
 // ============================================================
 // API-first test seeding
@@ -87,13 +85,6 @@ function randomLetters(length = 6): string {
   return out;
 }
 
-function assertSuccess<T>(res: Response, body: { success?: boolean; data?: T }, label: string): T {
-  if (!res.ok || body.success === false) {
-    throw new Error(`[seed] ${label} failed (${res.status}): ${JSON.stringify(body)}`);
-  }
-  return body.data as T;
-}
-
 class SeedApiError extends Error {
   constructor(
     readonly label: string,
@@ -150,13 +141,9 @@ export async function createTestUser(opts: CreateTestUserOptions): Promise<TestU
   }
 
   useRealSupabase();
-  await api(
-    'register',
-    registerPost,
-    '/api/v1/auth/register',
-    'POST',
-    { body: { name, email, password, accountType: opts.role } },
-  );
+  await api('register', registerPost, '/api/v1/auth/register', 'POST', {
+    body: { name, email, password, accountType: opts.role },
+  });
 
   const { data: profile, error } = await service
     .from('profiles')
@@ -280,13 +267,9 @@ export async function seedViaApi(
       if (!invite) throw new Error(`[seed] invite token not found for ${member.email}`);
 
       mockUser(member);
-      await api(
-        'accept-invite',
-        acceptInvitePost,
-        '/api/v1/organization/invites/accept',
-        'POST',
-        { body: { token: invite.token } },
-      );
+      await api('accept-invite', acceptInvitePost, '/api/v1/organization/invites/accept', 'POST', {
+        body: { token: invite.token },
+      });
 
       if (defaultGroupId) {
         mockUser(user);

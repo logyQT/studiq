@@ -1,4 +1,4 @@
-import { AccountType, RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import {
   buildQueryFilter,
   checkPermission,

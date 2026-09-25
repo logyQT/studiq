@@ -6,8 +6,8 @@ import {
   cleanupQuestions,
   createServiceClient,
   seedGroupMembership,
-  seedOrgMembership,
   seedOrganization,
+  seedOrgMembership,
   TEST_USERS,
 } from '#test/integration/helpers';
 
@@ -176,48 +176,44 @@ forEachCopy((copyId) => {
     // ---------------------------------------------------------------
     describe('scope — Student A (group member)', () => {
       it("p_scope='own' returns only own questions", async () => {
-        const { data } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT.id,
-            p_org_id: orgId,
-            p_scope: 'own',
-          });
+        const { data } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT.id,
+          p_org_id: orgId,
+          p_scope: 'own',
+        });
 
         const ids = (data as any[]).map((d: any) => d.id).sort();
         expect(ids).toEqual([q1Id, q2Id].sort());
       });
 
       it("p_scope='group' returns own + group-shared", async () => {
-        const { data } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT.id,
-            p_org_id: orgId,
-            p_scope: 'group',
-          });
+        const { data } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT.id,
+          p_org_id: orgId,
+          p_scope: 'group',
+        });
 
         const ids = (data as any[]).map((d: any) => d.id).sort();
         expect(ids).toEqual([q1Id, q2Id, q3Id].sort());
       });
 
       it("p_scope='organization' returns all questions in org", async () => {
-        const { data } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT.id,
-            p_org_id: orgId,
-            p_scope: 'organization',
-          });
+        const { data } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT.id,
+          p_org_id: orgId,
+          p_scope: 'organization',
+        });
 
         const ids = (data as any[]).map((d: any) => d.id).sort();
         expect(ids).toEqual([q1Id, q2Id, q3Id, q4Id].sort());
       });
 
       it("p_scope='any' returns all questions in org", async () => {
-        const { data } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT.id,
-            p_org_id: orgId,
-            p_scope: 'any',
-          });
+        const { data } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT.id,
+          p_org_id: orgId,
+          p_scope: 'any',
+        });
 
         const ids = (data as any[]).map((d: any) => d.id).sort();
         expect(ids).toEqual([q1Id, q2Id, q3Id, q4Id].sort());
@@ -229,24 +225,22 @@ forEachCopy((copyId) => {
     // ---------------------------------------------------------------
     describe('scope — Student B (not a group member)', () => {
       it("p_scope='own' returns only own questions", async () => {
-        const { data } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT2.id,
-            p_org_id: orgId,
-            p_scope: 'own',
-          });
+        const { data } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT2.id,
+          p_org_id: orgId,
+          p_scope: 'own',
+        });
 
         const ids = (data as any[]).map((d: any) => d.id).sort();
         expect(ids).toEqual([q3Id, q4Id].sort());
       });
 
       it("p_scope='group' returns only own (no group access)", async () => {
-        const { data } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT2.id,
-            p_org_id: orgId,
-            p_scope: 'group',
-          });
+        const { data } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT2.id,
+          p_org_id: orgId,
+          p_scope: 'group',
+        });
 
         // Student B has no group membership, so only own questions are returned
         const ids = (data as any[]).map((d: any) => d.id).sort();
@@ -254,12 +248,11 @@ forEachCopy((copyId) => {
       });
 
       it("p_scope='organization' returns all questions", async () => {
-        const { data } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT2.id,
-            p_org_id: orgId,
-            p_scope: 'organization',
-          });
+        const { data } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT2.id,
+          p_org_id: orgId,
+          p_scope: 'organization',
+        });
 
         expect((data as any[]).length).toBe(4);
       });
@@ -270,13 +263,12 @@ forEachCopy((copyId) => {
     // ---------------------------------------------------------------
     describe('p_question_id', () => {
       it('returns question with answers inline when accessible', async () => {
-        const { data, error } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT.id,
-            p_org_id: orgId,
-            p_scope: 'own',
-            p_question_id: q1Id,
-          });
+        const { data, error } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT.id,
+          p_org_id: orgId,
+          p_scope: 'own',
+          p_question_id: q1Id,
+        });
 
         expect(error).toBeNull();
         expect(data).toHaveLength(1);
@@ -289,25 +281,23 @@ forEachCopy((copyId) => {
       });
 
       it('returns empty when question is not accessible', async () => {
-        const { data } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT2.id,
-            p_org_id: orgId,
-            p_scope: 'group',
-            p_question_id: q1Id, // Q1 belongs to Student A, not shared via group
-          });
+        const { data } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT2.id,
+          p_org_id: orgId,
+          p_scope: 'group',
+          p_question_id: q1Id, // Q1 belongs to Student A, not shared via group
+        });
 
         expect(data).toHaveLength(0);
       });
 
       it('returns empty for nonexistent id', async () => {
-        const { data } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT.id,
-            p_org_id: orgId,
-            p_scope: 'any',
-            p_question_id: '00000000-0000-0000-0000-000000000000',
-          });
+        const { data } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT.id,
+          p_org_id: orgId,
+          p_scope: 'any',
+          p_question_id: '00000000-0000-0000-0000-000000000000',
+        });
 
         expect(data).toHaveLength(0);
       });
@@ -318,50 +308,46 @@ forEachCopy((copyId) => {
     // ---------------------------------------------------------------
     describe('filter params', () => {
       it('p_bank_ids filters by bank', async () => {
-        const { data } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT.id,
-            p_org_id: orgId,
-            p_scope: 'organization',
-            p_bank_ids: [bank1Id],
-          });
+        const { data } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT.id,
+          p_org_id: orgId,
+          p_scope: 'organization',
+          p_bank_ids: [bank1Id],
+        });
 
         const ids = (data as any[]).map((d: any) => d.id).sort();
         expect(ids).toEqual([q1Id, q3Id].sort()); // Q1 and Q3 are in Bank1
       });
 
       it('p_type filters by type', async () => {
-        const { data } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT.id,
-            p_org_id: orgId,
-            p_scope: 'any',
-            p_type: 'mcq',
-          });
+        const { data } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT.id,
+          p_org_id: orgId,
+          p_scope: 'any',
+          p_type: 'mcq',
+        });
 
         expect((data as any[]).length).toBe(4); // All questions are mcq
       });
 
       it('p_type returns empty for non-matching type', async () => {
-        const { data } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT.id,
-            p_org_id: orgId,
-            p_scope: 'any',
-            p_type: 'true_false',
-          });
+        const { data } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT.id,
+          p_org_id: orgId,
+          p_scope: 'any',
+          p_type: 'true_false',
+        });
 
         expect(data).toHaveLength(0);
       });
 
       it('p_bank_ids returns empty for non-matching bank', async () => {
-        const { data } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT.id,
-            p_org_id: orgId,
-            p_scope: 'organization',
-            p_bank_ids: ['00000000-0000-0000-0000-000000000000'],
-          });
+        const { data } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT.id,
+          p_org_id: orgId,
+          p_scope: 'organization',
+          p_bank_ids: ['00000000-0000-0000-0000-000000000000'],
+        });
 
         expect(data).toHaveLength(0);
       });
@@ -372,12 +358,11 @@ forEachCopy((copyId) => {
     // ---------------------------------------------------------------
     describe('p_org_id = null', () => {
       it('returns own questions across all orgs when p_org_id is null', async () => {
-        const { data } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT.id,
-            p_org_id: null,
-            p_scope: 'own',
-          });
+        const { data } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT.id,
+          p_org_id: null,
+          p_scope: 'own',
+        });
 
         // No org filter — returns Student A's own questions from any org
         const ids = (data as any[]).map((d: any) => d.id).sort();
@@ -390,12 +375,11 @@ forEachCopy((copyId) => {
     // ---------------------------------------------------------------
     describe('default scope', () => {
       it("p_scope='own' returns own questions only (default scope)", async () => {
-        const { data } = await createServiceClient()
-          .rpc('get_accessible_questions', {
-            p_user_id: TEST_USERS.STUDENT.id,
-            p_org_id: orgId,
-            p_scope: 'own',
-          });
+        const { data } = await createServiceClient().rpc('get_accessible_questions', {
+          p_user_id: TEST_USERS.STUDENT.id,
+          p_org_id: orgId,
+          p_scope: 'own',
+        });
 
         const ids = (data as any[]).map((d: any) => d.id).sort();
         expect(ids).toEqual([q1Id, q2Id].sort());

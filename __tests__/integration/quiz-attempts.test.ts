@@ -1,15 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
 import {
-  GET as attemptGet,
-  POST as attemptPost,
-} from '@/app/(backend)/api/v1/quiz/[attemptId]/route';
-import { GET as attemptsGet } from '@/app/(backend)/api/v1/quiz/attempts/route';
-import { POST as quizPost } from '@/app/(backend)/api/v1/quiz/new/route';
-import {
+  type BeforeResult,
   before,
   createTestUser,
-  type BeforeResult,
   type TestUserFixture,
 } from '#test/helpers/test-user';
 import {
@@ -20,6 +14,12 @@ import {
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  GET as attemptGet,
+  POST as attemptPost,
+} from '@/app/(backend)/api/v1/quiz/[attemptId]/route';
+import { GET as attemptsGet } from '@/app/(backend)/api/v1/quiz/attempts/route';
+import { POST as quizPost } from '@/app/(backend)/api/v1/quiz/new/route';
 
 forEachCopy((copyId) => {
   describe(`Quiz Attempts Integration [${copyId}]`, () => {

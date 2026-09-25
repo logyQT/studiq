@@ -1,19 +1,19 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
-import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/organization/members/route';
+import {
+  type BeforeResult,
+  before,
+  createTestUser,
+  type TestUserFixture,
+} from '#test/helpers/test-user';
 import {
   applyRegisteredMock,
   cleanupOrganizationDeep,
   createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
-import {
-  before,
-  createTestUser,
-  type BeforeResult,
-  type TestUserFixture,
-} from '#test/helpers/test-user';
 import { createNextRequest } from '#test/integration/test-utils';
+import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/organization/members/route';
 
 forEachCopy((copyId) => {
   describe(`Members Integration [${copyId}]`, () => {
@@ -72,9 +72,13 @@ forEachCopy((copyId) => {
       it('filters members by role', async () => {
         mockUser(fixture.user);
 
-        const req = createNextRequest('http://localhost/api/v1/organization/members?role=member', undefined, {
-          active_org_id: orgId,
-        });
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/members?role=member',
+          undefined,
+          {
+            active_org_id: orgId,
+          },
+        );
         const response = await GET(req);
         const body = await response.json();
 
@@ -110,14 +114,18 @@ forEachCopy((copyId) => {
       it('changes role successfully', async () => {
         mockUser(fixture.user);
 
-        const req = createNextRequest('http://localhost/api/v1/organization/members', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            targetUserId: member.id,
-            newOrgRoleId: adminRoleId,
-          }),
-        }, { active_org_id: orgId });
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/members',
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              targetUserId: member.id,
+              newOrgRoleId: adminRoleId,
+            }),
+          },
+          { active_org_id: orgId },
+        );
 
         const response = await PUT(req);
         const body = await response.json();
@@ -129,14 +137,18 @@ forEachCopy((copyId) => {
       it('returns 422 when input is invalid', async () => {
         mockUser(fixture.user);
 
-        const req = createNextRequest('http://localhost/api/v1/organization/members', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            targetUserId: '',
-            newOrgRoleId: 'invalid-uuid',
-          }),
-        }, { active_org_id: orgId });
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/members',
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              targetUserId: '',
+              newOrgRoleId: 'invalid-uuid',
+            }),
+          },
+          { active_org_id: orgId },
+        );
 
         const response = await PUT(req);
         const body = await response.json();
@@ -185,9 +197,13 @@ forEachCopy((copyId) => {
       it('returns 400 when userId is empty', async () => {
         mockUser(fixture.user);
 
-        const req = createNextRequest('http://localhost/api/v1/organization/members?userId=', {
-          method: 'DELETE',
-        }, { active_org_id: orgId });
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/members?userId=',
+          {
+            method: 'DELETE',
+          },
+          { active_org_id: orgId },
+        );
 
         const response = await DELETE(req);
         const body = await response.json();

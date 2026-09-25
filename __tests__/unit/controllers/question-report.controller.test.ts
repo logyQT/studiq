@@ -1,4 +1,4 @@
-import { RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { QuestionReportController } from '@studiq/server/controllers/question-report.controller';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
