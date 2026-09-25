@@ -53,10 +53,6 @@ const adminLinks: NavLink[] = [
   { labelKey: 'nav_settings', href: '/manage/settings', icon: Sparkles },
 ];
 
-const sysAdminLinks: NavLink[] = [
-  { labelKey: 'nav_overview', href: '/admin', icon: LayoutDashboard },
-];
-
 const publicLinks = [
   { name: 'features', href: '/features', icon: Sparkles },
   { name: 'pricing', href: '/pricing', icon: CreditCard },
@@ -77,8 +73,6 @@ export function Navbar() {
         return [...teacherLinks, ...adminLinks];
       case AccountType.MANAGER:
         return adminLinks;
-      case AccountType.SYS_ADMIN:
-        return sysAdminLinks;
       default:
         return studentLinks;
     }

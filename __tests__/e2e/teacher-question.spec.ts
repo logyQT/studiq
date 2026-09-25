@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
 
-const email = 'teacher@dev.local';
+const email = 'teacher1@dev.local';
 const password = 'pass';
 
 const heading = t('EduQuestionsPage.title');

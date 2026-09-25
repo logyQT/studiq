@@ -56,15 +56,6 @@ INSERT INTO "auth"."users" (
   "email_change_token_current", "email_change_confirm_status", "banned_until",
   "reauthentication_token", "reauthentication_sent_at", "is_sso_user", "deleted_at", "is_anonymous"
 ) VALUES
-  -- sys_admin (platform-wide, no org)
-  ( '00000000-0000-0000-0000-000000000000',
-    '00000000-0000-4000-8001-000000000001',
-    'authenticated', 'authenticated', 'admin@dev.local',
-    crypt('pass', gen_salt('bf')),
-    now(), NULL, '', NULL, '', NULL, '', '', NULL, NULL,
-    '{"account_type": "sys_admin", "provider": "email", "providers": ["email"]}',
-    '{"name": "Sys Admin", "email_verified": true}',
-    NULL, now(), now(), NULL, NULL, '', '', NULL, '', 0, NULL, '', NULL, false, NULL, false ),
   -- M1 — manager of O1, O2
   ( '00000000-0000-0000-0000-000000000000',
     '00000000-0000-4000-8001-000000000002',
@@ -144,11 +135,6 @@ INSERT INTO "auth"."identities" (
   "provider_id", "user_id", "identity_data", "provider",
   "last_sign_in_at", "created_at", "updated_at", "id"
 ) VALUES
-  ( '00000000-0000-4000-8001-000000000001',
-    '00000000-0000-4000-8001-000000000001',
-    '{"sub": "00000000-0000-4000-8001-000000000001", "email": "admin@dev.local",         "email_verified": true, "phone_verified": false}',
-    'email', now(), now(), now(),
-    '00000000-0000-4000-8002-000000000001' ),
   ( '00000000-0000-4000-8001-000000000002',
     '00000000-0000-4000-8001-000000000002',
     '{"sub": "00000000-0000-4000-8001-000000000002", "email": "manager@dev.local",        "email_verified": true, "phone_verified": false}',
@@ -193,7 +179,6 @@ ON CONFLICT DO NOTHING;
 
 -- Profiles
 INSERT INTO "public"."profiles" ("id", "email", "full_name", "personal_plan_key") VALUES
-  ('00000000-0000-4000-8001-000000000001', 'admin@dev.local',    'Sys Admin', 'sysadmin'),
   ('00000000-0000-4000-8001-000000000002', 'manager@dev.local',  'M1',        'launch'),
   ('00000000-0000-4000-8001-000000000008', 'manager2@dev.local', 'M2',        'launch'),
   ('00000000-0000-4000-8001-000000000003', 'teacher1@dev.local', 'T1',        'lite'),
@@ -204,7 +189,7 @@ INSERT INTO "public"."profiles" ("id", "email", "full_name", "personal_plan_key"
   ('00000000-0000-4000-8001-000000000009', 'test-student@dev.local', 'TestStudent', 'base')
 ON CONFLICT DO NOTHING;
 
--- Org memberships (sys_admin excluded)
+-- Org memberships
 -- Org 1
 INSERT INTO "public"."org_members" ("organization_id", "user_id", "org_role_id") VALUES
   ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8001-000000000002', (SELECT id FROM public.org_roles WHERE organization_id = '00000000-0000-4000-8000-000000000001' AND name = 'admin')),

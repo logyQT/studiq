@@ -1,4 +1,4 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { AppError } from '@studiq/server/lib/errors';
 import { wrapService } from '@studiq/server/lib/observability';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -16,8 +16,6 @@ export class LimitsResolver {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
   async getEffectiveLimit(ctx: RequestContext, limitKey: string): Promise<number> {
-    if (ctx.accountType === AccountType.SYS_ADMIN) return -1;
-
     const supabase = await this.createClient();
 
     // In org context: check seat assignment first (Phase 2)

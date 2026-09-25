@@ -328,7 +328,6 @@ export { RadioGroup, RadioGroupItem } from './components/ui/radio-group';
 export { ResizableHandle, ResizablePanel, ResizablePanelGroup } from './components/ui/resizable';
 
 // ── Role Badge ─────────────────────────────────────────────────────────────
-export { AccountTypeBadge } from './components/ui/role-badge';
 
 // ── Scroll Area ────────────────────────────────────────────────────────────
 export { ScrollArea, ScrollBar } from './components/ui/scroll-area';

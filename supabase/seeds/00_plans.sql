@@ -27,7 +27,7 @@ DELETE FROM public.plan_features;
 DELETE FROM public.subscription_plans;
 
 -- ==========================================================
--- 5. Subscription plans (12 brand plans + sysadmin)
+-- 5. Subscription plans (12 brand plans)
 -- Note: `description` column is for admin internal use only.
 -- Public-facing descriptions are managed via i18n keys (`plan_{key}_desc`).
 -- ==========================================================
@@ -43,8 +43,7 @@ INSERT INTO public.subscription_plans (key, name, price_monthly, currency, sort_
   ('hub',      'StudiQ Hub',     1999,  'PLN', 9,    'manager'),
   ('pro',      'StudiQ Pro',     4999,  'PLN', 10,   'student'),
   ('master',   'StudiQ Master',  4999,  'PLN', 11,   'educator'),
-  ('campus',   'StudiQ Campus',  4999,  'PLN', 12,   'manager'),
-  ('sysadmin', 'System Admin',   0,     'PLN', 99,   'sys_admin')
+  ('campus',   'StudiQ Campus',  4999,  'PLN', 12,   'manager')
 ON CONFLICT DO NOTHING;
 
 -- ==========================================================
@@ -136,11 +135,6 @@ INSERT INTO public.plan_features (plan_key, feature_key) VALUES
   ('campus', 'advanced.stats'),
   ('campus', 'documents'),
   ('campus', 'branding')
-ON CONFLICT DO NOTHING;
-
--- Sysadmin (everything)
-INSERT INTO public.plan_features (plan_key, feature_key)
-SELECT 'sysadmin', key FROM public.feature_flags
 ON CONFLICT DO NOTHING;
 
 -- ==========================================================
@@ -285,19 +279,6 @@ INSERT INTO public.plan_limits (plan_key, limit_key, limit_value) VALUES
   ('campus', 'max_quiz_attempts_per_day', -1),
   ('campus', 'max_ai_tokens_per_day', -1),
   ('campus', 'max_storage_mb', -1)
-ON CONFLICT DO NOTHING;
-
--- Sysadmin (internal)
-INSERT INTO public.plan_limits (plan_key, limit_key, limit_value) VALUES
-  ('sysadmin', 'max_flashcards', -1),
-  ('sysadmin', 'max_questions', -1),
-  ('sysadmin', 'max_decks', -1),
-  ('sysadmin', 'max_question_banks', -1),
-  ('sysadmin', 'max_students', -1),
-  ('sysadmin', 'max_groups', -1),
-  ('sysadmin', 'max_quiz_attempts_per_day', -1),
-  ('sysadmin', 'max_ai_tokens_per_day', -1),
-  ('sysadmin', 'max_storage_mb', -1)
 ON CONFLICT DO NOTHING;
 
 -- NOTE: Section 8 (plan_seat_allocations) removed in Phase B.5.

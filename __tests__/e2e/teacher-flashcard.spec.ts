@@ -17,7 +17,7 @@ async function login(
 
 test.describe('Teacher Flashcards', () => {
   test.beforeEach(async ({ page }) => {
-    await login(page, 'e2e-teacher1@test.local', /\/edu/);
+    await login(page, 'teacher1@dev.local', /\/edu/);
   });
 
   test('shows all owned context menu items on a flashcard', async ({ page }) => {

@@ -5,7 +5,7 @@ const PASSWORD = 'pass';
 
 async function loginTeacher(page: import('@playwright/test').Page) {
   await page.goto('/login');
-  await page.getByLabel(t('LoginPage.email_label')).fill('e2e-teacher1@test.local');
+  await page.getByLabel(t('LoginPage.email_label')).fill('teacher1@dev.local');
   await page.getByLabel(t('LoginPage.password_label')).fill(PASSWORD);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
   await page.waitForURL(/\/edu/);
@@ -13,7 +13,7 @@ async function loginTeacher(page: import('@playwright/test').Page) {
 
 async function loginStudent(page: import('@playwright/test').Page) {
   await page.goto('/login');
-  await page.getByLabel(t('LoginPage.email_label')).fill('student@dev.local');
+  await page.getByLabel(t('LoginPage.email_label')).fill('student1@dev.local');
   await page.getByLabel(t('LoginPage.password_label')).fill(PASSWORD);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
   await page.waitForURL(/\/app/);

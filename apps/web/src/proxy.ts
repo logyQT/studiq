@@ -7,7 +7,6 @@ import { updateSession } from '@studiq/server/lib/supabase/session';
 import { type NextRequest, NextResponse } from 'next/server';
 
 const ACCOUNT_TYPE_REDIRECTS: Record<string, string> = {
-  [AccountType.SYS_ADMIN]: '/admin',
   [AccountType.MANAGER]: '/manage',
   [AccountType.EDUCATOR]: '/edu',
   [AccountType.STUDENT]: '/app',

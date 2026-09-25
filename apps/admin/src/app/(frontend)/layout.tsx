@@ -22,8 +22,8 @@ export default function FrontendLayout({ children }: { children: React.ReactNode
     <div className="flex min-h-screen">
       <aside className="w-64 shrink-0 border-r bg-card">
         <div className="p-6">
-          <h2 className="text-lg font-semibold tracking-tight">{t('sys_admin_dashboard')}</h2>
-          <p className="text-xs text-muted-foreground mt-1">{t('role_sys_admin')}</p>
+          <h2 className="text-lg font-semibold tracking-tight">{t('admin_panel_title')}</h2>
+          <p className="text-xs text-muted-foreground mt-1">{t('admin_panel_subtitle')}</p>
         </div>
         <nav className="px-3 pb-4">
           <ul className="space-y-1">

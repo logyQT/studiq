@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { t } from '#test/e2e/utils';
 
-const email = 'student@dev.local';
+const email = 'student1@dev.local';
 const password = 'pass';
 
 test.describe('Student Flashcard Flow', () => {

@@ -19,22 +19,17 @@ const PASSWORD = 'pass';
 const USERS = [
   {
     role: 'manager',
-    email: 'admin@dev.local',
-    redirectUrl: /\/manage/,
-  },
-  {
-    role: 'manager',
     email: 'manager@dev.local',
     redirectUrl: /\/manage/,
   },
   {
     role: 'educator',
-    email: 'teacher@dev.local',
+    email: 'teacher1@dev.local',
     redirectUrl: /\/edu/,
   },
   {
     role: 'student',
-    email: 'student@dev.local',
+    email: 'student1@dev.local',
     redirectUrl: /\/app/,
   },
 ] as const;
@@ -111,8 +106,8 @@ test.describe('Login Flow', () => {
   }) => {
     const emailInput = page.getByLabel(emailLabel);
     await emailInput.click();
-    await emailInput.fill('admin@dev.local');
-    await expect(emailInput).toHaveValue('admin@dev.local');
+    await emailInput.fill('teacher1@dev.local');
+    await expect(emailInput).toHaveValue('teacher1@dev.local');
     await page.getByLabel(passwordLabel).fill('WrongPassword1');
     await page.getByRole('button', { name: submitButton }).click();
 

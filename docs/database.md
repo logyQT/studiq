@@ -45,7 +45,6 @@ supabase/
 ├── migrations/              # Incremental, ordered by timestamp
 │   ├── 20260601064040_mig.sql
 │   ├── 20260601105712_univ_id_questions.sql
-│   ├── 20260601114203_error_logs.sql
 │   ├── 20260603060842_flashcards_sm2.sql
 │   ├── 20260608063709_spaces-to-decks-rename.sql
 │   ├── 20260609065731_rbac_updated.sql
@@ -74,7 +73,6 @@ supabase/
     ├── 46_flashcard_review_state.sql
     ├── 48_func_update_updated_at.sql
     ├── 51_quiz_refactor.sql
-    ├── 54_error_logs.sql
     ├── 55_rbac_permissions.sql
     └── 99_realtime.sql
 ```
@@ -143,12 +141,6 @@ Seed files are located in `supabase/seeds/` and are organized by domain:
 |-------|-------------|
 | `permissions` | Static list of permission names (e.g. `flashcard.read`) |
 | `role_permissions` | Maps roles to permissions with scopes (`own`, `university`, `any`) |
-
-### Admin
-
-| Table | Description |
-|-------|-------------|
-| `error_logs` | Application error logging for sys_admin review |
 
 ## Database Access
 

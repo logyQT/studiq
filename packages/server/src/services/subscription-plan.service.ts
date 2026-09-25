@@ -68,11 +68,7 @@ export class SubscriptionPlanService {
   async listActive(forAccountType?: string): Promise<ServiceResult<PlanInfo[]>> {
     const supabase = await this.createClient();
 
-    let query = supabase
-      .from('subscription_plans')
-      .select('*')
-      .eq('is_active', true)
-      .neq('key', 'sysadmin');
+    let query = supabase.from('subscription_plans').select('*').eq('is_active', true);
 
     if (forAccountType) {
       query = query.eq('for_account_type', forAccountType);

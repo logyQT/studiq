@@ -46,7 +46,6 @@ Roles are stored in `app_metadata.role` on the Supabase user object and synced t
 
 ```mermaid
 graph TD
-    SYS[sys_admin] --> Full[Full platform access]
     UA[university_admin] --> Uni[University management]
     T[teacher] --> Edu[Teaching dashboard]
     S[student] --> App[Student dashboard]
@@ -56,7 +55,6 @@ graph TD
 
 | Role | Access |
 |------|--------|
-| `sys_admin` | Full platform access, admin dashboard |
 | `university_admin` | University management, invitations, members |
 | `teacher` | Teaching dashboard, question/subject management |
 | `student` | Student dashboard, quizzes, flashcards |
@@ -75,9 +73,9 @@ Routes are protected through a combination of:
 
 ```typescript
 {
-  matcher: /^\/api\/v1\/admin(\/.*)?$/,
+  matcher: /^\/edu(\/.*)?$/,
   requireAuth: true,
-  allowedRoles: [UserRole.SYS_ADMIN],
+  allowedRoles: [UserRole.TEACHER],
   isApi: true,
 }
 ```
@@ -86,16 +84,14 @@ When a rule matches:
 - If `requireAuth` is true and no session → 401 (API) or redirect to `/login` (UI)
 - If `allowedRoles` is set and user role not in list → 403 (API) or redirect to role dashboard (UI)
 - If `redirectIfAuthenticated` is set and user is logged in → redirect to specified URL
-- If `redirectIfAuthenticatedByRole` is set → redirect to role-specific URL (e.g., student → `/app`, sys_admin → `/admin`)
+- If `redirectIfAuthenticatedByRole` is set → redirect to role-specific URL (e.g., student → `/app`, teacher → `/edu`)
 
 ### Current Route Rules
 
 | Matcher | Auth Required | Allowed Roles | Behavior |
 |---------|:------------:|:-------------:|----------|
-| `/api/v1/admin/**` | ✅ | `sys_admin` | API, 401/403 JSON |
-| `/api/v1/teacher/**` | ✅ | `teacher, sys_admin` | API, 401/403 JSON |
+| `/api/v1/teacher/**` | ✅ | `teacher` | API, 401/403 JSON |
 | `/login`, `/register` | ❌ | — | Redirects authenticated users by role |
-| `/admin/**` | ✅ | `sys_admin` | UI, redirects to login |
 | `/manage/**` | ✅ | `university_admin` | UI, redirects to login |
 | `/edu/**` | ✅ | `teacher` | UI, redirects to login |
 | `/app/**` | ✅ | `student, free, premium` | UI, redirects to login |
@@ -112,7 +108,7 @@ if (!user) {
 }
 
 // src/server/guards/role.guard.ts
-await requireRole(user.id, [UserRole.SYS_ADMIN]);
+await requireRole(user.id, [UserRole.TEACHER]);
 ```
 
 ### Known Gap: AI Agent Route

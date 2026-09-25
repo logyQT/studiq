@@ -134,7 +134,7 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
   });
 
   it('never checks usage against the model for unlimited plans (-1)', async () => {
-    getUsageMock.mockResolvedValue({ current: 999999, limit: -1, plan: 'sysadmin', resetsAt: '' });
+    getUsageMock.mockResolvedValue({ current: 999999, limit: -1, plan: 'base', resetsAt: '' });
 
     const res = await POST(
       jsonRequest({ messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),

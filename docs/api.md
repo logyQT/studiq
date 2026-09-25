@@ -10,10 +10,6 @@ All API endpoints are under `/api/v1/`:
 
 ```
 src/app/(backend)/api/v1/
-  admin/              # System admin endpoints
-    error-logs/       # View application error logs
-    permissions/      # Manage RBAC permissions
-    universities/     # Manage universities
   auth/               # Authentication (login, register, password reset)
   flashcards/         # Flashcard CRUD
     [id]/

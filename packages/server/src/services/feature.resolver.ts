@@ -1,4 +1,4 @@
-import { AccountType, type RequestContext } from '@studiq/authz';
+import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -88,14 +88,8 @@ export class FeatureResolver {
    *      deterministically per (key, user_id).
    *   5. Global flag      — `feature_flags.is_enabled = false` is a hard
    *      kill switch ("Stop now") regardless of any entitlement layer.
-   *
-   * `SYS_ADMIN` is always granted the full `FEATURES` set.
    */
   async resolveFeatures(ctx: RequestContext): Promise<FeatureResolution> {
-    if (ctx.accountType === AccountType.SYS_ADMIN) {
-      return { features: Array.from(FEATURES), rollout: {} };
-    }
-
     const supabase = await this.createClient();
     const enabled = new Set<FeatureKey>();
 

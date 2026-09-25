@@ -303,8 +303,8 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 
 ## RBAC
 
-**Account types** (`AccountType` enum in `@studiq/authz` — `packages/authz/src/types.ts`, mirrored in `apps/web/src/types/index.ts`):
-`STUDENT | EDUCATOR | MANAGER | SYS_ADMIN`
+**Account types** (`AccountType` enum in `@studiq/authz` — `packages/authz/src/types.ts`):
+`STUDENT | EDUCATOR | MANAGER`
 
 - `RequestContext.accountType` carries the caller's type (from `app_metadata.account_type` in the JWT)
 - **Permissions**: `Permission` map + `PermissionScope` (`own | group | organization | any`) in `@studiq/authz` (`packages/authz/src/lib/permissions.ts`)

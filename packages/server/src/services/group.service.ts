@@ -12,7 +12,7 @@ import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 function canManageAnyGroup(ctx: RequestContext): boolean {
-  return ctx.accountType === AccountType.MANAGER || ctx.accountType === AccountType.SYS_ADMIN;
+  return ctx.accountType === AccountType.MANAGER;
 }
 
 export class GroupService {

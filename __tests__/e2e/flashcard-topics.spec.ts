@@ -13,7 +13,7 @@ async function login(page: import('@playwright/test').Page, email: string, redir
 
 test.describe('Flashcard Topic Management', () => {
   test('creates a new topic', async ({ page }) => {
-    await login(page, 'e2e-teacher1@test.local', /\/edu/);
+    await login(page, 'teacher1@dev.local', /\/edu/);
     await page.goto('/edu/flashcards/topics');
     await page.waitForLoadState('networkidle');
 
@@ -27,7 +27,7 @@ test.describe('Flashcard Topic Management', () => {
   });
 
   test('edits a topic name', async ({ page }) => {
-    await login(page, 'e2e-teacher1@test.local', /\/edu/);
+    await login(page, 'teacher1@dev.local', /\/edu/);
     await page.goto('/edu/flashcards/topics');
     await page.waitForLoadState('networkidle');
 
@@ -50,7 +50,7 @@ test.describe('Flashcard Topic Management', () => {
   });
 
   test('deletes a topic', async ({ page }) => {
-    await login(page, 'e2e-teacher1@test.local', /\/edu/);
+    await login(page, 'teacher1@dev.local', /\/edu/);
     await page.goto('/edu/flashcards/topics');
     await page.waitForLoadState('networkidle');
 
@@ -76,7 +76,7 @@ test.describe('Flashcard Topic Management', () => {
   });
 
   test('clicking a topic card opens view dialog', async ({ page }) => {
-    await login(page, 'e2e-teacher1@test.local', /\/edu/);
+    await login(page, 'teacher1@dev.local', /\/edu/);
     await page.goto('/edu/flashcards/topics');
     await page.waitForLoadState('networkidle');
 
@@ -89,7 +89,7 @@ test.describe('Flashcard Topic Management', () => {
   });
 
   test('view dialog shows flashcards for topic with cards', async ({ page }) => {
-    await login(page, 'e2e-teacher1@test.local', /\/edu/);
+    await login(page, 'teacher1@dev.local', /\/edu/);
     await page.goto('/edu/flashcards/topics');
     await page.waitForLoadState('networkidle');
 
@@ -108,7 +108,7 @@ test.describe('Flashcard Topic Management', () => {
   });
 
   test('bulk select topics via FAB on mobile', async ({ page }) => {
-    await login(page, 'e2e-teacher1@test.local', /\/edu/);
+    await login(page, 'teacher1@dev.local', /\/edu/);
     await page.goto('/edu/flashcards/topics');
     await page.waitForLoadState('networkidle');
 

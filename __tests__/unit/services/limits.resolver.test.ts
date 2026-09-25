@@ -48,12 +48,6 @@ describe('LimitsResolver', () => {
   });
 
   describe('getEffectiveLimit', () => {
-    it('returns -1 for SYS_ADMIN', async () => {
-      const ctx = { ...baseCtx, accountType: AccountType.SYS_ADMIN };
-      const limit = await resolver.getEffectiveLimit(ctx, 'max_flashcards');
-      expect(limit).toBe(-1);
-    });
-
     it('returns personal plan limit when not in org', async () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'profiles') return chain({ personal_plan_key: 'base' });
