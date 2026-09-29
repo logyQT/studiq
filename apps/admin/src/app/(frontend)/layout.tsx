@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from '@studiq/ui';
-import { Building2, CreditCard, Flag, LayoutDashboard, Users } from 'lucide-react';
+import { Building2, CreditCard, Flag, LayoutDashboard, UserCog, Users } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { key: 'admin_overview', href: '/', icon: LayoutDashboard },
   { key: 'admin_feature_flags', href: '/feature-flags', icon: Flag },
   { key: 'admin_subscription_plans', href: '/subscription-plans', icon: CreditCard },
+  { key: 'admin_users', href: '/users', icon: UserCog },
   { key: 'admin_user_overrides', href: '/user-overrides', icon: Users },
   { key: 'admin_orgs', href: '/orgs', icon: Building2 },
 ] as const;

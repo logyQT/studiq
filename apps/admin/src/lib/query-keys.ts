@@ -22,4 +22,9 @@ export const queryKeys = {
     all: ['organizations'] as const,
     detail: (id: string) => ['organizations', id] as const,
   },
+  users: {
+    list: (status: string, page: number, search: string) =>
+      ['users', status, page, search] as const,
+    detail: (id: string) => ['users', 'detail', id] as const,
+  },
 } as const;
