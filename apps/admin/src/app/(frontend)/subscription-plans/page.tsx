@@ -13,6 +13,11 @@ import {
   DialogTitle,
   Input,
   Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Table,
   TableBody,
   TableCell,
@@ -28,6 +33,8 @@ import { ConfirmDialog } from '@/app/(frontend)/components/confirm-dialog';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
+const ACCOUNT_TYPES = ['student', 'educator', 'manager'] as const;
+
 type SubscriptionPlan = {
   id: string;
   key: string;
@@ -36,6 +43,7 @@ type SubscriptionPlan = {
   priceYearly: number | null;
   isActive: boolean;
   sortOrder: number;
+  forAccountType: string | null;
 };
 
 type FormData = {
@@ -45,6 +53,7 @@ type FormData = {
   priceYearly: string;
   isActive: boolean;
   sortOrder: string;
+  forAccountType: string;
 };
 
 const EMPTY_FORM: FormData = {
@@ -54,7 +63,20 @@ const EMPTY_FORM: FormData = {
   priceYearly: '',
   isActive: true,
   sortOrder: '0',
+  forAccountType: '',
 };
+
+function buildPayload(data: FormData) {
+  return {
+    key: data.key,
+    name: data.name,
+    isActive: data.isActive,
+    priceMonthly: data.priceMonthly === '' ? undefined : Number(data.priceMonthly),
+    priceYearly: data.priceYearly === '' ? undefined : Number(data.priceYearly),
+    sortOrder: data.sortOrder === '' ? undefined : Number(data.sortOrder),
+    forAccountType: data.forAccountType === '' ? null : data.forAccountType,
+  };
+}
 
 export default function SubscriptionPlansPage() {
   const t = useTranslations('SubscriptionPlans');
@@ -71,40 +93,30 @@ export default function SubscriptionPlansPage() {
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<SubscriptionPlan | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const createMutation = useMutation({
-    mutationFn: (data: FormData) =>
-      apiPost('/subscription-plans', {
-        key: data.key,
-        name: data.name,
-        isActive: data.isActive,
-        priceMonthly: data.priceMonthly ? Number(data.priceMonthly) : 0,
-        priceYearly: data.priceYearly ? Number(data.priceYearly) : 0,
-        sortOrder: Number(data.sortOrder),
-      }),
+    mutationFn: (data: FormData) => apiPost('/subscription-plans', buildPayload(data)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.subscriptionPlans.all });
       setDialogOpen(false);
       setForm(EMPTY_FORM);
+      setFormError(null);
     },
+    onError: (error: Error) => setFormError(error.message),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, ...data }: FormData & { id: string }) =>
-      apiPut(`/subscription-plans/${id}`, {
-        key: data.key,
-        name: data.name,
-        isActive: data.isActive,
-        priceMonthly: data.priceMonthly ? Number(data.priceMonthly) : 0,
-        priceYearly: data.priceYearly ? Number(data.priceYearly) : 0,
-        sortOrder: Number(data.sortOrder),
-      }),
+      apiPut(`/subscription-plans/${id}`, buildPayload(data)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.subscriptionPlans.all });
       setDialogOpen(false);
       setEditing(null);
       setForm(EMPTY_FORM);
+      setFormError(null);
     },
+    onError: (error: Error) => setFormError(error.message),
   });
 
   const deleteMutation = useMutation({
@@ -118,6 +130,7 @@ export default function SubscriptionPlansPage() {
   function openCreate() {
     setEditing(null);
     setForm(EMPTY_FORM);
+    setFormError(null);
     setDialogOpen(true);
   }
 
@@ -130,7 +143,9 @@ export default function SubscriptionPlansPage() {
       priceYearly: plan.priceYearly?.toString() ?? '',
       isActive: plan.isActive,
       sortOrder: plan.sortOrder.toString(),
+      forAccountType: plan.forAccountType ?? '',
     });
+    setFormError(null);
     setDialogOpen(true);
   }
 
@@ -172,6 +187,7 @@ export default function SubscriptionPlansPage() {
                   <TableHead className="w-8" />
                   <TableHead>{t('col_key')}</TableHead>
                   <TableHead>{t('col_name')}</TableHead>
+                  <TableHead>{t('col_account_type')}</TableHead>
                   <TableHead>{t('col_monthly')}</TableHead>
                   <TableHead>{t('col_yearly')}</TableHead>
                   <TableHead>{t('col_active')}</TableHead>
@@ -198,6 +214,11 @@ export default function SubscriptionPlansPage() {
                       </TableCell>
                       <TableCell className="font-mono text-sm">{plan.key}</TableCell>
                       <TableCell>{plan.name}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {plan.forAccountType
+                          ? t(`account_type_${plan.forAccountType}`)
+                          : t('account_type_any')}
+                      </TableCell>
                       <TableCell>{formatPrice(plan.priceMonthly)}</TableCell>
                       <TableCell>{formatPrice(plan.priceYearly)}</TableCell>
                       <TableCell>
@@ -220,7 +241,7 @@ export default function SubscriptionPlansPage() {
                     </TableRow>
                     {expandedKey === plan.key && (
                       <TableRow key={`${plan.id}-detail`}>
-                        <TableCell colSpan={7} className="bg-muted/30 px-12 py-3">
+                        <TableCell colSpan={8} className="bg-muted/30 px-12 py-3">
                           <PlanDetails planKey={plan.key} />
                         </TableCell>
                       </TableRow>
@@ -229,7 +250,7 @@ export default function SubscriptionPlansPage() {
                 ))}
                 {plans.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       {t('empty')}
                     </TableCell>
                   </TableRow>
@@ -246,6 +267,11 @@ export default function SubscriptionPlansPage() {
             <DialogTitle>{editing ? t('edit') : t('create')}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {formError && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {formError}
+              </p>
+            )}
             <div className="space-y-2">
               <Label>{t('col_key')}</Label>
               <Input
@@ -263,30 +289,54 @@ export default function SubscriptionPlansPage() {
                 required
               />
             </div>
+            <div className="space-y-2">
+              <Label>{t('col_account_type')}</Label>
+              <Select
+                value={form.forAccountType || 'any'}
+                onValueChange={(v) => setForm({ ...form, forAccountType: v === 'any' ? '' : v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">{t('account_type_any')}</SelectItem>
+                  {ACCOUNT_TYPES.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {t(`account_type_${type}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>{t('col_monthly')}</Label>
                 <Input
                   type="number"
                   min={0}
+                  step={1}
                   value={form.priceMonthly}
                   onChange={(e) => setForm({ ...form, priceMonthly: e.target.value })}
                 />
+                <p className="text-xs text-muted-foreground">{t('price_unit_hint')}</p>
               </div>
               <div className="space-y-2">
                 <Label>{t('col_yearly')}</Label>
                 <Input
                   type="number"
                   min={0}
+                  step={1}
                   value={form.priceYearly}
                   onChange={(e) => setForm({ ...form, priceYearly: e.target.value })}
                 />
+                <p className="text-xs text-muted-foreground">{t('price_unit_hint')}</p>
               </div>
             </div>
             <div className="space-y-2">
               <Label>{t('col_display_order')}</Label>
               <Input
                 type="number"
+                step={1}
                 value={form.sortOrder}
                 onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
               />

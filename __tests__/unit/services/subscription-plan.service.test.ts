@@ -71,6 +71,22 @@ describe('SubscriptionPlanService', () => {
       expect(result.data[0].limits.max_groups).toBe(3);
     });
 
+    it('maps for_account_type to forAccountType, defaulting to null', async () => {
+      const plans = [
+        { id: 'p-1', key: 'hub', name: 'Hub', for_account_type: 'manager' },
+        { id: 'p-2', key: 'base', name: 'Base', for_account_type: null },
+      ];
+      mock.from.mockReturnValueOnce(qb(plans));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.listActive();
+
+      expect(result.success).toBe(true);
+      expect(result.data[0].forAccountType).toBe('manager');
+      expect(result.data[1].forAccountType).toBeNull();
+    });
+
     it('filters by account type', async () => {
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb([]));
@@ -271,6 +287,24 @@ describe('SubscriptionPlanService', () => {
       expect(result.success).toBe(true);
       expect(result.data).toEqual(plan);
     });
+
+    it('writes for_account_type from forAccountType, defaulting to null', async () => {
+      const b = qb({ id: 'p-1' });
+      mock.from.mockReturnValueOnce(b);
+
+      await service.create({ key: 'hub', name: 'Hub', forAccountType: 'manager' });
+
+      expect(b.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ for_account_type: 'manager' }),
+      );
+
+      const b2 = qb({ id: 'p-2' });
+      mock.from.mockReturnValueOnce(b2);
+
+      await service.create({ key: 'base', name: 'Base' });
+
+      expect(b2.insert).toHaveBeenCalledWith(expect.objectContaining({ for_account_type: null }));
+    });
   });
 
   describe('update', () => {
@@ -281,6 +315,24 @@ describe('SubscriptionPlanService', () => {
       const result = await service.update('p-1', { name: 'Updated' });
 
       expect(result.success).toBe(true);
+    });
+
+    it('only writes for_account_type when explicitly provided', async () => {
+      const b = qb({ id: 'p-1' });
+      mock.from.mockReturnValueOnce(b);
+
+      await service.update('p-1', { name: 'Updated' });
+
+      expect(b.update).toHaveBeenCalledWith(
+        expect.not.objectContaining({ for_account_type: expect.anything() }),
+      );
+
+      const b2 = qb({ id: 'p-1' });
+      mock.from.mockReturnValueOnce(b2);
+
+      await service.update('p-1', { forAccountType: null });
+
+      expect(b2.update).toHaveBeenCalledWith(expect.objectContaining({ for_account_type: null }));
     });
   });
 

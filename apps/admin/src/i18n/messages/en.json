@@ -74,7 +74,12 @@
     "features_label": "Features",
     "limits_label": "Limits",
     "limit_key": "Limit",
-    "limit_value": "Value"
+    "limit_value": "Value",
+    "account_type_any": "Any",
+    "account_type_student": "Student",
+    "account_type_educator": "Educator",
+    "account_type_manager": "Manager",
+    "price_unit_hint": "In grosze (100 = 1.00 zł)"
   },
   "UserOverrides": {
     "title": "User Overrides",

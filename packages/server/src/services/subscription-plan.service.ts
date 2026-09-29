@@ -21,6 +21,7 @@ export interface PlanInfo {
   limits: Record<string, number>;
   sortOrder: number;
   isActive: boolean;
+  forAccountType: string | null;
 }
 
 export class SubscriptionPlanService {
@@ -60,6 +61,7 @@ export class SubscriptionPlanService {
       currency: (plan.currency as string) ?? 'PLN',
       sortOrder: (plan.sort_order as number) ?? 0,
       isActive: (plan.is_active as boolean) ?? true,
+      forAccountType: (plan.for_account_type as string) ?? null,
       features,
       limits,
     };
@@ -292,6 +294,7 @@ export class SubscriptionPlanService {
         sort_order: input.sortOrder ?? 0,
         is_active: input.isActive ?? true,
         currency: input.currency ?? 'PLN',
+        for_account_type: input.forAccountType ?? null,
       })
       .select()
       .single();
@@ -313,6 +316,7 @@ export class SubscriptionPlanService {
     if (input.sortOrder !== undefined) updateData.sort_order = input.sortOrder;
     if (input.isActive !== undefined) updateData.is_active = input.isActive;
     if (input.currency !== undefined) updateData.currency = input.currency;
+    if (input.forAccountType !== undefined) updateData.for_account_type = input.forAccountType;
 
     const { data, error } = await supabase
       .from('subscription_plans')
