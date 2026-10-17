@@ -44,6 +44,11 @@ export const CreateSubscriptionPlanSchema = registry.register(
       .max(3, { error: ValidationErrorCode.TOO_LONG })
       .optional()
       .default('PLN'),
+    forAccountType: z
+      .enum(['student', 'educator', 'manager'], { error: ValidationErrorCode.INVALID_INPUT })
+      .optional()
+      .nullable()
+      .default(null),
   }),
 );
 
@@ -87,6 +92,10 @@ export const UpdateSubscriptionPlanSchema = registry.register(
       .min(2, { error: ValidationErrorCode.TOO_SHORT })
       .max(3, { error: ValidationErrorCode.TOO_LONG })
       .optional(),
+    forAccountType: z
+      .enum(['student', 'educator', 'manager'], { error: ValidationErrorCode.INVALID_INPUT })
+      .optional()
+      .nullable(),
   }),
 );
 

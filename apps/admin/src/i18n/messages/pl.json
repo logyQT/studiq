@@ -74,7 +74,12 @@
     "features_label": "Funkcje",
     "limits_label": "Limity",
     "limit_key": "Limit",
-    "limit_value": "Wartość"
+    "limit_value": "Wartość",
+    "account_type_any": "Dowolny",
+    "account_type_student": "Student",
+    "account_type_educator": "Edukator",
+    "account_type_manager": "Menedżer",
+    "price_unit_hint": "W groszach (100 = 1,00 zł)"
   },
   "UserOverrides": {
     "title": "Nadpisania użytkowników",
