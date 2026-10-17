@@ -99,8 +99,10 @@ id). You get the full span tree for that request:
 From the trace, jump to its logs (Grafana's Tempo→Loki `tracesToLogsV2` uses
 `trace_id`). Through the MCP, query Loki for `{service_name="studiq"} |
 trace_id="<id>"` (or use the derived field `TraceID`). You get the
-`log()` / `warn()` / `error()` records emitted while the span was active,
-including any unhandled API error.
+`log()` / `warn()` / `error()` records emitted while the span was active —
+including a WARN/ERROR line for **every 4xx/5xx response** (`API error 400 BAD_REQUEST`,
+with `http.method`, `http.url`, `error.code`), so a failed request is visible in
+Loki even when the failure is a handled `ServiceResult` rather than a thrown error.
 
 ### 5. Read Prometheus metrics for the window
 

@@ -27,7 +27,12 @@ export function toNextResponse<T>(response: ControllerResponse<T>): NextResponse
     body.errorId = response.errorId;
   }
 
-  return NextResponse.json(body, { status: response.statusCode });
+  // Surface the app error code as a header so withAuth() can log it with the
+  // failure without re-reading the response body.
+  return NextResponse.json(body, {
+    status: response.statusCode,
+    headers: { 'x-error-code': response.error },
+  });
 }
 
 export async function handleApiError(
@@ -38,10 +43,16 @@ export async function handleApiError(
   const status = error instanceof AppError ? error.statusCode : APP_ERRORS[fallback].status;
 
   if (error instanceof AppError) {
-    return NextResponse.json({ success: false, error: error.code }, { status });
+    return NextResponse.json(
+      { success: false, error: error.code },
+      { status, headers: { 'x-error-code': error.code } },
+    );
   }
 
   logError('Unhandled API error', { error });
 
-  return NextResponse.json({ success: false, error: APP_ERRORS[fallback].code }, { status });
+  return NextResponse.json(
+    { success: false, error: APP_ERRORS[fallback].code },
+    { status, headers: { 'x-error-code': APP_ERRORS[fallback].code } },
+  );
 }

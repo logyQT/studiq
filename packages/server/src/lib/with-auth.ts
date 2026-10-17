@@ -2,7 +2,7 @@ import { context, SpanStatusCode, trace } from '@opentelemetry/api';
 import type { AccountType, PermissionScope, RequestContext } from '@studiq/authz';
 import { AppError } from '@studiq/server/lib/errors';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
-import { error as logError } from '@studiq/server/lib/log';
+import { error as logError, warn as logWarn } from '@studiq/server/lib/log';
 import {
   activeRequests,
   httpRequestDuration,
@@ -16,6 +16,7 @@ export interface WithAuthOptions {
 }
 
 export const TRACE_ID_HEADER = 'x-trace-id';
+export const ERROR_CODE_HEADER = 'x-error-code';
 
 /** Every response gets the active trace id so a browser request maps to a Tempo trace. */
 function attachTraceId(
@@ -39,8 +40,8 @@ export async function withAuth(
     },
   });
 
-  // Real trace id from the span (was previously a random UUID) — this is the
-  // value returned in `x-trace-id` and used to look the request up in Tempo.
+  // Real trace id from the span — returned in `x-trace-id` and used to look the
+  // request up in Tempo.
   const traceId = span.spanContext().traceId;
   const metricLabels = { 'http.method': req.method };
   const t0 = performance.now();
@@ -48,126 +49,136 @@ export async function withAuth(
 
   activeRequests.add(1, metricLabels);
 
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      statusCode = 401;
-      span.setAttribute('http.status_code', statusCode);
-      span.setStatus({ code: SpanStatusCode.ERROR });
-      return attachTraceId(
-        toNextResponse({ success: false, statusCode, error: 'UNAUTHORIZED' }),
-        traceId,
-      );
-    }
-
-    const accountType = user.app_metadata?.account_type as AccountType;
-    const cookieOrgId = req.cookies.get('active_org_id')?.value ?? null;
-    let orgRoleId: string | null = null;
-    let groupIds: string[] = [];
-    const permissionScopes: Partial<Record<string, PermissionScope>> = {};
-
-    if (cookieOrgId) {
-      const [membershipResult, groupsResult] = await Promise.all([
-        supabase
-          .from('org_members')
-          .select('org_role_id')
-          .eq('organization_id', cookieOrgId)
-          .eq('user_id', user.id)
-          .maybeSingle(),
-        supabase.from('group_members').select('group_id').eq('user_id', user.id),
-      ]);
-
-      orgRoleId = membershipResult.data?.org_role_id ?? null;
-      groupIds = (groupsResult.data ?? []).map((r) => r.group_id);
-
-      if (orgRoleId) {
-        const { data: perms } = await supabase
-          .from('org_role_permissions')
-          .select('permission_name, scope')
-          .eq('org_role_id', orgRoleId);
-
-        for (const row of perms ?? []) {
-          permissionScopes[row.permission_name] = row.scope as PermissionScope;
-        }
-      }
-    }
-
-    if (options?.allowedAccountTypes && !options.allowedAccountTypes.includes(accountType)) {
-      statusCode = 403;
-      span.setAttribute('http.status_code', statusCode);
-      span.setStatus({ code: SpanStatusCode.ERROR });
-      return attachTraceId(
-        toNextResponse({ success: false, statusCode, error: 'FORBIDDEN' }),
-        traceId,
-      );
-    }
-
-    const ctx: RequestContext = {
-      traceId,
-      userId: user.id,
-      accountType,
-      orgRoleId,
-      activeOrgId: cookieOrgId,
-      url: req.url,
-      method: req.method,
-      groupIds,
-      permissionScopes,
-    };
-
-    span.setAttributes({
-      'user.id': user.id,
-      'user.account_type': accountType,
-    });
-
-    const res = await context.with(trace.setSpan(context.active(), span), () => handler(ctx));
-
-    statusCode = res.status;
+  // Settle a response: tag the trace id, set the span status from the HTTP
+  // status, and emit a log for failures so 4xx/5xx land in Loki with the
+  // trace_id (previously only thrown errors were logged — see #142).
+  const settle = (
+    response: NextResponse | Response,
+    status: number,
+    extraAttributes: Record<string, unknown> = {},
+  ): NextResponse | Response => {
+    statusCode = status;
     span.setAttribute('http.status_code', statusCode);
-    span.setStatus({ code: SpanStatusCode.OK });
+    span.setStatus(
+      statusCode >= 400
+        ? { code: SpanStatusCode.ERROR, message: `HTTP ${statusCode}` }
+        : { code: SpanStatusCode.OK },
+    );
 
-    return attachTraceId(res, traceId);
-  } catch (error) {
-    statusCode =
-      error instanceof AppError ? error.statusCode : error instanceof SyntaxError ? 400 : 500;
-
-    span.setAttribute('http.status_code', statusCode);
-    span.setStatus({
-      code: SpanStatusCode.ERROR,
-      message: error instanceof Error ? error.message : String(error),
-    });
-    span.recordException(error instanceof Error ? error : new Error(String(error)));
-
-    if (error instanceof AppError) {
-      return attachTraceId(
-        toNextResponse({ success: false, statusCode, error: error.code }),
-        traceId,
-      );
-    }
-
-    if (error instanceof SyntaxError) {
-      return attachTraceId(
-        toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' }),
-        traceId,
-      );
-    }
-
-    // Emit inside the span context so the Loki record carries this trace_id.
-    context.with(trace.setSpan(context.active(), span), () => {
-      logError('Unhandled API error', {
+    if (statusCode >= 400) {
+      const errorCode = response.headers.get(ERROR_CODE_HEADER);
+      const attributes = {
         'http.method': req.method,
         'http.url': req.url,
-        error,
-      });
-    });
+        'http.status_code': statusCode,
+        ...(errorCode ? { 'error.code': errorCode } : {}),
+        ...extraAttributes,
+      };
+      const message = `API error ${statusCode}${errorCode ? ` ${errorCode}` : ''}`;
+      if (statusCode >= 500) logError(message, attributes);
+      else logWarn(message, attributes);
+    }
 
-    return attachTraceId(
-      toNextResponse({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' }),
-      traceId,
-    );
+    return attachTraceId(response, traceId);
+  };
+
+  try {
+    // Run the whole request inside the span context so every response (including
+    // early returns and the catch block) can be logged with this trace_id.
+    return await context.with(trace.setSpan(context.active(), span), async () => {
+      try {
+        const supabase = await createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          return settle(
+            toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' }),
+            401,
+          );
+        }
+
+        const accountType = user.app_metadata?.account_type as AccountType;
+        const cookieOrgId = req.cookies.get('active_org_id')?.value ?? null;
+        let orgRoleId: string | null = null;
+        let groupIds: string[] = [];
+        const permissionScopes: Partial<Record<string, PermissionScope>> = {};
+
+        if (cookieOrgId) {
+          const [membershipResult, groupsResult] = await Promise.all([
+            supabase
+              .from('org_members')
+              .select('org_role_id')
+              .eq('organization_id', cookieOrgId)
+              .eq('user_id', user.id)
+              .maybeSingle(),
+            supabase.from('group_members').select('group_id').eq('user_id', user.id),
+          ]);
+
+          orgRoleId = membershipResult.data?.org_role_id ?? null;
+          groupIds = (groupsResult.data ?? []).map((r) => r.group_id);
+
+          if (orgRoleId) {
+            const { data: perms } = await supabase
+              .from('org_role_permissions')
+              .select('permission_name, scope')
+              .eq('org_role_id', orgRoleId);
+
+            for (const row of perms ?? []) {
+              permissionScopes[row.permission_name] = row.scope as PermissionScope;
+            }
+          }
+        }
+
+        if (options?.allowedAccountTypes && !options.allowedAccountTypes.includes(accountType)) {
+          return settle(
+            toNextResponse({ success: false, statusCode: 403, error: 'FORBIDDEN' }),
+            403,
+          );
+        }
+
+        const ctx: RequestContext = {
+          traceId,
+          userId: user.id,
+          accountType,
+          orgRoleId,
+          activeOrgId: cookieOrgId,
+          url: req.url,
+          method: req.method,
+          groupIds,
+          permissionScopes,
+        };
+
+        span.setAttributes({
+          'user.id': user.id,
+          'user.account_type': accountType,
+        });
+
+        const res = await handler(ctx);
+        return settle(res, res.status);
+      } catch (error) {
+        if (error instanceof AppError) {
+          return settle(
+            toNextResponse({ success: false, statusCode: error.statusCode, error: error.code }),
+            error.statusCode,
+          );
+        }
+
+        if (error instanceof SyntaxError) {
+          return settle(
+            toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' }),
+            400,
+          );
+        }
+
+        return settle(
+          toNextResponse({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' }),
+          500,
+          { error },
+        );
+      }
+    });
   } finally {
     const duration = performance.now() - t0;
     span.setAttribute('duration.ms', duration);

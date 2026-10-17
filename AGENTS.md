@@ -272,9 +272,13 @@ Prometheus (metrics) and Loki (logs); Grafana runs at `:3001`.
   tests set this)
 - `withAuth` starts a span per API request, sets `ctx.traceId` to the real span
   trace id, and returns it in the **`x-trace-id`** response header (success and
-  error paths); `withSupervision` / `wrapService`
-  (`@studiq/server/lib/observability`) wrap every controller/service method —
-  span name `service.method`, attributes include `duration.ms` and `error.code`
+  error paths); the app error code is echoed as `x-error-code`. The root
+  `METHOD /api/**` span is marked `ERROR` for any `http.status_code >= 400`, and
+  **every 4xx/5xx response is logged** (WARN for 4xx, ERROR for 5xx) with
+  `http.method`, `http.url`, `http.status_code` and `error.code`, so failures are
+  searchable in Loki and correlated to Tempo by `trace_id`. `withSupervision` /
+  `wrapService` (`@studiq/server/lib/observability`) wrap every controller/service
+  method — span name `service.method`, attributes include `duration.ms` and `error.code`
 - Metrics live in `@studiq/server/lib/observability.ts` (`metrics.getMeter('studiq')`):
   `http.server.duration`, `http.server.request.total`, `http.server.active_requests`
   (recorded in `withAuth`) and `controller.method.duration` (recorded in
