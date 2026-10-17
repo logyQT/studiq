@@ -2,11 +2,28 @@ import { context, SpanStatusCode, trace } from '@opentelemetry/api';
 import type { AccountType, PermissionScope, RequestContext } from '@studiq/authz';
 import { AppError } from '@studiq/server/lib/errors';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
+import { error as logError } from '@studiq/server/lib/log';
+import {
+  activeRequests,
+  httpRequestDuration,
+  httpRequestTotal,
+} from '@studiq/server/lib/observability';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import type { NextRequest, NextResponse } from 'next/server';
 
 export interface WithAuthOptions {
   allowedAccountTypes?: AccountType[];
+}
+
+export const TRACE_ID_HEADER = 'x-trace-id';
+
+/** Every response gets the active trace id so a browser request maps to a Tempo trace. */
+function attachTraceId(
+  response: NextResponse | Response,
+  traceId: string,
+): NextResponse | Response {
+  response.headers.set(TRACE_ID_HEADER, traceId);
+  return response;
 }
 
 export async function withAuth(
@@ -22,7 +39,14 @@ export async function withAuth(
     },
   });
 
+  // Real trace id from the span (was previously a random UUID) — this is the
+  // value returned in `x-trace-id` and used to look the request up in Tempo.
+  const traceId = span.spanContext().traceId;
+  const metricLabels = { 'http.method': req.method };
   const t0 = performance.now();
+  let statusCode = 500;
+
+  activeRequests.add(1, metricLabels);
 
   try {
     const supabase = await createClient();
@@ -31,12 +55,15 @@ export async function withAuth(
     } = await supabase.auth.getUser();
 
     if (!user) {
-      span.setAttribute('http.status_code', 401);
+      statusCode = 401;
+      span.setAttribute('http.status_code', statusCode);
       span.setStatus({ code: SpanStatusCode.ERROR });
-      return toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' });
+      return attachTraceId(
+        toNextResponse({ success: false, statusCode, error: 'UNAUTHORIZED' }),
+        traceId,
+      );
     }
 
-    const traceId = crypto.randomUUID();
     const accountType = user.app_metadata?.account_type as AccountType;
     const cookieOrgId = req.cookies.get('active_org_id')?.value ?? null;
     let orgRoleId: string | null = null;
@@ -70,9 +97,13 @@ export async function withAuth(
     }
 
     if (options?.allowedAccountTypes && !options.allowedAccountTypes.includes(accountType)) {
-      span.setAttribute('http.status_code', 403);
+      statusCode = 403;
+      span.setAttribute('http.status_code', statusCode);
       span.setStatus({ code: SpanStatusCode.ERROR });
-      return toNextResponse({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+      return attachTraceId(
+        toNextResponse({ success: false, statusCode, error: 'FORBIDDEN' }),
+        traceId,
+      );
     }
 
     const ctx: RequestContext = {
@@ -94,12 +125,16 @@ export async function withAuth(
 
     const res = await context.with(trace.setSpan(context.active(), span), () => handler(ctx));
 
-    span.setAttribute('http.status_code', res.status);
+    statusCode = res.status;
+    span.setAttribute('http.status_code', statusCode);
     span.setStatus({ code: SpanStatusCode.OK });
 
-    return res;
+    return attachTraceId(res, traceId);
   } catch (error) {
-    span.setAttribute('http.status_code', 500);
+    statusCode =
+      error instanceof AppError ? error.statusCode : error instanceof SyntaxError ? 400 : 500;
+
+    span.setAttribute('http.status_code', statusCode);
     span.setStatus({
       code: SpanStatusCode.ERROR,
       message: error instanceof Error ? error.message : String(error),
@@ -107,26 +142,44 @@ export async function withAuth(
     span.recordException(error instanceof Error ? error : new Error(String(error)));
 
     if (error instanceof AppError) {
-      return toNextResponse({
-        success: false,
-        statusCode: error.statusCode,
-        error: error.code,
-      });
+      return attachTraceId(
+        toNextResponse({ success: false, statusCode, error: error.code }),
+        traceId,
+      );
     }
 
     if (error instanceof SyntaxError) {
-      return toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
+      return attachTraceId(
+        toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' }),
+        traceId,
+      );
     }
 
-    console.error('[Unhandled API Error]', error);
-
-    return toNextResponse({
-      success: false,
-      statusCode: 500,
-      error: 'INTERNAL_SERVER',
+    // Emit inside the span context so the Loki record carries this trace_id.
+    context.with(trace.setSpan(context.active(), span), () => {
+      logError('Unhandled API error', {
+        'http.method': req.method,
+        'http.url': req.url,
+        error,
+      });
     });
+
+    return attachTraceId(
+      toNextResponse({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' }),
+      traceId,
+    );
   } finally {
-    span.setAttribute('duration.ms', performance.now() - t0);
+    const duration = performance.now() - t0;
+    span.setAttribute('duration.ms', duration);
+    httpRequestDuration.record(duration, {
+      'http.method': req.method,
+      'http.status_code': statusCode,
+    });
+    httpRequestTotal.add(1, {
+      'http.method': req.method,
+      'http.status_code': statusCode,
+    });
+    activeRequests.add(-1, metricLabels);
     span.end();
   }
 }

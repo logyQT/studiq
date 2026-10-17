@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import type { ControllerResponse } from '@studiq/server/lib/controller-response';
 import { APP_ERRORS, AppError, type AppErrorCode } from '@studiq/server/lib/errors';
+import { error as logError } from '@studiq/server/lib/log';
 import { z } from '@studiq/server/lib/zod';
 import { NextResponse } from 'next/server';
 
@@ -40,7 +41,7 @@ export async function handleApiError(
     return NextResponse.json({ success: false, error: error.code }, { status });
   }
 
-  console.error('[Unhandled API Error]', error);
+  logError('Unhandled API error', { error });
 
   return NextResponse.json({ success: false, error: APP_ERRORS[fallback].code }, { status });
 }
