@@ -290,8 +290,10 @@ Prometheus (metrics) and Loki (logs); Grafana runs at `:3001`.
   aren't bare `BAD_REQUEST`
 - **`packages/server/src/lib/log.ts` is the one deliberate logger module**
   (`log()` / `warn()` / `error()` over `logs.getLogger('studiq')`). It exists so
-  records carry the active `trace_id` for Loki ↔ Tempo correlation. Do not invent
-  `@/lib/logger` or add a second logging abstraction
+  records carry the active `trace_id` for Loki ↔ Tempo correlation, and **falls
+  back to `console` whenever the logs pipeline is inactive** (`OTEL_SDK_DISABLED=true`
+  or before `instrumentation.ts` registers the provider) so errors are never lost.
+  Do not invent `@/lib/logger` or add a second logging abstraction
 - Agent step/tool traces are persisted via `enqueueTrace` (`@studiq/server/lib/trace-queue`) → `agent-trace.service`
 - Config: `otel-collector-config.yml`, `tempo.yml`, `loki-config.yml`,
   `prometheus.yml`, `grafana/`. Debugging loop: `docs/observability-debugging.md`

@@ -56,6 +56,7 @@ export async function withAuth(
     response: NextResponse | Response,
     status: number,
     extraAttributes: Record<string, unknown> = {},
+    exception?: unknown,
   ): NextResponse | Response => {
     statusCode = status;
     span.setAttribute('http.status_code', statusCode);
@@ -64,6 +65,10 @@ export async function withAuth(
         ? { code: SpanStatusCode.ERROR, message: `HTTP ${statusCode}` }
         : { code: SpanStatusCode.OK },
     );
+
+    if (exception !== undefined) {
+      span.recordException(exception instanceof Error ? exception : new Error(String(exception)));
+    }
 
     if (statusCode >= 400) {
       const errorCode = response.headers.get(ERROR_CODE_HEADER);
@@ -176,6 +181,7 @@ export async function withAuth(
           toNextResponse({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' }),
           500,
           { error },
+          error,
         );
       }
     });
