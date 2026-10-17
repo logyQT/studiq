@@ -4,7 +4,7 @@
 --   * no code inserts into error_logs (grep: src/ → empty)
 --   * the /admin/logs page consuming it fetched a route
 --     (/api/v1/admin/error-logs) that never existed
---   * error tracking is OTEL/Jaeger spans via withAuth,
+--   * error tracking is OTEL/Tempo spans via withAuth,
 --     withSupervision and wrapService
 -- Removed cleanly, no backward-compat stub.
 -- ==========================================================

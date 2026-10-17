@@ -1,13 +1,65 @@
 services:
-  jaeger:
-    image: jaegertracing/all-in-one:1.60
-    ports:
-      - "4318:4318"
-      - "16686:16686"
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
+  # Single OTLP intake — the app only ever talks to this service.
+  # Fans out to Tempo (traces), Prometheus (metrics) and Loki (logs).
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.112.0
+    command: ["--config", "/etc/otelcol/config.yml"]
     volumes:
-      - jaeger_data:/tmp/jaeger
+      - ./otel-collector-config.yml:/etc/otelcol/config.yml
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP (app endpoint)
+      - "8889:8889" # Prometheus exporter scrape endpoint
+    depends_on:
+      - tempo
+      - loki
+
+  # Sole trace backend — Grafana-native, queried with TraceQL.
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./tempo.yml:/etc/tempo.yml
+      - tempo_data:/var/tempo
+    ports:
+      - "3200:3200" # Tempo HTTP API (Grafana datasource)
+
+  loki:
+    image: grafana/loki:3.2.0
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    volumes:
+      - ./loki-config.yml:/etc/loki/loki-config.yml
+      - loki_data:/loki
+    ports:
+      - "3100:3100" # Loki HTTP API (Grafana datasource + OTLP ingestion)
+
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    depends_on:
+      - otel-collector
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
 
 volumes:
-  jaeger_data:
+  tempo_data:
+  loki_data:
+  prometheus_data:
+  grafana_data:

@@ -110,9 +110,10 @@ LLM_MODEL_NAME=                                  # default: mimo-v2.5
 LLM_REASONING_EFFORT=                            # low | medium | high (unset = provider default)
 
 # ── OpenTelemetry (optional) ──────────────────────────────────────────
-# Read by apps/web/src/instrumentation.ts
+# Read by apps/web/src/instrumentation.ts. Traces + metrics + logs all go to
+# the OTel Collector started by `docker compose up` (Grafana at :3001).
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318  # OTLP collector (SDK default shown)
-OTEL_SDK_DISABLED=true                            # set to disable tracing entirely
+OTEL_SDK_DISABLED=true                            # set to disable traces/metrics/logs entirely
 
 # ── Admin app only (apps/admin/.env) ──────────────────────────────────
 ADMIN_PEM_KEYS=                                  # comma-separated base64 Ed25519 SPKI public keys

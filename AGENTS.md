@@ -260,14 +260,43 @@ export type CreateFooInput = z.infer<typeof CreateFooSchema>;
 
 ---
 
-## Observability (OTel tracing)
+## Observability (OTel traces + metrics + logs)
 
-There is **no logger module** — observability is OpenTelemetry spans (do not invent `@/lib/logger` imports).
+Telemetry is OpenTelemetry-only. Traces/metrics/logs all ship via OTLP to the
+OTel Collector (`docker compose up`), which fans out to Tempo (traces),
+Prometheus (metrics) and Loki (logs); Grafana runs at `:3001`.
 
-- SDK is bootstrapped in `apps/web/src/instrumentation.ts` (NodeSDK + OTLP exporter); disabled when `OTEL_SDK_DISABLED=true` (unit tests set this)
-- `withAuth` starts a span per API request; `withSupervision` / `wrapService` (`@studiq/server/lib/observability`) wrap every controller/service method — span name `service.method`, attributes include `duration.ms` and `error.code`
-- Every authenticated request gets a `traceId` (UUID) on the `RequestContext`
+- SDK is bootstrapped in `apps/web/src/instrumentation.ts` (NodeSDK: OTLP trace
+  exporter + `PeriodicExportingMetricReader` + `BatchLogRecordProcessor` over a
+  `LoggerProvider`); everything is disabled when `OTEL_SDK_DISABLED=true` (unit
+  tests set this)
+- `withAuth` starts a span per API request, sets `ctx.traceId` to the real span
+  trace id, and returns it in the **`x-trace-id`** response header (success and
+  error paths); the app error code is echoed as `x-error-code`. The root
+  `METHOD /api/**` span is marked `ERROR` for any `http.status_code >= 400`, and
+  **every 4xx/5xx response is logged** (WARN for 4xx, ERROR for 5xx) with
+  `http.method`, `http.url`, `http.status_code` and `error.code`, so failures are
+  searchable in Loki and correlated to Tempo by `trace_id`. `withSupervision` /
+  `wrapService` (`@studiq/server/lib/observability`) wrap every controller/service
+  method — span name `service.method`, attributes include `duration.ms` and `error.code`
+- Metrics live in `@studiq/server/lib/observability.ts` (`metrics.getMeter('studiq')`):
+  `http.server.duration`, `http.server.request.total`, `http.server.active_requests`
+  (recorded in `withAuth`) and `controller.method.duration` (recorded in
+  `withSupervision`). The Collector adds the `studiq` namespace. **Bounded labels
+  only** (`http.method`, `http.status_code`, `service.name`, `code.function`,
+  `account_type`) — never `user_id`/`trace_id`
+- `supabase-errors.ts` annotates the active span with `db.error.code/_message/_details/_hint`
+  before collapsing a Postgres error into a generic `AppErrorCode`, so failures
+  aren't bare `BAD_REQUEST`
+- **`packages/server/src/lib/log.ts` is the one deliberate logger module**
+  (`log()` / `warn()` / `error()` over `logs.getLogger('studiq')`). It exists so
+  records carry the active `trace_id` for Loki ↔ Tempo correlation, and **falls
+  back to `console` whenever the logs pipeline is inactive** (`OTEL_SDK_DISABLED=true`
+  or before `instrumentation.ts` registers the provider) so errors are never lost.
+  Do not invent `@/lib/logger` or add a second logging abstraction
 - Agent step/tool traces are persisted via `enqueueTrace` (`@studiq/server/lib/trace-queue`) → `agent-trace.service`
+- Config: `otel-collector-config.yml`, `tempo.yml`, `loki-config.yml`,
+  `prometheus.yml`, `grafana/`. Debugging loop: `docs/observability-debugging.md`
 
 ---
 
