@@ -200,8 +200,12 @@ async function resetPool(
 ): Promise<number> {
   let deleted = 0;
   const perPage = 1000;
+  const ids: string[] = [];
 
-  for (let page = 1; page <= 100; page++) {
+  // Phase 1: collect every matching id WITHOUT deleting. Deleting while paging
+  // by offset shifts rows out of the window, so pools larger than perPage would
+  // only be partially reset.
+  for (let page = 1; page <= 1000; page++) {
     const res = await fetch(`${supabaseUrl}/auth/v1/admin/users?page=${page}&per_page=${perPage}`, {
       headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
     });
@@ -215,17 +219,21 @@ async function resetPool(
     const users = payload.users ?? [];
     if (users.length === 0) break;
 
-    const matches = users.filter((user) => user.email?.endsWith(`@${domain}`));
-    await mapLimit(matches, 10, async (user) => {
-      const del = await fetch(`${supabaseUrl}/auth/v1/admin/users/${user.id}`, {
-        method: 'DELETE',
-        headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
-      });
-      if (del.ok) deleted++;
-    });
+    for (const user of users) {
+      if (user.email?.endsWith(`@${domain}`)) ids.push(user.id);
+    }
 
     if (users.length < perPage) break;
   }
+
+  // Phase 2: delete everything collected above.
+  await mapLimit(ids, 10, async (id) => {
+    const del = await fetch(`${supabaseUrl}/auth/v1/admin/users/${id}`, {
+      method: 'DELETE',
+      headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
+    });
+    if (del.ok) deleted++;
+  });
 
   return deleted;
 }

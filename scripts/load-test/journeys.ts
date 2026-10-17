@@ -259,6 +259,18 @@ const studentActions: Action[] = [
     run: ({ client }) => client.get('/api/v1/quiz/attempts', 'quiz.attempts'),
   },
   {
+    // Fresh accounts have no question bank, so this legitimately 404s — useful
+    // realistic error traffic.
+    name: 'quiz.generate',
+    weight: 1,
+    run: ({ client }) =>
+      client.post(
+        '/api/v1/quiz/new',
+        { questionTypes: ['mcq'], questionCount: 5 },
+        'quiz.generate',
+      ),
+  },
+  {
     name: 'decks.create',
     weight: 3,
     run: async (state) => {
