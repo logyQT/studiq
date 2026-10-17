@@ -60,15 +60,23 @@ export async function withAuth(
   ): NextResponse | Response => {
     statusCode = status;
     span.setAttribute('http.status_code', statusCode);
+
+    const err =
+      exception === undefined
+        ? null
+        : exception instanceof Error
+          ? exception
+          : new Error(String(exception));
+    if (err) span.recordException(err);
+
     span.setStatus(
       statusCode >= 400
-        ? { code: SpanStatusCode.ERROR, message: `HTTP ${statusCode}` }
+        ? {
+            code: SpanStatusCode.ERROR,
+            message: err ? `HTTP ${statusCode}: ${err.message}` : `HTTP ${statusCode}`,
+          }
         : { code: SpanStatusCode.OK },
     );
-
-    if (exception !== undefined) {
-      span.recordException(exception instanceof Error ? exception : new Error(String(exception)));
-    }
 
     if (statusCode >= 400) {
       const errorCode = response.headers.get(ERROR_CODE_HEADER);
@@ -167,6 +175,8 @@ export async function withAuth(
           return settle(
             toNextResponse({ success: false, statusCode: error.statusCode, error: error.code }),
             error.statusCode,
+            {},
+            error,
           );
         }
 
@@ -174,6 +184,8 @@ export async function withAuth(
           return settle(
             toNextResponse({ success: false, statusCode: 400, error: 'BAD_REQUEST' }),
             400,
+            {},
+            error,
           );
         }
 
