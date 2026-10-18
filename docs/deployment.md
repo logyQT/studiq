@@ -25,8 +25,11 @@ LLM_API_KEY=your-openai-api-key
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL_NAME=gpt-4o-mini
 
-# Tracing (dev/staging only — noop in production unless set)
-TRACE_ENABLED=true             # per-layer request tracing in console
+# OpenTelemetry (optional) — OTLP trace/metric/log export.
+# Exports to OTEL_EXPORTER_OTLP_ENDPOINT (default http://localhost:4318).
+# Leave OTEL_SDK_DISABLED unset to keep telemetry on; set it to "true" to disable.
+# OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.com:4318
+# OTEL_SDK_DISABLED=true
 ```
 
 ### Vercel Configuration
@@ -54,6 +57,15 @@ TRACE_ENABLED=true             # per-layer request tracing in console
 - **CORS** — configure if API is accessed from external domains
 - **Rate limiting** — consider adding rate limits for public endpoints
 - **Monitoring** — set up error tracking (Sentry, Vercel Analytics)
+
+## Observability
+
+The app exports OTLP (traces + metrics + logs) from `apps/web/src/instrumentation.ts`
+to `OTEL_EXPORTER_OTLP_ENDPOINT` (default `http://localhost:4318`). The local
+Collector/Tempo/Loki/Prometheus/Grafana stack in `docker-compose.yml` is for
+development only — in production point the endpoint at your own collector or a
+managed backend (e.g. Grafana Cloud), or leave it unset and telemetry is simply
+dropped harmlessly. See [observability-debugging.md](./observability-debugging.md).
 
 ## Build and Deploy
 

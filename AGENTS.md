@@ -252,7 +252,7 @@ export type CreateFooInput = z.infer<typeof CreateFooSchema>;
 
 ## Error Handling
 
-- `AppError(code: AppErrorCode)` — thrown by services (e.g. `check()` on a permission mismatch). `withAuth`'s catch block maps it to its HTTP status (`SyntaxError` → 400, anything else → 500 + `console.error`); routes can also catch explicitly with `handleApiError(error, fallback, ctx)` from `@studiq/server/lib/http-utils`. `withSupervision`/`wrapService` record failures as OTEL span errors
+- `AppError(code: AppErrorCode)` — thrown by services (e.g. `check()` on a permission mismatch). `withAuth`'s catch block maps it to its HTTP status (`SyntaxError` → 400, `AppError` → its status, anything else → 500) and records the exception on the root span; **every 4xx/5xx response is logged** (WARN/ERROR) via `@studiq/server/lib/log` (which falls back to `console` when the OTel pipeline is off). Routes can also catch explicitly with `handleApiError(error, fallback, ctx)` from `@studiq/server/lib/http-utils`. `withSupervision`/`wrapService` record failures as OTEL span errors
 - Error codes → HTTP status via `APP_ERRORS` in `@studiq/server/lib/errors`:
   `BAD_REQUEST` (400), `UNAUTHORIZED` (401), `FEATURE_REQUIRES_UPGRADE` (402), `FORBIDDEN` (403), `NOT_FOUND` (404), `CONFLICT` (409), `GONE` (410), `UNPROCESSABLE_ENTITY` (422), `RATE_LIMITED` (429), `USAGE_LIMIT_EXCEEDED` (429), `INTERNAL_SERVER` (500), `SERVICE_UNAVAILABLE` (503)
 - `mapSupabaseError` / `toDbFailure` map PG codes via `PG_ERROR_MAP`: PGRST116→NOT_FOUND, 23505→CONFLICT, 23503/23502/23514→BAD_REQUEST; anything else becomes a `DatabaseError` / `INTERNAL_SERVER`
@@ -393,6 +393,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 - **Mock helper**: `__tests__/helpers/supabase-mock.ts`
 - Tests run sequentially within files (`sequence.concurrent: false`); file-level parallelism is on (`fileParallelism: true`)
 - Coverage targets `packages/server/src/**/*.ts` (excludes `routes.config.ts`)
+- **Load testing**: `scripts/load-test/` — `seed.ts` provisions accounts via the Supabase Admin API; `bots.ts` drives concurrent role-based journeys (`--shards` spreads them over CPU cores). See `scripts/load-test/README.md`
 
 ---
 
