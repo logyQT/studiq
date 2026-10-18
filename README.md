@@ -39,8 +39,13 @@ Private edtech platform with quizzes, flashcards, AI-powered learning flows, and
 ```bash
 bun install
 bunx supabase start
+docker compose up -d   # local observability stack (Grafana :3001)
 bun dev
 ```
+
+Then open Grafana at <http://localhost:3001> (`admin` / `admin`) — the app ships
+traces to Tempo, metrics to Prometheus and logs to Loki automatically. See
+[Agent-Driven Live Debugging](docs/observability-debugging.md) for the workflow.
 
 See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, env vars, seeding, Playwright).
 
@@ -55,6 +60,7 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 | [API](docs/api.md)                             | API routes, controllers, services    |
 | [Project Structure](docs/project-structure.md) | Folder layout, conventions           |
 | [Testing](docs/testing.md)                     | Test strategy, running tests         |
+| [Observability & Debugging](docs/observability-debugging.md) | Local telemetry stack, Grafana MCP, trace→log→metric workflow |
 | [Deployment](docs/deployment.md)               | Hosting, environment, production     |
 | [Decisions](docs/decisions/)                   | Architecture Decision Records        |
 
@@ -81,6 +87,9 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 | `bun test:watch`                     | Vitest watch mode                                                       |
 | `bun test:coverage`                  | Run tests with coverage                                                 |
 | `bun test:e2e`                       | Run Playwright E2E tests (`__tests__/e2e/`)                             |
+| `bun loadtest:seed`                  | Seed load-test accounts via the Supabase Admin API (`--count`, …)       |
+| `bun loadtest:bots`                  | Drive concurrent bot traffic (`--users`, `--shards`, `--duration`)      |
+| `bun loadtest:reset`                 | Delete the seeded load-test accounts                                    |
 | `bun clean`                          | Remove root `.next`, `node_modules/.cache`, and `coverage`              |
 | `scripts/spin <branch>`              | Create worktree + branch for isolated work                              |
 | `scripts/pr`                         | Create a PR from current branch via `gh`                                |
@@ -110,9 +119,12 @@ LLM_MODEL_NAME=                                  # default: mimo-v2.5
 LLM_REASONING_EFFORT=                            # low | medium | high (unset = provider default)
 
 # ── OpenTelemetry (optional) ──────────────────────────────────────────
-# Read by apps/web/src/instrumentation.ts
+# Read by apps/web/src/instrumentation.ts. Traces + metrics + logs all go to
+# the OTel Collector started by `docker compose up -d` (Grafana at :3001).
+# Telemetry is ON by default — leave OTEL_SDK_DISABLED unset. Set it to "true"
+# only to turn traces/metrics/logs off entirely (e.g. tests, CI).
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318  # OTLP collector (SDK default shown)
-OTEL_SDK_DISABLED=true                            # set to disable tracing entirely
+# OTEL_SDK_DISABLED=true
 
 # ── Admin app only (apps/admin/.env) ──────────────────────────────────
 ADMIN_PEM_KEYS=                                  # comma-separated base64 Ed25519 SPKI public keys

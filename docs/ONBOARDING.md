@@ -229,21 +229,22 @@ bunx supabase start
 
 Once complete, the terminal will display local API URLs and keys.
 
-### 3. Create `.env.local`
+### 3. Create env files
 
-In the project root:
+The **web app** reads `apps/web/.env`; Vitest (and repo scripts) read the root
+`.env`. Create both:
 
 ```bash
-touch .env.local
+touch apps/web/.env .env
 ```
 
 ### 4. Copy environment variables
 
 1. Open [http://127.0.0.1:54323/](http://127.0.0.1:54323/) — local Supabase Studio
 2. Click **Connect** (top-right corner)
-3. Copy the environment variables and paste them into `.env.local`
+3. Copy the environment variables into `apps/web/.env` (and mirror them into the root `.env`)
 
-Example `.env.local`:
+Example `apps/web/.env`:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
@@ -251,8 +252,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 
-# Tracing / Debugging (optional)
-TRACE_ENABLED=true            # detailed request tracing in dev terminal
+# OpenTelemetry — telemetry is ON by default. Leave OTEL_SDK_DISABLED unset to
+# ship traces/metrics/logs to the local collector (`docker compose up -d`).
+# Set OTEL_SDK_DISABLED=true only to turn telemetry off entirely.
 ```
 
 ### 5. (Optional) Set up LLM / AI Provider
@@ -305,6 +307,33 @@ bunx playwright install chromium
 ```bash
 bun dev
 ```
+
+### 9. Start the local observability stack (recommended)
+
+```bash
+docker compose up -d
+```
+
+This runs the **OTel Collector + Tempo (traces) + Loki (logs) + Prometheus
+(metrics) + Grafana** and is what `apps/web/src/instrumentation.ts` ships to by
+default (OTLP on `:4318`). No app env changes are needed — just don't set
+`OTEL_SDK_DISABLED=true`.
+
+| UI | URL |
+|----|-----|
+| Grafana (`admin` / `admin`) | http://localhost:3001 |
+| Prometheus | http://localhost:9090 |
+| Loki | http://localhost:3100 |
+| Tempo | http://localhost:3200 |
+| OTLP intake | http://localhost:4318 |
+
+To debug a failing API call end-to-end (browser → `x-trace-id` → Tempo trace →
+Loki logs → Prometheus), see [observability-debugging.md](./observability-debugging.md).
+Stop the stack with `docker compose down`.
+
+> The services use `restart: unless-stopped`, so they come back **automatically**
+> after a container/VM restart (unless you explicitly `docker compose stop`/`down`
+> them).
 
 ---
 
@@ -389,6 +418,11 @@ bunx supabase db reset     # (optional) reloads fresh seed data
 | Auth | http://127.0.0.1:54321/auth/v1 |
 | Inbucket (emails) | http://127.0.0.1:54324 |
 | App (dev) | http://localhost:3000 |
+| Grafana (observability) | http://localhost:3001 |
+| Prometheus | http://localhost:9090 |
+| Tempo (traces API) | http://localhost:3200 |
+| Loki (logs API) | http://localhost:3100 |
+| OTLP intake (collector) | http://localhost:4318 |
 
 ---
 
@@ -406,6 +440,6 @@ bun test:coverage     # Run with coverage report
 
 ## Notes
 
-- `.env.local` is in `.gitignore` — **never commit it**
+- `.env` / `apps/web/.env` are gitignored — **never commit them**
 - Each team member must complete these steps independently
-- Ensure Docker Desktop is running **before** `bunx supabase start`
+- Ensure Docker Desktop is running **before** `bunx supabase start` and `docker compose up`

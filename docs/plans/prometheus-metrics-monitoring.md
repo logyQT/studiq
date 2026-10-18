@@ -1,14 +1,14 @@
-# Prometheus + Grafana Metrics Monitoring
+# Prometheus + Grafana Metrics Monitoring (Tempo traces)
 
 **Date:** 2026-09-21
-**Status:** Proposal
+**Status:** Implemented
 
 ---
 
 ## Problem
 
-We have OpenTelemetry **traces** flowing to Jaeger, but zero **metrics**. There's no
-way to answer basic operational questions:
+We have OpenTelemetry **traces**, but no way to answer basic operational
+questions:
 
 - How many requests per second is the API handling?
 - What's the p95/p99 latency for `POST /api/v1/flashcards/batch/create`?
@@ -16,95 +16,60 @@ way to answer basic operational questions:
 - How many AI chat sessions are active right now?
 - Which controller is the slowest?
 
-Jaeger is great for inspecting individual traces but terrible at aggregate
-"how are we doing right now?" questions. We need a time-series metrics layer
-and live dashboards for both dev and prod.
-
-## Current State
-
-```
-┌─────────────────────┐
-│  StudiQ (Next.js)   │
-│  instrumentation.ts │
-│                     │
-│  OTLP traces ───────┼──→ :4318 ──→ Jaeger all-in-one
-└─────────────────────┘              (:16686 UI)
-
-Custom agent traces → SQLite .dev/traces.db (dev only)
-No metrics. No dashboards. No alerting.
-```
-
-OTel SDK is already wired up in `apps/web/src/instrumentation.ts`. Custom
-spans exist in `with-auth.ts` (request-level) and `observability.ts`
-(service-level via `wrapService`). The OTLP exporter already points at
-localhost:4318.
+Individual traces answer "what happened in this one request?". Aggregate
+"how are we doing right now?" questions need a time-series metrics layer,
+live dashboards, and correlated logs.
 
 ## Architecture
 
+```
+StudiQ (Next.js)  ──OTLP/HTTP :4318──►  OTel Collector
+  traces + metrics + logs                 ├─ traces  → Tempo
+                                          ├─ metrics → Prometheus (:8889 scrape)
+                                          └─ logs    → Loki
+                                                   │
+                                                   ▼
+                                                 Grafana (:3001)
+                                                   ├─ datasources: Prometheus, Loki, Tempo
+                                                   ├─ OTel dashboard + trace↔log correlation by trace_id
+                                                   └─ mcp-grafana  ◄── OpenCode agent (traces+logs+metrics)
+```
+
+**Tempo is the sole trace backend.** It is Grafana-native (TraceQL) and
+`grafana/mcp-grafana` gives first-class Tempo trace tools plus trace↔log
+correlation. Jaeger was removed entirely — it is not part of the stack.
+
 ### OTel Collector as the single intake
 
-Replace the direct app→Jaeger path with an **OTel Collector** that fans out
-to both Jaeger (traces) and Prometheus (metrics). The app doesn't care where
-telemetry goes — it just sends OTLP to one endpoint.
-
-```
-┌──────────────────────┐
-│  StudiQ (Next.js)    │
-│                      │
-│  Traces   ──────┐    │
-│  Metrics  ──────┼────┼──→ OTLP/HTTP :4318
-└──────────────────┼───┘
-                   │
-                   ▼
-┌──────────────────────────────────────────┐
-│  OTel Collector (otelcol contrib)        │
-│                                          │
-│  Receivers:  otlp (HTTP :4318)          │
-│  Processors: batch, memory_limiter       │
-│  Exporters:                             │
-│    traces  → Jaeger (OTLP gRPC)         │
-│    metrics → Prometheus exporter (:8889) │
-└──────────────────────────────────────────┘
-         │                       │
-         ▼                       ▼
-┌────────────────┐   ┌──────────────────────┐
-│  Jaeger        │   │  Prometheus           │
-│  :16686 (UI)   │   │  :9090                │
-│  traces only   │   │  scrapes :8889        │
-└────────────────┘   └──────────┬───────────┘
-                                │
-                                ▼
-                      ┌──────────────────────┐
-                      │  Grafana              │
-                      │  :3001                │
-                      │  - Metrics dashboards │
-                      │  - Trace-to-metric    │
-                      │    correlation        │
-                      │  - Alert rules        │
-                      └──────────────────────┘
-```
+The app sends OTLP to one endpoint; the Collector fans out to Tempo (traces),
+Prometheus (metrics) and Loki (logs). The app doesn't care where telemetry
+goes.
 
 ### Why the Collector
 
-- **Single OTLP endpoint** for the app — no separate trace vs. metric exporter config to wrangle
+- **Single OTLP endpoint** for the app — no separate trace/metric/log exporter config to wrangle
 - **Batching and memory limiting** before data hits backends
-- **Fan-out** — add backends (Loki, Datadog, etc.) later without touching app code
+- **Fan-out** — add or swap backends without touching app code
 - **Standard production pattern** — if we ever move to K8s or Grafana Cloud, the Collector config stays the same
 
 ## Changes
 
-### 1. New npm packages
+### 1. npm packages
 
 ```bash
-bun add @opentelemetry/sdk-metrics @opentelemetry/exporter-metrics-otlp-http
+bun add --filter @studiq/web \
+  @opentelemetry/sdk-metrics @opentelemetry/exporter-metrics-otlp-http \
+  @opentelemetry/sdk-logs @opentelemetry/exporter-logs-otlp-http
+bun add --filter @studiq/server @opentelemetry/api-logs
 ```
 
-Two packages. Both are official OTel JS SDK packages that match the versions
-we already use (`@opentelemetry/sdk-node` ^0.220.0).
+All match the existing `^0.220.0` / `^2.9.0` lines already used by
+`@opentelemetry/sdk-node`.
 
-### 2. Update `apps/web/src/instrumentation.ts`
+### 2. `apps/web/src/instrumentation.ts`
 
-Add a `PeriodicExportingMetricReader` to the existing `NodeSDK` config:
+A `PeriodicExportingMetricReader` (15s interval) and a
+`BatchLogRecordProcessor` are added to the `NodeSDK` config:
 
 ```ts
 const sdk = new NodeSDK({
@@ -117,228 +82,148 @@ const sdk = new NodeSDK({
     exporter: new OTLPMetricExporter(),
     exportIntervalMillis: 15_000,
   }),
+  logRecordProcessors: [new BatchLogRecordProcessor({ exporter: new OTLPLogExporter() })],
   instrumentations: [getNodeAutoInstrumentations()],
 });
 ```
 
-The `OTLPMetricExporter` sends to the same OTLP endpoint as traces
-(`OTEL_EXPORTER_OTLP_ENDPOINT`, default `localhost:4318`). No new env vars
-needed.
+All three exporters send to the same OTLP endpoint
+(`OTEL_EXPORTER_OTLP_ENDPOINT`, default `localhost:4318`). The
+`OTEL_SDK_DISABLED=true` early-return is preserved — unit tests set it.
 
 ### 3. Custom metrics in `packages/server/src/lib/observability.ts`
 
-Add a shared `Meter` and reusable instruments alongside the existing tracing:
+A shared `metrics.getMeter('studiq')` with reusable instruments:
 
 ```ts
-import { metrics } from '@opentelemetry/api';
-
-const meter = metrics.getMeter('studiq');
-
-export const httpRequestDuration = meter.createHistogram('http.server.duration', {
+export const httpRequestDuration = meter.createHistogram('http.server.duration', { unit: 'ms' });
+export const httpRequestTotal = meter.createCounter('http.server.request.total');
+export const activeRequests = meter.createUpDownCounter('http.server.active_requests');
+export const controllerMethodDuration = meter.createHistogram('controller.method.duration', {
   unit: 'ms',
-  description: 'HTTP request duration',
-});
-
-export const httpRequestTotal = meter.createCounter('http.server.request.total', {
-  description: 'Total HTTP requests by method, route, status',
-});
-
-export const activeRequests = meter.createUpDownCounter('http.server.active_requests', {
-  description: 'Currently active inbound requests',
 });
 ```
 
-These use the same `@opentelemetry/api` import already in the file — no new
-paradigm, just counter/histogram calls alongside the existing span calls.
+The Collector's Prometheus exporter adds the `studiq` namespace, so these land
+in Prometheus as `studiq_http_server_duration_milliseconds_bucket`,
+`studiq_http_server_request_total`, `studiq_http_server_active_requests` and
+`studiq_controller_method_duration_milliseconds_bucket`.
 
-### 4. Wire metrics into request lifecycle
+### 4. Wire metrics into the request lifecycle
 
-**`packages/server/src/lib/with-auth.ts`** — record per-request metrics:
+**`packages/server/src/lib/with-auth.ts`** records, per request:
 
-```ts
-// At the start of the handler:
-activeRequests.add(1, { 'http.method': req.method });
-const t0 = performance.now();
+- `activeRequests.add(1)` on entry / `.add(-1)` in `finally` (labels: `http.method`)
+- `httpRequestDuration.record(duration, { http.method, http.status_code })`
+- `httpRequestTotal.add(1, { http.method, http.status_code })`
 
-// In the finally block:
-const duration = performance.now() - t0;
-httpRequestDuration.record(duration, {
-  'http.method': req.method,
-  'http.status_code': res.status,
-});
-httpRequestTotal.add(1, {
-  'http.method': req.method,
-  'http.status_code': res.status,
-});
-activeRequests.add(-1, { 'http.method': req.method });
-```
+**`packages/server/src/lib/observability.ts`** records `controllerMethodDuration`
+in `withSupervision`'s `finally` (labels: `service.name`, `code.function`).
 
-**`packages/server/src/lib/observability.ts`** — optionally record service-level
-durations in `withSupervision` for controller method breakdowns:
+### 5. Correlation — the part that makes agent debugging exact
 
-```ts
-// In the finally block of withSupervision:
-controllerMethodDuration.record(duration, {
-  'service.name': meta.service,
-  'code.function': meta.method,
-});
-```
+- **`with-auth.ts`** now sets `ctx.traceId = span.spanContext().traceId`
+  (was `crypto.randomUUID()`) and sets `x-trace-id` on **every** response
+  (success and `catch` paths). Every API response therefore carries the Tempo
+  trace id.
+- **`supabase-errors.ts`** annotates `trace.getActiveSpan()` with
+  `db.system`, `db.error.code`, `db.error.message`, `db.error.details` and
+  `db.error.hint` in both `toDbFailure()` and `mapSupabaseError()` before the
+  raw Postgres error is collapsed into a generic `AppErrorCode`. This turns
+  the QA 400s (#142/#143) into a visible Postgres `23502` constraint message
+  on the span.
+- `withSupervision` surfaces the application error `code` as a span attribute
+  so thrown `AppError`s are not bare 500s.
 
-### 5. Custom application metrics (optional, phased)
+### 6. Logs → Loki
 
-Add domain-specific metrics as the need arises:
+- Logs flow through the OTel Logs pipeline, so each record automatically
+  carries the active `trace_id` / `span_id`.
+- `packages/server/src/lib/log.ts` is a minimal `log()` / `warn()` / `error()`
+  helper over `logs.getLogger('studiq')`. `console.error` inside `withAuth`
+  and `handleApiError` routes through it.
+- **This is the single deliberate exception to the "no logger module" rule in
+  `AGENTS.md`.** Do not add a second logging abstraction.
+- Fallback only if an app-level log shipper is rejected: scrape container
+  stdout via Alloy/Promtail → Loki with `trace_id` in the console line.
 
-| Metric | Type | Labels | Purpose |
-|--------|------|--------|---------|
-| `studiq.ai.chat.duration` | Histogram | `model`, `tool_name` | AI response latency |
-| `studiq.ai.chat.tokens` | Counter | `model`, `direction` (prompt/completion) | Token usage tracking |
-| `studiq.supabase.query.duration` | Histogram | `table`, `operation` | DB query latency |
-| `studiq.auth.login.total` | Counter | `method`, `success` | Auth event tracking |
-| `studiq.flashcards.created.total` | Counter | `account_type` | Usage by role |
-| `studiq.active_users` | Gauge | — | Concurrent active sessions |
+### 7. Docker Compose stack
 
-These can be added incrementally — no need to instrument everything at once.
+`docker-compose.yml` runs the full local stack:
 
-### 6. Docker Compose expansion
+| Service | Image | Ports |
+|---------|-------|-------|
+| `otel-collector` | `otel/opentelemetry-collector-contrib` | `4317` (gRPC), `4318` (HTTP), `8889` (Prometheus exporter) |
+| `tempo` | `grafana/tempo` | `3200` (HTTP API) |
+| `loki` | `grafana/loki` | `3100` |
+| `prometheus` | `prom/prometheus` | `9090` |
+| `grafana` | `grafana/grafana` | `3001` |
 
-Expand `docker-compose.yml` to run the full local stack:
+Config files: `otel-collector-config.yml`, `tempo.yml`, `loki-config.yml`,
+`prometheus.yml`, `grafana/provisioning/{datasources,dashboards}/`.
 
-```yaml
-services:
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.112.0
-    command: ["--config", "/etc/otelcol/config.yml"]
-    volumes:
-      - ./otel-collector-config.yml:/etc/otelcol/config.yml
-    ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "8888:8888"
+**Breaking change:** Port 4318 is now owned by the Collector instead of the
+trace backend directly. Update `OTEL_EXPORTER_OTLP_ENDPOINT` if pointing at a
+non-localhost collector (e.g. `http://otel-collector:4318` in Docker networks).
 
-  jaeger:
-    image: jaegertracing/all-in-one:1.60
-    ports:
-      - "16686:16686"
-    depends_on:
-      - otel-collector
-
-  prometheus:
-    image: prom/prometheus:v2.54.0
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-    depends_on:
-      - otel-collector
-
-  grafana:
-    image: grafana/grafana:11.2.0
-    ports:
-      - "3001:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
-    depends_on:
-      - prometheus
-
-volumes:
-  prometheus_data:
-  grafana_data:
-```
-
-**Breaking change:** Port 4318 moves from Jaeger directly to the Collector.
-Update `OTEL_EXPORTER_OTLP_ENDPOINT` if pointing at a non-localhost collector
-(e.g., `http://otel-collector:4318` in Docker networks).
-
-### 7. OTel Collector config (`otel-collector-config.yml`)
+### 8. OTel Collector config (`otel-collector-config.yml`)
 
 ```yaml
 receivers:
   otlp:
     protocols:
-      http:
-        endpoint: 0.0.0.0:4318
+      grpc: { endpoint: 0.0.0.0:4317 }
+      http: { endpoint: 0.0.0.0:4318 }
 
 processors:
-  batch:
-    timeout: 5s
-    send_batch_size: 1024
-  memory_limiter:
-    check_interval: 1s
-    limit_mib: 512
+  memory_limiter: { check_interval: 1s, limit_mib: 512 }
+  batch: { timeout: 5s, send_batch_size: 1024 }
 
 exporters:
-  otlp/jaeger:
-    endpoint: jaeger:4317
-    tls:
-      insecure: true
-
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls: { insecure: true }
   prometheus:
     endpoint: 0.0.0.0:8889
     namespace: studiq
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls: { insecure: true }
 
 service:
   pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [otlp/jaeger]
-    metrics:
-      receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [prometheus]
+    traces:  { receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlp/tempo] }
+    metrics: { receivers: [otlp], processors: [memory_limiter, batch], exporters: [prometheus] }
+    logs:    { receivers: [otlp], processors: [memory_limiter, batch], exporters: [otlphttp/loki] }
 ```
 
-### 8. Prometheus scrape config (`prometheus.yml`)
+### 9. Prometheus scrape config (`prometheus.yml`)
 
-```yaml
-global:
-  scrape_interval: 15s
+Prometheus scrapes the Collector's Prometheus exporter (`:8889`) for
+application metrics and the Collector's own telemetry (`:8888`).
 
-scrape_configs:
-  - job_name: "studiq"
-    static_configs:
-      - targets: ["otel-collector:8889"]
+### 10. Grafana provisioning
 
-  - job_name: "otel-collector"
-    static_configs:
-      - targets: ["otel-collector:8888"]
-```
+- Datasources: Prometheus, Loki, Tempo (uids `prometheus`, `loki`, `tempo`).
+- **Tempo → Loki correlation** via `tracesToLogsV2` (filter by `trace_id`), and
+  a **Loki derived field** on the `trace_id` structured-metadata label that
+  jumps to the Tempo trace.
+- Dashboard: `grafana/dashboards/otel-dashboard.json` — request rate, p95/p99
+  latency, error rate, active requests, controller breakdown and Node runtime
+  metrics.
 
-### 9. Grafana provisioning
+> **Note on community dashboard #15757.** The original plan referenced Grafana
+> community dashboard `15757` as the "OpenTelemetry" dashboard. That id now
+> resolves to *Kubernetes / Views / Global*, which queries `kube_*` metrics and
+> is not useful for StudiQ's OTLP metrics. We ship a purpose-built StudiQ OTel
+> dashboard instead.
 
-Auto-provision the Prometheus datasource and import the standard OpenTelemetry
-dashboard:
+### 11. Node.js runtime metrics
 
-```
-grafana/
-  provisioning/
-    datasources/
-      prometheus.yml    # → http://prometheus:9090
-    dashboards/
-      dashboards.yml    # → load from /var/lib/grafana/dashboards
-      otel-dashboard.json  # community dashboard for OTel metrics
-```
-
-Grafana community has ready-made dashboards for OpenTelemetry metrics
-(`15757` — "OpenTelemetry Metrics" by Grafana Labs). Import via dashboard
-provisioning or UI.
-
-### 10. Node.js runtime metrics
-
-`getNodeAutoInstrumentations()` already includes
-`@opentelemetry/instrumentation-runtime-node` which emits:
-- `process.runtime.nodejs.memory.heap.total`
-- `process.runtime.nodejs.memory.heap.used`
-- `process.runtime.nodejs.memory.rss`
-- `process.runtime.nodejs.event_loop.lag`
-- `process.runtime.nodejs.gc.duration`
-
-These appear automatically once the `MetricReader` is configured — no extra
-work needed.
+`getNodeAutoInstrumentations()` includes `@opentelemetry/instrumentation-runtime-node`,
+which emits `nodejs.eventloop.delay.*`, `nodejs.eventloop.utilization`,
+`v8js.memory.heap.*`, `v8js.gc.duration` and `v8js.resource.active`. These
+appear automatically once the `MetricReader` is configured.
 
 ## Dev vs. Prod
 
@@ -347,60 +232,39 @@ work needed.
 | **Collector** | Docker Compose (local) | Deploy separately (Docker/K8s) or use Grafana Cloud OTLP endpoint |
 | **Prometheus** | Docker Compose (local) | Managed (Grafana Cloud, AWS Managed Prometheus) or self-hosted |
 | **Grafana** | Docker Compose at :3001 | Managed or self-hosted |
-| **Jaeger** | Docker Compose at :16686 | Same pattern, or Jaeger on Grafana Cloud |
+| **Tempo** | Docker Compose at :3200 | Same pattern, or Tempo on Grafana Cloud |
+| **Loki** | Docker Compose at :3100 | Same pattern, or Loki on Grafana Cloud |
 | **OTEL_SDK_DISABLED** | Can disable to skip overhead | Always enabled |
-| **Metric granularity** | Full (local is free) | Full if self-hosted; may sample if using paid cloud tier |
 | **Alerting** | Not needed | Prometheus Alertmanager or Grafana alerts |
 
 ### Production path: Grafana Cloud (simplest)
 
-If we don't want to self-host the stack in prod, **Grafana Cloud** offers:
-- OTLP ingestion endpoint (app sends directly — no Collector needed)
-- Prometheus, Jaeger, Loki, Tempo, Mimir included
-- Free tier: 50 MB logs, 50 GB traces, 10k metrics series/mo
-- No infra to maintain
-
-The OTel Collector config stays identical — only the endpoint URL changes.
+If we don't want to self-host the stack in prod, **Grafana Cloud** offers an
+OTLP ingestion endpoint (app sends directly — no Collector needed) plus
+Prometheus, Tempo, Loki and Mimir. The Collector config stays identical — only
+the endpoint URL changes.
 
 ## What This Unlocks
 
 ### Live dev monitoring
 
 `docker compose up` → open Grafana at `:3001` → see real-time request rate,
-latency, error rate while developing. Catches performance regressions before
-they ship.
+latency, error rate while developing. Catches regressions before they ship.
 
-### Production observability
+### Debugging workflow (also the agent loop)
 
-- **Dashboards**: Request rate, latency percentiles, error rate, AI usage,
-  active users — all visible at a glance
-- **Alerting**: PagerDuty/Slack alerts when error rate spikes, latency
-  degrades, or service goes down
-- **Correlation**: Click a latency spike in Grafana → jump to the specific
-  Jaeger traces that caused it
-- **Capacity planning**: Historical metrics data for scaling decisions
+1. Reproduce the issue in the browser.
+2. Read the failing request's `x-trace-id` response header.
+3. Query that trace in Tempo (via the Grafana MCP or the Grafana UI).
+4. Pull the correlated Loki logs for the same `trace_id`.
+5. Read Prometheus metrics for the time window to see the aggregate impact.
+6. Fix, then watch the dashboard recover.
 
-### Debugging workflow
-
-1. Grafana dashboard shows p99 latency spike on `/api/v1/ai/chat`
-2. Click through to the trace view (Grafana Tempo or Jaeger)
-3. Inspect individual slow traces — see which span (Supabase query? LLM
-   call? auth middleware?) caused the delay
-4. Fix the issue, watch the metric recover on the dashboard
+See [`docs/observability-debugging.md`](../observability-debugging.md) for the
+full agent-driven loop.
 
 ## Open Questions
 
-1. **Prometheus remote write vs. scrape?** The OTel Collector can expose a
-   `/metrics` endpoint for Prometheus to scrape (simple, pull-based), or push
-   via remote write. Scrape is fine for now; remote write if we hit scale
-   limits.
-
-2. **Metric naming convention?** The OTel semantic conventions recommend
-   `http.server.duration` for HTTP metrics. We should follow
-   [OTel HTTP semantic conventions](https://opentelemetry.io/docs/specs/semconv/http/http-metrics/)
-   to stay compatible with community dashboards.
-
-3. **Custom metric cardinality?** Labels like `user_id` or `trace_id` must
-   NOT be used as metric labels (high cardinality = TSDB explosion). Use
-   `http.method`, `http.route`, `http.status_code`, `account_type` — bounded
-   label sets only.
+1. **Prometheus remote write vs. scrape?** Scrape is fine for now; remote write if we hit scale limits.
+2. **Metric naming convention?** Follow [OTel HTTP semantic conventions](https://opentelemetry.io/docs/specs/semconv/http/http-metrics/) to stay compatible with community dashboards.
+3. **Custom metric cardinality?** Labels like `user_id` or `trace_id` must NOT be used as metric labels (high cardinality = TSDB explosion). Use `http.method`, `http.route`, `http.status_code`, `account_type` — bounded label sets only.
