@@ -10,7 +10,7 @@
         "command": ["mcp-grafana", "-t", "stdio"],
         "environment": {
           "GRAFANA_URL": "http://localhost:3001",
-          "GRAFANA_API_KEY": "{env:GRAFANA_API_KEY}"
+          "GRAFANA_SERVICE_ACCOUNT_TOKEN": "{env:GRAFANA_SERVICE_ACCOUNT_TOKEN}"
         }
       }
     }

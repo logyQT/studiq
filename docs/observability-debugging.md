@@ -38,7 +38,7 @@ The MCP server is declared in [`opencode.jsonc`](../opencode.jsonc):
         "command": ["mcp-grafana", "-t", "stdio"],
         "environment": {
           "GRAFANA_URL": "http://localhost:3001",
-          "GRAFANA_API_KEY": "{env:GRAFANA_API_KEY}"
+          "GRAFANA_SERVICE_ACCOUNT_TOKEN": "{env:GRAFANA_SERVICE_ACCOUNT_TOKEN}"
         }
       }
     }
@@ -47,16 +47,23 @@ The MCP server is declared in [`opencode.jsonc`](../opencode.jsonc):
 ```
 
 Create a Grafana service account token (Grafana → **Administration → Users and
-access → Service accounts**), export it as `GRAFANA_API_KEY`, and restart the
-OpenCode service. Verify with `opencode mcp list`.
+access → Service accounts**), then export it as `GRAFANA_SERVICE_ACCOUNT_TOKEN`
+**in the environment of the OpenCode server** (the process that spawns MCP
+servers) and restart it with `opencode service restart`. The `mcp-grafana` binary
+must be on that same process's `PATH`. Verify with `opencode mcp list` →
+`✓ grafana connected`, then call `list_datasources`.
 
-If you prefer Docker, use:
+> `GRAFANA_API_KEY` still works but is deprecated in favour of
+> `GRAFANA_SERVICE_ACCOUNT_TOKEN`.
+
+If you prefer Docker (no binary install; `--network host` is required so the
+container reaches the host's Grafana):
 
 ```jsonc
 "command": [
   "docker", "run", "-i", "--rm", "--network", "host",
   "-e", "GRAFANA_URL=http://localhost:3001",
-  "-e", "GRAFANA_API_KEY={env:GRAFANA_API_KEY}",
+  "-e", "GRAFANA_SERVICE_ACCOUNT_TOKEN",
   "grafana/mcp-grafana", "-t", "stdio"
 ]
 ```

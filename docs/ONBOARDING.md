@@ -331,6 +331,10 @@ To debug a failing API call end-to-end (browser → `x-trace-id` → Tempo trace
 Loki logs → Prometheus), see [observability-debugging.md](./observability-debugging.md).
 Stop the stack with `docker compose down`.
 
+> The services use `restart: unless-stopped`, so they come back **automatically**
+> after a container/VM restart (unless you explicitly `docker compose stop`/`down`
+> them).
+
 ---
 
 ## Stop Local Supabase
