@@ -52,7 +52,7 @@ type ResolvedOptions = Required<Omit<WatchdogOptions, 'skipSessions'>> & { skipS
 
 const DEFAULTS: ResolvedOptions = {
   enabled: true,
-  executeMs: 15_000,
+  executeMs: 30_000,
   defaultMs: 60_000,
   fsMs: 15_000,
   mcpMs: 45_000,
@@ -115,11 +115,14 @@ function readToolName(event: unknown): string | undefined {
   return typeof v === 'string' ? v : undefined;
 }
 
-function readCallKey(event: unknown): string {
-  const e = event as Record<string, unknown> | undefined;
-  const id = e?.callID ?? e?.callId ?? e?.id;
-  if (typeof id === 'string') return id;
-  return `${readSessionId(event) ?? '?'}:${readToolName(event) ?? '?'}`;
+interface SessionToolPart {
+  type: string;
+  name?: string;
+  state?: { status?: string };
+}
+
+interface SessionMessage {
+  content?: readonly SessionToolPart[];
 }
 
 interface ToolWatchdogContext {
@@ -128,6 +131,7 @@ interface ToolWatchdogContext {
   session: {
     interrupt(input: { sessionID: string; continue: boolean }): Promise<void>;
     prompt(input: { sessionID: string; text: string; delivery?: string }): Promise<unknown>;
+    context?(input: { sessionID: string }): Promise<readonly SessionMessage[]>;
   };
   tool: {
     hook(
@@ -156,13 +160,23 @@ export default {
     const opts: ResolvedOptions = { ...DEFAULTS, ...(ctx.options ?? {}) };
     if (!opts.enabled) return;
 
-    const inflight = new Map<string, Inflight>();
+    // One timer per session: a session runs a single tool at a time, so keying by
+    // call id is unnecessary and breaks when before/after payloads differ (which
+    // left stale timers that fired ~15s later and interrupted unrelated calls).
+    const timers = new Map<string, Inflight>();
     const rate = new Map<string, { count: number; resetAt: number; lastAt: number }>();
     const registrations: Array<{ dispose(): Promise<void> } | undefined> = [];
 
     const log = (message: string, meta: Record<string, unknown> = {}) => {
       // eslint-disable-next-line no-console
       console.warn(`[tool-watchdog] ${message}`, JSON.stringify(meta));
+    };
+
+    const clearSession = (sessionID: string): void => {
+      const rec = timers.get(sessionID);
+      if (!rec) return;
+      clearTimeout(rec.timer);
+      timers.delete(sessionID);
     };
 
     const allowed = (sessionID: string): boolean => {
@@ -176,40 +190,60 @@ export default {
       return r.count < opts.maxPerHour;
     };
 
-    const fire = async (rec: Inflight) => {
+    /** Is `tool` still running in this session? Guards against stale timers. */
+    const stillRunning = async (sessionID: string, tool: string): Promise<boolean> => {
+      if (!ctx.session.context) return true; // cannot verify; assume yes
       try {
+        const messages = await ctx.session.context({ sessionID });
+        return messages.some((message) =>
+          (message.content ?? []).some(
+            (part) =>
+              part.type === 'tool' && part.name === tool && part.state?.status === 'running',
+          ),
+        );
+      } catch {
+        return true; // unable to check; don't miss a real hang
+      }
+    };
+
+    const fire = async (sessionID: string) => {
+      const rec = timers.get(sessionID);
+      if (!rec) return;
+      timers.delete(sessionID);
+      try {
+        // A timer that outlived its tool must not interrupt whatever runs next.
+        if (!(await stillRunning(sessionID, rec.tool))) {
+          log('skipped: tool no longer running', { sessionID, tool: rec.tool });
+          return;
+        }
         if (ctx.permission) {
-          const pending = await ctx.permission.list({ sessionID: rec.sessionID });
+          const pending = await ctx.permission.list({ sessionID });
           const list = Array.isArray(pending)
             ? pending
             : ((pending as { data?: unknown[] })?.data ?? []);
           if (list.length > 0) {
-            log('skipped: permission pending', { sessionID: rec.sessionID });
+            log('skipped: permission pending', { sessionID });
             return;
           }
         }
-        if (!allowed(rec.sessionID)) {
-          log('skipped: rate limited', { sessionID: rec.sessionID });
+        if (!allowed(sessionID)) {
+          log('skipped: rate limited', { sessionID });
           return;
         }
-        const r = rate.get(rec.sessionID);
+        const r = rate.get(sessionID);
         if (r) {
           r.count += 1;
           r.lastAt = Date.now();
         }
 
-        log('aborting stalled call', {
-          sessionID: rec.sessionID,
-          tool: rec.tool,
-          budgetMs: rec.budget,
-        });
+        log('aborting stalled call', { sessionID, tool: rec.tool, budgetMs: rec.budget });
 
         if (opts.resume) {
-          await ctx.session.interrupt({ sessionID: rec.sessionID, continue: true });
+          await ctx.session.interrupt({ sessionID, continue: true });
         } else {
-          await ctx.session.interrupt({ sessionID: rec.sessionID, continue: false });
+          await ctx.session.interrupt({ sessionID, continue: false });
           await ctx.session.prompt({
-            sessionID: rec.sessionID,
+            sessionID,
             text: CONTINUE_TEXT,
             delivery: 'queue',
           });
@@ -226,19 +260,23 @@ export default {
         if (!sessionID || opts.skipSessions.includes(sessionID)) return;
         const budget = budgetFor(tool, opts);
         if (budget <= 0) return;
-        const key = readCallKey(event);
-        const timer = setTimeout(() => void fire({ timer, tool, sessionID, budget }), budget);
-        inflight.set(key, { timer, tool, sessionID, budget });
+        clearSession(sessionID);
+        const timer = setTimeout(() => void fire(sessionID), budget);
+        timers.set(sessionID, { timer, tool, sessionID, budget });
       }),
     );
 
     registrations.push(
       await ctx.tool.hook('execute.after', (event) => {
-        const key = readCallKey(event);
-        const rec = inflight.get(key);
-        if (rec) {
-          clearTimeout(rec.timer);
-          inflight.delete(key);
+        const sessionID = readSessionId(event);
+        if (sessionID) {
+          clearSession(sessionID);
+          return;
+        }
+        // Fallback when the payload omits the session: clear the matching tool.
+        const tool = readToolName(event);
+        for (const [sid, rec] of timers) {
+          if (!tool || rec.tool === tool) clearSession(sid);
         }
       }),
     );
@@ -254,8 +292,8 @@ export default {
     }
 
     return () => {
-      for (const rec of inflight.values()) clearTimeout(rec.timer);
-      inflight.clear();
+      for (const rec of timers.values()) clearTimeout(rec.timer);
+      timers.clear();
       for (const registration of registrations) void registration?.dispose();
     };
   },

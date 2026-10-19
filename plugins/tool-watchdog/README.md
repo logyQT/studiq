@@ -35,7 +35,7 @@ visible individually. Use the `shell` tool for long-running work.
 
 | Tool | Default | Rationale |
 |---|---|---|
-| `execute` | 15s | catches the stuck-promise case fast |
+| `execute` | 30s | catches the stuck-promise case fast |
 | `read`/`write`/`edit`/`glob`/`grep`/… | 15s | local filesystem |
 | `browser*` | 45s | cold Next compile, navigation |
 | `grafana*` / `mcp*` / namespaced tools | 45s | slow TraceQL/LogQL queries |
@@ -54,7 +54,7 @@ Loaded from `opencode.jsonc`:
     {
       "package": "./plugins/tool-watchdog",
       "options": {
-        "executeMs": 15000,
+        "executeMs": 30000,
         "shellCapMs": 300000,
         "resume": true
       }
@@ -68,7 +68,7 @@ All options (defaults in brackets):
 | Option | Default | Meaning |
 |---|---|---|
 | `enabled` | `true` | master switch |
-| `executeMs` | `15000` | Code Mode `execute` budget |
+| `executeMs` | `30000` | Code Mode `execute` budget |
 | `defaultMs` | `60000` | fallback budget |
 | `fsMs` | `15000` | file tools |
 | `mcpMs` | `45000` | MCP/namespaced tools |
@@ -82,10 +82,17 @@ All options (defaults in brackets):
 
 ## Behaviour notes
 
+- **One timer per session, not per call.** A session runs one tool at a time, so
+  the timer is keyed by session id. Earlier per-call keys could mismatch between
+  `execute.before` and `execute.after`, leaving stale timers that fired ~15s later
+  and interrupted unrelated calls (the "aborts firing so much" bug).
+- **Stale timers are re-checked before firing.** On expiry the plugin reads the
+  session (`ctx.session.context`) and only interrupts if that tool is *still*
+  `running`; otherwise it drops the timer. A completed call can never cause a
+  later abort.
 - **Verified live**: an `execute` running `await new Promise(() => {})` was aborted at
-  15,015 ms (the configured budget), the tool part went `error`, and the session
-  reached `idle` with `outcome: interrupted` — no manual abort. `resume: false`
-  then sends the continue prompt so the run picks back up.
+  the configured budget, the tool part went `error`, and the session resumed and
+  finished (`outcome: succeeded`).
 - **Permission waits are skipped** — a tool that is `running` while the UI asks
   for approval is not a hang (`ctx.permission.list`).
 - **User-facing question tools are never aborted** (`question`, `ask`,
