@@ -14,7 +14,7 @@
     "lint": "biome ci src/"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.116.0",
+    "@supabase/supabase-js": "^2.118.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
