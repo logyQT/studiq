@@ -8,7 +8,7 @@
     "start": "next start -p 4000",
     "clean": "npx rimraf .next",
     "typecheck": "tsc --incremental --skipLibCheck --noEmit",
-    "lint": "biome ci src/"
+    "lint": "bun ../../scripts/check-bun-version.ts && bun lint --no-script src/"
   },
   "dependencies": {
     "@studiq/authz": "workspace:*",

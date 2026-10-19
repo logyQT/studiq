@@ -1,0 +1,140 @@
+# Bun configuration — https://bun.com/docs/runtime/bunfig
+#
+# Linting and formatting are Bun built-ins (`bun lint`, `bun fmt`).
+# Requires Bun >= 1.4.4 — see `engines.bun` in package.json and
+# `scripts/check-bun-version.ts`.
+
+[lint]
+# Type-aware rules use Bun's built-in type checker (`bun check`) — no
+# `typescript` package needed. Each file is checked with its nearest tsconfig.
+typeAware = true
+# While the baseline in `eslint-suppressions.json` is being burned down, a
+# suppression that no longer matches (because the bug was fixed) must not fail
+# the run. Run `bun lint --prune-suppressions` to drop the stale entries.
+passOnUnprunedSuppressions = true
+
+[lint.categories]
+# Bun's defaults already cover correctness (ESLint + typescript-eslint
+# recommended). `suspicious` is the first strictness tier after the baseline
+# is clean; `perf` and then `style` follow once that is done.
+suspicious = "warn"
+
+[lint.rules]
+# --- Keep our stricter-than-Bun choices -------------------------------
+# Biome had these as errors; Bun ships them as warnings or off.
+"@typescript-eslint/no-unused-vars" = "error"
+"@typescript-eslint/no-explicit-any" = "error"
+"react-hooks/exhaustive-deps" = "error"
+"oxc/no-barrel-file" = "error"
+
+# --- Weak in our old config, Bun's rule is stricter -------------------
+# Biome had every one of these off.
+"jsx-a11y/alt-text" = "error"
+"jsx-a11y/anchor-has-content" = "error"
+"jsx-a11y/anchor-is-valid" = "error"
+"jsx-a11y/aria-activedescendant-has-tabindex" = "error"
+"jsx-a11y/aria-props" = "error"
+"jsx-a11y/aria-proptypes" = "error"
+"jsx-a11y/aria-role" = "error"
+"jsx-a11y/aria-unsupported-elements" = "error"
+"jsx-a11y/autocomplete-valid" = "error"
+"jsx-a11y/click-events-have-key-events" = "error"
+"jsx-a11y/control-has-associated-label" = "error"
+"jsx-a11y/heading-has-content" = "error"
+"jsx-a11y/html-has-lang" = "error"
+"jsx-a11y/iframe-has-title" = "error"
+"jsx-a11y/img-redundant-alt" = "error"
+"jsx-a11y/interactive-supports-focus" = "error"
+"jsx-a11y/label-has-associated-control" = "error"
+"jsx-a11y/lang" = "error"
+"jsx-a11y/media-has-caption" = "error"
+"jsx-a11y/mouse-events-have-key-events" = "error"
+"jsx-a11y/no-access-key" = "error"
+"jsx-a11y/no-aria-hidden-on-focusable" = "error"
+"jsx-a11y/no-autofocus" = "error"
+"jsx-a11y/no-distracting-elements" = "error"
+"jsx-a11y/no-interactive-element-to-noninteractive-role" = "error"
+"jsx-a11y/no-noninteractive-element-interactions" = "error"
+"jsx-a11y/no-noninteractive-element-to-interactive-role" = "error"
+"jsx-a11y/no-noninteractive-tabindex" = "error"
+"jsx-a11y/no-redundant-roles" = "error"
+"jsx-a11y/no-static-element-interactions" = "error"
+"jsx-a11y/prefer-tag-over-role" = "error"
+"jsx-a11y/role-has-required-aria-props" = "error"
+"jsx-a11y/role-supports-aria-props" = "error"
+"jsx-a11y/scope" = "error"
+"jsx-a11y/tabindex-no-positive" = "error"
+"react/button-has-type" = "error"
+
+# --- Import paths -----------------------------------------------------
+# Same intent as the old Biome `noRestrictedImports` rule: app code and tests
+# must use `@/`, `@admin/`, `@studiq/*` or `#test/` aliases, never relative
+# specifiers. `packages/**`, `scripts/**` and root configs are excluded via
+# overrides below. `scripts/check-import-paths.ts` remains the authoritative
+# guard — it also covers `require()` and cross-package boundaries.
+"no-restricted-imports" = [
+  "error",
+  {
+    patterns = [
+      {
+        group = ["./**", "../**"],
+        message = "Relative import. Use an alias: '@/…', '@admin/…', '@studiq/…' or '#test/…' (AGENTS.md → Import Paths).",
+      },
+    ],
+  },
+]
+
+# A package must use relative imports internally.
+[[lint.overrides]]
+files = ["packages/**"]
+rules = { "no-restricted-imports" = "off" }
+
+# Scripts and root config files have no alias mapping. Root files are listed
+# explicitly: a glob without a slash matches the file name in every directory,
+# so `*.ts` would switch the rule off for the whole repo.
+[[lint.overrides]]
+files = ["scripts/**", "vitest.config.ts", "playwright.config.ts", "seed-data.js"]
+rules = { "no-restricted-imports" = "off" }
+
+# Package entrypoints are the one allowed barrel file.
+[[lint.overrides]]
+files = ["packages/*/src/index.ts"]
+rules = { "oxc/no-barrel-file" = "off" }
+
+# Test helpers named `use*` are not React hooks.
+[[lint.overrides]]
+files = ["__tests__/**"]
+rules = { "react-hooks/rules-of-hooks" = "off" }
+
+[fmt]
+printWidth = 100
+tabWidth = 2
+useTabs = false
+semi = true
+singleQuote = true
+jsxSingleQuote = false
+quoteProps = "as-needed"
+trailingComma = "all"
+bracketSpacing = true
+bracketSameLine = false
+arrowParens = "always"
+endOfLine = "lf"
+# Matches the previous Biome formatter: no import reordering, no Tailwind
+# class sorting, no JSDoc rewrites.
+sortImports = false
+sortTailwindcss = false
+sortPackageJson = false
+jsdoc = false
+# Biome only formatted code, JSON and CSS. Bun also formats Markdown, YAML and
+# TOML; leave those alone so this migration does not rewrite docs and configs.
+# `eslint-suppressions.json` is generated by `bun lint` (which does not format
+# it), so keep it out of the formatter too.
+ignorePatterns = [
+  "**/*.md",
+  "**/*.mdx",
+  "**/*.yml",
+  "**/*.yaml",
+  "**/*.toml",
+  "**/*.html",
+  "eslint-suppressions.json",
+]

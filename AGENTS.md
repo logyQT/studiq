@@ -2,7 +2,7 @@
 
 ## Project Identity
 
-- **Runtime**: Bun (package manager, script runner)
+- **Runtime**: Bun >= 1.4.4 (package manager, script runner, linter, formatter)
 - **Framework**: Next.js 16 (App Router), TypeScript 7
 - **Repo shape**: Bun-workspaces **monorepo** — there is **no root `src/`** (see [Repository Layout](#repository-layout))
 - **Database**: Supabase (PostgreSQL 17) + Supabase Auth
@@ -78,12 +78,12 @@ main ← feat/quiz-bank-ui (PR, merge, delete)
 | `bun run dev` | Web dev server (port 3000) |
 | `bun run dev:admin` | Admin dev server (port 4000) |
 | `bun run build` / `bun run start` | Production build / start for web (`build:admin`, `start:admin` for admin) |
-| `bun run lint` | `biome ci . && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts` — **whole-repo** Biome (apps, packages, tests) + import-path guard + migration-timestamp guard. **Contains no `tsc` step.** |
+| `bun run lint` | `bun lint` (Bun's built-in linter, type-aware) + import-path guard + migration-timestamp guard — **whole repo** (apps, packages, tests). **Contains no `tsc` step.** |
 | `bun run lint:all` | `bun run typecheck:all && bun run lint` — all typechecks + lint in one command |
 | `bun run typecheck` | `tsc --incremental --skipLibCheck --noEmit` for **`apps/web` only** (`typecheck:admin` → `apps/admin`, `typecheck:packages` → `packages/{server,authz,ui}`) |
 | `bun run typecheck:all` | `typecheck` + `typecheck:admin` + `typecheck:packages` — everything the hooks run |
-| `bun run format` | `biome check --write .` (whole repo — applies safe fixes + formatting) |
-| `bun run format:check` | `biome ci .` (whole repo, check only) |
+| `bun run format` | `bun fmt` (whole repo — writes formatting) |
+| `bun run format:check` | `bun fmt --check` (whole repo, check only) |
 | `bun run clean` | Remove `.next`, `coverage`, cache |
 | `bun run test` | `vitest run` — runs all tests (unit + integration) |
 | `bun run test:unit` | `vitest run __tests__/unit/` |
@@ -94,7 +94,18 @@ main ← feat/quiz-bank-ui (PR, merge, delete)
 
 > **Footgun — bare `bun test` is NOT Vitest.** `bun test` starts **Bun's built-in test runner**, which scans the whole repo (including integration tests that need live Supabase) and reports differently. Always use `bun run test` / `bun run test:unit`. Bare `bun <script>` shorthand does work for other scripts (e.g. `bun test:unit`).
 
-Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs format-on-staged + `bun run lint` + `bun run typecheck:all`; **pre-push** runs `format:check`, `lint`, `typecheck:all`, `test:unit`, plus a merge-conflict check against `origin/main`. The staged-file formatter and `bun run lint` check the **same** Biome scope (`.`), so a commit can never pass the hook and fail the script (or vice versa).
+Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs format-on-staged + `bun run lint` + `bun run typecheck:all`; **pre-push** runs `format:check`, `lint`, `typecheck:all`, `test:unit`, plus a merge-conflict check against `origin/main`. The staged-file formatter and `bun run lint` check the **same** Bun scope (`.`), so a commit can never pass the hook and fail the script (or vice versa).
+
+### Linting & formatting (Bun built-ins)
+
+- `bun lint` and `bun fmt` are **built into Bun >= 1.4.4** — no ESLint, Prettier or Biome. Config lives in `bunfig.toml` (`[lint]`, `[lint.rules]`, `[fmt]`).
+- Run them through the package scripts (`bun run lint`, `bun run format`). The scripts start with `bun scripts/check-bun-version.ts`, because on Bun <= 1.4.3 a `lint` script containing `bun lint` **recurses** (the built-in command doesn't exist yet, so it just re-runs the script).
+- `bun run lint` uses `--no-script` so Bun never re-enters the package script.
+- Rule levels: Bun's recommended set is on by default; `[lint.categories] suspicious = "warn"` adds the first strictness tier. Our own strict choices (`no-unused-vars`, `no-explicit-any`, `exhaustive-deps`, `oxc/no-barrel-file`, all `jsx-a11y` rules, `react/button-has-type`) are `error`.
+- `typeAware = true` runs the type-aware rules through Bun's built-in type checker (`bun check`) — no `typescript` package needed. It uses each file's nearest `tsconfig.json`.
+- **`eslint-suppressions.json` is the accepted-debt baseline.** `bun lint --suppress-all` recorded the errors that existed when the linter was introduced; the run is green until new violations appear. Fix batches must delete their entries (`bun lint --prune-suppressions` drops stale ones). Never add a suppression to silence new code.
+- `bun fmt` covers code, JSON and CSS. Markdown/YAML/TOML/HTML are excluded in `[fmt] ignorePatterns` on purpose — Biome never formatted them.
+- Biome-specific comments were migrated to ESLint comments (`// eslint-disable-next-line <rule> -- reason`).
 
 ### Custom agent commands
 
@@ -412,10 +423,10 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 - Mixed test files (importing both app + test code): `@/` (or `@studiq/*`) for app modules, `#test/` for test modules — never `./` or `../`.
 - Applies to static imports, side-effect imports (`import './x'`), dynamic imports (`import('./x')`) and `require()`.
 - Enforced by two guards, both wired into `bun run lint`:
-  - **Biome** `lint/style/noRestrictedImports` (patterns `./**`, `../**`) — enabled for `apps/web/src`, `apps/admin/src` and `__tests__`; **disabled for `packages/**`** (a package must use relative imports internally — see the table above).
-  - **`bun scripts/check-import-paths.ts`** — bans *all* relative imports in `apps/web/src`, `apps/admin/src` and `__tests__`, and bans *cross-package* relative imports in `packages/*` (intra-package relatives are allowed).
-- `bun run lint` runs `biome ci .` over the whole repo, so packages and tests are linted by the same command the hooks run.
-- **`bun run lint` is expected to be green on `main`** — treat any failure as a real regression, not known debt.
+  - **Bun's `no-restricted-imports`** (in `bunfig.toml`) — patterns `./**`, `../**` are errors for `apps/web/src`, `apps/admin/src` and `__tests__`; **off for `packages/**`** (a package must use relative imports internally) and for `scripts/**` + root configs (no alias mapping there).
+  - **`bun scripts/check-import-paths.ts`** — bans *all* relative imports in `apps/web/src`, `apps/admin/src` and `__tests__`, and bans *cross-package* relative imports in `packages/*` (intra-package relatives are allowed). This is the authoritative guard; it also covers `require()` and dynamic imports, which the lint rule does not.
+- `bun run lint` runs `bun lint` over the whole repo, so packages and tests are linted by the same command the hooks run.
+- **`bun run lint` is expected to be green on `main`** — the recorded debt lives in `eslint-suppressions.json`, so a failure is a real regression, not known debt.
 - Asset imports (`.css`, `.svg`, images) follow the same rule: `@/app/globals.css` etc.
 
 ---
@@ -423,7 +434,10 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 ## Key Gotchas
 
 - **Bare `bun test` ≠ Vitest** — it starts Bun's built-in test runner. Use `bun run test` / `bun run test:unit` (`vitest run __tests__/unit/`).
-- **`lint` has no typecheck step** — run `bun run lint:all` (or `bun run typecheck`) when you need `tsc`.
+- **`bun run lint` is Bun's built-in linter** — `bun lint` (type-aware) + import-path guard + migration-timestamp guard. Biome is gone; there is no ESLint/Prettier config to edit. Rules live in `bunfig.toml`.
+- **Bun >= 1.4.4 is required.** On 1.4.3 and older, `bun lint` / `bun fmt` don't exist and a `lint` script containing `bun lint` recurses infinitely. The scripts guard with `scripts/check-bun-version.ts`; always invoke them as `bun run lint` / `bun run format`.
+- **Lint debt is baselined in `eslint-suppressions.json`** — green run does not mean zero problems. Delete entries as you fix them; `bun lint --prune-suppressions` removes stale ones.
+- **`lint` has no typecheck step** — run `bun run lint:all` (or `bun run typecheck`) when you need `tsc`. Type-aware lint rules are not a substitute for the workspace typecheck.
 - **`proxy.ts`**: Next.js 16 uses `proxy.ts` (not `middleware.ts`) — `apps/web/src/proxy.ts` (route rules) and `apps/admin/src/proxy.ts` (PEM signature gate). Do not rename.
 - **`@studiq/server/lib/zod`**: Always import `{ z, registry }` from here, not from `'zod'` — shares one Zod instance and the schema registry
 - **No backward compatibility layers**: Pre-market app. Delete old code paths and deprecated keys cleanly, never keep them "just in case"
@@ -431,7 +445,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 - **New API endpoints**: wrap every handler in `withAuth()` — the proxy skips `/api/*`, so a route without `withAuth` is public. Public-by-design prefixes must be added to the catch-all exclusion in `packages/server/src/config/routes.config.ts`.
 - **New UI routes**: add a `RouteRule` to `packages/server/src/config/routes.config.ts` if the route needs auth, account-type restrictions, or a logged-in redirect.
 - **New DB tables**: add a migration in `supabase/migrations/` (unique timestamp prefix — `bun run lint` enforces it) and schema in `supabase/schemas/`
-- **No barrel files**: Every import uses direct file paths (e.g. `@studiq/server/services/flashcard.service` not `@studiq/server/services`). Biome's `noBarrelFile` and `noReExportAll` rules enforce this. Sole exception: a package entrypoint (`packages/<name>/src/index.ts`) must re-export its public surface — `noBarrelFile` is disabled for those two files.
+- **No barrel files**: Every import uses direct file paths (e.g. `@studiq/server/services/flashcard.service` not `@studiq/server/services`). Bun's `oxc/no-barrel-file` enforces this. Sole exception: a package entrypoint (`packages/<name>/src/index.ts`) must re-export its public surface — the rule is disabled for those files in `bunfig.toml`.
 - **Root `tsconfig.json`** excludes `apps/admin` (it has its own config and `typecheck:admin` script) — hand-run root `bunx tsc --noEmit` must stay at zero errors; use the per-workspace scripts for app code.
 
 ---
@@ -462,7 +476,7 @@ When reviewing PRs (especially stacked PRs), follow this process to avoid false 
 |------------|-----------|-------------|
 | `+` line that also appears in an earlier PR in the stack | "PR adds this" | Earlier PR added it; this PR just touched the same area |
 | No diff for a file the PR description mentions | "PR forgot the file" | Change is in a different file (e.g. model vs service) |
-| `+/-` on the same line | "PR broke something" | Formatting-only change (Biome/Prettier) |
+| `+/-` on the same line | "PR broke something" | Formatting-only change (`bun fmt`) |
 
 ### Rule of thumb
 

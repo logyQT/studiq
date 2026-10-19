@@ -214,9 +214,9 @@ export class StatsService {
       .slice(0, 5);
 
     // Step 3: Build flashcard → topic lookup
-    const { data: topicAssignments, error: taError } = await supabase
-      .from('flashcard_topic_assignments')
-      .select(`
+    const { data: topicAssignments, error: taError } = await supabase.from(
+      'flashcard_topic_assignments',
+    ).select(`
         flashcard_id,
         topic_id,
         topics(name)

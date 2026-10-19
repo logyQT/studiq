@@ -389,8 +389,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
             onToggleSuspend={() => handleToggleSuspend(deck)}
             groupNames={
               deck.groupIds?.map((id) => groupNameMap.get(id)).filter(Boolean) as
-                | string[]
-                | undefined
+                string[] | undefined
             }
           />
         ))}

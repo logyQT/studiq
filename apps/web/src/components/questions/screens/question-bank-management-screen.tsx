@@ -358,8 +358,7 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
             onSelect={() => setIsSelecting(true)}
             groupNames={
               bank.groupIds?.map((id) => groupNameMap.get(id)).filter(Boolean) as
-                | string[]
-                | undefined
+                string[] | undefined
             }
           />
         ))}

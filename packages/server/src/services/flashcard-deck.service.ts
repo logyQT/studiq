@@ -207,11 +207,9 @@ export class FlashcardDeckService {
     if (error || !deck) return failure('NOT_FOUND');
 
     const countArr = (deck as Record<string, unknown>).flashcard_count as
-      | { count: number }[]
-      | undefined;
+      { count: number }[] | undefined;
     const groups = (deck as Record<string, unknown>).deck_groups as
-      | { group_id: string }[]
-      | undefined;
+      { group_id: string }[] | undefined;
     return success({
       ...deck,
       flashcard_count: countArr?.[0]?.count ?? 0,

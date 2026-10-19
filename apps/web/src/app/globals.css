@@ -1,6 +1,6 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "../styles/highlight.css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import '../styles/highlight.css';
 
 /*
  * Tailwind v4's automatic content detection doesn't reach outside this
@@ -236,18 +236,18 @@
   backdrop-filter: blur(8px);
 }
 
-[data-sonner-toaster] [data-sonner-toast][data-type="success"] [data-icon] {
+[data-sonner-toaster] [data-sonner-toast][data-type='success'] [data-icon] {
   color: var(--success);
 }
 
-[data-sonner-toaster] [data-sonner-toast][data-type="error"] [data-icon] {
+[data-sonner-toaster] [data-sonner-toast][data-type='error'] [data-icon] {
   color: var(--destructive);
 }
 
-[data-sonner-toaster] [data-sonner-toast][data-type="warning"] [data-icon] {
+[data-sonner-toaster] [data-sonner-toast][data-type='warning'] [data-icon] {
   color: var(--warning);
 }
 
-[data-sonner-toaster] [data-sonner-toast][data-type="info"] [data-icon] {
+[data-sonner-toaster] [data-sonner-toast][data-type='info'] [data-icon] {
   color: var(--info);
 }

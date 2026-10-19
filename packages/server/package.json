@@ -16,7 +16,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "biome ci src/"
+    "lint": "bun ../../scripts/check-bun-version.ts && bun lint --no-script src/"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",

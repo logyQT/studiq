@@ -1,0 +1,794 @@
+{
+  "__tests__/helpers/supabase-mock.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "__tests__/integration/helpers.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "__tests__/integration/rpc-questions.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 20
+    }
+  },
+  "__tests__/integration/seats.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    }
+  },
+  "__tests__/unit/agents/tools/generic.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "__tests__/unit/controllers/activity.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "__tests__/unit/controllers/auth.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 9
+    }
+  },
+  "__tests__/unit/controllers/classroom.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "__tests__/unit/controllers/feature-flag.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "__tests__/unit/controllers/features.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    }
+  },
+  "__tests__/unit/controllers/flashcard-deck.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 17
+    }
+  },
+  "__tests__/unit/controllers/flashcard-export.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "__tests__/unit/controllers/flashcard-import.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "__tests__/unit/controllers/flashcard-practice.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 15
+    }
+  },
+  "__tests__/unit/controllers/flashcard-stats.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "__tests__/unit/controllers/flashcard.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 19
+    }
+  },
+  "__tests__/unit/controllers/group.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    }
+  },
+  "__tests__/unit/controllers/health.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "__tests__/unit/controllers/invitation.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "__tests__/unit/controllers/org.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    }
+  },
+  "__tests__/unit/controllers/organization-member.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "__tests__/unit/controllers/permissions.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "__tests__/unit/controllers/plan-feature.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "__tests__/unit/controllers/plan-limit.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "__tests__/unit/controllers/question-bank.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "__tests__/unit/controllers/question-report.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    }
+  },
+  "__tests__/unit/controllers/question.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 7
+    }
+  },
+  "__tests__/unit/controllers/quiz-attempt.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "__tests__/unit/controllers/quiz-teacher.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "__tests__/unit/controllers/quiz.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "__tests__/unit/controllers/search.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "__tests__/unit/controllers/seat.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "__tests__/unit/controllers/stats.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "__tests__/unit/controllers/subscription-plan-admin.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "__tests__/unit/controllers/subscription-plan.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "__tests__/unit/controllers/teacher-assignment.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "__tests__/unit/controllers/topic.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "__tests__/unit/controllers/university-members.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 12
+    }
+  },
+  "__tests__/unit/controllers/university.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 22
+    }
+  },
+  "__tests__/unit/controllers/user-override.controller.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "__tests__/unit/guards/auth.guard.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "__tests__/unit/services/activity.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "__tests__/unit/services/auth.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "__tests__/unit/services/classroom.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "__tests__/unit/services/feature-flag.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "__tests__/unit/services/feature.resolver.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "__tests__/unit/services/flashcard-deck.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    }
+  },
+  "__tests__/unit/services/flashcard-export.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 12
+    },
+    "@typescript-eslint/unbound-method": {
+      "count": 7
+    }
+  },
+  "__tests__/unit/services/flashcard-import.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "__tests__/unit/services/flashcard-practice.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 14
+    }
+  },
+  "__tests__/unit/services/flashcard-stats.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 7
+    }
+  },
+  "__tests__/unit/services/flashcard.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "__tests__/unit/services/group.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 10
+    }
+  },
+  "__tests__/unit/services/health.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "__tests__/unit/services/invitation.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 11
+    }
+  },
+  "__tests__/unit/services/limits.resolver.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "__tests__/unit/services/org-role.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "__tests__/unit/services/org.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "__tests__/unit/services/organization.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "__tests__/unit/services/plan-feature.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "__tests__/unit/services/plan-limit.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "__tests__/unit/services/question-report.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "__tests__/unit/services/question.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "__tests__/unit/services/quiz-attempt.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 7
+    }
+  },
+  "__tests__/unit/services/quiz-teacher.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    }
+  },
+  "__tests__/unit/services/quiz.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "__tests__/unit/services/search.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 7
+    }
+  },
+  "__tests__/unit/services/seat.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "__tests__/unit/services/stats.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    }
+  },
+  "__tests__/unit/services/subscription-plan.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 5
+    }
+  },
+  "__tests__/unit/services/teacher-assignment.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "__tests__/unit/services/university-members.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 7
+    }
+  },
+  "__tests__/unit/services/user-override.service.test.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 4
+    }
+  },
+  "apps/admin/src/app/(frontend)/feature-flags/page.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    }
+  },
+  "apps/admin/src/app/(frontend)/subscription-plans/page.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    }
+  },
+  "apps/admin/src/app/(frontend)/user-overrides/page.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    }
+  },
+  "apps/web/src/app/(frontend)/(auth)/join/page.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/(frontend)/(setup)/setup/join/page.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/(frontend)/app/assignments/[id]/take/page.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/(frontend)/app/study/session/[type]/session-client.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 11
+    }
+  },
+  "apps/web/src/app/(frontend)/edu/assignments/[id]/detail-client.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react/button-has-type": {
+      "count": 2
+    }
+  },
+  "apps/web/src/app/(frontend)/edu/assignments/[id]/results/results-client.tsx": {
+    "jsx-a11y/control-has-associated-label": {
+      "count": 6
+    }
+  },
+  "apps/web/src/app/(frontend)/edu/classroom/invite/page.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/(frontend)/edu/quizzes/[id]/edit/edit-client.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
+    "react/button-has-type": {
+      "count": 4
+    }
+  },
+  "apps/web/src/app/(frontend)/edu/quizzes/[id]/edit/question-browser.tsx": {
+    "react/button-has-type": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/(frontend)/edu/statistics/page.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/(frontend)/edu/stats/activity/page.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/app/(frontend)/manage/invites/page.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    }
+  },
+  "apps/web/src/app/(frontend)/manage/members/page.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    }
+  },
+  "apps/web/src/app/(frontend)/manage/roles/page.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 5
+    }
+  },
+  "apps/web/src/app/(frontend)/manage/settings/page.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 2
+    }
+  },
+  "apps/web/src/app/(frontend)/pricing/_components/pricing-content.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "apps/web/src/app/error.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    },
+    "react/button-has-type": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/ai/ai-chat-greeting.tsx": {
+    "react/button-has-type": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/ai/ai-chat-input.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/ai/ai-chat-screen.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/ai/flashcard-block.tsx": {
+    "react/button-has-type": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/flashcards/cards/flashcard-card.tsx": {
+    "jsx-a11y/click-events-have-key-events": {
+      "count": 1
+    },
+    "jsx-a11y/no-static-element-interactions": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/flashcards/dialogs/create-card-dialog.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    }
+  },
+  "apps/web/src/components/flashcards/dialogs/create-from-question-dialog.tsx": {
+    "jsx-a11y/no-autofocus": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/flashcards/dialogs/topic-dialogs.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 5
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    },
+    "react/button-has-type": {
+      "count": 2
+    }
+  },
+  "apps/web/src/components/flashcards/editor/markdown-toolbar.tsx": {
+    "jsx-a11y/control-has-associated-label": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/flashcards/flashcard-flip.tsx": {
+    "jsx-a11y/click-events-have-key-events": {
+      "count": 1
+    },
+    "jsx-a11y/no-static-element-interactions": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/flashcards/screens/deck-detail-screen.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    },
+    "@typescript-eslint/no-misused-promises": {
+      "count": 11
+    },
+    "react/button-has-type": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/flashcards/screens/deck-management-screen.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/flashcards/screens/topic-management-screen.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    },
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/flashcards/shared/deck-radio-selector.tsx": {
+    "react/button-has-type": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/flashcards/shared/import-dialog.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 4
+    },
+    "jsx-a11y/click-events-have-key-events": {
+      "count": 1
+    },
+    "jsx-a11y/no-static-element-interactions": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/groups/group-management-screen.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 5
+    }
+  },
+  "apps/web/src/components/layout/navbar/mobile-nav.tsx": {
+    "react/button-has-type": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/layout/user-menu-content.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/providers/AuthProvider.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/question-reports/report-thread-screen.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    }
+  },
+  "apps/web/src/components/questions/screens/question-bank-detail-screen.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 3
+    }
+  },
+  "apps/web/src/components/questions/screens/question-bank-management-screen.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/questions/shared/question-table.tsx": {
+    "react/button-has-type": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/shared/code-block.tsx": {
+    "jsx-a11y/click-events-have-key-events": {
+      "count": 1
+    },
+    "jsx-a11y/no-static-element-interactions": {
+      "count": 1
+    },
+    "react/button-has-type": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/shared/keyboard-shortcuts-panel.tsx": {
+    "react/button-has-type": {
+      "count": 2
+    }
+  },
+  "apps/web/src/components/shared/markdown-renderer.tsx": {
+    "jsx-a11y/media-has-caption": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/shared/page-toolbar.tsx": {
+    "react/button-has-type": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/stats/flashcards-tab.tsx": {
+    "jsx-a11y/control-has-associated-label": {
+      "count": 1
+    }
+  },
+  "apps/web/src/hooks/use-api.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/hooks/use-create-classroom.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/hooks/use-cursor-pagination.ts": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
+  "apps/web/src/hooks/use-markdown-editor.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    }
+  },
+  "apps/web/src/hooks/use-orgs.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "packages/server/src/services/flashcard-deck.service.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 7
+    }
+  },
+  "packages/server/src/services/flashcard-practice.service.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 7
+    }
+  },
+  "packages/server/src/services/question-bank.service.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 7
+    }
+  },
+  "packages/server/src/services/quiz-attempt.service.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 1
+    }
+  },
+  "packages/server/src/services/topic.service.ts": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 7
+    }
+  },
+  "packages/ui/src/components/ui/breadcrumb.tsx": {
+    "jsx-a11y/prefer-tag-over-role": {
+      "count": 1
+    }
+  },
+  "packages/ui/src/components/ui/button-group.tsx": {
+    "jsx-a11y/prefer-tag-over-role": {
+      "count": 1
+    }
+  },
+  "packages/ui/src/components/ui/carousel.tsx": {
+    "jsx-a11y/prefer-tag-over-role": {
+      "count": 2
+    }
+  },
+  "packages/ui/src/components/ui/chart.tsx": {
+    "@typescript-eslint/restrict-template-expressions": {
+      "count": 1
+    }
+  },
+  "packages/ui/src/components/ui/field.tsx": {
+    "jsx-a11y/prefer-tag-over-role": {
+      "count": 1
+    }
+  },
+  "packages/ui/src/components/ui/input-group.tsx": {
+    "jsx-a11y/click-events-have-key-events": {
+      "count": 1
+    },
+    "jsx-a11y/no-noninteractive-element-interactions": {
+      "count": 1
+    },
+    "jsx-a11y/prefer-tag-over-role": {
+      "count": 2
+    }
+  },
+  "packages/ui/src/components/ui/input-otp.tsx": {
+    "jsx-a11y/prefer-tag-over-role": {
+      "count": 1
+    }
+  },
+  "packages/ui/src/components/ui/item.tsx": {
+    "jsx-a11y/prefer-tag-over-role": {
+      "count": 1
+    }
+  },
+  "packages/ui/src/components/ui/multi-select.tsx": {
+    "jsx-a11y/prefer-tag-over-role": {
+      "count": 2
+    },
+    "jsx-a11y/role-has-required-aria-props": {
+      "count": 1
+    }
+  },
+  "packages/ui/src/components/ui/pagination.tsx": {
+    "jsx-a11y/anchor-has-content": {
+      "count": 1
+    }
+  },
+  "packages/ui/src/components/ui/sidebar.tsx": {
+    "react/button-has-type": {
+      "count": 1
+    }
+  },
+  "packages/ui/src/components/ui/spinner.tsx": {
+    "jsx-a11y/prefer-tag-over-role": {
+      "count": 1
+    }
+  },
+  "scripts/check-migration-timestamps.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    }
+  },
+  "scripts/fix-all-imports.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 3
+    }
+  },
+  "scripts/migrate-imports.ts": {
+    "@typescript-eslint/no-unused-vars": {
+      "count": 2
+    }
+  },
+  "seed-data.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  }
+}

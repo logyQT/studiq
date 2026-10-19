@@ -11,7 +11,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "biome ci src/"
+    "lint": "bun ../../scripts/check-bun-version.ts && bun lint --no-script src/"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
