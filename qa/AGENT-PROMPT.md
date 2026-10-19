@@ -80,6 +80,7 @@ TC = admin of org "Classroom". T1/M1 are in WSB Merito + UE Wrocław. All orgs a
 - A full reload clears the React Query cache → reproduce cache bugs with SPA clicks (sidebar links), not `navigate`.
 - Switch active org: POST /api/v1/me/orgs/switch body {orgId} (WSB=00000000-0000-4000-8000-000000000001, UE=00000000-0000-4000-8000-00000000000a).
 - Honor the scenario's precondition (account + active org); log in via Dev Quick Login first.
+- **Do all work that doesn't need my input first, then ask in plain text.** Never block on a user-facing question tool (`question`): when I'm away it is aborted and the run ends `interrupted` with the work done but unresolved. If you need a decision, finish the scenario and end your turn with the questions in plain text.
 - On every failure: after capturing the browser evidence, use the **Grafana MCP** (next section) to pull the live span/log so you can state the real cause, not just the status code. Authenticated API responses carry an `x-trace-id` header (read it with `browser.network.get`).
 
 ## Observability — Grafana MCP (use it to pinpoint failures)
@@ -102,7 +103,7 @@ Gotchas:
 
 ## How to report
 - Scope: file issues ONLY for defects this scenario covers. If you notice a defect OUTSIDE the scenario's scope, do NOT file it automatically — first check whether it is already reported: search `gh issue list --repo logyQT/studiq --state all --limit 200 --search "<keywords>"` and scan open issues; if it's new, ASK ME before filing; if it already exists, skip it (or just reference the number).
-- One bug = one issue. If the scenario exposes several distinct defects, ask me which to file first.
+- One bug = one issue. If the scenario exposes several distinct defects, **file the highest-severity one** and end your turn asking, in plain text, which of the others to file. Do not use a blocking question tool.
 - Language: ENGLISH (repo convention). Always check duplicates before filing (same search as above).
 - Labels: always `bug`; exactly one severity (`critical|high|medium|low`); 1–2 areas (`frontend|backend|database|i18n|visual|security|accessibility|performance|payments`). Add `manual-testing` only for manual scenarios.
 - Body fields: scenario ID + step; severity; repro steps; expected vs actual; root cause from the trace/log (span name, `error.code`, `db.error.*`, log line) — or state explicitly that observability was unavailable; evidence (console/network + Grafana findings); env (`main` @ commit from `rev-parse`, account).

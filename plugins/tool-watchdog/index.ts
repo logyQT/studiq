@@ -81,8 +81,15 @@ const FS_TOOLS = new Set([
   'todowrite',
 ]);
 
+/**
+ * Tools that inherently wait on a human. They are not hangs: a blocked question
+ * is a legitimate pause, and aborting it strands the run. Never time them out.
+ */
+const INTERACTIVE_TOOLS = new Set(['question', 'ask', 'elicit', 'elicitation']);
+
 /** Pick the budget for a tool name; 0 means "never abort". */
 function budgetFor(tool: string, opts: ResolvedOptions): number {
+  if (INTERACTIVE_TOOLS.has(tool) || tool.includes('question')) return 0;
   if (tool === 'execute') return opts.executeMs;
   if (tool === 'task') return opts.taskMs;
   if (tool === 'shell' || tool === 'bash') return 0; // handled by the shell cap

@@ -41,6 +41,7 @@ visible individually. Use the `shell` tool for long-running work.
 | `grafana*` / `mcp*` / namespaced tools | 45s | slow TraceQL/LogQL queries |
 | `shell` | not timed here | uses its own timeout, capped at 300s |
 | `task` | never | don't abort delegated work |
+| `question` / `ask` / elicitation tools | never | waiting on a human is not a hang |
 | anything else | 60s | |
 
 ## Configuration
@@ -87,6 +88,9 @@ All options (defaults in brackets):
   then sends the continue prompt so the run picks back up.
 - **Permission waits are skipped** — a tool that is `running` while the UI asks
   for approval is not a hang (`ctx.permission.list`).
+- **User-facing question tools are never aborted** (`question`, `ask`,
+  elicitation) — blocking on a human decision is a legitimate pause. Aborting it
+  would strand the run at `idle/interrupted` with the work done but unresolved.
 - **Rate limited** — at most one interrupt per `cooldownMs`, and
   `maxPerHour` per session, so a genuinely broken task can't loop forever.
 - **CPU-spin hangs** (a synchronous infinite loop) block the event loop and
