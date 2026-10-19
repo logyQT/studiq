@@ -19,17 +19,22 @@ Run the manual QA scenario given at the bottom in the integrated browser, and fi
 You are responsible for the environment — bring it up if it is down, and keep it
 healthy for the duration of the run. Everything is local and reproducible.
 
-- **Work from a checkout on current `origin/main`.** Do not run the app from an
-  older worktree: any checkout behind `origin/main` predates the observability
-  feature and its telemetry is dead.
+- **Work from the `qa-testing` branch.** It is a long-lived branch kept in sync
+  with `main` and also carries the unmerged features some cases need (e.g.
+  PR #130 for `ADM-USR-*`). It is not `main`; do not rebase it, and do not file a
+  bug for a feature that is absent only because it is not merged yet.
+- First checkout only: `bunx supabase start`, then create `apps/web/.env` from
+  `apps/web/.env.example` (see `docs/ONBOARDING.md`) and fill
+  `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` from
+  `bunx supabase status`. Leave `OTEL_SDK_DISABLED` unset.
 - Stack: `docker compose up -d` from the repo root (Tempo + Loki + Prometheus +
   Grafana + OTel Collector). See `docs/observability-debugging.md`.
+- Database: `bunx supabase db reset` restores seed data;
+  `docker exec supabase_db_studiq psql -U postgres -d postgres -c "<sql>"` for ad-hoc queries.
 - App: `bun run dev` → http://localhost:3000. Admin app (only for plan/feature
   overrides): `bun run dev:admin` → http://localhost:4000.
 - Observability UI at http://localhost:3001, exposed to you as the `grafana` MCP
   server (see below).
-- Database: local Supabase. `bunx supabase db reset` restores seed data;
-  `docker exec supabase_db_studiq psql -U postgres -d postgres -c "<sql>"` for ad-hoc queries.
 - `gh` is authed as logyQT; issues live in logyQT/studiq.
 
 ### Only these need a human before you start
@@ -40,11 +45,20 @@ you set up yourself via the app, the admin app, or the local DB.
 - **An LLM API key** (`LLM_API_KEY` in `apps/web/.env`): required only for
   `EDU-DECK-05`, `STU-47`, `STU-48`, `STU-49`. If it is absent, mark those
   scenarios `N/D` — do not fabricate AI output or file a bug for the missing key.
-- **A PNG/JPG image and an MP3 file**: required only for `STU-22`; otherwise `N/D`.
+- **Local test fixtures** from the „Studiq dane testowe" pack — not in the repo:
+  - `admin_podpisz_zadanie.mjs` (Ed25519 signer) — `ADM-SEC-01`, `ADM-SEC-02`.
+    It cannot be improvised under the "never change code" rule; mark `N/D` without it.
+  - `fiszki_poprawne.csv` / `fiszki_bledne.csv` — `STU-05`, `STU-19`, `STU-20`, `STU-42`.
+  - `logo.png` (< 1 MB) — `MGR-SET-02`.
+  - a text PDF — `STU-49`.
+  - a PNG/JPG image and an MP3 — `STU-22`.
+
+If a fixture is missing, mark the scenario `N/D` and say which file was needed —
+never substitute invented data and never file a `bug` for the missing fixture.
 
 
 ## Preflight — run BEFORE testing (30s; do not skip)
-1. `git fetch -q && git rev-list --count HEAD..origin/main` → **must be `0`**. A non-zero count means the checkout is stale and observability will not work; update it before continuing. (Do not hardcode a commit hash — always compare to `origin/main`.)
+1. `git branch --show-current` → **must be `qa-testing`**; then `git fetch -q && git rev-list --count HEAD..origin/main` → **must be `0`** (the branch always contains `main`). A non-zero count means the branch is stale — merge `origin/main` into it before continuing. Never hardcode a commit hash.
 2. `grep OTEL_SDK_DISABLED apps/web/.env` → must print **nothing** or `OTEL_SDK_DISABLED=false`. Next reads `apps/web/.env`, not the repo root; `true` disables all telemetry.
 3. `curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/api/health` → `200`.
 4. `curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/login` → `200`.
@@ -75,10 +89,10 @@ Pinpoint workflow (run after a failing request appears in the browser):
 1. Discover datasource UIDs once per session: `list_datasources({ type: "tempo" })` / `{ type: "loki" }` / `{ type: "prometheus" }`. Every Tempo/Loki/Prometheus tool below needs `datasourceUid`.
 2. Correlate the request to a trace:
    - Fastest: read the `x-trace-id` response header from the failed request (`browser.network.get`) → `get_tempo_trace({ datasourceUid, trace_id })`.
-   - Or by time window: `search_tempo_traces({ datasourceUid, query: '{ resource.service.name = "studiq" && span.http.status_code >= 400 }', start, end })`. Narrow with `&& span.name = "..."`. Discover attribute names with `list_tempo_attribute_names({ datasourceUid, scope: "span" })` and `list_tempo_attribute_values(...)`.
+   - Or by time window: `search_tempo_traces({ datasourceUid, query: '{ resource.service.name = "studiq" && span.http.status_code >= 400 }', start, end })`. Narrow by span name with the intrinsic `name` (not `span.name`): `&& name = "GET /api/v1/features/me"`. Discover attribute names with `list_tempo_attribute_names({ datasourceUid, scope: "span" })` and `list_tempo_attribute_values(...)`.
 3. Read the actual error off the span: span status/message, exception events, and any `db.error.code` / `db.error.message` attributes (Postgres code). Quote this — it is the root cause you were previously approximating.
-4. Pull correlated logs: `query_loki_logs({ datasourceUid, logql: '{service_name="studiq"} | trace_id="<id>"', start, end })`. Confirm label names with `list_loki_label_names({ datasourceUid })` first.
-5. Check impact/trend (optional): `query_prometheus({ datasourceUid, expr: 'sum(rate(http_server_request_total{http_status_code=~"4..|5.."}[5m])) by (http_status_code)', queryType: "range", startTime, endTime })`. OTel metric names are sanitized (dots→`_`, counters get `_total`) — confirm with `list_prometheus_metric_names({ datasourceUid })`.
+4. Pull correlated logs: `query_loki_logs({ datasourceUid, logql: '{service_name="studiq"} | trace_id="<id>"', startRfc3339, endRfc3339 })`. Confirm label names with `list_loki_label_names({ datasourceUid })` first. (The parameters are `startRfc3339`/`endRfc3339`; `start`/`end` are ignored.)
+5. Check impact/trend (optional): `query_prometheus({ datasourceUid, expr: 'sum(rate(studiq_http_server_request_total{http_status_code=~"4..|5.."}[5m])) by (http_status_code)', queryType: "range", startTime, endTime })`. The collector prefixes every metric with the `studiq_` namespace (see `otel-collector-config.yml`), so use `studiq_http_server_request_total` — confirm with `list_prometheus_metric_names({ datasourceUid })`.
 
 Gotchas:
 - Times: no offset = UTC. Use RFC3339 (`2026-10-19T14:00:00Z`) or relative (`now-15m`); pass the wall-clock window of the step you just ran.

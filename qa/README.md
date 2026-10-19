@@ -28,9 +28,12 @@ The agent handles its own environment. Give it a scenario ID and the prompt from
 `AGENT-PROMPT.md`; it will bring up what it needs, run the steps, and file the
 issue.
 
-1. Copy the prompt from `AGENT-PROMPT.md` into a fresh agent session.
-2. Set the scenario ID on the last line (`## SCENARIO ▶ <ID>`).
-3. Done. The agent reads `context.md` once, then `index.md` → `cases/<ID>.md`
+1. Check out the **`qa-testing` branch** (long-lived; kept in sync with `main`,
+   and it also carries the unmerged features some cases need — e.g. PR #130 for
+   `ADM-USR-*`). Do not run from `main`.
+2. Copy the prompt from `AGENT-PROMPT.md` into a fresh agent session.
+3. Set the scenario ID on the last line (`## SCENARIO ▶ <ID>`).
+4. Done. The agent reads `context.md` once, then `index.md` → `cases/<ID>.md`
    (plus any prerequisite case it references), starts the stack and app if they
    are down, executes the steps in the browser, and files defects with
    trace/log evidence.
@@ -45,8 +48,12 @@ A handful of cases depend on something only a person can provide. Treat them as
 
 | Input | Scenarios | Without it |
 |---|---|---|
-| An LLM API key (`LLM_API_KEY` in `apps/web/.env`) | `EDU-DECK-05`, `STU-47`, `STU-48`, `STU-49` | AI features are unavailable → mark `N/D` (the cases say so explicitly) |
-| A PNG/JPG image and an MP3 file | `STU-22` | Upload steps can't run → mark `N/D` |
+| An LLM API key (`LLM_API_KEY` in `apps/web/.env`) | `EDU-DECK-05`, `STU-47`, `STU-48`, `STU-49` | AI features unavailable → `N/D` (the cases say so explicitly) |
+| `admin_podpisz_zadanie.mjs` (Ed25519 signer from the „Studiq dane testowe" pack) | `ADM-SEC-01`, `ADM-SEC-02` | PEM gate can't be exercised; not improvised under "never change code" → `N/D` |
+| `fiszki_poprawne.csv` / `fiszki_bledne.csv` | `STU-05`, `STU-19`, `STU-20`, `STU-42` | Import steps can't run → `N/D` |
+| `logo.png` (< 1 MB) | `MGR-SET-02` | Branding upload can't run → `N/D` |
+| A text PDF | `STU-49` | PDF extraction can't run → `N/D` |
+| A PNG/JPG image and an MP3 file | `STU-22` | Media upload can't run → `N/D` |
 
 Everything else — plan/feature overrides, org switching, group setup, seeded
 content — is done by the agent through the app, the admin app, or the local DB.
@@ -78,11 +85,13 @@ lines you paste.
 # inside the container
 cd qa
 cp /path/to/new/Studiq_Dokument_Testera_v1.4.docx source/
-python3 tools/convert_docx.py source/Studiq_Dokument_Testera_v1.4.docx .
+python3 tools/convert_docx.py source/Studiq_Dokument_Testera_v1.4.docx . "StudiQ Dokument Testera v1.4"
 ```
 
-The converter is dependency-free (stdlib only) and prints the case count and any
-prerequisite IDs it could not resolve.
+The third argument is the `- source:` label written into every case (defaults to
+the input filename). The converter clears `cases/*.md` before writing, so renamed
+or removed scenarios don't leave orphans. It is dependency-free (stdlib only) and
+prints the case count and any prerequisite IDs it could not resolve.
 
 ## Notes
 

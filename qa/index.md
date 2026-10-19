@@ -223,14 +223,14 @@ Full steps live in `cases/<ID>.md` (Polish, verbatim). Read the case **and** eve
 
 ## Modules
 
-- 5. PUB – Strony publiczne i nawigacja ogólna — 8 cases
-- 6. AUT – Uwierzytelnianie i sesja — 19 cases
-- 7. ONB – Onboarding, organizacje i zaproszenia — 10 cases
-- 8. STU – Panel studenta (/app) — 53 cases
-- 9. EDU – Panel nauczyciela (/edu) — 41 cases
-- 10. MGR – Panel managera organizacji (/manage) — 28 cases
-- 11. BIL – Plany, rozliczenia i płatność (symulowana) — 7 cases
-- 12. LIM – Funkcje (feature flags) i limity planów — 7 cases
-- 13. ADM – Panel administracyjny (apps/admin, port 4000) — 21 cases
-- 14. SEC – Autoryzacja i izolacja danych — 13 cases
-- 15. NFR – Wymagania niefunkcjonalne i międzyobszarowe — 8 cases
+- PUB – Strony publiczne i nawigacja ogólna — 8 cases
+- AUT – Uwierzytelnianie i sesja — 19 cases
+- ONB – Onboarding, organizacje i zaproszenia — 10 cases
+- STU – Panel studenta (/app) — 53 cases
+- EDU – Panel nauczyciela (/edu) — 41 cases
+- MGR – Panel managera organizacji (/manage) — 28 cases
+- BIL – Plany, rozliczenia i płatność (symulowana) — 7 cases
+- LIM – Funkcje (feature flags) i limity planów — 7 cases
+- ADM – Panel administracyjny (apps/admin, port 4000) — 21 cases
+- SEC – Autoryzacja i izolacja danych — 13 cases
+- NFR – Wymagania niefunkcjonalne i międzyobszarowe — 8 cases

@@ -79,7 +79,12 @@ def render_table(rows):
 
 
 def main():
+    if len(sys.argv) < 3:
+        print("usage: convert_docx.py <input.docx> <output_dir> [source_label]")
+        sys.exit(2)
     src, outdir = sys.argv[1], sys.argv[2]
+    source_label = (sys.argv[3] if len(sys.argv) > 3
+                    else os.path.splitext(os.path.basename(src))[0].replace("_", " "))
     root = ET.fromstring(zipfile.ZipFile(src).read("word/document.xml"))
     body = root.find(W + "body")
 
@@ -156,6 +161,11 @@ def main():
 
     by_id = {c["id"]: c for c in cases}
     os.makedirs(os.path.join(outdir, "cases"), exist_ok=True)
+    # Drop generated cases first so renamed/removed scenarios don't leave orphans.
+    cases_dir = os.path.join(outdir, "cases")
+    for name in os.listdir(cases_dir):
+        if name.endswith(".md"):
+            os.remove(os.path.join(cases_dir, name))
 
     # ---- context.md (everything before the first numbered module + report) --
     ctx_lines = []
@@ -202,7 +212,7 @@ def main():
     idx += ["", "## Modules", ""]
     for m in modules:
         n = sum(1 for c in cases if c["module"] == m)
-        idx.append("- %s — %d cases" % (m or "(none)", n))
+        idx.append("- %s — %d cases" % (re.sub(r"^\d+\.\s*", "", m) or "(none)", n))
     with open(os.path.join(outdir, "index.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(idx).rstrip() + "\n")
 
@@ -214,7 +224,7 @@ def main():
         L.append("- module: %s" % re.sub(r"^\d+\.\s*", "", c["module"]))
         L.append("- section: %s" % c["section"])
         L.append("- prereqs: %s" % (", ".join(c["prereqs"]) or "none"))
-        L.append("- source: StudiQ Dokument Testera v1.3")
+        L.append("- source: %s" % source_label)
         L.append("")
         L.append("## Prerequisite (verbatim)")
         L.append("")
