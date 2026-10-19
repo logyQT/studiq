@@ -80,7 +80,7 @@ TC = admin of org "Classroom". T1/M1 are in WSB Merito + UE Wrocław. All orgs a
 - A full reload clears the React Query cache → reproduce cache bugs with SPA clicks (sidebar links), not `navigate`.
 - Switch active org: POST /api/v1/me/orgs/switch body {orgId} (WSB=00000000-0000-4000-8000-000000000001, UE=00000000-0000-4000-8000-00000000000a).
 - Honor the scenario's precondition (account + active org); log in via Dev Quick Login first.
-- **Do all work that doesn't need my input first, then ask in plain text.** Never block on a user-facing question tool (`question`): when I'm away it is aborted and the run ends `interrupted` with the work done but unresolved. If you need a decision, finish the scenario and end your turn with the questions in plain text.
+- **Do all work that doesn't need my input first.** Never block on a user-facing question tool (`question`): when I'm away it is aborted and the run ends `interrupted` with the work done but unresolved. Collect every decision you need and raise it in the **end-of-session plain-text report** (below).
 - On every failure: after capturing the browser evidence, use the **Grafana MCP** (next section) to pull the live span/log so you can state the real cause, not just the status code. Authenticated API responses carry an `x-trace-id` header (read it with `browser.network.get`).
 
 ## Observability — Grafana MCP (use it to pinpoint failures)
@@ -102,13 +102,29 @@ Gotchas:
 - If a datasource is unhealthy (`check_datasources_health()`), say so and fall back to browser + DB evidence — don't present a guess as a confirmed root cause.
 
 ## How to report
-- Scope: file issues ONLY for defects this scenario covers. If you notice a defect OUTSIDE the scenario's scope, do NOT file it automatically — first check whether it is already reported: search `gh issue list --repo logyQT/studiq --state all --limit 200 --search "<keywords>"` and scan open issues; if it's new, ASK ME before filing; if it already exists, skip it (or just reference the number).
+- Scope: file issues ONLY for defects this scenario covers. If you notice a defect OUTSIDE the scenario's scope, do NOT file it automatically — first check whether it is already reported: search `gh issue list --repo logyQT/studiq --state all --limit 200 --search "<keywords>"` and scan open issues. If it already exists, skip it (or reference the number); if it is new, put it in the **"Found but not filed"** section of the end-of-session report with a proposed title, severity and labels, and let me decide.
 - One bug = one issue. If the scenario exposes several distinct defects, **file the highest-severity one** and end your turn asking, in plain text, which of the others to file. Do not use a blocking question tool.
 - Language: ENGLISH (repo convention). Always check duplicates before filing (same search as above).
 - Labels: always `bug`; exactly one severity (`critical|high|medium|low`); 1–2 areas (`frontend|backend|database|i18n|visual|security|accessibility|performance|payments`). Add `manual-testing` only for manual scenarios.
 - Body fields: scenario ID + step; severity; repro steps; expected vs actual; root cause from the trace/log (span name, `error.code`, `db.error.*`, log line) — or state explicitly that observability was unavailable; evidence (console/network + Grafana findings); env (`main` @ commit from `rev-parse`, account).
 - Evidence: attach browser screenshot(s) directly — `gh issue create ... --attach "<screenshot-path>#<alt text>"` (repeatable, ≤50 files). Get paths from `browser.screenshot` → `files[].path` (server-local). Put console/network + Grafana findings in the body.
-- Reply with: issue number + link + labels (or "OK — all checks passed, nothing filed").
+
+### End of session — always end with this plain-text report
+
+Finish every scenario with these three sections in plain text, as your final
+message. No tool calls after it — I read this when I get back.
+
+1. **Filed** — one line per issue: `#<number> — <title>` + the labels you used.
+2. **Found but not filed** — defects you saw that you did not file, each with:
+   - a one-line description and the step/scenario where you saw it,
+   - the evidence (span/log/console/network),
+   - a **proposed title + severity + area labels**,
+   - the reason you held it (out of scope / duplicate of `#<number>` / needs input).
+   This is the most important section when I'm away: err on the side of listing
+   things, and say explicitly if the list is empty.
+3. **Decisions I need** — the numbered questions you would have asked
+   interactively (e.g. "file the out-of-scope findings too?", "was this copy
+   difference intended?"). Answerable in one line each.
 
 ## General known issue (do NOT re-file)
 Breadcrumbs are broken app-wide: they show raw English URL segments and raw UUIDs on dynamic routes (e.g. `Edu > Flashcards > ccf03248-3167-467e-b4bd-78b3c94457ba`). Tracked in #136 — skip it if you hit it.
