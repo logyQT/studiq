@@ -14,17 +14,38 @@ lives next to this file (`context.md`, `index.md`, `cases/<ID>.md`).
 
 Run the manual QA scenario given at the bottom in the integrated browser, and file GitHub issues. NEVER change code, commit, or open PRs. Report findings; do not fix.
 
-## Environment (already running)
-- **Test from the `qa-testing` worktree:** `/home/node/.local/share/opencode/worktree/c4b0ee/qa-testing` — app, observability stack, and the qa corpus all live here. Do NOT run the app from an older worktree; any checkout not on current `origin/main` predates the observability feature and its telemetry is dead.
-- App: http://localhost:3000. If down: `bun run dev` from the `qa-testing` worktree.
-- Observability stack (Grafana) at http://localhost:3001, exposed to you as the `grafana` MCP server (see below).
-- Admin app (only for plan/feature overrides): `bun run dev:admin` → http://localhost:4000.
+## Environment (you set this up yourself)
+
+You are responsible for the environment — bring it up if it is down, and keep it
+healthy for the duration of the run. Everything is local and reproducible.
+
+- **Work from a checkout on current `origin/main`.** Do not run the app from an
+  older worktree: any checkout behind `origin/main` predates the observability
+  feature and its telemetry is dead.
+- Stack: `docker compose up -d` from the repo root (Tempo + Loki + Prometheus +
+  Grafana + OTel Collector). See `docs/observability-debugging.md`.
+- App: `bun run dev` → http://localhost:3000. Admin app (only for plan/feature
+  overrides): `bun run dev:admin` → http://localhost:4000.
+- Observability UI at http://localhost:3001, exposed to you as the `grafana` MCP
+  server (see below).
+- Database: local Supabase. `bunx supabase db reset` restores seed data;
+  `docker exec supabase_db_studiq psql -U postgres -d postgres -c "<sql>"` for ad-hoc queries.
 - `gh` is authed as logyQT; issues live in logyQT/studiq.
-- DB: `docker exec supabase_db_studiq psql -U postgres -d postgres -c "<sql>"`. Reset: `bunx supabase db reset`.
+
+### Only these need a human before you start
+
+Everything else — accounts, orgs, groups, seeded content, plan/feature overrides —
+you set up yourself via the app, the admin app, or the local DB.
+
+- **An LLM API key** (`LLM_API_KEY` in `apps/web/.env`): required only for
+  `EDU-DECK-05`, `STU-47`, `STU-48`, `STU-49`. If it is absent, mark those
+  scenarios `N/D` — do not fabricate AI output or file a bug for the missing key.
+- **A PNG/JPG image and an MP3 file**: required only for `STU-22`; otherwise `N/D`.
+
 
 ## Preflight — run BEFORE testing (30s; do not skip)
-1. `git -C /home/node/.local/share/opencode/worktree/c4b0ee/qa-testing fetch -q && git -C /home/node/.local/share/opencode/worktree/c4b0ee/qa-testing rev-list --count HEAD..origin/main` → **must be `0`**. A non-zero count means the checkout is stale and observability will not work; update it before continuing. (Do not hardcode a commit hash — always compare to `origin/main`.)
-2. `grep OTEL_SDK_DISABLED /home/node/.local/share/opencode/worktree/c4b0ee/qa-testing/apps/web/.env` → must print **nothing** or `OTEL_SDK_DISABLED=false`. Next reads `apps/web/.env`, not the repo root; `true` disables all telemetry.
+1. `git fetch -q && git rev-list --count HEAD..origin/main` → **must be `0`**. A non-zero count means the checkout is stale and observability will not work; update it before continuing. (Do not hardcode a commit hash — always compare to `origin/main`.)
+2. `grep OTEL_SDK_DISABLED apps/web/.env` → must print **nothing** or `OTEL_SDK_DISABLED=false`. Next reads `apps/web/.env`, not the repo root; `true` disables all telemetry.
 3. `curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/api/health` → `200`.
 4. `curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/login` → `200`.
 

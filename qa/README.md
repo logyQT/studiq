@@ -24,13 +24,32 @@ index, agent prompt) is English, matching the repo/issue convention.
 
 ## Running a scenario
 
-1. Bring up the app + observability stack (see `docs/observability-debugging.md`):
-   `docker compose up -d` and `bun run dev`.
-2. Start an agent session from a checkout on current `origin/main`.
-3. Copy the prompt from `AGENT-PROMPT.md`, set the scenario ID on the last line.
-4. The agent reads `context.md` once, then `index.md` → `cases/<ID>.md` (plus any
-   prerequisite case it references), executes the steps in the browser, and files
-   issues with trace/log evidence.
+The agent handles its own environment. Give it a scenario ID and the prompt from
+`AGENT-PROMPT.md`; it will bring up what it needs, run the steps, and file the
+issue.
+
+1. Copy the prompt from `AGENT-PROMPT.md` into a fresh agent session.
+2. Set the scenario ID on the last line (`## SCENARIO ▶ <ID>`).
+3. Done. The agent reads `context.md` once, then `index.md` → `cases/<ID>.md`
+   (plus any prerequisite case it references), starts the stack and app if they
+   are down, executes the steps in the browser, and files defects with
+   trace/log evidence.
+
+Nothing needs to be pre-configured for the vast majority of the plan: the stack,
+seed data and dev accounts are all local and reproducible.
+
+### The few scenarios that need human input first
+
+A handful of cases depend on something only a person can provide. Treat them as
+`N/D` unless the input exists; don't fake it.
+
+| Input | Scenarios | Without it |
+|---|---|---|
+| An LLM API key (`LLM_API_KEY` in `apps/web/.env`) | `EDU-DECK-05`, `STU-47`, `STU-48`, `STU-49` | AI features are unavailable → mark `N/D` (the cases say so explicitly) |
+| A PNG/JPG image and an MP3 file | `STU-22` | Upload steps can't run → mark `N/D` |
+
+Everything else — plan/feature overrides, org switching, group setup, seeded
+content — is done by the agent through the app, the admin app, or the local DB.
 
 Because a scenario often depends on state created by an earlier one (the
 `Prereqs` column), run prerequisites first or re-create the required state.
