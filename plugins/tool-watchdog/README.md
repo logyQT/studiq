@@ -74,13 +74,17 @@ All options (defaults in brackets):
 | `browserMs` | `45000` | browser tools |
 | `taskMs` | `0` | delegated tasks; `0` = never abort |
 | `shellCapMs` | `300000` | cap applied to shell timeouts; `0` disables |
-| `resume` | `true` | resume after interrupt; `false` sends a continue prompt instead |
+| `resume` | `false` | `false` interrupts then sends a continue prompt (observed to resume the run); `true` uses `continue: true`, which was observed to end the run as `interrupted` |
 | `cooldownMs` | `30000` | minimum gap between interrupts per session |
 | `maxPerHour` | `6` | interrupt ceiling per session |
 | `skipSessions` | `[]` | session ids to ignore |
 
 ## Behaviour notes
 
+- **Verified live**: an `execute` running `await new Promise(() => {})` was aborted at
+  15,015 ms (the configured budget), the tool part went `error`, and the session
+  reached `idle` with `outcome: interrupted` — no manual abort. `resume: false`
+  then sends the continue prompt so the run picks back up.
 - **Permission waits are skipped** — a tool that is `running` while the UI asks
   for approval is not a hang (`ctx.permission.list`).
 - **Rate limited** — at most one interrupt per `cooldownMs`, and

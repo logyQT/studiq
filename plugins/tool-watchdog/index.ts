@@ -34,7 +34,11 @@ interface WatchdogOptions {
   taskMs?: number;
   /** Upper bound applied to every shell command's own timeout, ms. 0 disables. */
   shellCapMs?: number;
-  /** Resume the session after interrupting (true) or send a continue prompt (false). */
+  /**
+   * false (default): interrupt, then send a continue prompt so the run resumes.
+   * true: interrupt with `continue: true` and rely on the server to resume —
+   * observed to end the run as `interrupted` instead of continuing.
+   */
   resume?: boolean;
   /** Minimum time between interrupts for one session, ms. */
   cooldownMs?: number;
@@ -55,7 +59,7 @@ const DEFAULTS: ResolvedOptions = {
   browserMs: 45_000,
   taskMs: 0,
   shellCapMs: 300_000,
-  resume: true,
+  resume: false,
   cooldownMs: 30_000,
   maxPerHour: 6,
   skipSessions: [],
