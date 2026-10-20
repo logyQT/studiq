@@ -19,8 +19,9 @@ Brak sesji.
 
 ## Expected result
 
-- Tytuł „Wybierz Swój Plan”, kafelki z opisem i przyciskiem „Zobacz N plany”.
-- Student → 4 plany: Base, Spark, Ace, Pro.
-- Edukator → 4 plany: Lite, Guide, Creator, Master.
-- Organizacja → 4 plany: Launch, Team, Hub, Campus.
-- Link „Powrót do planów” wraca do /pricing.
+- Tytuł „Wybierz Swój Plan” i podtytuł „Zacznij za darmo, ulepsz gdy potrzebujesz więcej”.
+- Trzy kafelki (Student / Edukator / Organizacja) z ikoną, nazwą i opisem. Cały kafelek jest klikalny (link nakładkowy) — brak osobnego przycisku „Zobacz N plany” i brak licznika planów na kafelku.
+- Kliknięcie kafelka „Student” → /pricing/student z 4 planami: Base, Spark, Ace, Pro.
+- Kliknięcie kafelka „Edukator” → /pricing/edu z 4 planami: Lite, Guide, Creator, Master.
+- Kliknięcie kafelka „Organizacja” → /pricing/org z 4 planami: Launch, Team, Hub, Campus.
+- Powrót na /pricing przez link „Cennik” w nagłówku (strona planów nie ma osobnego linku „Powrót do planów”).
