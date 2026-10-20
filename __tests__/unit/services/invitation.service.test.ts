@@ -1,10 +1,15 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { AppError } from '@studiq/server/lib/errors';
 import { InvitationService } from '@studiq/server/services/invitation.service';
+import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/services/limits.resolver', () => ({
-  limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
+  limitsResolver: {
+    checkLimit: vi.fn().mockResolvedValue(undefined),
+    checkOrgLimit: vi.fn().mockResolvedValue(undefined),
+  },
 }));
 
 function qb(data: any, error: any = null) {
@@ -13,6 +18,7 @@ function qb(data: any, error: any = null) {
   const b: any = {};
   b.select = vi.fn(() => b);
   b.insert = vi.fn(() => b);
+  b.upsert = vi.fn(() => b);
   b.update = vi.fn(() => b);
   b.delete = vi.fn(() => b);
   b.eq = vi.fn(() => b);
@@ -208,6 +214,81 @@ describe('InvitationService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('GONE');
+    });
+  });
+
+  describe('acceptInvitation', () => {
+    const invitation = {
+      email: 'new@example.com',
+      organization_id: 'org-1',
+      target_org_role_id: 'role-member',
+      expires_at: new Date(Date.now() + 86400000).toISOString(),
+      organizations: { name: 'Test Org' } as any,
+      org_roles: { name: 'member' } as any,
+    };
+    const joiningCtx: RequestContext = { ...managerCtx, userId: 'joining-user' };
+
+    function adminClientWithCount(count: number) {
+      const c: any = {};
+      c.select = vi.fn(() => c);
+      c.eq = vi.fn().mockResolvedValue({ count, error: null });
+      const from = vi.fn(() => c);
+      return { client: { from } as any, from };
+    }
+
+    it('counts members with the admin client, not the joining user (#182)', async () => {
+      const admin = adminClientWithCount(5);
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+      );
+      vi.mocked(limitsResolver.checkOrgLimit).mockRejectedValueOnce(
+        new AppError('USAGE_LIMIT_EXCEEDED'),
+      );
+      mock.from.mockReturnValueOnce(qb(invitation));
+
+      await expect(service.acceptInvitation(joiningCtx, 'tok')).rejects.toThrow();
+
+      expect(admin.from).toHaveBeenCalledWith('org_members');
+      expect(limitsResolver.checkOrgLimit).toHaveBeenCalledWith('org-1', 'max_students', 5);
+      // user-scoped client only looked up the invitation: no member count, no insert
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).toHaveBeenCalledWith('invitations');
+    });
+
+    it('adds the member when the organization is below its limit', async () => {
+      const admin = adminClientWithCount(2);
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+      );
+      mock.from
+        .mockReturnValueOnce(qb(invitation))
+        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
+        .mockReturnValueOnce(qb({ organization_id: 'org-1' }))
+        .mockReturnValueOnce(qb(null))
+        .mockReturnValue(qb(null));
+
+      const result = await service.acceptInvitation(joiningCtx, 'tok');
+
+      expect(result.success).toBe(true);
+      expect(limitsResolver.checkOrgLimit).toHaveBeenCalledWith('org-1', 'max_students', 2);
+    });
+
+    it('returns a DB failure when the member count cannot be read', async () => {
+      const c: any = {};
+      c.select = vi.fn(() => c);
+      c.eq = vi.fn().mockResolvedValue({ count: null, error: { message: 'boom', code: 'XX000' } });
+      service = new InvitationService(
+        async () => mock as any,
+        () => ({ from: () => c }) as any,
+      );
+      mock.from.mockReturnValueOnce(qb(invitation));
+
+      const result = await service.acceptInvitation(joiningCtx, 'tok');
+
+      expect(result.success).toBe(false);
+      expect(limitsResolver.checkOrgLimit).not.toHaveBeenCalled();
     });
   });
 });
