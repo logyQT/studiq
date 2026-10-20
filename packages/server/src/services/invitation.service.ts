@@ -2,13 +2,17 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { CreateInviteInput } from '@studiq/server/models/invitation.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class InvitationService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(
+    private createClient: () => Promise<SupabaseClient>,
+    private createAdminClient: () => SupabaseClient = createServiceClient,
+  ) {}
 
   async createInvitation(
     ctx: RequestContext,
@@ -107,10 +111,13 @@ export class InvitationService {
     if (!inviteResult.success) return inviteResult;
     const invite = inviteResult.data;
 
-    const { count: memberCount } = await supabase
+    // The accepting user is not a member yet, and org_members has RLS, so a
+    // user-scoped count would always see 0 rows and never hit the limit.
+    const { count: memberCount, error: countError } = await this.createAdminClient()
       .from('org_members')
       .select('*', { count: 'exact', head: true })
       .eq('organization_id', invite.organizationId);
+    if (countError) return toDbFailure(countError);
     await limitsResolver.checkOrgLimit(invite.organizationId, 'max_students', memberCount ?? 0);
 
     const { data: org, error: orgError } = await supabase
