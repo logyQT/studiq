@@ -818,7 +818,7 @@ describe('TeacherAssignmentService', () => {
       id: assignmentId,
       title: 'Quiz 1',
       status: 'published',
-      assignment_targets: [],
+      assignment_targets: [{ group_id: null, student_id: userId }],
     };
 
     it('returns assignment with attempt', async () => {
@@ -832,6 +832,52 @@ describe('TeacherAssignmentService', () => {
       if (result.success) {
         expect(result.data.attempt).toBeDefined();
       }
+    });
+
+    it('allows a student targeted through one of their groups', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ ...assignment, assignment_targets: [{ group_id: 'g-1', student_id: null }] }),
+        )
+        .mockReturnValueOnce(chain([{ group_id: 'g-1' }]))
+        .mockReturnValue(chain(null));
+
+      const result = await service.getForStudent(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('allows the author of the assignment', async () => {
+      mock.from
+        .mockReturnValueOnce(chain({ ...assignment, created_by: userId, assignment_targets: [] }))
+        .mockReturnValue(chain(null));
+
+      const result = await service.getForStudent(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('returns NOT_FOUND for a student outside the targeted groups (#193)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({ ...assignment, assignment_targets: [{ group_id: 'g-other', student_id: null }] }),
+        )
+        .mockReturnValueOnce(chain([]));
+
+      const result = await service.getForStudent(assignmentId, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
+      expect(mock.from).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns NOT_FOUND when the assignment has no targets for the student (#193)', async () => {
+      mock.from.mockReturnValueOnce(chain({ ...assignment, assignment_targets: [] }));
+
+      const result = await service.getForStudent(assignmentId, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
     });
 
     it('returns NOT_FOUND when no assignment', async () => {
@@ -868,6 +914,7 @@ describe('TeacherAssignmentService', () => {
       shuffle_questions: false,
       shuffle_answers: false,
       assignment_questions: [{ question_id: 'q-1', order_index: 0 }],
+      assignment_targets: [{ group_id: null, student_id: userId }],
     };
 
     it('starts a new attempt successfully', async () => {
@@ -886,6 +933,44 @@ describe('TeacherAssignmentService', () => {
         expect(result.data.id).toBe('attempt-1');
         expect(result.data.questions).toHaveLength(1);
       }
+    });
+
+    it('starts an attempt for a student targeted through a group', async () => {
+      const fullQuestion = { id: 'q-1', content: 'What?', question_answers: [] };
+      mock.from
+        .mockReturnValueOnce(
+          chain({
+            ...assignment,
+            assignment_targets: [{ group_id: 'g-1', student_id: null }],
+          }),
+        )
+        .mockReturnValueOnce(chain([{ group_id: 'g-1' }]))
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([fullQuestion]))
+        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValue(chain(null));
+
+      const result = await service.startAttempt(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('refuses a student outside the targeted groups and creates no attempt (#193)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({
+            ...assignment,
+            assignment_targets: [{ group_id: 'g-other', student_id: null }],
+          }),
+        )
+        .mockReturnValueOnce(chain([]));
+
+      const result = await service.startAttempt(assignmentId, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
+      // assignment lookup + group membership lookup only: no attempt / question inserts
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
     it('returns RATE_LIMITED when max attempts reached', async () => {

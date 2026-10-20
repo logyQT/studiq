@@ -1,6 +1,6 @@
 import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
-import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
@@ -534,6 +534,37 @@ export class TeacherAssignmentService {
     return success(null);
   }
 
+  /**
+   * A student may see / start an assignment only if it targets them directly,
+   * targets one of their groups, or they authored it (teacher preview).
+   * Same rule as the list endpoint, so id-based access cannot bypass it.
+   */
+  private async isAssignmentTarget(
+    supabase: SupabaseClient,
+    assignment: {
+      created_by?: string | null;
+      assignment_targets?: { group_id?: string | null; student_id?: string | null }[] | null;
+    },
+    userId: string,
+  ): Promise<ServiceResult<boolean>> {
+    if (assignment.created_by === userId) return success(true);
+
+    const targets = assignment.assignment_targets ?? [];
+    if (targets.some((t) => t.student_id === userId)) return success(true);
+
+    const targetGroupIds = targets.map((t) => t.group_id).filter((g): g is string => !!g);
+    if (targetGroupIds.length === 0) return success(false);
+
+    const { data: memberships, error } = await supabase
+      .from('group_members')
+      .select('group_id')
+      .eq('user_id', userId)
+      .in('group_id', targetGroupIds);
+
+    if (error) return toDbFailure(error);
+    return success((memberships ?? []).length > 0);
+  }
+
   async listForStudent(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
@@ -592,6 +623,10 @@ export class TeacherAssignmentService {
     if (error) return toDbFailure(error);
     if (!assignment) return failure('NOT_FOUND');
 
+    const targeted = await this.isAssignmentTarget(supabase, assignment, ctx.userId);
+    if (isFailure(targeted)) return targeted;
+    if (!targeted.data) return failure('NOT_FOUND');
+
     const { data: attempt } = await supabase
       .from('quiz_attempts')
       .select('*')
@@ -610,13 +645,17 @@ export class TeacherAssignmentService {
 
     const { data: assignment, error: assignmentError } = await supabase
       .from('teacher_assignments')
-      .select('*, assignment_questions(*)')
+      .select('*, assignment_questions(*), assignment_targets(*)')
       .eq('id', id)
       .eq('status', 'published')
       .single();
 
     if (assignmentError) return toDbFailure(assignmentError);
     if (!assignment) return failure('NOT_FOUND');
+
+    const targeted = await this.isAssignmentTarget(supabase, assignment, ctx.userId);
+    if (isFailure(targeted)) return targeted;
+    if (!targeted.data) return failure('NOT_FOUND');
 
     // Check time window
     const now = new Date();
