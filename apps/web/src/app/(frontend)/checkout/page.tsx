@@ -39,6 +39,7 @@ function CheckoutContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const planId = searchParams.get('plan_id');
+  const orgId = searchParams.get('org_id');
   const { user } = useAuth();
 
   const [plan, setPlan] = useState<PlanInfo | null>(null);
@@ -92,6 +93,7 @@ function CheckoutContent() {
         session_id: crypto.randomUUID(),
         plan_id: planId,
         user_id: user.id,
+        ...(orgId ? { org_id: orgId } : {}),
       });
       setIsDone(true);
       setTimeout(() => router.push('/billing/success?redirect=auto'), 2000);

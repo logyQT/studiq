@@ -2,6 +2,7 @@ import type { Nullable } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -15,13 +16,19 @@ export type MockCheckoutSession = {
 };
 
 export class MockStripeService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(
+    private createClient: () => Promise<SupabaseClient>,
+    private createAdminClient: () => SupabaseClient = createServiceClient,
+  ) {}
 
-  /** A plan can be bought only if it exists, is active and is meant for the buyer's account type. */
+  /**
+   * A plan can be bought only if it exists, is active and is meant for the buyer's account type.
+   * Reports whether it is an organization plan (bought for an org, not for the buyer).
+   */
   private async assertPlanPurchasable(
     planKey: string,
     accountType: string,
-  ): Promise<ServiceResult<void>> {
+  ): Promise<ServiceResult<{ isOrgPlan: boolean }>> {
     const supabase = await this.createClient();
 
     const { data: plan } = await supabase
@@ -34,21 +41,50 @@ export class MockStripeService {
     if (plan.for_account_type && plan.for_account_type !== accountType) {
       return failure('FORBIDDEN');
     }
+    return success({ isOrgPlan: plan.for_account_type === 'manager' });
+  }
+
+  /** An organization plan can be bought only by an admin of that organization. */
+  private async assertOrgAdmin(
+    orgId: string | undefined,
+    userId: string,
+  ): Promise<ServiceResult<void>> {
+    if (!orgId) return failure('BAD_REQUEST');
+
+    const supabase = await this.createClient();
+    const { data: membership, error } = await supabase
+      .from('org_members')
+      .select('org_roles!inner(name)')
+      .eq('organization_id', orgId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+
+    const role = membership?.org_roles as { name?: string } | { name?: string }[] | undefined;
+    const roleName = Array.isArray(role) ? role[0]?.name : role?.name;
+    if (roleName !== 'admin') return failure('FORBIDDEN');
     return success(undefined);
   }
 
   async createCheckoutSession(
     planId: string,
     accountType: string,
-    _userId: string,
-    _orgId?: string,
+    userId: string,
+    orgId?: string,
   ): Promise<ServiceResult<{ url: string; sessionId: string }>> {
     const purchasable = await this.assertPlanPurchasable(planId, accountType);
     if (isFailure(purchasable)) return purchasable;
 
+    if (purchasable.data.isOrgPlan) {
+      const admin = await this.assertOrgAdmin(orgId, userId);
+      if (isFailure(admin)) return admin;
+    }
+
     const sessionId = crypto.randomUUID();
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-    const url = `${baseUrl}/checkout?session_id=${sessionId}&plan_id=${planId}`;
+    const orgParam = purchasable.data.isOrgPlan ? `&org_id=${orgId}` : '';
+    const url = `${baseUrl}/checkout?session_id=${sessionId}&plan_id=${planId}${orgParam}`;
 
     return success({ url, sessionId });
   }
@@ -67,6 +103,19 @@ export class MockStripeService {
 
     const purchasable = await this.assertPlanPurchasable(event.plan_id, accountType);
     if (isFailure(purchasable)) return purchasable;
+
+    if (purchasable.data.isOrgPlan) {
+      const admin = await this.assertOrgAdmin(event.org_id, event.user_id);
+      if (isFailure(admin)) return admin;
+
+      // organizations.plan alone changes nothing: features and limits are
+      // snapshots, so the DB function moves the plan and re-syncs them.
+      const { error: planError } = await this.createAdminClient().rpc('apply_org_plan', {
+        p_org_id: event.org_id,
+        p_plan: event.plan_id,
+      });
+      if (planError) return toDbFailure(planError);
+    }
 
     const supabase = await this.createClient();
 
