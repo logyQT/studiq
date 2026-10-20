@@ -9,6 +9,7 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { CheckoutButton } from '@/components/pricing/checkout-button';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
+import { useOrgs } from '@/hooks/use-orgs';
 
 const PLAN_ID_MAP: Record<string, string | null> = {
   base: null,
@@ -83,12 +84,15 @@ export function PlanCard({
   user,
   t,
   accountType,
+  orgId,
 }: {
   plan: PlanInfo;
   isCurrentPlan: boolean;
   user: unknown;
   t: (key: string) => string;
   accountType: string;
+  /** Active organization; organization plans are bought for it. */
+  orgId?: string;
 }) {
   const locale = useLocale();
   const popular =
@@ -152,7 +156,11 @@ export function PlanCard({
         </ul>
 
         {user && PLAN_ID_MAP[plan.key] ? (
-          <CheckoutButton planId={PLAN_ID_MAP[plan.key]!} className="w-full">
+          <CheckoutButton
+            planId={PLAN_ID_MAP[plan.key]!}
+            orgId={plan.forAccountType === 'manager' ? orgId : undefined}
+            className="w-full"
+          >
             {t(CTA_KEY_MAP[plan.key] as any)}
           </CheckoutButton>
         ) : (
@@ -168,6 +176,7 @@ export function PlanCard({
 export function PricingContent({ accountType }: { accountType: string }) {
   const t = useTranslations('PricingPage');
   const { user } = useAuth();
+  const { activeOrg } = useOrgs();
 
   const { data: plans, isLoading } = useApiQuery<PlanInfo[]>({
     queryKey: ['subscription-plans', 'active', accountType],
@@ -220,6 +229,7 @@ export function PricingContent({ accountType }: { accountType: string }) {
                 user={user}
                 t={t}
                 accountType={accountType}
+                orgId={activeOrg?.id}
               />
             ))}
           </div>
