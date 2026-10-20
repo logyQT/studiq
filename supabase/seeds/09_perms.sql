@@ -27,7 +27,10 @@ ON CONFLICT DO NOTHING;
 
 -- ==========================================
 -- SEED: org_role_permissions
--- Maps dev org roles to permissions with scopes.
+-- Maps the system roles of EVERY seeded organization to permissions with
+-- scopes. (Organizations are inserted by 01_seed.sql before this file adds the
+-- content permissions, so the handle_new_organization trigger only copied the
+-- few legacy permissions that existed then.)
 -- ==========================================
 
 -- member: read=group, create/update/delete=own
@@ -38,8 +41,7 @@ SELECT r.id, p.name,
     ELSE 'own'
   END
 FROM public.org_roles r, public.permissions p
-WHERE r.organization_id = '00000000-0000-4000-8000-000000000001'
-  AND r.name = 'member'
+WHERE r.name = 'member'
   AND p.name IN (
     'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
     'topic.read', 'topic.create', 'topic.update', 'topic.delete',
@@ -53,8 +55,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO public.org_role_permissions (org_role_id, permission_name, scope)
 SELECT r.id, p.name, 'own'
 FROM public.org_roles r, public.permissions p
-WHERE r.organization_id = '00000000-0000-4000-8000-000000000001'
-  AND r.name = 'teacher'
+WHERE r.name = 'teacher'
   AND p.name IN (
     'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
     'topic.read', 'topic.create', 'topic.update', 'topic.delete',
@@ -68,8 +69,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO public.org_role_permissions (org_role_id, permission_name, scope)
 SELECT r.id, p.name, 'organization'
 FROM public.org_roles r, public.permissions p
-WHERE r.organization_id = '00000000-0000-4000-8000-000000000001'
-  AND r.name = 'admin'
+WHERE r.name = 'admin'
   AND p.name IN (
     'flashcard.read', 'flashcard.create', 'flashcard.update', 'flashcard.delete',
     'topic.read', 'topic.create', 'topic.update', 'topic.delete',
