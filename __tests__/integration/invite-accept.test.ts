@@ -142,5 +142,116 @@ forEachCopy((copyId) => {
         .maybeSingle();
       expect(groupMember).toBeTruthy();
     });
+
+    // End-to-end check for #182 (max_students was never enforced on accept). Note:
+    // mockUser() uses a service-role client, so this cannot reproduce the RLS
+    // blindness that caused it; that is covered by the unit test asserting the
+    // count goes through the admin client.
+    it('rejects the invite that would push the org over max_students (#182)', async () => {
+      // Launch plan: max_students = 5 -> manager + 4 members fill the org
+      const fixture = await before({ role: 'manager', org: true, members: { count: 4 } });
+      createdOrgIds.push(fixture.orgId!);
+      const extra = await createTestUser({ role: 'student' });
+      const { memberRoleId } = await roleIds(fixture.orgId!);
+
+      mockUser(fixture.user);
+      const inviteRes = await invitePost(
+        createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: extra.email, targetOrgRoleId: memberRoleId }),
+          },
+          { active_org_id: fixture.orgId! },
+        ),
+      );
+      expect(inviteRes.status).toBe(201);
+
+      const supabase = createServiceClient();
+      const { data: invite } = await supabase
+        .from('invitations')
+        .select('token')
+        .eq('email', extra.email)
+        .eq('organization_id', fixture.orgId!)
+        .single();
+
+      mockUser(extra);
+      const acceptRes = await acceptPost(
+        createNextRequest('http://localhost/api/v1/organization/invites/accept', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: invite!.token }),
+        }),
+      );
+      expect(acceptRes.status).toBe(429);
+
+      const { data: membership } = await supabase
+        .from('org_members')
+        .select('user_id')
+        .eq('organization_id', fixture.orgId!)
+        .eq('user_id', extra.id)
+        .maybeSingle();
+      expect(membership).toBeNull();
+    });
+
+    it('re-accepting as an existing member at the cap stays idempotent (#182)', async () => {
+      // Org filled to max_students = 5 by the fixture itself (manager + 4 members).
+      const fixture = await before({ role: 'manager', org: true, members: { count: 4 } });
+      createdOrgIds.push(fixture.orgId!);
+      const existing = fixture.memberUsers[0];
+      const { memberRoleId } = await roleIds(fixture.orgId!);
+
+      mockUser(fixture.user);
+      const inviteRes = await invitePost(
+        createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: existing.email, targetOrgRoleId: memberRoleId }),
+          },
+          { active_org_id: fixture.orgId! },
+        ),
+      );
+      expect(inviteRes.status).toBe(201);
+
+      const supabase = createServiceClient();
+      const { data: invite } = await supabase
+        .from('invitations')
+        .select('token')
+        .eq('email', existing.email)
+        .eq('organization_id', fixture.orgId!)
+        .eq('is_accepted', false)
+        .order('expires_at', { ascending: false })
+        .limit(1)
+        .single();
+      expect(invite).toBeTruthy();
+
+      mockUser(existing);
+      const acceptRes = await acceptPost(
+        createNextRequest('http://localhost/api/v1/organization/invites/accept', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: invite!.token }),
+        }),
+      );
+      // The org is full, but the caller already occupies their seat: no 429, no
+      // 409 from the (organization_id, user_id) / (group_id, user_id) uniques.
+      expect(acceptRes.status).toBe(200);
+
+      const { count } = await supabase
+        .from('org_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', fixture.orgId!);
+      expect(count).toBe(5);
+
+      const { count: groupRows } = await supabase
+        .from('group_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('group_id', fixture.defaultGroupId!)
+        .eq('user_id', existing.id);
+      expect(groupRows).toBe(1);
+    });
   });
 });

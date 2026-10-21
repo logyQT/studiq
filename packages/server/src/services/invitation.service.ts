@@ -2,13 +2,17 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
+import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { CreateInviteInput } from '@studiq/server/models/invitation.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class InvitationService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(
+    private createClient: () => Promise<SupabaseClient>,
+    private createAdminClient: () => SupabaseClient = createServiceClient,
+  ) {}
 
   async createInvitation(
     ctx: RequestContext,
@@ -107,11 +111,22 @@ export class InvitationService {
     if (!inviteResult.success) return inviteResult;
     const invite = inviteResult.data;
 
-    const { count: memberCount } = await supabase
+    // The accepting user is not a member yet, and org_members has RLS, so a
+    // user-scoped count would always see 0 rows and never hit the limit. The
+    // caller is excluded: re-accepting an invitation (or a manager re-inviting
+    // an existing member) updates that member's own row via the upsert below
+    // and must not consume a second seat.
+    const { count: otherMemberCount, error: countError } = await this.createAdminClient()
       .from('org_members')
       .select('*', { count: 'exact', head: true })
-      .eq('organization_id', invite.organizationId);
-    await limitsResolver.checkOrgLimit(invite.organizationId, 'max_students', memberCount ?? 0);
+      .eq('organization_id', invite.organizationId)
+      .neq('user_id', ctx.userId);
+    if (countError) return toDbFailure(countError);
+    await limitsResolver.checkOrgLimit(
+      invite.organizationId,
+      'max_students',
+      otherMemberCount ?? 0,
+    );
 
     const { data: org, error: orgError } = await supabase
       .from('organizations')
@@ -121,13 +136,19 @@ export class InvitationService {
 
     if (orgError || !org) return failure('GONE');
 
+    // Explicit composite conflict target: supabase-js defaults to the primary
+    // key (`id`), which never conflicts here, so the "upsert" degraded to a
+    // plain INSERT and a re-accept died on org_members_organization_id_user_id_key.
     const { error: memberError } = await supabase
       .from('org_members')
-      .upsert({
-        organization_id: invite.organizationId,
-        user_id: ctx.userId,
-        org_role_id: invite.targetRole,
-      })
+      .upsert(
+        {
+          organization_id: invite.organizationId,
+          user_id: ctx.userId,
+          org_role_id: invite.targetRole,
+        },
+        { onConflict: 'organization_id,user_id' },
+      )
       .select()
       .single();
 
@@ -141,11 +162,16 @@ export class InvitationService {
       .single();
 
     if (defaultGroup) {
-      const { error: me } = await supabase.from('group_members').insert({
-        group_id: defaultGroup.id,
-        user_id: ctx.userId,
-        role: 'member',
-      });
+      // Re-accepts must not hit UNIQUE(group_id, user_id), and must not
+      // downgrade a member who already has a different group role.
+      const { error: me } = await supabase.from('group_members').upsert(
+        {
+          group_id: defaultGroup.id,
+          user_id: ctx.userId,
+          role: 'member',
+        },
+        { onConflict: 'group_id,user_id', ignoreDuplicates: true },
+      );
       if (me) return toDbFailure(me);
     }
 
