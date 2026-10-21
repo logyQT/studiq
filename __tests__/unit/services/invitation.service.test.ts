@@ -231,9 +231,10 @@ describe('InvitationService', () => {
     function adminClientWithCount(count: number) {
       const c: any = {};
       c.select = vi.fn(() => c);
-      c.eq = vi.fn().mockResolvedValue({ count, error: null });
+      c.eq = vi.fn(() => c);
+      c.neq = vi.fn().mockResolvedValue({ count, error: null });
       const from = vi.fn(() => c);
-      return { client: { from } as any, from };
+      return { client: { from } as any, from, query: c };
     }
 
     it('counts members with the admin client, not the joining user (#182)', async () => {
@@ -250,6 +251,7 @@ describe('InvitationService', () => {
       await expect(service.acceptInvitation(joiningCtx, 'tok')).rejects.toThrow();
 
       expect(admin.from).toHaveBeenCalledWith('org_members');
+      expect(admin.query.neq).toHaveBeenCalledWith('user_id', 'joining-user');
       expect(limitsResolver.checkOrgLimit).toHaveBeenCalledWith('org-1', 'max_students', 5);
       // user-scoped client only looked up the invitation: no member count, no insert
       expect(mock.from).toHaveBeenCalledTimes(1);
@@ -278,7 +280,8 @@ describe('InvitationService', () => {
     it('returns a DB failure when the member count cannot be read', async () => {
       const c: any = {};
       c.select = vi.fn(() => c);
-      c.eq = vi.fn().mockResolvedValue({ count: null, error: { message: 'boom', code: 'XX000' } });
+      c.eq = vi.fn(() => c);
+      c.neq = vi.fn().mockResolvedValue({ count: null, error: { message: 'boom', code: 'XX000' } });
       service = new InvitationService(
         async () => mock as any,
         () => ({ from: () => c }) as any,
@@ -288,7 +291,41 @@ describe('InvitationService', () => {
       const result = await service.acceptInvitation(joiningCtx, 'tok');
 
       expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
       expect(limitsResolver.checkOrgLimit).not.toHaveBeenCalled();
+    });
+
+    it('re-accepting as an existing member does not consume a second seat (#182)', async () => {
+      // Org is full with the caller already inside: 4 other members + the caller = 5/5.
+      const admin = adminClientWithCount(4);
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+      );
+      const memberQb = qb({ organization_id: 'org-1' });
+      const groupQb = qb(null);
+      mock.from
+        .mockReturnValueOnce(qb(invitation))
+        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
+        .mockReturnValueOnce(memberQb)
+        .mockReturnValueOnce(qb({ id: 'group-1' }))
+        .mockReturnValueOnce(groupQb)
+        .mockReturnValue(qb(null));
+
+      const result = await service.acceptInvitation(joiningCtx, 'tok');
+
+      expect(result.success).toBe(true);
+      expect(limitsResolver.checkOrgLimit).toHaveBeenCalledWith('org-1', 'max_students', 4);
+      // The membership "upsert" needs the composite target, otherwise it degrades
+      // to an INSERT and a re-accept fails with 23505 on (organization_id, user_id).
+      expect(memberQb.upsert).toHaveBeenCalledWith(
+        { organization_id: 'org-1', user_id: 'joining-user', org_role_id: 'role-member' },
+        { onConflict: 'organization_id,user_id' },
+      );
+      expect(groupQb.upsert).toHaveBeenCalledWith(
+        { group_id: 'group-1', user_id: 'joining-user', role: 'member' },
+        { onConflict: 'group_id,user_id', ignoreDuplicates: true },
+      );
     });
   });
 });
