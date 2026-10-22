@@ -166,7 +166,7 @@ config:
   binds a distinct set.
 - the worktree gets its own `apps/web/.env` with that stack's URL + anon key,
   `OTEL_SERVICE_NAME=studiq-<scenario>`, and its app `PORT`.
-- `supabase start -x imgproxy,analytics,vector,realtime` keeps the stack small;
+- `supabase start -x imgproxy,logflare,vector,realtime` keeps the stack small;
   `supabase db reset` seeds it independently, so resets never race.
 - `scripts/qa-env --clean` runs `supabase stop --no-backup`, frees the ports and
   removes the worktree.

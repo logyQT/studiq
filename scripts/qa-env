@@ -145,7 +145,7 @@ start() {
   (cd "$wt" && bun install >/dev/null 2>&1) && info "installed dependencies"
 
   # Trim heavy containers; keep auth/postgrest/storage/mailpit for MGR/EDU cases.
-  (cd "$wt" && bunx supabase start --workdir "$wt" -x imgproxy,analytics,vector,realtime >/tmp/qa-env-$scenario-supabase.log 2>&1)
+  (cd "$wt" && bunx supabase start --workdir "$wt" -x imgproxy,logflare,vector,realtime >/tmp/qa-env-$scenario-supabase.log 2>&1)
   info "supabase started"
 
   # shellcheck disable=SC1090
