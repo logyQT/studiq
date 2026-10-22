@@ -180,8 +180,45 @@ message. No tool calls after it — I read this when I get back.
 3. **Decisions I need** — for each item in (2), one line: **file it** or
    **investigate further with another agent**.
 
+### Machine-readable summary (required)
+
+After the three sections, append exactly one fenced `json` block that the
+manager reads. Use an indented block here only because this prompt is itself
+fenced; in your answer use three backticks:
+
+    {
+      "scenario": "<ID>",
+      "filed": [{"number": 249, "title": "...", "labels": ["bug", "high"]}],
+      "held": [
+        {
+          "title": "...",
+          "severity": "low",
+          "areas": ["frontend", "i18n"],
+          "why": "...",
+          "body": "repro + expected vs actual + evidence"
+        }
+      ],
+      "decisions": [
+        {"id": "d1", "question": "...", "options": ["file", "investigate", "skip"], "held": 0}
+      ]
+    }
+
+Use `"held": []` and `"decisions": []` when there is nothing. `decisions[].held`
+is the index into `held` (omit it when the decision is not about a held finding).
+Keep the JSON valid — it is machine-read. Do not put anything after it.
+
 Do not use a blocking question tool. If the run is blocked by a missing fixture
 or a broken slot, say so and stop; do not guess.
+
+## Known harness quirks (do NOT file as product defects)
+
+- **Re-editing a field appends instead of replacing.** When the automation
+  re-types into a field that already has a value, the text can be appended.
+  This is the test harness, not the app; the app's own create/edit flow is
+  correct. Do not file it — clear the field (select-all + type, or set the
+  value) and continue.
+- If a behavior appears only through automation, reproduce it once with a fresh
+  page / real interaction before treating it as a defect.
 
 ## General known issue (do NOT re-file)
 Breadcrumbs are broken app-wide: they show raw English URL segments and raw UUIDs on dynamic routes (e.g. `Edu > Flashcards > ccf03248-3167-467e-b4bd-78b3c94457ba`). Tracked in #136 — skip it if you hit it.
