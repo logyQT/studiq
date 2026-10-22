@@ -337,16 +337,15 @@ async function main(): Promise<void> {
       ...config.slots.map((s) => [s.label, s.channelId] as [string, string]),
     ] as Array<[string, string]>) {
       try {
-        const channel = await (label === 'manager'
-          ? managerClient
-          : envClients.get(Number(label.slice(4)))!
-        ).channels.fetch(channelId);
-        if (channel?.isTextBased()) {
-          await (channel as TextChannel).send({
-            content: `ready · ${label}`,
-            allowedMentions: { parse: [] },
-          });
-        }
+        const client =
+          label === 'manager' ? managerClient : envClients.get(Number(label.slice(4)))!;
+        const channel = await client.channels.fetch(channelId);
+        if (!channel?.isTextBased()) continue;
+        const text = `ready · ${label}`;
+        const recent = await (channel as TextChannel).messages.fetch({ limit: 1 });
+        const last = recent.first();
+        if (last && last.author.id === client.user?.id && last.content === text) continue;
+        await (channel as TextChannel).send({ content: text, allowedMentions: { parse: [] } });
       } catch (err) {
         log.warn(
           label,
