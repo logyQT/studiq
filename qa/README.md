@@ -45,7 +45,7 @@ pooler — the app uses none of them.
 
 ### Live QA browser dashboard
 
-The operator dashboard runs at **<http://localhost:4000/>** and shows four
+The operator dashboard runs at **<http://localhost:5000/>** and shows four
 tiles, one per slot. Each tile is a live Chromium page at 1920×1080 (CDP
 screencast) with that slot's opencode chat in a collapsible drawer. The agent
 drives the **same** browser the operator sees:

@@ -42,7 +42,7 @@ admin app. `qa/env.json` in this checkout is authoritative:
 - Shared observability stack: Tempo + Loki + Prometheus + Grafana at
   `http://localhost:3001` (already running; the `grafana` MCP server points at it).
 - `gh` is authed as logyQT; issues live in logyQT/studiq.
-- The dashboard is at **<http://localhost:4000/>**; your tile is **`qa-env-N`**
+- The dashboard is at **<http://localhost:5000/>**; your tile is **`qa-env-N`**
   (same N as `envId`). It streams a real Chromium that you also control (next section).
 
 ### Live QA browser — use this instead of the built-in browser
@@ -112,7 +112,7 @@ never substitute invented data and never file a `bug` for the missing fixture.
 3. `curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/api/health` → `200`.
 4. `curl -s -o /dev/null -w '%{http_code}' "$APP_URL/login"` → `200`, where `APP_URL` is `appUrl` from `qa/env.json`.
 5. For `ADM-*` scenarios, `curl -s -o /dev/null -w '%{http_code}' "$ADMIN_URL"` must not be `000`, where `ADMIN_URL` is `adminUrl` from `qa/env.json`.
-6. `curl -s http://localhost:4000/healthz` → `browsersOk: true` and four `up: true` entries. If not, the dashboard browser for your slot is down: report it as `env` (do not retry forever).
+6. `curl -s http://localhost:5000/healthz` → `browsersOk: true` and four `up: true` entries. If not, the dashboard browser for your slot is down: report it as `env` (do not retry forever).
 
 If any preflight check fails, that is an **environment problem, not a product defect** — fix it or report it as `env`, and NEVER file it as a `bug`.
 

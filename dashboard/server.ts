@@ -1,13 +1,13 @@
 /**
  * StudiQ QA Dashboard - Phase 2
  *
- * One Bun server on :4000 that does three things:
+ * One Bun server on :5000 that does three things:
  *
- *   1. Dashboard host (localhost:4000, 127.0.0.1:4000, ...)
+ *   1. Dashboard host (localhost:5000, 127.0.0.1:5000, ...)
  *      -> 2x2 grid of live Chromium tiles (CDP screencast + input forwarding)
  *         with a collapsible opencode chat drawer per tile.
  *
- *   2. Tile hosts (qa-env-N.localhost:4000)
+ *   2. Tile hosts (qa-env-N.localhost:5000)
  *      -> reverse proxy to the local opencode server on 127.0.0.1:4096,
  *         injecting the Basic auth header server-side. The SPA therefore
  *         runs same-origin with its API and never shows an auth prompt.
@@ -18,7 +18,9 @@
  * No dependencies beyond Bun itself.
  */
 
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { recordConsole, recordNetwork } from './browser-core';
 import {
   activeTargetId,
@@ -41,11 +43,14 @@ import {
 import {
   BROWSER_HEIGHT,
   BROWSER_WIDTH,
+  DECISIONS_FILE,
   ENVS,
   type EnvConfig,
   envByN,
   HOSTNAME,
+  MANAGER_TOOL,
   PORT,
+  PUBLIC_DIR,
   SESSIONS_FILE,
   UPSTREAM,
   UPSTREAM_AUTH,
@@ -60,11 +65,19 @@ type Session = {
   time?: { created?: number; updated?: number };
 };
 
+type AgentState = {
+  state: 'free' | 'busy' | 'decision';
+  pending: number;
+  active: boolean;
+  lastActivity: number | null;
+};
+
 type EnvState = {
   env: EnvConfig;
   session: Session | null;
   source: 'auto' | 'override' | 'none';
   deepLink: string | null;
+  agent: AgentState;
 };
 
 type Cache = { at: number; states: EnvState[] };
@@ -101,6 +114,70 @@ async function fetchSessions(): Promise<Session[]> {
   return Array.isArray(body) ? body : (body.data ?? []);
 }
 
+async function fetchActive(): Promise<Record<string, { type?: string }>> {
+  const res = await fetch(`${UPSTREAM}/api/session/active`, {
+    headers: {
+      authorization: UPSTREAM_AUTH,
+      accept: 'application/json',
+      'accept-encoding': 'identity',
+    },
+  });
+  if (!res.ok) throw new Error(`GET /api/session/active -> ${res.status}`);
+  const body = (await res.json()) as { data?: Record<string, { type?: string }> };
+  return body.data ?? {};
+}
+
+let lastDecisionSync = 0;
+
+/** Keep the decisions inbox fresh so the tile dot can show "waiting". */
+function syncDecisions(): void {
+  if (Date.now() - lastDecisionSync < 20_000) return;
+  lastDecisionSync = Date.now();
+  try {
+    spawnSync('python3', [MANAGER_TOOL, 'decisions', 'sync'], {
+      timeout: 20_000,
+      stdio: 'ignore',
+    });
+  } catch (err) {
+    console.error('[dashboard] decisions sync failed:', err);
+  }
+}
+
+function pendingByEnv(): Map<number, number> {
+  const counts = new Map<number, number>();
+  try {
+    if (!existsSync(DECISIONS_FILE)) return counts;
+    const raw = JSON.parse(readFileSync(DECISIONS_FILE, 'utf8')) as {
+      items?: Array<{ env?: number; status?: string }>;
+    };
+    for (const item of raw.items ?? []) {
+      if (item?.status === 'pending' && typeof item.env === 'number') {
+        counts.set(item.env, (counts.get(item.env) ?? 0) + 1);
+      }
+    }
+  } catch (err) {
+    console.error('[dashboard] decisions read failed:', err);
+  }
+  return counts;
+}
+
+function agentFor(
+  env: EnvConfig,
+  session: Session | null,
+  active: Record<string, { type?: string }>,
+  pending: Map<number, number>,
+): AgentState {
+  const isActive = session ? Boolean(active[session.id]) : false;
+  const pendingCount = pending.get(env.n) ?? 0;
+  const state = isActive ? 'busy' : pendingCount > 0 ? 'decision' : 'free';
+  return {
+    state,
+    pending: pendingCount,
+    active: isActive,
+    lastActivity: session?.time?.updated ?? session?.time?.created ?? null,
+  };
+}
+
 function mostRecent(sessions: Session[]): Session | null {
   if (sessions.length === 0) return null;
   return sessions
@@ -115,12 +192,20 @@ async function loadStates(force = false): Promise<EnvState[]> {
   if (!force && cache && Date.now() - cache.at < CACHE_MS) return cache.states;
 
   const overrides = readOverrides();
+  syncDecisions();
   let sessions: Session[] = [];
   try {
     sessions = await fetchSessions();
   } catch (err) {
     console.error('[dashboard] session discovery failed:', err);
   }
+  let active: Record<string, { type?: string }> = {};
+  try {
+    active = await fetchActive();
+  } catch (err) {
+    console.error('[dashboard] active session lookup failed:', err);
+  }
+  const pending = pendingByEnv();
 
   const byId = new Map(sessions.map((session) => [session.id, session]));
   const states: EnvState[] = ENVS.map((env) => {
@@ -135,6 +220,7 @@ async function loadStates(force = false): Promise<EnvState[]> {
         session,
         source: 'override' as const,
         deepLink: `${env.origin}/server/${env.serverKey}/session/${session.id}`,
+        agent: agentFor(env, session, active, pending),
       };
     }
 
@@ -147,6 +233,7 @@ async function loadStates(force = false): Promise<EnvState[]> {
       session,
       source: session ? ('auto' as const) : ('none' as const),
       deepLink: session ? `${env.origin}/server/${env.serverKey}/session/${session.id}` : null,
+      agent: agentFor(env, session, active, pending),
     };
   });
 
@@ -261,7 +348,7 @@ function truncate(value: string, max = 90): string {
 }
 
 function renderTile(state: EnvState): string {
-  const { env, session, source } = state;
+  const { env, session, source, agent } = state;
   const title = session?.title?.trim() || (session ? session.id : 'No session');
   const badge =
     source === 'override'
@@ -289,8 +376,9 @@ function renderTile(state: EnvState): string {
 
   return `<section class="tile" id="tile-${env.n}" data-env="${env.n}">
     <header class="tile-head">
-      <span class="dot connecting" data-dot data-env="${env.n}" title="Browser connection status"></span>
+      <span class="dot ${agent.state}" data-dot data-env="${env.n}" title="Agent: ${agent.state}${agent.pending ? ` (${agent.pending} decision${agent.pending === 1 ? '' : 's'})` : ''}"></span>
       <span class="env">${escapeHtml(env.name)}</span>
+      <span class="agent-state ${agent.state}" data-agent-state data-env="${env.n}">${agent.state === 'decision' ? `decision ${agent.pending}` : agent.state}</span>
       ${badge}
       <div class="nav">
         <button class="icon-btn" type="button" data-bnav="back" data-env="${env.n}" title="Back" aria-label="Back">‹</button>
@@ -344,6 +432,9 @@ function renderDashboard(states: EnvState[]): string {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>StudiQ QA Dashboard</title>
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta name="theme-color" content="#0b0b0d" />
+<link rel="apple-touch-icon" href="/icon-192.png" />
 <style>
   :root {
     color-scheme: dark;
@@ -372,7 +463,9 @@ function renderDashboard(states: EnvState[]): string {
   .app { display: flex; flex-direction: column; height: 100dvh; }
 
   .topbar {
-    flex: 0 0 auto;
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 60;
     display: flex;
     align-items: center;
     gap: 16px;
@@ -380,6 +473,23 @@ function renderDashboard(states: EnvState[]): string {
     padding: 0 12px;
     background: linear-gradient(180deg, #101012, #0b0b0d);
     border-bottom: 1px solid var(--border);
+    transform: translateY(-100%);
+    transition: transform .16s ease;
+  }
+  .topbar.visible, .topbar:focus-within { transform: translateY(0); }
+  .topbar-zone {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 32px;
+    z-index: 59;
+  }
+  .topbar-zone::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 50%; transform: translateX(-50%);
+    width: 64px; height: 3px;
+    border-radius: 0 0 4px 4px;
+    background: #3a3a40;
   }
   .brand { display: flex; align-items: baseline; gap: 9px; white-space: nowrap; }
   .brand strong { font-size: 14px; letter-spacing: .2px; }
@@ -463,11 +573,20 @@ function renderDashboard(states: EnvState[]): string {
     width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto;
     background: #666; transition: background .2s, box-shadow .2s;
   }
-  .dot.live { background: var(--ok); box-shadow: 0 0 7px rgba(84,209,138,.75); }
-  .dot.down { background: var(--err); box-shadow: 0 0 7px rgba(255,122,122,.7); }
-  .dot.connecting { background: var(--warn); animation: pulse 1.2s ease-in-out infinite; }
+  .dot.free { background: var(--ok); box-shadow: 0 0 7px rgba(84,209,138,.75); }
+  .dot.busy { background: var(--err); box-shadow: 0 0 7px rgba(255,122,122,.7); }
+  .dot.decision { background: var(--warn); box-shadow: 0 0 7px rgba(240,179,77,.75); animation: pulse 1.4s ease-in-out infinite; }
+  .dot.down, .dot.connecting { background: #666; }
   @keyframes pulse { 50% { opacity: .3; } }
   .env { font-weight: 650; font-size: 12px; letter-spacing: .3px; white-space: nowrap; }
+  .agent-state {
+    flex: 0 0 auto;
+    font-size: 9px; text-transform: uppercase; letter-spacing: .6px;
+    color: var(--muted); white-space: nowrap;
+  }
+  .agent-state.free { color: var(--ok); }
+  .agent-state.busy { color: var(--err); }
+  .agent-state.decision { color: var(--warn); }
   .badge {
     flex: 0 0 auto;
     font-size: 9px; text-transform: uppercase; letter-spacing: .6px;
@@ -594,6 +713,7 @@ function renderDashboard(states: EnvState[]): string {
 </head>
 <body>
 <div class="app">
+  <div class="topbar-zone" id="topbar-zone" aria-hidden="true"></div>
   <div class="topbar">
     <div class="brand"><strong>QA Dashboard</strong><span>StudiQ · live environments</span></div>
     <div class="links">${webLinks}</div>
@@ -732,7 +852,6 @@ ${tiles}
       this.img.src = url;
       if (!this.live) {
         this.live = true;
-        this.dot.className = 'dot live';
         this.down.hidden = true;
       }
     }
@@ -750,17 +869,31 @@ ${tiles}
 
     setConnecting() {
       if (this.live) return;
-      this.dot.className = 'dot connecting';
       this.down.hidden = false;
       this.down.querySelector('.down-title').textContent = 'Connecting to browser';
       this.downSub.textContent = 'qa-env-' + this.n + ' · port ' + (9220 + this.n);
     }
 
     setDown(sub) {
-      this.dot.className = 'dot down';
       this.down.hidden = false;
       this.down.querySelector('.down-title').textContent = 'Browser down';
       this.downSub.textContent = sub || 'reconnecting…';
+    }
+
+    applyAgent(agent) {
+      if (!agent) return;
+      const cls = agent.state === 'decision' ? 'decision' : agent.state;
+      this.dot.className = 'dot ' + cls;
+      this.dot.title = agent.state === 'busy'
+        ? 'Agent working'
+        : agent.state === 'decision'
+          ? 'Waiting for a decision (' + agent.pending + ')'
+          : 'Free';
+      const label = this.tile.querySelector('[data-agent-state]');
+      if (label) {
+        label.textContent = agent.state === 'decision' ? 'decision ' + agent.pending : agent.state;
+        label.className = 'agent-state ' + cls;
+      }
     }
 
     /* ------------------------------------------------------------ input */
@@ -990,8 +1123,27 @@ ${tiles}
         setTimeout(() => location.reload(), 500);
       }
       lastSignature = signature;
+      for (const env of state.envs) {
+        const n = Number(String(env.name).split('-').pop());
+        tileEls.get(n)?.applyAgent?.(env.agent);
+      }
       document.getElementById('updated').textContent = 'sessions refreshed ' + new Date().toLocaleTimeString();
     } catch (_) {}
+  }
+
+  const topbar = document.querySelector('.topbar');
+  const topbarZone = document.getElementById('topbar-zone');
+  topbarZone.addEventListener('mouseenter', () => topbar.classList.add('visible'));
+  topbarZone.addEventListener('click', () => topbar.classList.toggle('visible'));
+  topbar.addEventListener('mouseleave', () => topbar.classList.remove('visible'));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') topbar.classList.remove('visible');
+  });
+  document.addEventListener('focusin', (event) => {
+    if (topbar.contains(event.target)) topbar.classList.add('visible');
+  });
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 
   pollBrowsers();
@@ -1460,6 +1612,7 @@ function publicState(state: EnvState) {
     adminUrl: state.env.adminUrl,
     deepLink: state.deepLink,
     source: state.source,
+    agent: state.agent,
     session: state.session
       ? {
           id: state.session.id,
@@ -1469,6 +1622,32 @@ function publicState(state: EnvState) {
       : null,
   };
 }
+
+const SERVICE_WORKER = `
+const CACHE = 'studiq-qa-dashboard-v1';
+const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
+});
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  if (event.request.method !== 'GET') return;
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws/') || url.pathname.startsWith('/server/')) return;
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
+        return response;
+      })
+      .catch(() => caches.match(event.request).then((hit) => hit || caches.match('/')))
+  );
+});
+`;
 
 /* ---------------------------------------------------------------- server */
 
@@ -1549,6 +1728,59 @@ const server = Bun.serve<WsData>({
         }
       }
       return proxy(req, env, url);
+    }
+
+    if (url.pathname === '/manifest.webmanifest') {
+      return Response.json(
+        {
+          name: 'StudiQ QA Dashboard',
+          short_name: 'QA Dashboard',
+          description: 'Four live StudiQ QA environments with agent status',
+          start_url: '/',
+          scope: '/',
+          display: 'standalone',
+          background_color: '#080808',
+          theme_color: '#0b0b0d',
+          orientation: 'any',
+          icons: [
+            { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+            { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+            {
+              src: '/icon-maskable-512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable',
+            },
+          ],
+        },
+        {
+          headers: {
+            'content-type': 'application/manifest+json',
+            'cache-control': 'public, max-age=3600',
+          },
+        },
+      );
+    }
+
+    if (url.pathname === '/sw.js') {
+      return new Response(SERVICE_WORKER, {
+        headers: {
+          'content-type': 'text/javascript; charset=utf-8',
+          'cache-control': 'no-cache',
+        },
+      });
+    }
+
+    if (
+      url.pathname === '/icon-192.png' ||
+      url.pathname === '/icon-512.png' ||
+      url.pathname === '/icon-maskable-512.png'
+    ) {
+      const file = Bun.file(join(PUBLIC_DIR, url.pathname.slice(1)));
+      if (!(await file.exists())) return new Response('Not found\n', { status: 404 });
+      return new Response(file, {
+        headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' },
+      });
     }
 
     if (req.method === 'POST' && url.pathname === '/api/dashboard/refresh') {

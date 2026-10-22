@@ -1,6 +1,6 @@
 # StudiQ QA Dashboard — Phase 2
 
-A zero-dependency Bun app on **port 4000** that renders a 2×2 grid of the four
+A zero-dependency Bun app on **port 5000** that renders a 2×2 grid of the four
 QA environments as **live Chromium windows**, plus a collapsible opencode chat
 drawer per tile.
 
@@ -10,7 +10,7 @@ wheel and keyboard input on the tile is forwarded to that page. The same
 Chromium is exposed to QA agents through an MCP server and a CLI, so the
 operator and the agent operate the *same* browser.
 
-Phase 1 remains intact: tile hosts `qa-env-N.localhost:4000` reverse-proxy the
+Phase 1 remains intact: tile hosts `qa-env-N.localhost:5000` reverse-proxy the
 opencode web client with Basic auth injected server-side, deep-linked to the
 newest session for that worktree.
 
@@ -18,17 +18,41 @@ newest session for that worktree.
 
 | What | URL |
 | --- | --- |
-| Dashboard | <http://localhost:4000/> |
-| Health / browser state | <http://localhost:4000/healthz> (`?deep=1` evaluates each page) |
-| JSON browser state | <http://localhost:4000/api/browsers> |
-| Session mapping | <http://localhost:4000/api/dashboard/state> |
-| qa-env-1 chat client | <http://qa-env-1.localhost:4000/> |
-| qa-env-2 chat client | <http://qa-env-2.localhost:4000/> |
-| qa-env-3 chat client | <http://qa-env-3.localhost:4000/> |
-| qa-env-4 chat client | <http://qa-env-4.localhost:4000/> |
+| Dashboard | <http://localhost:5000/> |
+| Health / browser state | <http://localhost:5000/healthz> (`?deep=1` evaluates each page) |
+| JSON browser state | <http://localhost:5000/api/browsers> |
+| Session mapping | <http://localhost:5000/api/dashboard/state> |
+| qa-env-1 chat client | <http://qa-env-1.localhost:5000/> |
+| qa-env-2 chat client | <http://qa-env-2.localhost:5000/> |
+| qa-env-3 chat client | <http://qa-env-3.localhost:5000/> |
+| qa-env-4 chat client | <http://qa-env-4.localhost:5000/> |
 
 App links in the top bar point at the published web apps:
 `http://localhost:3010` … `http://localhost:3013`.
+
+## Host ports
+
+The dashboard listens on `5000` inside the container. A host-side nginx
+`stream` container (`studiq-ports`) publishes `5000` and `3010-3013` and
+forwards them to `studiq-dev` over the `studiq-ports` Docker network, so the
+main container does not need to be recreated. Config lives on the host at
+`studiq-dev/ports-proxy.conf`.
+
+    docker network create studiq-ports
+    docker network connect studiq-ports studiq-dev
+    docker run -d --name studiq-ports --restart unless-stopped \
+      --network studiq-ports \
+      -p 5000:5000 -p 3010:3010 -p 3011:3011 -p 3012:3012 -p 3013:3013 \
+      -v "C:/Users/logy/Documents/Default Project/studiq-dev/ports-proxy.conf:/etc/nginx/nginx.conf:ro" \
+      nginx:alpine
+
+Port `4000` is left free for the main admin app (`bun run dev:admin`).
+
+### PWA
+
+`/manifest.webmanifest`, `/sw.js` and the icons in `dashboard/public/` make the
+dashboard installable from Chrome/Edge ("Install app"). It opens standalone
+with the four tiles and no browser tabs.
 
 ## Run / restart
 
@@ -48,7 +72,7 @@ Inside the `studiq-dev` container, from `dashboard/`:
 
 `run.sh` starts the browsers first, then the dashboard. It is safe to run twice.
 The dashboard is detached with `setsid nohup bun run server.ts`, writes `.pid`
-and appends to `dashboard.log`. It refuses to start if port 4000 is held by an
+and appends to `dashboard.log`. It refuses to start if port 5000 is held by an
 unknown process.
 
 ## Browser supervisor
@@ -182,9 +206,9 @@ bun "$B" state | status | browsers
 ## Architecture
 
 ```
-Host browser ── localhost:4000 ───────────► Bun server ── dashboard HTML
+Host browser ── localhost:5000 ───────────► Bun server ── dashboard HTML
              │                                  │
-             ├─ qa-env-N.localhost:4000 ──────► 127.0.0.1:4096 (opencode, auth injected)
+             ├─ qa-env-N.localhost:5000 ──────► 127.0.0.1:4096 (opencode, auth injected)
              │                                  │
              └─ /ws/browser/N (WebSocket) ─────► CDP 127.0.0.1:922N ── Chromium page
                                                     ▲
@@ -196,7 +220,7 @@ QA agent ── MCP qa_browser_* / browser-cli.ts ──────┘ (same pa
 * Tile hosts: every request is proxied to opencode with
   `Authorization: Basic base64("opencode:studiq-local-dev")`; SSE streams
   unbuffered.
-* Deep link: `http://qa-env-N.localhost:4000/server/<base64(tileOrigin)>/session/<id>`.
+* Deep link: `http://qa-env-N.localhost:5000/server/<base64(tileOrigin)>/session/<id>`.
   The encoded key is the tile origin so the SPA's `/api` calls stay same-origin.
 * Only `dashboard/` (plus the QA docs) is touched; application code and the four
   QA stacks are not.
@@ -248,4 +272,4 @@ Manual override: create `dashboard/sessions.json` (git-ignored):
 * `browsers.json`, `tabs.json`, screenshots and logs are runtime state and are
   intentionally git-ignored.
 * `/ws/browser/N` and the dashboard have no authentication; they are bound to
-  the container's port 4000 and intended for the local operator only.
+  the container's port 5000 and intended for the local operator only.

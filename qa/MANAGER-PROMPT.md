@@ -53,7 +53,7 @@ Scenario IDs, e.g. "start MGR-INV-03, MGR-INV-04 and MGR-GRP-01".
 
 - Never create sessions by hand. The tool pins DeepSeek V4.1 Flash (high) and
   injects the QA prompt with the scenario ID.
-- After dispatching, tell me to hit **Refresh all** at <http://localhost:4000/>.
+- After dispatching, tell me to hit **Refresh all** at <http://localhost:5000/>.
 
 ## Decisions inbox (do not make me read the chats)
 Every QA agent ends with a machine-readable JSON summary. After a session

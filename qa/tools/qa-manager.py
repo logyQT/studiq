@@ -41,7 +41,7 @@ MODEL = {"providerID": "opencode-go", "id": "deepseek-v4.1-flash", "variant": "h
 SLOTS = {n: f"/workspaces/studiq/.worktrees/qa-env-{n}" for n in range(1, 5)}
 APP_PORT = {n: 3009 + n for n in SLOTS}
 ADMIN_PORT = {n: 4009 + n for n in SLOTS}
-DASHBOARD = "http://localhost:4000/"
+DASHBOARD = "http://localhost:5000/"
 SEVERITIES = ("critical", "high", "medium", "low")
 AREAS = ("frontend", "backend", "database", "i18n", "visual", "security",
          "accessibility", "performance", "payments")

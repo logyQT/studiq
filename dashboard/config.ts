@@ -6,7 +6,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-export const PORT = 4000;
+export const PORT = 5000;
 export const HOSTNAME = '0.0.0.0';
 export const UPSTREAM = 'http://127.0.0.1:4096';
 export const UPSTREAM_AUTH =
@@ -14,6 +14,9 @@ export const UPSTREAM_AUTH =
 
 export const REPO_ROOT = '/workspaces/studiq';
 export const DASHBOARD_DIR = import.meta.dir;
+export const PUBLIC_DIR = join(DASHBOARD_DIR, 'public');
+export const DECISIONS_FILE = join(REPO_ROOT, '.worktrees/qa-env/qa/decisions.json');
+export const MANAGER_TOOL = join(REPO_ROOT, '.worktrees/qa-env/qa/tools/qa-manager.py');
 
 export const BROWSER_WIDTH = 1920;
 export const BROWSER_HEIGHT = 1080;

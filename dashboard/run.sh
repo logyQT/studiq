@@ -13,7 +13,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-PORT=4000
+PORT=5000
 PIDFILE=".pid"
 LOG="dashboard.log"
 
