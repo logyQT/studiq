@@ -74,7 +74,12 @@ Wait for my answers. Then execute exactly what I chose:
 
 - **file** → `... qa-manager.py decisions file <id> --yes`
   It files the issue with the agent's proposed title, severity, area labels and
-  body, then records the issue number. Report the number back to me.
+  body, then records the issue number. It attaches the screenshots the finding
+  cites (or, if none are cited, the last shots that session captured). Report
+  the number and the attached filenames back to me.
+  If it refuses because no screenshot exists, pick the right file from
+  `dashboard/shots/` and pass `--attach <path>`; use `--no-screenshot` only for
+  a genuinely non-visual finding.
 - **investigate** → `... qa-manager.py decisions spawn <id>`
   It starts a new investigation agent in a free slot with the finding as context.
   Monitor it like any session; when it finishes, read `report --env N` and bring

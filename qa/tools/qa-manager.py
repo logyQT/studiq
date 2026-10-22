@@ -705,6 +705,64 @@ def body_screenshots(*texts: str) -> list[str]:
     return names[:6]
 
 
+def session_screenshots(it: dict, limit: int = 2) -> list[Path]:
+    """Fallback: the last screenshots this session actually captured.
+
+    Used when the report did not name a file, so a forgotten citation cannot
+    produce an evidence-free issue. Newest tool results win, and only shots
+    named for this decision's slot are considered.
+    """
+    session = it.get("session")
+    if not session:
+        return []
+    try:
+        body = api("GET", f"/api/session/{session}/message?limit=100&order=desc&type=assistant")
+    except Exception:
+        return []
+    prefix = f"qa-env-{it.get('env')}-"
+    found: list[Path] = []
+    messages = (body or {}).get("data") or []
+    for message in messages:
+        for part in message.get("content") or []:
+            if part.get("type") not in ("tool", "file"):
+                continue
+            for ref in SHOT_RE.findall(json.dumps(part)):
+                shot = resolve_shot(ref)
+                if shot is not None and shot.name.startswith(prefix) and shot not in found:
+                    found.append(shot)
+        if len(found) >= limit:
+            break
+    return found[:limit]
+
+
+MAX_SHOT_BYTES = 9_500_000
+
+
+def attachable(shots: list[Path]) -> list[Path]:
+    kept: list[Path] = []
+    for shot in shots:
+        try:
+            size = shot.stat().st_size
+        except OSError:
+            continue
+        if size > MAX_SHOT_BYTES:
+            print(f"warning: skipping {shot.name} ({size / 1e6:.1f} MB exceeds GitHub's limit)", file=sys.stderr)
+            continue
+        kept.append(shot)
+    return kept
+
+
+def filed_has_attachment(number: int) -> bool:
+    try:
+        proc = subprocess.run(
+            ["gh", "issue", "view", str(number), "--repo", "logyQT/studiq", "--json", "body"],
+            capture_output=True, text=True,
+        )
+    except OSError:
+        return True
+    return proc.returncode != 0 or "user-attachments" in (proc.stdout or "")
+
+
 def file_decision(args) -> None:
     it = find_item(args.dec_id)
     if not it.get("title"):
@@ -718,14 +776,26 @@ def file_decision(args) -> None:
             seen.add(lab)
             clean.append(lab)
     body = it.get("body") or it.get("question") or ""
-    shots = referenced_screenshots(it, getattr(args, "attach", None))
-    if shots:
-        evidence = "**Evidence:** " + ", ".join(f"`{p.name}`" for p in shots) + " (attached)."
-    else:
-        evidence = (
-            "**Evidence:** no screenshot referenced by this ledger item; attach manually "
-            "if needed (QA run screenshots live in `dashboard/shots/`)."
+
+    cited = attachable(referenced_screenshots(it, getattr(args, "attach", None)))
+    auto = False
+    shots = cited
+    if not shots and not args.no_screenshot:
+        shots = attachable(session_screenshots(it))
+        auto = bool(shots)
+    if not shots and not args.no_screenshot:
+        raise SystemExit(
+            f"no screenshot found for {it['id']} ({it['scenario']}).\n"
+            f"  Named shots must exist in {SHOTS} and be cited in the finding body, "
+            f"or pass --attach {SHOTS}/<file>.png.\n"
+            "  Use --no-screenshot only for a genuinely non-visual finding."
         )
+
+    if shots:
+        note = "latest session screenshots, attached" if auto else "attached"
+        evidence = "**Evidence:** " + ", ".join(f"`{p.name}`" for p in shots) + f" ({note})."
+    else:
+        evidence = "**Evidence:** no screenshot attached (explicitly waived with --no-screenshot)."
     text = (
         f"**Scenario:** {it['scenario']}\n"
         f"**Severity:** {it.get('severity') or 'medium'}\n"
@@ -763,6 +833,11 @@ def file_decision(args) -> None:
     print(f"filed {it['id']}: #{number} {url}")
     if shots:
         print(f"attached: {', '.join(p.name for p in shots)}")
+        if number and not filed_has_attachment(number):
+            print(
+                f"warning: #{number} body has no attachment URL — check it manually",
+                file=sys.stderr,
+            )
 
 
 def spawn_decision(args) -> None:
@@ -856,7 +931,7 @@ def main() -> None:
     dsub.add_parser("all", help="all decisions").set_defaults(fn=cmd_decisions)
     s = dsub.add_parser("show"); s.add_argument("dec_id"); s.set_defaults(fn=cmd_decisions)
     a = dsub.add_parser("answer"); a.add_argument("dec_id"); a.add_argument("value", choices=["file", "investigate", "skip"]); a.add_argument("--note"); a.set_defaults(fn=cmd_decisions)
-    f = dsub.add_parser("file"); f.add_argument("dec_id"); f.add_argument("--yes", action="store_true"); f.add_argument("--dry-run", action="store_true"); f.add_argument("--attach", action="append", default=[], metavar="PNG", help="extra screenshot to attach (repeatable)"); f.set_defaults(fn=cmd_decisions)
+    f = dsub.add_parser("file"); f.add_argument("dec_id"); f.add_argument("--yes", action="store_true"); f.add_argument("--dry-run", action="store_true"); f.add_argument("--attach", action="append", default=[], metavar="PNG", help="extra screenshot to attach (repeatable)"); f.add_argument("--no-screenshot", action="store_true", help="file without evidence (non-visual findings only)"); f.set_defaults(fn=cmd_decisions)
     sp = dsub.add_parser("spawn"); sp.add_argument("dec_id"); sp.add_argument("--env", type=int, choices=[1, 2, 3, 4]); sp.set_defaults(fn=cmd_decisions)
 
     spw = sub.add_parser("spawn", help="start an arbitrary agent session in a free slot")

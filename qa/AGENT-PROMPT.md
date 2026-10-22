@@ -164,6 +164,7 @@ Gotchas:
 - Labels: always `bug`; exactly one severity (`critical|high|medium|low`); 1–2 areas (`frontend|backend|database|i18n|visual|security|accessibility|performance|payments`). Add `manual-testing` only for manual scenarios.
 - Body fields: scenario ID + step; severity; repro steps; expected vs actual; root cause from the trace/log (span name, `error.code`, `db.error.*`, log line) — or state explicitly that observability was unavailable; evidence (console/network + Grafana findings); env (`main` @ commit from `rev-parse`, account).
 - Evidence: attach browser screenshot(s) directly — `gh issue create ... --attach "<screenshot-path>#<alt text>"` (repeatable, ≤50 files). Get paths from `qa_browser_screenshot` → `path` (or CLI `screenshot` → `path`, server-local). Put console/network + Grafana findings in the body.
+- **Name the evidence.** Every screenshot that supports a finding must be cited by its exact filename (`qa-env-N-<ts>-<label>.png`) in that finding's evidence and in the body you hand to the manager. The manager's filing tool attaches cited files automatically and falls back to the last shots your session captured; an issue with no screenshot at all is filed only with an explicit waiver. For a visual defect, capture the failing state immediately before you hold or file it.
 
 ### End of session — always end with this plain-text report
 
@@ -173,7 +174,8 @@ message. No tool calls after it — I read this when I get back.
 1. **Filed** — one line per issue: `#<number> — <title>` + the labels you used.
 2. **Found but not filed** — every out-of-scope defect, **max 4 sentences each**:
    1. what breaks, and on which step/scenario;
-   2. evidence (span/log/console/network) and the root cause;
+   2. evidence (span/log/console/network) and the root cause, plus the exact
+      screenshot filename(s), e.g. `screenshot: qa-env-1-20261022-195228-....png`;
    3. proposed title + severity + area labels;
    4. why you held it (out of scope / duplicate of `#<number>` / needs my decision).
    Say explicitly if the list is empty.
@@ -195,7 +197,7 @@ fenced; in your answer use three backticks:
           "severity": "low",
           "areas": ["frontend", "i18n"],
           "why": "...",
-          "body": "repro + expected vs actual + evidence"
+          "body": "repro + expected vs actual + evidence, including the exact screenshot filename(s)"
         }
       ],
       "decisions": [
