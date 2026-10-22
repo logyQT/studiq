@@ -482,6 +482,7 @@ function renderDashboard(states: EnvState[]): string {
     top: 0; left: 0; right: 0;
     height: 32px;
     z-index: 59;
+    pointer-events: none;
   }
   .topbar-zone::after {
     content: '';
@@ -1132,9 +1133,12 @@ ${tiles}
   }
 
   const topbar = document.querySelector('.topbar');
-  const topbarZone = document.getElementById('topbar-zone');
-  topbarZone.addEventListener('mouseenter', () => topbar.classList.add('visible'));
-  topbarZone.addEventListener('click', () => topbar.classList.toggle('visible'));
+  document.addEventListener('mousemove', (event) => {
+    if (event.clientY <= 32) topbar.classList.add('visible');
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (event.clientY <= 32) topbar.classList.add('visible');
+  }, true);
   topbar.addEventListener('mouseleave', () => topbar.classList.remove('visible'));
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') topbar.classList.remove('visible');
