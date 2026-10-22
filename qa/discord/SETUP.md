@@ -50,11 +50,10 @@ Two things to know before you start:
 - **`#dashboard` is status-only.** The manager bot keeps exactly one message
   there and edits it in place. Do not pin anything anywhere — pinned messages
   are deliberately not part of this design.
-- **Channel names will change at runtime.** The bots rename these channels to
-  show slot state, e.g. `busy | env-1` or `waiting-env-3`. Renames are
-  throttled hard by Discord (~2 per 10 minutes), so names lag behind reality;
-  presence and the `#dashboard` message are the real-time indicators. Renaming
-  never changes a channel's **ID**, so the IDs you collect in §5 stay valid.
+- **Channel names stay fixed.** Exactly `dashboard`, `manager`, `env-1` …
+  `env-4`; nothing renames them at runtime. Status is shown by each bot's
+  presence and by the single live message in `#dashboard` — the two surfaces
+  that update every ~15 s. This also means the IDs you copy in §5 never change.
 
 ---
 
@@ -105,21 +104,23 @@ Open it, pick your QA server, **Authorize**. Repeat for all five apps.
 
 | Bot | `permissions` | What that grants |
 |---|---|---|
-| `QA Env 1` … `QA Env 4` | `117760` | View Channels, Send Messages, Embed Links, Attach Files, Read Message History |
-| `QA Manager` | `117776` | the same **+ Manage Channels** (for the throttled renames) |
+| `QA Manager` | `117760` | View Channels, Send Messages, Embed Links, Attach Files, Read Message History |
+| `QA Env 1` … `QA Env 4` | `117760` | exactly the same set |
+
+All five bots use the **same** permission integer — `117760`.
 
 Bit breakdown, if you prefer to tick boxes by hand:
 
 | Permission | Bit |
 |---|---|
-| Manage Channels | 16 |
 | View Channels | 1024 |
 | Send Messages | 2048 |
 | Embed Links | 16384 |
 | Attach Files | 32768 |
 | Read Message History | 65536 |
 
-`Manage Messages` is **not** needed: the `#dashboard` message belongs to the
+`Manage Channels` is **not** needed: channels are never renamed. `Manage
+Messages` is **not** needed either: the `#dashboard` message belongs to the
 manager bot and is edited by it, never pinned. `Administrator` is not needed
 and should not be granted.
 
@@ -176,7 +177,6 @@ the live QA stack:
 | `DASHBOARD_URL`, `QA_LIVE_ROOT`, `QA_MANAGER_TOOL`, `QA_MANAGER_PROMPT`, `BROWSER_CLI`, `SHOTS_DIR` | already correct — leave as-is |
 | `DISCORD_DRY_RUN` | leave at `1` for now; it becomes `0` only after the first successful dry run |
 | `DISCORD_STATUS_MS` | `15000` — status poll interval |
-| `DISCORD_RENAME_MIN_MS` | `600000` — minimum gap between renames of the same channel |
 | `DISCORD_LOG_LEVEL` | `info` (`debug` for troubleshooting) |
 
 `.env` is git-ignored and must stay on this machine.
@@ -191,16 +191,15 @@ Recommended (right-click each channel → **Edit Channel** → **Permissions**):
 1. Under a `QA` category: set `@everyone` → **View Channel: deny**. Then grant
    your own account access (or keep the default owner access).
 2. **`QA Manager`** — allow on **all six** channels: View Channel, Send
-   Messages, Embed Links, Attach Files, Read Message History, Manage Channels.
-3. **`QA Env N`** — allow the same **minus Manage Channels** on `#env-N` only;
-   deny View Channel on the other env channels and on `#manager`.
+   Messages, Embed Links, Attach Files, Read Message History.
+3. **`QA Env N`** — allow the same on `#env-N` only; deny View Channel on the
+   other env channels and on `#manager`.
 4. Your account — access to all six.
 
-Why the split: the manager bot already holds Manage Channels, so it performs
-every rename. Giving env bots only their own channel means a bug in one bridge
-cannot read or write another slot's conversation. If you would rather each env
-bot rename its own channel, grant `QA Env N` Manage Channels on `#env-N` — say
-so before implementation, it changes the permission split.
+All five bots carry the same permissions — no bot has Manage Channels. The
+split is about reach, not capability: env bot N can only see its own channel,
+so a bug in one bridge cannot read or write another slot's conversation, while
+the manager needs all six for commands and the status board.
 
 ---
 
