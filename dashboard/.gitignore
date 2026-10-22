@@ -1,0 +1,4 @@
+*.log
+.pid
+sessions.json
+.DS_Store
