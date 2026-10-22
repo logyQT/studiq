@@ -14,31 +14,33 @@ lives next to this file (`context.md`, `index.md`, `cases/<ID>.md`).
 
 Run the manual QA scenario given at the bottom in the integrated browser, and file GitHub issues. NEVER change code, commit, or open PRs. Report findings; do not fix.
 
-## Environment (you set this up yourself)
+## Environment (pre-provisioned — do not rebuild it)
 
-You are responsible for the environment — bring it up if it is down, and keep it
-healthy for the duration of the run. Everything is local and reproducible.
+You run in one of four persistent, isolated slots: **`qa-env-1` … `qa-env-4`**.
+Your checkout is a detached worktree with its own Supabase stack, web app and
+admin app. `qa/env.json` in this checkout is authoritative:
 
-- **Work from the `qa-testing` branch.** It is a long-lived branch kept in sync
-  with `main` and also carries the unmerged features some cases need (e.g.
-  PR #130 for `ADM-USR-*`). It is not `main`; do not rebase it, and do not file a
-  bug for a feature that is absent only because it is not merged yet.
-- **If `qa/env.json` exists, it is authoritative for this checkout.** It carries
-  `appUrl`, `serviceName` and `supabaseUrl` for an isolated parallel environment.
-  Use those instead of the `http://localhost:3000` / `studiq` defaults everywhere
-  below.
-- First checkout only: `bunx supabase start`, then create `apps/web/.env` from
-  `apps/web/.env.example` (see `docs/ONBOARDING.md`) and fill
-  `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` from
-  `bunx supabase status`. Leave `OTEL_SDK_DISABLED` unset.
-- Stack: `docker compose up -d` from the repo root (Tempo + Loki + Prometheus +
-  Grafana + OTel Collector). See `docs/observability-debugging.md`.
-- Database: `bunx supabase db reset` restores seed data;
-  `docker exec supabase_db_studiq psql -U postgres -d postgres -c "<sql>"` for ad-hoc queries.
-- App: `bun run dev` → http://localhost:3000. Admin app (only for plan/feature
-  overrides): `bun run dev:admin` → http://localhost:4000.
-- Observability UI at http://localhost:3001, exposed to you as the `grafana` MCP
-  server (see below).
+| key | use |
+|---|---|
+| `envId` | `qa-env-1` … `qa-env-4` |
+| `appUrl` | web app (replaces `http://localhost:3000`) |
+| `adminUrl` | admin app (replaces `http://localhost:4000`) |
+| `supabaseUrl` | this slot's Supabase API |
+| `dbContainer` | `docker exec <dbContainer> psql -U postgres -d postgres -c "<sql>"` |
+| `serviceName` | telemetry filter (`studiq-qa-env-N`) |
+
+- **Do not create worktrees, run `supabase start/stop`, `db reset`, or restart
+  the app.** Slots are provisioned from the main checkout with `scripts/qa-env`;
+  a broken slot is an `env` problem, never a `bug`. If the slot is down, say so
+  in the report and stop.
+- The worktree is detached at `origin/qa-testing`; do not rely on
+  `git branch --show-current` and do not create branches. `qa-testing` is kept
+  in sync with `main` and carries the unmerged features some cases need
+  (e.g. PR #130 for `ADM-USR-*`); do not file a bug for a feature that is absent
+  only because it is not merged.
+- The seed database is per slot. Resetting it is the operator's job, not yours.
+- Shared observability stack: Tempo + Loki + Prometheus + Grafana at
+  `http://localhost:3001` (already running; the `grafana` MCP server points at it).
 - `gh` is authed as logyQT; issues live in logyQT/studiq.
 
 ### Only these need a human before you start
@@ -62,10 +64,11 @@ never substitute invented data and never file a `bug` for the missing fixture.
 
 
 ## Preflight — run BEFORE testing (30s; do not skip)
-1. `git fetch -q && git rev-list --count HEAD..origin/main` → **must be `0`** (the checkout contains `main`), and `test -f qa/index.md` must succeed (the QA corpus is present). Parallel agents run in **detached worktrees**, so do not rely on `git branch --show-current`. A non-zero count means the checkout is stale — merge `origin/main` before continuing. Never hardcode a commit hash.
+1. `git fetch -q && git rev-list --count HEAD..origin/main` → **must be `0`** (the checkout contains `main`); `test -f qa/index.md` and `test -f qa/env.json` must both succeed. Parallel agents run in **detached worktrees**, so do not rely on `git branch --show-current`. A non-zero count means the slot is stale — report it as `env`; never hardcode a commit hash. If `qa/env.json` is missing, stop: you are in the wrong checkout.
 2. `grep OTEL_SDK_DISABLED apps/web/.env` → must print **nothing** or `OTEL_SDK_DISABLED=false`. Next reads `apps/web/.env`, not the repo root; `true` disables all telemetry.
 3. `curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/api/health` → `200`.
-4. `curl -s -o /dev/null -w '%{http_code}' "$APP_URL/login"` → `200`, where `APP_URL` is `appUrl` from `qa/env.json` (default `http://localhost:3000`).
+4. `curl -s -o /dev/null -w '%{http_code}' "$APP_URL/login"` → `200`, where `APP_URL` is `appUrl` from `qa/env.json`.
+5. For `ADM-*` scenarios, `curl -s -o /dev/null -w '%{http_code}' "$ADMIN_URL"` must not be `000`, where `ADMIN_URL` is `adminUrl` from `qa/env.json`.
 
 If any preflight check fails, that is an **environment problem, not a product defect** — fix it or report it as `env`, and NEVER file it as a `bug`.
 
@@ -108,7 +111,10 @@ Gotchas:
 - If a datasource is unhealthy (`check_datasources_health()`), say so and fall back to browser + DB evidence — don't present a guess as a confirmed root cause.
 
 ## How to report
-- Scope: file issues ONLY for defects this scenario covers. If you notice a defect OUTSIDE the scenario's scope, do NOT file it automatically — first check whether it is already reported: search `gh issue list --repo logyQT/studiq --state all --limit 200 --search "<keywords>"` and scan open issues. If it already exists, skip it (or reference the number); if it is new, put it in the **"Found but not filed"** section of the end-of-session report with a proposed title, severity and labels, and let me decide.
+- **In scope = file autonomously.** After the duplicate search, file the issue yourself with the fields below.
+- **Out of scope = investigate, then ask.** First check whether it is already reported (`gh issue list --repo logyQT/studiq --state all --limit 200 --search "<keywords>"`) and pull the evidence (trace/log/console/network). Do **not** file it. Report it at the end and let me decide.
+- **At most 4 sentences per finding.** (1) what breaks and where, (2) evidence + root cause, (3) proposed title + severity + area labels, (4) why you held it.
+
 - One bug = one issue. If the scenario exposes several distinct defects, **file the highest-severity one** and end your turn asking, in plain text, which of the others to file. Do not use a blocking question tool.
 - Language: ENGLISH (repo convention). Always check duplicates before filing (same search as above).
 - Labels: always `bug`; exactly one severity (`critical|high|medium|low`); 1–2 areas (`frontend|backend|database|i18n|visual|security|accessibility|performance|payments`). Add `manual-testing` only for manual scenarios.
@@ -121,16 +127,17 @@ Finish every scenario with these three sections in plain text, as your final
 message. No tool calls after it — I read this when I get back.
 
 1. **Filed** — one line per issue: `#<number> — <title>` + the labels you used.
-2. **Found but not filed** — defects you saw that you did not file, each with:
-   - a one-line description and the step/scenario where you saw it,
-   - the evidence (span/log/console/network),
-   - a **proposed title + severity + area labels**,
-   - the reason you held it (out of scope / duplicate of `#<number>` / needs input).
-   This is the most important section when I'm away: err on the side of listing
-   things, and say explicitly if the list is empty.
-3. **Decisions I need** — the numbered questions you would have asked
-   interactively (e.g. "file the out-of-scope findings too?", "was this copy
-   difference intended?"). Answerable in one line each.
+2. **Found but not filed** — every out-of-scope defect, **max 4 sentences each**:
+   1. what breaks, and on which step/scenario;
+   2. evidence (span/log/console/network) and the root cause;
+   3. proposed title + severity + area labels;
+   4. why you held it (out of scope / duplicate of `#<number>` / needs my decision).
+   Say explicitly if the list is empty.
+3. **Decisions I need** — for each item in (2), one line: **file it** or
+   **investigate further with another agent**.
+
+Do not use a blocking question tool. If the run is blocked by a missing fixture
+or a broken slot, say so and stop; do not guess.
 
 ## General known issue (do NOT re-file)
 Breadcrumbs are broken app-wide: they show raw English URL segments and raw UUIDs on dynamic routes (e.g. `Edu > Flashcards > ccf03248-3167-467e-b4bd-78b3c94457ba`). Tracked in #136 — skip it if you hit it.

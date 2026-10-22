@@ -24,22 +24,24 @@ index, agent prompt) is English, matching the repo/issue convention.
 
 ## Running a scenario
 
-The agent handles its own environment. Give it a scenario ID and the prompt from
-`AGENT-PROMPT.md`; it will bring up what it needs, run the steps, and file the
-issue.
+Four slots are provisioned ahead of time by `scripts/qa-env` (run it from the
+main checkout): **`qa-env-1` … `qa-env-4`**. Each slot is a detached
+`qa-testing` worktree with its own Supabase stack, web app, admin app and
+`qa/env.json`. Agents do **not** create, reset or tear down environments.
 
-1. Check out the **`qa-testing` branch** (long-lived; kept in sync with `main`,
-   and it also carries the unmerged features some cases need — e.g. PR #130 for
-   `ADM-USR-*`). Do not run from `main`.
-2. Copy the prompt from `AGENT-PROMPT.md` into a fresh agent session.
-3. Set the scenario ID on the last line (`## SCENARIO ▶ <ID>`).
-4. Done. The agent reads `context.md` once, then `index.md` → `cases/<ID>.md`
-   (plus any prerequisite case it references), starts the stack and app if they
-   are down, executes the steps in the browser, and files defects with
-   trace/log evidence.
+1. Bring the slots up once: `scripts/qa-env up all` (check with
+   `scripts/qa-env status`; stop with `scripts/qa-env down all`).
+2. Open an agent session with its working directory set to one slot's worktree
+   (`.worktrees/qa-env-N`) so `qa/env.json` is found.
+3. Copy the prompt from `AGENT-PROMPT.md` and set the scenario ID on the last
+   line (`## SCENARIO ▶ <ID>`).
+4. The agent reads `qa/context.md` → `qa/index.md` → `cases/<ID>.md` (plus any
+   prerequisite case), uses the slot's `appUrl` / `adminUrl` / `dbContainer`,
+   runs the steps and files the issue. It does not touch the stack.
 
-Nothing needs to be pre-configured for the vast majority of the plan: the stack,
-seed data and dev accounts are all local and reproducible.
+Ports per slot N: web `3009+N`, admin `4009+N`, Supabase `54321+100N`.
+Supabase runs without realtime / analytics / edge-runtime / imgproxy / vector /
+pooler — the app uses none of them.
 
 ### The few scenarios that need human input first
 

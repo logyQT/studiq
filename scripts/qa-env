@@ -1,81 +1,121 @@
 #!/usr/bin/env bash
-# Start an isolated QA environment for one scenario: worktree + Supabase stack + app.
+# Four persistent, isolated QA environments: qa-env-1 .. qa-env-4.
 #
-# Usage:
-#   scripts/qa-env <SCENARIO> <slot>      start (slot 1..9; 0 is the shared :3000 env)
-#   scripts/qa-env --clean <SCENARIO>     stop everything and remove the worktree
-#   scripts/qa-env --list                 show running QA environments
-#   scripts/qa-env --dry-run <SCENARIO> <slot>
+# Usage (run from the main checkout, as the `node` user):
+#   scripts/qa-env up [1|2|3|4|all]      create/start environment(s)
+#   scripts/qa-env down [1|2|3|4|all]    stop app + admin + Supabase (worktree/data kept)
+#   scripts/qa-env status                one line per environment
+#   scripts/qa-env reset <1|2|3|4|all>   re-seed the database (DESTRUCTIVE)
+#   scripts/qa-env sync  [1|2|3|4|all]   reset worktree(s) to origin/qa-testing
+#   scripts/qa-env logs <1|2|3|4>        tail web + admin logs
+#   scripts/qa-env env <1|2|3|4>         print shell exports for one environment
 #
-# Isolation:
-#   worktree   .worktrees/qa-<SCENARIO>        detached from origin/qa-testing
-#   Supabase   project_id = qa-<scenario>      own containers/volumes, ports offset by slot
-#   app        port 3009 + slot
-#   telemetry  OTEL_SERVICE_NAME = studiq-<SCENARIO>
-#   shared     Grafana stack (OTLP :4318, Grafana :3001) and the qa corpus
+# Layout per environment N:
+#   worktree   .worktrees/qa-env-N        detached at origin/qa-testing
+#   Supabase   project_id = qa-env-N      own containers/volumes
+#              api 54321+100N, db +1, studio +2, mail +3, pooler +8
+#   web app    port 3009+N   (3010..3013)
+#   admin app  port 4009+N   (4010..4013)
+#   telemetry  OTEL_SERVICE_NAME = studiq-qa-env-N (shared Grafana stack)
 #
-# Slot 1 -> app 3010, Supabase 54421.. ; slot 2 -> app 3011, Supabase 54521.. ; etc.
+# Supabase is stripped: realtime, analytics (logflare), vector, imgproxy,
+# edge-runtime and supavisor are disabled. The app uses none of them; the
+# realtime publication is still created by supabase/seeds/99_realtime.sql.
 set -euo pipefail
 
-ROOT=$(git rev-parse --show-toplevel)
-BASE=origin/qa-testing
-WORKROOT="$ROOT/.worktrees"
-OTLP=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "error: run from inside the studiQ repo" >&2; exit 1;
+}
 GIT_COMMON=$(git -C "$ROOT" rev-parse --git-common-dir)
 case "$GIT_COMMON" in /*) ;; *) GIT_COMMON="$ROOT/$GIT_COMMON" ;; esac
-EXCLUDE_DIR="$GIT_COMMON/info/exclude"
+MAIN_ROOT=$(cd "$(dirname "$GIT_COMMON")" && pwd)
+WORKROOT="$MAIN_ROOT/.worktrees"
+BASE=${QA_BASE:-origin/qa-testing}
+OTLP=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}
+SLOTS=(1 2 3 4)
 
-usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; }
-die() { echo "error: $*" >&2; exit 1; }
+die()  { echo "error: $*" >&2; exit 1; }
 info() { printf '\033[0;32m✔\033[0m %s\n' "$*"; }
 warn() { printf '\033[0;33m⚠\033[0m %s\n' "$*"; }
 
-api_port() { echo $((54321 + 100 * $1)); }
-app_port() { echo $((3009 + $1)); }
+usage() { awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"; }
 
-project_id_for() { echo "qa-$(echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g')"; }
+env_name()   { echo "qa-env-$1"; }
+wt_for()     { echo "$WORKROOT/qa-env-$1"; }
+app_port()   { echo $((3009 + $1)); }
+admin_port() { echo $((4009 + $1)); }
+api_port()   { echo $((54321 + 100 * $1)); }
+db_port()    { echo $(( $(api_port "$1") + 1 )); }
+studio_port(){ echo $(( $(api_port "$1") + 2 )); }
+mail_port()  { echo $(( $(api_port "$1") + 3 )); }
+analytics_port(){ echo $(( $(api_port "$1") + 6 )); }
+pooler_port(){ echo $(( $(api_port "$1") + 8 )); }
+
+valid_slot() { [[ "${1:-}" =~ ^[1-4]$ ]]; }
+
+expand_slots() {
+  case "${1:-all}" in
+    all) printf '%s\n' "${SLOTS[@]}" ;;
+    *) valid_slot "$1" || die "slot must be 1..4 (or 'all')"; echo "$1" ;;
+  esac
+}
 
 port_busy() { ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]$1$"; }
+http_code() { curl -s -o /dev/null -w '%{http_code}' --max-time 4 "$1" 2>/dev/null || true; }
+listening() { port_busy "$1"; }
+
+fetch_base() {
+  git -C "$MAIN_ROOT" fetch -q origin || true
+  git -C "$MAIN_ROOT" rev-parse --verify -q "$BASE" >/dev/null \
+    || die "base ref '$BASE' not found (set QA_BASE=qa-testing?)"
+}
 
 ensure_exclude() {
-  [ -f "$EXCLUDE_DIR" ] || return 0
-  grep -qx '/qa/env.json' "$EXCLUDE_DIR" || echo '/qa/env.json' >> "$EXCLUDE_DIR"
+  local f="$GIT_COMMON/info/exclude"
+  mkdir -p "$(dirname "$f")"
+  touch "$f"
+  grep -qx '/qa/env.json' "$f" || echo '/qa/env.json' >> "$f"
 }
 
 rewrite_config() {
-  local wt=$1 project=$2 api=$3 db=$4 studio=$5 mail=$6 analytics=$7 pooler=$8
-  python3 - "$wt/supabase/config.toml" "$project" "$api" "$db" "$studio" "$mail" "$analytics" "$pooler" <<'PY'
+  local wt=$1 project=$2 api=$3 db=$4 studio=$5 mail=$6 analytics=$7 pooler=$8 app=$9 admin=${10}
+  python3 - "$wt/supabase/config.toml" "$project" "$api" "$db" "$studio" "$mail" "$analytics" "$pooler" "$app" "$admin" <<'PY'
 import re, sys
-
-path, project, api, db, studio, mail, analytics, pooler = sys.argv[1:9]
-ports = {
-    "api": api,
-    "db": db,
-    "studio": studio,
-    "inbucket": mail,
-    "analytics": analytics,
-    "db.pooler": pooler,
-}
-
+path, project, api, db, studio, mail, analytics, pooler, app, admin = sys.argv[1:11]
+ports = {"api": api, "db": db, "studio": studio, "inbucket": mail,
+         "analytics": analytics, "db.pooler": pooler}
+# Services the app never uses -> do not start them at all.
+disable = {"realtime", "analytics", "edge_runtime"}
 lines = open(path).read().splitlines()
 section = ""
 for i, line in enumerate(lines):
-    match = re.match(r"^\[([^\]]+)\]", line)
-    if match:
-        section = match.group(1)
+    m = re.match(r"^\[([^\]]+)\]", line)
+    if m:
+        section = m.group(1)
+        continue
     if line.startswith("project_id"):
         lines[i] = f'project_id = "{project}"'
     elif line.startswith("port =") and section in ports:
         lines[i] = f"port = {ports[section]}"
+    elif section in disable and line.startswith("enabled ="):
+        lines[i] = "enabled = false"
     elif section == "studio" and line.startswith("api_url ="):
         lines[i] = f'api_url = "http://localhost:{api}"'
-
+    elif section == "auth" and line.startswith("site_url ="):
+        lines[i] = f'site_url = "http://localhost:{app}"'
+    elif section == "auth" and line.startswith("additional_redirect_urls ="):
+        lines[i] = f'additional_redirect_urls = ["http://localhost:{app}", "http://localhost:{admin}"]'
 open(path, "w").write("\n".join(lines) + "\n")
 PY
 }
 
-write_env() {
+write_web_env() {
   local wt=$1 app=$2 api=$3 anon=$4 service=$5 name=$6
+  local llm=""
+  if [ -f "$MAIN_ROOT/apps/web/.env" ]; then
+    llm=$(grep -E '^LLM_API_KEY=' "$MAIN_ROOT/apps/web/.env" || true)
+  fi
+  rm -f "$wt/apps/web/.env"
   cat > "$wt/apps/web/.env" <<EOF
 NEXT_PUBLIC_SUPABASE_URL=http://localhost:$api
 NEXT_PUBLIC_SUPABASE_ANON_KEY=$anon
@@ -85,134 +125,269 @@ OTEL_SDK_DISABLED=false
 OTEL_SERVICE_NAME=$name
 OTEL_EXPORTER_OTLP_ENDPOINT=$OTLP
 EOF
+  [ -n "$llm" ] && printf '%s\n' "$llm" >> "$wt/apps/web/.env"
+  return 0
+}
+
+write_admin_env() {
+  local wt=$1 admin=$2 api=$3 service=$4
+  rm -f "$wt/apps/admin/.env"   # may be a symlink into the main checkout
+  cat > "$wt/apps/admin/.env" <<EOF
+NEXT_PUBLIC_SUPABASE_URL=http://localhost:$api
+SUPABASE_SERVICE_ROLE_KEY=$service
+NEXT_PUBLIC_SITE_URL=http://localhost:$admin
+# Empty = allow-all in development (deny-all in production).
+ADMIN_PEM_KEYS=
+EOF
 }
 
 write_env_json() {
-  local wt=$1 scenario=$2 name=$3 app=$4 api=$5
+  local wt=$1 n=$2 app=$3 admin=$4 api=$5 name=$6
   mkdir -p "$wt/qa"
   cat > "$wt/qa/env.json" <<EOF
 {
-  "scenario": "$scenario",
+  "envId": "qa-env-$n",
   "serviceName": "$name",
   "appUrl": "http://localhost:$app",
+  "adminUrl": "http://localhost:$admin",
   "supabaseUrl": "http://localhost:$api",
+  "dbContainer": "supabase_db_qa-env-$n",
+  "projectId": "qa-env-$n",
   "worktree": "$wt"
 }
 EOF
   ensure_exclude
 }
 
-start() {
-  local scenario=$1 slot=$2 dry=${3:-false}
-  [ -n "$scenario" ] || die "missing scenario"
-  [[ "$slot" =~ ^[1-9]$ ]] || die "slot must be 1..9"
-
-  local wt="$WORKROOT/qa-$scenario"
-  local api db studio mail analytics pooler app project name
-  api=$(api_port "$slot"); db=$((api + 1)); studio=$((api + 2)); mail=$((api + 3))
-  analytics=$((api + 6)); pooler=$((api + 8)); app=$(app_port "$slot")
-  project=$(project_id_for "$scenario"); name="studiq-$scenario"
-
-  echo "scenario : $scenario (slot $slot)"
-  echo "worktree : $wt"
-  echo "app      : http://localhost:$app"
-  echo "supabase : http://localhost:$api (studio :$studio)"
-  echo "service  : $name"
-
-  if [ "$dry" = true ]; then
-    echo "dry-run: no changes made"
+ensure_worktree() {
+  local n=$1 wt=$2
+  if [ -d "$wt" ] && [ -e "$wt/.git" ]; then
+    info "worktree exists: $wt"
     return 0
   fi
+  fetch_base
+  git -C "$MAIN_ROOT" worktree add --detach "$wt" "$BASE" >/dev/null
+  info "created worktree at $BASE"
+}
 
-  for p in "$app" "$api" "$db" "$studio" "$mail" "$analytics" "$pooler"; do
-    port_busy "$p" && die "port $p is already in use (pick another slot)"
-  done
+ensure_deps() {
+  local wt=$1
+  [ -d "$wt/node_modules" ] && return 0
+  info "installing dependencies (first run, takes a minute)"
+  ( cd "$wt" && bun install --frozen-lockfile >/dev/null 2>&1 || bun install >/dev/null 2>&1 )
+}
 
-  local avail
-  avail=$(free -m | awk '/^Mem:/{print $7}')
-  [ "$avail" -lt 3000 ] && warn "only ${avail}MB available; a stack needs ~2GB"
-
-  if [ ! -d "$wt" ]; then
-    git -C "$ROOT" worktree add --detach "$wt" "$BASE" >/dev/null
-    info "created worktree"
-  else
-    info "reusing worktree"
+start_app() {
+  local wt=$1 port=$2 log=$3 pidfile=$4 script=$5
+  if [ -f "$wt/$pidfile" ] && kill -0 "$(cat "$wt/$pidfile")" 2>/dev/null; then
+    return 0
   fi
+  ( cd "$wt" && PORT="$port" setsid nohup bun run "$script" > "$log" 2>&1 & echo $! > "$pidfile" )
+}
 
-  rewrite_config "$wt" "$project" "$api" "$db" "$studio" "$mail" "$analytics" "$pooler"
-  info "configured supabase (project_id=$project, ports $api/$db/$studio/$mail)"
+# apps/admin/package.json hardcodes `next dev -p 4000`, so call Next directly.
+start_admin() {
+  local wt=$1 port=$2 log=$3 pidfile=$4
+  if [ -f "$wt/$pidfile" ] && kill -0 "$(cat "$wt/$pidfile")" 2>/dev/null; then
+    return 0
+  fi
+  ( cd "$wt/apps/admin" && setsid nohup bun x next dev -p "$port" > "$log" 2>&1 & echo $! > "$pidfile" )
+}
 
-  (cd "$wt" && bun install >/dev/null 2>&1) && info "installed dependencies"
+pids_on_port() {
+  local port=$1
+  {
+    lsof -ti:"$port" 2>/dev/null || true
+    ss -ltnp 2>/dev/null | awk -v p=":$port" '$4 ~ p' \
+      | grep -oE 'pid=[0-9]+' | cut -d= -f2 || true
+  } | sort -u
+}
 
-  # Trim heavy containers; keep auth/postgrest/storage/mailpit for MGR/EDU cases.
-  (cd "$wt" && bunx supabase start --workdir "$wt" -x imgproxy,logflare,vector,realtime >/tmp/qa-env-$scenario-supabase.log 2>&1)
-  info "supabase started"
+stop_app() {
+  local wt=$1 port=$2 pidfile=$3 pid p
+  if [ -f "$wt/$pidfile" ]; then
+    pid=$(cat "$wt/$pidfile")
+    # setsid makes the recorded pid the process-group id: kill the whole tree.
+    kill -TERM -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    sleep 1
+    kill -KILL -- "-$pid" 2>/dev/null || true
+    rm -f "$wt/$pidfile"
+  fi
+  for p in $(pids_on_port "$port"); do
+    kill "$p" 2>/dev/null || true
+  done
+}
 
-  # shellcheck disable=SC1090
-  eval "$(cd "$wt" && bunx supabase status -o env --workdir "$wt" 2>/dev/null)"
-  [ -n "${ANON_KEY:-}" ] || die "could not read ANON_KEY from supabase status"
-
-  write_env "$wt" "$app" "$api" "$ANON_KEY" "${SERVICE_ROLE_KEY:-}" "$name"
-  info "wrote apps/web/.env"
-
-  (cd "$wt" && bunx supabase db reset --workdir "$wt" >/tmp/qa-env-$scenario-reset.log 2>&1)
-  info "database reset + seeded"
-
-  (cd "$wt" && PORT="$app" nohup bun run dev > .qa-app.log 2>&1 & echo $! > .qa-app.pid)
-  write_env_json "$wt" "$scenario" "$name" "$app" "$api"
-
-  local ok=false
-  for _ in $(seq 1 90); do
-    if curl -sf -o /dev/null "http://localhost:$app/login"; then ok=true; break; fi
+wait_http() {
+  local url=$1 tries=${2:-90}
+  for _ in $(seq 1 "$tries"); do
+    if curl -sf -o /dev/null --max-time 3 "$url"; then return 0; fi
     sleep 1
   done
-  $ok || die "app did not come up; see $wt/.qa-app.log"
-  info "app ready at http://localhost:$app"
-
-  echo
-  echo "Next: start an OpenCode session in $wt with the QA prompt for $scenario."
-  echo "Telemetry: filter by service_name=\"$name\" in Tempo/Loki/Prometheus."
+  return 1
 }
 
-clean() {
-  local scenario=$1
-  [ -n "$scenario" ] || die "missing scenario"
-  local wt="$WORKROOT/qa-$scenario"
-  [ -d "$wt" ] || { echo "no worktree at $wt"; return 0; }
+start_env() {
+  local n=$1
+  valid_slot "$n" || die "slot must be 1..4"
+  local wt name app admin api db studio mail analytics pooler
+  wt=$(wt_for "$n"); name="studiq-$(env_name "$n")"
+  app=$(app_port "$n"); admin=$(admin_port "$n")
+  api=$(api_port "$n"); db=$(db_port "$n"); studio=$(studio_port "$n")
+  mail=$(mail_port "$n"); analytics=$(analytics_port "$n"); pooler=$(pooler_port "$n")
 
-  local app
-  app=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["appUrl"].rsplit(":",1)[1])' "$wt/qa/env.json" 2>/dev/null || true)
-  if [ -n "$app" ]; then
-    for p in $(lsof -ti:"$app" 2>/dev/null || true); do kill "$p" 2>/dev/null || true; done
+  echo "── qa-env-$n ──────────────────────────────────────────────"
+  echo "  worktree : $wt"
+  echo "  web      : http://localhost:$app"
+  echo "  admin    : http://localhost:$admin"
+  echo "  supabase : http://localhost:$api (studio :$studio)"
+  echo "  service  : $name"
+
+  ensure_worktree "$n" "$wt"
+  ensure_deps "$wt"
+  rewrite_config "$wt" "qa-env-$n" "$api" "$db" "$studio" "$mail" "$analytics" "$pooler" "$app" "$admin"
+  info "supabase config written (ports $api/$db/$studio/$mail; realtime off)"
+
+  if ! listening "$api"; then
+    info "starting supabase (realtime/analytics/edge/imgproxy/vector/pooler off)"
+    ( cd "$wt" && bunx supabase start --workdir "$wt" \
+        -x realtime,imgproxy,logflare,vector,edge-runtime,supavisor \
+        > "$wt/.qa-supabase.log" 2>&1 ) || {
+      tail -n 20 "$wt/.qa-supabase.log" >&2
+      die "supabase failed to start for qa-env-$n (see $wt/.qa-supabase.log)"
+    }
+  else
+    info "supabase already listening on $api"
   fi
 
-  (cd "$wt" && bunx supabase stop --no-backup --workdir "$wt" >/dev/null 2>&1) || warn "supabase stop failed"
-  git -C "$ROOT" worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"
-  info "cleaned $scenario"
+  # shellcheck disable=SC1090
+  eval "$( cd "$wt" && bunx supabase status -o env --workdir "$wt" 2>/dev/null )"
+  [ -n "${ANON_KEY:-}" ] || die "could not read ANON_KEY for qa-env-$n"
+
+  write_web_env "$wt" "$app" "$api" "$ANON_KEY" "${SERVICE_ROLE_KEY:-}" "$name"
+  write_admin_env "$wt" "$admin" "$api" "${SERVICE_ROLE_KEY:-}"
+  info "wrote apps/web/.env and apps/admin/.env"
+
+  if [ ! -f "$wt/.qa-seeded" ]; then
+    info "seeding database (first start)"
+    ( cd "$wt" && bunx supabase db reset --workdir "$wt" > "$wt/.qa-reset.log" 2>&1 ) || {
+      tail -n 20 "$wt/.qa-reset.log" >&2
+      die "supabase db reset failed for qa-env-$n (see $wt/.qa-reset.log)"
+    }
+    touch "$wt/.qa-seeded"
+  fi
+
+  start_app "$wt" "$app" ".qa-app.log" ".qa-app.pid" "dev"
+  start_admin "$wt" "$admin" ".qa-admin.log" ".qa-admin.pid"
+
+  wait_http "http://localhost:$app/login" 120 \
+    || die "web app did not answer on :$app (see $wt/.qa-app.log)"
+  wait_http "http://localhost:$admin/" 120 \
+    || die "admin app did not answer on :$admin (see $wt/.qa-admin.log)"
+
+  write_env_json "$wt" "$n" "$app" "$admin" "$api" "$name"
+  info "ready: web http://localhost:$app · admin http://localhost:$admin"
+  echo
 }
 
-list_envs() {
-  local found=false
-  for d in "$WORKROOT"/qa-*; do
-    [ -d "$d" ] || continue
-    found=true
-    if [ -f "$d/qa/env.json" ]; then
-      python3 - "$d/qa/env.json" <<'PY'
-import json, sys
-e = json.load(open(sys.argv[1]))
-print(f"{e['scenario']:<16} {e['appUrl']:<24} {e['serviceName']:<24} {e['worktree']}")
-PY
-    else
-      echo "$d (no env.json)"
-    fi
-  done
-  $found || echo "no QA environments"
+stop_env() {
+  local n=$1 wt
+  wt=$(wt_for "$n")
+  [ -d "$wt" ] || { echo "qa-env-$n: no worktree"; return 0; }
+  stop_app "$wt" "$(app_port "$n")" ".qa-app.pid"
+  stop_app "$wt" "$(admin_port "$n")" ".qa-admin.pid"
+  ( cd "$wt" && bunx supabase stop --no-backup --workdir "$wt" >/dev/null 2>&1 ) || true
+  info "qa-env-$n stopped (worktree + data kept)"
 }
 
-case "${1:-}" in
-  --clean) shift; clean "${1:-}" ;;
-  --list) list_envs ;;
-  --dry-run) shift; start "${1:-}" "${2:-}" true ;;
-  --help|-h|"") usage ;;
-  *) start "${1:-}" "${2:-}" false ;;
+status_env() {
+  local n=$1 wt name app admin api state
+  wt=$(wt_for "$n"); app=$(app_port "$n"); admin=$(admin_port "$n"); api=$(api_port "$n")
+  if [ ! -d "$wt" ]; then
+    printf 'qa-env-%s  %-6s  %-18s %-20s %s\n' "$n" "absent" "-" "-" "run: scripts/qa-env up $n"
+    return 0
+  fi
+  local ac ad sc
+  ac=$(http_code "http://localhost:$app/login")
+  ad=$(http_code "http://localhost:$admin/")
+  sc=$(http_code "http://localhost:$api/rest/v1/")
+  state="down"
+  if listening "$app" || listening "$api"; then state="up"; fi
+  printf 'qa-env-%s  %-5s  web :%-4s %-3s  admin :%-4s %-3s  supabase :%-5s %-3s  %s\n' \
+    "$n" "$state" "$app" "$ac" "$admin" "$ad" "$api" "$sc" "$wt"
+}
+
+reset_env() {
+  local n=$1 wt
+  valid_slot "$n" || die "slot must be 1..4"
+  wt=$(wt_for "$n")
+  [ -d "$wt" ] || die "qa-env-$n does not exist; run 'scripts/qa-env up $n' first"
+  listening "$(api_port "$n")" || die "qa-env-$n supabase is down; run 'scripts/qa-env up $n' first"
+  info "resetting qa-env-$n database"
+  ( cd "$wt" && bunx supabase db reset --workdir "$wt" )
+  touch "$wt/.qa-seeded"
+  info "qa-env-$n reseeded"
+}
+
+sync_env() {
+  local n=$1 wt
+  wt=$(wt_for "$n")
+  [ -d "$wt" ] || { warn "qa-env-$n: no worktree, skipping"; return 0; }
+  git -C "$wt" fetch -q origin || true
+  git -C "$wt" reset --hard "$BASE" >/dev/null
+  info "qa-env-$n -> $BASE ($(git -C "$wt" rev-parse --short HEAD))"
+  ( cd "$wt" && bun install --frozen-lockfile >/dev/null 2>&1 || bun install >/dev/null 2>&1 )
+  if listening "$(app_port "$n")"; then
+    stop_app "$wt" "$(app_port "$n")" ".qa-app.pid"
+    stop_app "$wt" "$(admin_port "$n")" ".qa-admin.pid"
+    start_app "$wt" "$(app_port "$n")" ".qa-app.log" ".qa-app.pid" "dev"
+    start_admin "$wt" "$(admin_port "$n")" ".qa-admin.log" ".qa-admin.pid"
+    wait_http "http://localhost:$(app_port "$n")/login" 120 || warn "web app slow to restart"
+  fi
+}
+
+logs_env() {
+  local n=$1 wt
+  wt=$(wt_for "$n")
+  [ -d "$wt" ] || die "qa-env-$n does not exist"
+  tail -n 40 -f "$wt/.qa-app.log" "$wt/.qa-admin.log" 2>/dev/null
+}
+
+print_env() {
+  local n=$1 wt
+  wt=$(wt_for "$n")
+  cat <<EOF
+export QA_ENV_ID=qa-env-$n
+export QA_WORKTREE=$wt
+export APP_URL=http://localhost:$(app_port "$n")
+export ADMIN_URL=http://localhost:$(admin_port "$n")
+export SUPABASE_URL=http://localhost:$(api_port "$n")
+export DB_CONTAINER=supabase_db_qa-env-$n
+export OTEL_SERVICE_NAME=studiq-qa-env-$n
+EOF
+}
+
+cmd=${1:-}
+case "$cmd" in
+  up)
+    shift; for n in $(expand_slots "${1:-all}"); do
+      avail=$(free -m | awk '/^Mem:/{print $7}')
+      [ "$avail" -lt 2500 ] && warn "only ${avail}MB free; qa-env-$n may struggle"
+      start_env "$n"
+    done ;;
+  down)
+    shift; for n in $(expand_slots "${1:-all}"); do stop_env "$n"; done ;;
+  status)
+    printf '%-8s %-6s  %-18s %-20s %s\n' "env" "state" "web" "admin" "supabase"
+    for n in "${SLOTS[@]}"; do status_env "$n"; done ;;
+  reset)
+    shift; for n in $(expand_slots "${1:-all}"); do reset_env "$n"; done ;;
+  sync)
+    shift; for n in $(expand_slots "${1:-all}"); do sync_env "$n"; done ;;
+  logs)
+    shift; valid_slot "${1:-}" || die "usage: scripts/qa-env logs <1..4>"; logs_env "$1" ;;
+  env)
+    shift; valid_slot "${1:-}" || die "usage: scripts/qa-env env <1..4>"; print_env "$1" ;;
+  ''|--help|-h) usage ;;
+  *) die "unknown command '$cmd' (try --help)" ;;
 esac
