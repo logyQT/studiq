@@ -33,12 +33,12 @@ const event = {
 describe('MockStripeService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
   let service: MockStripeService;
-  let admin: { rpc: ReturnType<typeof vi.fn> };
+  let admin: { rpc: ReturnType<typeof vi.fn>; from: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    admin = { rpc: vi.fn().mockResolvedValue({ data: null, error: null }) };
+    admin = { rpc: vi.fn().mockResolvedValue({ data: null, error: null }), from: vi.fn() };
     service = new MockStripeService(
       async () => mock as any,
       () => admin as any,
@@ -108,10 +108,8 @@ describe('MockStripeService', () => {
 
     it('moves the org to the plan (re-syncing features and limits) and the buyer personal plan', async () => {
       const profiles = qb(null);
-      mock.from
-        .mockReturnValueOnce(qb(orgPlan))
-        .mockReturnValueOnce(qb(adminMembership))
-        .mockReturnValueOnce(profiles);
+      mock.from.mockReturnValueOnce(qb(orgPlan)).mockReturnValueOnce(qb(adminMembership));
+      admin.from.mockReturnValueOnce(profiles);
       const result = await service.handleWebhook(orgEvent, 'manager');
       expect(result.success).toBe(true);
       expect(admin.rpc).toHaveBeenCalledWith('apply_org_plan', {
@@ -155,7 +153,8 @@ describe('MockStripeService', () => {
 
     it('updates the personal plan when the plan matches the account type', async () => {
       const profiles = qb(null);
-      mock.from.mockReturnValueOnce(qb(studentPlan)).mockReturnValueOnce(profiles);
+      mock.from.mockReturnValueOnce(qb(studentPlan));
+      admin.from.mockReturnValueOnce(profiles);
       const result = await service.handleWebhook(event, 'student');
       expect(result.success).toBe(true);
       expect(profiles.update).toHaveBeenCalledWith({ personal_plan_key: 'spark' });

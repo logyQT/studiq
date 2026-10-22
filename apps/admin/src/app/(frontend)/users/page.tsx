@@ -38,15 +38,18 @@ import {
   RotateCcw,
   ShieldX,
   Trash2,
+  X,
 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
+import { Fragment, useEffect, useState } from 'react';
 import { ConfirmDialog } from '@/app/(frontend)/components/confirm-dialog';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
 const ACCOUNT_TYPES = ['student', 'educator', 'manager'] as const;
 const PER_PAGE = 20;
+const SEARCH_DEBOUNCE_MS = 300;
+const ACTION_ERROR_TIMEOUT_MS = 8000;
 
 type AdminUser = {
   id: string;
@@ -88,13 +91,27 @@ function daysUntil(iso: string): number {
 export default function UsersPage() {
   const t = useTranslations('Users');
   const tc = useTranslations('Common');
+  const locale = useLocale();
   const queryClient = useQueryClient();
 
   const [status, setStatus] = useState<'active' | 'deleted'>('active');
   const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
 
-  const { data, isLoading, isFetching } = useQuery({
+  // Debounce the query value so typing does not fire one request per keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  const {
+    data,
+    error: listError,
+    isLoading,
+    isFetching,
+    isError,
+  } = useQuery({
     queryKey: queryKeys.users.list(status, page, search),
     queryFn: () => {
       const params = new URLSearchParams({ status, page: String(page), perPage: String(PER_PAGE) });
@@ -106,6 +123,30 @@ export default function UsersPage() {
   const users = data?.users ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+
+  // Keep the current page in range when the result set shrinks (e.g. last user deleted).
+  useEffect(() => {
+    if (!data) return;
+    const maxPage = Math.max(1, Math.ceil(data.total / PER_PAGE));
+    if (page > maxPage) setPage(maxPage);
+  }, [data, page]);
+
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Auto-clear the action banner so a stale failure does not linger forever.
+  useEffect(() => {
+    if (!actionError) return;
+    const timer = setTimeout(() => setActionError(null), ACTION_ERROR_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [actionError]);
+
+  function startAction() {
+    setActionError(null);
+  }
+
+  function failAction(error: Error) {
+    setActionError(error.message);
+  }
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState<CreateForm>(EMPTY_CREATE_FORM);
@@ -131,18 +172,24 @@ export default function UsersPage() {
         fullName: form.fullName || undefined,
         accountType: form.accountType,
       }),
+    onMutate: startAction,
     onSuccess: () => {
       invalidate();
       setCreateOpen(false);
       setCreateForm(EMPTY_CREATE_FORM);
       setCreateError(null);
     },
-    onError: (error: Error) => setCreateError(error.message),
+    onError: (error: Error) => {
+      // The create dialog stays open on failure, so the inline message is the
+      // primary feedback; a second page-level banner would just duplicate it.
+      setCreateError(error.message);
+    },
   });
 
   const roleMutation = useMutation({
     mutationFn: ({ id, accountType }: { id: string; accountType: string }) =>
       apiPut(`/users/${id}`, { accountType }),
+    onMutate: startAction,
     onSuccess: () => {
       invalidate();
       setRoleTarget(null);
@@ -151,29 +198,37 @@ export default function UsersPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiDelete(`/users/${id}`),
+    onMutate: startAction,
     onSuccess: () => {
       invalidate();
       setDeleteTarget(null);
     },
+    onError: failAction,
   });
 
   const restoreMutation = useMutation({
     mutationFn: (id: string) => apiPost(`/users/${id}/restore`, {}),
+    onMutate: startAction,
     onSuccess: () => {
       invalidate();
       setRestoreTarget(null);
     },
+    onError: failAction,
   });
 
   const purgeMutation = useMutation({
     mutationFn: (id: string) => apiPost(`/users/${id}/purge`, {}),
+    onMutate: startAction,
     onSuccess: () => {
       invalidate();
       setPurgeTarget(null);
     },
+    onError: failAction,
   });
 
   function openRoleDialog(user: AdminUser) {
+    // Drop a failure from a previous attempt so it does not render again.
+    roleMutation.reset();
     setRoleTarget(user);
     setRoleValue((user.accountType as (typeof ACCOUNT_TYPES)[number]) ?? 'student');
   }
@@ -193,6 +248,21 @@ export default function UsersPage() {
           {t('create')}
         </Button>
       </div>
+
+      {actionError && (
+        <div className="flex items-center justify-between gap-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <p>{t('action_failed', { code: actionError })}</p>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-destructive"
+            aria-label={tc('dismiss')}
+            onClick={() => setActionError(null)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
 
       <Tabs
         value={status}
@@ -214,18 +284,27 @@ export default function UsersPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Input
-            placeholder={t('search_placeholder')}
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            className="max-w-sm"
-          />
+          <div className="max-w-sm">
+            <Label htmlFor="users-search" className="sr-only">
+              {t('search_label')}
+            </Label>
+            <Input
+              id="users-search"
+              placeholder={t('search_placeholder')}
+              value={searchInput}
+              onChange={(e) => {
+                setSearchInput(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
 
           {isLoading ? (
             <p className="text-muted-foreground">{tc('loading')}</p>
+          ) : isError ? (
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {t('load_failed', { code: listError?.message ?? tc('error') })}
+            </p>
           ) : (
             <Table>
               <TableHeader>
@@ -243,13 +322,15 @@ export default function UsersPage() {
               </TableHeader>
               <TableBody>
                 {users.map((u) => (
-                  <>
-                    <TableRow key={u.id}>
+                  <Fragment key={u.id}>
+                    <TableRow>
                       <TableCell>
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6"
+                          aria-expanded={expandedId === u.id}
+                          aria-label={t('toggle_details')}
                           onClick={() => setExpandedId(expandedId === u.id ? null : u.id)}
                         >
                           {expandedId === u.id ? (
@@ -273,7 +354,7 @@ export default function UsersPage() {
                       </TableCell>
                       <TableCell className="text-sm">
                         {status === 'active'
-                          ? new Date(u.createdAt).toLocaleDateString()
+                          ? new Date(u.createdAt).toLocaleDateString(locale)
                           : u.purgeAt
                             ? t('days_remaining', { count: daysUntil(u.purgeAt) })
                             : '—'}
@@ -286,6 +367,7 @@ export default function UsersPage() {
                                 variant="ghost"
                                 size="icon"
                                 title={t('change_role')}
+                                aria-label={t('change_role')}
                                 onClick={() => openRoleDialog(u)}
                               >
                                 <ShieldX className="h-4 w-4" />
@@ -294,6 +376,7 @@ export default function UsersPage() {
                                 variant="ghost"
                                 size="icon"
                                 title={t('delete')}
+                                aria-label={t('delete')}
                                 onClick={() => setDeleteTarget(u)}
                               >
                                 <Trash2 className="h-4 w-4 text-destructive" />
@@ -305,6 +388,7 @@ export default function UsersPage() {
                                 variant="ghost"
                                 size="icon"
                                 title={t('restore')}
+                                aria-label={t('restore')}
                                 onClick={() => setRestoreTarget(u)}
                               >
                                 <RotateCcw className="h-4 w-4" />
@@ -313,6 +397,7 @@ export default function UsersPage() {
                                 variant="ghost"
                                 size="icon"
                                 title={t('purge_now')}
+                                aria-label={t('purge_now')}
                                 onClick={() => setPurgeTarget(u)}
                               >
                                 <Trash2 className="h-4 w-4 text-destructive" />
@@ -323,13 +408,13 @@ export default function UsersPage() {
                       </TableCell>
                     </TableRow>
                     {expandedId === u.id && (
-                      <TableRow key={`${u.id}-detail`}>
+                      <TableRow>
                         <TableCell colSpan={7} className="bg-muted/30 px-12 py-3">
                           <UserOrgs userId={u.id} />
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </Fragment>
                 ))}
                 {users.length === 0 && (
                   <TableRow>
@@ -342,30 +427,34 @@ export default function UsersPage() {
             </Table>
           )}
 
-          <div className="flex items-center justify-between pt-2">
-            <p className="text-sm text-muted-foreground">
-              {t('page_of_total', { page, totalPages, total })}
-              {isFetching && ` · ${tc('loading')}`}
-            </p>
-            <div className="flex gap-1">
-              <Button
-                variant="outline"
-                size="icon"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+          {!isError && (
+            <div className="flex items-center justify-between pt-2">
+              <p className="text-sm text-muted-foreground">
+                {t('page_of_total', { page, totalPages, total })}
+                {isFetching && ` · ${tc('loading')}`}
+              </p>
+              <div className="flex gap-1">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label={t('previous_page')}
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label={t('next_page')}
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
@@ -384,7 +473,7 @@ export default function UsersPage() {
           >
             {createError && (
               <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {createError}
+                {t('action_failed', { code: createError })}
               </p>
             )}
             <div className="space-y-2">
@@ -453,6 +542,11 @@ export default function UsersPage() {
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">{roleTarget?.email}</p>
+            {roleMutation.isError && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {t('action_failed', { code: roleMutation.error?.message ?? tc('error') })}
+              </p>
+            )}
             <Select value={roleValue} onValueChange={(v) => setRoleValue(v as typeof roleValue)}>
               <SelectTrigger>
                 <SelectValue />

@@ -8,7 +8,8 @@
     "delete": "Usuń",
     "edit": "Edytuj",
     "back": "Wstecz",
-    "none": "Brak"
+    "none": "Brak",
+    "dismiss": "Zamknij"
   },
   "DashboardLayout": {
     "admin_overview": "Przegląd",
@@ -91,6 +92,7 @@
     "list_title_active": "Wszyscy użytkownicy",
     "list_title_deleted": "Usunięci (oczekują na trwałe usunięcie)",
     "search_placeholder": "Szukaj po e-mailu lub imieniu...",
+    "search_label": "Szukaj użytkowników",
     "col_email": "Email",
     "col_name": "Imię i nazwisko",
     "col_account_type": "Typ konta",
@@ -104,16 +106,21 @@
     "delete": "Usuń",
     "restore": "Przywróć",
     "purge_now": "Usuń trwale teraz",
+    "toggle_details": "Pokaż szczegóły",
     "empty_active": "Brak użytkowników.",
     "empty_deleted": "Brak usuniętych użytkowników.",
+    "load_failed": "Nie udało się wczytać użytkowników ({code}).",
+    "action_failed": "Nie udało się wykonać akcji ({code})",
     "page_of_total": "Strona {page} z {totalPages} ({total} łącznie)",
+    "previous_page": "Poprzednia strona",
+    "next_page": "Następna strona",
     "days_remaining": "{count, plural, =0 {dzisiaj} one {za 1 dzień} few {za # dni} many {za # dni} other {za # dnia}}",
     "delete_title": "Usuń użytkownika",
-    "delete_desc": "\"{email}\" zostanie natychmiast wylogowany i przeniesiony do Usuniętych. Zostanie trwale skasowany za 30 dni, chyba że zostanie przywrócony.",
+    "delete_desc": "\"{email}\" zostanie natychmiast wyłączony: logowanie jest zablokowane, a istniejące sesje przestają być odświeżane, jednak wydany już token dostępu może działać jeszcze do godziny. Konto zostanie trwale usunięte za 30 dni, chyba że zostanie przywrócone.",
     "restore_title": "Przywróć użytkownika",
     "restore_desc": "\"{email}\" znów będzie mógł się zalogować i zostanie usunięty z kolejki kasowania.",
     "purge_title": "Usuń trwale",
-    "purge_desc": "To natychmiast i nieodwracalnie usuwa \"{email}\" oraz wszystko powiązane z jego kontem (członkostwa w organizacjach, utworzoną treść). Tej operacji nie można cofnąć.",
+    "purge_desc": "To natychmiast i nieodwracalnie usuwa \"{email}\" oraz wszystko powiązane z jego kontem: członkostwa w organizacjach i całą utworzoną przez niego treść, w tym treść w organizacjach (banki pytań, talie i quizy widoczne dla innych). Tej operacji nie można cofnąć.",
     "no_orgs": "Nie należy do żadnej organizacji."
   },
   "UserOverrides": {
