@@ -6,3 +6,4 @@ dist/
 
 # The repo root ignores `.env*`; keep the template tracked.
 !.env.example
+.pid
