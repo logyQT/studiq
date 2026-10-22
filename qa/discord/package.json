@@ -1,0 +1,20 @@
+{
+  "name": "@studiq/qa-discord",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Discord control surface for the StudiQ four-slot QA stack",
+  "scripts": {
+    "start": "bun src/index.ts",
+    "check": "bun src/index.ts --check",
+    "dry-run": "bun src/index.ts --dry-run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
