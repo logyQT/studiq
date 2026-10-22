@@ -24,6 +24,7 @@ Open http://localhost:4000
 | `/user-overrides` | Per-user feature flag overrides |
 | `/orgs` | List of organizations with member/group/role counts |
 | `/orgs/[id]` | Org detail with members, groups, roles tabs |
+| `/users` | User management: search, create, change role, soft-delete/restore, purge |
 
 ## API Routes
 
@@ -43,6 +44,11 @@ All under `/api/v1/`. Controllers live in `src/server/controllers/`, services in
 | `subscription-plans/[key]` | GET, PUT, DELETE |
 | `organizations` | GET |
 | `organizations/[id]` | GET (with details) |
+| `users` | GET (list, `?status=&page=&perPage=&search=`), POST |
+| `users/[id]` | GET (with memberships), PUT (account type), DELETE (soft delete) |
+| `users/[id]/restore` | POST |
+| `users/[id]/purge` | POST |
+| `users/purge-expired` | POST |
 
 ## Auth
 
