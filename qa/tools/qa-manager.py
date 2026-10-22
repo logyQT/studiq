@@ -10,6 +10,7 @@ Run inside the container:
     python3 .../qa-manager.py decisions sync
     python3 .../qa-manager.py decisions pending
     python3 .../qa-manager.py decisions file dec_1 --yes
+    python3 .../qa-manager.py decisions file dec_1 --yes --attach dashboard/shots/shot.png
     python3 .../qa-manager.py decisions spawn dec_1
     python3 .../qa-manager.py spawn --env 3 --title "Investigate X" --prompt "..."
 
@@ -35,6 +36,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]          # .worktrees/qa-env
 QA = ROOT / "qa"
 LEDGER = QA / "decisions.json"
+SHOTS = ROOT / "dashboard" / "shots"
 BASE = "http://127.0.0.1:4096"
 AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
 MODEL = {"providerID": "opencode-go", "id": "deepseek-v4.1-flash", "variant": "high"}
@@ -392,7 +394,8 @@ def sync_decisions() -> list[dict]:
                         "question": f"{scenario} finished without the required end-of-session report — inspect the session or re-run it?",
                         "title": "", "severity": "medium", "areas": [],
                         "why": "the final message lacks the Filed / Found but not filed / Decisions sections",
-                        "body": text[-1500:], "status": "pending", "action": None,
+                        "body": text[-1500:], "screenshots": body_screenshots(text),
+                        "status": "pending", "action": None,
                         "issue": None, "spawned": None, "spawned_env": None,
                         "created": int(time.time() * 1000),
                     }
@@ -419,6 +422,7 @@ def sync_decisions() -> list[dict]:
                     "areas": h["areas"],
                     "why": h["why"],
                     "body": h["body"],
+                    "screenshots": body_screenshots(h["body"], question, h["title"]),
                     "status": "pending",
                     "action": None,
                     "issue": None,
@@ -437,7 +441,8 @@ def sync_decisions() -> list[dict]:
                 item = {
                     "id": next_id(items), "session": sid, "env": n, "scenario": scenario,
                     "question": dec["question"], "title": "", "severity": "medium",
-                    "areas": [], "why": "", "body": "", "status": "pending",
+                    "areas": [], "why": "", "body": "", "screenshots": body_screenshots(dec["question"]),
+                    "status": "pending",
                     "action": None, "issue": None, "spawned": None, "spawned_env": None,
                     "created": int(time.time() * 1000),
                 }
@@ -654,6 +659,52 @@ def cmd_decisions(args) -> None:
     raise SystemExit(f"unknown decisions action {action!r}")
 
 
+SHOT_RE = re.compile(r"[\w][\w./-]*\.png", re.I)
+
+
+def resolve_shot(value: str) -> Path | None:
+    """Resolve a screenshot reference to an existing PNG under dashboard/shots."""
+    base = SHOTS.resolve()
+    candidate = Path(value.strip())
+    if not candidate.is_absolute():
+        candidate = base / candidate.name
+    try:
+        resolved = candidate.resolve()
+        resolved.relative_to(base)
+    except (OSError, ValueError):
+        return None
+    if resolved.suffix.lower() != ".png" or not resolved.is_file():
+        return None
+    return resolved
+
+
+def referenced_screenshots(it: dict, extra: list[str] | None = None) -> list[Path]:
+    """Screenshots to attach: explicit field, then any PNG named in the item text."""
+    names: list[str] = []
+    if isinstance(it.get("screenshots"), list):
+        names += [str(x) for x in it["screenshots"]]
+    blob = " ".join(str(it.get(key) or "") for key in ("body", "question", "title"))
+    names += SHOT_RE.findall(blob)
+    names += list(extra or [])
+    shots: list[Path] = []
+    for name in names:
+        resolved = resolve_shot(name)
+        if resolved is not None and resolved not in shots:
+            shots.append(resolved)
+    return shots[:6]
+
+
+def body_screenshots(*texts: str) -> list[str]:
+    """Names of existing shots cited in a report body, recorded on new ledger items."""
+    names: list[str] = []
+    for text in texts:
+        for ref in SHOT_RE.findall(text or ""):
+            shot = resolve_shot(ref)
+            if shot is not None and shot.name not in names:
+                names.append(shot.name)
+    return names[:6]
+
+
 def file_decision(args) -> None:
     it = find_item(args.dec_id)
     if not it.get("title"):
@@ -667,32 +718,51 @@ def file_decision(args) -> None:
             seen.add(lab)
             clean.append(lab)
     body = it.get("body") or it.get("question") or ""
+    shots = referenced_screenshots(it, getattr(args, "attach", None))
+    if shots:
+        evidence = "**Evidence:** " + ", ".join(f"`{p.name}`" for p in shots) + " (attached)."
+    else:
+        evidence = (
+            "**Evidence:** no screenshot referenced by this ledger item; attach manually "
+            "if needed (QA run screenshots live in `dashboard/shots/`)."
+        )
     text = (
         f"**Scenario:** {it['scenario']}\n"
         f"**Severity:** {it.get('severity') or 'medium'}\n"
         f"**Environment:** qa-env-{it['env']} (isolated slot)\n"
         f"**Finding:** {it['title']}\n\n"
         f"{body}\n\n"
-        f"**Evidence:** screenshot: to be attached manually "
-        f"(QA run screenshots live in `dashboard/shots/`).\n"
+        f"{evidence}\n"
     )
     argv = ["gh", "issue", "create", "--repo", "logyQT/studiq",
             "--title", it["title"], "--body", text]
     for lab in clean:
         argv += ["--label", lab]
+    for shot in shots:
+        argv += ["--attach", f"{shot}#{it['scenario']} screenshot"]
     if args.dry_run:
         print(shlex.join(argv))
         return
     if not shutil.which("gh"):
         raise SystemExit("gh not found")
     proc = subprocess.run(argv, capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise SystemExit(f"gh failed: {proc.stderr.strip()[:500]}")
-    url = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else ""
+    stdout = proc.stdout or ""
+    url = stdout.strip().splitlines()[-1] if stdout.strip() else ""
     m = re.search(r"/issues/(\d+)", url)
+    if proc.returncode != 0 and not m:
+        raise SystemExit(f"gh failed: {proc.stderr.strip()[:500]}")
+    if proc.returncode != 0:
+        print(
+            "warning: some attachments failed, issue was still created: "
+            f"{(proc.stderr or '').strip()[:300]}",
+            file=sys.stderr,
+        )
     number = int(m.group(1)) if m else None
-    update_item(it["id"], status="filed", action="file", issue=number, issue_url=url)
+    update_item(it["id"], status="filed", action="file", issue=number,
+                issue_url=url, screenshots=[p.name for p in shots])
     print(f"filed {it['id']}: #{number} {url}")
+    if shots:
+        print(f"attached: {', '.join(p.name for p in shots)}")
 
 
 def spawn_decision(args) -> None:
@@ -786,7 +856,7 @@ def main() -> None:
     dsub.add_parser("all", help="all decisions").set_defaults(fn=cmd_decisions)
     s = dsub.add_parser("show"); s.add_argument("dec_id"); s.set_defaults(fn=cmd_decisions)
     a = dsub.add_parser("answer"); a.add_argument("dec_id"); a.add_argument("value", choices=["file", "investigate", "skip"]); a.add_argument("--note"); a.set_defaults(fn=cmd_decisions)
-    f = dsub.add_parser("file"); f.add_argument("dec_id"); f.add_argument("--yes", action="store_true"); f.add_argument("--dry-run", action="store_true"); f.set_defaults(fn=cmd_decisions)
+    f = dsub.add_parser("file"); f.add_argument("dec_id"); f.add_argument("--yes", action="store_true"); f.add_argument("--dry-run", action="store_true"); f.add_argument("--attach", action="append", default=[], metavar="PNG", help="extra screenshot to attach (repeatable)"); f.set_defaults(fn=cmd_decisions)
     sp = dsub.add_parser("spawn"); sp.add_argument("dec_id"); sp.add_argument("--env", type=int, choices=[1, 2, 3, 4]); sp.set_defaults(fn=cmd_decisions)
 
     spw = sub.add_parser("spawn", help="start an arbitrary agent session in a free slot")
