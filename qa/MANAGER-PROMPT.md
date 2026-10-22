@@ -80,6 +80,8 @@ Wait for my answers. Then execute exactly what I chose:
   If it refuses because no screenshot exists, pick the right file from
   `dashboard/shots/` and pass `--attach <path>`; use `--no-screenshot` only for
   a genuinely non-visual finding.
+- To add evidence to an issue that is **already filed**:
+  `... qa-manager.py decisions attach <id> [--attach <path>]`.
 - **investigate** → `... qa-manager.py decisions spawn <id>`
   It starts a new investigation agent in a free slot with the finding as context.
   Monitor it like any session; when it finishes, read `report --env N` and bring

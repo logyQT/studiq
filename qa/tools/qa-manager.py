@@ -653,6 +653,9 @@ def cmd_decisions(args) -> None:
     if action == "file":
         file_decision(args)
         return
+    if action == "attach":
+        attach_decision(args)
+        return
     if action == "spawn":
         spawn_decision(args)
         return
@@ -840,6 +843,37 @@ def file_decision(args) -> None:
             )
 
 
+def attach_decision(args) -> None:
+    it = find_item(args.dec_id)
+    number = it.get("issue")
+    if not number:
+        raise SystemExit(f"{it['id']} is not filed yet; use `decisions file`")
+    cited = attachable(referenced_screenshots(it, getattr(args, "attach", None)))
+    shots = cited or attachable(session_screenshots(it))
+    if not shots:
+        raise SystemExit(
+            f"no screenshot found for {it['id']} ({it['scenario']}); "
+            f"pass --attach {SHOTS}/<file>.png"
+        )
+    argv = ["gh", "issue", "edit", str(number), "--repo", "logyQT/studiq"]
+    for shot in shots:
+        argv += ["--attach", f"{shot}#{it['scenario']} screenshot"]
+    if args.dry_run:
+        print(shlex.join(argv))
+        return
+    if not shutil.which("gh"):
+        raise SystemExit("gh not found")
+    proc = subprocess.run(argv, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise SystemExit(f"gh failed: {(proc.stderr or '').strip()[:500]}")
+    known = list(it.get("screenshots") or [])
+    for shot in shots:
+        if shot.name not in known:
+            known.append(shot.name)
+    update_item(it["id"], screenshots=known[:12])
+    print(f"attached to #{number}: {', '.join(p.name for p in shots)}")
+
+
 def spawn_decision(args) -> None:
     it = find_item(args.dec_id)
     busy = busy_slots()
@@ -932,6 +966,7 @@ def main() -> None:
     s = dsub.add_parser("show"); s.add_argument("dec_id"); s.set_defaults(fn=cmd_decisions)
     a = dsub.add_parser("answer"); a.add_argument("dec_id"); a.add_argument("value", choices=["file", "investigate", "skip"]); a.add_argument("--note"); a.set_defaults(fn=cmd_decisions)
     f = dsub.add_parser("file"); f.add_argument("dec_id"); f.add_argument("--yes", action="store_true"); f.add_argument("--dry-run", action="store_true"); f.add_argument("--attach", action="append", default=[], metavar="PNG", help="extra screenshot to attach (repeatable)"); f.add_argument("--no-screenshot", action="store_true", help="file without evidence (non-visual findings only)"); f.set_defaults(fn=cmd_decisions)
+    at = dsub.add_parser("attach"); at.add_argument("dec_id"); at.add_argument("--dry-run", action="store_true"); at.add_argument("--attach", action="append", default=[], metavar="PNG", help="extra screenshot to attach (repeatable)"); at.set_defaults(fn=cmd_decisions)
     sp = dsub.add_parser("spawn"); sp.add_argument("dec_id"); sp.add_argument("--env", type=int, choices=[1, 2, 3, 4]); sp.set_defaults(fn=cmd_decisions)
 
     spw = sub.add_parser("spawn", help="start an arbitrary agent session in a free slot")
