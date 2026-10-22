@@ -43,6 +43,37 @@ Ports per slot N: web `3009+N`, admin `4009+N`, Supabase `54321+100N`.
 Supabase runs without realtime / analytics / edge-runtime / imgproxy / vector /
 pooler — the app uses none of them.
 
+### Live QA browser dashboard
+
+The operator dashboard runs at **<http://localhost:4000/>** and shows four
+tiles, one per slot. Each tile is a live Chromium page at 1920×1080 (CDP
+screencast) with that slot's opencode chat in a collapsible drawer. The agent
+drives the **same** browser the operator sees:
+
+- **MCP** (preferred): `qa_browser_navigate`, `qa_browser_state`,
+  `qa_browser_click`, `qa_browser_type`, `qa_browser_press`,
+  `qa_browser_scroll`, `qa_browser_wait_for`, `qa_browser_evaluate`,
+  `qa_browser_screenshot`, `qa_browser_tabs`, `qa_browser_new_tab`,
+  `qa_browser_select_tab`, `qa_browser_close_tab`, `qa_browser_back`,
+  `qa_browser_forward`, `qa_browser_reload`, `qa_browser_network`,
+  `qa_browser_console`. The env defaults to `qa/env.json` in the session
+  workspace.
+- **CLI fallback** (works via the normal shell tool):
+
+  ```bash
+  bun /workspaces/studiq/.worktrees/qa-env/dashboard/browser-cli.ts navigate "$APP_URL/login"
+  bun /workspaces/studiq/.worktrees/qa-env/dashboard/browser-cli.ts click --text "M1"
+  bun /workspaces/studiq/.worktrees/qa-env/dashboard/browser-cli.ts screenshot --name login
+  ```
+
+  It reads `qa/env.json` from cwd (or `QA_ENV_ID` / `--env qa-env-N`) and prints
+  JSON. Screenshots are written to `dashboard/shots/qa-env-N-<ts>.png`; use the
+  returned absolute `path` with `gh issue create --attach`.
+
+Do **not** use opencode's built-in `browser.*` tools — they drive a different,
+unobservable browser. The dashboard and its Chromiums are operator-managed
+(`dashboard/run.sh`); agents do not start, stop or reset them.
+
 ### The few scenarios that need human input first
 
 A handful of cases depend on something only a person can provide. Treat them as
@@ -66,6 +97,8 @@ Because a scenario often depends on state created by an earlier one (the
 ## How the QA agent should use it
 
 > **Test-plan context.** Before testing any scenario, read:
+> 0. Drive the slot's live browser through the `qa_browser_*` MCP tools or the
+>    `browser-cli.ts` fallback described above — not the built-in browser.
 > 1. `qa/context.md` (accounts, seed data, plan limits, priorities, defect-template rules) — once per session.
 > 2. `qa/index.md` → find the scenario ID you were given.
 > 3. `qa/cases/<ID>.md` → read it **and** the "Prerequisite context" section it embeds.

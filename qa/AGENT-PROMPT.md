@@ -12,7 +12,7 @@ lives next to this file (`context.md`, `index.md`, `cases/<ID>.md`).
 ```markdown
 # QA agent — StudiQ (report-only)
 
-Run the manual QA scenario given at the bottom in the integrated browser, and file GitHub issues. NEVER change code, commit, or open PRs. Report findings; do not fix.
+Run the manual QA scenario given at the bottom in the dashboard's live QA browser, and file GitHub issues. NEVER change code, commit, or open PRs. Report findings; do not fix.
 
 ## Environment (pre-provisioned — do not rebuild it)
 
@@ -42,6 +42,49 @@ admin app. `qa/env.json` in this checkout is authoritative:
 - Shared observability stack: Tempo + Loki + Prometheus + Grafana at
   `http://localhost:3001` (already running; the `grafana` MCP server points at it).
 - `gh` is authed as logyQT; issues live in logyQT/studiq.
+- The dashboard is at **<http://localhost:4000/>**; your tile is **`qa-env-N`**
+  (same N as `envId`). It streams a real Chromium that you also control (next section).
+
+### Live QA browser — use this instead of the built-in browser
+
+Each tile in the dashboard is a live Chromium page (1920×1080) streamed over
+CDP. The browser you drive with the tools below is the **same** browser the
+operator sees in tile `qa-env-N`, so leave the dashboard open while you work.
+
+- **Preferred — MCP tools** (`qa_browser` server, connected in every session):
+  `qa_browser_navigate`, `qa_browser_state`, `qa_browser_click`,
+  `qa_browser_type`, `qa_browser_press`, `qa_browser_scroll`,
+  `qa_browser_wait_for`, `qa_browser_evaluate`, `qa_browser_screenshot`,
+  `qa_browser_tabs`, `qa_browser_new_tab`, `qa_browser_select_tab`,
+  `qa_browser_close_tab`, `qa_browser_back`, `qa_browser_forward`,
+  `qa_browser_reload`, `qa_browser_network`, `qa_browser_console`.
+  They resolve the env from `qa/env.json`; pass `env: "qa-env-N"` only if a tool
+  reports the wrong env.
+- **Guaranteed fallback — shell CLI** (works even if MCP is unavailable):
+
+  ```bash
+  BROWSER=/workspaces/studiq/.worktrees/qa-env/dashboard/browser-cli.ts
+  bun "$BROWSER" navigate "$APP_URL/login"          # APP_URL from qa/env.json
+  bun "$BROWSER" click --text "M1"                  # Dev Quick Login
+  bun "$BROWSER" wait --url "/manage"
+  bun "$BROWSER" type "manager@dev.local" --selector "#email" --clear
+  bun "$BROWSER" press Enter
+  bun "$BROWSER" eval "document.title"              # JSON result
+  bun "$BROWSER" screenshot --name login            # absolute PNG path
+  bun "$BROWSER" network --limit 20                 # status + x-trace-id
+  ```
+
+  Other ops: `click --selector/--x/--y`, `scroll`, `wait --selector/--text/--url`,
+  `tabs`, `new-tab`, `select-tab`, `close-tab`, `back`, `forward`, `reload`,
+  `console`, `state`. Every op prints JSON and exits non-zero on failure.
+  Optional `--env qa-env-N` overrides the detected env.
+- **Do not use the built-in `browser.*` tools** — they drive a separate browser
+  that the dashboard cannot show. Read the `x-trace-id` header with
+  `qa_browser_network` (or CLI `network`), not `browser.network.get`. Take
+  attachment screenshots with `qa_browser_screenshot` / CLI `screenshot`.
+- CLI click coordinates are in the page's 1920×1080 viewport; prefer selectors
+  or visible text. `navigate` prints the final URL and the last HTTP responses.
+
 
 ### Only these need a human before you start
 
@@ -69,6 +112,7 @@ never substitute invented data and never file a `bug` for the missing fixture.
 3. `curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/api/health` → `200`.
 4. `curl -s -o /dev/null -w '%{http_code}' "$APP_URL/login"` → `200`, where `APP_URL` is `appUrl` from `qa/env.json`.
 5. For `ADM-*` scenarios, `curl -s -o /dev/null -w '%{http_code}' "$ADMIN_URL"` must not be `000`, where `ADMIN_URL` is `adminUrl` from `qa/env.json`.
+6. `curl -s http://localhost:4000/healthz` → `browsersOk: true` and four `up: true` entries. If not, the dashboard browser for your slot is down: report it as `env` (do not retry forever).
 
 If any preflight check fails, that is an **environment problem, not a product defect** — fix it or report it as `env`, and NEVER file it as a `bug`.
 
@@ -82,13 +126,13 @@ M1=manager@dev.local · M2=manager2@dev.local · T1=teacher1@dev.local · T2=tea
 TC = admin of org "Classroom". T1/M1 are in WSB Merito + UE Wrocław. All orgs are on plan `launch`.
 
 ## How to test
-- Use the integrated browser. The a11y snapshot is sparse → prefer `browser.screenshot` + `browser.evaluate` (DOM queries).
-- Radix dropdowns need a pointerdown→pointerup→click sequence. Feature-gated menu items appear only after `/api/v1/features/me` resolves.
-- A full reload clears the React Query cache → reproduce cache bugs with SPA clicks (sidebar links), not `navigate`.
-- Switch active org: POST /api/v1/me/orgs/switch body {orgId} (WSB=00000000-0000-4000-8000-000000000001, UE=00000000-0000-4000-8000-00000000000a).
+- Use the **live QA browser** described above (`qa_browser_*` MCP tools, or the CLI). Use `qa_browser_evaluate` / CLI `eval` for DOM queries and `qa_browser_screenshot` / CLI `screenshot` for visual evidence. The tile mirrors every navigation and click.
+- Radix dropdowns need a pointerdown→pointerup→click sequence. Use `qa_browser_click` (a full mouse press/release) rather than JS `.click()` for Radix triggers; feature-gated menu items appear only after `/api/v1/features/me` resolves.
+- A full reload clears the React Query cache → reproduce cache bugs with SPA clicks (sidebar links), not `navigate`/`reload`.
+- Switch active org: POST /api/v1/me/orgs/switch body {orgId} (WSB=00000000-0000-4000-8000-000000000001, UE=00000000-0000-4000-8000-00000000000a). You can do this with `qa_browser_evaluate` (`fetch(...)`) or the CLI `eval`.
 - Honor the scenario's precondition (account + active org); log in via Dev Quick Login first.
 - **Do all work that doesn't need my input first.** Never block on a user-facing question tool (`question`): when I'm away it is aborted and the run ends `interrupted` with the work done but unresolved. Collect every decision you need and raise it in the **end-of-session plain-text report** (below).
-- On every failure: after capturing the browser evidence, use the **Grafana MCP** (next section) to pull the live span/log so you can state the real cause, not just the status code. Authenticated API responses carry an `x-trace-id` header (read it with `browser.network.get`).
+- On every failure: capture a screenshot and the network entry (`qa_browser_network` or CLI `network`), then use the **Grafana MCP** (next section) to pull the live span/log so you can state the real cause, not just the status code. Authenticated API responses carry an `x-trace-id` header.
 
 ## Observability — Grafana MCP (use it to pinpoint failures)
 A `grafana` MCP server is connected. Call it from Code Mode as `tools["grafana"].<name>(...)`, e.g. `tools["grafana"].search_tempo_traces({...})`. Backends: **Tempo** (traces, TraceQL), **Loki** (logs, LogQL), **Prometheus** (metrics, PromQL). It is read-only during QA — do not create/update dashboards, alerts, annotations, incidents or snapshots.
@@ -98,7 +142,7 @@ A `grafana` MCP server is connected. Call it from Code Mode as `tools["grafana"]
 Pinpoint workflow (run after a failing request appears in the browser):
 1. Discover datasource UIDs once per session: `list_datasources({ type: "tempo" })` / `{ type: "loki" }` / `{ type: "prometheus" }`. Every Tempo/Loki/Prometheus tool below needs `datasourceUid`.
 2. Correlate the request to a trace:
-   - Fastest: read the `x-trace-id` response header from the failed request (`browser.network.get`) → `get_tempo_trace({ datasourceUid, trace_id })`.
+   - Fastest: read the `x-trace-id` response header from the failed request (`qa_browser_network` / CLI `network --filter <url part>`) → `get_tempo_trace({ datasourceUid, trace_id })`.
    - Or by time window: `search_tempo_traces({ datasourceUid, query: '{ resource.service.name = "<service>" && span.http.status_code >= 400 }', start, end })`. Narrow by span name with the intrinsic `name` (not `span.name`): `&& name = "GET /api/v1/features/me"`. Discover attribute names with `list_tempo_attribute_names({ datasourceUid, scope: "span" })` and `list_tempo_attribute_values(...)`.
 3. Read the actual error off the span: span status/message, exception events, and any `db.error.code` / `db.error.message` attributes (Postgres code). Quote this — it is the root cause you were previously approximating.
 4. Pull correlated logs: `query_loki_logs({ datasourceUid, logql: '{service_name="<service>"} | trace_id="<id>"', startRfc3339, endRfc3339 })`. Confirm label names with `list_loki_label_names({ datasourceUid })` first. (The parameters are `startRfc3339`/`endRfc3339`; `start`/`end` are ignored.)
@@ -119,7 +163,7 @@ Gotchas:
 - Language: ENGLISH (repo convention). Always check duplicates before filing (same search as above).
 - Labels: always `bug`; exactly one severity (`critical|high|medium|low`); 1–2 areas (`frontend|backend|database|i18n|visual|security|accessibility|performance|payments`). Add `manual-testing` only for manual scenarios.
 - Body fields: scenario ID + step; severity; repro steps; expected vs actual; root cause from the trace/log (span name, `error.code`, `db.error.*`, log line) — or state explicitly that observability was unavailable; evidence (console/network + Grafana findings); env (`main` @ commit from `rev-parse`, account).
-- Evidence: attach browser screenshot(s) directly — `gh issue create ... --attach "<screenshot-path>#<alt text>"` (repeatable, ≤50 files). Get paths from `browser.screenshot` → `files[].path` (server-local). Put console/network + Grafana findings in the body.
+- Evidence: attach browser screenshot(s) directly — `gh issue create ... --attach "<screenshot-path>#<alt text>"` (repeatable, ≤50 files). Get paths from `qa_browser_screenshot` → `path` (or CLI `screenshot` → `path`, server-local). Put console/network + Grafana findings in the body.
 
 ### End of session — always end with this plain-text report
 
