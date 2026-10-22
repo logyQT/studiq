@@ -117,9 +117,12 @@ export class MockStripeService {
       if (planError) return toDbFailure(planError);
     }
 
-    const supabase = await this.createClient();
+    // profiles is write-locked for `authenticated` (see migration
+    // 20261022000001_profiles_write_lockdown.sql) so a plan upgrade must go
+    // through the service-role client, not the caller's session.
+    const admin = this.createAdminClient();
 
-    const { error } = await supabase
+    const { error } = await admin
       .from('profiles')
       .update({ personal_plan_key: event.plan_id })
       .eq('id', event.user_id);

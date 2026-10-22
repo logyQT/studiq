@@ -37,6 +37,15 @@ export const UpdateUserAccountTypeSchema = registry.register(
   }),
 );
 
+// Route params reach the service straight from the URL, so they have to be
+// validated like any other input: an unparseable id would otherwise be sent
+// to Postgres/GoTrue and surface as a 500 instead of a 422.
+export const UserIdParamSchema = registry.register(
+  'UserIdParam',
+  z.uuid({ error: ValidationErrorCode.INVALID_INPUT }),
+);
+
 export type ListUsersQuery = z.infer<typeof ListUsersQuerySchema>;
+export type UserIdParam = z.infer<typeof UserIdParamSchema>;
 export type CreateUserInput = z.infer<typeof CreateUserSchema>;
 export type UpdateUserAccountTypeInput = z.infer<typeof UpdateUserAccountTypeSchema>;
