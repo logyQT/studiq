@@ -10,6 +10,8 @@ function qb(data: any, error: any = null, count?: number) {
   const b: any = {};
   b.select = vi.fn(() => b);
   b.eq = vi.fn(() => b);
+  b.in = vi.fn(() => b);
+  b.not = vi.fn(() => b);
   b.order = vi.fn(() => b);
   b.lte = vi.fn(() => b);
   b.then = promise.then.bind(promise);
@@ -179,6 +181,114 @@ describe('StatsService', () => {
       expect(attemptsBuilder.eq).not.toHaveBeenCalledWith('organization_id', 'org-1');
       expect(practiceBuilder.eq).not.toHaveBeenCalledWith('organization_id', 'org-1');
       expect(reviewStateBuilder.eq).not.toHaveBeenCalledWith('organization_id', 'org-1');
+    });
+  });
+
+  describe('getTeacherQuizStats', () => {
+    const orgCtx: RequestContext = {
+      ...ctx,
+      accountType: AccountType.EDUCATOR,
+      activeOrgId: 'org-1',
+      orgRoleId: 'role-1',
+    };
+
+    it('returns an empty list without an active organization and never queries the DB', async () => {
+      const result = await service.getTeacherQuizStats({
+        ...orgCtx,
+        activeOrgId: null,
+        orgRoleId: null,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([]);
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('returns an empty list when the org membership was not verified', async () => {
+      // active_org_id is a client-controlled cookie; withAuth only sets
+      // orgRoleId once it confirmed the caller belongs to that org.
+      const result = await service.getTeacherQuizStats({ ...orgCtx, orgRoleId: null });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([]);
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('returns an empty list when the org has no student members', async () => {
+      const membersBuilder = qb([{ user_id: 'teacher-1' }]);
+      // Simulate the DB applying the `member` role filter: no rows survive.
+      membersBuilder.eq.mockImplementation((column: string) =>
+        column === 'org_roles.name' ? qb([]) : membersBuilder,
+      );
+      mock.from.mockReturnValueOnce(membersBuilder);
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([]);
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).toHaveBeenCalledWith('org_members');
+    });
+
+    it('aggregates only completed attempts of the org students', async () => {
+      const membersBuilder = qb([{ user_id: 's-1' }]);
+      const attemptsBuilder = qb([
+        { id: 'a-1', score: 8, total_questions: 10, config: { title: 'Quiz A' } },
+        { id: 'a-2', score: 6, total_questions: 10, config: { title: 'Quiz A' } },
+        { id: 'a-3', score: 5, total_questions: 20, config: { title: 'Quiz B' } },
+        { id: 'a-4', score: 0, total_questions: 4, config: null },
+      ]);
+      mock.from.mockReturnValueOnce(membersBuilder);
+      mock.from.mockReturnValueOnce(attemptsBuilder);
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(membersBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(membersBuilder.eq).toHaveBeenCalledWith('org_roles.name', 'member');
+      expect(attemptsBuilder.in).toHaveBeenCalledWith('user_id', ['s-1']);
+      expect(attemptsBuilder.not).toHaveBeenCalledWith('completed_at', 'is', null);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        {
+          id: 'Quiz A',
+          title: 'Quiz A',
+          totalAttempts: 2,
+          avgScore: 7,
+          avgCompletionRate: 10,
+        },
+        {
+          id: 'Quiz B',
+          title: 'Quiz B',
+          totalAttempts: 1,
+          avgScore: 5,
+          avgCompletionRate: 20,
+        },
+        {
+          id: 'Untitled Quiz',
+          title: 'Untitled Quiz',
+          totalAttempts: 1,
+          avgScore: 0,
+          avgCompletionRate: 4,
+        },
+      ]);
+    });
+
+    it('returns a failure when the org members query fails', async () => {
+      mock.from.mockReturnValueOnce(qb(null, { message: 'boom', code: 'XX000' }));
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(result.success).toBe(false);
+    });
+
+    it('returns a failure when the quiz attempts query fails', async () => {
+      mock.from.mockReturnValueOnce(qb([{ user_id: 's-1' }]));
+      mock.from.mockReturnValueOnce(qb(null, { message: 'boom', code: 'XX000' }));
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(result.success).toBe(false);
     });
   });
 });
