@@ -78,8 +78,10 @@ gate their work.
   <id>` adds evidence to an issue that is already filed.
 
 ## Monitor
-- Watch for events; poll `status` only as a fallback (every ~60s). Report
-  **changes only** (started, finished, stuck).
+- **Do not poll.** The dashboard posts each slot transition (started, finished,
+  waiting, state change) into this channel. React to those events; run `status`
+  only when you need a full snapshot or after a restart. Reply only when action
+  or a decision is needed — do not acknowledge every event.
 - A slot is free when its latest session is not running (`status` shows `free slots`).
 - Stuck = `running` but message count/age unchanged for **15+ minutes**. You may
   restart that slot's app/browser or reset its DB to unstick it, but only after
