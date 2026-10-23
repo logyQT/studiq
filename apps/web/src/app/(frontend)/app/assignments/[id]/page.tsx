@@ -199,7 +199,7 @@ export default function StudentAssignmentDetailPage() {
             <p className="text-lg font-bold">
               {t('score', {
                 earned: assignment.attempt.score,
-                total: assignment.attempt.total_points ?? assignment.attempt.total_questions,
+                total: assignment.attempt.total_points || assignment.attempt.total_questions,
               })}
             </p>
             <Link href={`/app/assignments/${id}/review`}>

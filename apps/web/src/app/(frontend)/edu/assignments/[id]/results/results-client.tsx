@@ -96,7 +96,7 @@ export default function ResultsClient() {
                   <td className="p-3 text-muted-foreground">{attempt.user?.email}</td>
                   <td className="p-3 text-center">
                     {attempt.completed_at
-                      ? `${attempt.score}/${attempt.total_points ?? attempt.total_questions}`
+                      ? `${attempt.score}/${attempt.total_points || attempt.total_questions}`
                       : '-'}
                   </td>
                   <td className="p-3 text-center">

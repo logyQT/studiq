@@ -122,6 +122,31 @@ describe('QuizAttemptService', () => {
       expect(mock.from).not.toHaveBeenCalledWith('assignment_questions');
     });
 
+    it('counts a practice-quiz question once even when it produced several answer rows', async () => {
+      const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      mock.from.mockReturnValueOnce(qb(null)); // attempt update
+      mock.from.mockReturnValueOnce(qb(null)); // answers insert
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [
+            { questionId: 'q-1', selectedAnswerId: 'ans-1' },
+            { questionId: 'q-1', selectedAnswerId: 'ans-2' },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).score).toBe(1);
+      expect(mock.from).not.toHaveBeenCalledWith('assignment_questions');
+    });
+
     it('awards assignment points instead of counting correct answers (#167)', async () => {
       const attempt = {
         id: 'a-1',

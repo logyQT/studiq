@@ -140,7 +140,7 @@ export default function StudentGradingClient() {
           <p className="text-sm text-muted-foreground">
             {t('score', {
               earned: attempt.score,
-              total: attempt.total_points ?? attempt.total_questions,
+              total: attempt.total_points || attempt.total_questions,
             })}
             {attempt.graded_at && ` ${t('graded')}`}
           </p>

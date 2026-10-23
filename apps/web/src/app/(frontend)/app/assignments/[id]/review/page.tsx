@@ -58,7 +58,7 @@ export default function ReviewAssignmentPage() {
     return <div className="p-6 text-center text-muted-foreground">{t('not_available')}</div>;
   }
 
-  const total = review.total_points ?? review.total_questions;
+  const total = review.total_points || review.total_questions;
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">

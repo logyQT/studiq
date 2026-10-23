@@ -169,7 +169,7 @@ export default function StudentAssignmentsPage() {
                     <div className="flex items-start justify-between">
                       <h3 className="font-semibold">{a.title}</h3>
                       <span className="text-xs text-muted-foreground">
-                        {a.attempt?.score}/{a.attempt?.total_points ?? a.attempt?.total_questions}
+                        {a.attempt?.score}/{a.attempt?.total_points || a.attempt?.total_questions}
                       </span>
                     </div>
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
