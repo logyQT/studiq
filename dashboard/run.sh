@@ -53,7 +53,7 @@ browsers() {
 }
 
 start_browsers() {
-  echo "Starting QA Chromium browsers (9221-9224)..."
+  echo "Starting QA Chromium browsers (9221-9228)..."
   if ! browsers start; then
     echo "WARNING: one or more browsers failed to start; dashboard chat still works." >&2
     echo "         Check dashboard/logs/chrome-qa-env-*.log and ./run.sh browsers status" >&2

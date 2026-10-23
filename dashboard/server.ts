@@ -4,7 +4,7 @@
  * One Bun server on :5000 that does three things:
  *
  *   1. Dashboard host (localhost:5000, 127.0.0.1:5000, ...)
- *      -> 2x2 grid of live Chromium tiles (CDP screencast + input forwarding)
+ *      -> row per environment: live Chromium tile + always-visible chat rail (CDP screencast + input forwarding)
  *         with a collapsible opencode chat drawer per tile.
  *
  *   2. Tile hosts (qa-env-N.localhost:5000)
@@ -413,6 +413,11 @@ function renderTile(state: EnvState): string {
           <span class="spacer"></span>
           <button class="icon-btn" type="button" data-chat-close data-env="${env.n}" title="Close chat" aria-label="Close chat">×</button>
         </div>
+        <div class="rail-meta">
+          <code>${escapeHtml(session?.id ?? 'no session')}</code>
+          <span>·</span><span>${agent.pending} pending</span>
+          <span>·</span><span>${escapeHtml(source)}</span>
+        </div>
         <div class="drawer-body">${chatBody}</div>
       </aside>
     </div>
@@ -545,13 +550,16 @@ function renderDashboard(states: EnvState[]): string {
   .grid {
     flex: 1 1 auto;
     min-height: 0;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
-    gap: 9px;
-    padding: 9px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
   .tile {
+    flex: 0 0 auto;
+    height: clamp(340px, 46vh, 620px);
     min-width: 0; min-height: 0;
     display: flex; flex-direction: column;
     background: var(--panel);
@@ -615,10 +623,8 @@ function renderDashboard(states: EnvState[]): string {
   .tile-body {
     flex: 1 1 auto; min-height: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 0;
-    transition: grid-template-columns .18s ease;
+    grid-template-columns: minmax(0, 4fr) clamp(300px, 21vw, 480px);
   }
-  .tile.chat-open .tile-body { grid-template-columns: minmax(0, 1fr) min(420px, 52%); }
   .browser { position: relative; min-width: 0; background: #000; overflow: hidden; }
   .stage { position: absolute; inset: 0; background: #000; }
   .screen {
@@ -652,9 +658,19 @@ function renderDashboard(states: EnvState[]): string {
     display: flex; flex-direction: column;
     border-left: 1px solid var(--border-soft);
     background: var(--panel);
-    visibility: hidden;
+    visibility: visible;
   }
-  .tile.chat-open .drawer { visibility: visible; }
+  .chat-btn, [data-chat-close] { display: none; }
+  .rail-meta {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 5px;
+    padding: 3px 9px 5px;
+    font-size: 10px; color: var(--muted);
+    border-bottom: 1px solid var(--border-soft);
+    background: #101012;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .rail-meta code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #c9c9d1; }
   .drawer-head {
     flex: 0 0 auto; height: 33px;
     display: flex; align-items: center; gap: 6px;
@@ -705,8 +721,11 @@ function renderDashboard(states: EnvState[]): string {
   @media (max-width: 1000px) {
     body { overflow: auto; }
     .app { height: auto; min-height: 100dvh; }
-    .grid { grid-template-columns: 1fr; grid-template-rows: none; }
-    .tile { height: 72vh; }
+    .grid { display: flex; overflow: visible; }
+    .tile { height: auto; }
+    .tile-body { grid-template-columns: 1fr; }
+    .browser { aspect-ratio: 16 / 9; }
+    .drawer { max-height: 52vh; border-left: 0; border-top: 1px solid var(--border-soft); }
     .links { display: none; }
     .badge { display: none; }
   }
@@ -1042,9 +1061,33 @@ ${tiles}
     chatKey() { return 'studiq.qa.chat.' + this.n; }
 
     restoreChat() {
-      let open = false;
-      try { open = localStorage.getItem(this.chatKey()) === '1'; } catch (_) {}
-      if (open) this.setChat(true);
+      // Chat is always visible in the row layout. Load the iframe lazily the
+      // first time the row approaches the viewport, so eight clients do not
+      // boot at once.
+      this.tile.classList.add('chat-open');
+      const drawer = this.tile.querySelector('[data-drawer]');
+      if (drawer) drawer.setAttribute('aria-hidden', 'false');
+      const frame = this.tile.querySelector('[data-chat-frame]');
+      if (!frame || frame.src || !frame.dataset.src) return;
+      const load = () => {
+        if (!frame.src && frame.dataset.src) frame.src = frame.dataset.src;
+      };
+      if (!('IntersectionObserver' in window)) {
+        load();
+        return;
+      }
+      const io = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              load();
+              io.disconnect();
+            }
+          }
+        },
+        { rootMargin: '300px' },
+      );
+      io.observe(this.tile);
     }
 
     toggleChat() {
@@ -1067,7 +1110,10 @@ ${tiles}
     }
   }
 
-  for (const n of [1, 2, 3, 4]) tileEls.set(n, new LiveTile(n));
+  document.querySelectorAll('.tile').forEach((tile) => {
+    const n = Number(tile.dataset.env);
+    if (n) tileEls.set(n, new LiveTile(n));
+  });
 
   /* ------------------------------------------------------------- chrome */
 
@@ -1739,7 +1785,7 @@ const server = Bun.serve<WsData>({
         {
           name: 'StudiQ QA Dashboard',
           short_name: 'QA Dashboard',
-          description: 'Four live StudiQ QA environments with agent status',
+          description: 'Eight live StudiQ QA environments with agent status',
           start_url: '/',
           scope: '/',
           display: 'standalone',

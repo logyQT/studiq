@@ -6,7 +6,7 @@
  *   bun dashboard/browsers.ts restart
  *   bun dashboard/browsers.ts status [--deep]
  *
- * One persistent headless Chromium per env, listening on 9221-9224 with a
+ * One persistent headless Chromium per env, listening on 9221-9228 with a
  * profile under dashboard/.profiles/qa-env-N. The supervisor is idempotent:
  * it adopts a healthy browser, reaps a stale one by pid/port, and always
  * leaves exactly one 1920x1080 page target per env. It exits after writing

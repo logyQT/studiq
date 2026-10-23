@@ -1,6 +1,6 @@
 # StudiQ QA Dashboard — Phase 2
 
-A zero-dependency Bun app on **port 5000** that renders a 2×2 grid of the four
+A zero-dependency Bun app on **port 5000** that renders one row per environment across the eight
 QA environments as **live Chromium windows**, plus a collapsible opencode chat
 drawer per tile.
 
@@ -52,7 +52,7 @@ Port `4000` is left free for the main admin app (`bun run dev:admin`).
 
 `/manifest.webmanifest`, `/sw.js` and the icons in `dashboard/public/` make the
 dashboard installable from Chrome/Edge ("Install app"). It opens standalone
-with the four tiles and no browser tabs.
+with the eight tiles and no browser tabs.
 
 ## Run / restart
 
@@ -101,7 +101,7 @@ unknown process.
 
 * Fixed Chromium flags: `--headless=new --no-sandbox --disable-dev-shm-usage
   --disable-gpu --window-size=1920,1080`, a normal Chrome UA, one persistent
-  profile per env, CDP on 9221-9224 with `--remote-allow-origins=*`.
+  profile per env, CDP on 9221-9228 with `--remote-allow-origins=*`.
 * `Emulation.setDeviceMetricsOverride(1920×1080, dsf=1, mobile=false)` is
   applied to every page, so `innerWidth/innerHeight` is exactly 1920×1080.
 * The active page per env is recorded in `tabs.json`; the supervisor waits for
@@ -109,7 +109,7 @@ unknown process.
   on `start`/`restart`.
 * Reuse is idempotent: a live CDP endpoint with a matching pid/profile is
   adopted. Stale pids/listeners are reaped before a restart. Unknown processes
-  holding 9221-9224 are never killed.
+  holding 9221-9228 are never killed.
 * Chromium stdout/stderr: `dashboard/logs/chrome-qa-env-N.log`.
 
 ## Live streaming and input
