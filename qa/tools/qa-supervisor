@@ -212,6 +212,8 @@ def ensure() -> dict:
     actions: list[dict] = []
     if PAUSE.exists():
         return {"ok": True, "paused": True, "checks": checks, "actions": actions}
+    if (LOCKS / "rotation.lock").exists():
+        return {"ok": True, "skipped": "session rotation in progress", "checks": checks, "actions": actions}
 
     enforce_session_timeouts(actions)
 
@@ -252,6 +254,20 @@ def ensure() -> dict:
         mark("bots")
         log(f"bots: exit {code} {out[-160:]}")
         actions.append({"component": "bots", "action": "start", "exit": code})
+
+    # Context rotation: rare, only when the manager session exceeds the limit.
+    rotate = ENV_ROOT / "qa" / "tools" / "qa-rotate"
+    if rotate.is_file():
+        code, out = run(["python3", str(rotate), "manager", "--auto"], ROOT, timeout=240)
+        if code == 0 and '"action": "rotated"' in out:
+            try:
+                new_sid = json.loads(out).get("new_session")
+            except ValueError:
+                new_sid = "?"
+            log(f"manager session rotated -> {new_sid}")
+            actions.append({"component": "manager-session", "action": "rotate"})
+        elif code != 0:
+            log(f"context rotation check failed ({code}): {out[-200:]}")
 
     return {"ok": True, "checks": components(), "actions": actions}
 

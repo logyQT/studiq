@@ -905,10 +905,23 @@ Do NOT change code, commit, file issues, or reset the environment.
 End with: verdict (real / not real / needs human), evidence, and a proposed
 issue body (title, severity, area labels) in at most 4 sentences.
 """
-    sid = create_session(slot, title, prompt)
+    sid = None
+    injected = False
+    current = latest(slot)
+    if current and current.get("id") and current["id"] not in active_map():
+        sid = current["id"]
+        injected = True
+    if args.dry_run:
+        target = f"inject into {sid}" if injected else "create a new session"
+        print(f"would {target} in qa-env-{slot}: {title}")
+        return
+    if injected:
+        api("POST", f"/api/session/{sid}/prompt", {"text": prompt})
+    else:
+        sid = create_session(slot, title, prompt)
     update_item(it["id"], status="investigating", action="investigate",
-                spawned=sid, spawned_env=slot)
-    print(f"qa-env-{slot}\t{title}\t{sid}")
+                spawned=sid, spawned_env=slot, injected=injected)
+    print(f"qa-env-{slot}\t{title}\t{sid}\t{'injected' if injected else 'new session'}")
     print(f"dashboard: {DASHBOARD}  (Refresh all)")
 
 
@@ -967,7 +980,7 @@ def main() -> None:
     a = dsub.add_parser("answer"); a.add_argument("dec_id"); a.add_argument("value", choices=["file", "investigate", "skip"]); a.add_argument("--note"); a.set_defaults(fn=cmd_decisions)
     f = dsub.add_parser("file"); f.add_argument("dec_id"); f.add_argument("--yes", action="store_true"); f.add_argument("--dry-run", action="store_true"); f.add_argument("--attach", action="append", default=[], metavar="PNG", help="extra screenshot to attach (repeatable)"); f.add_argument("--no-screenshot", action="store_true", help="file without evidence (non-visual findings only)"); f.set_defaults(fn=cmd_decisions)
     at = dsub.add_parser("attach"); at.add_argument("dec_id"); at.add_argument("--dry-run", action="store_true"); at.add_argument("--attach", action="append", default=[], metavar="PNG", help="extra screenshot to attach (repeatable)"); at.set_defaults(fn=cmd_decisions)
-    sp = dsub.add_parser("spawn"); sp.add_argument("dec_id"); sp.add_argument("--env", type=int, choices=list(SLOTS)); sp.set_defaults(fn=cmd_decisions)
+    sp = dsub.add_parser("spawn"); sp.add_argument("dec_id"); sp.add_argument("--env", type=int, choices=list(SLOTS)); sp.add_argument("--dry-run", action="store_true"); sp.set_defaults(fn=cmd_decisions)
 
     spw = sub.add_parser("spawn", help="start an arbitrary agent session in a free slot")
     spw.add_argument("--env", type=int, choices=list(SLOTS))

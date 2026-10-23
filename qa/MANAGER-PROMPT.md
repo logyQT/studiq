@@ -25,6 +25,11 @@ Run once from the repo root inside the container:
     python3 /workspaces/studiq/.worktrees/qa-env/qa/tools/qa-manager.py decisions sync
     python3 /workspaces/studiq/.worktrees/qa-env/qa/tools/qa-manager.py decisions pending
 
+- **Durable memory:** read `/workspaces/studiq/.qa-memory/manager.md` first.
+  After each dispatch, decision, or finished event, append a timestamped update
+  (what changed, what is next). A fresh session is seeded from this file when
+  the context is rotated; keep it current.
+
 On the Windows host, wrap each command:
 
     MSYS_NO_PATHCONV=1 docker exec -u node studiq-dev bash -lc \

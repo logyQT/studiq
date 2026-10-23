@@ -143,6 +143,13 @@ rate-limited (90 s per component) and protected by a lock.
   `QA_STUCK_LIMIT_MS` (default 20 min) or older than `QA_SESSION_LIMIT_MS`
   (default 60 min) is interrupted. Override the env vars for a one-off run.
 
+- Context rotation (manager only): the manager keeps durable notes in
+  `/workspaces/studiq/.qa-memory/manager.md`. When the last turn reaches
+  `QA_CONTEXT_LIMIT` (default 500k input+cache tokens), `qa-rotate` starts a
+  fresh manager session seeded from that file and restarts the bots. Env
+  sessions are always one per e2e case; investigations inject into the slot's
+  idle session instead of creating another one.
+
 ## Notes
 
 - Seeded dev accounts use the password `pass` (see `context.md`); these are local
