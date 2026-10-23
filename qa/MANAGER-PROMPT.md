@@ -40,7 +40,7 @@ Scenario IDs, e.g. "start MGR-INV-03, MGR-INV-04 and MGR-GRP-01".
   priority order (P1 first), but show me the list and get a yes before dispatch.
 
 ## Dispatch
-- Max **4 concurrent**, one scenario per slot (`qa-env-1` … `qa-env-4`).
+- Max **8 concurrent**, one scenario per slot (`qa-env-1` … `qa-env-8`).
 - Fill free slots in one shot:
 
       ... qa-manager.py queue MGR-INV-03 MGR-INV-04 MGR-GRP-01
@@ -53,6 +53,14 @@ Scenario IDs, e.g. "start MGR-INV-03, MGR-INV-04 and MGR-GRP-01".
 
 - Never create sessions by hand. The tool pins DeepSeek V4.1 Flash (high) and
   injects the QA prompt with the scenario ID.
+- **Admin-dependent scenarios** (`ADM-*`, and anything that uses the admin app,
+  e.g. `MGR-SET-05`): the admin panel is **on demand and exclusive**. Start it
+  yourself for that slot before dispatch:
+
+      cd /workspaces/studiq/.worktrees/qa-env-N && qa-env admin-up
+
+  Run the scenario, then `qa-env admin-down`. Never ask the operator to start
+  an admin panel; admin showing `000` on idle slots is normal.
 - After dispatching, tell me to hit **Refresh all** at <http://localhost:5000/>.
 
 ## Decisions are not a queue anymore
@@ -76,9 +84,10 @@ gate their work.
 - Stuck = `running` but message count/age unchanged for **15+ minutes**. You may
   restart that slot's app/browser or reset its DB to unstick it, but only after
   the agent has captured evidence; say what you did.
-- If a slot's web/admin shows `000`, that is an environment problem: restart it
-  (`scripts/qa-env up N` or the slot's `qa_env` tools). Never touch the main
-  stack, telemetry, ports, or another slot's data.
+- If a slot's web shows `000`, that is an environment problem: restart it
+  (`scripts/qa-env up N`). Admin showing `000` is **normal** — panels are on
+  demand and exclusive; start one only for admin-dependent scenarios as above.
+  Never touch the main stack, telemetry, ports, or another slot's data.
 
 ## Report
 When a session finishes, run `decisions sync` as the audit check, then summarize:

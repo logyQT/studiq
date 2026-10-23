@@ -69,6 +69,10 @@ operator sees in tile `qa-env-N`, so leave the dashboard open while you work.
   slots: `qa_env_admin_up` fails with the current holder instead of stealing
   the panel. Prefer these over raw `docker`, `supabase` or `scripts/qa-env`
   commands.
+- **Admin is off by default.** For `ADM-*` and any step that uses the admin app,
+  call `qa_env_admin_up` first, then `qa_env_admin_down` when done. It is
+  exclusive across slots — if another env holds it, wait or tell the manager.
+  Never ask a human to start an admin panel.
 - **Guaranteed fallback — shell CLI** (works even if MCP is unavailable):
 
   ```bash
@@ -120,7 +124,7 @@ never substitute invented data and never file a `bug` for the missing fixture.
 2. `grep OTEL_SDK_DISABLED apps/web/.env` → must print **nothing** or `OTEL_SDK_DISABLED=false`. Next reads `apps/web/.env`, not the repo root; `true` disables all telemetry.
 3. `curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/api/health` → `200`.
 4. `curl -s -o /dev/null -w '%{http_code}' "$APP_URL/login"` → `200`, where `APP_URL` is `appUrl` from `qa/env.json`.
-5. For `ADM-*` scenarios, `curl -s -o /dev/null -w '%{http_code}' "$ADMIN_URL"` must not be `000`, where `ADMIN_URL` is `adminUrl` from `qa/env.json`.
+5. For `ADM-*` scenarios, `curl -s -o /dev/null -w '%{http_code}' "$ADMIN_URL"` must not be `000`, where `ADMIN_URL` is `adminUrl` from `qa/env.json`. If it is `000`, start the panel with `qa_env_admin_up` (exclusive; another slot may hold it), then continue.
 6. `curl -s http://localhost:5000/healthz` → `browsersOk: true` and four `up: true` entries. If not, the dashboard browser for your slot is down: report it as `env` (do not retry forever).
 
 If any preflight check fails, that is an **environment problem, not a product defect** — fix it or report it as `env`, and NEVER file it as a `bug`.
