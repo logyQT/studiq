@@ -28,6 +28,32 @@ python3 /workspaces/studiq/.worktrees/qa-env/qa/tools/qa-env restart-browser
 
 If the flow needs clean seed data, run `qa-env reset` **before** rebuilding, and say so in the artifact. Do not reset the DB after the test.
 
+## Login — always use the API
+Production builds have **no Dev Quick Login**. Never search for, click, or wait for
+“Dev Quick Login”, “M1”, or any quick-login button; those are compiled out and will
+never render. Do **not** use the login form either. Always authenticate with the API:
+
+```js
+// qa_browser_evaluate / browser CLI eval
+fetch('/api/v1/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: 'teacher1@dev.local', password: 'pass' })
+}).then(async r => ({ status: r.status, body: await r.text() }))
+```
+
+The response sets the `sb-localhost-auth-token` cookie. Require HTTP **200**, then
+navigate to the target route (or reload). To switch accounts, call the same endpoint
+again with the other email; the cookie is replaced. Never rely on a pre-existing
+browser session from a previous issue.
+
+Seeded accounts: `manager@dev.local`, `manager2@dev.local`, `teacher1@dev.local`,
+`teacher2@dev.local`, `teacher-classroom@dev.local`, `student1@dev.local`,
+`student2@dev.local`, `student3@dev.local`, `student-classroom@dev.local` — password `pass`.
+
+If login returns 401/500, record the status/body and mark the test `blocked`; do not
+fall back to the login form or Dev Quick Login.
+
 ## Verify
 Read the issue's repro/expected behavior and the design's test plan. Use the live QA browser (`qa_browser_*` MCP tools or the CLI) and check:
 1. The exact reported repro now behaves as expected.

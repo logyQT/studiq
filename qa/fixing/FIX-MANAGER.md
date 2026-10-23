@@ -70,7 +70,8 @@ When each of env-7/env-8 finishes, run `collect <issue>`. The first call returns
 - If a reviewer cannot assess (missing repro/design), treat it as changes requested.
 
 ### 4. QA
-Use a free QA slot; the QA agent checks out the PR branch and runs `qa-env rebuild-app` itself:
+Use a free QA slot; the QA agent checks out the PR branch and runs `qa-env rebuild-app` itself.
+QA always authenticates with `POST /api/v1/auth/login` (`{"email","password"}`); never tell it to use Dev Quick Login or the login form — production builds have neither.
 
 ```bash
 $FIX qa <issue> --env 1
