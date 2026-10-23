@@ -170,4 +170,34 @@ describe('updatePasswordSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('accepts a short legacy currentPassword (no strength rules)', () => {
+    const result = updatePasswordSchema.safeParse({
+      currentPassword: 'pass',
+      password: 'SecurePass1',
+      confirmPassword: 'SecurePass1',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('fails when currentPassword is empty', () => {
+    const result = updatePasswordSchema.safeParse({
+      currentPassword: '',
+      password: 'SecurePass1',
+      confirmPassword: 'SecurePass1',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const currentIssue = result.error.issues.find((i) => i.path.includes('currentPassword'));
+      expect(currentIssue?.message).toBe(ValidationErrorCode.PASSWORD_REQUIRED);
+    }
+  });
+
+  it('still accepts a payload without currentPassword (reset flow)', () => {
+    const result = updatePasswordSchema.safeParse({
+      password: 'SecurePass1',
+      confirmPassword: 'SecurePass1',
+    });
+    expect(result.success).toBe(true);
+  });
 });
