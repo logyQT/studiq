@@ -43,9 +43,16 @@ export class StatusPublisher {
   private lastEditAt = 0;
   private lastSendAt = 0;
   private channel: TextChannel | null = null;
+  private managerChannel: TextChannel | null = null;
+  private managerChannelErrorAt = 0;
   private channelErrorAt = 0;
   private fetchErrorAt = 0;
   private lastManagerSig = '';
+  private readonly lastEnvs = new Map<
+    string,
+    { state: string; scenario: string; sessionId: string; pending: number }
+  >();
+  private baseline = false;
 
   constructor(
     private readonly config: Config,
@@ -85,6 +92,7 @@ export class StatusPublisher {
     this.busy = true;
     try {
       await this.poll();
+      await this.announceTransitions();
       this.applyPresence();
       await this.updateDashboardMessage();
     } catch (err) {
@@ -125,6 +133,86 @@ export class StatusPublisher {
       });
     }
     this.snapshot = { envs, fetchedAt: Date.now(), ok: true };
+  }
+
+  /** Push slot transitions into #manager so the manager does not need to poll. */
+  private async announceTransitions(): Promise<void> {
+    if (!this.snapshot.ok) return;
+    if (!this.baseline) {
+      this.captureEnvs();
+      this.baseline = true;
+      return;
+    }
+
+    const lines: string[] = [];
+    for (const env of this.snapshot.envs) {
+      const prev = this.lastEnvs.get(env.label);
+      if (!prev) continue;
+      if (prev.state !== env.state) {
+        const detail = env.scenario ? ` · ${env.scenario}` : '';
+        const pending = env.state === 'waiting' ? ` · ${env.pending} pending` : '';
+        const verb =
+          env.state === 'free' && prev.state === 'busy'
+            ? 'finished'
+            : `${prev.state} → ${env.state}`;
+        lines.push(`${env.label}: ${verb}${detail}${pending}`);
+      } else if (env.state === 'busy' && env.scenario && prev.scenario !== env.scenario) {
+        lines.push(`${env.label}: started · ${env.scenario}`);
+      }
+    }
+    this.captureEnvs();
+    if (lines.length === 0) return;
+
+    if (this.config.dryRun) {
+      this.log.debug('status', `[dry-run] events:\n${lines.join('\n')}`);
+      return;
+    }
+    const channel = await this.resolveManagerChannel();
+    if (!channel) return;
+    try {
+      await channel.send({
+        content: lines.join('\n').slice(0, 1_900),
+        allowedMentions: { parse: [] },
+      });
+      this.log.info('status', `posted ${lines.length} transition(s) to #manager`);
+    } catch (err) {
+      this.log.warn(
+        'status',
+        `event post failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  private captureEnvs(): void {
+    this.lastEnvs.clear();
+    for (const env of this.snapshot.envs) {
+      this.lastEnvs.set(env.label, {
+        state: env.state,
+        scenario: env.scenario,
+        sessionId: env.sessionId,
+        pending: env.pending,
+      });
+    }
+  }
+
+  private async resolveManagerChannel(): Promise<TextChannel | null> {
+    if (this.managerChannel) return this.managerChannel;
+    try {
+      const fetched = await this.managerClient.channels.fetch(this.config.manager.channelId);
+      if (!fetched || !fetched.isTextBased()) return null;
+      this.managerChannel = fetched as TextChannel;
+      return this.managerChannel;
+    } catch (err) {
+      const now = Date.now();
+      if (now - this.managerChannelErrorAt > 60_000) {
+        this.managerChannelErrorAt = now;
+        this.log.warn(
+          'status',
+          `cannot fetch #manager: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      return null;
+    }
   }
 
   private reportFetchError(err: unknown): void {
