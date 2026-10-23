@@ -632,7 +632,9 @@ export class TeacherAssignmentService {
       .select('*')
       .eq('assignment_id', id)
       .eq('user_id', ctx.userId)
-      .single();
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     return success({
       ...assignment,

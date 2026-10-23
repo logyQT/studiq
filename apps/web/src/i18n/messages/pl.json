@@ -2501,6 +2501,7 @@
     "incorrect": "Niepoprawna",
     "correct_answer": "Poprawna: {explanation}",
     "selected_answer_id": "ID wybranej odpowiedzi: {id}",
+    "text_answer": "Odpowiedź ucznia: {text}",
     "view_image": "Zobacz przesłane zdjęcie",
     "points": "Punkty",
     "feedback": "Informacja zwrotna",
@@ -2576,7 +2577,8 @@
     "previous": "Poprzednie",
     "next": "Następne",
     "submitting": "Wysyłanie...",
-    "submit": "Wyślij"
+    "submit": "Wyślij",
+    "submit_failed": "Nie udało się wysłać odpowiedzi. Spróbuj ponownie."
   },
   "AppAssignmentReviewPage": {
     "not_available": "Podsumowanie niedostępne",
