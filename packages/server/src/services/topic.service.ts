@@ -2,7 +2,7 @@ import { AccountType, type RequestContext } from '@studiq/authz';
 import { accessibleFilter, check, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
-import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
@@ -13,6 +13,7 @@ import type {
   TopicListQuery,
   UpdateTopicInput,
 } from '@studiq/server/models/topic.model';
+import { groupService } from '@studiq/server/services/group.service';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class TopicService {
@@ -21,6 +22,13 @@ export class TopicService {
   async create(data: CreateTopicInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
     const topicVisibility = ctx.accountType === AccountType.EDUCATOR ? 'group' : 'personal';
+
+    const groupIds = data.visibility === 'group' ? (data.groupIds ?? []) : [];
+    if (groupIds.length > 0) {
+      const shareCheck = await groupService.canShareContentToGroups(ctx, groupIds);
+      if (isFailure(shareCheck)) return failure(shareCheck.error);
+      if (!shareCheck.data) return failure('FORBIDDEN');
+    }
 
     const { data: topic, error } = await supabase
       .from('topics')
@@ -36,18 +44,8 @@ export class TopicService {
     if (error) return toDbFailure(error);
     if (!topic) return failure('NOT_FOUND');
 
-    if ((data as any).visibility === 'group' && (data as any).groupIds?.length) {
-      const { groupService } = await import('@studiq/server/services/group.service');
-      let authorized = false;
-      for (const gid of (data as any).groupIds) {
-        if (await groupService.isTeacherInGroup(ctx, gid)) {
-          authorized = true;
-          break;
-        }
-      }
-      if (!authorized) return failure('FORBIDDEN');
-
-      const rows = (data as any).groupIds.map((gid: string) => ({
+    if (groupIds.length > 0) {
+      const rows = groupIds.map((gid) => ({
         topic_id: topic.id,
         group_id: gid,
       }));
@@ -173,6 +171,12 @@ export class TopicService {
     if (fetchError || !existing) return failure('NOT_FOUND');
     await check(ctx, Permission.TOPIC_UPDATE, existing);
 
+    if (data.groupIds !== undefined && data.groupIds.length > 0) {
+      const shareCheck = await groupService.canShareContentToGroups(ctx, data.groupIds);
+      if (isFailure(shareCheck)) return failure(shareCheck.error);
+      if (!shareCheck.data) return failure('FORBIDDEN');
+    }
+
     const updateFields: Record<string, unknown> = {};
     if (data.name !== undefined) updateFields.name = data.name;
     if (data.visibility !== undefined) updateFields.visibility = data.visibility;
@@ -189,11 +193,11 @@ export class TopicService {
       if (!topic) return failure('NOT_FOUND');
     }
 
-    if ((data as any).groupIds !== undefined) {
+    if (data.groupIds !== undefined) {
       const { error: de } = await supabase.from('topic_groups').delete().eq('topic_id', id);
       if (de) return toDbFailure(de);
-      if ((data as any).groupIds.length > 0) {
-        const rows = (data as any).groupIds.map((gid: string) => ({ topic_id: id, group_id: gid }));
+      if (data.groupIds.length > 0) {
+        const rows = data.groupIds.map((gid) => ({ topic_id: id, group_id: gid }));
         const { error: ae } = await supabase.from('topic_groups').insert(rows);
         if (ae) return toDbFailure(ae);
       }

@@ -316,6 +316,39 @@ export class GroupService {
     return success(!!data);
   }
 
+  /**
+   * Whether the caller may share content to every group in `groupIds`.
+   *
+   * A group is shareable when it belongs to the caller's ACTIVE organization and
+   * the caller has a `teacher` membership in it. An empty list is trivially
+   * allowed; callers decide whether "no groups" is a meaningful selection.
+   *
+   * Do NOT use ctx.groupIds here: withAuth resolves memberships without an org
+   * filter, so ctx.groupIds contains groups from other organizations.
+   */
+  async canShareContentToGroups(
+    ctx: RequestContext,
+    groupIds: string[],
+  ): Promise<ServiceResult<boolean>> {
+    const unique = [...new Set(groupIds)];
+    if (unique.length === 0) return success(true);
+    if (!ctx.activeOrgId) return success(false);
+
+    const supabase = await this.createClient();
+    const { data, error } = await supabase
+      .from('group_members')
+      .select('group_id, groups!inner(organization_id)')
+      .eq('user_id', ctx.userId)
+      .eq('role', 'teacher')
+      .in('group_id', unique)
+      .eq('groups.organization_id', ctx.activeOrgId);
+
+    if (error) return toDbFailure(error);
+
+    const taught = new Set((data ?? []).map((row) => row.group_id as string));
+    return success(unique.every((id) => taught.has(id)));
+  }
+
   async isUserInGroup(ctx: RequestContext, groupId: string): Promise<ServiceResult<boolean>> {
     const supabase = await this.createClient();
     const { data, error } = await supabase

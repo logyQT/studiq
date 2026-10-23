@@ -48,6 +48,15 @@ forEachCopy((copyId) => {
       const groupB = teacher.groups[2];
 
       const service = createServiceClient();
+      // The API creates a group without enrolling its creator, so make the
+      // teacher a real `teacher` member of groupA — bank group-sharing is only
+      // allowed to groups the caller teaches (#140).
+      {
+        const { error } = await service
+          .from('group_members')
+          .insert({ group_id: groupA, user_id: teacher.user.id, role: 'teacher' });
+        if (error) throw new Error(`[setup] teacher group membership failed: ${error.message}`);
+      }
       const { data: memberRole } = await service
         .from('org_roles')
         .select('id')

@@ -2,7 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, check, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
-import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
@@ -13,6 +13,7 @@ import type {
   DeckListQuery,
   UpdateDeckInput,
 } from '@studiq/server/models/flashcard-deck.model';
+import { groupService } from '@studiq/server/services/group.service';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -21,6 +22,13 @@ export class FlashcardDeckService {
 
   async create(data: CreateDeckInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
+
+    const groupIds = data.visibility === 'group' ? (data.groupIds ?? []) : [];
+    if (groupIds.length > 0) {
+      const shareCheck = await groupService.canShareContentToGroups(ctx, groupIds);
+      if (isFailure(shareCheck)) return failure(shareCheck.error);
+      if (!shareCheck.data) return failure('FORBIDDEN');
+    }
 
     const { count: deckCount } = await supabase
       .from('flashcard_decks')
@@ -43,18 +51,8 @@ export class FlashcardDeckService {
     if (error && error.code !== 'PGRST116') return toDbFailure(error);
     if (!deck) return failure('NOT_FOUND');
 
-    if ((data as any).visibility === 'group' && (data as any).groupIds?.length) {
-      const { groupService } = await import('@studiq/server/services/group.service');
-      let authorized = false;
-      for (const gid of (data as any).groupIds) {
-        if (await groupService.isTeacherInGroup(ctx, gid)) {
-          authorized = true;
-          break;
-        }
-      }
-      if (!authorized) return failure('FORBIDDEN');
-
-      const rows = (data as any).groupIds.map((gid: string) => ({
+    if (groupIds.length > 0) {
+      const rows = groupIds.map((gid) => ({
         deck_id: deck.id,
         group_id: gid,
       }));
@@ -237,6 +235,12 @@ export class FlashcardDeckService {
     if (!existing) return failure('NOT_FOUND');
     await check(ctx, Permission.DECK_UPDATE, existing);
 
+    if (data.groupIds !== undefined && data.groupIds.length > 0) {
+      const shareCheck = await groupService.canShareContentToGroups(ctx, data.groupIds);
+      if (isFailure(shareCheck)) return failure(shareCheck.error);
+      if (!shareCheck.data) return failure('FORBIDDEN');
+    }
+
     const updateFields: Record<string, unknown> = {};
     if (data.name !== undefined) updateFields.name = data.name;
     if (data.description !== undefined) updateFields.description = data.description;
@@ -269,11 +273,11 @@ export class FlashcardDeckService {
       }
     }
 
-    if ((data as any).groupIds !== undefined) {
+    if (data.groupIds !== undefined) {
       const { error: de } = await supabase.from('deck_groups').delete().eq('deck_id', id);
       if (de) return toDbFailure(de);
-      if ((data as any).groupIds.length > 0) {
-        const rows = (data as any).groupIds.map((gid: string) => ({ deck_id: id, group_id: gid }));
+      if (data.groupIds.length > 0) {
+        const rows = data.groupIds.map((gid) => ({ deck_id: id, group_id: gid }));
         const { error: ae } = await supabase.from('deck_groups').insert(rows);
         if (ae) return toDbFailure(ae);
       }
