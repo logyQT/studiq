@@ -1,7 +1,14 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { check } from '@studiq/server/lib/authz';
+import { AppError } from '@studiq/server/lib/errors';
 import { FlashcardDeckService } from '@studiq/server/services/flashcard-deck.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+
+vi.mock('@studiq/server/lib/authz', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@studiq/server/lib/authz')>();
+  return { ...actual, check: vi.fn().mockResolvedValue(undefined) };
+});
 
 vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
@@ -54,6 +61,62 @@ describe('FlashcardDeckService', () => {
   });
 
   describe('create', () => {
+    const foreignCard = { id: 'fc-teacher', created_by: 'teacher-1', organization_id: 'org-1' };
+
+    it('checks flashcard.update on flashcardIds before inserting the deck', async () => {
+      const mockDeck = { id: 'd-1', name: 'Study Deck', created_by: ctx.userId };
+
+      mock.from.mockReturnValueOnce(qb([], null, 0));
+      mock.from.mockReturnValueOnce(qb([foreignCard]));
+      mock.from.mockReturnValueOnce(qb(mockDeck));
+      mock.from.mockReturnValueOnce(qb(null));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb(mockDeck));
+
+      const result = await service.create(
+        { name: 'Study Deck', flashcardIds: ['fc-teacher'] },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.update', foreignCard);
+      expect(mock.from.mock.calls.map((c) => c[0])).toEqual([
+        'flashcard_decks',
+        'flashcards',
+        'flashcard_decks',
+        'flashcards',
+        'suspended_decks',
+        'flashcard_decks',
+      ]);
+    });
+
+    it('rejects and never inserts the deck when a card is not updatable', async () => {
+      mock.from.mockReturnValueOnce(qb([], null, 0));
+      mock.from.mockReturnValueOnce(qb([foreignCard]));
+      vi.mocked(check).mockRejectedValueOnce(new AppError('FORBIDDEN'));
+
+      await expect(
+        service.create({ name: 'Study Deck', flashcardIds: ['fc-teacher'] }, ctx),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
+      // The deck insert is never reached.
+      expect(mock.from.mock.calls.map((c) => c[0])).toEqual(['flashcard_decks', 'flashcards']);
+    });
+
+    it('rejects unknown card ids instead of silently skipping the guard', async () => {
+      mock.from.mockReturnValueOnce(qb([], null, 0));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.create(
+        { name: 'Study Deck', flashcardIds: ['fc-missing'] },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      expect(mock.from.mock.calls.map((c) => c[0])).toEqual(['flashcard_decks', 'flashcards']);
+    });
+
     it('inserts deck and returns it', async () => {
       const mockDeck = { id: 'd-1', name: 'Study Deck', created_by: ctx.userId };
       mock.from.mockReturnValueOnce(qb([], null, 0));
@@ -162,6 +225,27 @@ describe('FlashcardDeckService', () => {
       const result = await service.update('d-1', { name: 'Updated' }, ctx);
 
       expect(result.success).toBe(true);
+    });
+
+    it('rejects flashcardIds the caller cannot update before mutating the deck', async () => {
+      const existing = { id: 'd-1', name: 'Original', created_by: ctx.userId };
+      const foreignCard = { id: 'fc-teacher', created_by: 'teacher-1', organization_id: 'org-1' };
+      mock.from.mockReturnValueOnce(qb(existing));
+      mock.from.mockReturnValueOnce(qb([foreignCard]));
+      vi.mocked(check)
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new AppError('FORBIDDEN'));
+
+      await expect(
+        service.update('d-1', { flashcardIds: ['fc-teacher'] }, ctx),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
+      expect(vi.mocked(check).mock.calls.map((c) => [c[1], c[2]])).toEqual([
+        ['deck.update', existing],
+        ['flashcard.update', foreignCard],
+      ]);
+      // Only the deck lookup and the card guard ran — no update statements.
+      expect(mock.from.mock.calls.map((c) => c[0])).toEqual(['flashcard_decks', 'flashcards']);
     });
 
     it('returns NOT_FOUND when deck does not exist', async () => {
