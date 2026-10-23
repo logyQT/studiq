@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Issue-fixing pipeline for the StudiQ agent crew.
 
-Roles are fixed to slots:
-    env-1, env-2  QA          (e2e verification, browser + app)
-    env-3, env-4  designers   (read code, write implementation design)
-    env-5, env-6  writers     (branch, implement, test, open PR)
-    env-7, env-8  reviewers   (two independent reviews per PR)
-    manager                   (orchestrates only; never edits code)
+Roles:
+    env-1,2,7,8  QA/review pool (two review pairs, or demand-driven QA)
+    env-3, env-4 designers       (read code, write implementation design)
+    env-5, env-6 writers         (branch, implement, test, open PR)
+    manager                      (orchestrates only; never edits code)
 
 The manager owns `state.json`. Each role writes only its own artifact under
 `/workspaces/studiq/.qa-fix/issues/<number>/`. Agents never share a mutable
