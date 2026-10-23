@@ -135,7 +135,7 @@ If any preflight check fails, that is an **environment problem, not a product de
 - Given a scenario **ID**: find it in `qa/index.md`, then read `qa/cases/<ID>.md` — including the embedded "Prerequisite (verbatim)" chain. Read any referenced sibling case files too.
 - Read files by exact path (ripgrep may skip generated dirs by default).
 
-## Accounts (password `pass`) — slots run production builds, so log in with email + password
+## Accounts (password `pass`) — always log in via `POST /api/v1/auth/login`
 M1=manager@dev.local · M2=manager2@dev.local · T1=teacher1@dev.local · T2=teacher2@dev.local · TC=teacher-classroom@dev.local · S1=student1@dev.local · S2=student2@dev.local · S3=student3@dev.local · SC=student-classroom@dev.local.
 There is **no Dev Quick Login** in production builds. **Always** authenticate by calling `POST /api/v1/auth/login` with `{"email","password"}`; never use or click Dev Quick Login, and do not use the login form.
 Inbucket inbox: `http://localhost:$((54321 + 100 * N + 3))` for slot N (env-1 `:54424`, env-2 `:54524`, …). Signup/recovery mail lands there.

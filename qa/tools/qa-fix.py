@@ -454,6 +454,7 @@ def cmd_qa(args) -> None:
     title = f"#{n} qa r{attempt(rec)}"
     sid = create_session(env, title, dispatch_prompt("QA", n, "qa", env, rec))
     rec["stage"] = "qa_testing"
+    rec["qa_env"] = env
     rec["sessions"]["qa"] = sid
     history(state, n, {"event": "qa_dispatched", "env": env, "session": sid,
                        "attempt": attempt(rec)})
@@ -592,6 +593,19 @@ def cmd_block(args) -> None:
     ok(action="block", issue=n, stage="blocked")
 
 
+def env_issue(rec: dict, env: int) -> tuple[dict, str] | None:
+    stage = rec.get("stage")
+    if stage in ("designing", "design_ready") and rec.get("designer") == env:
+        return rec, "design"
+    if stage in ("implementing", "pr_open", "changes_requested") and rec.get("writer") == env:
+        return rec, "implement"
+    if stage in ("qa_testing", "qa_passed", "qa_failed") and rec.get("qa_env") == env:
+        return rec, "qa"
+    if stage in ("reviewing", "approved") and env in (rec.get("reviewers") or []):
+        return rec, "review"
+    return None
+
+
 def cmd_status(args) -> None:
     state = load_state()
     active = {k: v for k, v in state["issues"].items()
@@ -600,10 +614,8 @@ def cmd_status(args) -> None:
     print("slot role      state   issue/stage")
     for env in sorted(SLOTS):
         role = ROLES[env]
-        rec = next((r for r in active.values() if env in
-                    [r.get("designer"), r.get("writer"), r.get("sessions", {}).get("qa")]
-                    or env in (r.get("reviewers") or [])), None)
-        label = f"#{rec['number']} {rec['stage']}" if rec else "-"
+        hit = next((x for x in (env_issue(r, env) for r in active.values()) if x), None)
+        label = f"#{hit[0]['number']} {hit[1]}" if hit else "-"
         print(f"{env:<4} {role:<9} {'busy' if env in busy else 'free':<7} {label}")
     print("\nissues:")
     for n in sorted(active, key=lambda x: int(x)):
