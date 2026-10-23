@@ -284,15 +284,16 @@ describe('OrganizationController', () => {
     it('returns success when university is deleted', async () => {
       mockService.delete.mockResolvedValueOnce(success(undefined));
 
-      const response = await controller.delete(validId);
+      const response = await controller.delete(mockCtx, validId);
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
       expect((response as any).data).toEqual({ success: true });
+      expect(mockService.delete).toHaveBeenCalledWith(mockCtx, validId);
     });
 
     it('returns BAD_REQUEST for invalid UUID', async () => {
-      const response = await controller.delete('not-a-uuid');
+      const response = await controller.delete(mockCtx, 'not-a-uuid');
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(400);
@@ -302,7 +303,7 @@ describe('OrganizationController', () => {
     it('returns NOT_FOUND when university does not exist', async () => {
       mockService.delete.mockResolvedValueOnce(failure('NOT_FOUND'));
 
-      const response = await controller.delete(validId);
+      const response = await controller.delete(mockCtx, validId);
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(404);
@@ -312,7 +313,7 @@ describe('OrganizationController', () => {
     it('returns error when service returns failure', async () => {
       mockService.delete.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-      const response = await controller.delete(validId);
+      const response = await controller.delete(mockCtx, validId);
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);

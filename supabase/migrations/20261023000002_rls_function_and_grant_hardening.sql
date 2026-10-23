@@ -19,9 +19,16 @@
 --
 -- The grant matrix below is the contract the seed mirrors:
 --   service_role     : EXECUTE on every function (backend + tests + admin)
---   authenticated    : EXECUTE only on the RPCs the web app calls + the two RLS
---                      helpers used by the part-1 policies
+--   authenticated    : EXECUTE only on the RPCs the web app calls + the RLS
+--                      helpers used by the part-1 policies + the three
+--                      rls_caller_* role-authority wrappers
 --   anon / PUBLIC    : nothing
+--
+-- `authenticated`'s Supabase default EXECUTE grant is revoked too (not just
+-- PUBLIC/anon): leaving it in place would auto-grant every future function to
+-- every signed-in user — the same class of bug as #191. Internal helpers
+-- (`has_org_feature`, `is_org_manager`, `can_assign_org_role`), `apply_org_plan`,
+-- `rls_audit` and `get_accessible_*` stay service-role-only.
 -- ==========================================
 
 -- ==========================================
@@ -284,27 +291,32 @@ $$;
 -- ==========================================
 -- 2. Function grants.
 -- ==========================================
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC, anon;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC, anon, authenticated;
 
--- Future functions must not be executable by PUBLIC/anon either (Supabase's
--- default privileges grant EXECUTE to PUBLIC on functions created by postgres).
+-- Future functions must not be executable by PUBLIC/anon/authenticated either
+-- (Supabase's default privileges grant EXECUTE to PUBLIC on functions created by
+-- postgres, which also reaches `authenticated`).
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM authenticated;
 
 -- Backend, admin app, seeds and integration tests.
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO service_role;
 
 -- Service-role-only functions: repeat explicitly (they may have been granted to
 -- authenticated by an older migration or the dev seed).
-REVOKE ALL ON FUNCTION public.apply_org_plan(uuid, text) FROM authenticated;
-REVOKE ALL ON FUNCTION public.get_accessible_flashcard_decks(uuid, uuid, uuid) FROM authenticated;
-REVOKE ALL ON FUNCTION public.get_accessible_flashcards(uuid, uuid, uuid[], uuid[], uuid, uuid) FROM authenticated;
-REVOKE ALL ON FUNCTION public.get_accessible_question_banks(uuid, uuid, uuid) FROM authenticated;
-REVOKE ALL ON FUNCTION public.get_accessible_questions(uuid, uuid, text, uuid, uuid[], uuid[], text) FROM authenticated;
-REVOKE ALL ON FUNCTION public.get_accessible_topics(uuid, uuid, uuid) FROM authenticated;
+REVOKE ALL ON FUNCTION public.apply_org_plan(uuid, text) FROM authenticated, anon;
+REVOKE ALL ON FUNCTION public.get_accessible_flashcard_decks(uuid, uuid, uuid) FROM authenticated, anon;
+REVOKE ALL ON FUNCTION public.get_accessible_flashcards(uuid, uuid, uuid[], uuid[], uuid, uuid) FROM authenticated, anon;
+REVOKE ALL ON FUNCTION public.get_accessible_question_banks(uuid, uuid, uuid) FROM authenticated, anon;
+REVOKE ALL ON FUNCTION public.get_accessible_questions(uuid, uuid, text, uuid, uuid[], uuid[], text) FROM authenticated, anon;
+REVOKE ALL ON FUNCTION public.get_accessible_topics(uuid, uuid, uuid) FROM authenticated, anon;
+REVOKE ALL ON FUNCTION public.has_org_feature(uuid, uuid, text) FROM authenticated, anon;
+REVOKE ALL ON FUNCTION public.is_org_manager(uuid, uuid) FROM authenticated, anon;
+REVOKE ALL ON FUNCTION public.can_assign_org_role(uuid, uuid) FROM authenticated, anon;
 
--- The RPCs the web app calls through the user-session client, plus the two
--- helpers used inside the RLS policies from part 1.
+-- The RPCs the web app calls through the user-session client, plus the RLS
+-- helpers and role-authority wrappers used inside the part-1 policies.
 GRANT EXECUTE ON FUNCTION public.bulk_create_flashcards(jsonb, uuid, uuid, text, uuid[], uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.count_new_cards(uuid, text, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_due_breakdown(uuid, uuid, uuid, uuid[], uuid[]) TO authenticated;
@@ -315,6 +327,9 @@ GRANT EXECUTE ON FUNCTION public.get_user_group_ids(uuid, uuid) TO authenticated
 GRANT EXECUTE ON FUNCTION public.search_flashcards(text, integer, uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_org_ids() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_caller_org_user_ids() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.rls_caller_has_org_feature(uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.rls_caller_is_org_manager(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.rls_caller_can_assign_org_role(uuid) TO authenticated;
 
 -- ==========================================
 -- 3. Table grants.
@@ -377,7 +392,7 @@ AS $$
     has_table_privilege('authenticated', c.oid, 'TRUNCATE')
   FROM pg_class c
   JOIN pg_namespace n ON n.oid = c.relnamespace
-  WHERE n.nspname = 'public' AND c.relkind = 'r'
+  WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
   ORDER BY c.relname;
 $$;
 
@@ -385,19 +400,26 @@ REVOKE ALL ON FUNCTION public.rls_audit() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rls_audit() TO service_role;
 
 -- ==========================================
--- 5. Fail closed at deploy time: no table without RLS, no anon write anywhere,
---    anon SELECT only on the public pricing tables.
+-- 5. Fail closed at deploy time:
+--      * no table without RLS (global — fail safe),
+--      * no anon write anywhere, anon SELECT only on the public pricing tables
+--        (scoped to non-extension objects so a hosted project with e.g. PostGIS
+--        `spatial_ref_sys` in `public` does not abort the deploy),
+--      * no anon EXECUTE on any public function,
+--      * no authenticated EXECUTE on an internal helper / service-role RPC.
 -- ==========================================
 DO $$
 DECLARE
   bad_rls text;
   bad_anon text;
+  bad_anon_fn text;
+  bad_auth_fn text;
 BEGIN
   SELECT string_agg(c.relname, ', ' ORDER BY c.relname)
   INTO bad_rls
   FROM pg_class c
   JOIN pg_namespace n ON n.oid = c.relnamespace
-  WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relrowsecurity = false;
+  WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND c.relrowsecurity = false;
 
   IF bad_rls IS NOT NULL THEN
     RAISE EXCEPTION 'RLS is disabled on public table(s): %', bad_rls;
@@ -408,7 +430,8 @@ BEGIN
   FROM pg_class c
   JOIN pg_namespace n ON n.oid = c.relnamespace
   WHERE n.nspname = 'public'
-    AND c.relkind = 'r'
+    AND c.relkind IN ('r', 'p')
+    AND c.oid NOT IN (SELECT d.objid FROM pg_depend d WHERE d.deptype = 'e')
     AND (
       has_table_privilege('anon', c.oid, 'INSERT')
       OR has_table_privilege('anon', c.oid, 'UPDATE')
@@ -422,6 +445,35 @@ BEGIN
 
   IF bad_anon IS NOT NULL THEN
     RAISE EXCEPTION 'anon still holds privileges on public table(s): %', bad_anon;
+  END IF;
+
+  SELECT string_agg(p.proname, ', ' ORDER BY p.proname)
+  INTO bad_anon_fn
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    AND has_function_privilege('anon', p.oid, 'EXECUTE');
+
+  IF bad_anon_fn IS NOT NULL THEN
+    RAISE EXCEPTION 'anon can still EXECUTE public function(s): %', bad_anon_fn;
+  END IF;
+
+  SELECT string_agg(p.proname, ', ' ORDER BY p.proname)
+  INTO bad_auth_fn
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    AND p.proname IN (
+      'apply_org_plan',
+      'rls_audit',
+      'has_org_feature',
+      'is_org_manager',
+      'can_assign_org_role'
+    )
+    AND has_function_privilege('authenticated', p.oid, 'EXECUTE');
+
+  IF bad_auth_fn IS NOT NULL THEN
+    RAISE EXCEPTION 'authenticated can EXECUTE internal function(s): %', bad_auth_fn;
   END IF;
 END;
 $$;

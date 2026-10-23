@@ -175,22 +175,39 @@ describe('InvitationService', () => {
     });
   });
 
+  /** Invitation row as loadInvite() selects it. */
+  function inviteRow(overrides: Record<string, unknown> = {}) {
+    return {
+      email: 'john@example.com',
+      inviter_id: 'manager-1',
+      is_accepted: false,
+      organization_id: 'uni-1',
+      target_org_role_id: 'role-member',
+      expires_at: new Date(Date.now() + 86400000).toISOString(),
+      organizations: { name: 'Test Uni' } as any,
+      org_roles: { name: 'Member', organization_id: 'uni-1' } as any,
+      ...overrides,
+    };
+  }
+
   describe('getInvitationByToken', () => {
+    beforeEach(() => {
+      mock.rpc.mockResolvedValue({ data: true, error: null });
+    });
+
     it('returns invitation when found and valid', async () => {
-      const invitation = {
-        email: 'john@example.com',
-        organization_id: 'uni-1',
-        target_org_role_id: 'member',
-        expires_at: new Date(Date.now() + 86400000).toISOString(),
-        organizations: { name: 'Test Uni' } as any,
-        org_roles: { name: 'Member' } as any,
-      };
-      mock.from.mockReturnValueOnce(qb(invitation));
+      mock.from.mockReturnValueOnce(qb(inviteRow()));
 
       const result = await service.getInvitationByToken('valid-token');
 
       expect(result.success).toBe(true);
       expect((result.data as any).email).toBe('john@example.com');
+      // The inviter identity is never exposed to the public preview.
+      expect((result.data as any).inviterId).toBeUndefined();
+      expect(mock.rpc).toHaveBeenCalledWith('can_assign_org_role', {
+        p_actor: 'manager-1',
+        p_role_id: 'role-member',
+      });
     });
 
     it('returns NOT_FOUND when token does not exist', async () => {
@@ -203,17 +220,42 @@ describe('InvitationService', () => {
     });
 
     it('returns GONE when token is expired', async () => {
-      const invitation = {
-        email: 'john@example.com',
-        organization_id: 'uni-1',
-        target_org_role_id: 'member',
-        expires_at: new Date(Date.now() - 86400000).toISOString(),
-        organizations: { name: 'Test Uni' } as any,
-        org_roles: { name: 'Member' } as any,
-      };
-      mock.from.mockReturnValueOnce(qb(invitation));
+      mock.from.mockReturnValueOnce(
+        qb(inviteRow({ expires_at: new Date(Date.now() - 86400000).toISOString() })),
+      );
 
       const result = await service.getInvitationByToken('expired');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('GONE');
+    });
+
+    it('returns GONE when the invitation was already accepted (B6)', async () => {
+      mock.from.mockReturnValueOnce(qb(inviteRow({ is_accepted: true })));
+
+      const result = await service.getInvitationByToken('used');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('GONE');
+      expect(mock.rpc).not.toHaveBeenCalled();
+    });
+
+    it('returns GONE when the target role belongs to another organization', async () => {
+      mock.from.mockReturnValueOnce(
+        qb(inviteRow({ org_roles: { name: 'Member', organization_id: 'other-org' } })),
+      );
+
+      const result = await service.getInvitationByToken('foreign-role');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('GONE');
+    });
+
+    it('returns GONE when the inviter may no longer assign the role', async () => {
+      mock.from.mockReturnValueOnce(qb(inviteRow()));
+      mock.rpc.mockResolvedValue({ data: false, error: null });
+
+      const result = await service.getInvitationByToken('demoted-inviter');
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('GONE');
@@ -221,19 +263,19 @@ describe('InvitationService', () => {
   });
 
   describe('acceptInvitation', () => {
-    const invitation = {
+    const invitation = inviteRow({
       email: 'new@example.com',
       organization_id: 'org-1',
       target_org_role_id: 'role-member',
-      expires_at: new Date(Date.now() + 86400000).toISOString(),
       organizations: { name: 'Test Org' } as any,
-      org_roles: { name: 'member' } as any,
-    };
+      org_roles: { name: 'member', organization_id: 'org-1' } as any,
+    });
     const joiningCtx: RequestContext = { ...managerCtx, userId: 'joining-user' };
 
     function adminClient() {
       const from = vi.fn();
-      return { client: { from } as any, from };
+      const rpc = vi.fn().mockResolvedValue({ data: true, error: null });
+      return { client: { from, rpc } as any, from, rpc };
     }
 
     /** Chain that answers the `org_members` seat count (`.neq(...)`). */
@@ -355,6 +397,101 @@ describe('InvitationService', () => {
         { group_id: 'group-1', user_id: 'joining-user', role: 'member' },
         { onConflict: 'group_id,user_id', ignoreDuplicates: true },
       );
+    });
+
+    it('refuses to accept when the inviter may no longer assign the role (B1)', async () => {
+      const admin = adminClient();
+      admin.rpc.mockResolvedValue({ data: false, error: null });
+      admin.from.mockReturnValueOnce(qb(invitation));
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+      );
+
+      const result = await service.acceptInvitation(joiningCtx, 'tok');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('GONE');
+      expect(admin.rpc).toHaveBeenCalledWith('can_assign_org_role', {
+        p_actor: 'manager-1',
+        p_role_id: 'role-member',
+      });
+      // No seat count, no membership upsert: the token did nothing.
+      expect(admin.from).toHaveBeenCalledTimes(1);
+      expect(limitsResolver.checkOrgLimit).not.toHaveBeenCalled();
+    });
+
+    it('treats an authority-RPC error as an invalid invitation (GONE)', async () => {
+      const admin = adminClient();
+      admin.rpc.mockResolvedValue({ data: null, error: { message: 'boom', code: 'XX000' } });
+      admin.from.mockReturnValueOnce(qb(invitation));
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+      );
+
+      const result = await service.acceptInvitation(joiningCtx, 'tok');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('GONE');
+      expect(admin.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects an already-accepted token and never re-upserts membership (B6)', async () => {
+      const admin = adminClient();
+      admin.from.mockReturnValueOnce(qb(inviteRow({ ...invitation, is_accepted: true })));
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+      );
+
+      const result = await service.acceptInvitation(joiningCtx, 'tok');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('GONE');
+      expect(admin.from).toHaveBeenCalledTimes(1);
+      expect(limitsResolver.checkOrgLimit).not.toHaveBeenCalled();
+    });
+
+    it('rejects an invitation whose target role belongs to another organization', async () => {
+      const admin = adminClient();
+      admin.from.mockReturnValueOnce(
+        qb(inviteRow({ ...invitation, org_roles: { name: 'admin', organization_id: 'org-2' } })),
+      );
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+      );
+
+      const result = await service.acceptInvitation(joiningCtx, 'tok');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('GONE');
+      expect(admin.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('marks the invitation accepted only while it is still unaccepted', async () => {
+      const admin = adminClient();
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+      );
+      const acceptQb = qb(null);
+      admin.from
+        .mockReturnValueOnce(qb(invitation))
+        .mockReturnValueOnce(countQb(2))
+        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
+        .mockReturnValueOnce(qb({ organization_id: 'org-1' }))
+        .mockReturnValueOnce(qb({ id: 'group-1' }))
+        .mockReturnValueOnce(qb(null))
+        .mockReturnValueOnce(acceptQb);
+
+      const result = await service.acceptInvitation(joiningCtx, 'tok');
+
+      expect(result.success).toBe(true);
+      // Single-use guard: the update only matches an unaccepted row.
+      expect(acceptQb.update).toHaveBeenCalledWith({ is_accepted: true });
+      expect(acceptQb.eq).toHaveBeenCalledWith('is_accepted', false);
     });
   });
 });

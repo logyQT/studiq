@@ -1,3 +1,5 @@
+import { AccountType, type RequestContext } from '@studiq/authz';
+import { invitationService } from '@studiq/server/services/invitation.service';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -66,10 +68,31 @@ describe('RLS tenant isolation (#191)', () => {
   let teacherId: string;
   let studentId: string;
   let outsiderId: string;
+  let peerId: string;
+  let invitee1Id: string;
+  let invitee2Id: string;
+  let lonerId: string;
 
+  let adminSession: SupabaseClient;
   let teacherSession: SupabaseClient;
   let studentSession: SupabaseClient;
   let outsiderSession: SupabaseClient;
+  let lonerSession: SupabaseClient;
+
+  /** RequestContext for driving the service-role accept flow. */
+  function acceptCtx(userId: string): RequestContext {
+    return {
+      userId,
+      accountType: AccountType.STUDENT,
+      traceId: 'rls191-test',
+      url: '',
+      method: 'POST',
+      activeOrgId: null,
+      orgRoleId: null,
+      groupIds: [],
+      permissionScopes: {},
+    };
+  }
 
   async function createUser(email: string, accountType: string, label: string): Promise<string> {
     const { data, error } = await service.auth.admin.createUser({
@@ -257,11 +280,19 @@ describe('RLS tenant isolation (#191)', () => {
     const teacherEmail = `rls191-teacher-${tag}@dev.local`;
     const studentEmail = `rls191-student-${tag}@dev.local`;
     const outsiderEmail = `rls191-outsider-${tag}@dev.local`;
+    const peerEmail = `rls191-peer-${tag}@dev.local`;
+    const invitee1Email = `rls191-invitee1-${tag}@dev.local`;
+    const invitee2Email = `rls191-invitee2-${tag}@dev.local`;
+    const lonerEmail = `rls191-loner-${tag}@dev.local`;
 
     adminId = await createUser(managerEmail, 'manager', 'manager');
     teacherId = await createUser(teacherEmail, 'educator', 'teacher');
     studentId = await createUser(studentEmail, 'student', 'student');
     outsiderId = await createUser(outsiderEmail, 'manager', 'outsider');
+    peerId = await createUser(peerEmail, 'student', 'peer');
+    invitee1Id = await createUser(invitee1Email, 'student', 'invitee1');
+    invitee2Id = await createUser(invitee2Email, 'student', 'invitee2');
+    lonerId = await createUser(lonerEmail, 'student', 'loner');
 
     // Org A: manager (admin), teacher, student.
     orgA = await seedOrgBundle({ name: 'rls191-org-a', teacherId, studentId });
@@ -293,9 +324,11 @@ describe('RLS tenant isolation (#191)', () => {
       orgRoleId: orgB.adminRoleId,
     });
 
+    adminSession = await signIn(managerEmail);
     teacherSession = await signIn(teacherEmail);
     studentSession = await signIn(studentEmail);
     outsiderSession = await signIn(outsiderEmail);
+    lonerSession = await signIn(lonerEmail);
   });
 
   afterAll(async () => {
@@ -311,7 +344,20 @@ describe('RLS tenant isolation (#191)', () => {
     await service.from('flashcard_decks').delete().eq('organization_id', orgB.orgId);
     await cleanupOrganizationDeep(orgA.orgId).catch(() => {});
     await cleanupOrganizationDeep(orgB.orgId).catch(() => {});
-    for (const id of [adminId, teacherId, studentId, outsiderId]) {
+    await service.from('flashcard_review_state').delete().eq('user_id', lonerId);
+    await service.from('user_study_settings').delete().eq('user_id', lonerId);
+    await service.from('flashcards').delete().eq('created_by', lonerId);
+    await service.from('flashcard_decks').delete().eq('created_by', lonerId);
+    for (const id of [
+      adminId,
+      teacherId,
+      studentId,
+      outsiderId,
+      peerId,
+      invitee1Id,
+      invitee2Id,
+      lonerId,
+    ]) {
       if (id) await service.auth.admin.deleteUser(id).catch(() => {});
     }
   });
@@ -483,7 +529,7 @@ describe('RLS tenant isolation (#191)', () => {
     expect(profile?.full_name).not.toBe('rls191-pwned');
   });
 
-  it('org_members: self-escalation to admin is blocked, managers can change others', async () => {
+  it('org_members: self-escalation to admin is blocked, only a manager can change others (B2)', async () => {
     const { data: escalated, error: escalateError } = await studentSession
       .from('org_members')
       .update({ org_role_id: orgA.adminRoleId })
@@ -501,23 +547,514 @@ describe('RLS tenant isolation (#191)', () => {
       .single();
     expect(unchanged?.org_role_id).toBe(orgA.memberRoleId);
 
-    // A teacher managing another member still works (app layer allows it).
-    const { data: promoted, error: promoteError } = await teacherSession
+    // A non-manager cannot promote (or remove) a peer. This is the second
+    // account escalation path: `user_id <> auth.uid()` alone was not enough.
+    await seedOrgMembership({
+      organizationId: orgA.orgId,
+      userId: peerId,
+      orgRoleId: orgA.memberRoleId,
+    });
+
+    const { data: peerEscalated, error: peerEscalateError } = await studentSession
+      .from('org_members')
+      .update({ org_role_id: orgA.adminRoleId })
+      .eq('organization_id', orgA.orgId)
+      .eq('user_id', peerId)
+      .select('user_id, org_role_id');
+    expect(peerEscalateError).toBeNull();
+    expect(peerEscalated).toEqual([]);
+
+    const { data: peerAfterUpdate } = await service
+      .from('org_members')
+      .select('org_role_id')
+      .eq('organization_id', orgA.orgId)
+      .eq('user_id', peerId)
+      .single();
+    expect(peerAfterUpdate?.org_role_id).toBe(orgA.memberRoleId);
+
+    const { data: peerDeleted, error: peerDeleteError } = await studentSession
+      .from('org_members')
+      .delete()
+      .eq('organization_id', orgA.orgId)
+      .eq('user_id', peerId)
+      .select('user_id');
+    expect(peerDeleteError).toBeNull();
+    expect(peerDeleted).toEqual([]);
+
+    // A manager can promote and remove other members.
+    const { data: promoted, error: promoteError } = await adminSession
       .from('org_members')
       .update({ org_role_id: orgA.teacherRoleId })
       .eq('organization_id', orgA.orgId)
-      .eq('user_id', studentId)
+      .eq('user_id', peerId)
       .select('user_id, org_role_id');
     expect(promoteError).toBeNull();
     expect(promoted).toHaveLength(1);
     expect(promoted?.[0]?.org_role_id).toBe(orgA.teacherRoleId);
 
-    // Restore for any later assertions.
+    const { data: removed, error: removeError } = await adminSession
+      .from('org_members')
+      .delete()
+      .eq('organization_id', orgA.orgId)
+      .eq('user_id', peerId)
+      .select('user_id');
+    expect(removeError).toBeNull();
+    expect(removed).toHaveLength(1);
+  });
+
+  it('invitations: a member cannot mint or retarget role-escalating invites (B1)', async () => {
+    const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    // A plain member cannot target the admin role...
+    const { error: adminTargetError } = await studentSession.from('invitations').insert({
+      email: `rls191-b1-admin-${tag}@dev.local`,
+      organization_id: orgA.orgId,
+      inviter_id: studentId,
+      target_org_role_id: orgA.adminRoleId,
+      expires_at: expiry,
+    });
+    expect(adminTargetError?.code).toBe('42501');
+
+    // ...nor mint any other invite (no member.manage, member role is not teacher).
+    const { error: memberTargetError } = await studentSession.from('invitations').insert({
+      email: `rls191-b1-member-${tag}@dev.local`,
+      organization_id: orgA.orgId,
+      inviter_id: studentId,
+      target_org_role_id: orgA.memberRoleId,
+      expires_at: expiry,
+    });
+    expect(memberTargetError?.code).toBe('42501');
+
+    // Spoofing the inviter is rejected by the INSERT WITH CHECK.
+    const { error: spoofError } = await studentSession.from('invitations').insert({
+      email: `rls191-b1-spoof-${tag}@dev.local`,
+      organization_id: orgA.orgId,
+      inviter_id: teacherId,
+      target_org_role_id: orgA.memberRoleId,
+      expires_at: expiry,
+    });
+    expect(spoofError?.code).toBe('42501');
+
+    // The teacher flow may invite students (member role) only.
+    const { data: teacherInvite, error: teacherInviteError } = await teacherSession
+      .from('invitations')
+      .insert({
+        email: `rls191-b1-teacher-${tag}@dev.local`,
+        organization_id: orgA.orgId,
+        inviter_id: teacherId,
+        target_org_role_id: orgA.memberRoleId,
+        expires_at: expiry,
+      })
+      .select('id, token')
+      .single();
+    expect(teacherInviteError).toBeNull();
+
+    const { error: teacherAdminError } = await teacherSession.from('invitations').insert({
+      email: `rls191-b1-teacher-admin-${tag}@dev.local`,
+      organization_id: orgA.orgId,
+      inviter_id: teacherId,
+      target_org_role_id: orgA.adminRoleId,
+      expires_at: expiry,
+    });
+    expect(teacherAdminError?.code).toBe('42501');
+
+    // Managers may invite into any role.
+    const { data: managerInvite, error: managerInviteError } = await adminSession
+      .from('invitations')
+      .insert({
+        email: `rls191-b1-manager-${tag}@dev.local`,
+        organization_id: orgA.orgId,
+        inviter_id: adminId,
+        target_org_role_id: orgA.adminRoleId,
+        expires_at: expiry,
+      })
+      .select('id')
+      .single();
+    expect(managerInviteError).toBeNull();
+
+    // A member cannot retarget an existing invite to admin...
+    const { data: retargeted, error: retargetError } = await studentSession
+      .from('invitations')
+      .update({ target_org_role_id: orgA.adminRoleId })
+      .eq('id', teacherInvite?.id as string)
+      .select('id');
+    expect(retargetError).toBeNull();
+    expect(retargeted).toEqual([]);
+
+    // ...nor delete a manager-created invite.
+    const { data: deleted, error: deleteError } = await studentSession
+      .from('invitations')
+      .delete()
+      .eq('id', managerInvite?.id as string)
+      .select('id');
+    expect(deleteError).toBeNull();
+    expect(deleted).toEqual([]);
+  });
+
+  it('invites: accept applies the granted role, and a used token can never re-promote (B6)', async () => {
+    const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: invite, error } = await service
+      .from('invitations')
+      .insert({
+        email: `rls191-b6-${tag}@dev.local`,
+        organization_id: orgA.orgId,
+        inviter_id: adminId,
+        target_org_role_id: orgA.adminRoleId,
+        expires_at: expiry,
+      })
+      .select('token')
+      .single();
+    expect(error).toBeNull();
+
+    const accepted = await invitationService.acceptInvitation(
+      acceptCtx(invitee1Id),
+      invite?.token as string,
+    );
+    expect(accepted.success).toBe(true);
+
+    let { data: membership } = await service
+      .from('org_members')
+      .select('org_role_id')
+      .eq('organization_id', orgA.orgId)
+      .eq('user_id', invitee1Id)
+      .single();
+    expect(membership?.org_role_id).toBe(orgA.adminRoleId);
+
+    // A manager demotes them; replaying the same token must not restore admin.
+    const { error: demoteError } = await adminSession
+      .from('org_members')
+      .update({ org_role_id: orgA.memberRoleId })
+      .eq('organization_id', orgA.orgId)
+      .eq('user_id', invitee1Id);
+    expect(demoteError).toBeNull();
+
+    const reaccepted = await invitationService.acceptInvitation(
+      acceptCtx(invitee1Id),
+      invite?.token as string,
+    );
+    expect(reaccepted.success).toBe(false);
+    expect(reaccepted.error).toBe('GONE');
+
+    ({ data: membership } = await service
+      .from('org_members')
+      .select('org_role_id')
+      .eq('organization_id', orgA.orgId)
+      .eq('user_id', invitee1Id)
+      .single());
+    expect(membership?.org_role_id).toBe(orgA.memberRoleId);
+  });
+
+  it('invites: a demoted inviter cannot promote an invitee at accept time (B1)', async () => {
+    const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: invite } = await service
+      .from('invitations')
+      .insert({
+        email: `rls191-demoted-${tag}@dev.local`,
+        organization_id: orgA.orgId,
+        inviter_id: adminId,
+        target_org_role_id: orgA.adminRoleId,
+        expires_at: expiry,
+      })
+      .select('token')
+      .single();
+
+    // Demote the inviter before the token is used.
     await service
       .from('org_members')
       .update({ org_role_id: orgA.memberRoleId })
       .eq('organization_id', orgA.orgId)
+      .eq('user_id', adminId);
+
+    const result = await invitationService.acceptInvitation(
+      acceptCtx(invitee2Id),
+      invite?.token as string,
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('GONE');
+
+    const { data: membership } = await service
+      .from('org_members')
+      .select('user_id')
+      .eq('organization_id', orgA.orgId)
+      .eq('user_id', invitee2Id)
+      .maybeSingle();
+    expect(membership).toBeNull();
+
+    // Restore the manager for the remaining tests.
+    await service
+      .from('org_members')
+      .update({ org_role_id: orgA.adminRoleId })
+      .eq('organization_id', orgA.orgId)
+      .eq('user_id', adminId);
+  });
+
+  it('organizations.plan cannot be changed through PostgREST (B3)', async () => {
+    const { data: memberUpdate } = await studentSession
+      .from('organizations')
+      .update({ plan: 'hub' })
+      .eq('id', orgA.orgId)
+      .select('id');
+    expect(memberUpdate).toEqual([]);
+
+    // A manager passes the UPDATE policy but the guard trigger rejects the plan
+    // change (billing is service-role only).
+    const { error: planError } = await adminSession
+      .from('organizations')
+      .update({ plan: 'hub' })
+      .eq('id', orgA.orgId)
+      .select('id');
+    expect(planError?.code).toBe('42501');
+
+    const { data: unchanged } = await service
+      .from('organizations')
+      .select('plan')
+      .eq('id', orgA.orgId)
+      .single();
+    expect(unchanged?.plan).toBe('launch');
+
+    // Rename (the legitimate settings update) still works for a manager.
+    const { data: renamed, error: renameError } = await adminSession
+      .from('organizations')
+      .update({ name: `rls191-renamed-${tag}` })
+      .eq('id', orgA.orgId)
+      .select('id, name');
+    expect(renameError).toBeNull();
+    expect(renamed).toHaveLength(1);
+  });
+
+  it('seat pools/assignments: members read their own seat but cannot write (B4)', async () => {
+    const { data: pool, error: poolCreateError } = await service
+      .from('org_seat_pools')
+      .insert({ organization_id: orgA.orgId, plan_key: 'hub', total: 5, assigned: 0 })
+      .select('id')
+      .single();
+    expect(poolCreateError).toBeNull();
+
+    // Self-service premium seat through PostgREST is impossible.
+    const { error: assignError } = await studentSession.from('org_seat_assignments').insert({
+      organization_id: orgA.orgId,
+      pool_id: pool?.id as string,
+      user_id: studentId,
+    });
+    expect(assignError?.code).toBe('42501');
+
+    const { error: memberPoolError } = await studentSession.from('org_seat_pools').insert({
+      organization_id: orgA.orgId,
+      plan_key: 'campus',
+      total: 3,
+      assigned: 0,
+    });
+    expect(memberPoolError?.code).toBe('42501');
+
+    // The service assigns a seat; the member must still be able to read it
+    // (getSeatPlanKey runs on the user session for every feature/limit check).
+    await service.from('org_seat_assignments').insert({
+      organization_id: orgA.orgId,
+      pool_id: pool?.id as string,
+      user_id: studentId,
+    });
+
+    const { data: ownSeat, error: seatReadError } = await studentSession
+      .from('org_seat_assignments')
+      .select('id')
       .eq('user_id', studentId);
+    expect(seatReadError).toBeNull();
+    expect(ownSeat).toHaveLength(1);
+
+    // Managers can still create pools.
+    const { error: managerPoolError } = await adminSession.from('org_seat_pools').insert({
+      organization_id: orgA.orgId,
+      plan_key: 'campus',
+      total: 3,
+      assigned: 0,
+    });
+    expect(managerPoolError).toBeNull();
+  });
+
+  it('roles, permissions and groups: reads stay org-wide, writes require the capability (B5)', async () => {
+    const { error: roleInsertError } = await studentSession.from('org_roles').insert({
+      organization_id: orgA.orgId,
+      name: `rls191-custom-member-${tag}`,
+      display_name: `Custom member ${tag}`,
+      description: null,
+      is_system: false,
+    });
+    expect(roleInsertError?.code).toBe('42501');
+
+    const { data: renamedRole } = await studentSession
+      .from('org_roles')
+      .update({ name: 'pwned' })
+      .eq('id', orgA.adminRoleId)
+      .select('id');
+    expect(renamedRole).toEqual([]);
+
+    const { error: permError } = await studentSession.from('org_role_permissions').insert({
+      org_role_id: orgA.memberRoleId,
+      permission_name: 'deck.update',
+      scope: 'organization',
+    });
+    expect(permError?.code).toBe('42501');
+
+    // Groups: a member cannot create a group or join one (that would grant
+    // group-scoped read access to arbitrary content).
+    const { error: groupError } = await studentSession.from('groups').insert({
+      organization_id: orgA.orgId,
+      name: `rls191-group-member-${tag}`,
+      description: null,
+      is_default: false,
+    });
+    expect(groupError?.code).toBe('42501');
+
+    const { data: group } = await service
+      .from('groups')
+      .insert({
+        organization_id: orgA.orgId,
+        name: `rls191-group-${tag}`,
+        description: null,
+        is_default: false,
+      })
+      .select('id')
+      .single();
+
+    const { error: selfJoinError } = await studentSession.from('group_members').insert({
+      group_id: group?.id as string,
+      user_id: studentId,
+      role: 'member',
+    });
+    expect(selfJoinError?.code).toBe('42501');
+
+    // Teachers hold group.manage and still manage rosters.
+    const { error: teacherGroupError } = await teacherSession.from('group_members').insert({
+      group_id: group?.id as string,
+      user_id: studentId,
+      role: 'member',
+    });
+    expect(teacherGroupError).toBeNull();
+
+    // Managers hold member.manage: they may create roles, but a system role's
+    // identity is immutable (the manager helper keys on the `admin` name).
+    const { error: managerRoleError } = await adminSession.from('org_roles').insert({
+      organization_id: orgA.orgId,
+      name: `rls191-custom-manager-${tag}`,
+      display_name: `Custom manager ${tag}`,
+      description: null,
+      is_system: false,
+    });
+    expect(managerRoleError).toBeNull();
+
+    const { error: renameSystemError } = await adminSession
+      .from('org_roles')
+      .update({ name: 'pwned' })
+      .eq('id', orgA.adminRoleId)
+      .select('id');
+    expect(renameSystemError?.code).toBe('42501');
+  });
+
+  it('cross-tenant role references are rejected (B1/B2)', async () => {
+    const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    // An org A manager cannot invite into an org B role. The BEFORE trigger
+    // rejects the cross-org reference (23514) before the RLS WITH CHECK would
+    // deny it (42501) — either way the row is never written.
+    const { error: inviteError } = await adminSession.from('invitations').insert({
+      email: `rls191-cross-${tag}@dev.local`,
+      organization_id: orgA.orgId,
+      inviter_id: adminId,
+      target_org_role_id: orgB.adminRoleId,
+      expires_at: expiry,
+    });
+    expect(['23514', '42501']).toContain(inviteError?.code);
+
+    // Even the service role cannot persist a membership with another org's role.
+    const { error: memberError } = await service
+      .from('org_members')
+      .update({ org_role_id: orgB.adminRoleId })
+      .eq('organization_id', orgA.orgId)
+      .eq('user_id', studentId);
+    expect(memberError?.code).toBe('23514');
+  });
+
+  it('internal role-authority RPCs are service-role only, RLS wrappers work (function ACL)', async () => {
+    for (const [fn, args] of [
+      [
+        'has_org_feature',
+        { p_actor: studentId, p_organization_id: orgA.orgId, p_feature: 'member.manage' },
+      ],
+      ['is_org_manager', { p_actor: studentId, p_organization_id: orgA.orgId }],
+      ['can_assign_org_role', { p_actor: studentId, p_role_id: orgA.adminRoleId }],
+    ] as const) {
+      const { data, error } = await studentSession.rpc(fn as never, args as never);
+      expect(error?.code, `${fn} must not be executable by authenticated`).toBe('42501');
+      expect(data).toBeNull();
+    }
+
+    // The wrappers ARE granted and reflect the caller's role.
+    const { data: studentManager } = await studentSession.rpc('rls_caller_is_org_manager', {
+      p_organization_id: orgA.orgId,
+    });
+    expect(studentManager).toBe(false);
+    const { data: adminManager } = await adminSession.rpc('rls_caller_is_org_manager', {
+      p_organization_id: orgA.orgId,
+    });
+    expect(adminManager).toBe(true);
+
+    const { data: studentCanAssign } = await studentSession.rpc('rls_caller_can_assign_org_role', {
+      p_role_id: orgA.adminRoleId,
+    });
+    expect(studentCanAssign).toBe(false);
+    const { data: teacherCanAssignMember } = await teacherSession.rpc(
+      'rls_caller_can_assign_org_role',
+      { p_role_id: orgA.memberRoleId },
+    );
+    expect(teacherCanAssignMember).toBe(true);
+    const { data: teacherCanAssignAdmin } = await teacherSession.rpc(
+      'rls_caller_can_assign_org_role',
+      { p_role_id: orgA.adminRoleId },
+    );
+    expect(teacherCanAssignAdmin).toBe(false);
+
+    const { data: teacherGroupManage } = await teacherSession.rpc('rls_caller_has_org_feature', {
+      p_organization_id: orgA.orgId,
+      p_feature: 'group.manage',
+    });
+    expect(teacherGroupManage).toBe(true);
+    const { data: studentGroupManage } = await studentSession.rpc('rls_caller_has_org_feature', {
+      p_organization_id: orgA.orgId,
+      p_feature: 'group.manage',
+    });
+    expect(studentGroupManage).toBe(false);
+  });
+
+  it('a signed-in user with no organization can still use personal flashcards', async () => {
+    const { data: deck, error: deckError } = await lonerSession
+      .from('flashcard_decks')
+      .insert({ created_by: lonerId, name: `rls191-loner-deck-${tag}`, visibility: 'personal' })
+      .select('id')
+      .single();
+    expect(deckError).toBeNull();
+
+    const { data: card, error: cardError } = await lonerSession
+      .from('flashcards')
+      .insert({
+        created_by: lonerId,
+        deck_id: deck?.id as string,
+        front: `rls191-loner-front-${tag}`,
+        back: `rls191-loner-back-${tag}`,
+        visibility: 'personal',
+      })
+      .select('id')
+      .single();
+    expect(cardError).toBeNull();
+
+    const { error: reviewError } = await lonerSession
+      .from('flashcard_review_state')
+      .insert({ user_id: lonerId, flashcard_id: card?.id as string });
+    expect(reviewError).toBeNull();
+
+    const { error: settingsError } = await lonerSession
+      .from('user_study_settings')
+      .insert({ user_id: lonerId, new_cards_per_day: 5 });
+    expect(settingsError).toBeNull();
   });
 
   it('hostile RPC surface is closed', async () => {

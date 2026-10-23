@@ -171,13 +171,27 @@ export class OrganizationMemberService {
       return failure('FORBIDDEN');
     }
 
-    const { error } = await supabase
+    // The RLS manager predicate + validate_org_member_org_role trigger are the
+    // authoritative gates; this lookup turns a cross-org role id into a clean
+    // 403 instead of a database error and avoids a pointless update.
+    const { data: role, error: roleError } = await supabase
+      .from('org_roles')
+      .select('id, organization_id')
+      .eq('id', newOrgRoleId)
+      .eq('organization_id', ctx.activeOrgId)
+      .maybeSingle();
+    if (roleError) return toDbFailure(roleError);
+    if (!role) return failure('FORBIDDEN');
+
+    const { data: updated, error } = await supabase
       .from('org_members')
       .update({ org_role_id: newOrgRoleId })
       .eq('organization_id', ctx.activeOrgId)
-      .eq('user_id', targetUserId);
+      .eq('user_id', targetUserId)
+      .select('user_id');
 
     if (error) return toDbFailure(error);
+    if (!updated || updated.length === 0) return failure('NOT_FOUND');
 
     return success({ success: true });
   }
