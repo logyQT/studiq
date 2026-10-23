@@ -93,6 +93,11 @@ def sessions(directory: str, limit: int = 20) -> list[dict]:
     return data.get("data", data) if isinstance(data, dict) else data
 
 
+def session_info(sid: str) -> dict:
+    data = api("GET", f"/api/session/{sid}")
+    return data.get("data", data) if isinstance(data, dict) else data
+
+
 def active_map() -> dict:
     data = api("GET", "/api/session/active")
     return data.get("data", data) if isinstance(data, dict) else data
@@ -385,6 +390,7 @@ def cmd_design(args) -> None:
     title = f"#{n} design r{attempt(rec)}"
     sid = create_session(env, title, dispatch_prompt("DESIGNER", n, "design", env, rec))
     rec["stage"] = "designing"
+    rec["stage_started"] = int(time.time() * 1000)
     rec["designer"] = env
     rec["sessions"]["design"] = sid
     history(state, n, {"event": "design_dispatched", "env": env, "session": sid,
@@ -409,6 +415,7 @@ def cmd_implement(args) -> None:
     title = f"#{n} {'rebase' if rebase else 'implement'} r{attempt(rec)}"
     sid = create_session(env, title, dispatch_prompt("WRITER", n, "implement", env, rec))
     rec["stage"] = "implementing"
+    rec["stage_started"] = int(time.time() * 1000)
     rec["writer"] = env
     rec["sessions"]["implement"] = sid
     history(state, n, {"event": "rebase_requested" if rebase else "implement_dispatched",
@@ -448,6 +455,7 @@ def cmd_review(args) -> None:
                              dispatch_prompt("REVIEWER", n, "review", env, rec, review_no=idx))
         sessions_out.append({"env": env, "session": sid, "review": idx})
     rec["stage"] = "reviewing"
+    rec["stage_started"] = int(time.time() * 1000)
     rec["reviewers"] = pair
     rec["sessions"]["review"] = [s["session"] for s in sessions_out]
     history(state, n, {"event": "review_dispatched", "sessions": sessions_out,
@@ -477,6 +485,7 @@ def cmd_qa(args) -> None:
     title = f"#{n} qa r{attempt(rec)}"
     sid = create_session(env, title, dispatch_prompt("QA", n, "qa", env, rec))
     rec["stage"] = "qa_testing"
+    rec["stage_started"] = int(time.time() * 1000)
     rec["qa_env"] = env
     rec["sessions"]["qa"] = sid
     history(state, n, {"event": "qa_dispatched", "env": env, "session": sid,
@@ -492,6 +501,38 @@ def read_artifact(path: Path) -> dict:
         return json.load(open(path))
     except Exception as exc:
         fail(f"artifact invalid JSON: {path}: {exc}")
+
+
+def stage_started_ms(rec: dict, stage: str) -> int:
+    """Timestamp of the current dispatch, falling back to the session create time."""
+    value = rec.get("stage_started")
+    if isinstance(value, (int, float)) and value > 0:
+        return int(value)
+    sessions = rec.get("sessions", {})
+    sids = sessions.get("review") if stage == "review" else [sessions.get(stage)]
+    times = []
+    for sid in sids or []:
+        try:
+            info = session_info(sid)
+            times.append(int((info.get("time") or {}).get("created") or 0))
+        except Exception:
+            continue
+    times = [t for t in times if t]
+    return min(times) if times else 0
+
+
+def require_fresh(path: Path, rec: dict, stage: str) -> None:
+    started = stage_started_ms(rec, stage)
+    if not started:
+        return
+    mtime = int(path.stat().st_mtime * 1000)
+    if mtime < started - 1000:
+        fail(
+            f"stale artifact for {stage}: {path}",
+            artifact_mtime=mtime,
+            stage_started=started,
+            hint="wait for the current session to write its artifact; do not reuse an earlier pass",
+        )
 
 
 def add_label(n: int, label: str) -> None:
@@ -512,7 +553,9 @@ def cmd_collect(args) -> None:
     d = issue_dir(n)
 
     if stage == "designing":
-        data = read_artifact(d / f"design-r{a}.json")
+        p = d / f"design-r{a}.json"
+        require_fresh(p, rec, "design")
+        data = read_artifact(p)
         decision = data.get("decision")
         if decision == "ready":
             rec["stage"] = "design_ready"
@@ -529,7 +572,9 @@ def cmd_collect(args) -> None:
             ok(action="collect", issue=n, stage="blocked", next=None, data=data)
 
     elif stage == "implementing":
-        data = read_artifact(d / f"impl-r{a}.json")
+        p = d / f"impl-r{a}.json"
+        require_fresh(p, rec, "implement")
+        data = read_artifact(p)
         if data.get("status") == "pr_open":
             rec["stage"] = "pr_open"
             rec["branch"] = data.get("branch") or rec.get("branch")
@@ -549,6 +594,8 @@ def cmd_collect(args) -> None:
             ok(action="collect", issue=n, stage="reviewing", pending=missing,
                message="waiting for both reviews")
             return
+        require_fresh(r1, rec, "review")
+        require_fresh(r2, rec, "review")
         d1, d2 = read_artifact(r1), read_artifact(r2)
         decisions = (d1.get("decision"), d2.get("decision"))
         if decisions == ("approve", "approve"):
@@ -564,7 +611,9 @@ def cmd_collect(args) -> None:
                next="design", attempt=attempt(rec), reviews=[d1, d2])
 
     elif stage == "qa_testing":
-        data = read_artifact(d / f"qa-r{a}.json")
+        p = d / f"qa-r{a}.json"
+        require_fresh(p, rec, "qa")
+        data = read_artifact(p)
         if data.get("decision") == "pass":
             rec["stage"] = "qa_passed"
             history(state, n, {"event": "qa_passed", "data": data})
@@ -590,6 +639,7 @@ def cmd_merge(args) -> None:
     rec = get_rec(state, n)
     if rec["stage"] != "qa_passed":
         fail(f"cannot merge from stage {rec['stage']}")
+    require_fresh(issue_dir(n) / f"qa-r{attempt(rec)}.json", rec, "qa")
     pr = rec.get("pr")
     if not pr:
         fail("no PR recorded on this issue")

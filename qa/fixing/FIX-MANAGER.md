@@ -67,7 +67,7 @@ $FIX review <issue>
 $FIX review <issue> --envs 1,7
 ```
 
-When each reviewer slot finishes, run `collect <issue>`. The first call returns `pending`; the second evaluates both artifacts:
+When each reviewer slot finishes, run `collect <issue>`. The first call returns `pending`; the second evaluates both artifacts. `collect` rejects artifacts older than the current dispatch, so stale pre-rebase reviews cannot satisfy the gate.
 - both `approve` → `approved`; dispatch QA.
 - any `request_changes` → `changes_requested`; send it back to a **designer first** with the reviewers' artifacts, then the writer. Do not send review findings straight to the writer unless the designer says no design change is needed.
 - If a reviewer cannot assess (missing repro/design), treat it as changes requested.
@@ -80,7 +80,7 @@ QA always authenticates with `POST /api/v1/auth/login` (`{"email","password"}`);
 $FIX qa <issue> --env 1
 ```
 
-On finish, `collect <issue>`:
+On finish, `collect <issue>`. It rejects an old `qa-r1.json` whose mtime predates the current QA dispatch, so the pre-rebase PASS cannot satisfy this gate. Only collect after env-2 (or the current QA slot) has finished and written a fresh artifact.
 - `pass` → merge gate.
 - `fail` → send the QA evidence back to a designer (then writer) as the next attempt. Never waive a failed e2e test.
 - `blocked` → report the environment problem; do not merge.
