@@ -6,7 +6,7 @@
     qa-supervisor pause
     qa-supervisor resume
 
-`ensure` is safe to run every minute: components that are up are untouched,
+`ensure` is safe to run at the task cadence (every 2 minutes): components that are up are untouched,
 actions are rate-limited, and a lock prevents overlapping runs. It checks the
 four slot web apps, the dashboard, the Chromium instances and the Discord bots.
 Supabase and the nested Docker daemon are left to Docker's restart policy.

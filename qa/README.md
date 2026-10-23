@@ -128,6 +128,18 @@ the input filename). The converter clears `cases/*.md` before writing, so rename
 or removed scenarios don't leave orphans. It is dependency-free (stdlib only) and
 prints the case count and any prerequisite IDs it could not resolve.
 
+## Ops supervisor (health checks)
+
+`qa/tools/qa-supervisor ensure` checks the slot web apps, dashboard, Chromium
+instances and Discord bots, and restarts only what is down. It is idempotent,
+rate-limited (90 s per component) and protected by a lock.
+
+- A Windows scheduled task `StudiQ QA Supervisor` runs it every 2 minutes via a
+  hidden launcher (`studiq-dev/qa-supervisor.vbs`), with a 10-minute timeout.
+- `qa-supervisor pause` / `resume` parks it without touching Docker.
+- State and locks live in `/tmp/studiq-qa-locks/`; the host log is
+  `studiq-dev/qa-supervisor.host.log` (rotated at 1 MB).
+
 ## Notes
 
 - Seeded dev accounts use the password `pass` (see `context.md`); these are local
