@@ -12,13 +12,11 @@ import {
   BatchLinkSchema,
   BatchMoveSchema,
   BatchTopicsSchema,
-  BatchUnlinkSchema,
   BulkCreateFlashcardsSchema,
   CopyFlashcardSchema,
   CreateFlashcardSchema,
   FlashcardListQuerySchema,
   LinkFlashcardSchema,
-  UnlinkFlashcardSchema,
   UpdateFlashcardSchema,
 } from '@studiq/server/models/flashcard.model';
 import { type FlashcardService, flashcardService } from '@studiq/server/services/flashcard.service';
@@ -217,42 +215,6 @@ export class FlashcardController {
     }
 
     const result = await this.flashcardService.batchMove(parsed.data, ctx);
-
-    if (isFailure(result)) {
-      return controllerResponse.error(result.error);
-    }
-
-    return controllerResponse.success(result.data);
-  }
-
-  async unlinkFromDeck(
-    id: string,
-    body: unknown,
-    ctx: RequestContext,
-  ): Promise<ControllerResponse> {
-    const parsed = UnlinkFlashcardSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
-    }
-
-    const result = await this.flashcardService.unlinkFromDeck(id, parsed.data, ctx);
-
-    if (isFailure(result)) {
-      return controllerResponse.error(result.error);
-    }
-
-    return controllerResponse.success(result.data);
-  }
-
-  async batchUnlink(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    const parsed = BatchUnlinkSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
-    }
-
-    const result = await this.flashcardService.batchUnlinkFromDeck(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
