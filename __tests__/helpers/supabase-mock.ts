@@ -26,6 +26,7 @@ export function mockSupabaseClient() {
       signOut: vi.fn(),
       resetPasswordForEmail: vi.fn(),
       updateUser: vi.fn(),
+      getClaims: vi.fn(),
       exchangeCodeForSession: vi.fn(),
       verifyOtp: vi.fn(),
     },
