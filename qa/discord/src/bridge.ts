@@ -127,17 +127,31 @@ export class Bridge {
       const previous = this.sessionId;
       this.sessionId = next;
       if (next) {
-        const seeded = await this.seed(next);
-        this.log.info(
-          this.opts.label,
-          previous
-            ? `session ${previous} -> ${next} (seeded ${seeded})`
-            : `attached to session ${next} (seeded ${seeded})`,
-        );
+        if (previous) {
+          // A new session appeared (e.g. dispatch). Seed only messages older
+          // than the grace window so a reply that arrived before we noticed
+          // the session is relayed instead of being mistaken for history.
+          const seeded = await this.seedOlderThan(next, Date.now() - 120_000);
+          this.log.info(
+            this.opts.label,
+            `session ${previous} -> ${next} (seeded ${seeded} older; relaying newer)`,
+          );
+        } else {
+          const seeded = await this.seed(next);
+          this.log.info(this.opts.label, `attached to session ${next} (seeded ${seeded})`);
+        }
       } else {
         this.log.info(this.opts.label, 'no session in this slot');
       }
     }
+  }
+
+  private async seedOlderThan(sessionId: string, cutoff: number): Promise<number> {
+    const messages = await this.opencode.messages(sessionId, 50).catch(() => []);
+    const old = messages.filter((m) => (m.time?.created ?? 0) < cutoff).map((m) => m.id);
+    this.state.markSeen(sessionId, old);
+    this.state.save();
+    return old.length;
   }
 
   private async seed(sessionId: string): Promise<number> {
