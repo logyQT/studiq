@@ -105,6 +105,8 @@ $FIX rebase <issue> --env <free-writer-slot>
 
 The writer merges `origin/main`, resolves the conflict, reruns its checks, and pushes the new head. Then run both reviews and QA again on that new head; old approvals/pass do not cover the rebase commit.
 
+**Migrations:** writers reserve timestamps with `migration-ts`; `merge` checks the PR’s migration timestamps against `origin/main` and every other open PR. If it reports a collision, send the PR back to a writer with a freshly allocated timestamp, rename the file(s), run `bun scripts/check-migration-timestamps.ts`, push, and retry the merge. A filename-only renumber still changes the head, so re-run the review/QA gates only if content changed; at minimum re-run the migration guard and record the new commit in the dossier.
+
 ## Capacity and scheduling
 - Fixed roles: **2 designers** (3/4), **2 writers** (5/6).
 - Shared pool: **4 QA/review slots** (1/2/7/8). Max **2 review pairs** (4 reviewers) or **2 QA runs**, or one pair + 2 QA.

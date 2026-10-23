@@ -29,6 +29,16 @@ Your working directory is `{{ENV}}`'s slot (`qa-env-{{ENV}}`). It is a git workt
 ## Implement
 Follow the design, but correct it if the code contradicts it. Keep the change focused. Match the repo's naming, error handling, auth/org checks, i18n, and React Query patterns. Do not touch unrelated files. If the design is wrong or incomplete, stop and report why rather than guessing.
 
+**Migrations:** never pick a timestamp by hand. If the change needs one, reserve a unique version first:
+
+```bash
+python3 /workspaces/studiq/.worktrees/qa-env/qa/tools/qa-fix.py migration-ts {{ISSUE}} --count 1
+```
+
+Use the returned timestamp in `supabase/migrations/<timestamp>_<name>.sql`, then run
+`bun scripts/check-migration-timestamps.ts`. For multiple files use `--count N` and
+consume the returned timestamps in order.
+
 ## Verify
 Run the checks that matter for the change:
 - `bun run typecheck` (or the narrow package typecheck)

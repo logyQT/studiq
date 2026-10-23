@@ -19,6 +19,7 @@ import argparse
 import base64
 import collections
 import datetime as dt
+import fcntl
 import json
 import os
 import re
@@ -36,6 +37,9 @@ ISSUES = FIX / "issues"
 STATE_PATH = FIX / "state.json"
 MAP_PATH = FIX / "issue-map.json"
 QUEUE_PATH = FIX / "queue.txt"
+MIG_RESERVATIONS = FIX / "migration-reservations.json"
+MIG_LOCK = FIX / "migration.lock"
+MIGRATION_RE = re.compile(r"^(\d{14,})_.+\.sql$")
 BASE = "http://127.0.0.1:4096"
 AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
 MODEL = {"providerID": "opencode-go", "id": "deepseek-v4.1-flash", "variant": "high"}
@@ -154,6 +158,129 @@ def fetch_issues() -> list[dict]:
     raw = json.loads(gh(["issue", "list", "--state", "open", "--limit", "400",
                          "--json", "number,title,labels,url,createdAt,updatedAt,body"]))
     return raw
+
+
+def migration_timestamp(path: str) -> int | None:
+    m = MIGRATION_RE.match(path.rsplit("/", 1)[-1])
+    return int(m.group(1)) if m else None
+
+
+def main_migration_set() -> set[int]:
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(ROOT), "ls-tree", "-r", "--name-only",
+             "origin/main", "supabase/migrations"],
+            capture_output=True, text=True, timeout=30,
+        ).stdout
+    except Exception:
+        return set()
+    vals = [migration_timestamp(line) for line in out.splitlines()]
+    return {v for v in vals if v}
+
+
+def main_migration_ts() -> int:
+    return max(main_migration_set() or {0})
+
+
+def open_pr_migration_set(exclude_pr: int | None = None) -> set[int]:
+    try:
+        prs = json.loads(gh(["pr", "list", "--state", "open", "--limit", "200",
+                             "--json", "number,files"]))
+    except SystemExit:
+        return set()
+    vals: set[int] = set()
+    for pr in prs:
+        if exclude_pr and pr.get("number") == exclude_pr:
+            continue
+        for f in pr.get("files") or []:
+            v = migration_timestamp(f.get("path", ""))
+            if v:
+                vals.add(v)
+    return vals
+
+
+def open_pr_migration_ts(exclude_pr: int | None = None) -> int:
+    return max(open_pr_migration_set(exclude_pr) or {0})
+
+
+def load_reservations() -> dict:
+    if MIG_RESERVATIONS.exists():
+        try:
+            return json.load(open(MIG_RESERVATIONS))
+        except Exception:
+            pass
+    return {"reservations": {}}
+
+
+def save_reservations(data: dict) -> None:
+    tmp = MIG_RESERVATIONS.with_suffix(".tmp")
+    json.dump(data, open(tmp, "w"), indent=1)
+    os.replace(tmp, MIG_RESERVATIONS)
+
+
+def cmd_migration_ts(args) -> None:
+    FIX.mkdir(parents=True, exist_ok=True)
+    with open(MIG_LOCK, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        data = load_reservations()
+        reserved = [int(v) for vals in data["reservations"].values() for v in vals]
+        floor = max(
+            int(dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d%H%M%S")),
+            main_migration_ts() + 1,
+            open_pr_migration_ts() + 1,
+            (max(reserved) if reserved else 0) + 1,
+        )
+        stamps = [str(floor + i) for i in range(args.count)]
+        data["reservations"].setdefault(str(args.issue), []).extend(stamps)
+        save_reservations(data)
+    ok(action="migration-ts", issue=args.issue, timestamps=stamps,
+       next=stamps[0] if len(stamps) == 1 else stamps)
+
+
+def pr_migrations(pr: int) -> list[str]:
+    data = json.loads(gh(["pr", "view", str(pr), "--json", "files"]))
+    return [f["path"] for f in data.get("files") or []
+            if f.get("path", "").startswith("supabase/migrations/")]
+
+
+def migration_collisions(n: int, pr: int) -> list[dict]:
+    mine = pr_migrations(pr)
+    if not mine:
+        return []
+    main_set = main_migration_set()
+    other_set = open_pr_migration_set(pr)
+    main_max = max(main_set or {0})
+    out = []
+    for path in mine:
+        ts = migration_timestamp(path)
+        if ts and (ts <= main_max or ts in other_set):
+            out.append({"path": path, "timestamp": ts,
+                        "main_max": main_max,
+                        "other_open_max": max(other_set or {0})})
+    return out
+
+
+def cmd_migration_check(args) -> None:
+    state = load_state()
+    rec = get_rec(state, args.issue)
+    pr = args.pr or rec.get("pr")
+    if not pr:
+        fail("no PR recorded for this issue")
+    collisions = migration_collisions(args.issue, int(pr))
+    if collisions:
+        fail("migration timestamp collision", issue=args.issue, pr=pr,
+             collisions=collisions,
+             hint="allocate a fresh timestamp with `migration-ts` and rename the file(s)")
+    ok(action="migration-check", issue=args.issue, pr=pr, collisions=[])
+
+
+def cmd_migration_release(args) -> None:
+    with open(MIG_LOCK, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        data = load_reservations()
+        data["reservations"].pop(str(args.issue), None)
+        save_reservations(data)
+    ok(action="migration-release", issue=args.issue)
 
 
 def normalize_map(raw: list[dict]) -> dict:
@@ -643,6 +770,11 @@ def cmd_merge(args) -> None:
     pr = rec.get("pr")
     if not pr:
         fail("no PR recorded on this issue")
+    collisions = migration_collisions(n, int(pr))
+    if collisions:
+        fail("migration timestamp collision", issue=n, pr=pr,
+             collisions=collisions,
+             hint="send the writer back with a fresh `migration-ts` allocation, re-run the guard, then re-merge")
     # verify the PR is still open and reviews are recorded
     view = json.loads(gh(["pr", "view", str(pr), "--json", "number,state,isDraft,mergeable,url"]))
     if view.get("state") != "OPEN":
@@ -722,6 +854,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--env", type=int); s.set_defaults(fn=cmd_implement)
     s = sub.add_parser("collect"); s.add_argument("issue", type=int); s.set_defaults(fn=cmd_collect)
     s = sub.add_parser("merge"); s.add_argument("issue", type=int); s.set_defaults(fn=cmd_merge)
+    s = sub.add_parser("migration-ts"); s.add_argument("issue", type=int)
+    s.add_argument("--count", type=int, default=1); s.set_defaults(fn=cmd_migration_ts)
+    s = sub.add_parser("migration-check"); s.add_argument("issue", type=int)
+    s.add_argument("--pr", type=int); s.set_defaults(fn=cmd_migration_check)
+    s = sub.add_parser("migration-release"); s.add_argument("issue", type=int)
+    s.set_defaults(fn=cmd_migration_release)
     s = sub.add_parser("block"); s.add_argument("issue", type=int); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_block)
     sub.add_parser("status").set_defaults(fn=cmd_status)
     sub.add_parser("roles").set_defaults(fn=cmd_roles)

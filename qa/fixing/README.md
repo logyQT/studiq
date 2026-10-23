@@ -55,6 +55,8 @@ python3 qa/tools/qa-fix.py next
 python3 qa/tools/qa-fix.py design 140 --env 3
 python3 qa/tools/qa-fix.py implement 140 --env 5
 python3 qa/tools/qa-fix.py rebase 167 --env 6   # only from qa_passed: PR conflicted after main moved
+python3 qa/tools/qa-fix.py migration-ts 176 --count 1
+python3 qa/tools/qa-fix.py migration-check 176
 python3 qa/tools/qa-fix.py review 140
 python3 qa/tools/qa-fix.py qa 140 --env 1
 python3 qa/tools/qa-fix.py collect 140
