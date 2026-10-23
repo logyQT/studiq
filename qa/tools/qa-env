@@ -332,6 +332,39 @@ def cmd_restart_app(env: dict) -> None:
     ok(env=env["envId"], action="restart-app", pid=pid, http=env["_app_port"])
 
 
+def cmd_rebuild_app(env: dict) -> None:
+    """Force a production rebuild after checking out a PR branch."""
+    wt = env["_worktree"]
+    app_dir = wt / "apps" / "web"
+    marker = wt / ".qa-app.building"
+    healthy = False
+    pid = None
+    with EnvLock(env["envId"]):
+        marker.write_text(str(os.getpid()))
+        try:
+            stop_app(env)
+            log = open(wt / ".qa-app.log", "ab")
+            log.write(b"\n=== forced rebuild (PR branch) ===\n")
+            log.flush()
+            proc = subprocess.run(
+                ["bun", "run", "build"],
+                cwd=app_dir,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                timeout=1200,
+            )
+            if proc.returncode != 0:
+                fail("production build failed", env=env["envId"],
+                     log=str(wt / ".qa-app.log"))
+            pid = start_app(env)
+            healthy = wait_http(env["_app_port"])
+        finally:
+            marker.unlink(missing_ok=True)
+    if not healthy:
+        fail("app did not come back after rebuild", env=env["envId"], pid=pid)
+    ok(env=env["envId"], action="rebuild-app", pid=pid, http=env["_app_port"])
+
+
 def cmd_restart_browser(env: dict) -> None:
     dashboard = env["_root"] / ".worktrees" / "qa-env" / "dashboard"
     proc = subprocess.run(
@@ -399,6 +432,7 @@ COMMANDS = {
     "reset": cmd_reset,
     "reseed": cmd_reset,
     "restart-app": cmd_restart_app,
+    "rebuild-app": cmd_rebuild_app,
     "restart-browser": cmd_restart_browser,
     "admin-up": cmd_admin_up,
     "admin-down": cmd_admin_down,

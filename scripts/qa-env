@@ -6,6 +6,7 @@
 #   scripts/qa-env down [N|all]          stop app + admin + Supabase (worktree/data kept)
 #   scripts/qa-env status                one line per environment
 #   scripts/qa-env reset <N|all>         re-seed the database (DESTRUCTIVE)
+#   scripts/qa-env rebuild <N|all>       force-rebuild + restart the web app
 #   scripts/qa-env sync  [N|all]         reset worktree(s) to origin/qa-testing
 #   scripts/qa-env logs <N>              tail web + admin logs
 #   scripts/qa-env env <N>               print shell exports for one environment
@@ -225,6 +226,25 @@ ensure_inbucket() {
     || { warn "inbucket failed to start for qa-env-$n"; return 1; }
 }
 
+# Rebuild the web app from the current worktree (use after checking out a PR).
+rebuild_env() {
+  local n=$1 wt
+  wt=$(wt_for "$n")
+  [ -d "$wt" ] || die "qa-env-$n has no worktree"
+  touch "$wt/.qa-app.building"
+  stop_app "$wt" "$(app_port "$n")" ".qa-app.pid"
+  rm -f "$wt/apps/web/.next/BUILD_ID"
+  if start_app "$wt" "$(app_port "$n")" ".qa-app.log" ".qa-app.pid"; then
+    wait_http "http://localhost:$(app_port "$n")/login" 180 \
+      || warn "qa-env-$n rebuilt but did not answer on :$(app_port "$n")"
+    info "qa-env-$n rebuilt and restarted"
+  else
+    rm -f "$wt/.qa-app.building"
+    die "qa-env-$n build failed (see $wt/.qa-app.log)"
+  fi
+  rm -f "$wt/.qa-app.building"
+}
+
 pids_on_port() {
   local port=$1
   {
@@ -413,6 +433,8 @@ case "$cmd" in
     for n in "${SLOTS[@]}"; do status_env "$n"; done ;;
   reset)
     shift; for n in $(expand_slots "${1:-all}"); do reset_env "$n"; done ;;
+  rebuild)
+    shift; for n in $(expand_slots "${1:-all}"); do rebuild_env "$n"; done ;;
   sync)
     shift; for n in $(expand_slots "${1:-all}"); do sync_env "$n"; done ;;
   logs)

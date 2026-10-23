@@ -133,7 +133,10 @@ def slots() -> list[tuple[int, Path]]:
 
 def components() -> dict:
     checks: dict[str, dict] = {}
-    for n, _ in slots():
+    for n, wt in slots():
+        if (wt / ".qa-app.building").exists():
+            checks[f"app-{n}"] = {"up": True, "http": 0, "building": True}
+            continue
         code = http(f"http://127.0.0.1:{3009 + n}/")
         checks[f"app-{n}"] = {"up": 200 <= code < 500, "http": code}
     code = http("http://127.0.0.1:5000/")
