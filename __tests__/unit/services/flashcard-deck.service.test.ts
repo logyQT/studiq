@@ -163,8 +163,35 @@ describe('FlashcardDeckService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(expect.anything(), ['g-1']);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-1'],
+        'org-1',
+      );
       expect(mock.from).toHaveBeenCalledWith('deck_groups');
+      const insertCall = mock.from.mock.results[2].value.insert;
+      expect(insertCall).toHaveBeenCalledWith([{ deck_id: 'd-1', group_id: 'g-1' }]);
+    });
+
+    it('de-duplicates group ids before authorizing and inserting', async () => {
+      const mockDeck = { id: 'd-1', name: 'Group Deck', created_by: ctx.userId };
+      mock.from.mockReturnValueOnce(qb([], null, 0));
+      mock.from.mockReturnValueOnce(qb(mockDeck));
+      mock.from.mockReturnValueOnce(qb(undefined));
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb(mockDeck));
+
+      const result = await service.create(
+        { name: 'Group Deck', visibility: 'group', groupIds: ['g-1', 'g-1'] },
+        { ...ctx, activeOrgId: 'org-1' },
+      );
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-1'],
+        'org-1',
+      );
       const insertCall = mock.from.mock.results[2].value.insert;
       expect(insertCall).toHaveBeenCalledWith([{ deck_id: 'd-1', group_id: 'g-1' }]);
     });
@@ -182,9 +209,11 @@ describe('FlashcardDeckService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
-      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(expect.anything(), [
-        'g-untaugh',
-      ]);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-untaugh'],
+        'org-1',
+      );
       // The guard runs before any write — not even the deck count query runs.
       expect(mock.from).not.toHaveBeenCalled();
     });
@@ -351,9 +380,11 @@ describe('FlashcardDeckService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
-      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(expect.anything(), [
-        'g-untaugh',
-      ]);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-untaugh'],
+        'org-1',
+      );
       // Only the existence read happened — no deck update, no group link writes.
       expect(mock.from).toHaveBeenCalledTimes(1);
       expect(mock.from).not.toHaveBeenCalledWith('deck_groups');
@@ -375,9 +406,73 @@ describe('FlashcardDeckService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(expect.anything(), ['g-1']);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-1'],
+        'org-1',
+      );
       const insertCall = mock.from.mock.results[2].value.insert;
       expect(insertCall).toHaveBeenCalledWith([{ deck_id: 'd-1', group_id: 'g-1' }]);
+    });
+
+    it('rejects a group from another org than the deck, even when the caller teaches it there', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        organization_id: 'org-A',
+      };
+      mock.from.mockReturnValueOnce(qb(existing));
+      vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
+        success: true,
+        data: false,
+      });
+
+      const result = await service.update(
+        'd-1',
+        { groupIds: ['g-in-B'] },
+        { ...ctx, activeOrgId: 'org-B' },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      // The guard receives the deck's org, not the caller's active org.
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-in-B'],
+        'org-A',
+      );
+      // Only the existence read happened — no deck update, no group link writes.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('deck_groups');
+    });
+
+    it('falls back to the active org when the deck has no organization', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        organization_id: null,
+      };
+      const linked = { id: 'd-1', name: 'Original', created_by: ctx.userId, groupIds: ['g-1'] };
+      mock.from.mockReturnValueOnce(qb(existing));
+      mock.from.mockReturnValueOnce(qb(undefined));
+      mock.from.mockReturnValueOnce(qb(undefined));
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb(linked));
+
+      const result = await service.update(
+        'd-1',
+        { groupIds: ['g-1'] },
+        { ...ctx, activeOrgId: 'org-B' },
+      );
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-1'],
+        'org-B',
+      );
     });
 
     it('clears group links for an empty groupIds list without calling the guard', async () => {

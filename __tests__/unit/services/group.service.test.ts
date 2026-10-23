@@ -545,7 +545,7 @@ describe('GroupService', () => {
 
   describe('canShareContentToGroups', () => {
     it('allows an empty list without querying', async () => {
-      const result = await service.canShareContentToGroups(ctx, []);
+      const result = await service.canShareContentToGroups(ctx, [], 'org-1');
 
       expect(result.success).toBe(true);
       expect(result).toEqual({ success: true, data: true });
@@ -556,7 +556,7 @@ describe('GroupService', () => {
       const query = qb([{ group_id: 'g-1' }, { group_id: 'g-2' }]);
       mock.from.mockReturnValueOnce(query);
 
-      const result = await service.canShareContentToGroups(ctx, ['g-1', 'g-2']);
+      const result = await service.canShareContentToGroups(ctx, ['g-1', 'g-2'], 'org-1');
 
       expect(result).toEqual({ success: true, data: true });
       expect(mock.from).toHaveBeenCalledWith('group_members');
@@ -566,10 +566,25 @@ describe('GroupService', () => {
       expect(query.in).toHaveBeenCalledWith('group_id', ['g-1', 'g-2']);
     });
 
+    it('scopes the group query to the content org, not the active org', async () => {
+      const query = qb([]);
+      mock.from.mockReturnValueOnce(query);
+
+      const result = await service.canShareContentToGroups(
+        { ...ctx, activeOrgId: 'org-B' },
+        ['g-1'],
+        'org-A',
+      );
+
+      expect(result).toEqual({ success: true, data: false });
+      expect(query.eq).toHaveBeenCalledWith('groups.organization_id', 'org-A');
+      expect(query.eq).not.toHaveBeenCalledWith('groups.organization_id', 'org-B');
+    });
+
     it('denies when one of the requested groups is not taught', async () => {
       mock.from.mockReturnValueOnce(qb([{ group_id: 'g-1' }]));
 
-      const result = await service.canShareContentToGroups(ctx, ['g-1', 'g-2']);
+      const result = await service.canShareContentToGroups(ctx, ['g-1', 'g-2'], 'org-1');
 
       expect(result).toEqual({ success: true, data: false });
     });
@@ -577,13 +592,13 @@ describe('GroupService', () => {
     it('denies when the caller teaches none of the requested groups', async () => {
       mock.from.mockReturnValueOnce(qb([]));
 
-      const result = await service.canShareContentToGroups(ctx, ['g-9']);
+      const result = await service.canShareContentToGroups(ctx, ['g-9'], 'org-1');
 
       expect(result).toEqual({ success: true, data: false });
     });
 
-    it('denies a non-empty list when there is no active organization', async () => {
-      const result = await service.canShareContentToGroups({ ...ctx, activeOrgId: null }, ['g-1']);
+    it('denies a non-empty list when the content has no organization', async () => {
+      const result = await service.canShareContentToGroups(ctx, ['g-1'], null);
 
       expect(result).toEqual({ success: true, data: false });
       expect(mock.from).not.toHaveBeenCalled();
@@ -593,7 +608,7 @@ describe('GroupService', () => {
       const query = qb([{ group_id: 'g-1' }]);
       mock.from.mockReturnValueOnce(query);
 
-      const result = await service.canShareContentToGroups(ctx, ['g-1', 'g-1']);
+      const result = await service.canShareContentToGroups(ctx, ['g-1', 'g-1'], 'org-1');
 
       expect(result).toEqual({ success: true, data: true });
       expect(query.in).toHaveBeenCalledWith('group_id', ['g-1']);
@@ -602,7 +617,7 @@ describe('GroupService', () => {
     it('fails closed on a DB error', async () => {
       mock.from.mockReturnValueOnce(qb(null, { code: 'XX000', message: 'DB error' }));
 
-      const result = await service.canShareContentToGroups(ctx, ['g-1']);
+      const result = await service.canShareContentToGroups(ctx, ['g-1'], 'org-1');
 
       expect(result.success).toBe(false);
     });

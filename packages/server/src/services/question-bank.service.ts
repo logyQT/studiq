@@ -25,9 +25,9 @@ export class QuestionBankService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const groupIds = data.visibility === 'group' ? (data.groupIds ?? []) : [];
+    const groupIds = data.visibility === 'group' ? [...new Set(data.groupIds ?? [])] : [];
     if (groupIds.length > 0) {
-      const shareCheck = await groupService.canShareContentToGroups(ctx, groupIds);
+      const shareCheck = await groupService.canShareContentToGroups(ctx, groupIds, ctx.activeOrgId);
       if (isFailure(shareCheck)) return failure(shareCheck.error);
       if (!shareCheck.data) return failure('FORBIDDEN');
     }
@@ -205,8 +205,16 @@ export class QuestionBankService {
     if (fetchError || !existing) return failure('NOT_FOUND');
     await check(ctx, Permission.QUESTION_BANK_UPDATE, existing);
 
-    if (data.groupIds !== undefined && data.groupIds.length > 0) {
-      const shareCheck = await groupService.canShareContentToGroups(ctx, data.groupIds);
+    const requestedGroupIds = data.groupIds !== undefined ? [...new Set(data.groupIds)] : null;
+    if (requestedGroupIds !== null && requestedGroupIds.length > 0) {
+      // The link must belong to the CONTENT's org, not the caller's current UI org.
+      // NULL-org content (legacy personal rows) falls back to the active org.
+      const contentOrgId = existing.organization_id ?? ctx.activeOrgId ?? null;
+      const shareCheck = await groupService.canShareContentToGroups(
+        ctx,
+        requestedGroupIds,
+        contentOrgId,
+      );
       if (isFailure(shareCheck)) return failure(shareCheck.error);
       if (!shareCheck.data) return failure('FORBIDDEN');
     }
@@ -243,11 +251,11 @@ export class QuestionBankService {
       }
     }
 
-    if (data.groupIds !== undefined) {
+    if (requestedGroupIds !== null) {
       const { error: de } = await supabase.from('bank_groups').delete().eq('bank_id', id);
       if (de) return toDbFailure(de);
-      if (data.groupIds.length > 0) {
-        const rows = data.groupIds.map((gid) => ({ bank_id: id, group_id: gid }));
+      if (requestedGroupIds.length > 0) {
+        const rows = requestedGroupIds.map((gid) => ({ bank_id: id, group_id: gid }));
         const { error: ae } = await supabase.from('bank_groups').insert(rows);
         if (ae) return toDbFailure(ae);
       }

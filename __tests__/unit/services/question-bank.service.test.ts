@@ -67,7 +67,7 @@ describe('QuestionBankService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1']);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
       const insertCall = mock.from.mock.results[1].value.insert;
       expect(insertCall).toHaveBeenCalledWith([{ bank_id: 'b-1', group_id: 'g-1' }]);
     });
@@ -134,9 +134,111 @@ describe('QuestionBankService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
-      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-untaugh']);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        ctx,
+        ['g-untaugh'],
+        'org-1',
+      );
       expect(mock.from).toHaveBeenCalledTimes(1);
       expect(mock.from).not.toHaveBeenCalledWith('bank_groups');
+    });
+
+    it('rejects a group from another org than the bank, even when the caller teaches it there', async () => {
+      const existing = {
+        id: 'b-1',
+        name: 'Bank',
+        created_by: ctx.userId,
+        organization_id: 'org-A',
+        visibility: 'group',
+      };
+      mock.from.mockReturnValueOnce(qb(existing));
+      vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
+        success: true,
+        data: false,
+      });
+
+      const result = await service.update(
+        'b-1',
+        { groupIds: ['g-in-B'] },
+        { ...ctx, activeOrgId: 'org-B' },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        { ...ctx, activeOrgId: 'org-B' },
+        ['g-in-B'],
+        'org-A',
+      );
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('bank_groups');
+    });
+
+    it('falls back to the active org when the bank has no organization', async () => {
+      const existing = {
+        id: 'b-1',
+        name: 'Bank',
+        created_by: ctx.userId,
+        organization_id: null,
+        visibility: 'group',
+      };
+      const linked = { id: 'b-1', name: 'Bank', created_by: ctx.userId, groupIds: ['g-1'] };
+      mock.from.mockReturnValueOnce(qb(existing));
+      mock.from.mockReturnValueOnce(qb(undefined));
+      mock.from.mockReturnValueOnce(qb(undefined));
+      mock.from.mockReturnValueOnce(qb(linked));
+
+      const result = await service.update(
+        'b-1',
+        { groupIds: ['g-1'] },
+        { ...ctx, activeOrgId: 'org-B' },
+      );
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        { ...ctx, activeOrgId: 'org-B' },
+        ['g-1'],
+        'org-B',
+      );
+    });
+
+    it('replaces group links when every requested group is taught', async () => {
+      const existing = {
+        id: 'b-1',
+        name: 'Bank',
+        created_by: ctx.userId,
+        organization_id: 'org-1',
+        visibility: 'group',
+      };
+      const linked = { id: 'b-1', name: 'Bank', created_by: ctx.userId, groupIds: ['g-1'] };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete links
+      mock.from.mockReturnValueOnce(qb(undefined)); // insert links
+      mock.from.mockReturnValueOnce(qb(linked)); // getById
+
+      const result = await service.update('b-1', { groupIds: ['g-1'] }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(ctx, ['g-1'], 'org-1');
+      const insertCall = mock.from.mock.results[2].value.insert;
+      expect(insertCall).toHaveBeenCalledWith([{ bank_id: 'b-1', group_id: 'g-1' }]);
+    });
+
+    it('propagates a DB failure while replacing links', async () => {
+      const existing = {
+        id: 'b-1',
+        name: 'Bank',
+        created_by: ctx.userId,
+        organization_id: 'org-1',
+        visibility: 'group',
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' })); // delete links fails
+
+      const result = await service.update('b-1', { groupIds: ['g-1'] }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
     });
 
     it('clears group links for an empty groupIds list without calling the guard', async () => {
