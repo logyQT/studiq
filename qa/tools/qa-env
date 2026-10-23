@@ -211,17 +211,34 @@ def wait_http(port: int, tries: int = 120) -> bool:
     return False
 
 
+def ensure_build(app_dir: Path, log_path: Path) -> None:
+    """Build once; production Next servers are stable at ~120-200 MB PSS."""
+    if (app_dir / ".next" / "BUILD_ID").is_file():
+        return
+    with open(log_path, "ab") as log:
+        log.write(b"\n=== building app (one-time) ===\n")
+        log.flush()
+        subprocess.run(
+            ["bun", "run", "build"],
+            cwd=app_dir,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            check=True,
+        )
+
+
 def start_app(env: dict) -> int:
     wt = env["_worktree"]
     pidfile = wt / ".qa-app.pid"
     existing = read_pid(pidfile)
     if existing:
         return existing
+    app_dir = wt / "apps" / "web"
+    ensure_build(app_dir, wt / ".qa-app.log")
     log = open(wt / ".qa-app.log", "ab")
     proc = subprocess.Popen(
-        ["bun", "run", "dev"],
-        cwd=wt,
-        env={**os.environ, "PORT": str(env["_app_port"])},
+        ["bun", "x", "next", "start", "-p", str(env["_app_port"])],
+        cwd=app_dir,
         stdout=log,
         stderr=subprocess.STDOUT,
         start_new_session=True,
@@ -236,10 +253,12 @@ def start_admin(env: dict) -> int:
     existing = read_pid(pidfile)
     if existing:
         return existing
+    app_dir = wt / "apps" / "admin"
+    ensure_build(app_dir, wt / ".qa-admin.log")
     log = open(wt / ".qa-admin.log", "ab")
     proc = subprocess.Popen(
-        ["bun", "x", "next", "dev", "-p", str(env["_admin_port"])],
-        cwd=wt / "apps" / "admin",
+        ["bun", "x", "next", "start", "-p", str(env["_admin_port"])],
+        cwd=app_dir,
         stdout=log,
         stderr=subprocess.STDOUT,
         start_new_session=True,

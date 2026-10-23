@@ -177,21 +177,33 @@ ensure_deps() {
   ( cd "$wt" && bun install --frozen-lockfile >/dev/null 2>&1 || bun install >/dev/null 2>&1 )
 }
 
+ensure_build() {
+  local dir=$1 log=$2
+  [ -f "$dir/.next/BUILD_ID" ] && return 0
+  echo "=== building $(basename "$(dirname "$dir")") app (one-time) ===" >> "$log"
+  ( cd "$dir" && bun run build >> "$log" 2>&1 ) || {
+    echo "qa-env: production build failed; see $log" >&2
+    return 1
+  }
+}
+
 start_app() {
-  local wt=$1 port=$2 log=$3 pidfile=$4 script=$5
+  local wt=$1 port=$2 log=$3 pidfile=$4 _script=$5
   if [ -f "$wt/$pidfile" ] && kill -0 "$(cat "$wt/$pidfile")" 2>/dev/null; then
     return 0
   fi
-  ( cd "$wt" && PORT="$port" setsid nohup bun run "$script" > "$log" 2>&1 & echo $! > "$pidfile" )
+  ensure_build "$wt/apps/web" "$wt/$log" || return 1
+  ( cd "$wt/apps/web" && setsid nohup bun x next start -p "$port" > "$wt/$log" 2>&1 & echo $! > "$wt/$pidfile" )
 }
 
-# apps/admin/package.json hardcodes `next dev -p 4000`, so call Next directly.
+# Production build + `next start`; admin panels stay on demand.
 start_admin() {
   local wt=$1 port=$2 log=$3 pidfile=$4
   if [ -f "$wt/$pidfile" ] && kill -0 "$(cat "$wt/$pidfile")" 2>/dev/null; then
     return 0
   fi
-  ( cd "$wt/apps/admin" && setsid nohup bun x next dev -p "$port" > "$log" 2>&1 & echo $! > "$pidfile" )
+  ensure_build "$wt/apps/admin" "$wt/$log" || return 1
+  ( cd "$wt/apps/admin" && setsid nohup bun x next start -p "$port" > "$wt/$log" 2>&1 & echo $! > "$wt/$pidfile" )
 }
 
 pids_on_port() {

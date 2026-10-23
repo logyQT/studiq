@@ -52,7 +52,7 @@ Zautomatyzowane testy (unit/integration/e2e) – uruchamia się je osobno polece
 
 # 2. Konta i dane testowe
 
-Hasło wszystkich kont seedowych: pass. Na stronie logowania w trybie development dostępny jest panel „Dev Quick Login” (skrót do logowania).
+Hasło wszystkich kont seedowych: pass. W slotach QA działa build produkcyjny, więc nie ma panelu „Dev Quick Login”; zaloguj się e-mailem i hasłem `pass` (albo `POST /api/v1/auth/login`).
 
 | E-mail | Skrót | Typ konta | Organizacje / rola | Plan osobisty | Uwagi |
 |---|---|---|---|---|---|

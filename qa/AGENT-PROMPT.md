@@ -78,10 +78,10 @@ operator sees in tile `qa-env-N`, so leave the dashboard open while you work.
   ```bash
   BROWSER=/workspaces/studiq/.worktrees/qa-env/dashboard/browser-cli.ts
   bun "$BROWSER" navigate "$APP_URL/login"          # APP_URL from qa/env.json
-  bun "$BROWSER" click --text "M1"                  # Dev Quick Login
-  bun "$BROWSER" wait --url "/manage"
   bun "$BROWSER" type "manager@dev.local" --selector "#email" --clear
-  bun "$BROWSER" press Enter
+  bun "$BROWSER" type "pass" --selector "#password" --clear
+  bun "$BROWSER" click --selector "button[type=submit]"
+  bun "$BROWSER" wait --url "/manage"
   bun "$BROWSER" eval "document.title"              # JSON result
   bun "$BROWSER" screenshot --name login            # absolute PNG path
   bun "$BROWSER" network --limit 20                 # status + x-trace-id
@@ -134,8 +134,9 @@ If any preflight check fails, that is an **environment problem, not a product de
 - Given a scenario **ID**: find it in `qa/index.md`, then read `qa/cases/<ID>.md` — including the embedded "Prerequisite (verbatim)" chain. Read any referenced sibling case files too.
 - Read files by exact path (ripgrep may skip generated dirs by default).
 
-## Accounts (password `pass`) — /login has one-click Dev Quick Login buttons
+## Accounts (password `pass`) — slots run production builds, so log in with email + password
 M1=manager@dev.local · M2=manager2@dev.local · T1=teacher1@dev.local · T2=teacher2@dev.local · TC=teacher-classroom@dev.local · S1=student1@dev.local · S2=student2@dev.local · S3=student3@dev.local · SC=student-classroom@dev.local.
+There is **no Dev Quick Login** in production builds. Type the email and `pass` on `/login`, or call `POST /api/v1/auth/login` with `{"email","password"}`.
 TC = admin of org "Classroom". T1/M1 are in WSB Merito + UE Wrocław. All orgs are on plan `launch`.
 
 ## How to test
@@ -143,7 +144,7 @@ TC = admin of org "Classroom". T1/M1 are in WSB Merito + UE Wrocław. All orgs a
 - Radix dropdowns need a pointerdown→pointerup→click sequence. Use `qa_browser_click` (a full mouse press/release) rather than JS `.click()` for Radix triggers; feature-gated menu items appear only after `/api/v1/features/me` resolves.
 - A full reload clears the React Query cache → reproduce cache bugs with SPA clicks (sidebar links), not `navigate`/`reload`.
 - Switch active org: POST /api/v1/me/orgs/switch body {orgId} (WSB=00000000-0000-4000-8000-000000000001, UE=00000000-0000-4000-8000-00000000000a). You can do this with `qa_browser_evaluate` (`fetch(...)`) or the CLI `eval`.
-- Honor the scenario's precondition (account + active org); log in via Dev Quick Login first.
+- Honor the scenario's precondition (account + active org); log in with the account email + `pass` (or `POST /api/v1/auth/login`) first.
 - **Do all work that doesn't need my input first.** Never block on a user-facing question tool (`question`): when I'm away it is aborted and the run ends `interrupted` with the work done but unresolved. Collect every decision you need and raise it in the **end-of-session plain-text report** (below).
 - On every failure: capture a screenshot and the network entry (`qa_browser_network` or CLI `network`), then use the **Grafana MCP** (next section) to pull the live span/log so you can state the real cause, not just the status code. Authenticated API responses carry an `x-trace-id` header.
 
