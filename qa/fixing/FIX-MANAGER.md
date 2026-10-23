@@ -116,6 +116,7 @@ The writer merges `origin/main`, resolves the conflict, reruns its checks, and p
 - One issue per writer until its PR merges or is blocked. Reuse the same writer for that issue's retries.
 - Keep the pipeline full: while writers implement, designers can prepare the next two issues; while QA tests, the other pool slots can review the next PR.
 - If all role slots are busy, do not queue more sessions. Wait for events.
+- **Close-out mode:** when designers are no longer needed, run `$FIX flex on`. QA, review, and implementation may then use any free slot (including 3/4); do not start new designs. `$FIX flex off` restores the fixed roles.
 
 ## Events
 The dashboard posts `env-N: finished · #issue stage` or `started · ...` to `#manager`. React only to your slots' **finished** events. Do not poll. Each event means: run `collect <issue>`, then dispatch the next stage if the gate passed. A slot is free when `$FIX status` says free. Stuck = running with no new messages for 15+ minutes; capture evidence, restart that slot's app/browser, or interrupt and requeue, and say what you did.

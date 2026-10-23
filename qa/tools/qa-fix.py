@@ -390,6 +390,10 @@ def get_rec(state: dict, n: int) -> dict:
     return rec
 
 
+def is_flex(state: dict) -> bool:
+    return bool(state.get("flex"))
+
+
 def attempt(rec: dict) -> int:
     return int(rec.get("attempt", 1))
 
@@ -540,12 +544,24 @@ def cmd_implement(args) -> None:
     if rec["stage"] not in ("design_ready", "changes_requested", "qa_failed", "pr_open", "qa_passed"):
         fail(f"cannot implement from stage {rec['stage']}")
     rebase = rec["stage"] == "qa_passed"
-    env = args.env or (ROLE_SLOTS["writer"][0] if rec.get("writer") is None
-                       else rec["writer"])
-    if ROLES.get(env) != "writer":
+    flex = is_flex(state)
+    busy = busy_slots()
+    if args.env:
+        env = args.env
+    elif rec.get("writer") and rec["writer"] not in busy:
+        env = rec["writer"]
+    elif flex:
+        candidates = [5, 6, 3, 4, 1, 2, 7, 8]
+        free = [e for e in candidates if e not in busy]
+        if not free:
+            fail("no free writer/flex slot", busy=sorted(busy))
+        env = free[0]
+    else:
+        env = ROLE_SLOTS["writer"][0]
+    if not flex and ROLES.get(env) != "writer":
         fail(f"slot {env} is {ROLES.get(env)}, not writer")
-    if env in busy_slots():
-        fail(f"writer slot {env} is busy")
+    if env in busy:
+        fail(f"slot {env} is busy")
     title = f"#{n} {'rebase' if rebase else 'implement'} r{attempt(rec)}"
     sid = create_session(env, title, dispatch_prompt("WRITER", n, "implement", env, rec))
     rec["stage"] = "implementing"
@@ -565,6 +581,8 @@ def cmd_review(args) -> None:
     if rec["stage"] not in ("pr_open", "changes_requested"):
         fail(f"cannot review from stage {rec['stage']}")
     busy = busy_slots()
+    flex = is_flex(state)
+    candidates = POOL_SLOTS + ([3, 4, 5, 6] if flex else [])
     if getattr(args, "envs", None):
         try:
             pair = [int(x) for x in args.envs.split(",")]
@@ -573,15 +591,15 @@ def cmd_review(args) -> None:
         if len(pair) != 2 or len(set(pair)) != 2:
             fail("--envs must name exactly two distinct slots")
     else:
-        free = [e for e in POOL_SLOTS if e not in busy]
+        free = [e for e in candidates if e not in busy]
         if len(free) < 2:
-            fail("need two free QA/review slots", free=free, busy=sorted(busy))
+            fail("need two free slots", free=free, busy=sorted(busy))
         pair = free[:2]
     for env in pair:
-        if ROLES.get(env) != "qa_review":
+        if not flex and ROLES.get(env) != "qa_review":
             fail(f"slot {env} is {ROLES.get(env)}, not QA/review")
         if env in busy:
-            fail(f"QA/review slot {env} is busy")
+            fail(f"slot {env} is busy")
     sessions_out = []
     for idx, env in enumerate(pair, start=1):
         title = f"#{n} review {idx} r{attempt(rec)}"
@@ -605,16 +623,18 @@ def cmd_qa(args) -> None:
     if rec["stage"] not in ("approved", "qa_failed"):
         fail(f"cannot QA from stage {rec['stage']}")
     busy = busy_slots()
+    flex = is_flex(state)
+    candidates = QA_SLOTS + ([3, 4, 5, 6] if flex else [])
     if args.env:
         env = args.env
-        if ROLES.get(env) != "qa_review":
+        if not flex and ROLES.get(env) != "qa_review":
             fail(f"slot {env} is {ROLES.get(env)}, not QA/review")
         if env in busy:
-            fail(f"QA/review slot {env} is busy")
+            fail(f"slot {env} is busy")
     else:
-        free = [e for e in QA_SLOTS if e not in busy]
+        free = [e for e in candidates if e not in busy]
         if not free:
-            fail("no free QA/review slot", busy=sorted(busy))
+            fail("no free slot", busy=sorted(busy))
         env = free[0]
     title = f"#{n} qa r{attempt(rec)}"
     sid = create_session(env, title, dispatch_prompt("QA", n, "qa", env, rec))
@@ -823,6 +843,7 @@ def cmd_status(args) -> None:
     active = {k: v for k, v in state["issues"].items()
               if v.get("stage") not in ("done", "needs_design")}
     busy = busy_slots()
+    print(f"flex: {'on' if is_flex(state) else 'off'}")
     print("slot role      state   issue/stage")
     for env in sorted(SLOTS):
         role = ROLES[env].replace("_", "/")
@@ -842,6 +863,13 @@ def cmd_status(args) -> None:
 
 def cmd_roles(_args) -> None:
     ok(roles=ROLES, slots={str(k): v for k, v in SLOTS.items()})
+
+
+def cmd_flex(args) -> None:
+    state = load_state()
+    state["flex"] = args.mode == "on"
+    save_state(state)
+    ok(action="flex", flex=state["flex"])
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -870,6 +898,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("block"); s.add_argument("issue", type=int); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_block)
     sub.add_parser("status").set_defaults(fn=cmd_status)
     sub.add_parser("roles").set_defaults(fn=cmd_roles)
+    s = sub.add_parser("flex"); s.add_argument("mode", choices=("on", "off")); s.set_defaults(fn=cmd_flex)
     return p
 
 
