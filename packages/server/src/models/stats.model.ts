@@ -31,6 +31,14 @@ export interface ActivityResponse {
   dailyReviewGoal: number;
 }
 
+export interface TeacherQuizStatsItem {
+  id: string;
+  title: string;
+  totalAttempts: number;
+  avgScore: number;
+  avgCompletionRate: number;
+}
+
 export interface WeakDeckItem {
   deckId: string;
   name: string;
