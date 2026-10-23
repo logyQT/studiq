@@ -36,6 +36,11 @@ export class FlashcardDeckService {
       .eq('created_by', ctx.userId);
     await limitsResolver.checkLimit(ctx, 'max_decks', deckCount ?? 0);
 
+    if (data.flashcardIds && data.flashcardIds.length > 0) {
+      const denied = await this.assertFlashcardsUpdatable(supabase, data.flashcardIds, ctx);
+      if (denied) return denied;
+    }
+
     const { data: deck, error } = await supabase
       .from('flashcard_decks')
       .insert({
@@ -69,6 +74,30 @@ export class FlashcardDeckService {
     }
 
     return this.getById(deck.id, ctx);
+  }
+
+  /**
+   * Guard for card ids being re-parented into a deck (create/update `flashcardIds`).
+   * Re-parenting is a move, so every source card must be updatable by the caller.
+   * Fails closed: unknown/unreadable ids are rejected rather than silently skipped.
+   */
+  private async assertFlashcardsUpdatable(
+    supabase: SupabaseClient,
+    ids: string[],
+    ctx: RequestContext,
+  ): Promise<ServiceResult<never> | null> {
+    const { data: cards, error } = await supabase
+      .from('flashcards')
+      .select('id, created_by, organization_id')
+      .in('id', ids);
+
+    if (error) return toDbFailure(error);
+    if (!cards || cards.length !== new Set(ids).size) return failure('NOT_FOUND');
+
+    for (const card of cards) {
+      await check(ctx, Permission.FLASHCARD_UPDATE, card);
+    }
+    return null;
   }
 
   private async getSuspendedDeckIds(ctx: RequestContext): Promise<Set<string>> {
@@ -239,6 +268,11 @@ export class FlashcardDeckService {
       const shareCheck = await groupService.canShareContentToGroups(ctx, data.groupIds);
       if (isFailure(shareCheck)) return failure(shareCheck.error);
       if (!shareCheck.data) return failure('FORBIDDEN');
+    }
+
+    if (data.flashcardIds !== undefined && data.flashcardIds.length > 0) {
+      const denied = await this.assertFlashcardsUpdatable(supabase, data.flashcardIds, ctx);
+      if (denied) return denied;
     }
 
     const updateFields: Record<string, unknown> = {};

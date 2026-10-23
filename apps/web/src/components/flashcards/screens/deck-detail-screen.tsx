@@ -873,6 +873,11 @@ export function DeckDetailScreen({
           selectedFlashcards.every((fc) =>
             permission('flashcard.update', { createdBy: fc.created_by }),
           );
+        const canBulkLink =
+          selectedFlashcards.length > 0 &&
+          selectedFlashcards.every((fc) =>
+            permission('flashcard.update', { createdBy: fc.created_by }),
+          );
         return (
           <BulkActionBar
             selectedCount={selection.selectedIds.size}
@@ -935,20 +940,22 @@ export function DeckDetailScreen({
                 <ArrowRight className="mr-1.5 h-4 w-4" /> {t('move')}
               </Button>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setD((prev) => ({
-                  ...prev,
-                  bulkLinkOpen: true,
-                  bulkLinkDeckIds: [],
-                  selectedIds: Array.from(selection.selectedIds),
-                }))
-              }
-            >
-              <Link2 className="mr-1.5 h-4 w-4" /> {t('link')}
-            </Button>
+            {canBulkLink && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setD((prev) => ({
+                    ...prev,
+                    bulkLinkOpen: true,
+                    bulkLinkDeckIds: [],
+                    selectedIds: Array.from(selection.selectedIds),
+                  }))
+                }
+              >
+                <Link2 className="mr-1.5 h-4 w-4" /> {t('link')}
+              </Button>
+            )}
             {permission('deck.update', { createdBy: currentDeck?.created_by }) && (
               <Button
                 variant="destructive"

@@ -22,6 +22,7 @@ import { apiPost, apiPut } from '@/lib/api';
 
 export function AccountPageContent() {
   const t = useTranslations('AccountPage');
+  const tErr = useTranslations('Errors');
   const { user } = useAuth();
   const { activeOrg } = useOrgs();
 
@@ -55,9 +56,14 @@ export function AccountPageContent() {
       return;
     }
     if (!currentPassword || !newPassword || !confirmPassword) return;
+    if (newPassword === currentPassword) {
+      toast.error(tErr('ERROR_SAME_PASSWORD'));
+      return;
+    }
     setIsSavingPassword(true);
     try {
       await apiPost('/api/v1/auth/password/update', {
+        currentPassword,
         password: newPassword,
         confirmPassword,
       });
@@ -65,8 +71,15 @@ export function AccountPageContent() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-    } catch {
-      toast.error(t('password_updated'));
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      if (code === 'INVALID_CURRENT_PASSWORD') {
+        toast.error(t('invalid_current_password'));
+      } else if (code === 'RATE_LIMITED') {
+        toast.error(t('too_many_attempts'));
+      } else {
+        toast.error(t('password_update_failed'));
+      }
     } finally {
       setIsSavingPassword(false);
     }

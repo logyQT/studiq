@@ -115,7 +115,7 @@ export const FlashcardCard = memo(function FlashcardCard({
                         }
                       : undefined
                   }
-                  onLink={() => onLink(fc)}
+                  onLink={canUpdate ? () => onLink(fc) : undefined}
                   onReport={fc.question_id ? () => onReport?.(fc) : undefined}
                   onCopy={() => onCopy(fc)}
                   onDelete={canDelete ? () => onDelete(fc.id) : null}
@@ -190,7 +190,7 @@ export const FlashcardCard = memo(function FlashcardCard({
                         }
                       : undefined
                   }
-                  onLink={() => onLink(fc)}
+                  onLink={canUpdate ? () => onLink(fc) : undefined}
                   onReport={fc.question_id ? () => onReport?.(fc) : undefined}
                   onCopy={() => onCopy(fc)}
                   onDelete={canDelete ? () => onDelete(fc.id) : null}

@@ -56,6 +56,15 @@ export const updatePasswordSchema = registry
   .register(
     'UpdatePasswordRequest',
     z.object({
+      // Only sent by the account page; the password-reset flow omits it and is
+      // authorised by a fresh OTP session instead (see auth.service).
+      // Deliberately not `passwordSchema`: the current password must verify even
+      // when it predates the current strength policy (e.g. the seeded `pass`).
+      currentPassword: z
+        .string({ error: ValidationErrorCode.PASSWORD_REQUIRED })
+        .nonempty({ error: ValidationErrorCode.PASSWORD_REQUIRED })
+        .max(128, { error: ValidationErrorCode.PASSWORD_TOO_LONG })
+        .optional(),
       password: passwordSchema,
       confirmPassword: z
         .string({ error: ValidationErrorCode.PASSWORD_CONFIRMATION_REQUIRED })
