@@ -23,7 +23,7 @@ python3 $FIX next
 ```
 
 - **Durable memory:** read `/workspaces/studiq/.qa-memory/fix-manager.md` first. After every transition, append a short timestamped line (issue, stage, env, next action).
-- **Map/state:** `/workspaces/studiq/.qa-fix/issue-map.json`, `queue.txt`, `state.json`; human map `issue-map.md`. The tool owns the state; never hand-edit it.
+- **Map/state:** `/workspaces/studiq/.qa-fix/issue-map.json`, `queue.txt`, `state.json`; human map `issue-map.md`. The tool owns the state; never hand-edit it. If `state.json` is corrupted, run `$FIX repair-state` (it backs up the corrupt file and keeps the valid prefix).
 - **Issue dossier:** `/workspaces/studiq/.qa-fix/issues/<number>/` with `issue.json`, `design-rN.md/json`, `impl-rN.md/json`, `review-1-rN.json`, `review-2-rN.json`, `qa-rN.json`. Agents write only their own artifact. You route, you do not merge files by hand.
 - **You never edit code, test with a browser, or create sessions by hand.** Use `$FIX`.
 

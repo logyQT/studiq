@@ -39,6 +39,7 @@ MAP_PATH = FIX / "issue-map.json"
 QUEUE_PATH = FIX / "queue.txt"
 MIG_RESERVATIONS = FIX / "migration-reservations.json"
 MIG_LOCK = FIX / "migration.lock"
+STATE_LOCK = FIX / "state.lock"
 MIGRATION_RE = re.compile(r"^(\d{14,})_.+\.sql$")
 BASE = "http://127.0.0.1:4096"
 AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
@@ -348,9 +349,38 @@ def load_state() -> dict:
 
 def save_state(state: dict) -> None:
     FIX.mkdir(parents=True, exist_ok=True)
-    tmp = STATE_PATH.with_suffix(".tmp")
-    json.dump(state, open(tmp, "w"), indent=1)
+    # Unique temp per writer; os.replace is atomic. A shared ".tmp" name let two
+    # concurrent collect calls write into the same inode and append junk.
+    tmp = STATE_PATH.parent / f".state.{os.getpid()}.{time.time_ns()}.tmp"
+    with open(tmp, "w") as f:
+        json.dump(state, f, indent=1)
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(tmp, STATE_PATH)
+
+
+def cmd_repair_state(args) -> None:
+    if not STATE_PATH.exists():
+        fail("state.json does not exist")
+    raw = STATE_PATH.read_bytes()
+    text = raw.decode("utf-8", "replace")
+    start = len(text) - len(text.lstrip())
+    try:
+        obj, end = json.JSONDecoder().raw_decode(text, start)
+    except Exception as exc:
+        fail(f"state.json has no recoverable JSON prefix: {exc}")
+    if not isinstance(obj, dict) or "issues" not in obj:
+        fail("recoverable prefix is not a pipeline state document")
+    tail = text[end:].strip()
+    backup = None
+    if tail:
+        backup = STATE_PATH.with_name(f"state.json.corrupt-{int(time.time())}")
+        backup.write_bytes(raw)
+    save_state(obj)
+    ok(action="repair-state", recovered=not bool(tail),
+       discarded_bytes=len(raw) - len(text[:end].encode("utf-8")),
+       backup=str(backup) if backup else None,
+       issues=len(obj.get("issues", {})), flex=bool(obj.get("flex")))
 
 
 def load_map() -> dict:
@@ -898,6 +928,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("block"); s.add_argument("issue", type=int); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_block)
     sub.add_parser("status").set_defaults(fn=cmd_status)
     sub.add_parser("roles").set_defaults(fn=cmd_roles)
+    sub.add_parser("repair-state").set_defaults(fn=cmd_repair_state)
     s = sub.add_parser("flex"); s.add_argument("mode", choices=("on", "off")); s.set_defaults(fn=cmd_flex)
     return p
 
@@ -906,7 +937,13 @@ if __name__ == "__main__":
     args = build_parser().parse_args()
     FIX.mkdir(parents=True, exist_ok=True)
     ISSUES.mkdir(parents=True, exist_ok=True)
+    read_only = {"status", "map", "next", "roles", "migration-check"}
     try:
-        args.fn(args)
+        if args.cmd in read_only:
+            args.fn(args)
+        else:
+            with open(STATE_LOCK, "w") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                args.fn(args)
     except RuntimeError as exc:
         fail(str(exc))

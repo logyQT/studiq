@@ -62,6 +62,7 @@ python3 qa/tools/qa-fix.py qa 140 --env 1
 python3 qa/tools/qa-fix.py collect 140
 python3 qa/tools/qa-fix.py merge 140
 python3 qa/tools/qa-fix.py status
+python3 qa/tools/qa-fix.py repair-state   # recover valid prefix; corrupt file is backed up
 ```
 `review` dispatches two reviewers from the shared pool (up to two pairs can run
 at once); `collect` is idempotent enough for the manager to call after each
