@@ -80,7 +80,10 @@ describe('InvitationService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new InvitationService(async () => mock as any);
+    service = new InvitationService(
+      async () => mock as any,
+      () => mock as any,
+    );
   });
 
   describe('createInvitation', () => {
@@ -228,17 +231,25 @@ describe('InvitationService', () => {
     };
     const joiningCtx: RequestContext = { ...managerCtx, userId: 'joining-user' };
 
-    function adminClientWithCount(count: number) {
+    function adminClient() {
+      const from = vi.fn();
+      return { client: { from } as any, from };
+    }
+
+    /** Chain that answers the `org_members` seat count (`.neq(...)`). */
+    function countQb(count: number | null, error: unknown = null) {
       const c: any = {};
       c.select = vi.fn(() => c);
       c.eq = vi.fn(() => c);
-      c.neq = vi.fn().mockResolvedValue({ count, error: null });
-      const from = vi.fn(() => c);
-      return { client: { from } as any, from, query: c };
+      c.neq = vi.fn().mockResolvedValue({ count, error });
+      return c;
     }
 
-    it('counts members with the admin client, not the joining user (#182)', async () => {
-      const admin = adminClientWithCount(5);
+    it('runs the whole accept flow on the admin client, not the joining user (#191)', async () => {
+      const admin = adminClient();
+      admin.from
+        .mockReturnValueOnce(qb(invitation)) // invitation token lookup
+        .mockReturnValueOnce(countQb(5)); // seat count
       service = new InvitationService(
         async () => mock as any,
         () => admin.client,
@@ -246,47 +257,58 @@ describe('InvitationService', () => {
       vi.mocked(limitsResolver.checkOrgLimit).mockRejectedValueOnce(
         new AppError('USAGE_LIMIT_EXCEEDED'),
       );
-      mock.from.mockReturnValueOnce(qb(invitation));
 
       await expect(service.acceptInvitation(joiningCtx, 'tok')).rejects.toThrow();
 
-      expect(admin.from).toHaveBeenCalledWith('org_members');
-      expect(admin.query.neq).toHaveBeenCalledWith('user_id', 'joining-user');
-      expect(limitsResolver.checkOrgLimit).toHaveBeenCalledWith('org-1', 'max_students', 5);
-      // user-scoped client only looked up the invitation: no member count, no insert
-      expect(mock.from).toHaveBeenCalledTimes(1);
-      expect(mock.from).toHaveBeenCalledWith('invitations');
+      expect(admin.from).toHaveBeenNthCalledWith(1, 'invitations');
+      expect(admin.from).toHaveBeenNthCalledWith(2, 'org_members');
+      expect(limitsResolver.checkOrgLimit).toHaveBeenCalledWith(
+        'org-1',
+        'max_students',
+        5,
+        1,
+        admin.client,
+      );
+      // The accepting user is not a member yet: RLS would hide every row, so the
+      // user-session client must not be touched at all.
+      expect(mock.from).not.toHaveBeenCalled();
     });
 
     it('adds the member when the organization is below its limit', async () => {
-      const admin = adminClientWithCount(2);
+      const admin = adminClient();
       service = new InvitationService(
         async () => mock as any,
         () => admin.client,
       );
-      mock.from
+      admin.from
         .mockReturnValueOnce(qb(invitation))
+        .mockReturnValueOnce(countQb(2))
         .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
         .mockReturnValueOnce(qb({ organization_id: 'org-1' }))
-        .mockReturnValueOnce(qb(null))
+        .mockReturnValueOnce(qb({ id: 'group-1' }))
         .mockReturnValue(qb(null));
 
       const result = await service.acceptInvitation(joiningCtx, 'tok');
 
       expect(result.success).toBe(true);
-      expect(limitsResolver.checkOrgLimit).toHaveBeenCalledWith('org-1', 'max_students', 2);
+      expect(limitsResolver.checkOrgLimit).toHaveBeenCalledWith(
+        'org-1',
+        'max_students',
+        2,
+        1,
+        admin.client,
+      );
     });
 
     it('returns a DB failure when the member count cannot be read', async () => {
-      const c: any = {};
-      c.select = vi.fn(() => c);
-      c.eq = vi.fn(() => c);
-      c.neq = vi.fn().mockResolvedValue({ count: null, error: { message: 'boom', code: 'XX000' } });
+      const admin = adminClient();
+      admin.from
+        .mockReturnValueOnce(qb(invitation))
+        .mockReturnValueOnce(countQb(null, { message: 'boom', code: 'XX000' }));
       service = new InvitationService(
         async () => mock as any,
-        () => ({ from: () => c }) as any,
+        () => admin.client,
       );
-      mock.from.mockReturnValueOnce(qb(invitation));
 
       const result = await service.acceptInvitation(joiningCtx, 'tok');
 
@@ -297,15 +319,16 @@ describe('InvitationService', () => {
 
     it('re-accepting as an existing member does not consume a second seat (#182)', async () => {
       // Org is full with the caller already inside: 4 other members + the caller = 5/5.
-      const admin = adminClientWithCount(4);
+      const admin = adminClient();
       service = new InvitationService(
         async () => mock as any,
         () => admin.client,
       );
       const memberQb = qb({ organization_id: 'org-1' });
       const groupQb = qb(null);
-      mock.from
+      admin.from
         .mockReturnValueOnce(qb(invitation))
+        .mockReturnValueOnce(countQb(4))
         .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
         .mockReturnValueOnce(memberQb)
         .mockReturnValueOnce(qb({ id: 'group-1' }))
@@ -315,7 +338,13 @@ describe('InvitationService', () => {
       const result = await service.acceptInvitation(joiningCtx, 'tok');
 
       expect(result.success).toBe(true);
-      expect(limitsResolver.checkOrgLimit).toHaveBeenCalledWith('org-1', 'max_students', 4);
+      expect(limitsResolver.checkOrgLimit).toHaveBeenCalledWith(
+        'org-1',
+        'max_students',
+        4,
+        1,
+        admin.client,
+      );
       // The membership "upsert" needs the composite target, otherwise it degrades
       // to an INSERT and a re-accept fails with 23505 on (organization_id, user_id).
       expect(memberQb.upsert).toHaveBeenCalledWith(

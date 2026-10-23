@@ -71,7 +71,11 @@ export class InvitationService {
       orgRoleName: string;
     }>
   > {
-    const supabase = await this.createClient();
+    // Public endpoint (GET /api/v1/organization/invites?token=…, no withAuth):
+    // the caller is not a member of the org yet, so org-scoped RLS would hide
+    // the invitations/organizations/org_roles rows. The 32-hex token is the
+    // capability; the service-role client is the deliberate trade-off.
+    const supabase = this.createAdminClient();
 
     const { data, error } = await supabase
       .from('invitations')
@@ -105,7 +109,11 @@ export class InvitationService {
     ctx: RequestContext,
     token: string,
   ): Promise<ServiceResult<{ id: string; name: string; orgRoleId: string }>> {
-    const supabase = await this.createClient();
+    // The accepting user is not a member yet, and org_members has no INSERT
+    // policy, so the whole accept flow runs on the service-role client. The
+    // token + expiry are validated by getInvitationByToken; the member-count
+    // limit (#182) is still enforced below.
+    const supabase = this.createAdminClient();
 
     const inviteResult = await this.getInvitationByToken(token);
     if (!inviteResult.success) return inviteResult;
@@ -116,7 +124,7 @@ export class InvitationService {
     // caller is excluded: re-accepting an invitation (or a manager re-inviting
     // an existing member) updates that member's own row via the upsert below
     // and must not consume a second seat.
-    const { count: otherMemberCount, error: countError } = await this.createAdminClient()
+    const { count: otherMemberCount, error: countError } = await supabase
       .from('org_members')
       .select('*', { count: 'exact', head: true })
       .eq('organization_id', invite.organizationId)
@@ -126,6 +134,8 @@ export class InvitationService {
       invite.organizationId,
       'max_students',
       otherMemberCount ?? 0,
+      1,
+      supabase,
     );
 
     const { data: org, error: orgError } = await supabase

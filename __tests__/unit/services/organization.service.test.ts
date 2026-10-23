@@ -44,7 +44,10 @@ describe('OrganizationService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new OrganizationService(async () => mock as any);
+    service = new OrganizationService(
+      async () => mock as any,
+      () => mock as any,
+    );
   });
 
   describe('createAndJoin', () => {

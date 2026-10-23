@@ -56,4 +56,40 @@ describe('anon role grants (#191)', () => {
     });
     expect(error?.code).toBe('42501');
   });
+
+  // #191 also covered Postgres FUNCTIONS: Supabase grants EXECUTE on new public
+  // functions to PUBLIC, so the SECURITY DEFINER RPCs were callable with the
+  // public anon key even after the table grants were revoked.
+  it.each([
+    [
+      'get_teacher_stats',
+      {
+        p_flashcard_ids: [] as string[],
+        p_user_id: '00000000-0000-4000-8001-000000000003',
+      },
+    ],
+    [
+      'get_accessible_questions',
+      {
+        p_user_id: '00000000-0000-4000-8001-000000000003',
+        p_org_id: null,
+        p_scope: 'any',
+        p_question_id: null,
+        p_bank_ids: null,
+        p_topic_ids: null,
+        p_type: null,
+      },
+    ],
+    [
+      'apply_org_plan',
+      {
+        p_org_id: '00000000-0000-4000-8000-00000000000e',
+        p_plan: 'launch',
+      },
+    ],
+  ])('anon cannot execute the %s RPC', async (fn, args) => {
+    const { data, error } = await anon.rpc(fn as never, args as never);
+    expect(error?.code).toBe('42501');
+    expect(data).toBeNull();
+  });
 });
