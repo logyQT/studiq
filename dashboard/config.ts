@@ -47,7 +47,9 @@ export type EnvConfig = {
   startUrl: string;
 };
 
-export const ENVS: EnvConfig[] = [1, 2, 3, 4].map((n) => {
+export const SLOT_COUNT = Number(process.env.QA_SLOTS ?? 8);
+
+export const ENVS: EnvConfig[] = Array.from({ length: SLOT_COUNT }, (_, i) => i + 1).map((n) => {
   const name = `qa-env-${n}`;
   const origin = `http://${name}.localhost:${PORT}`;
   return {

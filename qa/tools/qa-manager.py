@@ -40,7 +40,7 @@ SHOTS = ROOT / "dashboard" / "shots"
 BASE = "http://127.0.0.1:4096"
 AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
 MODEL = {"providerID": "opencode-go", "id": "deepseek-v4.1-flash", "variant": "high"}
-SLOTS = {n: f"/workspaces/studiq/.worktrees/qa-env-{n}" for n in range(1, 5)}
+SLOTS = {n: f"/workspaces/studiq/.worktrees/qa-env-{n}" for n in range(1, 9)}
 APP_PORT = {n: 3009 + n for n in SLOTS}
 ADMIN_PORT = {n: 4009 + n for n in SLOTS}
 DASHBOARD = "http://localhost:5000/"
@@ -938,7 +938,7 @@ def main() -> None:
 
     d = sub.add_parser("dispatch", help="start one scenario")
     d.add_argument("scenario")
-    d.add_argument("--env", type=int, choices=[1, 2, 3, 4])
+    d.add_argument("--env", type=int, choices=list(SLOTS))
     d.add_argument("--dry-run", action="store_true")
     d.set_defaults(fn=cmd_dispatch)
 
@@ -948,13 +948,13 @@ def main() -> None:
     q.set_defaults(fn=cmd_queue)
 
     r = sub.add_parser("report", help="show the last assistant report")
-    r.add_argument("--env", type=int, choices=[1, 2, 3, 4])
+    r.add_argument("--env", type=int, choices=list(SLOTS))
     r.add_argument("--session")
     r.add_argument("--full", action="store_true")
     r.set_defaults(fn=cmd_report)
 
     i = sub.add_parser("interrupt", help="interrupt the current session in a slot")
-    i.add_argument("env", type=int, choices=[1, 2, 3, 4])
+    i.add_argument("env", type=int, choices=list(SLOTS))
     i.add_argument("--dry-run", action="store_true")
     i.set_defaults(fn=cmd_interrupt)
 
@@ -967,10 +967,10 @@ def main() -> None:
     a = dsub.add_parser("answer"); a.add_argument("dec_id"); a.add_argument("value", choices=["file", "investigate", "skip"]); a.add_argument("--note"); a.set_defaults(fn=cmd_decisions)
     f = dsub.add_parser("file"); f.add_argument("dec_id"); f.add_argument("--yes", action="store_true"); f.add_argument("--dry-run", action="store_true"); f.add_argument("--attach", action="append", default=[], metavar="PNG", help="extra screenshot to attach (repeatable)"); f.add_argument("--no-screenshot", action="store_true", help="file without evidence (non-visual findings only)"); f.set_defaults(fn=cmd_decisions)
     at = dsub.add_parser("attach"); at.add_argument("dec_id"); at.add_argument("--dry-run", action="store_true"); at.add_argument("--attach", action="append", default=[], metavar="PNG", help="extra screenshot to attach (repeatable)"); at.set_defaults(fn=cmd_decisions)
-    sp = dsub.add_parser("spawn"); sp.add_argument("dec_id"); sp.add_argument("--env", type=int, choices=[1, 2, 3, 4]); sp.set_defaults(fn=cmd_decisions)
+    sp = dsub.add_parser("spawn"); sp.add_argument("dec_id"); sp.add_argument("--env", type=int, choices=list(SLOTS)); sp.set_defaults(fn=cmd_decisions)
 
     spw = sub.add_parser("spawn", help="start an arbitrary agent session in a free slot")
-    spw.add_argument("--env", type=int, choices=[1, 2, 3, 4])
+    spw.add_argument("--env", type=int, choices=list(SLOTS))
     spw.add_argument("--title", required=True)
     spw.add_argument("--prompt", required=True)
     spw.set_defaults(fn=cmd_spawn)

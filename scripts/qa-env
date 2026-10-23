@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
-# Four persistent, isolated QA environments: qa-env-1 .. qa-env-4.
+# Eight persistent, isolated QA environments: qa-env-1 .. qa-env-8.
 #
 # Usage (run from the main checkout, as the `node` user):
-#   scripts/qa-env up [1|2|3|4|all]      create/start environment(s)
-#   scripts/qa-env down [1|2|3|4|all]    stop app + admin + Supabase (worktree/data kept)
+#   scripts/qa-env up [N|all]            create/start environment(s), N=1..8
+#   scripts/qa-env down [N|all]          stop app + admin + Supabase (worktree/data kept)
 #   scripts/qa-env status                one line per environment
-#   scripts/qa-env reset <1|2|3|4|all>   re-seed the database (DESTRUCTIVE)
-#   scripts/qa-env sync  [1|2|3|4|all]   reset worktree(s) to origin/qa-testing
-#   scripts/qa-env logs <1|2|3|4>        tail web + admin logs
-#   scripts/qa-env env <1|2|3|4>         print shell exports for one environment
+#   scripts/qa-env reset <N|all>         re-seed the database (DESTRUCTIVE)
+#   scripts/qa-env sync  [N|all]         reset worktree(s) to origin/qa-testing
+#   scripts/qa-env logs <N>              tail web + admin logs
+#   scripts/qa-env env <N>               print shell exports for one environment
 #
 # Layout per environment N:
 #   worktree   .worktrees/qa-env-N        detached at origin/qa-testing
 #   Supabase   project_id = qa-env-N      own containers/volumes
-#              api 54321+100N, db +1, studio +2, mail +3, pooler +8
-#   web app    port 3009+N   (3010..3013)
-#   admin app  port 4009+N   (4010..4013)
+#              api 54321+100N, db +1, mail +3, pooler +8
+#   web app    port 3009+N   (3010..3017)
+#   admin app  port 4009+N   (4010..4017) — on demand, not started by `up`
 #   telemetry  OTEL_SERVICE_NAME = studiq-qa-env-N (shared Grafana stack)
 #
 # Supabase is stripped: realtime, analytics (logflare), vector, imgproxy,
-# edge-runtime and supavisor are disabled. The app uses none of them; the
-# realtime publication is still created by supabase/seeds/99_realtime.sql.
+# edge-runtime, supavisor, studio, postgres-meta and mailpit are disabled.
+# Use psql for DB inspection; start Studio separately if a scenario needs it.
 set -euo pipefail
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
@@ -32,7 +32,7 @@ MAIN_ROOT=$(cd "$(dirname "$GIT_COMMON")" && pwd)
 WORKROOT="$MAIN_ROOT/.worktrees"
 BASE=${QA_BASE:-origin/qa-testing}
 OTLP=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}
-SLOTS=(1 2 3 4)
+SLOTS=(1 2 3 4 5 6 7 8)
 
 die()  { echo "error: $*" >&2; exit 1; }
 info() { printf '\033[0;32m✔\033[0m %s\n' "$*"; }
@@ -51,12 +51,12 @@ mail_port()  { echo $(( $(api_port "$1") + 3 )); }
 analytics_port(){ echo $(( $(api_port "$1") + 6 )); }
 pooler_port(){ echo $(( $(api_port "$1") + 8 )); }
 
-valid_slot() { [[ "${1:-}" =~ ^[1-4]$ ]]; }
+valid_slot() { [[ "${1:-}" =~ ^[1-8]$ ]]; }
 
 expand_slots() {
   case "${1:-all}" in
     all) printf '%s\n' "${SLOTS[@]}" ;;
-    *) valid_slot "$1" || die "slot must be 1..4 (or 'all')"; echo "$1" ;;
+    *) valid_slot "$1" || die "slot must be 1..8 (or 'all')"; echo "$1" ;;
   esac
 }
 
@@ -229,7 +229,7 @@ wait_http() {
 
 start_env() {
   local n=$1
-  valid_slot "$n" || die "slot must be 1..4"
+  valid_slot "$n" || die "slot must be 1..8"
   local wt name app admin api db studio mail analytics pooler
   wt=$(wt_for "$n"); name="studiq-$(env_name "$n")"
   app=$(app_port "$n"); admin=$(admin_port "$n")
@@ -249,9 +249,9 @@ start_env() {
   info "supabase config written (ports $api/$db/$studio/$mail; realtime off)"
 
   if ! listening "$api"; then
-    info "starting supabase (realtime/analytics/edge/imgproxy/vector/pooler off)"
+    info "starting supabase (realtime/analytics/edge/imgproxy/vector/pooler/studio/meta/mailpit off)"
     ( cd "$wt" && bunx supabase start --workdir "$wt" \
-        -x realtime,imgproxy,logflare,vector,edge-runtime,supavisor \
+        -x realtime,imgproxy,logflare,vector,edge-runtime,supavisor,studio,postgres-meta,mailpit \
         > "$wt/.qa-supabase.log" 2>&1 ) || {
       tail -n 20 "$wt/.qa-supabase.log" >&2
       die "supabase failed to start for qa-env-$n (see $wt/.qa-supabase.log)"
@@ -278,15 +278,13 @@ start_env() {
   fi
 
   start_app "$wt" "$app" ".qa-app.log" ".qa-app.pid" "dev"
-  start_admin "$wt" "$admin" ".qa-admin.log" ".qa-admin.pid"
+  # Admin panels are on demand and exclusive across slots: `qa-env admin-up`.
 
   wait_http "http://localhost:$app/login" 120 \
     || die "web app did not answer on :$app (see $wt/.qa-app.log)"
-  wait_http "http://localhost:$admin/" 120 \
-    || die "admin app did not answer on :$admin (see $wt/.qa-admin.log)"
 
   write_env_json "$wt" "$n" "$app" "$admin" "$api" "$name"
-  info "ready: web http://localhost:$app · admin http://localhost:$admin"
+  info "ready: web http://localhost:$app · admin on demand (qa-env admin-up)"
   echo
 }
 
@@ -319,7 +317,7 @@ status_env() {
 
 reset_env() {
   local n=$1 wt
-  valid_slot "$n" || die "slot must be 1..4"
+  valid_slot "$n" || die "slot must be 1..8"
   wt=$(wt_for "$n")
   [ -d "$wt" ] || die "qa-env-$n does not exist; run 'scripts/qa-env up $n' first"
   listening "$(api_port "$n")" || die "qa-env-$n supabase is down; run 'scripts/qa-env up $n' first"

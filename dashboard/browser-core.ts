@@ -63,7 +63,7 @@ function envFromJsonFile(dir: string): EnvConfig | null {
 export function resolveEnv(explicit?: string | number | null): EnvConfig {
   if (explicit !== undefined && explicit !== null && String(explicit).length > 0) {
     const env = envByName(String(explicit));
-    if (!env) throw new Error(`unknown env: ${explicit} (expected qa-env-1..4 or 1..4)`);
+    if (!env) throw new Error(`unknown env: ${explicit} (expected qa-env-1..8 or 1..8)`);
     return env;
   }
 
@@ -78,7 +78,7 @@ export function resolveEnv(explicit?: string | number | null): EnvConfig {
     const env = envFromJsonFile(dir);
     if (env) return env;
     const norm = dir.replaceAll('\\', '/');
-    const match = /(?:^|\/)(qa-env-[1-4])(?:\/|$)/.exec(norm);
+    const match = /(?:^|\/)(qa-env-[1-8])(?:\/|$)/.exec(norm);
     if (match) {
       const byPath = envByName(match[1]!);
       if (byPath) return byPath;
