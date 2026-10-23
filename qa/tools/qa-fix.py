@@ -41,8 +41,10 @@ BASE = "http://127.0.0.1:4096"
 AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
 MODEL = {"providerID": "opencode-go", "id": "deepseek-v4.1-flash", "variant": "high"}
 SLOTS = {n: f"/workspaces/studiq/.worktrees/qa-env-{n}" for n in range(1, 9)}
-ROLES = {1: "qa", 2: "qa", 3: "designer", 4: "designer",
-         5: "writer", 6: "writer", 7: "reviewer", 8: "reviewer"}
+ROLES = {1: "qa_review", 2: "qa_review", 3: "designer", 4: "designer",
+         5: "writer", 6: "writer", 7: "qa_review", 8: "qa_review"}
+POOL_SLOTS = [7, 8, 1, 2]          # review preference; QA prefers 1,2 first
+QA_SLOTS = [1, 2, 7, 8]
 ROLE_SLOTS = collections.defaultdict(list)
 for _n, _r in ROLES.items():
     ROLE_SLOTS[_r].append(_n)
@@ -396,23 +398,24 @@ def cmd_implement(args) -> None:
     state = load_state()
     n = args.issue
     rec = get_rec(state, n)
-    if rec["stage"] not in ("design_ready", "changes_requested", "qa_failed", "pr_open"):
+    if rec["stage"] not in ("design_ready", "changes_requested", "qa_failed", "pr_open", "qa_passed"):
         fail(f"cannot implement from stage {rec['stage']}")
+    rebase = rec["stage"] == "qa_passed"
     env = args.env or (ROLE_SLOTS["writer"][0] if rec.get("writer") is None
                        else rec["writer"])
     if ROLES.get(env) != "writer":
         fail(f"slot {env} is {ROLES.get(env)}, not writer")
     if env in busy_slots():
         fail(f"writer slot {env} is busy")
-    title = f"#{n} implement r{attempt(rec)}"
+    title = f"#{n} {'rebase' if rebase else 'implement'} r{attempt(rec)}"
     sid = create_session(env, title, dispatch_prompt("WRITER", n, "implement", env, rec))
     rec["stage"] = "implementing"
     rec["writer"] = env
     rec["sessions"]["implement"] = sid
-    history(state, n, {"event": "implement_dispatched", "env": env, "session": sid,
-                       "attempt": attempt(rec)})
-    ok(action="implement", issue=n, env=env, session=sid, title=title,
-       artifact=str(issue_dir(n) / f"impl-r{attempt(rec)}.json"))
+    history(state, n, {"event": "rebase_requested" if rebase else "implement_dispatched",
+                       "env": env, "session": sid, "attempt": attempt(rec)})
+    ok(action="rebase" if rebase else "implement", issue=n, env=env, session=sid,
+       title=title, artifact=str(issue_dir(n) / f"impl-r{attempt(rec)}.json"))
 
 
 def cmd_review(args) -> None:
@@ -422,17 +425,31 @@ def cmd_review(args) -> None:
     if rec["stage"] not in ("pr_open", "changes_requested"):
         fail(f"cannot review from stage {rec['stage']}")
     busy = busy_slots()
-    for env in ROLE_SLOTS["reviewer"]:
+    if getattr(args, "envs", None):
+        try:
+            pair = [int(x) for x in args.envs.split(",")]
+        except ValueError:
+            fail("--envs must be two comma-separated slot numbers")
+        if len(pair) != 2 or len(set(pair)) != 2:
+            fail("--envs must name exactly two distinct slots")
+    else:
+        free = [e for e in POOL_SLOTS if e not in busy]
+        if len(free) < 2:
+            fail("need two free QA/review slots", free=free, busy=sorted(busy))
+        pair = free[:2]
+    for env in pair:
+        if ROLES.get(env) != "qa_review":
+            fail(f"slot {env} is {ROLES.get(env)}, not QA/review")
         if env in busy:
-            fail(f"reviewer slot {env} is busy")
+            fail(f"QA/review slot {env} is busy")
     sessions_out = []
-    for idx, env in enumerate(ROLE_SLOTS["reviewer"], start=1):
+    for idx, env in enumerate(pair, start=1):
         title = f"#{n} review {idx} r{attempt(rec)}"
         sid = create_session(env, title,
                              dispatch_prompt("REVIEWER", n, "review", env, rec, review_no=idx))
         sessions_out.append({"env": env, "session": sid, "review": idx})
     rec["stage"] = "reviewing"
-    rec["reviewers"] = list(ROLE_SLOTS["reviewer"])
+    rec["reviewers"] = pair
     rec["sessions"]["review"] = [s["session"] for s in sessions_out]
     history(state, n, {"event": "review_dispatched", "sessions": sessions_out,
                        "attempt": attempt(rec)})
@@ -446,11 +463,18 @@ def cmd_qa(args) -> None:
     rec = get_rec(state, n)
     if rec["stage"] not in ("approved", "qa_failed"):
         fail(f"cannot QA from stage {rec['stage']}")
-    env = args.env or ROLE_SLOTS["qa"][0]
-    if ROLES.get(env) != "qa":
-        fail(f"slot {env} is {ROLES.get(env)}, not qa")
-    if env in busy_slots():
-        fail(f"QA slot {env} is busy")
+    busy = busy_slots()
+    if args.env:
+        env = args.env
+        if ROLES.get(env) != "qa_review":
+            fail(f"slot {env} is {ROLES.get(env)}, not QA/review")
+        if env in busy:
+            fail(f"QA/review slot {env} is busy")
+    else:
+        free = [e for e in QA_SLOTS if e not in busy]
+        if not free:
+            fail("no free QA/review slot", busy=sorted(busy))
+        env = free[0]
     title = f"#{n} qa r{attempt(rec)}"
     sid = create_session(env, title, dispatch_prompt("QA", n, "qa", env, rec))
     rec["stage"] = "qa_testing"
@@ -613,7 +637,7 @@ def cmd_status(args) -> None:
     busy = busy_slots()
     print("slot role      state   issue/stage")
     for env in sorted(SLOTS):
-        role = ROLES[env]
+        role = ROLES[env].replace("_", "/")
         hit = next((x for x in (env_issue(r, env) for r in active.values()) if x), None)
         label = f"#{hit[0]['number']} {hit[1]}" if hit else "-"
         print(f"{env:<4} {role:<9} {'busy' if env in busy else 'free':<7} {label}")
@@ -640,7 +664,11 @@ def build_parser() -> argparse.ArgumentParser:
         s = sub.add_parser(name); s.add_argument("issue", type=int)
         s.add_argument("--env", type=int); s.set_defaults(fn={"design": cmd_design,
                        "implement": cmd_implement, "qa": cmd_qa}[name])
-    s = sub.add_parser("review"); s.add_argument("issue", type=int); s.set_defaults(fn=cmd_review)
+    s = sub.add_parser("review"); s.add_argument("issue", type=int)
+    s.add_argument("--envs", help="two comma-separated QA/review slots, e.g. 7,8")
+    s.set_defaults(fn=cmd_review)
+    s = sub.add_parser("rebase"); s.add_argument("issue", type=int)
+    s.add_argument("--env", type=int); s.set_defaults(fn=cmd_implement)
     s = sub.add_parser("collect"); s.add_argument("issue", type=int); s.set_defaults(fn=cmd_collect)
     s = sub.add_parser("merge"); s.add_argument("issue", type=int); s.set_defaults(fn=cmd_merge)
     s = sub.add_parser("block"); s.add_argument("issue", type=int); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_block)

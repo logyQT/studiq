@@ -6,10 +6,9 @@ The manager owns the state machine; agents only produce their own artifact.
 ## Crew / fixed slots
 | slot | role | output |
 |---|---|---|
-| qa-env-1,2 | QA | e2e proof on the PR build (`qa-rN.json`) |
+| qa-env-1,2,7,8 | QA/review pool | two independent verdicts or one e2e QA run; shared demand-driven slots |
 | qa-env-3,4 | designers | root cause + implementation design (`design-rN.json`) |
 | qa-env-5,6 | writers | branch + implementation + tests + PR (`impl-rN.json`) |
-| qa-env-7,8 | reviewers | two independent verdicts (`review-1-rN.json`, `review-2-rN.json`) |
 
 ## State
 - Tool: `qa/tools/qa-fix.py`
@@ -62,6 +61,7 @@ python3 qa/tools/qa-fix.py collect 140
 python3 qa/tools/qa-fix.py merge 140
 python3 qa/tools/qa-fix.py status
 ```
-`review` dispatches both reviewer slots; `collect` is idempotent enough for the
-manager to call after each `finished` event. The merge gate requires two
-`approve` reviews, a QA `pass`, and an open non-draft PR.
+`review` dispatches two reviewers from the shared pool (up to two pairs can run
+at once); `collect` is idempotent enough for the manager to call after each
+`finished` event. The merge gate requires two `approve` reviews, a QA `pass`, and
+an open non-draft PR.
