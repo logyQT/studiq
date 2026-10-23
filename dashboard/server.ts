@@ -248,7 +248,7 @@ function normalizeDir(dir: string | undefined): string {
 
 function envFromHost(hostHeader: string | null): EnvConfig | null {
   const host = (hostHeader ?? '').split(':')[0]!.toLowerCase();
-  const match = /^qa-env-([1-4])\./.exec(host);
+  const match = /^qa-env-([1-8])\./.exec(host);
   if (!match) return null;
   return envByN(Number(match[1]));
 }
@@ -1153,7 +1153,7 @@ ${tiles}
       const body = await res.json();
       const up = body.browsers.filter((browser) => browser.up).length;
       const pill = document.getElementById('browser-pill');
-      pill.innerHTML = 'browsers <b>' + up + '/4</b>';
+      pill.innerHTML = 'browsers <b>' + up + '/' + body.browsers.length + '</b>';
       pill.classList.toggle('partial', up < 4);
     } catch (_) {}
   }
@@ -1709,7 +1709,7 @@ const server = Bun.serve<WsData>({
   async fetch(req, server) {
     const url = new URL(req.url);
 
-    const wsMatch = /^\/ws\/browser\/([1-4])$/.exec(url.pathname);
+    const wsMatch = /^\/ws\/browser\/([1-8])$/.exec(url.pathname);
     if (wsMatch) {
       const env = envByN(Number(wsMatch[1]));
       if (!env) return new Response('unknown env\n', { status: 404 });
