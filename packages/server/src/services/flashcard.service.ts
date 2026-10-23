@@ -11,13 +11,11 @@ import type {
   BatchLinkInput,
   BatchMoveInput,
   BatchTopicsInput,
-  BatchUnlinkInput,
   BulkCreateFlashcardsInput,
   CopyFlashcardInput,
   CreateFlashcardInput,
   FlashcardData,
   LinkFlashcardInput,
-  UnlinkFlashcardInput,
   UpdateFlashcardInput,
 } from '@studiq/server/models/flashcard.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
@@ -497,63 +495,6 @@ export class FlashcardService {
     if (updateError) return toDbFailure(updateError);
 
     return success({ linked: data.ids.length });
-  }
-
-  async unlinkFromDeck(
-    id: string,
-    data: UnlinkFlashcardInput,
-    ctx: RequestContext,
-  ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
-
-    const { data: flashcard, error: fetchError } = await supabase
-      .from('flashcards')
-      .select('id, deck_id')
-      .eq('id', id)
-      .single();
-
-    if (fetchError || !flashcard) return failure('NOT_FOUND');
-    if (flashcard.deck_id !== data.deckId) return failure('NOT_FOUND');
-
-    const { data: deck } = await supabase
-      .from('flashcard_decks')
-      .select('*')
-      .eq('id', data.deckId)
-      .single();
-
-    if (!deck) return failure('NOT_FOUND');
-    await check(ctx, Permission.DECK_UPDATE, deck);
-
-    const { error } = await supabase.from('flashcards').update({ deck_id: null }).eq('id', id);
-
-    if (error) return toDbFailure(error);
-
-    return success({ success: true });
-  }
-
-  async batchUnlinkFromDeck(
-    data: BatchUnlinkInput,
-    ctx: RequestContext,
-  ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
-
-    const { data: deck } = await supabase
-      .from('flashcard_decks')
-      .select('*')
-      .eq('id', data.deckId)
-      .single();
-
-    if (!deck) return failure('NOT_FOUND');
-    await check(ctx, Permission.DECK_UPDATE, deck);
-
-    const { error } = await supabase
-      .from('flashcards')
-      .update({ deck_id: null })
-      .in('id', data.ids);
-
-    if (error) return toDbFailure(error);
-
-    return success({ unlinked: data.ids.length });
   }
 
   async batchTopics(data: BatchTopicsInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {

@@ -13,7 +13,6 @@ const actionHandlers: Record<string, ActionHandler> = {
   copy: (body, ctx) => flashcardController.batchCopy(body, ctx),
   delete: (body, ctx) => flashcardController.batchDelete(body, ctx),
   topics: (body, ctx) => flashcardController.batchTopics(body, ctx),
-  unlink: (body, ctx) => flashcardController.batchUnlink(body, ctx),
   move: (body, ctx) => flashcardController.batchMove(body, ctx),
   practice: (body, ctx) => flashcardPracticeController.batch(body, ctx),
   create: (body, ctx) => flashcardController.bulkCreate(body, ctx),
