@@ -1,0 +1,400 @@
+#!/usr/bin/env python3
+"""Env-scoped operations for QA agents. No target argument, by design.
+
+Run from anywhere inside a qa-env-N worktree. The tool finds qa/env.json,
+proves the worktree matches the slot, then acts on *that* env only.
+
+    python3 qa/tools/qa-env status
+    python3 qa/tools/qa-env reset           # destructive: DB reset + seed
+    python3 qa/tools/qa-env restart-app
+    python3 qa/tools/qa-env restart-browser
+    python3 qa/tools/qa-env admin-up        # exclusive, one slot at a time
+    python3 qa/tools/qa-env admin-down
+    python3 qa/tools/qa-env lock            # who holds what
+
+Machine-readable JSON on stdout; non-zero exit on refusal/failure.
+"""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+LOCKS = Path("/tmp/studiq-qa-locks")
+LOCK_TIMEOUT = 300
+
+
+def fail(message: str, **extra) -> None:
+    print(json.dumps({"ok": False, "error": message, **extra}, ensure_ascii=False))
+    sys.exit(1)
+
+
+def ok(**payload) -> None:
+    print(json.dumps({"ok": True, **payload}, ensure_ascii=False))
+
+
+def find_env() -> dict:
+    here = Path.cwd().resolve()
+    for candidate in [here, *here.parents]:
+        env_file = candidate / "qa" / "env.json"
+        if env_file.is_file():
+            return json.loads(env_file.read_text(encoding="utf-8"))
+    fail("not inside a qa-env worktree (no qa/env.json found upward from cwd)")
+
+
+def validate(env: dict) -> dict:
+    worktree = Path(env.get("worktree", "")).resolve()
+    env_id = str(env.get("envId", ""))
+    if not worktree.is_dir():
+        fail(f"worktree from qa/env.json does not exist: {worktree}")
+    if worktree.name != env_id:
+        fail(f"env.json says {env_id} but worktree is {worktree.name}; refusing cross-env operation")
+    if not str(env.get("appUrl", "")).startswith("http://localhost:"):
+        fail("qa/env.json has no localhost appUrl; refusing")
+    env["_worktree"] = worktree
+    env["_n"] = int(env_id.rsplit("-", 1)[1])
+    env["_app_port"] = int(str(env["appUrl"]).rsplit(":", 1)[1])
+    env["_admin_port"] = int(str(env["adminUrl"]).rsplit(":", 1)[1])
+    env["_api_port"] = int(str(env["supabaseUrl"]).rsplit(":", 1)[1])
+    env["_root"] = worktree.parents[1]
+    return env
+
+
+def pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def http_code(url: str, timeout: float = 2.0) -> int:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return resp.status
+    except urllib.error.HTTPError as exc:
+        return exc.code
+    except Exception:
+        return 0
+
+
+class EnvLock:
+    """Directory lock: atomic, portable, stale-safe."""
+
+    def __init__(self, env_id: str, timeout: int = LOCK_TIMEOUT):
+        self.path = LOCKS / f"{env_id}.lock"
+        self.timeout = timeout
+        self.held = False
+
+    def holder(self) -> int | None:
+        try:
+            return int((self.path / "pid").read_text().strip())
+        except (OSError, ValueError):
+            return None
+
+    def acquire(self, owner: str) -> None:
+        LOCKS.mkdir(parents=True, exist_ok=True)
+        deadline = time.time() + self.timeout
+        while True:
+            try:
+                self.path.mkdir()
+                (self.path / "pid").write_text(str(os.getpid()))
+                (self.path / "owner").write_text(owner)
+                self.held = True
+                return
+            except FileExistsError:
+                holder = self.holder()
+                if holder is None or not pid_alive(holder):
+                    shutil.rmtree(self.path, ignore_errors=True)
+                    continue
+                if time.time() > deadline:
+                    fail(
+                        f"{self.path.stem} is busy (pid {holder}, owner "
+                        f"{(self.path / 'owner').read_text().strip() if (self.path / 'owner').exists() else '?'})"
+                    )
+                time.sleep(0.5)
+
+    def release(self) -> None:
+        if self.held:
+            shutil.rmtree(self.path, ignore_errors=True)
+            self.held = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.release()
+
+
+def admin_owner() -> dict | None:
+    try:
+        data = json.loads((LOCKS / "admin.json").read_text())
+    except (OSError, ValueError):
+        return None
+    if not pid_alive(int(data.get("pid", 0))):
+        return None
+    return data
+
+
+def admin_claim(env: dict, pid: int) -> tuple[bool, dict | None]:
+    """Claim the single admin slot. Returns (claimed, current_owner)."""
+    LOCKS.mkdir(parents=True, exist_ok=True)
+    claim = LOCKS / "admin.claim"
+    for _ in range(60):
+        try:
+            claim.mkdir()
+            break
+        except FileExistsError:
+            time.sleep(0.2)
+    else:
+        fail("could not acquire admin claim lock")
+    try:
+        current = admin_owner()
+        if current and current.get("env") != env["envId"]:
+            return False, current
+        (LOCKS / "admin.json").write_text(json.dumps({
+            "env": env["envId"],
+            "pid": pid,
+            "port": env["_admin_port"],
+            "worktree": str(env["_worktree"]),
+            "startedAt": int(time.time() * 1000),
+        }))
+        return True, current
+    finally:
+        shutil.rmtree(claim, ignore_errors=True)
+
+
+def admin_release(env: dict) -> None:
+    current = admin_owner()
+    if not current:
+        (LOCKS / "admin.json").unlink(missing_ok=True)
+        return
+    if current.get("env") == env["envId"]:
+        (LOCKS / "admin.json").unlink(missing_ok=True)
+    else:
+        fail(f"admin lock is held by {current.get('env')} (pid {current.get('pid')})")
+
+
+def read_pid(path: Path) -> int | None:
+    try:
+        pid = int(path.read_text().strip())
+        return pid if pid_alive(pid) else None
+    except (OSError, ValueError):
+        return None
+
+
+def stop_group(pid: int) -> None:
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(pid, sig)
+        except OSError:
+            try:
+                os.kill(pid, sig)
+            except OSError:
+                return
+        time.sleep(1.5)
+
+
+def wait_http(port: int, tries: int = 120) -> bool:
+    for _ in range(tries):
+        code = http_code(f"http://127.0.0.1:{port}/", 3)
+        if 200 <= code < 500:
+            return True
+        time.sleep(1)
+    return False
+
+
+def start_app(env: dict) -> int:
+    wt = env["_worktree"]
+    pidfile = wt / ".qa-app.pid"
+    existing = read_pid(pidfile)
+    if existing:
+        return existing
+    log = open(wt / ".qa-app.log", "ab")
+    proc = subprocess.Popen(
+        ["bun", "run", "dev"],
+        cwd=wt,
+        env={**os.environ, "PORT": str(env["_app_port"])},
+        stdout=log,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    pidfile.write_text(str(proc.pid))
+    return proc.pid
+
+
+def start_admin(env: dict) -> int:
+    wt = env["_worktree"]
+    pidfile = wt / ".qa-admin.pid"
+    existing = read_pid(pidfile)
+    if existing:
+        return existing
+    log = open(wt / ".qa-admin.log", "ab")
+    proc = subprocess.Popen(
+        ["bun", "x", "next", "dev", "-p", str(env["_admin_port"])],
+        cwd=wt / "apps" / "admin",
+        stdout=log,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    pidfile.write_text(str(proc.pid))
+    return proc.pid
+
+
+def stop_app(env: dict) -> None:
+    wt = env["_worktree"]
+    pidfile = wt / ".qa-app.pid"
+    pid = read_pid(pidfile)
+    if pid:
+        stop_group(pid)
+    pidfile.unlink(missing_ok=True)
+
+
+def stop_admin(env: dict) -> None:
+    wt = env["_worktree"]
+    pidfile = wt / ".qa-admin.pid"
+    pid = read_pid(pidfile)
+    if pid:
+        stop_group(pid)
+    pidfile.unlink(missing_ok=True)
+
+
+def cmd_status(env: dict) -> None:
+    wt = env["_worktree"]
+    admin = admin_owner()
+    ok(
+        env=env["envId"],
+        worktree=str(wt),
+        app={"pid": read_pid(wt / ".qa-app.pid"), "http": http_code(f"http://127.0.0.1:{env['_app_port']}/")},
+        admin={
+            "pid": read_pid(wt / ".qa-admin.pid"),
+            "http": http_code(f"http://127.0.0.1:{env['_admin_port']}/"),
+            "lock_owner": admin.get("env") if admin else None,
+        },
+        supabase={"http": http_code(f"http://127.0.0.1:{env['_api_port']}/auth/v1/health")},
+        op_lock=(LOCKS / f"{env['envId']}.lock").exists(),
+    )
+
+
+def cmd_reset(env: dict) -> None:
+    script = env["_root"] / ".worktrees" / "qa-env" / "scripts" / "qa-env"
+    if not script.is_file():
+        fail(f"provisioner not found: {script}")
+    with EnvLock(env["envId"], timeout=LOCK_TIMEOUT):
+        proc = subprocess.run(
+            [str(script), "reset", str(env["_n"])],
+            cwd=env["_root"],
+            capture_output=True,
+            text=True,
+            timeout=900,
+        )
+    if proc.returncode != 0:
+        fail(
+            "reset failed",
+            tail=(proc.stderr or proc.stdout).strip().splitlines()[-8:],
+        )
+    ok(env=env["envId"], action="reset", tail=proc.stdout.strip().splitlines()[-5:])
+
+
+def cmd_restart_app(env: dict) -> None:
+    with EnvLock(env["envId"]):
+        stop_app(env)
+        pid = start_app(env)
+        healthy = wait_http(env["_app_port"])
+    if not healthy:
+        fail("app did not come back on its port", env=env["envId"], pid=pid)
+    ok(env=env["envId"], action="restart-app", pid=pid, http=env["_app_port"])
+
+
+def cmd_restart_browser(env: dict) -> None:
+    dashboard = env["_root"] / ".worktrees" / "qa-env" / "dashboard"
+    proc = subprocess.run(
+        ["bun", "browsers.ts", "restart", env["envId"]],
+        cwd=dashboard,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    if proc.returncode != 0:
+        fail("browser restart failed", tail=(proc.stderr or proc.stdout).strip()[-500:])
+    ok(env=env["envId"], action="restart-browser")
+
+
+def cmd_admin_up(env: dict) -> None:
+    wt = env["_worktree"]
+    with EnvLock(env["envId"]):
+        pid = read_pid(wt / ".qa-admin.pid")
+        if not pid:
+            pid = start_admin(env)
+        claimed, owner = admin_claim(env, pid)
+        if not claimed:
+            fail(
+                f"admin is already in use by {owner.get('env')} (pid {owner.get('pid')})",
+                env=env["envId"],
+                holder=owner,
+            )
+        healthy = wait_http(env["_admin_port"])
+    if not healthy:
+        admin_release(env)
+        fail("admin did not come up on its port", env=env["envId"], pid=pid)
+    ok(env=env["envId"], action="admin-up", pid=pid, http=env["_admin_port"])
+
+
+def cmd_admin_down(env: dict) -> None:
+    with EnvLock(env["envId"]):
+        stop_admin(env)
+        admin_release(env)
+    ok(env=env["envId"], action="admin-down")
+
+
+def cmd_lock(env: dict) -> None:
+    owner = admin_owner()
+    ok(
+        env=env["envId"],
+        op_lock=holder_info(LOCKS / f"{env['envId']}.lock"),
+        admin=owner,
+    )
+
+
+def holder_info(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        return {
+            "pid": int((path / "pid").read_text().strip()),
+            "owner": (path / "owner").read_text().strip(),
+        }
+    except (OSError, ValueError):
+        return {"pid": None, "owner": None}
+
+
+COMMANDS = {
+    "status": cmd_status,
+    "reset": cmd_reset,
+    "reseed": cmd_reset,
+    "restart-app": cmd_restart_app,
+    "restart-browser": cmd_restart_browser,
+    "admin-up": cmd_admin_up,
+    "admin-down": cmd_admin_down,
+    "lock": cmd_lock,
+}
+
+
+def main() -> None:
+    command = sys.argv[1] if len(sys.argv) > 1 else "status"
+    handler = COMMANDS.get(command)
+    if not handler:
+        fail(f"unknown command {command!r}; try one of {', '.join(COMMANDS)}")
+    env = validate(find_env())
+    handler(env)
+
+
+if __name__ == "__main__":
+    main()
