@@ -1,6 +1,7 @@
 export const APP_ERRORS = {
   BAD_REQUEST: { code: 'ERROR_BAD_REQUEST', status: 400 },
   UNAUTHORIZED: { code: 'ERROR_UNAUTHORIZED', status: 401 },
+  INVALID_CURRENT_PASSWORD: { code: 'ERROR_INVALID_CURRENT_PASSWORD', status: 400 },
   FORBIDDEN: { code: 'ERROR_FORBIDDEN', status: 403 },
   NOT_FOUND: { code: 'ERROR_NOT_FOUND', status: 404 },
   GONE: { code: 'ERROR_GONE', status: 410 },

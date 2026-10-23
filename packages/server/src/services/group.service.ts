@@ -316,6 +316,44 @@ export class GroupService {
     return success(!!data);
   }
 
+  /**
+   * Whether the caller may share content to every group in `groupIds`.
+   *
+   * A group is shareable when it belongs to the CONTENT's organization
+   * (`contentOrgId` — the parent row's `organization_id`) and the caller has a
+   * `teacher` membership in it. Empty list is trivially allowed.
+   *
+   * `contentOrgId` is required on purpose: a call site must decide which row the
+   * link will hang off. Pass `ctx.activeOrgId` only for content that is being
+   * created now, and `existing.organization_id ?? ctx.activeOrgId` for an update
+   * of legacy personal content with a NULL org.
+   *
+   * Do NOT use ctx.groupIds: withAuth resolves memberships without an org filter.
+   */
+  async canShareContentToGroups(
+    ctx: RequestContext,
+    groupIds: string[],
+    contentOrgId: string | null,
+  ): Promise<ServiceResult<boolean>> {
+    const unique = [...new Set(groupIds)];
+    if (unique.length === 0) return success(true);
+    if (!contentOrgId) return success(false);
+
+    const supabase = await this.createClient();
+    const { data, error } = await supabase
+      .from('group_members')
+      .select('group_id, groups!inner(organization_id)')
+      .eq('user_id', ctx.userId)
+      .eq('role', 'teacher')
+      .in('group_id', unique)
+      .eq('groups.organization_id', contentOrgId);
+
+    if (error) return toDbFailure(error);
+
+    const taught = new Set((data ?? []).map((row) => row.group_id as string));
+    return success(unique.every((id) => taught.has(id)));
+  }
+
   async isUserInGroup(ctx: RequestContext, groupId: string): Promise<ServiceResult<boolean>> {
     const supabase = await this.createClient();
     const { data, error } = await supabase

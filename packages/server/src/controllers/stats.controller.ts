@@ -24,6 +24,14 @@ export class StatsController {
     return controllerResponse.success(result.data);
   }
 
+  async getTeacherQuizStats(ctx: RequestContext): Promise<ControllerResponse> {
+    const result = await this.statsService.getTeacherQuizStats(ctx);
+
+    if (isFailure(result)) return controllerResponse.error(result.error);
+
+    return controllerResponse.success(result.data);
+  }
+
   async getActivity(
     ctx: RequestContext,
     range?: string,

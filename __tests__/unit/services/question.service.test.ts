@@ -81,6 +81,29 @@ describe('QuestionService', () => {
       expect(mock.from).toHaveBeenCalledWith('questions');
     });
 
+    it('creates an open question without inserting any options', async () => {
+      const mockQuestion = { id: 'q-open', type: 'open', content: 'Explain' };
+
+      mock.from.mockReturnValueOnce(chain([], 0));
+      mock.from.mockReturnValueOnce(chain(mockQuestion));
+      // getById
+      mock.from.mockReturnValueOnce(chain(mockQuestion));
+
+      const result = await service.create(
+        {
+          bankId: '00000000-0000-4000-8020-000000000001',
+          type: 'open',
+          content: 'Explain',
+          answers: [],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
+      expect(mock.from).not.toHaveBeenCalledWith('question_options');
+    });
+
     it('returns INTERNAL_SERVER when insert fails', async () => {
       mock.from.mockReturnValueOnce(chain([], 0));
       mock.from.mockReturnValue({
@@ -170,6 +193,22 @@ describe('QuestionService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
+    });
+
+    it('clears options when converting a question to open', async () => {
+      const updated = { id: 'q-1', content: 'Updated', type: 'open' };
+      const optionsChain = chain(null);
+
+      mock.from.mockReturnValueOnce(chain(updated));
+      mock.from.mockReturnValueOnce(optionsChain);
+      mock.from.mockReturnValueOnce(chain(updated));
+
+      const result = await service.update('q-1', { type: 'open', answers: [] }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(mock.from).toHaveBeenCalledWith('question_options');
+      expect(optionsChain.delete).toHaveBeenCalled();
+      expect(optionsChain.insert).not.toHaveBeenCalled();
     });
 
     it('updates question with answers replacement', async () => {

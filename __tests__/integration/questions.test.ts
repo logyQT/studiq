@@ -187,6 +187,48 @@ forEachCopy((copyId) => {
         expect(body.success).toBe(false);
       });
 
+      it('creates an open-answer question without answers and returns 201', async () => {
+        const bankId = await createBank(`q-test-open-bank-${copyId}`);
+
+        mockUser(educator.user);
+        const req = createNextRequest(
+          'http://localhost/api/v1/questions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bankId,
+              type: 'open',
+              content: `copy-${copyId}-Opisz drugą zasadę dynamiki Newtona.`,
+              explanation: 'F = m * a',
+              answers: [],
+            }),
+          },
+          orgCookies(),
+        );
+
+        const response = await POST(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(201);
+        expect(body.success).toBe(true);
+        expect(body.data.type).toBe('open');
+        expect(body.data.question_answers).toEqual([]);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/questions/${body.data.id}`,
+          { id: body.data.id },
+          undefined,
+          orgCookies(),
+        );
+        const getResponse = await GET(request, { params });
+        const getBody = await getResponse.json();
+
+        expect(getResponse.status).toBe(200);
+        expect(getBody.data.id).toBe(body.data.id);
+        expect(getBody.data.question_answers).toEqual([]);
+      });
+
       it('returns 401 when not authenticated', async () => {
         mockUser(null);
 
@@ -349,6 +391,28 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(200);
         expect(body.data.content).toBe('Updated');
+      });
+
+      it('converts an mcq question to open and clears its options', async () => {
+        const { id } = await createQuestion('Convert Me');
+
+        mockUser(educator.user);
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/questions/${id}`,
+          { id },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'open', answers: [] }),
+          },
+          orgCookies(),
+        );
+        const response = await PUT(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.type).toBe('open');
+        expect(body.data.question_answers).toEqual([]);
       });
 
       it('returns 403 when updating another user question', async () => {

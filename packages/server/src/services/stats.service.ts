@@ -3,6 +3,7 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
+import type { TeacherQuizStatsItem } from '@studiq/server/models/stats.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class StatsService {
@@ -119,6 +120,75 @@ export class StatsService {
           percentage: Math.round((a.score / attemptTotal(a)) * 100),
         })) ?? [],
     });
+  }
+
+  /**
+   * Aggregated quiz performance for the caller's active organization.
+   *
+   * `quiz_attempts` has no `organization_id` column and RLS is disabled, so the
+   * scope must be applied here: resolve the org's student members (`member`
+   * role) and only aggregate completed attempts made by them. Without an
+   * active org (or without a verified membership — `active_org_id` is a
+   * client-controlled cookie, `withAuth` only sets `orgRoleId` when the caller
+   * is actually a member) there is no class to report on, so the list is empty
+   * rather than falling back to every attempt in the deployment.
+   */
+  async getTeacherQuizStats(ctx: RequestContext): Promise<ServiceResult<TeacherQuizStatsItem[]>> {
+    const supabase = await this.createClient();
+
+    if (!ctx.activeOrgId || !ctx.orgRoleId) return success([]);
+
+    const { data: members, error: membersError } = await supabase
+      .from('org_members')
+      .select('user_id, org_roles!inner(name)')
+      .eq('organization_id', ctx.activeOrgId)
+      .eq('org_roles.name', 'member');
+
+    if (membersError) return toDbFailure(membersError);
+
+    const studentIds = (members ?? []).map((m) => m.user_id as string);
+    if (studentIds.length === 0) return success([]);
+
+    // Practice quizzes only: assignment attempts are scored in points
+    // (quiz_attempts.score = awarded points, max = total_points), so mixing
+    // them into these correct-answer-count averages would skew the report.
+    const { data, error } = await supabase
+      .from('quiz_attempts')
+      .select('id, score, total_questions, started_at, completed_at, config')
+      .in('user_id', studentIds)
+      .is('assignment_id', null)
+      .not('completed_at', 'is', null);
+
+    if (error) return toDbFailure(error);
+
+    const quizMap = new Map<
+      string,
+      { totalAttempts: number; totalScore: number; totalCompletion: number }
+    >();
+
+    for (const row of data ?? []) {
+      const config = row.config as { title?: string } | null;
+      const title = config?.title ?? 'Untitled Quiz';
+
+      if (!quizMap.has(title)) {
+        quizMap.set(title, { totalAttempts: 0, totalScore: 0, totalCompletion: 0 });
+      }
+
+      const stats = quizMap.get(title)!;
+      stats.totalAttempts += 1;
+      stats.totalScore += row.score ?? 0;
+      stats.totalCompletion += row.total_questions ?? 0;
+    }
+
+    return success(
+      Array.from(quizMap.entries()).map(([title, stats]) => ({
+        id: title,
+        title,
+        totalAttempts: stats.totalAttempts,
+        avgScore: stats.totalScore / stats.totalAttempts,
+        avgCompletionRate: stats.totalCompletion / stats.totalAttempts,
+      })),
+    );
   }
 
   async getActivity(
