@@ -6,6 +6,7 @@
 #   scripts/qa-env down [N|all]          stop app + admin + Supabase (worktree/data kept)
 #   scripts/qa-env status                one line per environment
 #   scripts/qa-env reset <N|all>         re-seed the database (DESTRUCTIVE)
+#   scripts/qa-env config <N|all>        repair slot supabase/config.toml
 #   scripts/qa-env rebuild <N|all>       force-rebuild + restart the web app
 #   scripts/qa-env sync  [N|all]         reset worktree(s) to origin/qa-testing
 #   scripts/qa-env logs <N>              tail web + admin logs
@@ -369,12 +370,27 @@ status_env() {
     "$n" "$state" "$app" "$ac" "$admin" "$ad" "$api" "$sc" "$wt"
 }
 
+config_env() {
+  local n=$1 wt app admin api db studio mail analytics pooler
+  valid_slot "$n" || die "slot must be 1..8"
+  wt=$(wt_for "$n")
+  [ -d "$wt" ] || die "qa-env-$n has no worktree"
+  app=$(app_port "$n"); admin=$(admin_port "$n")
+  api=$(api_port "$n"); db=$(db_port "$n"); studio=$(studio_port "$n")
+  mail=$(mail_port "$n"); analytics=$(analytics_port "$n"); pooler=$(pooler_port "$n")
+  rewrite_config "$wt" "qa-env-$n" "$api" "$db" "$studio" "$mail" "$analytics" "$pooler" "$app" "$admin"
+  info "qa-env-$n supabase config repaired (project qa-env-$n, api $api)"
+}
+
 reset_env() {
   local n=$1 wt
   valid_slot "$n" || die "slot must be 1..8"
   wt=$(wt_for "$n")
   [ -d "$wt" ] || die "qa-env-$n does not exist; run 'scripts/qa-env up $n' first"
   listening "$(api_port "$n")" || die "qa-env-$n supabase is down; run 'scripts/qa-env up $n' first"
+  # A checked-out PR branch can bring a main-pinned supabase/config.toml.
+  # Repair it first so status/seed/container operations stay scoped to this slot.
+  config_env "$n"
   info "resetting qa-env-$n database"
   # Never rely on supabase/config.toml here: a checked-out PR branch can pin
   # project_id = "studiq", which would reset the main DB instead of this slot.
@@ -436,6 +452,8 @@ case "$cmd" in
     for n in "${SLOTS[@]}"; do status_env "$n"; done ;;
   reset)
     shift; for n in $(expand_slots "${1:-all}"); do reset_env "$n"; done ;;
+  config)
+    shift; for n in $(expand_slots "${1:-all}"); do config_env "$n"; done ;;
   rebuild)
     shift; for n in $(expand_slots "${1:-all}"); do rebuild_env "$n"; done ;;
   sync)
