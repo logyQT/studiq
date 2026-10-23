@@ -4,20 +4,33 @@ import { t } from '#test/e2e/utils';
 const PASSWORD = 'pass';
 const BULK_INVITES_URL = '/api/v1/organization/invites/bulk';
 
-async function login(page: import('@playwright/test').Page) {
+async function loginAndOpenInvites(page: import('@playwright/test').Page) {
+  // Register before navigation so the invites page's own roles fetch can't be missed.
+  const rolesLoaded = page.waitForResponse(
+    (res) => res.url().includes('/api/v1/organization/roles') && res.ok(),
+    { timeout: 30_000 },
+  );
+
   await page.goto('/login');
   await page.getByLabel(t('LoginPage.email_label')).fill('manager@dev.local');
   await page.getByLabel(t('LoginPage.password_label')).fill(PASSWORD);
   await page.getByRole('button', { name: t('LoginPage.login_button') }).click();
-  await page.waitForURL(/\/manage/);
-}
 
-async function openInvitesPage(page: import('@playwright/test').Page) {
-  await Promise.all([
-    page.waitForResponse((res) => res.url().includes('/api/v1/organization/roles')),
-    page.goto('/manage/invites'),
-  ]);
-  await page.waitForLoadState('networkidle');
+  // A fresh session has no active-org cookie yet, so useOrgs() auto-selects the
+  // first membership and pushes /manage. Wait for that arrival *and* for the
+  // switcher to render the active org — that only happens after the org switch
+  // POST resolved and the orgs query refetched, so no later redirect can
+  // interrupt the navigation below. Navigating straight to `?next=/manage/invites`
+  // is not deterministic here: that push races the auto-select redirect.
+  await page.waitForURL(/\/manage\/?$/, { timeout: 30_000 });
+  await expect(page.getByRole('button', { name: /WSB Merito/ })).toBeVisible({ timeout: 30_000 });
+
+  await page.goto('/manage/invites');
+
+  // Deterministic arrival: URL + form ready, then the role options.
+  await page.waitForURL(/\/manage\/invites$/, { timeout: 30_000 });
+  await expect(page.locator('#email-0')).toBeVisible();
+  await rolesLoaded;
 }
 
 async function getMemberRoleId(page: import('@playwright/test').Page) {
@@ -32,8 +45,7 @@ async function getMemberRoleId(page: import('@playwright/test').Page) {
 
 test.describe('Manage invitations — role defaults (#241)', () => {
   test.beforeEach(async ({ page }) => {
-    await login(page);
-    await openInvitesPage(page);
+    await loginAndOpenInvites(page);
   });
 
   test('a newly added row starts without a role and cannot be sent as-is', async ({ page }) => {
@@ -81,9 +93,16 @@ test.describe('Manage invitations — role defaults (#241)', () => {
     await page.locator('#role-0').click();
     await page.getByRole('option', { name: 'member', exact: true }).click();
 
-    await page.getByRole('button', { name: t('ManageInvitationsPage.send_invitations') }).click();
+    // Await the intercepted POST before asserting the reset state, so the
+    // assertion can't race the request.
+    await Promise.all([
+      page.waitForResponse(
+        (res) => res.url().includes(BULK_INVITES_URL) && res.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: t('ManageInvitationsPage.send_invitations') }).click(),
+    ]);
 
-    await expect(page.getByText(t('ManageInvitationsPage.success'))).toBeVisible();
+    await expect(page.getByText(/Wysłano 1 zaproszeń|Sent 1 invitation/i)).toBeVisible();
 
     expect(postedBodies).toHaveLength(1);
     expect(postedBodies[0].invitations).toEqual([
