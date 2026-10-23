@@ -26,7 +26,7 @@ python3 /workspaces/studiq/.worktrees/qa-env/qa/tools/qa-env restart-browser
 
 `rebuild-app` forces a fresh production build and restarts the app; the first build of a branch takes ~1 minute. Wait for the tool to return success.
 
-If the flow needs clean seed data, run `qa-env reset` **before** rebuilding, and say so in the artifact. Do not reset the DB after the test. `qa-env reset` now targets this slot's database explicitly and applies the migrations from the checked-out PR branch; do not apply migrations manually. If a migration/reset step fails, record the exact error and mark the test `blocked` rather than patching the DB silently.
+If the flow needs clean seed data, run `qa-env reset` **before** rebuilding, and say so in the artifact. Do not reset the DB after the test. `qa-env reset` now targets this slot's database explicitly, repairs the slot config, applies the migrations from the checked-out PR branch, and retries the trailing storage-bucket placeholder upload. Do not apply migrations manually. If a migration/reset step still fails, record the exact error and mark the test `blocked` rather than patching the DB silently.
 
 ## Login — always use the API
 Production builds have **no Dev Quick Login**. Never search for, click, or wait for
