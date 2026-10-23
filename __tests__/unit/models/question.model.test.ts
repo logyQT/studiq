@@ -40,10 +40,56 @@ describe('CreateQuestionSchema', () => {
     }
   });
 
-  it('fails when answers is empty', () => {
+  it('fails when answers is empty for mcq', () => {
     const result = CreateQuestionSchema.safeParse({
       bankId: VALID_BANK_ID,
       type: 'mcq',
+      content: 'Question',
+      answers: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('passes for open questions with an empty answers array', () => {
+    const result = CreateQuestionSchema.safeParse({
+      bankId: VALID_BANK_ID,
+      type: 'open',
+      content: 'Describe Newton\u2019s second law.',
+      explanation: 'F = m * a',
+      answers: [],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('defaults answers to an empty array for open questions when omitted', () => {
+    const result = CreateQuestionSchema.safeParse({
+      bankId: VALID_BANK_ID,
+      type: 'open',
+      content: 'Describe Newton\u2019s second law.',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.answers).toEqual([]);
+    }
+  });
+
+  it('fails when answers is omitted for mcq', () => {
+    const result = CreateQuestionSchema.safeParse({
+      bankId: VALID_BANK_ID,
+      type: 'mcq',
+      content: 'Question',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].path).toEqual(['answers']);
+      expect(result.error.issues[0].message).toBe(ValidationErrorCode.INVALID_INPUT);
+    }
+  });
+
+  it('fails when answers is empty for true_false', () => {
+    const result = CreateQuestionSchema.safeParse({
+      bankId: VALID_BANK_ID,
+      type: 'true_false',
       content: 'Question',
       answers: [],
     });
@@ -99,5 +145,24 @@ describe('UpdateQuestionSchema', () => {
       ],
     });
     expect(result.success).toBe(true);
+  });
+
+  it('passes when converting a question to open with an empty answers array', () => {
+    const result = UpdateQuestionSchema.safeParse({ type: 'open', answers: [] });
+    expect(result.success).toBe(true);
+  });
+
+  it('passes when clearing answers without specifying a type', () => {
+    const result = UpdateQuestionSchema.safeParse({ answers: [] });
+    expect(result.success).toBe(true);
+  });
+
+  it('fails when setting a non-open type with an empty answers array', () => {
+    const result = UpdateQuestionSchema.safeParse({ type: 'mcq', answers: [] });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].path).toEqual(['answers']);
+      expect(result.error.issues[0].message).toBe(ValidationErrorCode.INVALID_INPUT);
+    }
   });
 });

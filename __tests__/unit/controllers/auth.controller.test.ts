@@ -164,6 +164,33 @@ describe('AuthController', () => {
       expect(response.statusCode).toBe(200);
     });
 
+    it('forwards currentPassword to the service', async () => {
+      mockService.updatePassword.mockResolvedValueOnce(success(undefined));
+
+      await controller.updatePassword({
+        currentPassword: 'pass',
+        password: 'NewSecure1',
+        confirmPassword: 'NewSecure1',
+      });
+
+      expect(mockService.updatePassword).toHaveBeenCalledWith({
+        currentPassword: 'pass',
+        password: 'NewSecure1',
+      });
+    });
+
+    it('returns UNPROCESSABLE_ENTITY when currentPassword is empty', async () => {
+      const response = await controller.updatePassword({
+        currentPassword: '',
+        password: 'NewSecure1',
+        confirmPassword: 'NewSecure1',
+      });
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect(mockService.updatePassword).not.toHaveBeenCalled();
+    });
+
     it('returns UNPROCESSABLE_ENTITY when passwords do not match', async () => {
       const response = await controller.updatePassword({
         password: 'NewSecure1',
@@ -172,6 +199,20 @@ describe('AuthController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
+    });
+
+    it('returns 400 INVALID_CURRENT_PASSWORD when the current password is wrong', async () => {
+      mockService.updatePassword.mockResolvedValueOnce(failure('INVALID_CURRENT_PASSWORD'));
+
+      const response = await controller.updatePassword({
+        currentPassword: 'WrongPass1',
+        password: 'NewSecure1',
+        confirmPassword: 'NewSecure1',
+      });
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(400);
+      expect((response as any).error).toBe('INVALID_CURRENT_PASSWORD');
     });
 
     it('returns UNPROCESSABLE_ENTITY when service returns same_password', async () => {

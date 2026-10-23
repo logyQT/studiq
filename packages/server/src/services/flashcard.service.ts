@@ -346,7 +346,9 @@ export class FlashcardService {
       .single();
 
     if (fetchError || !flashcard) return failure('NOT_FOUND');
-    await check(ctx, Permission.FLASHCARD_READ, flashcard);
+    // Linking re-parents the card (deck_id is a single NOT NULL FK), so it is a move:
+    // gate on UPDATE of the source card, not READ — group members may read but must not move.
+    await check(ctx, Permission.FLASHCARD_UPDATE, flashcard);
 
     const { data: deck } = await supabase
       .from('flashcard_decks')
@@ -473,7 +475,8 @@ export class FlashcardService {
     if (!flashcards || flashcards.length === 0) return failure('NOT_FOUND');
 
     for (const fc of flashcards) {
-      await check(ctx, Permission.FLASHCARD_READ, fc);
+      // Same as link(): moving a card requires UPDATE on the source card.
+      await check(ctx, Permission.FLASHCARD_UPDATE, fc);
     }
 
     const { data: decks } = await supabase

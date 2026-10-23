@@ -122,13 +122,16 @@ export function QuestionFormDialog({
         explanation: explanation.trim() || undefined,
         topicIds: [],
         bankId,
-        answers: answers
-          .filter((a) => a.content.trim())
-          .map((a, i) => ({
-            content: a.content.trim(),
-            isCorrect: a.isCorrect,
-            orderIndex: i,
-          })),
+        answers:
+          type === 'open'
+            ? []
+            : answers
+                .filter((a) => a.content.trim())
+                .map((a, i) => ({
+                  content: a.content.trim(),
+                  isCorrect: a.isCorrect,
+                  orderIndex: i,
+                })),
       });
       onOpenChange(false);
     } finally {

@@ -5,63 +5,82 @@ export const QuestionTypeEnum = z.enum(['mcq', 'true_false', 'open']);
 
 export const CreateQuestionSchema = registry.register(
   'CreateQuestionRequest',
-  z.object({
-    bankId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
-    topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
-    type: QuestionTypeEnum,
-    content: z
-      .string()
-      .nonempty({ error: ValidationErrorCode.INVALID_INPUT })
-      .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(255, { error: ValidationErrorCode.TOO_LONG }),
-    explanation: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
-    answers: z
-      .array(
-        z.object({
-          content: z
-            .string()
-            .nonempty({ error: ValidationErrorCode.INVALID_INPUT })
-            .min(1, { error: ValidationErrorCode.TOO_SHORT })
-            .max(255, { error: ValidationErrorCode.TOO_LONG }),
-          isCorrect: z.boolean({ error: ValidationErrorCode.BOOL }),
-          orderIndex: z
-            .number({ error: ValidationErrorCode.NUMBER })
-            .int({ error: ValidationErrorCode.INTEGER })
-            .default(0),
-        }),
-      )
-      .min(1, { error: ValidationErrorCode.INVALID_INPUT }),
-  }),
+  z
+    .object({
+      bankId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
+      topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+      type: QuestionTypeEnum,
+      content: z
+        .string()
+        .nonempty({ error: ValidationErrorCode.INVALID_INPUT })
+        .min(1, { error: ValidationErrorCode.TOO_SHORT })
+        .max(255, { error: ValidationErrorCode.TOO_LONG }),
+      explanation: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
+      answers: z
+        .array(
+          z.object({
+            content: z
+              .string()
+              .nonempty({ error: ValidationErrorCode.INVALID_INPUT })
+              .min(1, { error: ValidationErrorCode.TOO_SHORT })
+              .max(255, { error: ValidationErrorCode.TOO_LONG }),
+            isCorrect: z.boolean({ error: ValidationErrorCode.BOOL }),
+            orderIndex: z
+              .number({ error: ValidationErrorCode.NUMBER })
+              .int({ error: ValidationErrorCode.INTEGER })
+              .default(0),
+          }),
+        )
+        .default([]),
+    })
+    .refine((data) => data.type === 'open' || data.answers.length > 0, {
+      error: ValidationErrorCode.INVALID_INPUT,
+      path: ['answers'],
+    }),
 );
 
 export const UpdateQuestionSchema = registry.register(
   'UpdateQuestionRequest',
-  z.object({
-    bankId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
-    topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
-    type: QuestionTypeEnum.optional(),
-    content: z
-      .string()
-      .nonempty({ error: ValidationErrorCode.INVALID_INPUT })
-      .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(255, { error: ValidationErrorCode.TOO_LONG })
-      .optional(),
-    explanation: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
-    answers: z
-      .array(
-        z.object({
-          id: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
-          content: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
-          isCorrect: z.boolean({ error: ValidationErrorCode.BOOL }),
-          orderIndex: z
-            .number({ error: ValidationErrorCode.NUMBER })
-            .int({ error: ValidationErrorCode.INTEGER })
-            .default(0),
-        }),
-      )
-      .optional(),
-    visibility: z.enum(['personal', 'group']).optional(),
-  }),
+  z
+    .object({
+      bankId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+      topicIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
+      type: QuestionTypeEnum.optional(),
+      content: z
+        .string()
+        .nonempty({ error: ValidationErrorCode.INVALID_INPUT })
+        .min(1, { error: ValidationErrorCode.TOO_SHORT })
+        .max(255, { error: ValidationErrorCode.TOO_LONG })
+        .optional(),
+      explanation: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
+      answers: z
+        .array(
+          z.object({
+            id: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+            content: z.string().min(1, { error: ValidationErrorCode.INVALID_INPUT }),
+            isCorrect: z.boolean({ error: ValidationErrorCode.BOOL }),
+            orderIndex: z
+              .number({ error: ValidationErrorCode.NUMBER })
+              .int({ error: ValidationErrorCode.INTEGER })
+              .default(0),
+          }),
+        )
+        .optional(),
+      visibility: z.enum(['personal', 'group']).optional(),
+    })
+    .refine(
+      (data) =>
+        !(
+          data.type !== undefined &&
+          data.type !== 'open' &&
+          data.answers !== undefined &&
+          data.answers.length === 0
+        ),
+      {
+        error: ValidationErrorCode.INVALID_INPUT,
+        path: ['answers'],
+      },
+    ),
 );
 
 export type CreateQuestionInput = z.infer<typeof CreateQuestionSchema>;

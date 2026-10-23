@@ -46,15 +46,17 @@ export class QuestionService {
     if (qError) return toDbFailure(qError);
     if (!question) return failure('NOT_FOUND');
 
-    const answersToInsert = data.answers.map((a, i) => ({
-      question_id: question.id,
-      content: a.content,
-      is_correct: a.isCorrect,
-      order_index: a.orderIndex ?? i,
-    }));
+    if (data.answers.length > 0) {
+      const answersToInsert = data.answers.map((a, i) => ({
+        question_id: question.id,
+        content: a.content,
+        is_correct: a.isCorrect,
+        order_index: a.orderIndex ?? i,
+      }));
 
-    const { error: aError } = await supabase.from('question_options').insert(answersToInsert);
-    if (aError) return toDbFailure(aError);
+      const { error: aError } = await supabase.from('question_options').insert(answersToInsert);
+      if (aError) return toDbFailure(aError);
+    }
 
     if (data.topicIds && data.topicIds.length > 0) {
       const topicAssignments = data.topicIds.map((topicId) => ({
@@ -149,13 +151,15 @@ export class QuestionService {
 
     if (data.answers) {
       await supabase.from('question_options').delete().eq('question_id', id);
-      const answersToInsert = data.answers.map((a, i) => ({
-        question_id: id,
-        content: a.content,
-        is_correct: a.isCorrect,
-        order_index: a.orderIndex ?? i,
-      }));
-      await supabase.from('question_options').insert(answersToInsert);
+      if (data.answers.length > 0) {
+        const answersToInsert = data.answers.map((a, i) => ({
+          question_id: id,
+          content: a.content,
+          is_correct: a.isCorrect,
+          order_index: a.orderIndex ?? i,
+        }));
+        await supabase.from('question_options').insert(answersToInsert);
+      }
     }
 
     if (data.bankId !== undefined) {
