@@ -1,4 +1,6 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { check } from '@studiq/server/lib/authz';
+import { AppError } from '@studiq/server/lib/errors';
 import { FlashcardService } from '@studiq/server/services/flashcard.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
@@ -292,6 +294,77 @@ describe('FlashcardService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
+    });
+  });
+
+  describe('link', () => {
+    const teacherCard = {
+      id: 'fc-teacher',
+      created_by: 'teacher-1',
+      organization_id: 'org-1',
+      deck_id: 'deck-teacher',
+    };
+    const studentDeck = { id: 'deck-student', created_by: ctx.userId, organization_id: 'org-1' };
+
+    it('gates the move on flashcard.update of the source card, not read', async () => {
+      mock.from.mockReturnValueOnce(chain(teacherCard));
+      mock.from.mockReturnValueOnce(chain(studentDeck));
+      mock.from.mockReturnValueOnce(chain(null));
+      mock.from.mockReturnValueOnce(chain({ ...teacherCard, deck_id: 'deck-student' }));
+
+      const result = await service.link('fc-teacher', { deckId: 'deck-student' }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.update', teacherCard);
+      expect(vi.mocked(check)).not.toHaveBeenCalledWith(ctx, 'flashcard.read', teacherCard);
+    });
+
+    it('propagates FORBIDDEN and never updates the card', async () => {
+      mock.from.mockReturnValueOnce(chain(teacherCard));
+      vi.mocked(check).mockRejectedValueOnce(new AppError('FORBIDDEN'));
+
+      await expect(
+        service.link('fc-teacher', { deckId: 'deck-student' }, ctx),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
+      // Only the card fetch happened: no deck lookup and no update statement.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).toHaveBeenCalledWith('flashcards');
+    });
+  });
+
+  describe('batchLink', () => {
+    const ownCard = { id: 'fc-own', created_by: ctx.userId, organization_id: 'org-1' };
+    const teacherCard = { id: 'fc-teacher', created_by: 'teacher-1', organization_id: 'org-1' };
+    const studentDeck = { id: 'deck-student', created_by: ctx.userId, organization_id: 'org-1' };
+
+    it('gates every requested card on flashcard.update', async () => {
+      mock.from.mockReturnValueOnce(chain([ownCard, teacherCard]));
+      mock.from.mockReturnValueOnce(chain([studentDeck]));
+      mock.from.mockReturnValueOnce(chain(null));
+
+      const result = await service.batchLink(
+        { ids: ['fc-own', 'fc-teacher'], deckId: 'deck-student' },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.update', ownCard);
+      expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.update', teacherCard);
+      expect(vi.mocked(check)).not.toHaveBeenCalledWith(ctx, 'flashcard.read', teacherCard);
+    });
+
+    it('rejects the whole batch when a foreign card is not updatable, before updating', async () => {
+      mock.from.mockReturnValueOnce(chain([ownCard, teacherCard]));
+      vi.mocked(check)
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new AppError('FORBIDDEN'));
+
+      await expect(
+        service.batchLink({ ids: ['fc-own', 'fc-teacher'], deckId: 'deck-student' }, ctx),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
+      expect(mock.from).toHaveBeenCalledTimes(1);
     });
   });
 
