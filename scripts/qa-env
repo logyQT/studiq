@@ -47,6 +47,7 @@ app_port()   { echo $((3009 + $1)); }
 admin_port() { echo $((4009 + $1)); }
 api_port()   { echo $((54321 + 100 * $1)); }
 db_port()    { echo $(( $(api_port "$1") + 1 )); }
+db_url()     { echo "postgresql://postgres:postgres@127.0.0.1:$(db_port "$1")/postgres"; }
 studio_port(){ echo $(( $(api_port "$1") + 2 )); }
 mail_port()  { echo $(( $(api_port "$1") + 3 )); }
 analytics_port(){ echo $(( $(api_port "$1") + 6 )); }
@@ -322,7 +323,7 @@ start_env() {
 
   if [ ! -f "$wt/.qa-seeded" ]; then
     info "seeding database (first start)"
-    ( cd "$wt" && bunx supabase db reset --workdir "$wt" > "$wt/.qa-reset.log" 2>&1 ) || {
+    ( cd "$wt" && bunx supabase db reset --workdir "$wt" --db-url "$(db_url "$n")" > "$wt/.qa-reset.log" 2>&1 ) || {
       tail -n 20 "$wt/.qa-reset.log" >&2
       die "supabase db reset failed for qa-env-$n (see $wt/.qa-reset.log)"
     }
@@ -375,7 +376,9 @@ reset_env() {
   [ -d "$wt" ] || die "qa-env-$n does not exist; run 'scripts/qa-env up $n' first"
   listening "$(api_port "$n")" || die "qa-env-$n supabase is down; run 'scripts/qa-env up $n' first"
   info "resetting qa-env-$n database"
-  ( cd "$wt" && bunx supabase db reset --workdir "$wt" )
+  # Never rely on supabase/config.toml here: a checked-out PR branch can pin
+  # project_id = "studiq", which would reset the main DB instead of this slot.
+  ( cd "$wt" && bunx supabase db reset --workdir "$wt" --db-url "$(db_url "$n")" )
   touch "$wt/.qa-seeded"
   info "qa-env-$n reseeded"
 }
