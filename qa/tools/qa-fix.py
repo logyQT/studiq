@@ -637,8 +637,10 @@ def cmd_status(args) -> None:
     print("slot role      state   issue/stage")
     for env in sorted(SLOTS):
         role = ROLES[env].replace("_", "/")
-        hit = next((x for x in (env_issue(r, env) for r in active.values()) if x), None)
-        label = f"#{hit[0]['number']} {hit[1]}" if hit else "-"
+        label = "-"
+        if env in busy:
+            latest = sessions(SLOTS[env], 1)
+            label = latest[0].get("title", "-") if latest else "-"
         print(f"{env:<4} {role:<9} {'busy' if env in busy else 'free':<7} {label}")
     print("\nissues:")
     for n in sorted(active, key=lambda x: int(x)):
