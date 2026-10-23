@@ -24,12 +24,9 @@ export interface DashboardSnapshot {
 const STATE_MAP: Record<string, SlotState> = { free: 'free', busy: 'busy', decision: 'waiting' };
 const PRESENCE_STATUS = { free: 'online', busy: 'dnd', waiting: 'idle' } as const;
 
-function age(ms: number): string {
-  if (!ms || Date.now() - ms < 60_000) return 'now';
-  const mins = Math.round((Date.now() - ms) / 60_000);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  return `${hours}h ago`;
+function relative(ms: number): string {
+  if (!ms) return '—';
+  return `<t:${Math.floor(ms / 1000)}:R>`;
 }
 
 export class StatusPublisher {
@@ -310,7 +307,7 @@ export class StatusPublisher {
   private buildContent(): string {
     const lines = this.snapshot.envs.map((env) => {
       const scenario = env.scenario ? env.scenario.slice(0, 42) : 'no session';
-      return `${env.state.padEnd(7)} | ${env.label} · ${scenario} · ${env.pending} pending · ${age(env.lastActivity)}`;
+      return `${env.state.padEnd(7)} | ${env.label} · ${scenario} · ${env.pending} pending · ${relative(env.lastActivity)}`;
     });
     lines.push('');
     lines.push(`dashboard: ${this.config.dashboardUrl}/`);
