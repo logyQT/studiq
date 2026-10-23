@@ -38,7 +38,7 @@ export class StatsService {
     // multiple orgs will see their activity from all of them combined here.
     const { data: attempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
-      .select('score, total_questions, started_at, config')
+      .select('score, total_questions, total_points, started_at, config')
       .eq('user_id', ctx.userId)
       .order('started_at', { ascending: false });
 
@@ -86,11 +86,14 @@ export class StatsService {
     if (dueError) return toDbFailure(dueError);
 
     const totalQuizzes = attempts?.length ?? 0;
+    // Assignment attempts carry total_points (awarded points / max points);
+    // practice quizzes only have a question count.
+    const attemptTotal = (a: { total_questions: number; total_points?: number | null }) =>
+      Math.max(a.total_points ?? a.total_questions, 1);
     const avgScore =
       attempts && attempts.length > 0
         ? Math.round(
-            (attempts.reduce((sum, a) => sum + a.score / Math.max(a.total_questions, 1), 0) /
-              attempts.length) *
+            (attempts.reduce((sum, a) => sum + a.score / attemptTotal(a), 0) / attempts.length) *
               100,
           )
         : 0;
@@ -112,8 +115,8 @@ export class StatsService {
         attempts?.map((a) => ({
           date: a.started_at,
           score: a.score,
-          total: a.total_questions,
-          percentage: Math.round((a.score / Math.max(a.total_questions, 1)) * 100),
+          total: attemptTotal(a),
+          percentage: Math.round((a.score / attemptTotal(a)) * 100),
         })) ?? [],
     });
   }

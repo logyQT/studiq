@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
       const { data, error } = await supabase
         .from('quiz_attempts')
         .select('id, score, total_questions, started_at, completed_at, config')
+        .is('assignment_id', null)
         .not('completed_at', 'is', null);
 
       if (error) throw error;

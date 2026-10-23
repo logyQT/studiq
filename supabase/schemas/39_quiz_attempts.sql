@@ -8,6 +8,7 @@ CREATE TABLE public.quiz_attempts (
   user_id          uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
   score            int NOT NULL DEFAULT 0,
   total_questions  int NOT NULL DEFAULT 0,
+  total_points     int,
   config           jsonb,
   started_at       timestamptz DEFAULT now(),
   completed_at     timestamptz,

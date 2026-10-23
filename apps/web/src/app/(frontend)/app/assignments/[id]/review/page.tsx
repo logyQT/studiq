@@ -10,6 +10,7 @@ interface ReviewData {
   id: string;
   score: number;
   total_questions: number;
+  total_points: number | null;
   quiz_attempt_questions: Array<{
     question_id: string;
     order_index: number;
@@ -57,6 +58,8 @@ export default function ReviewAssignmentPage() {
     return <div className="p-6 text-center text-muted-foreground">{t('not_available')}</div>;
   }
 
+  const total = review.total_points ?? review.total_questions;
+
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
       <Link
@@ -68,10 +71,10 @@ export default function ReviewAssignmentPage() {
 
       <div className="text-center py-8">
         <h1 className="text-3xl font-bold">
-          {review.score} / {review.total_questions}
+          {review.score} / {total}
         </h1>
         <p className="text-muted-foreground mt-1">
-          {Math.round((review.score / review.total_questions) * 100)}%
+          {total > 0 ? Math.round((review.score / total) * 100) : 0}%
         </p>
       </div>
 

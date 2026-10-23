@@ -137,6 +137,37 @@ describe('StatsService', () => {
       expect(result.data.attemptsOverTime.length).toBe(2);
     });
 
+    it('uses total_points as the denominator for assignment attempts (#167)', async () => {
+      const attemptsBuilder = qb([
+        {
+          score: 3,
+          total_questions: 4,
+          total_points: 5,
+          started_at: '2024-01-01',
+          config: {},
+        },
+      ]);
+
+      mock.from
+        .mockReturnValueOnce(attemptsBuilder) // quiz_attempts
+        .mockReturnValueOnce(qb([])) // flashcard_practice
+        .mockReturnValueOnce(qb([])) // questions
+        .mockReturnValueOnce(qb([], null, 0)) // flashcard_decks
+        .mockReturnValueOnce(qb([], null, 0)) // flashcards
+        .mockReturnValueOnce(qb([], null, 0)); // flashcard_review_state
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data.avgScore).toBe(60);
+      expect(result.data.attemptsOverTime[0]).toEqual({
+        date: '2024-01-01',
+        score: 3,
+        total: 5,
+        percentage: 60,
+      });
+    });
+
     it('returns zero stats when no data exists', async () => {
       const c: any = {};
       c.select = vi.fn(() => c);

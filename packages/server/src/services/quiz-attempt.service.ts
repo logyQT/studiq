@@ -105,8 +105,24 @@ export class QuizAttemptService {
       }
     }
 
+    // Assignment attempts are scored in points, practice quizzes in correct
+    // answers. Load the per-question points once when this is an assignment.
+    const assignmentPoints = new Map<string, number>();
+    if (attempt.assignment_id) {
+      const { data: rows, error: pointsError } = await supabase
+        .from('assignment_questions')
+        .select('question_id, points')
+        .eq('assignment_id', attempt.assignment_id);
+
+      if (pointsError) return toDbFailure(pointsError);
+      for (const row of rows ?? []) {
+        assignmentPoints.set(row.question_id, row.points ?? 0);
+      }
+    }
+
     let score = 0;
     const answerRecords = [];
+    const awardedQuestions = new Set<string>();
 
     for (const ans of data.answers) {
       let isCorrect = false;
@@ -118,7 +134,12 @@ export class QuizAttemptService {
           .single();
         isCorrect = answer?.is_correct ?? false;
       }
-      if (isCorrect) score++;
+      if (isCorrect && !awardedQuestions.has(ans.questionId)) {
+        // One question can produce several answer rows (multi-select /
+        // matching), so award its points at most once.
+        awardedQuestions.add(ans.questionId);
+        score += attempt.assignment_id ? (assignmentPoints.get(ans.questionId) ?? 0) : 1;
+      }
       answerRecords.push({
         attempt_id: data.attemptId,
         question_id: ans.questionId,

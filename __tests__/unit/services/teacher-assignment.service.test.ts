@@ -686,31 +686,110 @@ describe('TeacherAssignmentService', () => {
       );
     };
 
-    it('updates existing answer grade', async () => {
+    it('updates existing answer grade and recomputes the attempt score', async () => {
+      const attemptChain = chain({ id: 'attempt-1' });
+      const questionsChain = chain([
+        { question_id: 'q-mcq', points: 1 },
+        { question_id: 'q-open', points: 2 },
+      ]);
+      const answersChain = chain([
+        { question_id: 'q-mcq', is_correct: true, teacher_points: null },
+        { question_id: 'q-open', is_correct: true, teacher_points: 2 },
+      ]);
+      const updateChain = chain(null);
+
       baseSetup();
       mock.from
-        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(attemptChain)
         .mockReturnValueOnce(chain({ id: 'answer-1' }))
-        .mockReturnValue(chain(null))
-        .mockReturnValue(chain(null));
+        .mockReturnValueOnce(chain(null)) // student_answers upsert
+        .mockReturnValueOnce(questionsChain)
+        .mockReturnValueOnce(answersChain)
+        .mockReturnValueOnce(updateChain);
 
       const result = await service.gradeAnswer(
         assignmentId,
         'student-1',
-        { questionId: 'q-1', points: 5, feedback: 'Good' },
+        { questionId: 'q-open', points: 2, feedback: 'Good' },
         ctx,
       );
 
       expect(result.success).toBe(true);
+      // 1 auto-graded point + 2 manual points.
+      expect(updateChain.update).toHaveBeenCalledWith({
+        score: 3,
+        graded_at: expect.any(String),
+      });
     });
 
-    it('inserts new answer grade when no existing answer', async () => {
+    it('lets manual points win over auto correctness (0 points on a correct answer)', async () => {
+      const updateChain = chain(null);
+
       baseSetup();
       mock.from
         .mockReturnValueOnce(chain({ id: 'attempt-1' }))
-        .mockReturnValueOnce(chain(null))
-        .mockReturnValue(chain(null))
-        .mockReturnValue(chain(null));
+        .mockReturnValueOnce(chain({ id: 'answer-1' }))
+        .mockReturnValueOnce(chain(null)) // student_answers upsert
+        .mockReturnValueOnce(chain([{ question_id: 'q-mcq', points: 1 }]))
+        .mockReturnValueOnce(chain([{ question_id: 'q-mcq', is_correct: true, teacher_points: 0 }]))
+        .mockReturnValueOnce(updateChain);
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'student-1',
+        { questionId: 'q-mcq', points: 0 },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(updateChain.update).toHaveBeenCalledWith({
+        score: 0,
+        graded_at: expect.any(String),
+      });
+    });
+
+    it('adds 0 for a correct answer whose question is no longer in the assignment', async () => {
+      const updateChain = chain(null);
+
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain({ id: 'answer-1' }))
+        .mockReturnValueOnce(chain(null)) // student_answers upsert
+        .mockReturnValueOnce(chain([{ question_id: 'q-1', points: 1 }]))
+        .mockReturnValueOnce(
+          chain([
+            { question_id: 'q-1', is_correct: false, teacher_points: 1 },
+            { question_id: 'q-gone', is_correct: true, teacher_points: null },
+          ]),
+        )
+        .mockReturnValueOnce(updateChain);
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'student-1',
+        { questionId: 'q-1', points: 1 },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(updateChain.update).toHaveBeenCalledWith({
+        score: 1,
+        graded_at: expect.any(String),
+      });
+    });
+
+    it('inserts new answer grade when no existing answer', async () => {
+      const updateChain = chain(null);
+
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain(null)) // no existing answer
+        .mockReturnValueOnce(chain(null)) // student_answers insert
+        .mockReturnValueOnce(chain([{ question_id: 'q-1', points: 5 }]))
+        .mockReturnValueOnce(chain([{ question_id: 'q-1', is_correct: true, teacher_points: 5 }]))
+        .mockReturnValueOnce(updateChain);
 
       const result = await service.gradeAnswer(
         assignmentId,
@@ -720,6 +799,10 @@ describe('TeacherAssignmentService', () => {
       );
 
       expect(result.success).toBe(true);
+      expect(updateChain.update).toHaveBeenCalledWith({
+        score: 5,
+        graded_at: expect.any(String),
+      });
     });
 
     it('returns NOT_FOUND when no attempt', async () => {
@@ -953,6 +1036,39 @@ describe('TeacherAssignmentService', () => {
       const result = await service.startAttempt(assignmentId, ctx);
 
       expect(result.success).toBe(true);
+    });
+
+    it('snapshots the assignment total points on the attempt (#167)', async () => {
+      const attemptChain = chain({ id: 'attempt-1' });
+      const questions = [
+        { question_id: 'q-1', order_index: 0, points: 1 },
+        { question_id: 'q-2', order_index: 1, points: 1 },
+        { question_id: 'q-3', order_index: 2, points: 1 },
+        { question_id: 'q-4', order_index: 3, points: 2 },
+      ];
+      const fullQuestions = questions.map((q) => ({
+        id: q.question_id,
+        content: 'What?',
+        question_answers: [],
+      }));
+
+      mock.from
+        .mockReturnValueOnce(chain({ ...assignment, assignment_questions: questions }))
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain(fullQuestions))
+        .mockReturnValueOnce(attemptChain)
+        .mockReturnValue(chain(null));
+
+      const result = await service.startAttempt(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      expect(attemptChain.insert).toHaveBeenCalledWith({
+        user_id: userId,
+        assignment_id: assignmentId,
+        score: 0,
+        total_questions: 4,
+        total_points: 5,
+      });
     });
 
     it('refuses a student outside the targeted groups and creates no attempt (#193)', async () => {
