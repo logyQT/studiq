@@ -13,6 +13,7 @@ Supabase and the nested Docker daemon are left to Docker's restart policy.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shutil
@@ -35,6 +36,24 @@ LOG = Path("/tmp/qa-supervisor.log")
 PAUSE = LOCKS / "paused"
 COOLDOWN = 90
 MAX_SLOTS = 8
+API_BASE = "http://127.0.0.1:4096"
+API_AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
+SESSION_LIMIT_MS = int(os.environ.get("QA_SESSION_LIMIT_MS", 3_600_000))
+STUCK_LIMIT_MS = int(os.environ.get("QA_STUCK_LIMIT_MS", 1_200_000))
+INTERRUPT_COOLDOWN_MS = 600_000
+
+
+def api(method: str, path: str, body: dict | None = None, timeout: int = 15) -> dict:
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(
+        API_BASE + path,
+        data=data,
+        method=method,
+        headers={"Authorization": API_AUTH, "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read()
+        return json.loads(raw) if raw else {}
 
 
 def log(line: str) -> None:
@@ -129,11 +148,72 @@ def components() -> dict:
     return checks
 
 
+def enforce_session_timeouts(actions: list[dict]) -> None:
+    """Backstop for agent runs: interrupt absolute-long or no-progress sessions."""
+    now = int(time.time() * 1000)
+    data = state()
+    sessions = data.setdefault("sessions", {})
+
+    try:
+        active = api("GET", "/api/session/active").get("data", {}) or {}
+    except Exception as exc:  # noqa: BLE001
+        log(f"session watch: active query failed: {exc}")
+        return
+
+    active_ids = set(active.keys())
+    for sid in list(sessions):
+        if sid not in active_ids:
+            sessions.pop(sid, None)
+
+    for sid in active_ids:
+        try:
+            msgs = api("GET", f"/api/session/{sid}/message?limit=1&order=desc").get("data", []) or []
+        except Exception:  # noqa: BLE001
+            continue
+        last_id = str(msgs[0].get("id", "")) if msgs else ""
+        rec = sessions.get(sid)
+        if rec is None:
+            sessions[sid] = {
+                "firstSeen": now,
+                "changedAt": now,
+                "lastId": last_id,
+                "interruptedAt": 0,
+            }
+            continue
+        if rec.get("lastId") != last_id:
+            rec["lastId"] = last_id
+            rec["changedAt"] = now
+
+        interrupted = int(rec.get("interruptedAt") or 0)
+        if interrupted and now - interrupted < INTERRUPT_COOLDOWN_MS:
+            continue
+
+        reason = None
+        if now - int(rec.get("firstSeen", now)) > SESSION_LIMIT_MS:
+            reason = "absolute"
+        elif now - int(rec.get("changedAt", now)) > STUCK_LIMIT_MS:
+            reason = "stuck"
+        if reason is None:
+            continue
+
+        try:
+            api("POST", f"/api/session/{sid}/interrupt", {})
+            rec["interruptedAt"] = now
+            log(f"session {sid}: interrupted ({reason})")
+            actions.append({"component": f"session-{sid}", "action": "interrupt", "reason": reason})
+        except Exception as exc:  # noqa: BLE001
+            log(f"session {sid}: interrupt failed: {exc}")
+
+    save_state(data)
+
+
 def ensure() -> dict:
     checks = components()
     actions: list[dict] = []
     if PAUSE.exists():
         return {"ok": True, "paused": True, "checks": checks, "actions": actions}
+
+    enforce_session_timeouts(actions)
 
     # Web apps: start each missing one through the env-scoped tool.
     for n, _ in slots():

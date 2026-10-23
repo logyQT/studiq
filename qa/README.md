@@ -139,6 +139,9 @@ rate-limited (90 s per component) and protected by a lock.
 - `qa-supervisor pause` / `resume` parks it without touching Docker.
 - State and locks live in `/tmp/studiq-qa-locks/`; the host log is
   `studiq-dev/qa-supervisor.host.log` (rotated at 1 MB).
+- Session backstop: an active session with no new message for
+  `QA_STUCK_LIMIT_MS` (default 20 min) or older than `QA_SESSION_LIMIT_MS`
+  (default 60 min) is interrupted. Override the env vars for a one-off run.
 
 ## Notes
 
