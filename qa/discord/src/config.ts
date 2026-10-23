@@ -86,7 +86,7 @@ export function readConfig(): { config: Config; errors: string[] } {
   const dashboardChannelId = need('DISCORD_DASHBOARD_CHANNEL_ID');
 
   const slots: SlotConfig[] = [];
-  for (let n = 1; n <= 4; n++) {
+  for (let n = 1; n <= 8; n++) {
     const token = need(`DISCORD_ENV${n}_TOKEN`);
     const channelId = need(`DISCORD_ENV${n}_CHANNEL_ID`);
     slots.push({ n, label: `env-${n}`, token, channelId, directory: '' });
