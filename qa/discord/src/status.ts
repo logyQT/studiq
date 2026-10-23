@@ -53,6 +53,11 @@ export class StatusPublisher {
     { state: string; scenario: string; sessionId: string; pending: number }
   >();
   private baseline = false;
+  private eventSink?: (text: string) => Promise<void>;
+
+  setEventSink(sink: (text: string) => Promise<void>): void {
+    this.eventSink = sink;
+  }
 
   constructor(
     private readonly config: Config,
@@ -145,6 +150,7 @@ export class StatusPublisher {
     }
 
     const lines: string[] = [];
+    const actionable: string[] = [];
     for (const env of this.snapshot.envs) {
       const prev = this.lastEnvs.get(env.label);
       if (!prev) continue;
@@ -155,7 +161,11 @@ export class StatusPublisher {
           env.state === 'free' && prev.state === 'busy'
             ? 'finished'
             : `${prev.state} → ${env.state}`;
-        lines.push(`${env.label}: ${verb}${detail}${pending}`);
+        const line = `${env.label}: ${verb}${detail}${pending}`;
+        lines.push(line);
+        if (env.state === 'waiting' || (env.state === 'free' && prev.state === 'busy')) {
+          actionable.push(line);
+        }
       } else if (env.state === 'busy' && env.scenario && prev.scenario !== env.scenario) {
         lines.push(`${env.label}: started · ${env.scenario}`);
       }
@@ -167,6 +177,22 @@ export class StatusPublisher {
       this.log.debug('status', `[dry-run] events:\n${lines.join('\n')}`);
       return;
     }
+
+    if (actionable.length > 0 && this.eventSink) {
+      try {
+        await this.eventSink(
+          `[automated events]\n${actionable.join('\n')}\n` +
+            'Act on these (sync decisions, report, dispatch, or unstick). ' +
+            'If nothing is needed, reply briefly.',
+        );
+      } catch (err) {
+        this.log.warn(
+          'status',
+          `event wake failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
     const channel = await this.resolveManagerChannel();
     if (!channel) return;
     try {

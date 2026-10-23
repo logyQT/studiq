@@ -270,6 +270,8 @@ async function main(): Promise<void> {
     );
   }
 
+  status.setEventSink((text) => managerBridge.sendToAgent(text, 'event-feed'));
+
   const managerSession = await ensureManagerSession(config, opencode, state, log);
   if (!managerSession)
     log.warn('manager', 'free text in #manager will not work until a session exists');
