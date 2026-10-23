@@ -167,6 +167,13 @@ def migration_timestamp(path: str) -> int | None:
 
 def main_migration_set() -> set[int]:
     try:
+        subprocess.run(
+            ["git", "-C", str(ROOT), "fetch", "origin", "main", "--quiet"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except Exception:
+        pass
+    try:
         out = subprocess.run(
             ["git", "-C", str(ROOT), "ls-tree", "-r", "--name-only",
              "origin/main", "supabase/migrations"],
