@@ -179,10 +179,10 @@ curl -s -u opencode:studiq-local-dev \
 ```bash
 B=/workspaces/studiq/.worktrees/qa-env/dashboard/browser-cli.ts
 bun "$B" navigate http://localhost:3010/login
-bun "$B" click --text "M1"                    # Dev Quick Login
-bun "$B" wait --url "/manage"
 bun "$B" type "manager@dev.local" --selector "#email" --clear
-bun "$B" press Enter
+bun "$B" type "pass" --selector "#password" --clear
+bun "$B" click --selector "button[type=submit]"
+bun "$B" wait --url "/manage"
 bun "$B" eval "document.title"
 bun "$B" screenshot --name login              # -> {path, bytes, width, height}
 bun "$B" network --limit 20                   # status + x-trace-id
