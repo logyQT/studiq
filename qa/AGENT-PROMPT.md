@@ -137,6 +137,7 @@ If any preflight check fails, that is an **environment problem, not a product de
 ## Accounts (password `pass`) — slots run production builds, so log in with email + password
 M1=manager@dev.local · M2=manager2@dev.local · T1=teacher1@dev.local · T2=teacher2@dev.local · TC=teacher-classroom@dev.local · S1=student1@dev.local · S2=student2@dev.local · S3=student3@dev.local · SC=student-classroom@dev.local.
 There is **no Dev Quick Login** in production builds. Type the email and `pass` on `/login`, or call `POST /api/v1/auth/login` with `{"email","password"}`.
+Inbucket inbox: `http://localhost:$((54321 + 100 * N + 3))` for slot N (env-1 `:54424`, env-2 `:54524`, …). Signup/recovery mail lands there.
 TC = admin of org "Classroom". T1/M1 are in WSB Merito + UE Wrocław. All orgs are on plan `launch`.
 
 ## How to test

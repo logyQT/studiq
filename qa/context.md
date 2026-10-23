@@ -52,7 +52,7 @@ Zautomatyzowane testy (unit/integration/e2e) – uruchamia się je osobno polece
 
 # 2. Konta i dane testowe
 
-Hasło wszystkich kont seedowych: pass. W slotach QA działa build produkcyjny, więc nie ma panelu „Dev Quick Login”; zaloguj się e-mailem i hasłem `pass` (albo `POST /api/v1/auth/login`).
+Hasło wszystkich kont seedowych: pass. W slotach QA działa build produkcyjny, więc nie ma panelu „Dev Quick Login”; zaloguj się e-mailem i hasłem `pass` (albo `POST /api/v1/auth/login`). Skrzynka Inbucket: `http://localhost:$((54321 + 100 * N + 3))` dla slotu N (env-1 `:54424`, env-2 `:54524`, …).
 
 | E-mail | Skrót | Typ konta | Organizacje / rola | Plan osobisty | Uwagi |
 |---|---|---|---|---|---|

@@ -206,6 +206,25 @@ start_admin() {
   ( cd "$wt/apps/admin" && setsid nohup bun x next start -p "$port" > "$wt/$log" 2>&1 & echo $! > "$wt/$pidfile" )
 }
 
+# GoTrue's SMTP_HOST points at supabase_inbucket_<project>; the CLI's `mailpit`
+# service is excluded to save memory, so start a dedicated Mailpit container on
+# the env network. Its web UI is the Inbucket box the auth cases expect.
+ensure_inbucket() {
+  local n=$1 project="qa-env-$n" net="supabase_network_qa-env-$n"
+  local name="supabase_inbucket_${project}" port
+  port=$(mail_port "$n")
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$name"; then
+    return 0
+  fi
+  docker rm -f "$name" >/dev/null 2>&1 || true
+  docker run -d --name "$name" \
+    --network "$net" --network-alias "$name" \
+    -p "127.0.0.1:${port}:8025" \
+    -e MP_SMTP_DISABLE_RDNS=true \
+    public.ecr.aws/supabase/mailpit:v1.30.2 >/dev/null \
+    || { warn "inbucket failed to start for qa-env-$n"; return 1; }
+}
+
 pids_on_port() {
   local port=$1
   {
@@ -261,7 +280,7 @@ start_env() {
   info "supabase config written (ports $api/$db/$studio/$mail; realtime off)"
 
   if ! listening "$api"; then
-    info "starting supabase (realtime/analytics/edge/imgproxy/vector/pooler/studio/meta/mailpit off)"
+    info "starting supabase (realtime/analytics/edge/imgproxy/vector/pooler/studio/meta off)"
     ( cd "$wt" && bunx supabase start --workdir "$wt" \
         -x realtime,imgproxy,logflare,vector,edge-runtime,supavisor,studio,postgres-meta,mailpit \
         > "$wt/.qa-supabase.log" 2>&1 ) || {
@@ -271,6 +290,7 @@ start_env() {
   else
     info "supabase already listening on $api"
   fi
+  ensure_inbucket "$n" || die "inbucket failed to start for qa-env-$n"
 
   # shellcheck disable=SC1090
   eval "$( cd "$wt" && bunx supabase status -o env --workdir "$wt" 2>/dev/null )"
@@ -306,6 +326,7 @@ stop_env() {
   [ -d "$wt" ] || { echo "qa-env-$n: no worktree"; return 0; }
   stop_app "$wt" "$(app_port "$n")" ".qa-app.pid"
   stop_app "$wt" "$(admin_port "$n")" ".qa-admin.pid"
+  docker rm -f "supabase_inbucket_qa-env-$n" >/dev/null 2>&1 || true
   ( cd "$wt" && bunx supabase stop --no-backup --workdir "$wt" >/dev/null 2>&1 ) || true
   info "qa-env-$n stopped (worktree + data kept)"
 }
