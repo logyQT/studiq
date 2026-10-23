@@ -60,6 +60,15 @@ operator sees in tile `qa-env-N`, so leave the dashboard open while you work.
   `qa_browser_reload`, `qa_browser_network`, `qa_browser_console`.
   They resolve the env from `qa/env.json`; pass `env: "qa-env-N"` only if a tool
   reports the wrong env.
+- **Env operations — `qa_env` server, no arguments at all:**
+  `qa_env_status`, `qa_env_reset` (destructive DB reset + seed),
+  `qa_env_reseed`, `qa_env_restart_app`, `qa_env_restart_browser`,
+  `qa_env_admin_up`, `qa_env_admin_down`, `qa_env_lock`.
+  They act on **your** slot only. There is no env or path parameter, so you
+  cannot target another environment by mistake. Admin is exclusive across all
+  slots: `qa_env_admin_up` fails with the current holder instead of stealing
+  the panel. Prefer these over raw `docker`, `supabase` or `scripts/qa-env`
+  commands.
 - **Guaranteed fallback — shell CLI** (works even if MCP is unavailable):
 
   ```bash
@@ -155,11 +164,12 @@ Gotchas:
 - If a datasource is unhealthy (`check_datasources_health()`), say so and fall back to browser + DB evidence — don't present a guess as a confirmed root cause.
 
 ## How to report
-- **In scope = file autonomously.** After the duplicate search, file the issue yourself with the fields below.
-- **Out of scope = investigate, then ask.** First check whether it is already reported (`gh issue list --repo logyQT/studiq --state all --limit 200 --search "<keywords>"`) and pull the evidence (trace/log/console/network). Do **not** file it. Report it at the end and let me decide.
-- **At most 4 sentences per finding.** (1) what breaks and where, (2) evidence + root cause, (3) proposed title + severity + area labels, (4) why you held it.
+- **You own the outcome: file every confirmed defect.** There is no in/out-of-scope gate and no human approval step. Reproduce it cleanly, search for duplicates (`gh issue list --repo logyQT/studiq --state all --limit 200 --search "<keywords>"`), attach evidence, and file it yourself with the fields below. Scope changes the labels and priority you propose, never whether it is filed.
+- **Design ambiguity is still an issue.** If the correct behaviour is a product decision, file it with the `needs-design` label and put the options in the body. Do not wait for a human and do not park it in the report.
+- **Confirmed means confirmed.** A finding is ready to file when you reproduced it from a clean state (or have a trace/log that proves it), the duplicate search is done, and a visible defect has at least one screenshot attached. A guess is not a finding.
+- **At most 4 sentences per finding in the report** (the issue body itself can be longer).
 
-- One bug = one issue. If the scenario exposes several distinct defects, **file the highest-severity one** and end your turn asking, in plain text, which of the others to file. Do not use a blocking question tool.
+- One bug = one issue. If the scenario exposes several distinct defects, **file each one as its own issue** with its own evidence. Do not hold any of them for approval, and do not use a blocking question tool.
 - Language: ENGLISH (repo convention). Always check duplicates before filing (same search as above).
 - Labels: always `bug`; exactly one severity (`critical|high|medium|low`); 1–2 areas (`frontend|backend|database|i18n|visual|security|accessibility|performance|payments`). Add `manual-testing` only for manual scenarios.
 - Body fields: scenario ID + step; severity; repro steps; expected vs actual; root cause from the trace/log (span name, `error.code`, `db.error.*`, log line) — or state explicitly that observability was unavailable; evidence (console/network + Grafana findings); env (`main` @ commit from `rev-parse`, account).
@@ -171,16 +181,9 @@ Gotchas:
 Finish every scenario with these three sections in plain text, as your final
 message. No tool calls after it — I read this when I get back.
 
-1. **Filed** — one line per issue: `#<number> — <title>` + the labels you used.
-2. **Found but not filed** — every out-of-scope defect, **max 4 sentences each**:
-   1. what breaks, and on which step/scenario;
-   2. evidence (span/log/console/network) and the root cause, plus the exact
-      screenshot filename(s), e.g. `screenshot: qa-env-1-20261022-195228-....png`;
-   3. proposed title + severity + area labels;
-   4. why you held it (out of scope / duplicate of `#<number>` / needs my decision).
-   Say explicitly if the list is empty.
-3. **Decisions I need** — for each item in (2), one line: **file it** or
-   **investigate further with another agent**.
+1. **Filed** — every issue you created, one line each: `#<number> — <title>` + the labels you used. Include out-of-scope findings and `needs-design` issues; everything confirmed belongs here.
+2. **Found but not filed** — this must be exactly `None — everything confirmed was filed.` If anything is listed here, you stopped short: file it now, or state the concrete blocker (missing GitHub auth, duplicate, cannot reproduce). Max 4 sentences per entry, and always include the exact screenshot filename(s).
+3. **Decisions I need** — only product/design calls, and each one must already be filed with `needs-design`: `#<number> — <question>` + the options you proposed. If none, say `None.` Never leave a decision as an unfiled question.
 
 ### Machine-readable summary (required)
 
@@ -191,23 +194,15 @@ fenced; in your answer use three backticks:
     {
       "scenario": "<ID>",
       "filed": [{"number": 249, "title": "...", "labels": ["bug", "high"]}],
-      "held": [
-        {
-          "title": "...",
-          "severity": "low",
-          "areas": ["frontend", "i18n"],
-          "why": "...",
-          "body": "repro + expected vs actual + evidence, including the exact screenshot filename(s)"
-        }
-      ],
-      "decisions": [
-        {"id": "d1", "question": "...", "options": ["file", "investigate", "skip"], "held": 0}
-      ]
+      "held": [],
+      "decisions": []
     }
 
-Use `"held": []` and `"decisions": []` when there is nothing. `decisions[].held`
-is the index into `held` (omit it when the decision is not about a held finding).
-Keep the JSON valid — it is machine-read. Do not put anything after it.
+Use `"held": []` and `"decisions": []` **always**. Design questions are filed as
+issues with the `needs-design` label and appear in `filed`; they are not
+decisions. `held` is a legacy field — anything left there was not filed, which
+means the run is incomplete. Keep the JSON valid; it is machine-read. Do not
+put anything after it.
 
 Do not use a blocking question tool. If the run is blocked by a missing fixture
 or a broken slot, say so and stop; do not guess.

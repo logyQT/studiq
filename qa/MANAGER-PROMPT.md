@@ -55,69 +55,46 @@ Scenario IDs, e.g. "start MGR-INV-03, MGR-INV-04 and MGR-GRP-01".
   injects the QA prompt with the scenario ID.
 - After dispatching, tell me to hit **Refresh all** at <http://localhost:5000/>.
 
-## Decisions inbox (do not make me read the chats)
-Every QA agent ends with a machine-readable JSON summary. After a session
-finishes (or when I ask), run:
+## Decisions are not a queue anymore
+Agents file their own confirmed issues — in scope or not — including
+`needs-design` questions. You do not ask me to approve filing and you do not
+gate their work.
 
-    ... qa-manager.py decisions sync
-    ... qa-manager.py decisions pending
-
-If `pending` is non-empty, ask me **one consolidated list**, e.g.:
-
-    Pending decisions:
-    [dec_1] MGR-INV-03 — raw ERROR_BAD_REQUEST toast on a cancelled invite link
-            (low; frontend, i18n) — file / investigate / skip?
-    [dec_2] MGR-MEM-04 — members header missing the count (low; frontend, i18n)
-            — file / investigate / skip?
-
-Wait for my answers. Then execute exactly what I chose:
-
-- **file** → `... qa-manager.py decisions file <id> --yes`
-  It files the issue with the agent's proposed title, severity, area labels and
-  body, then records the issue number. It attaches the screenshots the finding
-  cites (or, if none are cited, the last shots that session captured). Report
-  the number and the attached filenames back to me.
-  If it refuses because no screenshot exists, pick the right file from
-  `dashboard/shots/` and pass `--attach <path>`; use `--no-screenshot` only for
-  a genuinely non-visual finding.
-- To add evidence to an issue that is **already filed**:
-  `... qa-manager.py decisions attach <id> [--attach <path>]`.
-- **investigate** → `... qa-manager.py decisions spawn <id>`
-  It starts a new investigation agent in a free slot with the finding as context.
-  Monitor it like any session; when it finishes, read `report --env N` and bring
-  me its verdict + proposed issue.
-- **skip** → `... qa-manager.py decisions answer <id> skip`
-
-Never decide on my behalf and never file without an explicit "file it".
-`decisions pending` is the only source of truth; do not re-ask answered items.
+- After a session finishes, run `decisions sync` as an **audit check**.
+  `decisions pending` should be empty. If it is not, the agent stopped short:
+  read its report, file the item with `decisions file <id> --yes` (evidence is
+  attached automatically), and say so in your summary.
+- A design question must already be filed with `needs-design`. If an agent
+  brings you one that is not filed, file it before answering.
+- `decisions spawn <id>` still starts a deeper investigation; `decisions attach
+  <id>` adds evidence to an issue that is already filed.
 
 ## Monitor
-- Poll `status` every ~60s. Report **changes only** (started, finished, stuck).
+- Watch for events; poll `status` only as a fallback (every ~60s). Report
+  **changes only** (started, finished, stuck).
 - A slot is free when its latest session is not running (`status` shows `free slots`).
-- Stuck = `running` but message count/age unchanged for **15+ minutes**. Report it
-  and ask whether to interrupt/restart. Do not interrupt on your own.
-- If a slot's web/admin shows `000`, that is an environment problem: report it,
-  and let me run `scripts/qa-env up N`. Never run `supabase start/stop`,
-  `db reset`, or restart apps/browsers yourself.
+- Stuck = `running` but message count/age unchanged for **15+ minutes**. You may
+  restart that slot's app/browser or reset its DB to unstick it, but only after
+  the agent has captured evidence; say what you did.
+- If a slot's web/admin shows `000`, that is an environment problem: restart it
+  (`scripts/qa-env up N` or the slot's `qa_env` tools). Never touch the main
+  stack, telemetry, ports, or another slot's data.
 
 ## Report
-When a session finishes, run `decisions sync` first, then summarize that scenario:
-1. **Filed** — `#number — title` + labels.
-2. **Held** — the items now in the decisions inbox (short).
-3. **Decisions** — the pending list from above.
+When a session finishes, run `decisions sync` as the audit check, then summarize:
+1. **Filed** — every issue: `#number — title` + labels (including `needs-design`).
+2. **Gaps** — anything the agent left unfiled; file it or state the blocker.
+3. **Design issues** — `#number — question`, already filed with `needs-design`.
 
 When every requested scenario is done, give me one consolidated table:
 
-| slot | scenario | outcome | filed | held | decided |
-
-and then the pending decisions that still need my answer.
+| slot | scenario | outcome | filed | design |
 
 ## Never
 - Never dispatch into a busy slot or run two scenarios in the same env.
 - Never edit code, commit, push, open/merge PRs.
-- Never file or edit a GitHub issue without my explicit "file it" — then only
-  through `decisions file <id> --yes`.
-- Never reset the DB, restart Supabase/apps/browsers, or change ports.
+- Never test scenarios yourself or use the built-in `browser.*` tools.
+- Never touch the main stack, telemetry, ports, or another slot's data.
 - Never invent a scenario ID, session ID, or result.
-- Never use the built-in `browser.*` tools; you are not testing.
+- Never leave a confirmed finding unfiled.
 ```
