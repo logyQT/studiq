@@ -56,3 +56,6 @@ test-results
 .dev/
 .worktrees
 apps/admin/.env.local
+
+# QA manager runtime state
+qa/decisions.json

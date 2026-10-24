@@ -14,10 +14,16 @@ export async function register() {
 
   // Traces, metrics and logs all ship to the OTel Collector via OTLP/HTTP.
   // The exporters read OTEL_EXPORTER_OTLP_ENDPOINT (default http://localhost:4318).
+  // OTEL_SERVICE_NAME lets parallel QA agents identify themselves
+  // (e.g. studiq-MGR-MEM-03) so their telemetry stays separable.
+  const serviceName = process.env.OTEL_SERVICE_NAME ?? 'studiq';
+  const environment =
+    process.env.OTEL_DEPLOYMENT_ENVIRONMENT ?? process.env.NODE_ENV ?? 'development';
+
   const sdk = new NodeSDK({
     resource: resourceFromAttributes({
-      [ATTR_SERVICE_NAME]: 'studiq',
-      [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV ?? 'development',
+      [ATTR_SERVICE_NAME]: serviceName,
+      [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: environment,
     }),
     traceExporter: new OTLPTraceExporter(),
     metricReader: new PeriodicExportingMetricReader({

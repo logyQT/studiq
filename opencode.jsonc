@@ -1,5 +1,8 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  // Abort tool calls that stop making progress so a stuck Code Mode promise
+  // can't stall an unattended run. See plugins/tool-watchdog/README.md.
+  "plugins": ["./plugins/tool-watchdog"],
   // Local observability stack tooling. `grafana/mcp-grafana` exposes Tempo
   // (traces), Loki (logs) and Prometheus (metrics) as agent tools, with
   // trace↔log correlation. See docs/observability-debugging.md.

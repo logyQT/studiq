@@ -27,6 +27,11 @@ exporters:
   prometheus:
     endpoint: 0.0.0.0:8889
     namespace: studiq
+    # Expose resource attributes (service.name, deployment.environment) as
+    # metric labels so parallel QA agents can be filtered by service_name
+    # instead of needing a namespace per agent.
+    resource_to_telemetry_conversion:
+      enabled: true
 
   # ── Logs → Loki (OTLP HTTP) ────────────────────────────────
   otlphttp/loki:
