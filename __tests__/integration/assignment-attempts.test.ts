@@ -18,7 +18,10 @@ import { createNextRequest, createNextRequestWithParams } from '#test/integratio
 import { GET as assignmentGet } from '@/app/(backend)/api/v1/assignments/[id]/route';
 import { POST as assignmentStart } from '@/app/(backend)/api/v1/assignments/[id]/start/route';
 import { GET as assignmentsList } from '@/app/(backend)/api/v1/assignments/route';
-import { POST as attemptPost } from '@/app/(backend)/api/v1/quiz/[attemptId]/route';
+import {
+  GET as attemptGet,
+  POST as attemptPost,
+} from '@/app/(backend)/api/v1/quiz/[attemptId]/route';
 import { POST as publishPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/publish/route';
 import { POST as addQuestionsPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/questions/route';
 import { PUT as targetsPut } from '@/app/(backend)/api/v1/teacher/assignments/[id]/targets/route';
@@ -227,7 +230,6 @@ forEachCopy((copyId) => {
 
     it('the detail endpoint reports the running attempt after a quit (#369)', async () => {
       const started = await startAs(student.user);
-
       mockUser(student.user);
       const { request, params } = createNextRequestWithParams(
         `http://localhost/api/v1/assignments/${assignmentId}`,
@@ -305,6 +307,41 @@ forEachCopy((copyId) => {
       expect(row.max_attempts).toBe(2);
       expect(row.attempts_used).toBe(1);
       expect(row.last_completed_attempt.id).toBe(attempt1);
+    });
+
+    it('the detail last completed attempt resolves to the review payload (#175)', async () => {
+      await setMaxAttempts(2);
+      mockUser(student.user);
+
+      const started = await startAs(student.user);
+      expect(started.status).toBe(200);
+      const submittedAttemptId = started.body.data.id as string;
+      await submitAttempt(started.body);
+
+      // The review page without ?attemptId falls back to this row.
+      const detailResult = await detail();
+      expect(detailResult.status).toBe(200);
+      expect(detailResult.body.data.last_completed_attempt.id).toBe(submittedAttemptId);
+
+      mockUser(student.user);
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz/${submittedAttemptId}`,
+        { attemptId: submittedAttemptId },
+      );
+      const response = await attemptGet(request, { params });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data.assignment_id).toBe(assignmentId);
+      expect(body.data.completed_at).not.toBeNull();
+      expect(body.data.questions).toHaveLength(2);
+      expect(Object.keys(body.data.answers).length).toBeGreaterThan(0);
+      for (const question of body.data.questions) {
+        expect(question.question_answers.length).toBeGreaterThan(0);
+        for (const option of question.question_answers) {
+          expect(typeof option.is_correct).toBe('boolean');
+        }
+      }
     });
 
     it('starts the second attempt once the first is submitted (#372)', async () => {
