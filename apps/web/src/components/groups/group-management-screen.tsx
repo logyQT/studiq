@@ -17,6 +17,11 @@ import {
   Input,
   Label,
   MultiSelect,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Table,
   TableBody,
   TableCell,
@@ -29,6 +34,7 @@ import type { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
+import { defaultGroupRole, type GroupMemberRole } from '@/lib/group-role';
 
 interface Group {
   id: string;
@@ -286,8 +292,10 @@ function ManageMembersForm({
 }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [options, setOptions] = useState<{ label: string; value: string }[]>([]);
-  const [roleByUserId, setRoleByUserId] = useState<Record<string, 'teacher' | 'member'>>({});
+  const [options, setOptions] = useState<{ label: string; value: string; orgRoleName: string }[]>(
+    [],
+  );
+  const [roleByUserId, setRoleByUserId] = useState<Record<string, GroupMemberRole>>({});
   const [selected, setSelected] = useState<string[]>([]);
 
   useEffect(() => {
@@ -305,15 +313,18 @@ function ManageMembersForm({
 
         if (addableJson.success) {
           setOptions(
-            addableJson.data.map((m: { id: string; email: string; fullName: string | null }) => ({
-              label: m.fullName ? `${m.fullName} (${m.email})` : m.email,
-              value: m.id,
-            })),
+            addableJson.data.map(
+              (m: { id: string; email: string; fullName: string | null; orgRoleName: string }) => ({
+                label: m.fullName ? `${m.fullName} (${m.email})` : m.email,
+                value: m.id,
+                orgRoleName: m.orgRoleName,
+              }),
+            ),
           );
         }
         if (currentJson.success) {
-          const roles: Record<string, 'teacher' | 'member'> = {};
-          for (const m of currentJson.data as { userId: string; role: 'teacher' | 'member' }[]) {
+          const roles: Record<string, GroupMemberRole> = {};
+          for (const m of currentJson.data as { userId: string; role: GroupMemberRole }[]) {
             roles[m.userId] = m.role;
           }
           setRoleByUserId(roles);
@@ -376,7 +387,8 @@ function ManageMembersForm({
             setRoleByUserId((prev) => {
               const next = { ...prev };
               for (const id of ids) {
-                if (!next[id]) next[id] = 'member';
+                if (!next[id])
+                  next[id] = defaultGroupRole(options.find((o) => o.value === id)?.orgRoleName);
               }
               return next;
             });
@@ -385,6 +397,34 @@ function ManageMembersForm({
           emptyText={t('members_empty')}
         />
       </div>
+      {selected.length > 0 && (
+        <div className="space-y-2">
+          <Label>{t('member_roles_label')}</Label>
+          <div className="space-y-2">
+            {selected.map((userId) => (
+              <div key={userId} className="flex items-center gap-3">
+                <span className="flex-1 truncate text-sm">
+                  {options.find((o) => o.value === userId)?.label ?? userId}
+                </span>
+                <Select
+                  value={roleByUserId[userId] ?? 'member'}
+                  onValueChange={(value) =>
+                    setRoleByUserId((prev) => ({ ...prev, [userId]: value as GroupMemberRole }))
+                  }
+                >
+                  <SelectTrigger className="w-32 h-8" aria-label={t('member_roles_label')}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="teacher">{t('role_teacher')}</SelectItem>
+                    <SelectItem value="member">{t('role_member')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <DialogFooter>
         <Button variant="outline" onClick={onDone}>
           {t('cancel')}

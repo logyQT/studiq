@@ -1046,6 +1046,9 @@
     "members_empty": "Nie znaleziono osób",
     "members_updated": "Skład grupy zaktualizowany",
     "members_update_failed": "Nie udało się zaktualizować składu grupy",
+    "member_roles_label": "Role w grupie",
+    "role_teacher": "Nauczyciel",
+    "role_member": "Członek",
     "saving": "Zapisywanie..."
   },
   "ManageRolesPage": {

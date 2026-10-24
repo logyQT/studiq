@@ -1065,6 +1065,9 @@
     "members_empty": "No people found",
     "members_updated": "Group members updated",
     "members_update_failed": "Failed to update group members",
+    "member_roles_label": "Group roles",
+    "role_teacher": "Teacher",
+    "role_member": "Member",
     "saving": "Saving..."
   },
   "ManageRolesPage": {
