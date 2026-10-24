@@ -6,6 +6,10 @@ manual scenarios end-to-end and file defects with real root causes.
 Source of truth: `source/Studiq_Dokument_Testera_v1.3.docx`
 (Dokument testera v1.3, 2026-10-17 — 215 scenarios, P1 60 / P2 150 / P3 5).
 
+Automation: the campaign that turns these cases into the Playwright suite is
+[`docs/e2e-campaign.md`](../docs/e2e-campaign.md); current mapping in
+[`coverage.md`](coverage.md).
+
 ## Layout
 
 ```

@@ -40,12 +40,16 @@ Integration tests hit a real local Supabase instance. They verify that API route
 
 Playwright tests run against the full application in a real browser.
 
-**Location:** `e2e/`
+**Location:** `__tests__/e2e/` — conventions and the target architecture are in
+[`e2e-campaign.md`](e2e-campaign.md).
 
-**Covered flows:**
-- Login and registration
-- Student flashcard practice
-- Teacher question management
+**Target architecture:** one spec per QA case (`__tests__/e2e/cases/<ID>.spec.ts`), each test
+provisioning its own organization and accounts, so specs can run in any order at N workers.
+Cross-test interference is a tenant leak, not a flake.
+
+**Covered flows today:** login and registration, student flashcard practice, teacher question
+management, quiz editor, invites. Case coverage: [`qa/coverage.md`](../qa/coverage.md) —
+195 e2e · 12 API-level · 8 semantic (campaign parked until the backlog closes).
 
 ## Running Tests
 
