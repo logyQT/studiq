@@ -32,6 +32,10 @@ export const topicKeys = {
   all: ['topics'] as const,
   paginated: (filters?: Record<string, string | undefined>, orgId?: string | null) =>
     ['topics', 'paginated', orgId ?? null, filters] as const,
+  // Flat topic pickers (`?limit=N`) — org-scoped like `flashcards.decks.options`
+  // and kept apart from `paginated` so the two response shapes never share a
+  // cache entry.
+  options: (orgId?: string | null) => ['topics', 'options', orgId ?? null] as const,
 };
 
 export const questionKeys = {

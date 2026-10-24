@@ -16,6 +16,7 @@ import { createNextRequest, createNextRequestWithParams } from '#test/integratio
 import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/questions/[id]/route';
 import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/route';
 import { GET as GET_LIST, POST } from '@/app/(backend)/api/v1/questions/route';
+import { POST as createTopicPost } from '@/app/(backend)/api/v1/topics/route';
 
 forEachCopy((copyId) => {
   describe(`Questions Integration [${copyId}]`, () => {
@@ -63,6 +64,23 @@ forEachCopy((copyId) => {
       const body = await res.json();
       if (res.status !== 201) throw new Error(`bank create failed: ${JSON.stringify(body)}`);
       return body.data.id as string;
+    }
+
+    async function createTopic(name: string): Promise<{ id: string; name: string }> {
+      mockUser(educator.user);
+      const req = createNextRequest(
+        'http://localhost/api/v1/topics',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        },
+        orgCookies(),
+      );
+      const res = await createTopicPost(req);
+      const body = await res.json();
+      if (res.status !== 201) throw new Error(`topic create failed: ${JSON.stringify(body)}`);
+      return { id: body.data.id as string, name: body.data.name as string };
     }
 
     async function createQuestion(
@@ -227,6 +245,62 @@ forEachCopy((copyId) => {
         expect(getResponse.status).toBe(200);
         expect(getBody.data.id).toBe(body.data.id);
         expect(getBody.data.question_answers).toEqual([]);
+      });
+
+      it('round-trips topic assignments through create, list and update', async () => {
+        const bankId = await createBank(`q-test-topic-bank-${copyId}`);
+        const topic = await createTopic(`q-test-topic-${copyId}`);
+
+        mockUser(educator.user);
+        const createReq = createNextRequest(
+          'http://localhost/api/v1/questions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bankId,
+              type: 'mcq',
+              content: `copy-${copyId}-Topic question`,
+              topicIds: [topic.id],
+              answers: [{ content: 'Answer', isCorrect: true, orderIndex: 0 }],
+            }),
+          },
+          orgCookies(),
+        );
+        const createRes = await POST(createReq);
+        const createBody = await createRes.json();
+
+        expect(createRes.status).toBe(201);
+        expect(createBody.data.topics).toEqual([{ id: topic.id, name: topic.name }]);
+        expect(createBody.data.question_topic_assignments).toBeUndefined();
+
+        const listReq = createNextRequest(
+          `http://localhost/api/v1/questions?bankId=${bankId}`,
+          undefined,
+          orgCookies(),
+        );
+        const listRes = await GET_LIST(listReq);
+        const listBody = await listRes.json();
+
+        expect(listRes.status).toBe(200);
+        expect(listBody.data).toHaveLength(1);
+        expect(listBody.data[0].topics).toEqual([{ id: topic.id, name: topic.name }]);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/questions/${createBody.data.id}`,
+          { id: createBody.data.id },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: 'Updated', topicIds: [] }),
+          },
+          orgCookies(),
+        );
+        const putRes = await PUT(request, { params });
+        const putBody = await putRes.json();
+
+        expect(putRes.status).toBe(200);
+        expect(putBody.data.topics).toEqual([]);
       });
 
       it('returns 401 when not authenticated', async () => {

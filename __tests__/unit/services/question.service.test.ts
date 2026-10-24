@@ -104,6 +104,43 @@ describe('QuestionService', () => {
       expect(mock.from).not.toHaveBeenCalledWith('question_options');
     });
 
+    it('inserts topic assignments and returns the question with topics', async () => {
+      const mockQuestion = { id: 'q-topic', type: 'mcq', content: 'Q1' };
+
+      mock.from.mockReturnValueOnce(chain([], 0));
+      mock.from.mockReturnValueOnce(chain(mockQuestion));
+      mock.from.mockReturnValueOnce(chain(null));
+      mock.from.mockReturnValueOnce(chain(null));
+      mock.from.mockReturnValueOnce(
+        chain({
+          ...mockQuestion,
+          question_answers: [],
+          question_topic_assignments: [
+            { topic_id: 't-1', topics: { id: 't-1', name: 'Kinematyka' } },
+          ],
+        }),
+      );
+
+      const result = await service.create(
+        {
+          bankId: '00000000-0000-4000-8020-000000000001',
+          type: 'mcq',
+          content: 'Q1',
+          topicIds: ['t-1'],
+          answers: [{ content: 'A1', isCorrect: true, orderIndex: 0 }],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({
+        ...mockQuestion,
+        question_answers: [],
+        topics: [{ id: 't-1', name: 'Kinematyka' }],
+      });
+      expect(mock.from).toHaveBeenCalledWith('question_topic_assignments');
+    });
+
     it('returns INTERNAL_SERVER when insert fails', async () => {
       mock.from.mockReturnValueOnce(chain([], 0));
       mock.from.mockReturnValue({
@@ -137,7 +174,7 @@ describe('QuestionService', () => {
       const result = await service.list(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(questions);
+      expect(result.data).toEqual([{ id: 'q-1', content: 'Q1', topics: [] }]);
     });
 
     it('filters by bankId when provided', async () => {
@@ -148,7 +185,39 @@ describe('QuestionService', () => {
       const result = await service.list(ctx, { bankId: 'bank-1' });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(questions);
+      expect(result.data).toEqual([{ id: 'q-1', content: 'Q1', topics: [] }]);
+    });
+
+    it('flattens topic assignments into topics and drops unreadable ones', async () => {
+      const questions = [
+        {
+          id: 'q-1',
+          content: 'Q1',
+          question_topic_assignments: [
+            { topic_id: 't-1', topics: { id: 't-1', name: 'Kinematyka' } },
+            { topic_id: 't-hidden', topics: null },
+          ],
+        },
+      ];
+      mock.from.mockReturnValue(chain(questions));
+
+      const result = await service.list(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        { id: 'q-1', content: 'Q1', topics: [{ id: 't-1', name: 'Kinematyka' }] },
+      ]);
+    });
+
+    it('selects the topic names embed for the question list', async () => {
+      const listChain = chain([]);
+      mock.from.mockReturnValue(listChain);
+
+      await service.list(ctx);
+
+      expect(listChain.select).toHaveBeenCalledWith(
+        '*, question_answers:question_options(*), question_topic_assignments(topic_id, topics(id, name))',
+      );
     });
   });
 
@@ -160,7 +229,25 @@ describe('QuestionService', () => {
       const result = await service.getById('q-1', ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(question);
+      expect(result.data).toEqual({ id: 'q-1', content: 'Q1', topics: [] });
+    });
+
+    it('returns the question with its topics', async () => {
+      const question = {
+        id: 'q-1',
+        content: 'Q1',
+        question_topic_assignments: [{ topic_id: 't-1', topics: { id: 't-1', name: 'Dynamika' } }],
+      };
+      mock.from.mockReturnValue(chain(question));
+
+      const result = await service.getById('q-1', ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({
+        id: 'q-1',
+        content: 'Q1',
+        topics: [{ id: 't-1', name: 'Dynamika' }],
+      });
     });
 
     it('returns NOT_FOUND when question does not exist', async () => {

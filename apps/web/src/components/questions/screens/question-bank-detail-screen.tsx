@@ -2,6 +2,7 @@
 
 import type { Question } from '@studiq/server/models/question.model';
 import type { QuestionBank } from '@studiq/server/models/question-bank.model';
+import type { Topic } from '@studiq/server/models/topic.model';
 import { Button } from '@studiq/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Plus } from 'lucide-react';
@@ -13,9 +14,11 @@ import { CreateFromQuestionDialog } from '@/components/flashcards/dialogs/create
 import { QuestionFormDialog } from '@/components/questions/shared/question-form-dialog';
 import { QuestionTable } from '@/components/questions/shared/question-table';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import { useApiQuery } from '@/hooks/use-api';
+import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
-import { questionKeys } from '@/lib/query-keys';
+import { questionKeys, topicKeys } from '@/lib/query-keys';
 
 interface QuestionBankDetailScreenProps {
   bankId: string;
@@ -32,6 +35,7 @@ export function QuestionBankDetailScreen({
 }: QuestionBankDetailScreenProps) {
   const queryClient = useQueryClient();
   const permission = usePermission();
+  const { activeOrg, isPending: orgsPending } = useOrgs();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [sortBy, setSortBy] = useState('created_at');
@@ -52,6 +56,13 @@ export function QuestionBankDetailScreen({
     queryFn: () => apiGet<Question[]>(`/api/v1/questions?bankId=${bankId}`),
     staleTime: Infinity,
   });
+
+  const { data: topicsData } = useApiQuery<{ items: Topic[] }>({
+    queryKey: topicKeys.options(activeOrg?.id),
+    url: '/api/v1/topics?limit=100',
+    enabled: !orgsPending,
+  });
+  const topics = topicsData?.items ?? [];
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: questionKeys.list({ bankId }) });
@@ -164,6 +175,7 @@ export function QuestionBankDetailScreen({
         }}
         initialValues={editingQuestion}
         bankId={bankId}
+        topics={topics}
         onSubmit={handleSubmit}
         t={tForm}
       />
