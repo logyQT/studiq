@@ -211,28 +211,31 @@ export default function MembersPage() {
 
   async function handleChangeRole() {
     if (!changingRole) return;
+    const { id, orgRoleId } = changingRole;
     try {
       const res = await fetch('/api/v1/organization/members', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetUserId: changingRole.id,
-          newOrgRoleId: changingRole.orgRoleId,
-        }),
+        body: JSON.stringify({ targetUserId: id, newOrgRoleId: orgRoleId }),
       });
       if (!res.ok) throw new Error();
-      const newRoleName = roles.find((r) => r.id === changingRole.orgRoleId)?.name ?? '';
-      setMembers(
-        members.map((m) => (m.id === changingRole.id ? { ...m, orgRoleName: newRoleName } : m)),
+      const newRoleName = roles.find((r) => r.id === orgRoleId)?.name;
+      setMembers((prev) =>
+        prev.map((m) =>
+          m.id === id ? { ...m, orgRoleId, orgRoleName: newRoleName ?? m.orgRoleName } : m,
+        ),
       );
       toast.success(t('role_updated'));
     } catch {
       toast.error(t('role_update_failed'));
+    } finally {
+      setChangingRole(null);
     }
-    setChangingRole(null);
   }
 
   if (loading) return <div className="flex justify-center py-12">{t('common_loading')}</div>;
+
+  const pendingRole = roles.find((r) => r.id === changingRole?.orgRoleId);
 
   return (
     <div className="space-y-6">
@@ -319,8 +322,11 @@ export default function MembersPage() {
                         {t('manage_groups')}
                       </Button>
                       <Select
-                        onValueChange={(v) => setChangingRole({ id: m.id, orgRoleId: v })}
-                        defaultValue={m.orgRoleId}
+                        value={m.orgRoleId}
+                        onValueChange={(orgRoleId) => {
+                          if (orgRoleId === m.orgRoleId) return;
+                          setChangingRole({ id: m.id, orgRoleId });
+                        }}
                       >
                         <SelectTrigger className="w-36 h-8">
                           <Shield className="mr-1 h-3 w-3" />
@@ -377,8 +383,7 @@ export default function MembersPage() {
             <AlertDialogTitle>{t('change_role_dialog_title')}</AlertDialogTitle>
             <AlertDialogDescription>
               {t('change_role_dialog_desc', {
-                role:
-                  roles.find((r) => r.id === changingRole?.orgRoleId)?.name.replace('_', ' ') ?? '',
+                role: pendingRole?.displayName ?? pendingRole?.name ?? '',
               })}
             </AlertDialogDescription>
           </AlertDialogHeader>
