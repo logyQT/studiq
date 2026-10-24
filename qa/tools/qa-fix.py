@@ -949,6 +949,11 @@ def add_label(n: int, label: str) -> None:
                    capture_output=True, text=True, timeout=60)
 
 
+def remove_label(n: int, label: str) -> None:
+    subprocess.run(["gh", "issue", "edit", str(n), "--remove-label", label],
+                   capture_output=True, text=True, timeout=60)
+
+
 def bump_attempt(rec: dict) -> None:
     rec["attempt"] = attempt(rec) + 1
 
@@ -1261,17 +1266,22 @@ def cmd_unblock(args) -> None:
     state = load_state()
     n = args.issue
     rec = get_rec(state, n)
-    if rec["stage"] != "blocked":
-        fail(f"cannot unblock from stage {rec['stage']}")
+    previous_stage = rec["stage"]
+    if previous_stage not in ("blocked", "needs_design"):
+        fail(f"cannot unblock from stage {previous_stage}")
     if args.to == "pr_open" and not rec.get("pr"):
         fail("no PR recorded for this issue; unblock to 'design_ready' or "
              "'changes_requested' instead")
     previous = rec.pop("blocked_reason", "") or ""
+    if previous_stage == "needs_design":
+        # the design question was answered: drop the label so the issue is
+        # eligible again after the next `sync`
+        remove_label(n, "needs-design")
     rec["stage"] = args.to
     rec["stage_started"] = int(time.time() * 1000)
-    history(state, n, {"event": "unblocked", "to": args.to,
+    history(state, n, {"event": "unblocked", "from": previous_stage, "to": args.to,
                        "reason": args.reason, "previous_reason": previous})
-    nxt = {"pr_open": "review", "design_ready": "implement",
+    nxt = {"pr_open": "review", "design_ready": "design",
            "changes_requested": "review or implement"}.get(args.to)
     ok(action="unblock", issue=n, stage=args.to, next=nxt,
        previous_reason=previous)
