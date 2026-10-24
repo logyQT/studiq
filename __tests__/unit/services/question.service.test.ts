@@ -150,6 +150,39 @@ describe('QuestionService', () => {
       expect(result.success).toBe(true);
       expect(result.data).toEqual(questions);
     });
+
+    it('inner-joins topic assignments when filtering by topicIds', async () => {
+      const c = chain([{ id: 'q-1', content: 'Q1' }]);
+      mock.from.mockReturnValue(c);
+
+      const result = await service.list(ctx, { topicIds: 'topic-1,topic-2' });
+
+      expect(result.success).toBe(true);
+      expect(c.select).toHaveBeenCalledWith(
+        expect.stringContaining('question_topic_assignments!inner(topic_id)'),
+      );
+      expect(c.filter).toHaveBeenCalledWith(
+        'question_topic_assignments.topic_id',
+        'in',
+        '(topic-1,topic-2)',
+      );
+    });
+
+    it('keeps a plain topic embed when no topicIds are given', async () => {
+      const c = chain([]);
+      mock.from.mockReturnValue(c);
+
+      await service.list(ctx, { type: 'mcq' });
+
+      const selectArg = c.select.mock.calls[0][0] as string;
+      expect(selectArg).toContain('question_topic_assignments(topic_id)');
+      expect(selectArg).not.toContain('!inner');
+      expect(c.filter).not.toHaveBeenCalledWith(
+        'question_topic_assignments.topic_id',
+        expect.anything(),
+        expect.anything(),
+      );
+    });
   });
 
   describe('getById', () => {

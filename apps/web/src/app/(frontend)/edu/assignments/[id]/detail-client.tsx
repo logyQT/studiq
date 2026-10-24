@@ -44,9 +44,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useOrgs } from '@/hooks/use-orgs';
 import { apiPost } from '@/lib/api';
 import { dbToDatetimeLocal } from '@/lib/datetime';
-import { assignmentKeys, groupKeys, questionKeys } from '@/lib/query-keys';
+import { assignmentKeys, groupKeys, questionKeys, topicKeys } from '@/lib/query-keys';
 
 interface AssignmentDetail {
   id: string;
@@ -96,6 +97,11 @@ interface QuestionBrief {
 }
 
 interface QuestionBank {
+  id: string;
+  name: string;
+}
+
+interface TopicOption {
   id: string;
   name: string;
 }
@@ -168,6 +174,7 @@ export default function AssignmentDetailClient() {
   const router = useRouter();
   const locale = useLocale();
   const t = useTranslations('EduAssignmentDetailPage');
+  const { activeOrg, isPending: orgsPending } = useOrgs();
 
   const {
     data: assignment,
@@ -372,22 +379,47 @@ export default function AssignmentDetailClient() {
   }
 
   const [browseOpen, setBrowseOpen] = useState(false);
+  const [browseSource, setBrowseSource] = useState<'all' | 'bank' | 'topic'>('all');
   const [browseBankId, setBrowseBankId] = useState('');
+  const [browseTopicId, setBrowseTopicId] = useState('');
   const [browseType, setBrowseType] = useState('');
+  const [browseSearch, setBrowseSearch] = useState('');
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
 
+  // Topics are only needed by the browse dialog, so the list is fetched lazily
+  // and keyed by the active org (#135) to avoid serving a previous org's topics.
+  const { data: topicsData } = useApiQuery<{ items: TopicOption[] }>({
+    queryKey: topicKeys.options(activeOrg?.id),
+    url: '/api/v1/topics?limit=200',
+    enabled: browseOpen && !orgsPending,
+  });
+  const topics = topicsData?.items ?? [];
+
+  const browseParams = {
+    bankId: browseSource === 'bank' ? browseBankId : '',
+    topicIds: browseSource === 'topic' ? browseTopicId : '',
+    type: browseType,
+  };
+
   const { data: browseQuestions } = useApiQuery<QuestionBrief[]>({
-    queryKey: ['questions', 'browse', browseBankId, browseType],
+    queryKey: ['questions', 'browse', browseSource, browseBankId, browseTopicId, browseType],
     url: `/api/v1/questions?${new URLSearchParams(
-      Object.fromEntries(
-        Object.entries({ bankId: browseBankId, type: browseType }).filter(([, v]) => v),
-      ),
+      Object.fromEntries(Object.entries(browseParams).filter(([, v]) => v)),
     ).toString()}`,
     enabled: browseOpen,
   });
 
+  function changeBrowseSource(source: 'all' | 'bank' | 'topic') {
+    setBrowseSource(source);
+    setBrowseBankId('');
+    setBrowseTopicId('');
+  }
+
   const existingQuestionIds = new Set((localQuestions ?? []).map((q) => q.question_id));
-  const availableQuestions = (browseQuestions ?? []).filter((q) => !existingQuestionIds.has(q.id));
+  const browseTerm = browseSearch.trim().toLowerCase();
+  const availableQuestions = (browseQuestions ?? [])
+    .filter((q) => !existingQuestionIds.has(q.id))
+    .filter((q) => !browseTerm || q.content.toLowerCase().includes(browseTerm));
 
   const [randomizeOpen, setRandomizeOpen] = useState(false);
   const [randomizeSource, setRandomizeSource] = useState<'all' | 'bank' | 'topic'>('all');
@@ -599,21 +631,55 @@ export default function AssignmentDetailClient() {
                       <DialogTitle>{t('browse_questions')}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4">
-                      <div className="flex gap-3">
-                        <div className="flex-1">
-                          <select
-                            className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                            value={browseBankId}
-                            onChange={(e) => setBrowseBankId(e.target.value)}
-                          >
-                            <option value="">{t('select_bank')}</option>
-                            {banksList.map((b) => (
-                              <option key={b.id} value={b.id}>
-                                {b.name}
-                              </option>
-                            ))}
-                          </select>
+                      <div className="space-y-2">
+                        <Label>{t('select_source')}</Label>
+                        <div className="flex gap-4">
+                          {(['all', 'bank', 'topic'] as const).map((source) => (
+                            <label key={source} className="flex items-center gap-2 text-sm">
+                              <input
+                                type="radio"
+                                name="browse-source"
+                                checked={browseSource === source}
+                                onChange={() => changeBrowseSource(source)}
+                              />
+                              {t(`source_${source}`)}
+                            </label>
+                          ))}
                         </div>
+                      </div>
+                      <div className="flex gap-3">
+                        {browseSource === 'bank' && (
+                          <div className="flex-1">
+                            <select
+                              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                              value={browseBankId}
+                              onChange={(e) => setBrowseBankId(e.target.value)}
+                            >
+                              <option value="">{t('select_bank')}</option>
+                              {banksList.map((b) => (
+                                <option key={b.id} value={b.id}>
+                                  {b.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                        {browseSource === 'topic' && (
+                          <div className="flex-1">
+                            <select
+                              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                              value={browseTopicId}
+                              onChange={(e) => setBrowseTopicId(e.target.value)}
+                            >
+                              <option value="">{t('select_topic')}</option>
+                              {topics.map((topic) => (
+                                <option key={topic.id} value={topic.id}>
+                                  {topic.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                         <div className="flex-1">
                           <select
                             className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
@@ -627,6 +693,11 @@ export default function AssignmentDetailClient() {
                           </select>
                         </div>
                       </div>
+                      <Input
+                        value={browseSearch}
+                        onChange={(e) => setBrowseSearch(e.target.value)}
+                        placeholder={t('search_questions')}
+                      />
                       <div className="max-h-64 overflow-y-auto space-y-1 border rounded-lg">
                         {availableQuestions.length === 0 ? (
                           <p className="text-sm text-muted-foreground p-4 text-center">
