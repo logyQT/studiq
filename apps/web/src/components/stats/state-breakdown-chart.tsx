@@ -29,19 +29,14 @@ export function StateBreakdownChart({ states }: StateBreakdownChartProps) {
   ].filter((d) => d.value > 0);
 
   return (
-    <ChartContainer
-      config={{
-        neverPracticed: { color: COLORS.neverPracticed },
-        learning: { color: COLORS.learning },
-        review: { color: COLORS.review },
-        relearning: { color: COLORS.relearning },
-        leeched: { color: COLORS.leeched },
-      }}
-      className="aspect-auto h-[260px] w-full"
-    >
+    // Slices carry their own `fill` and the tooltip labels come from the translated
+    // slice `name`, so no config keys are needed (the chart context still is).
+    <ChartContainer config={{}} className="aspect-auto h-[260px] w-full">
       <PieChart>
         <Tooltip content={<ChartTooltipContent />} />
-        <Legend />
+        {/* Recharts sets the label span's colour inline to the slice colour (entry.fill).
+            The inner span restores a readable token; the icon keeps the slice colour. */}
+        <Legend formatter={(value) => <span className="text-foreground">{value}</span>} />
         <Pie
           data={data}
           cx="50%"
