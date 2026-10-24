@@ -7,6 +7,7 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { type GradeDraft, parseGradePoints, resolveGradeDraft } from '@/lib/grading';
 import { assignmentKeys } from '@/lib/query-keys';
 
 interface ResultsData {
@@ -34,7 +35,7 @@ interface ResultsData {
 export default function PerQuestionGradingClient() {
   const { id, qId } = useParams<{ id: string; qId: string }>();
   const t = useTranslations('EduPerQuestionGradingPage');
-  const [grades, setGrades] = useState<Record<string, { points: string; feedback: string }>>({});
+  const [grades, setGrades] = useState<Record<string, Partial<GradeDraft>>>({});
 
   const { data: results, isLoading } = useApiQuery<ResultsData[]>({
     queryKey: assignmentKeys.results(id),
@@ -49,7 +50,7 @@ export default function PerQuestionGradingClient() {
     }: {
       studentId: string;
       points: number;
-      feedback?: string;
+      feedback: string;
     }) => {
       const res = await fetch(`/api/v1/teacher/assignments/${id}/results/${studentId}`, {
         method: 'PUT',
@@ -61,15 +62,17 @@ export default function PerQuestionGradingClient() {
     invalidateKeys: [assignmentKeys.results(id)],
   });
 
-  const getGrade = (studentId: string) => grades[studentId] ?? { points: '', feedback: '' };
+  const getSavedGrade = (studentId: string) =>
+    results?.find((r) => r.user_id === studentId)?.quiz_answers?.find((a) => a.question_id === qId);
+
+  const getGrade = (studentId: string) =>
+    resolveGradeDraft(getSavedGrade(studentId), grades[studentId]);
 
   const handleGrade = async (studentId: string) => {
     const g = getGrade(studentId);
-    await gradeMutation.mutateAsync({
-      studentId,
-      points: parseInt(g.points, 10) || 0,
-      feedback: g.feedback || undefined,
-    });
+    const points = parseGradePoints(g.points);
+    if (points === null) return;
+    await gradeMutation.mutateAsync({ studentId, points, feedback: g.feedback });
   };
 
   const getStudentAnswer = (studentId: string) => {
@@ -116,6 +119,8 @@ export default function PerQuestionGradingClient() {
         {results?.map((attempt) => {
           const studentData = getStudentAnswer(attempt.user_id);
           if (!studentData?.answer) return null;
+          const grade = getGrade(attempt.user_id);
+          const isValidPoints = parseGradePoints(grade.points) !== null;
 
           return (
             <div key={attempt.user_id} className="rounded-lg border p-4 space-y-3">
@@ -147,8 +152,9 @@ export default function PerQuestionGradingClient() {
                   <Input
                     type="number"
                     min={0}
+                    step={1}
                     placeholder="0"
-                    value={getGrade(attempt.user_id).points}
+                    value={grade.points}
                     onChange={(e) =>
                       setGrades((prev) => ({
                         ...prev,
@@ -161,7 +167,7 @@ export default function PerQuestionGradingClient() {
                   <Label className="text-xs">{t('feedback')}</Label>
                   <Textarea
                     placeholder={t('feedback_placeholder')}
-                    value={getGrade(attempt.user_id).feedback}
+                    value={grade.feedback}
                     onChange={(e) =>
                       setGrades((prev) => ({
                         ...prev,
@@ -175,7 +181,7 @@ export default function PerQuestionGradingClient() {
               <Button
                 size="sm"
                 onClick={() => handleGrade(attempt.user_id)}
-                disabled={gradeMutation.isPending}
+                disabled={gradeMutation.isPending || !isValidPoints}
               >
                 <Check className="w-3 h-3 mr-1" />
                 {gradeMutation.isPending ? t('saving') : t('save')}
