@@ -375,10 +375,24 @@ export class GroupService {
   > {
     const supabase = await this.createClient();
 
+    // Scope to orgs the caller still belongs to: a group row is org data, and a
+    // stale group_members row must not keep it visible after the user was
+    // removed from the organization (#249).
+    const { data: orgRows, error: orgError } = await supabase
+      .from('org_members')
+      .select('organization_id')
+      .eq('user_id', ctx.userId);
+
+    if (orgError) return toDbFailure(orgError);
+
+    const orgIds = (orgRows ?? []).map((r) => r.organization_id);
+    if (orgIds.length === 0) return success([]);
+
     const { data, error } = await supabase
       .from('group_members')
       .select('role, joined_at, groups!inner(id, name, organization_id)')
-      .eq('user_id', ctx.userId);
+      .eq('user_id', ctx.userId)
+      .in('groups.organization_id', orgIds);
 
     if (error) return toDbFailure(error);
 

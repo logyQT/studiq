@@ -838,10 +838,12 @@ describe('TeacherAssignmentService', () => {
   describe('listForStudent', () => {
     it('returns published assignments for student', async () => {
       const groupRow = { group_id: 'g-1' };
+      const orgRow = { organization_id: orgId };
       const assignmentRow = {
         id: assignmentId,
         title: 'Quiz 1',
         created_by: 'teacher-1',
+        organization_id: orgId,
         status: 'published',
         assignment_targets: [{ group_id: 'g-1', student_id: null }],
       };
@@ -856,6 +858,7 @@ describe('TeacherAssignmentService', () => {
 
       mock.from
         .mockReturnValueOnce(chain([groupRow]))
+        .mockReturnValueOnce(chain([orgRow]))
         .mockReturnValueOnce(chain([assignmentRow]))
         .mockReturnValue(chain([attemptRow]));
 
@@ -872,6 +875,7 @@ describe('TeacherAssignmentService', () => {
     it('returns empty array when no assignments', async () => {
       mock.from
         .mockReturnValueOnce(chain([{ group_id: 'g-1' }]))
+        .mockReturnValueOnce(chain([{ organization_id: orgId }]))
         .mockReturnValueOnce(chain([]))
         .mockReturnValue(chain([]));
 
@@ -880,6 +884,50 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data).toEqual([]);
+    });
+
+    it('hides an org assignment when the caller has no org_members row, even with a stale group_members row (#249)', async () => {
+      const assignmentRow = {
+        id: assignmentId,
+        title: 'QA MGR-MEM-04 assignment',
+        created_by: 'teacher-1',
+        organization_id: orgId,
+        status: 'published',
+        assignment_targets: [{ group_id: 'g-1', student_id: null }],
+      };
+
+      mock.from
+        .mockReturnValueOnce(chain([{ group_id: 'g-1' }]))
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([assignmentRow]))
+        .mockReturnValue(chain([]));
+
+      const result = await service.listForStudent(ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).toEqual([]);
+    });
+
+    it('still lists a personal assignment (organization_id null) targeted directly at the student with no orgs', async () => {
+      const assignmentRow = {
+        id: assignmentId,
+        title: 'Personal quiz',
+        created_by: 'teacher-1',
+        organization_id: null,
+        status: 'published',
+        assignment_targets: [{ group_id: null, student_id: userId }],
+      };
+
+      mock.from
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([assignmentRow]))
+        .mockReturnValue(chain([]));
+
+      const result = await service.listForStudent(ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).toHaveLength(1);
     });
 
     it('returns INTERNAL_SERVER on group query error', async () => {
@@ -971,6 +1019,60 @@ describe('TeacherAssignmentService', () => {
 
     it('returns NOT_FOUND when the assignment has no targets for the student (#193)', async () => {
       mock.from.mockReturnValueOnce(chain({ ...assignment, assignment_targets: [] }));
+
+      const result = await service.getForStudent(assignmentId, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('returns NOT_FOUND for an org assignment when the caller is no longer an org member (#249)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({
+            ...assignment,
+            organization_id: orgId,
+            assignment_targets: [{ group_id: null, student_id: userId }],
+          }),
+        )
+        .mockReturnValueOnce(chain(null));
+
+      const result = await service.getForStudent(assignmentId, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
+      expect(mock.from).toHaveBeenCalledTimes(2);
+    });
+
+    it('allows an org member targeted through one of their groups (#249)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({
+            ...assignment,
+            organization_id: orgId,
+            assignment_targets: [{ group_id: 'g-1', student_id: null }],
+          }),
+        )
+        .mockReturnValueOnce(chain({ id: 'member-1' }))
+        .mockReturnValueOnce(chain([{ group_id: 'g-1' }]))
+        .mockReturnValue(chain(null));
+
+      const result = await service.getForStudent(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('returns NOT_FOUND for an org assignment the caller authored after removal (#249)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({
+            ...assignment,
+            organization_id: orgId,
+            created_by: userId,
+            assignment_targets: [],
+          }),
+        )
+        .mockReturnValueOnce(chain(null));
 
       const result = await service.getForStudent(assignmentId, ctx);
 
@@ -1133,6 +1235,25 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('returns NOT_FOUND for an org assignment when the caller is no longer an org member (#249)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          chain({
+            ...assignment,
+            organization_id: orgId,
+            assignment_targets: [{ group_id: 'g-1', student_id: null }],
+          }),
+        )
+        .mockReturnValueOnce(chain(null));
+
+      const result = await service.startAttempt(assignmentId, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
+      // assignment lookup + org membership lookup only: no group lookup / attempt insert
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
 
     it('shuffles questions when shuffle_questions is true', async () => {
