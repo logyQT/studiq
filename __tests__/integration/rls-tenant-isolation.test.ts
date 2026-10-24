@@ -1079,6 +1079,228 @@ describe('RLS tenant isolation (#191)', () => {
     }
   });
 
+  it('a seated custom role resolves the SEAT plan, not the org plan (review-2-r3 B1)', async () => {
+    // Zero-`org_role_features` custom role in a `launch` org (group.manage) with
+    // a `pro` seat (advanced.stats, NO group.manage). FeatureResolver resolves a
+    // seated actor against the seat plan only, so RLS must agree; before the r4
+    // fix the org-plan fallback still granted group.manage through PostgREST.
+    const seatedEmail = `rls191-seat-plan-${tag}@dev.local`;
+    const controlEmail = `rls191-seat-plan-control-${tag}@dev.local`;
+
+    const { data: orgPlan } = await service
+      .from('organizations')
+      .select('plan')
+      .eq('id', orgA.orgId)
+      .single();
+    expect(orgPlan?.plan).toBe('launch');
+
+    const { data: customRole, error: customRoleError } = await service
+      .from('org_roles')
+      .insert({
+        organization_id: orgA.orgId,
+        name: `rls191-custom-seatplan-${tag}`,
+        display_name: `Custom seat plan ${tag}`,
+        description: null,
+        is_system: false,
+      })
+      .select('id')
+      .single();
+    expect(customRoleError).toBeNull();
+
+    const seatedId = await createUser(seatedEmail, 'student', 'seated-seat-plan');
+    const controlId = await createUser(controlEmail, 'student', 'unseated-control');
+
+    try {
+      for (const userId of [seatedId, controlId]) {
+        await seedOrgMembership({
+          organizationId: orgA.orgId,
+          userId,
+          orgRoleId: customRole?.id as string,
+        });
+      }
+
+      const { data: pool, error: poolError } = await service
+        .from('org_seat_pools')
+        .insert({ organization_id: orgA.orgId, plan_key: 'pro', total: 1, assigned: 0 })
+        .select('id')
+        .single();
+      expect(poolError).toBeNull();
+
+      const { error: assignmentError } = await service.from('org_seat_assignments').insert({
+        organization_id: orgA.orgId,
+        pool_id: pool?.id as string,
+        user_id: seatedId,
+      });
+      expect(assignmentError).toBeNull();
+
+      const { data: group } = await service
+        .from('groups')
+        .select('id')
+        .eq('organization_id', orgA.orgId)
+        .limit(1)
+        .single();
+      expect(group?.id).toBeTruthy();
+
+      const seatedSession = await signIn(seatedEmail);
+      const controlSession = await signIn(controlEmail);
+
+      // `pro` has no group.manage, `launch` does: RLS must follow the seat plan.
+      const { data: seatedGroupManage } = await seatedSession.rpc('rls_caller_has_org_feature', {
+        p_organization_id: orgA.orgId,
+        p_feature: 'group.manage',
+      });
+      expect(seatedGroupManage).toBe(false);
+
+      // ...and it must be reading the seat plan, not just denying everything:
+      // `pro` has advanced.stats, `launch` does not.
+      const { data: seatedAdvancedStats } = await seatedSession.rpc('rls_caller_has_org_feature', {
+        p_organization_id: orgA.orgId,
+        p_feature: 'advanced.stats',
+      });
+      expect(seatedAdvancedStats).toBe(true);
+
+      // The app denies group creation for this user; PostgREST must too.
+      const { error: groupInsertError } = await seatedSession
+        .from('groups')
+        .insert({ organization_id: orgA.orgId, name: `rls191-b1-${tag}` })
+        .select('id');
+      expect(groupInsertError?.code).toBe('42501');
+
+      // Same policy: no self-join into an existing org group.
+      const { error: groupMemberError } = await seatedSession.from('group_members').insert({
+        group_id: group?.id as string,
+        user_id: seatedId,
+        role: 'member',
+      });
+      expect(groupMemberError?.code).toBe('42501');
+
+      // Tenant floor intact: the seated user still reads the org's groups.
+      const { data: readableGroups, error: groupsReadError } = await seatedSession
+        .from('groups')
+        .select('id')
+        .eq('organization_id', orgA.orgId);
+      expect(groupsReadError).toBeNull();
+      expect(readableGroups?.length ?? 0).toBeGreaterThan(0);
+
+      // Unseated custom roles keep the org-plan fallback.
+      const { data: controlGroupManage } = await controlSession.rpc('rls_caller_has_org_feature', {
+        p_organization_id: orgA.orgId,
+        p_feature: 'group.manage',
+      });
+      expect(controlGroupManage).toBe(true);
+
+      const { data: controlAdvancedStats } = await controlSession.rpc(
+        'rls_caller_has_org_feature',
+        { p_organization_id: orgA.orgId, p_feature: 'advanced.stats' },
+      );
+      expect(controlAdvancedStats).toBe(false);
+
+      // Losing the seat restores the org-plan fallback for the same user.
+      const { error: unassignError } = await service
+        .from('org_seat_assignments')
+        .delete()
+        .eq('organization_id', orgA.orgId)
+        .eq('user_id', seatedId);
+      expect(unassignError).toBeNull();
+
+      const { data: unseatedGroupManage } = await seatedSession.rpc('rls_caller_has_org_feature', {
+        p_organization_id: orgA.orgId,
+        p_feature: 'group.manage',
+      });
+      expect(unseatedGroupManage).toBe(true);
+    } finally {
+      await service.from('org_seat_assignments').delete().eq('organization_id', orgA.orgId);
+      await service.from('org_seat_pools').delete().eq('organization_id', orgA.orgId);
+      await service.from('org_members').delete().in('user_id', [seatedId, controlId]);
+      await service
+        .from('org_roles')
+        .delete()
+        .eq('id', customRole?.id as string);
+      for (const userId of [seatedId, controlId]) {
+        await service.auth.admin.deleteUser(userId).catch(() => {});
+      }
+    }
+  });
+
+  it('lists an assignment whose member was removed, and lets the manager free the seat (review-2-r3 B2)', async () => {
+    // Historical `removeMember` deleted only the org_members row, so the seat
+    // assignment survived while the narrowed `profiles` SELECT made the
+    // `profiles!inner` embed drop the whole row from /manage/seats. The list
+    // query now left-joins the profile, so an orphan is visible and unassignable.
+    const orphanEmail = `rls191-orphan-seat-${tag}@dev.local`;
+    const orphanId = await createUser(orphanEmail, 'student', 'orphan-seat');
+
+    try {
+      const { data: pool, error: poolError } = await service
+        .from('org_seat_pools')
+        .insert({ organization_id: orgA.orgId, plan_key: 'pro', total: 5, assigned: 0 })
+        .select('id')
+        .single();
+      expect(poolError).toBeNull();
+
+      const { error: assignmentError } = await service.from('org_seat_assignments').insert({
+        organization_id: orgA.orgId,
+        pool_id: pool?.id as string,
+        user_id: orphanId,
+      });
+      expect(assignmentError).toBeNull();
+
+      // No org_members row for orphanId: exactly the state a historical removal
+      // leaves behind.
+      const { count: membershipCount } = await service
+        .from('org_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', orgA.orgId)
+        .eq('user_id', orphanId);
+      expect(membershipCount).toBe(0);
+
+      // The exact query seat.service.listAssignments issues for the manager.
+      const { data: listed, error: listError } = await adminSession
+        .from('org_seat_assignments')
+        .select('id, user_id, profile:profiles(email, full_name)')
+        .eq('organization_id', orgA.orgId);
+      expect(listError).toBeNull();
+      const orphanRow = (listed ?? []).find((row) => row.user_id === orphanId);
+      expect(orphanRow).toBeTruthy();
+      expect(orphanRow?.profile ?? null).toBeNull();
+
+      // The manager cannot read that profile: why assignSeat fails closed for a
+      // non-member, and why the left join matters.
+      const { data: hiddenProfile } = await adminSession
+        .from('profiles')
+        .select('id, email')
+        .eq('id', orphanId);
+      expect(hiddenProfile).toEqual([]);
+
+      // The manager can still free the seat through the org-scoped DELETE policy
+      // and the trigger returns it to the pool.
+      const { error: deleteError } = await adminSession
+        .from('org_seat_assignments')
+        .delete()
+        .eq('organization_id', orgA.orgId)
+        .eq('user_id', orphanId);
+      expect(deleteError).toBeNull();
+
+      const { count: remainingAssignments } = await service
+        .from('org_seat_assignments')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', orgA.orgId)
+        .eq('user_id', orphanId);
+      expect(remainingAssignments).toBe(0);
+
+      const { data: poolAfter } = await service
+        .from('org_seat_pools')
+        .select('assigned')
+        .eq('id', pool?.id as string)
+        .single();
+      expect(poolAfter?.assigned).toBe(0);
+    } finally {
+      await service.from('org_seat_assignments').delete().eq('organization_id', orgA.orgId);
+      await service.from('org_seat_pools').delete().eq('organization_id', orgA.orgId);
+      await service.auth.admin.deleteUser(orphanId).catch(() => {});
+    }
+  });
+
   it('cross-tenant role references are rejected (B1/B2)', async () => {
     const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 

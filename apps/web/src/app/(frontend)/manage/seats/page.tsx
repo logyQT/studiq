@@ -449,7 +449,7 @@ export default function ManageSeatsPage() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <UserCheck className="size-4 text-muted-foreground" />
-                            <span>{a.userFullName || a.userEmail}</span>
+                            <span>{a.userFullName || a.userEmail || a.userId}</span>
                           </div>
                         </TableCell>
                         <TableCell>{PLAN_LABELS[a.planKey] || a.planKey}</TableCell>

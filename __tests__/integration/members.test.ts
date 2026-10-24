@@ -11,6 +11,7 @@ import {
   cleanupOrganizationDeep,
   createServiceClient,
   mockUser,
+  seedOrgMembership,
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
 import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/organization/members/route';
@@ -22,6 +23,7 @@ forEachCopy((copyId) => {
     let fixture!: BeforeResult;
     let orgId!: string;
     let adminRoleId!: string;
+    let memberRoleId!: string;
     let member!: TestUserFixture;
 
     beforeAll(async () => {
@@ -41,6 +43,14 @@ forEachCopy((copyId) => {
         .eq('name', 'admin')
         .single();
       adminRoleId = adminRole!.id;
+
+      const { data: memberRole } = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('name', 'member')
+        .single();
+      memberRoleId = memberRole!.id;
     });
 
     beforeEach(() => {
@@ -192,6 +202,60 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(200);
         expect(body.success).toBe(true);
+      });
+
+      it("releases the removed member's seat assignment (review-2-r3 B2)", async () => {
+        // A removed member keeps no license: the org_members delete must also
+        // drop the org_seat_assignments row (there is no FK cascade) so the
+        // pool's `assigned` counter is returned and no orphan is left behind.
+        const supabase = createServiceClient();
+        const seatUser = await createTestUser({ role: 'student' });
+        await seedOrgMembership({
+          organizationId: orgId,
+          userId: seatUser.id,
+          orgRoleId: memberRoleId,
+        });
+
+        const { data: pool, error: poolError } = await supabase
+          .from('org_seat_pools')
+          .insert({ organization_id: orgId, plan_key: 'pro', total: 1, assigned: 0 })
+          .select('id')
+          .single();
+        expect(poolError).toBeNull();
+
+        const { error: assignmentError } = await supabase.from('org_seat_assignments').insert({
+          organization_id: orgId,
+          pool_id: pool?.id as string,
+          user_id: seatUser.id,
+        });
+        expect(assignmentError).toBeNull();
+
+        mockUser(fixture.user);
+        const req = createNextRequest(
+          `http://localhost/api/v1/organization/members?userId=${seatUser.id}`,
+          { method: 'DELETE' },
+          { active_org_id: orgId },
+        );
+
+        const response = await DELETE(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+
+        const { count: seatCount } = await supabase
+          .from('org_seat_assignments')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', orgId)
+          .eq('user_id', seatUser.id);
+        expect(seatCount).toBe(0);
+
+        const { data: poolAfter } = await supabase
+          .from('org_seat_pools')
+          .select('assigned')
+          .eq('id', pool?.id as string)
+          .single();
+        expect(poolAfter?.assigned).toBe(0);
       });
 
       it('returns 400 when userId is empty', async () => {

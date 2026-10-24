@@ -28,12 +28,21 @@
 -- Capability resolution mirrors the ROLE layer of FeatureResolver
 -- (packages/server/src/services/feature.resolver.ts): system `admin` holds every
 -- capability, an enabled `org_role_features` row grants that capability, and a
--- role with zero feature rows (custom role) inherits the org's `plan_features`.
--- Per-user overrides and seat tiers deliberately do NOT raise this floor.
--- For a SEATED custom role the resolver additionally strips ADMIN_ONLY_FEATURES
+-- role with zero feature rows (custom role) inherits the EFFECTIVE plan — the
+-- seat pool's `plan_key` when the caller is seated (admin-only features
+-- stripped), otherwise the org's plan. Per-user overrides deliberately do NOT
+-- raise this floor.
+-- For a SEATED custom role the resolver strips ADMIN_ONLY_FEATURES
 -- (`org.manage`, `member.manage`, `role.builder`) so a seat can never grant
--- management authority; `has_org_feature` mirrors that (see the fallback
+-- management authority; `has_org_feature` mirrors that too (see the fallback
 -- below), because RLS must never exceed the app gate.
+--
+-- Known follow-up: the explicit `org_role_features` branch is intentionally NOT
+-- seat-filtered (`FeatureResolver` strips admin-only features for every seated
+-- non-admin role, including one with rows). It is unreachable through the app
+-- today — `org-role.service` never writes `org_role_features` and every role
+-- created by the role builder has zero rows — so this branch is left as-is
+-- rather than broadening RLS here. Do not "fix" it silently (review-1-r3 NB1).
 --
 -- What is NOT allowed by policy and therefore moves to the service-role client
 -- in the same PR:
@@ -86,7 +95,8 @@ GRANT EXECUTE ON FUNCTION public.rls_caller_org_user_ids() TO authenticated, ser
 -- `has_org_feature` is the SQL twin of FeatureResolver's role layer: a caller
 -- holds an org capability when their role is the system `admin` role, has an
 -- enabled `org_role_features` row for it, or is a custom role with no feature
--- rows at all (which inherits the org plan's entitlements).
+-- rows at all (which inherits the effective plan: the seat plan when seated,
+-- otherwise the org plan).
 --
 -- These take an explicit actor and are service-role-only; the `rls_caller_*`
 -- wrappers below bind them to auth.uid() for use inside policies and are the
@@ -129,14 +139,22 @@ AS $$
           NOT EXISTS (
             SELECT 1 FROM public.org_role_features f2 WHERE f2.org_role_id = r.id
           )
-          -- FeatureResolver parity for SEATED users: a seated role with zero
-          -- feature rows inherits the SEAT plan, and the resolver strips
-          -- ADMIN_ONLY_FEATURES (`org.manage`, `member.manage`,
-          -- `role.builder`) for every seated non-admin role "to prevent
-          -- privilege escalation through seats". The org-plan fallback must
-          -- not hand those three capabilities to a seated caller, otherwise a
-          -- manager-created custom role plus a seat would be an org manager in
-          -- RLS while the app denies it (review-1-r2 B1, issue #191).
+          -- FeatureResolver parity for a SEATED actor, both halves:
+          --
+          -- 1. The seat predicate below ("seated" == an assignment in this org
+          --    whose pool has a non-null `plan_key`, exactly what
+          --    getSeatPlanKey returns) gates the admin-only strip: the
+          --    resolver strips ADMIN_ONLY_FEATURES (`org.manage`,
+          --    `member.manage`, `role.builder`) for every seated non-admin
+          --    role "to prevent privilege escalation through seats". The
+          --    org-plan fallback must not hand those three capabilities to a
+          --    seated caller (review-1-r2 B1, issue #191).
+          --
+          -- 2. r4 fix (review-2-r3 B1): the plan lookup below resolves the
+          --    EFFECTIVE plan — the seat plan when seated, else the org plan.
+          --    FeatureResolver's seated branch calls `addPlanFeatures(seatPlanKey)`
+          --    and never consults `organizations.plan`, so a `launch` org with a
+          --    `pro` seat must NOT inherit `group.manage` from the org plan.
           AND (
             p_feature NOT IN ('org.manage', 'member.manage', 'role.builder')
             OR NOT EXISTS (
@@ -151,8 +169,21 @@ AS $$
           AND EXISTS (
             SELECT 1
             FROM public.plan_features pf
-            WHERE pf.plan_key = o.plan
-              AND pf.feature_key = p_feature
+            WHERE pf.feature_key = p_feature
+              AND pf.plan_key = COALESCE(
+                (
+                  -- `LIMIT 1` is defensive only: org_seat_assignments has
+                  -- UNIQUE(organization_id, user_id).
+                  SELECT sp.plan_key
+                  FROM public.org_seat_assignments sa
+                  JOIN public.org_seat_pools sp ON sp.id = sa.pool_id
+                  WHERE sa.user_id = p_actor
+                    AND sa.organization_id = p_organization_id
+                    AND sp.plan_key IS NOT NULL
+                  LIMIT 1
+                ),
+                o.plan
+              )
           )
         )
       )

@@ -215,6 +215,21 @@ export class OrganizationMemberService {
 
     if (error) return toDbFailure(error);
 
+    // A removed member keeps no license. Without this the assignment survives
+    // (there is no FK cascade), the pool's `assigned` counter stays consumed,
+    // and the RLS-narrowed `profiles` read hides the orphan from /manage/seats.
+    // The manager-only DELETE policy on org_seat_assignments is the
+    // authoritative gate and `maintain_seat_counts` returns the seat to the
+    // pool. Member first, seat second: a failure here leaves a visible orphan
+    // the manager can still unassign, not a member without a license.
+    const { error: seatError } = await supabase
+      .from('org_seat_assignments')
+      .delete()
+      .eq('organization_id', ctx.activeOrgId)
+      .eq('user_id', targetUserId);
+
+    if (seatError) return toDbFailure(seatError);
+
     return success({ success: true });
   }
 }
