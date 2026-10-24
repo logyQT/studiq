@@ -368,6 +368,51 @@ describe('FlashcardService', () => {
     });
   });
 
+  describe('batchDelete', () => {
+    const ownCard = { id: 'fc-own', created_by: ctx.userId, organization_id: 'org-1' };
+    const otherCard = { id: 'fc-other', created_by: 'teacher-1', organization_id: 'org-1' };
+
+    it('deletes all requested cards and gates each on flashcard.delete', async () => {
+      mock.from.mockReturnValueOnce(chain([ownCard, otherCard]));
+      mock.from.mockReturnValueOnce(chain(null));
+
+      const result = await service.batchDelete({ ids: ['fc-own', 'fc-other'] }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ deleted: 2 });
+      expect(vi.mocked(check)).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.delete', ownCard);
+      expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.delete', otherCard);
+      expect(mock.from).toHaveBeenLastCalledWith('flashcards');
+    });
+
+    it('returns NOT_FOUND when no card matches', async () => {
+      mock.from.mockReturnValueOnce(chain([]));
+
+      const result = await service.batchDelete({ ids: ['fc-missing'] }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      expect(vi.mocked(check)).not.toHaveBeenCalled();
+      // No delete statement was issued.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects the whole batch when a card is not deletable, before deleting', async () => {
+      mock.from.mockReturnValueOnce(chain([ownCard, otherCard]));
+      vi.mocked(check)
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new AppError('FORBIDDEN'));
+
+      await expect(service.batchDelete({ ids: ['fc-own', 'fc-other'] }, ctx)).rejects.toMatchObject(
+        { code: 'FORBIDDEN' },
+      );
+
+      // Only the fetch happened: nothing was deleted.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('delete', () => {
     it('deletes flashcard successfully', async () => {
       const existing = { id: 'fc-1', front: 'Q', back: 'A' };

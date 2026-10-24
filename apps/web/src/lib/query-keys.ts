@@ -57,6 +57,11 @@ export const groupKeys = {
   my: ['groups', 'my'] as const,
 };
 
+export const organizationKeys = {
+  all: ['organization'] as const,
+  members: (orgId?: string) => ['organization', orgId, 'members'] as const,
+};
+
 export const questionReportKeys = {
   all: ['question-reports'] as const,
   detail: (id: string) => ['question-reports', id] as const,

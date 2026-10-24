@@ -11,6 +11,7 @@ function createMockService() {
     getById: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+    batchDelete: vi.fn(),
   };
 }
 
@@ -232,6 +233,40 @@ describe('FlashcardController', () => {
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(500);
       expect((response as any).error).toBe('INTERNAL_SERVER');
+    });
+  });
+
+  describe('batchDelete', () => {
+    const validId = '550e8400-e29b-41d4-a716-446655440000';
+
+    it('returns success when service deletes the batch successfully', async () => {
+      mockService.batchDelete.mockResolvedValueOnce(success({ deleted: 1 }));
+
+      const response = await controller.batchDelete({ ids: [validId] }, mockCtx);
+
+      expect(response.success).toBe(true);
+      expect(response.statusCode).toBe(200);
+      expect((response as any).data).toEqual({ deleted: 1 });
+      expect(mockService.batchDelete).toHaveBeenCalledWith({ ids: [validId] }, mockCtx);
+    });
+
+    it('returns UNPROCESSABLE_ENTITY for invalid ids', async () => {
+      const response = await controller.batchDelete({ ids: 'invalid' }, mockCtx);
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(mockService.batchDelete).not.toHaveBeenCalled();
+    });
+
+    it('returns FORBIDDEN when service returns failure', async () => {
+      mockService.batchDelete.mockResolvedValueOnce(failure('FORBIDDEN'));
+
+      const response = await controller.batchDelete({ ids: [validId] }, mockCtx);
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(403);
+      expect((response as any).error).toBe('FORBIDDEN');
     });
   });
 
