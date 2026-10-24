@@ -13,7 +13,11 @@ import {
   createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
-import { createNextRequest } from '#test/integration/test-utils';
+import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import {
+  DELETE as inviteDelete,
+  PUT as invitePut,
+} from '@/app/(backend)/api/v1/organization/invites/[id]/route';
 import { POST as bulkPost } from '@/app/(backend)/api/v1/organization/invites/bulk/route';
 import {
   GET as inviteGet,
@@ -28,6 +32,10 @@ forEachCopy((copyId) => {
     let student!: TestUserFixture;
     let orgId!: string;
     let adminRoleId!: string;
+    /** Second manager — under no circumstances may they touch org A's invites. */
+    let foreignFixture!: BeforeResult;
+    let foreignOrgId!: string;
+    let foreignAdminRoleId!: string;
 
     beforeAll(async () => {
       // Manager creates the org via the API and becomes its admin member.
@@ -44,6 +52,18 @@ forEachCopy((copyId) => {
         .single();
       if (!adminRole) throw new Error('Admin role not found for fixture org');
       adminRoleId = adminRole.id;
+
+      // MGR-INV-03: a manager of a different organization.
+      foreignFixture = await before({ role: 'manager', org: true });
+      foreignOrgId = foreignFixture.orgId!;
+      const { data: foreignAdminRole } = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', foreignOrgId)
+        .eq('name', 'admin')
+        .single();
+      if (!foreignAdminRole) throw new Error('Admin role not found for foreign org');
+      foreignAdminRoleId = foreignAdminRole.id;
     });
 
     beforeEach(async () => {
@@ -51,11 +71,15 @@ forEachCopy((copyId) => {
       applyRegisteredMock(copyId);
       await cleanupInvitations(fixture.user.id);
       await cleanupInvitations(student.id);
+      await cleanupInvitations(foreignFixture.user.id);
     });
 
     afterAll(async () => {
       if (orgId) {
         await cleanupOrganizationDeep(orgId);
+      }
+      if (foreignOrgId) {
+        await cleanupOrganizationDeep(foreignOrgId);
       }
     });
 
@@ -274,6 +298,135 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(422);
         expect(body.success).toBe(false);
+      });
+    });
+
+    // MGR-INV-03: an invitation id must never be enough — the row has to belong
+    // to the caller's verified active organization.
+    describe('DELETE/PUT /api/v1/organization/invites/{id} cross-org scoping', () => {
+      async function seedInvite(): Promise<string> {
+        const supabase = createServiceClient();
+        const { data, error } = await supabase
+          .from('invitations')
+          .insert({
+            email: `cross-org-${copyId}-${Date.now()}@example.com`,
+            target_org_role_id: adminRoleId,
+            expires_at: new Date(Date.now() + 86400000).toISOString(),
+            inviter_id: fixture.user.id,
+            organization_id: orgId,
+          })
+          .select('id')
+          .single();
+        if (error || !data) throw new Error(`Failed to insert invitation: ${error?.message}`);
+        return data.id;
+      }
+
+      async function inviteExists(id: string): Promise<boolean> {
+        const { data } = await createServiceClient()
+          .from('invitations')
+          .select('id')
+          .eq('id', id)
+          .maybeSingle();
+        return data !== null;
+      }
+
+      async function inviteRole(id: string): Promise<string | null> {
+        const { data } = await createServiceClient()
+          .from('invitations')
+          .select('target_org_role_id')
+          .eq('id', id)
+          .maybeSingle();
+        return data?.target_org_role_id ?? null;
+      }
+
+      it("returns 404 and keeps the row when manager B deletes org A's invitation", async () => {
+        const inviteId = await seedInvite();
+        mockUser(foreignFixture.user);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/organization/invites/${inviteId}`,
+          { id: inviteId },
+          { method: 'DELETE' },
+          { active_org_id: foreignOrgId },
+        );
+        const response = await inviteDelete(request, { params });
+
+        expect(response.status).toBe(404);
+        expect(await inviteExists(inviteId)).toBe(true);
+      });
+
+      it('returns 403 for a forged active_org_id cookie without a membership row', async () => {
+        const inviteId = await seedInvite();
+        // manager B claims org A as active: withAuth finds no org_members row,
+        // so orgRoleId stays null and the service must refuse outright.
+        mockUser(foreignFixture.user);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/organization/invites/${inviteId}`,
+          { id: inviteId },
+          { method: 'DELETE' },
+          { active_org_id: orgId },
+        );
+        const response = await inviteDelete(request, { params });
+
+        expect(response.status).toBe(403);
+        expect(await inviteExists(inviteId)).toBe(true);
+      });
+
+      it('deletes the invitation for a manager of the owning organization', async () => {
+        const inviteId = await seedInvite();
+        mockUser(fixture.user);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/organization/invites/${inviteId}`,
+          { id: inviteId },
+          { method: 'DELETE' },
+          { active_org_id: orgId },
+        );
+        const response = await inviteDelete(request, { params });
+
+        expect(response.status).toBe(200);
+        expect(await inviteExists(inviteId)).toBe(false);
+      });
+
+      it("returns 404 and keeps the role when manager B updates org A's invitation", async () => {
+        const inviteId = await seedInvite();
+        mockUser(foreignFixture.user);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/organization/invites/${inviteId}`,
+          { id: inviteId },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetOrgRoleId: foreignAdminRoleId }),
+          },
+          { active_org_id: foreignOrgId },
+        );
+        const response = await invitePut(request, { params });
+
+        expect(response.status).toBe(404);
+        expect(await inviteRole(inviteId)).toBe(adminRoleId);
+      });
+
+      it('returns 422 and keeps the role when the target role belongs to another org', async () => {
+        const inviteId = await seedInvite();
+        mockUser(fixture.user);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/organization/invites/${inviteId}`,
+          { id: inviteId },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetOrgRoleId: foreignAdminRoleId }),
+          },
+          { active_org_id: orgId },
+        );
+        const response = await invitePut(request, { params });
+
+        expect(response.status).toBe(422);
+        expect(await inviteRole(inviteId)).toBe(adminRoleId);
       });
     });
   });
