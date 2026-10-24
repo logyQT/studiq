@@ -14,7 +14,6 @@ src/app/(backend)/api/v1/
   flashcards/         # Flashcard CRUD
     [id]/
       copy/           # Copy a flashcard
-      link/           # Link a flashcard to a deck
       practice/       # Practice a single flashcard
         stats/        # Practice stats for a flashcard
     decks/            # Deck CRUD

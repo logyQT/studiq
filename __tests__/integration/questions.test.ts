@@ -16,6 +16,7 @@ import { createNextRequest, createNextRequestWithParams } from '#test/integratio
 import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/questions/[id]/route';
 import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/route';
 import { GET as GET_LIST, POST } from '@/app/(backend)/api/v1/questions/route';
+import { POST as createTopicPost } from '@/app/(backend)/api/v1/topics/route';
 
 forEachCopy((copyId) => {
   describe(`Questions Integration [${copyId}]`, () => {
@@ -67,7 +68,7 @@ forEachCopy((copyId) => {
 
     async function createQuestion(
       content: string,
-      opts: { type?: 'mcq' | 'true_false' } = {},
+      opts: { type?: 'mcq' | 'true_false'; topicIds?: string[] } = {},
     ): Promise<{ id: string; bankId: string }> {
       const bankId = await createBank(`q-test-bank-${copyId}-${Date.now()}-${Math.random()}`);
       mockUser(educator.user);
@@ -82,6 +83,7 @@ forEachCopy((copyId) => {
             type: opts.type ?? 'mcq',
             content: prefixedContent,
             answers: [{ content: 'Answer', isCorrect: true, orderIndex: 0 }],
+            ...(opts.topicIds ? { topicIds: opts.topicIds } : {}),
           }),
         },
         orgCookies(),
@@ -90,6 +92,23 @@ forEachCopy((copyId) => {
       const body = await res.json();
       if (res.status !== 201) throw new Error(`question create failed: ${JSON.stringify(body)}`);
       return { id: body.data.id as string, bankId };
+    }
+
+    async function createTopic(name: string): Promise<string> {
+      mockUser(educator.user);
+      const req = createNextRequest(
+        'http://localhost/api/v1/topics',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        },
+        orgCookies(),
+      );
+      const res = await createTopicPost(req);
+      const body = await res.json();
+      if (res.status !== 201) throw new Error(`topic create failed: ${JSON.stringify(body)}`);
+      return body.data.id as string;
     }
 
     describe('POST /api/v1/questions', () => {
@@ -332,6 +351,25 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(200);
         expect(body.data.length).toBe(1);
         expect(body.data[0].type).toBe('true_false');
+      });
+
+      it('filters by topicIds', async () => {
+        // A fresh topic per copy: no other question in the org can match it.
+        const topicId = await createTopic(`copy-${copyId}-topic-${Date.now()}`);
+        const tagged = await createQuestion('Tagged question', { topicIds: [topicId] });
+        await createQuestion('Untagged question');
+
+        mockUser(educator.user);
+        const req = createNextRequest(
+          `http://localhost/api/v1/questions?topicIds=${topicId}`,
+          undefined,
+          orgCookies(),
+        );
+        const response = await GET_LIST(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.map((q: { id: string }) => q.id)).toEqual([tagged.id]);
       });
     });
 

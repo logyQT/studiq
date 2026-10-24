@@ -48,7 +48,7 @@ test.describe('Teacher Flashcards', () => {
       page.getByRole('menuitem', { name: t('EduDeckViewPage.menu_topics') }),
     ).toBeVisible();
     await expect(
-      page.getByRole('menuitem', { name: t('EduDeckViewPage.menu_link') }),
+      page.getByRole('menuitem', { name: t('EduDeckViewPage.menu_move') }),
     ).toBeVisible();
     await expect(
       page.getByRole('menuitem', { name: t('EduDeckViewPage.menu_copy') }),
@@ -115,7 +115,7 @@ test.describe('Teacher Flashcards', () => {
     await expect(page.getByText(t('EduDeckViewPage.edit_title'))).toBeVisible();
   });
 
-  test('owned menu triggers link dialog', async ({ page }) => {
+  test('owned menu triggers move dialog', async ({ page }) => {
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
 
@@ -134,9 +134,9 @@ test.describe('Teacher Flashcards', () => {
       .first();
     await menuButton.click();
 
-    await page.getByRole('menuitem', { name: t('EduDeckViewPage.menu_link') }).click();
+    await page.getByRole('menuitem', { name: t('EduDeckViewPage.menu_move') }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
-    await expect(page.getByText(t('EduDeckViewPage.link_title'))).toBeVisible();
+    await expect(page.getByText(t('EduDeckViewPage.move_title'))).toBeVisible();
   });
 
   test('deck context menu has select, edit, export, delete items', async ({ page }) => {
