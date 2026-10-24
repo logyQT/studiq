@@ -562,6 +562,11 @@ def is_closeout(state: dict) -> bool:
     return bool(state.get("closeout"))
 
 
+def is_paused(state: dict) -> bool:
+    """Pause: no new dispatches at all, so the slots can be freed and rebuilt."""
+    return bool(state.get("paused"))
+
+
 def attempt(rec: dict) -> int:
     return int(rec.get("attempt", 1))
 
@@ -674,6 +679,10 @@ def cmd_map(args) -> None:
 def cmd_next(args) -> None:
     m = load_map()
     st = load_state()
+    if is_paused(st):
+        ok(action="next", issue=None,
+           message="paused: no dispatch until `pause off`")
+        return
     if is_closeout(st):
         ok(action="next", issue=None,
            message="close-out: do not start new issues; finish or park the in-flight ones")
@@ -723,6 +732,8 @@ def role_for_stage(stage: str) -> str:
 def cmd_design(args) -> None:
     state = load_state()
     n = args.issue
+    if is_paused(state):
+        fail("paused: no new dispatches", hint="`qa-fix.py pause off` before dispatching again")
     if is_closeout(state):
         fail("close-out in progress: no new issues",
              hint="finish the in-flight issues, then `qa-fix.py closeout off` to resume")
@@ -761,6 +772,8 @@ def cmd_design(args) -> None:
 def cmd_implement(args) -> None:
     state = load_state()
     n = args.issue
+    if is_paused(state):
+        fail("paused: no new dispatches", hint="`qa-fix.py pause off` before dispatching again")
     rec = get_rec(state, n)
     if rec["stage"] not in ("design_ready", "changes_requested", "qa_failed", "pr_open", "qa_passed"):
         fail(f"cannot implement from stage {rec['stage']}")
@@ -830,6 +843,8 @@ def hook_gate(rec: dict, n: int) -> dict:
 def cmd_review(args) -> None:
     state = load_state()
     n = args.issue
+    if is_paused(state):
+        fail("paused: no new dispatches", hint="`qa-fix.py pause off` before dispatching again")
     rec = get_rec(state, n)
     if rec["stage"] not in ("pr_open", "changes_requested"):
         fail(f"cannot review from stage {rec['stage']}")
@@ -874,6 +889,8 @@ def cmd_review(args) -> None:
 def cmd_qa(args) -> None:
     state = load_state()
     n = args.issue
+    if is_paused(state):
+        fail("paused: no new dispatches", hint="`qa-fix.py pause off` before dispatching again")
     rec = get_rec(state, n)
     if rec["stage"] not in ("approved", "qa_failed"):
         fail(f"cannot QA from stage {rec['stage']}")
@@ -1119,6 +1136,8 @@ def cmd_ingest(args) -> None:
     number space between issues and PRs, so it cannot collide with an issue).
     """
     state = load_state()
+    if is_paused(state):
+        fail("paused: no new dispatches", hint="`qa-fix.py pause off` before dispatching again")
     tracked = {int(r["pr"]) for r in state["issues"].values() if r.get("pr")}
     me = system_login().lower()
     authors = {a.lower() for a in (args.author or [])}
@@ -1248,6 +1267,18 @@ def cmd_merge(args) -> None:
     rec["merged_at"] = now()
     history(state, n, {"event": "merged", "pr": pr, "url": view.get("url")})
     ok(action="merge", issue=n, pr=pr, stage="done", url=view.get("url"))
+
+
+def cmd_pause(args) -> None:
+    state = load_state()
+    on = args.mode == "on"
+    state["paused"] = on
+    state["events"].append({"at": now(), "event": "pause", "on": on})
+    state["events"] = state["events"][-500:]
+    save_state(state)
+    ok(action="pause", paused=on,
+       message=("no new dispatches; in-flight sessions finish and slots free up"
+                if on else "dispatch resumed"))
 
 
 def cmd_closeout(args) -> None:
@@ -1499,6 +1530,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--recommendation")
     s.add_argument("--blocking", action="store_true")
     s.set_defaults(fn=cmd_escalate)
+    s = sub.add_parser("pause"); s.add_argument("mode", choices=("on", "off"))
+    s.set_defaults(fn=cmd_pause)
     s = sub.add_parser("closeout"); s.add_argument("mode", choices=("on", "off"))
     s.set_defaults(fn=cmd_closeout)
     sub.add_parser("escalations-pending").set_defaults(fn=cmd_escalations_pending)

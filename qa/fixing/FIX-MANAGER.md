@@ -204,7 +204,13 @@ $FIX verdict <pr> [--approve|--request-changes]   # submits the two verdicts + Q
 - `merge` refuses external PRs; the author owns the merge.
 - Run `ingest` after every merge batch and every ~30 minutes while the pipeline runs, so teammates' PRs do not pile up.
 
-### 8. Close-out
+### 8. Pause (free the slots)
+`$FIX pause on` blocks every new dispatch (`design`, `implement`, `review`, `qa`,
+`ingest`, `next`) while in-flight sessions keep running and can still be collected.
+Use it when the operator wants the slots emptied (e.g. before a toolchain change or
+a full rebuild). Report once every slot is free, then stay quiet until `pause off`.
+
+### 9. Close-out
 `$FIX closeout on` freezes new work: `next` returns nothing and `design` refuses,
 while `implement` / `review` / `qa` keep working for issues already in the
 pipeline. External PRs are exempt: keep running `ingest` so teammates' PRs are
