@@ -2298,6 +2298,7 @@
     "update": "Update",
     "content_required": "Question content is required",
     "mcq_min_answers": "MCQ questions need at least 2 answers",
+    "answers_required": "Add at least one answer",
     "tf_true": "True",
     "tf_false": "False",
     "generate_tf": "Generate True/False options",
