@@ -220,6 +220,24 @@ export class InvitationService {
 
     if (orgError || !org) return failure('GONE');
 
+    // Single-use claim: consume the token BEFORE any membership write, so two
+    // concurrent accepts cannot both pass the read check above. `IS NOT TRUE`
+    // (not `= false`) is null-safe: a legacy NULL row is claimable, and once
+    // claimed it no longer matches. Losing the claim means the token was already
+    // used (or used by the concurrent request) -> 410, exactly like expiry.
+    // Ordering matters: the seat limit above can still reject the accept without
+    // burning the token.
+    const { data: claimed, error: claimError } = await supabase
+      .from('invitations')
+      .update({ is_accepted: true })
+      .eq('token', token)
+      .not('is_accepted', 'is', true)
+      .select('id')
+      .maybeSingle();
+
+    if (claimError) return toDbFailure(claimError);
+    if (!claimed) return failure('GONE');
+
     // Explicit composite conflict target: supabase-js defaults to the primary
     // key (`id`), which never conflicts here, so the "upsert" degraded to a
     // plain INSERT and a re-accept died on org_members_organization_id_user_id_key.
@@ -258,17 +276,6 @@ export class InvitationService {
       );
       if (me) return toDbFailure(me);
     }
-
-    // `is_accepted = false` makes the token single-use even under a race between
-    // two accepts: only one UPDATE can match. A token that was already consumed
-    // is rejected by isInviteUsable() above (410), so a demoted admin cannot
-    // re-play an old invite.
-    const { error: acceptError } = await supabase
-      .from('invitations')
-      .update({ is_accepted: true })
-      .eq('token', token)
-      .eq('is_accepted', false);
-    if (acceptError) return toDbFailure(acceptError);
 
     return success({ id: org.id, name: org.name, orgRoleId: invite.targetOrgRoleId });
   }

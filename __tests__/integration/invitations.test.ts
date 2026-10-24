@@ -212,6 +212,31 @@ forEachCopy((copyId) => {
         expect(body.success).toBe(false);
       });
 
+      it('returns 410 when the token was already accepted', async () => {
+        mockUser(fixture.user);
+
+        const supabase = createServiceClient();
+        const token = `used-token-${copyId}-${Date.now()}`;
+        await supabase.from('invitations').insert({
+          email: `used-${copyId}@example.com`,
+          target_org_role_id: adminRoleId,
+          token,
+          expires_at: new Date(Date.now() + 86400000).toISOString(),
+          inviter_id: fixture.user.id,
+          organization_id: orgId,
+          is_accepted: true,
+        });
+
+        const req = createNextRequest(
+          `http://localhost/api/v1/organization/invites?token=${token}`,
+        );
+        const response = await inviteGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(410);
+        expect(body.success).toBe(false);
+      });
+
       it('returns 401 when token is empty (treated as no token, requires auth)', async () => {
         mockUser(null);
         const req = createNextRequest('http://localhost/api/v1/organization/invites?token=');

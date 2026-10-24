@@ -314,6 +314,8 @@ describe('InvitationService', () => {
       // The accepting user is not a member yet: RLS would hide every row, so the
       // user-session client must not be touched at all.
       expect(mock.from).not.toHaveBeenCalled();
+      // A full org must not burn the token: the claim is never attempted.
+      expect(admin.from).toHaveBeenCalledTimes(2);
     });
 
     it('adds the member when the organization is below its limit', async () => {
@@ -326,6 +328,7 @@ describe('InvitationService', () => {
         .mockReturnValueOnce(qb(invitation))
         .mockReturnValueOnce(countQb(2))
         .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
+        .mockReturnValueOnce(qb({ id: 'inv-1' })) // claim
         .mockReturnValueOnce(qb({ organization_id: 'org-1' }))
         .mockReturnValueOnce(qb({ id: 'group-1' }))
         .mockReturnValue(qb(null));
@@ -372,6 +375,7 @@ describe('InvitationService', () => {
         .mockReturnValueOnce(qb(invitation))
         .mockReturnValueOnce(countQb(4))
         .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
+        .mockReturnValueOnce(qb({ id: 'inv-1' })) // claim
         .mockReturnValueOnce(memberQb)
         .mockReturnValueOnce(qb({ id: 'group-1' }))
         .mockReturnValueOnce(groupQb)
@@ -470,28 +474,93 @@ describe('InvitationService', () => {
       expect(admin.from).toHaveBeenCalledTimes(1);
     });
 
-    it('marks the invitation accepted only while it is still unaccepted', async () => {
+    it('claims the token before writing membership and never re-updates it afterwards', async () => {
       const admin = adminClient();
       service = new InvitationService(
         async () => mock as any,
         () => admin.client,
       );
-      const acceptQb = qb(null);
+      const claimQb = qb({ id: 'inv-1' });
+      const memberQb = qb(null);
       admin.from
         .mockReturnValueOnce(qb(invitation))
         .mockReturnValueOnce(countQb(2))
         .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
-        .mockReturnValueOnce(qb({ organization_id: 'org-1' }))
+        .mockReturnValueOnce(claimQb)
+        .mockReturnValueOnce(memberQb)
         .mockReturnValueOnce(qb({ id: 'group-1' }))
-        .mockReturnValueOnce(qb(null))
-        .mockReturnValueOnce(acceptQb);
+        .mockReturnValue(qb(null));
 
       const result = await service.acceptInvitation(joiningCtx, 'tok');
 
       expect(result.success).toBe(true);
-      // Single-use guard: the update only matches an unaccepted row.
-      expect(acceptQb.update).toHaveBeenCalledWith({ is_accepted: true });
-      expect(acceptQb.eq).toHaveBeenCalledWith('is_accepted', false);
+      // Only an unaccepted (or legacy NULL) token can be claimed: `IS NOT TRUE`
+      // is null-safe, unlike `.eq('is_accepted', false)`.
+      expect(claimQb.update).toHaveBeenCalledWith({ is_accepted: true });
+      expect(claimQb.eq).toHaveBeenCalledWith('token', 'tok');
+      expect(claimQb.not).toHaveBeenCalledWith('is_accepted', 'is', true);
+      expect(claimQb.select).toHaveBeenCalledWith('id');
+      expect(claimQb.maybeSingle).toHaveBeenCalled();
+
+      // Claim (call 4) precedes the org_members upsert (call 5), and the claim is
+      // the single write that consumes the token — no trailing update.
+      const tables = admin.from.mock.calls.map(([table]) => table);
+      expect(tables).toEqual([
+        'invitations',
+        'org_members',
+        'organizations',
+        'invitations',
+        'org_members',
+        'groups',
+        'group_members',
+      ]);
+      expect(memberQb.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects the accept when the token was already claimed concurrently (GONE)', async () => {
+      const admin = adminClient();
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+      );
+      // `.maybeSingle()` yields null when the conditional PATCH matched no row.
+      const memberQb = qb({ organization_id: 'org-1' });
+      admin.from
+        .mockReturnValueOnce(qb(invitation))
+        .mockReturnValueOnce(countQb(2))
+        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
+        .mockReturnValueOnce(qb(null)) // claim lost
+        .mockReturnValue(memberQb);
+
+      const result = await service.acceptInvitation(joiningCtx, 'tok');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('GONE');
+      // Nothing was written: no org_members / group_members upsert.
+      expect(admin.from).toHaveBeenCalledTimes(4);
+      expect(memberQb.upsert).not.toHaveBeenCalled();
+    });
+
+    it('reports a DB failure when the claim itself fails', async () => {
+      const admin = adminClient();
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+      );
+      const memberQb = qb({ organization_id: 'org-1' });
+      admin.from
+        .mockReturnValueOnce(qb(invitation))
+        .mockReturnValueOnce(countQb(2))
+        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
+        .mockReturnValueOnce(qb(null, { message: 'boom', code: 'XX000' }))
+        .mockReturnValue(memberQb);
+
+      const result = await service.acceptInvitation(joiningCtx, 'tok');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+      expect(admin.from).toHaveBeenCalledTimes(4);
+      expect(memberQb.upsert).not.toHaveBeenCalled();
     });
   });
 });

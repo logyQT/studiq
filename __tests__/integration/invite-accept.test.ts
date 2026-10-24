@@ -143,6 +143,134 @@ forEachCopy((copyId) => {
       expect(groupMember).toBeTruthy();
     });
 
+    it('rejects a used invite and keeps a removed member out (#256)', async () => {
+      const fixture = await before({ role: 'manager', org: true });
+      createdOrgIds.push(fixture.orgId!);
+      const student = await createTestUser({ role: 'student' });
+      const { memberRoleId } = await roleIds(fixture.orgId!);
+
+      mockUser(fixture.user);
+      const inviteRes = await invitePost(
+        createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: student.email, targetOrgRoleId: memberRoleId }),
+          },
+          { active_org_id: fixture.orgId! },
+        ),
+      );
+      expect(inviteRes.status).toBe(201);
+
+      const supabase = createServiceClient();
+      const { data: invite } = await supabase
+        .from('invitations')
+        .select('token')
+        .eq('email', student.email)
+        .eq('organization_id', fixture.orgId!)
+        .single();
+      expect(invite).toBeTruthy();
+
+      const accept = () => {
+        mockUser(student);
+        return acceptPost(
+          createNextRequest('http://localhost/api/v1/organization/invites/accept', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: invite!.token }),
+          }),
+        );
+      };
+
+      // 1. First accept works as expected.
+      const first = await accept();
+      expect(first.status).toBe(200);
+
+      // 2. Reusing the same token is rejected (was 200 before the fix).
+      const second = await accept();
+      const secondBody = await second.json();
+      expect(second.status).toBe(410);
+      expect(secondBody.success).toBe(false);
+
+      // 3. Escalation: a removed member cannot re-join with the old token.
+      await supabase
+        .from('org_members')
+        .delete()
+        .eq('organization_id', fixture.orgId!)
+        .eq('user_id', student.id);
+
+      const third = await accept();
+      const thirdBody = await third.json();
+      expect(third.status).toBe(410);
+      expect(thirdBody.success).toBe(false);
+
+      const { data: membership } = await supabase
+        .from('org_members')
+        .select('user_id')
+        .eq('organization_id', fixture.orgId!)
+        .eq('user_id', student.id)
+        .maybeSingle();
+      expect(membership).toBeNull();
+
+      const { data: consumed } = await supabase
+        .from('invitations')
+        .select('is_accepted')
+        .eq('token', invite!.token)
+        .single();
+      expect(consumed?.is_accepted).toBe(true);
+    });
+
+    it('lets exactly one of two concurrent accepts claim the token (#256)', async () => {
+      const fixture = await before({ role: 'manager', org: true });
+      createdOrgIds.push(fixture.orgId!);
+      const student = await createTestUser({ role: 'student' });
+      const { memberRoleId } = await roleIds(fixture.orgId!);
+
+      mockUser(fixture.user);
+      const inviteRes = await invitePost(
+        createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: student.email, targetOrgRoleId: memberRoleId }),
+          },
+          { active_org_id: fixture.orgId! },
+        ),
+      );
+      expect(inviteRes.status).toBe(201);
+
+      const supabase = createServiceClient();
+      const { data: invite } = await supabase
+        .from('invitations')
+        .select('token')
+        .eq('email', student.email)
+        .eq('organization_id', fixture.orgId!)
+        .single();
+      expect(invite).toBeTruthy();
+
+      mockUser(student);
+      const accept = () =>
+        acceptPost(
+          createNextRequest('http://localhost/api/v1/organization/invites/accept', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: invite!.token }),
+          }),
+        );
+
+      const statuses = (await Promise.all([accept(), accept()])).map((r) => r.status).sort();
+      expect(statuses).toEqual([200, 410]);
+
+      const { count } = await supabase
+        .from('org_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', fixture.orgId!)
+        .eq('user_id', student.id);
+      expect(count).toBe(1);
+    });
+
     // End-to-end check for #182 (max_students was never enforced on accept). Note:
     // mockUser() uses a service-role client, so this cannot reproduce the RLS
     // blindness that caused it; that is covered by the unit test asserting the
