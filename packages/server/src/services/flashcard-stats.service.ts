@@ -1,5 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
-import { buildQueryFilter, Permission } from '@studiq/server/lib/authz';
+import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -21,12 +21,17 @@ export class FlashcardStatsService {
   ): Promise<ServiceResult<TeacherFlashcardStatsResponse>> {
     const supabase = await this.createClient();
 
-    const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    // `accessibleFilter` resolves group membership into `or: created_by|id.in`
+    // instead of leaving an org-wide read (#343).
+    const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (filter._impossible) {
       return success(emptyResponse);
     }
 
     let flashcardQuery = supabase.from('flashcards').select('id');
+    if (filter.or) {
+      flashcardQuery = flashcardQuery.or(filter.or);
+    }
     if (filter.organization_id) {
       flashcardQuery = flashcardQuery.eq('organization_id', filter.organization_id);
     }
@@ -59,10 +64,13 @@ export class FlashcardStatsService {
   ): Promise<ServiceResult<DifficultyFlashcardDetail[]>> {
     const supabase = await this.createClient();
 
-    const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     if (filter._impossible) return success([]);
 
     let flashcardQuery = supabase.from('flashcards').select('id, front, back');
+    if (filter.or) {
+      flashcardQuery = flashcardQuery.or(filter.or);
+    }
     if (filter.organization_id) {
       flashcardQuery = flashcardQuery.eq('organization_id', filter.organization_id);
     }
