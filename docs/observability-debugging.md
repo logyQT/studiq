@@ -132,3 +132,60 @@ Metric labels must stay bounded. **Never** use `user_id` or `trace_id` as a
 metric label. Allowed: `http.method`, `http.route`, `http.status_code`,
 `service.name`, `code.function`, `account_type`. `trace_id` belongs on spans
 and logs only.
+
+## Parallel QA environments
+
+Several agents can run different scenarios at once. The **Grafana stack stays
+shared**; everything that mutates state is per agent.
+
+```bash
+scripts/qa-env MGR-MEM-03 1     # start slot 1
+scripts/qa-env --list           # running environments
+scripts/qa-env --clean MGR-MEM-03
+```
+
+A slot gives you:
+
+| | slot 1 | slot 2 | slot 3 |
+|---|---|---|---|
+| App | `:3010` | `:3011` | `:3012` |
+| Supabase API / DB | `:54421` / `:54422` | `:54521` / `:54522` | `:54621` / `:54622` |
+| Studio / Mail | `:54423` / `:54424` | `:54523` / `:54524` | `:54623` / `:54624` |
+| OTel service | `studiq-MGR-MEM-03` | `studiq-MGR-ACC-01` | … |
+
+### How Supabase is isolated
+
+`supabase/config.toml` has a `project_id` and a fixed port block. The launcher
+creates a **detached git worktree** per scenario and rewrites that worktree's
+config:
+
+- `project_id = "qa-<scenario>"` — Docker names containers **and volumes** after
+  it (`supabase_db_qa-mgr-mem-03`, `supabase_db_qa-mgr-mem-03` volume, …), so
+  two stacks coexist without touching each other's data.
+- every port is offset by the slot (`54321 + 100*slot`), so `supabase start`
+  binds a distinct set.
+- the worktree gets its own `apps/web/.env` with that stack's URL + anon key,
+  `OTEL_SERVICE_NAME=studiq-<scenario>`, and its app `PORT`.
+- `supabase start -x imgproxy,logflare,vector,realtime` keeps the stack small;
+  `supabase db reset` seeds it independently, so resets never race.
+- `scripts/qa-env --clean` runs `supabase stop --no-backup`, frees the ports and
+  removes the worktree.
+
+Because each stack is seeded from the same migrations/seeds, expected results
+(e.g. member counts) stay identical across agents.
+
+### Telemetry filtering
+
+The collector keeps one `studiq_` metric namespace but now converts resource
+attributes to labels, so:
+
+- Tempo: `{ resource.service.name = "studiq-MGR-MEM-03" }`
+- Loki: `{service_name="studiq-MGR-MEM-03"}`
+- Prometheus: `studiq_http_server_request_total{service_name="studiq-MGR-MEM-03"}`
+
+Agents read their identity from `qa/env.json` in their worktree (`appUrl`,
+`serviceName`, `supabaseUrl`); the QA prompt treats that file as authoritative.
+
+**Sizing:** a trimmed stack is ~1.5–2 GB and a Next dev ~0.5–1 GB. On the 15 GB
+dev host, 3 parallel slots plus the shared stack is comfortable; 4 is tight.
+
