@@ -7,8 +7,37 @@ import {
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
-import type { SubmitQuizAttemptInput } from '@studiq/server/models/quiz-attempt.model';
+import type {
+  SaveQuizAnswersInput,
+  SubmitQuizAttemptInput,
+} from '@studiq/server/models/quiz-attempt.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+
+interface DraftAnswer {
+  selected_answer_id: string | null;
+  text_answer: string | null;
+}
+
+/**
+ * Normalise the `draft_answers` jsonb column into the answer map served to the
+ * take page. Fields are copied explicitly so a tampered row can never leak
+ * anything beyond the student's own selection (#331).
+ */
+function readDraftAnswers(value: unknown): Record<string, DraftAnswer> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+
+  const draft: Record<string, DraftAnswer> = {};
+  for (const [questionId, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const entry = raw as Record<string, unknown>;
+    draft[questionId] = {
+      selected_answer_id:
+        typeof entry.selected_answer_id === 'string' ? entry.selected_answer_id : null,
+      text_answer: typeof entry.text_answer === 'string' ? entry.text_answer : null,
+    };
+  }
+  return draft;
+}
 
 export class QuizAttemptService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -18,7 +47,11 @@ export class QuizAttemptService {
 
     const { data, error } = await supabase
       .from('quiz_attempts')
-      .select('*')
+      // Drafts are per-question free text; the "Quiz w trakcie" banner never
+      // needs them, so they are not part of the list payload (#349).
+      .select(
+        'id, user_id, score, total_questions, total_points, config, started_at, completed_at, assignment_id, graded_at',
+      )
       .eq('user_id', ctx.userId)
       .order('started_at', { ascending: false });
 
@@ -44,6 +77,8 @@ export class QuizAttemptService {
     // A finished attempt is a review: it may show which option was correct and
     // the explanation. A running attempt never may (#331).
     const isCompleted = attempt.completed_at !== null;
+    // Drafts are served as `answers` below; the raw column is never serialised.
+    const { draft_answers: draftAnswers, ...attemptFields } = attempt;
 
     const { data: attemptQuestions, error: questionsError } = await supabase
       .from('quiz_attempt_questions')
@@ -72,19 +107,80 @@ export class QuizAttemptService {
       string,
       { selected_answer_id: string | null; text_answer: string | null; is_correct?: boolean }
     > = {};
-    (answers ?? []).forEach((a) => {
-      answerObj[a.question_id] = {
-        selected_answer_id: a.selected_option_id,
-        text_answer: a.text_answer,
-        ...(isCompleted ? { is_correct: a.is_correct } : {}),
-      };
-    });
+    if (isCompleted) {
+      (answers ?? []).forEach((a) => {
+        answerObj[a.question_id] = {
+          selected_answer_id: a.selected_option_id,
+          text_answer: a.text_answer,
+          is_correct: a.is_correct,
+        };
+      });
+    } else {
+      // A running attempt resumes from the autosaved draft, not from graded rows.
+      Object.assign(answerObj, readDraftAnswers(draftAnswers));
+    }
 
     return success({
-      ...attempt,
+      ...attemptFields,
       questions,
       answers: answerObj,
     });
+  }
+
+  /**
+   * Replace the in-progress draft with the client's current answer set (#349).
+   * Full-state replace: the take page always posts everything it has, so a
+   * stale tab cannot resurrect an answer the student just cleared.
+   */
+  async saveDraft(
+    data: SaveQuizAnswersInput,
+    ctx: RequestContext,
+  ): Promise<ServiceResult<{ saved: number }>> {
+    const supabase = await this.createClient();
+
+    const { data: attempt, error: attemptError } = await supabase
+      .from('quiz_attempts')
+      .select('id, completed_at')
+      .eq('id', data.attemptId)
+      .eq('user_id', ctx.userId)
+      .single();
+
+    if (attemptError || !attempt) return failure('NOT_FOUND');
+    if (attempt.completed_at) return failure('BAD_REQUEST');
+
+    // Only questions that belong to this attempt can be stored, so a client
+    // cannot grow the draft with junk keys.
+    const { data: attemptQuestions, error: questionsError } = await supabase
+      .from('quiz_attempt_questions')
+      .select('question_id')
+      .eq('attempt_id', data.attemptId);
+
+    if (questionsError) return toDbFailure(questionsError);
+
+    const allowedIds = new Set((attemptQuestions ?? []).map((q) => q.question_id));
+    if (data.answers.some((a) => !allowedIds.has(a.questionId))) {
+      return failure('UNPROCESSABLE_ENTITY');
+    }
+
+    const draft: Record<string, DraftAnswer> = {};
+    for (const answer of data.answers) {
+      draft[answer.questionId] = {
+        selected_answer_id: answer.selectedAnswerId ?? null,
+        text_answer: answer.textAnswer?.trim() || null,
+      };
+    }
+
+    const { error: updateError } = await supabase
+      .from('quiz_attempts')
+      .update({ draft_answers: draft })
+      .eq('id', data.attemptId)
+      .eq('user_id', ctx.userId)
+      // A late autosave racing a submit must not revive the draft.
+      .is('completed_at', null);
+
+    if (updateError) return toDbFailure(updateError);
+
+    return success({ saved: Object.keys(draft).length });
   }
 
   async submit(
@@ -190,6 +286,8 @@ export class QuizAttemptService {
       .update({
         score,
         completed_at: new Date().toISOString(),
+        // The graded rows below are the record from now on.
+        draft_answers: {},
       })
       .eq('id', data.attemptId);
 
