@@ -59,7 +59,7 @@ export default function PerQuestionGradingClient() {
       });
       if (!res.ok) throw new Error(t('grade_failed'));
     },
-    invalidateKeys: [assignmentKeys.results(id)],
+    invalidateKeys: assignmentKeys.gradingInvalidations(id),
   });
 
   const getSavedGrade = (studentId: string) =>
