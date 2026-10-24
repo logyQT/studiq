@@ -174,6 +174,18 @@ export async function can(
             ? 'deck_groups'
             : 'topic_groups';
 
+      // A share link only grants group access while the parent deck is still group-visible,
+      // so a stale link cannot authorize reads/writes on a deck switched to "personal".
+      if (resourceType === 'deck' || resourceType === 'flashcard') {
+        if (!parentId) return false;
+        const { data: parentDeck } = await supabase
+          .from('flashcard_decks')
+          .select('visibility')
+          .eq('id', parentId)
+          .maybeSingle();
+        if (parentDeck?.visibility !== 'group') return false;
+      }
+
       const resourceFk =
         resourceType === 'question_bank' || resourceType === 'question'
           ? 'bank_id'
@@ -221,14 +233,20 @@ async function resolveGroupResourceIds(
         .from('deck_groups')
         .select('deck_id')
         .in('group_id', groupIds);
-      return [...new Set((data ?? []).map((r) => r.deck_id as string))];
+      const deckIds = [...new Set((data ?? []).map((r) => r.deck_id as string))];
+      if (deckIds.length === 0) return [];
+      // A share link only grants access while the deck is actually group-visible; a stale
+      // `deck_groups` row left behind by a partial `{ visibility: 'personal' }` PUT must not.
+      const { data: sharedDecks } = await supabase
+        .from('flashcard_decks')
+        .select('id')
+        .in('id', deckIds)
+        .eq('visibility', 'group');
+      return [...new Set((sharedDecks ?? []).map((r) => r.id as string))];
     }
     case 'flashcard': {
-      const { data: decks } = await supabase
-        .from('deck_groups')
-        .select('deck_id')
-        .in('group_id', groupIds);
-      const deckIds = [...new Set((decks ?? []).map((r) => r.deck_id as string))];
+      // Cards inherit the deck gate: a card is readable through a group only when its deck is.
+      const deckIds = await resolveGroupResourceIds('deck', groupIds);
       if (deckIds.length === 0) return [];
       const { data } = await supabase.from('flashcards').select('id').in('deck_id', deckIds);
       return [...new Set((data ?? []).map((r) => r.id as string))];
