@@ -32,7 +32,7 @@ Private edtech platform with quizzes, flashcards, AI-powered learning flows, and
 | Testing         | Vitest (unit + integration) + Playwright |
 | UI Components   | Radix UI (via shadcn/ui), Sonner toast   |
 | API Docs        | Swagger / OpenAPI (zod-to-openapi)       |
-| Runtime         | Bun (package manager, scripts)           |
+| Runtime         | Bun >= 1.4.4 (package manager, scripts, linter, formatter) |
 
 ## Quick Start
 
@@ -74,13 +74,13 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 | `bun build:admin`                    | Build the admin app for production                                      |
 | `bun start`                          | Start the web app production server — same as `bun start:web`           |
 | `bun start:admin`                    | Start the admin app production server                                   |
-| `bun lint`                           | Lint only: Biome + import-path guard + migration-timestamp guard (**no typecheck**) |
+| `bun lint`                           | Lint only: `bun lint` (type-aware) + import-path guard + migration-timestamp guard (**no typecheck**) |
 | `bun typecheck`                      | TypeScript typecheck for the web app (`typecheck:all` = every workspace)|
 | `bun lint:all`                       | `typecheck:all` + `lint` in one run                                      |
 | `bun lint:web` / `bun typecheck:web` | Lint / typecheck the web app only                                       |
 | `bun lint:admin` / `bun typecheck:admin` | Lint / typecheck the admin app only                                 |
-| `bun format`                         | Format with **Biome** (writes, whole repo: `biome check --write .`)      |
-| `bun format:check`                   | Check formatting with Biome (no writes, whole repo: `biome ci .`)        |
+| `bun format`                         | Format with **Bun** (writes, whole repo: `bun fmt`)                      |
+| `bun format:check`                   | Check formatting with Bun (no writes, whole repo: `bun fmt --check`)     |
 | `bun test`                           | Run all Vitest tests (unit + integration)                               |
 | `bun test:unit`                      | Run unit tests                                                          |
 | `bun test:integration`               | Run integration tests (requires local Supabase)                         |

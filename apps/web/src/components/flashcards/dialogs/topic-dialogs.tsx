@@ -87,7 +87,6 @@ export function TopicDialogs({
     } finally {
       setCreatingTopic(false);
     }
-    // biome-ignore lint/correctness/useExhaustiveDependencies: getTopicIds is a callback ref
   }, [newTopicName, activeFlashcardId, flashcards, queryClient, onAddTopicOpenChange, getTopicIds]);
 
   const handleManageTopicsConfirm = useCallback(async () => {

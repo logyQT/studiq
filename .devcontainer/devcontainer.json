@@ -9,7 +9,7 @@
   },
   "customizations": {
     "vscode": {
-      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "supabase.supabase"]
+      "extensions": ["supabase.supabase"]
     }
   },
   "postCreateCommand": "npm install -g supabase",

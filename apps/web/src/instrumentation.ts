@@ -9,9 +9,8 @@ export async function register() {
   const { PeriodicExportingMetricReader } = await import('@opentelemetry/sdk-metrics');
   const { BatchLogRecordProcessor } = await import('@opentelemetry/sdk-logs');
   const { resourceFromAttributes } = await import('@opentelemetry/resources');
-  const { ATTR_SERVICE_NAME, ATTR_DEPLOYMENT_ENVIRONMENT_NAME } = await import(
-    '@opentelemetry/semantic-conventions'
-  );
+  const { ATTR_SERVICE_NAME, ATTR_DEPLOYMENT_ENVIRONMENT_NAME } =
+    await import('@opentelemetry/semantic-conventions');
 
   // Traces, metrics and logs all ship to the OTel Collector via OTLP/HTTP.
   // The exporters read OTEL_EXPORTER_OTLP_ENDPOINT (default http://localhost:4318).

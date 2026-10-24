@@ -42,8 +42,7 @@ export class QuestionReportService {
     let organizationId: string | null;
     let recipientId: string;
     let insertTarget:
-      | { question_id: string; group_id?: never }
-      | { group_id: string; question_id?: never };
+      { question_id: string; group_id?: never } | { group_id: string; question_id?: never };
 
     if ('questionId' in target) {
       const { data: question, error: questionError } = await supabase

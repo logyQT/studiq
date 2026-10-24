@@ -2,8 +2,8 @@ pre-commit:
   parallel: false
   commands:
     format:
-      glob: '*.{ts,tsx,js,jsx,mjs,cjs,json,css}'
-      run: bunx biome check --write {staged_files}
+      glob: '*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,css}'
+      run: bun scripts/check-bun-version.ts && bun fmt --no-script --staged
       stage_fixed: true
     lint:
       run: bun run lint

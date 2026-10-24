@@ -150,4 +150,4 @@ for (const filePath of files) {
 
 console.log(`Fixed ${totalFixed} files`);
 
-// Now run biome format to sort imports
+// Format the result with `bun run format`.

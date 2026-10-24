@@ -64,9 +64,10 @@ export function ReportThreadScreen({ reportId, basePath }: { reportId: string; b
       .catch(() => {});
   }, [reportId, queryClient]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: message count is an intentional scroll trigger
+  // Message count is an intentional scroll trigger.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // eslint-disable-next-line react-hooks/exhaustive-effect-dependencies -- message count is an intentional scroll trigger
   }, [data?.messages.length]);
 
   if (isLoading || !data) {
