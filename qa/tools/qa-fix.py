@@ -518,17 +518,29 @@ def render(role: str, **kw) -> str:
     return text
 
 
+def latest_round(n: int, stem: str, upto: int) -> int | None:
+    """Newest existing `<stem>-rN.md` at or below `upto` (None if there is none)."""
+    for r in range(upto, 0, -1):
+        if (issue_dir(n) / f"{stem}-r{r}.md").exists():
+            return r
+    return None
+
+
 def dispatch_prompt(role: str, n: int, stage: str, env: int, rec: dict,
                     review_no: int = 0) -> str:
     issue = json.load(open(issue_dir(n) / "issue.json"))
     a = attempt(rec)
+    # A retry that skips the designer (review/QA finding routed straight to the
+    # writer) has no design-r{a}: point those roles at the newest design that
+    # actually exists instead of a path that was never written.
+    d = a if role == "DESIGNER" else (latest_round(n, "design", a) or a)
     common = {
         "ISSUE": n,
         "TITLE": issue["title"],
         "URL": issue["url"],
         "ISSUE_PATH": str(issue_dir(n) / "issue.json"),
-        "DESIGN_PATH": str(issue_dir(n) / f"design-r{a}.md"),
-        "DESIGN_JSON": str(issue_dir(n) / f"design-r{a}.json"),
+        "DESIGN_PATH": str(issue_dir(n) / f"design-r{d}.md"),
+        "DESIGN_JSON": str(issue_dir(n) / f"design-r{d}.json"),
         "IMPL_PATH": str(issue_dir(n) / f"impl-r{a}.md"),
         "IMPL_JSON": str(issue_dir(n) / f"impl-r{a}.json"),
         "REVIEW_PATH": str(issue_dir(n) / f"review-{review_no}-r{a}.md"),
@@ -681,12 +693,40 @@ def cmd_implement(args) -> None:
        title=title, artifact=str(issue_dir(n) / f"impl-r{attempt(rec)}.json"))
 
 
+def hook_gate(rec: dict, n: int) -> dict:
+    """Refuse to move a head into review when its hooks were skipped unproven.
+
+    A skipped hook is legitimate only under the writer exemption (partial fix of
+    a larger issue, failure proven pre-existing on main). Missing hook data is
+    unknown, not a skip, so older artifacts still pass with a bare note.
+    """
+    path = issue_dir(n) / f"impl-r{attempt(rec)}.json"
+    try:
+        data = json.load(open(path))
+    except Exception:
+        return {}
+    hooks = data.get("hooks") or {}
+    skipped = [k for k in ("commit", "push")
+               if str(hooks.get(k, "")).lower().startswith("skipped")]
+    if not skipped:
+        return {}
+    evidence = (hooks.get("skipped_reason") or "").strip()
+    if not evidence:
+        fail("hook skipped without evidence", issue=n, skipped=skipped,
+             artifact=str(path),
+             hint="the writer must re-run the hooks, or record the exemption proof "
+                  "(hook, exact command, failing test/file, proof main fails the same "
+                  "way) in impl-rN.json and the PR body before reviews are dispatched")
+    return {"hooks_skipped": skipped, "hooks_evidence": evidence[:300]}
+
+
 def cmd_review(args) -> None:
     state = load_state()
     n = args.issue
     rec = get_rec(state, n)
     if rec["stage"] not in ("pr_open", "changes_requested"):
         fail(f"cannot review from stage {rec['stage']}")
+    hooks = hook_gate(rec, n)
     busy = busy_slots()
     flex = is_flex(state)
     candidates = POOL_SLOTS + ([3, 4, 5, 6] if flex else [])
@@ -720,7 +760,8 @@ def cmd_review(args) -> None:
     history(state, n, {"event": "review_dispatched", "sessions": sessions_out,
                        "attempt": attempt(rec)})
     ok(action="review", issue=n, sessions=sessions_out,
-       artifacts=[str(issue_dir(n) / f"review-{i}-r{attempt(rec)}.json") for i in (1, 2)])
+       artifacts=[str(issue_dir(n) / f"review-{i}-r{attempt(rec)}.json") for i in (1, 2)],
+       **hooks)
 
 
 def cmd_qa(args) -> None:
@@ -932,6 +973,32 @@ def cmd_block(args) -> None:
     ok(action="block", issue=n, stage="blocked")
 
 
+def cmd_unblock(args) -> None:
+    """Resume a deferred/blocked issue through a sanctioned transition.
+
+    `blocked` is a terminal stage: nothing else may dispatch from it. Reopening
+    is an explicit, audited decision (never a hand edit), and it does not reset
+    attempt history, so the normal gates still apply to the reopened work.
+    """
+    state = load_state()
+    n = args.issue
+    rec = get_rec(state, n)
+    if rec["stage"] != "blocked":
+        fail(f"cannot unblock from stage {rec['stage']}")
+    if args.to == "pr_open" and not rec.get("pr"):
+        fail("no PR recorded for this issue; unblock to 'design_ready' or "
+             "'changes_requested' instead")
+    previous = rec.pop("blocked_reason", "") or ""
+    rec["stage"] = args.to
+    rec["stage_started"] = int(time.time() * 1000)
+    history(state, n, {"event": "unblocked", "to": args.to,
+                       "reason": args.reason, "previous_reason": previous})
+    nxt = {"pr_open": "review", "design_ready": "implement",
+           "changes_requested": "review or implement"}.get(args.to)
+    ok(action="unblock", issue=n, stage=args.to, next=nxt,
+       previous_reason=previous)
+
+
 def cmd_escalate(args) -> None:
     state = load_state()
     ESCALATIONS.mkdir(parents=True, exist_ok=True)
@@ -958,7 +1025,7 @@ def cmd_escalate(args) -> None:
         f"\n\n## Options\n" + "\n".join(f"- {x}" for x in (args.options or ["none"])) +
         f"\n\n## Recommendation\n{args.recommendation or 'none'}\n\n"
         f"Decide and close it with:\n"
-        f"python3 {ROOT}/qa/tools/qa-fix.py escalations answer {eid} "
+        f"python3 {ROOT}/qa/tools/qa-fix.py escalations-answer {eid} "
         f"--decision <decision> --note <short rationale> [--action <directive>]\n"
         f"Then notify the manager. Do not edit product code."
     )
@@ -1094,6 +1161,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--timestamps", required=True)
     s.set_defaults(fn=cmd_assign_migrations)
     s = sub.add_parser("block"); s.add_argument("issue", type=int); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_block)
+    s = sub.add_parser("unblock"); s.add_argument("issue", type=int)
+    s.add_argument("--to", default="pr_open",
+                   choices=("pr_open", "changes_requested", "design_ready"))
+    s.add_argument("--reason", required=True)
+    s.set_defaults(fn=cmd_unblock)
     s = sub.add_parser("escalate")
     s.add_argument("--issue", type=int)
     s.add_argument("--kind", required=True,

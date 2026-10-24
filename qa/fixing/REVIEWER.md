@@ -17,6 +17,17 @@ Use `gh pr view {{PR}} --json title,body,files,commits,statusCheckRollup` and `g
 3. Error paths and edge cases the issue calls out.
 4. Tests/verification: are they meaningful, and do they actually prove the behavior?
 5. Scope: unrelated changes, generated files, secrets, force-push/history damage.
+6. Hook integrity: the branch must have gone through the repo hooks (`pre-commit`:
+   format-staged + `bun run lint` + `bun run typecheck:all`; `pre-push`:
+   merge-conflict check + `format:check` + `lint` + `typecheck:all` + `test:unit`).
+   If the writer skipped a hook with `--no-verify`, check the `hooks` field of
+   `{{IMPL_PATH}}` and the PR body's `## Hooks` section against the exemption
+   policy: allowed only for a partial fix of a larger issue where the failing
+   check is pre-existing on `main`. A skip with no evidence, a skip that hides a
+   merge conflict, or a skip used for a failure the change introduced is
+   **blocking**. When cheap, confirm the claimed pre-existing failure on
+   `origin/main` yourself; do not accept `statusCheckRollup` as proof (GitHub CI
+   is not configured for these hooks).
 
 If useful, check out the PR in your slot to run a narrow test:
 ```bash
@@ -26,7 +37,7 @@ git switch -C review-{{PR}} origin/{{BRANCH}}
 ```
 Then run the test commands. Do not modify or commit anything. If you check out the branch, leave the worktree as-is; the next dispatch will fetch its own ref.
 
-Approve only when there are **no blocking findings**. A style preference is non-blocking; a wrong behavior, security hole, missing org check, or untested edge case is blocking.
+Approve only when there are **no blocking findings**. A style preference is non-blocking; a wrong behavior, security hole, missing org check, untested edge case, or an unproven `--no-verify` skip is blocking.
 
 ## Output (required)
 Write `{{REVIEW_PATH}}` and `{{REVIEW_JSON}}`:

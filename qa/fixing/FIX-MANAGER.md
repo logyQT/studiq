@@ -56,6 +56,14 @@ $FIX implement <issue> --env 5
 
 On finish, `collect <issue>`. `pr_open` → dispatch reviewers. If the writer is blocked, read its session report, unblock or mark blocked; do not open a PR yourself.
 
+**Before dispatching reviewers, read the `hooks` field in `impl-rN.json`.** Both
+`commit` and `push` should be `passed`. A `skipped` hook is acceptable only under
+the writer exemption (partial fix of a larger issue, failure provably pre-existing
+on `main`) and must carry the hook name, exact command, failing test/file and that
+proof. If the evidence is missing or unprovable, send the head back to the same
+writer to run the hooks (it is not a design issue) — never dispatch reviews on a
+hook-skipped head without it, and never treat a skipped hook as pre-validated.
+
 ### 3. Review (two independent reviewers per PR, always paired)
 Up to **two PRs** can be in review at once, using two pairs from the shared
 QA/review pool (four slots). The tool prefers 7+8 first, then 1+2, so the
@@ -113,6 +121,20 @@ $FIX rebase <issue> --env <slot> --note "Renumber the PR migrations to the assig
 ```
 
 The writer prompt receives both the assigned timestamps and the manager note. Do not rename migrations yourself. After the push, re-run the guard and record the new commit; filename-only renumbering does not require a full QA rerun unless content changed.
+
+### 6. Deferred / blocked issues
+`blocked` is terminal: nothing dispatches from it (by design — it is how a paused
+or failed issue stays stopped). To resume an issue that was **deferred**, not
+failed, reopen it explicitly; never hand-edit `state.json`:
+
+```bash
+$FIX unblock <issue> --to pr_open --reason "deferred yesterday, PR #<n> head is green; resuming"
+```
+
+`--to` accepts `pr_open` (PR already exists), `changes_requested` (send back
+through design/implement) or `design_ready` (implement directly). The previous
+blocked reason is kept in history, `attempt` is not reset, and the reopened work
+still needs both reviews plus QA on the final head.
 
 ## Capacity and scheduling
 - Fixed roles: **2 designers** (3/4), **2 writers** (5/6).
