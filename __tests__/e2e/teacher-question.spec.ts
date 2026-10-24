@@ -77,7 +77,9 @@ test.describe('Teacher Question Flow', () => {
     const bankName = `QA157 Bank ${Date.now()}`;
     const questionContent = 'QA157 question content';
 
-    await page.getByRole('link', { name: t('DashboardLayout.edu_questions') }).click();
+    // Navigate directly: clicking the sidebar link immediately after the post-login
+    // redirect can be swallowed while the App Router hydrates (seen on prod builds).
+    await page.goto('/edu/questions');
     await page.waitForURL(/\/edu\/questions/);
 
     // Create an own bank so the test only ever touches its own data.
@@ -100,23 +102,60 @@ test.describe('Teacher Question Flow', () => {
     await expect(
       formDialog.getByRole('heading', { name: t('QuestionForm.create_title') }),
     ).toBeVisible();
-    await formDialog.getByRole('combobox').click();
+    // The dialog has two comboboxes (#452): the question-type Select
+    // ([data-slot="select-trigger"]) and the topics MultiSelect (a role=combobox
+    // button). Target the type select explicitly instead of the bare role locator.
+    await formDialog.locator('[data-slot="select-trigger"]').click();
     await page.getByRole('option', { name: t('QuestionForm.open_answer') }).click();
     await formDialog.getByPlaceholder(t('QuestionForm.question_placeholder')).fill(questionContent);
     await formDialog.getByRole('button', { name: t('QuestionForm.create') }).click();
     await expect(page.getByText(t('QuestionForm.created'))).toBeVisible();
     await expect(page.locator('tbody').getByText(questionContent).first()).toBeVisible();
 
+    // Regression guard for the delete *failure* copy: fail only the DELETE call
+    // (the glob also covers GET /api/v1/questions/banks/:id) and assert the
+    // question-specific toast instead of the generic error.
+    const deleteGlob = '**/api/v1/questions/**';
+    await page.route(deleteGlob, (route) =>
+      route.request().method() === 'DELETE'
+        ? route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'INTERNAL_SERVER' }),
+          })
+        : route.continue(),
+    );
+
+    await page.getByTitle(t('Common.common_delete')).first().click();
+    const failureDialog = page.getByRole('dialog');
+    await expect(failureDialog.getByText(t('QuestionBankDetail.delete_title'))).toBeVisible();
+    await failureDialog.getByRole('button', { name: t('Common.common_delete') }).click();
+    await expect(page.getByText(t('QuestionForm.delete_failed'))).toBeVisible();
+    // No optimistic removal: the question row must survive a failed delete.
+    await expect(page.locator('tbody').getByText(questionContent).first()).toBeVisible();
+    await expect(failureDialog).toBeHidden();
+
+    await page.unroute(deleteGlob);
+
     // The confirm dialog must use the question-specific copy, not the generic
     // "Delete" / "Confirm" strings (regression guard for EDU-Q-05).
     await page.getByTitle(t('Common.common_delete')).first().click();
     const deleteDialog = page.getByRole('dialog');
     await expect(deleteDialog.getByText(t('QuestionBankDetail.delete_title'))).toBeVisible();
+    await expect(deleteDialog.getByText(t('QuestionBankDetail.delete_desc'))).toBeVisible();
     await expect(deleteDialog.getByText(t('Common.common_confirm'))).toHaveCount(0);
 
     await deleteDialog.getByRole('button', { name: t('Common.common_delete') }).click();
     await expect(page.getByText(t('QuestionForm.deleted'))).toBeVisible();
     await expect(page.getByText(t('QuestionForm.updated'))).toHaveCount(0);
     await expect(page.locator('tbody').getByText(questionContent)).not.toBeVisible();
+    await expect(page.getByText(t('QuestionBankDetail.no_questions'))).toBeVisible();
+
+    // Clean up the now-empty bank so repeated runs don't accumulate data. The
+    // bank delete action is behind an unlabelled dropdown menu, so use the API
+    // with the browser's authenticated cookies.
+    const bankId = new URL(page.url()).pathname.split('/').pop();
+    const cleanup = await page.request.delete(`/api/v1/questions/banks/${bankId}`);
+    expect(cleanup.ok()).toBeTruthy();
   });
 });
