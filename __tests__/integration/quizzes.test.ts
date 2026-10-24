@@ -53,6 +53,15 @@ forEachCopy((copyId) => {
         expect(body.success).toBe(true);
         expect(body.data.questions).toBeDefined();
         expect(body.data.questions.length).toBeLessThanOrEqual(3);
+
+        // #331: the generated quiz must not carry the answer key.
+        const [question] = body.data.questions;
+        expect(question).not.toHaveProperty('explanation');
+        expect(question).not.toHaveProperty('search_vector');
+        expect(question.question_answers.length).toBeGreaterThan(0);
+        for (const option of question.question_answers) {
+          expect(option).not.toHaveProperty('is_correct');
+        }
       });
 
       it('generates a quiz without optional fields', async () => {
