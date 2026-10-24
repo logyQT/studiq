@@ -84,9 +84,11 @@ forEachCopy((copyId) => {
       foreignOrgId = foreign.id;
     });
 
-    beforeEach(() => {
+    beforeEach(async () => {
       vi.clearAllMocks();
       applyRegisteredMock(copyId);
+      // Each case starts from the creation default; no case depends on test order.
+      await service.from('organizations').update({ plan: 'launch' }).eq('id', fixture.orgId!);
     });
 
     afterAll(async () => {
@@ -163,6 +165,22 @@ forEachCopy((copyId) => {
       expect(usage.plan).not.toBe('hub');
     });
 
+    it('resolves the org plan for a member whose ctx has no orgRoleId', async () => {
+      const { error } = await service
+        .from('organizations')
+        .update({ plan: 'hub' })
+        .eq('id', fixture.orgId!);
+      expect(error).toBeNull();
+
+      // Membership — not `orgRoleId` — decides the org branch. The fixture user
+      // has a real org_members row, so losing the ctx role id must not drop the
+      // org plan (hub max_flashcards = 2000).
+      const memberWithoutRole = memberCtx({ orgRoleId: null });
+      await expect(resolver.getEffectiveLimit(memberWithoutRole, 'max_flashcards')).resolves.toBe(
+        2000,
+      );
+    });
+
     it('does not trust active_org_id without a verified membership', async () => {
       const { error } = await service
         .from('organizations')
@@ -170,10 +188,10 @@ forEachCopy((copyId) => {
         .eq('id', foreignOrgId);
       expect(error).toBeNull();
 
-      // A spoofed cookie: the fixture user belongs to a different org, so
-      // withAuth leaves orgRoleId null. The service client bypasses RLS here,
-      // so only the resolver's membership gate can keep this at the personal
-      // cap instead of the foreign org's hub 2000.
+      // A spoofed cookie: the fixture user belongs to a different org, so there
+      // is no org_members row for this pair. The service client bypasses RLS, so
+      // only the resolver's membership gate can keep this at the personal cap
+      // instead of the foreign org's hub 2000.
       const spoofed = memberCtx({
         activeOrgId: foreignOrgId,
         orgRoleId: null,

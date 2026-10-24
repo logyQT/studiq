@@ -101,6 +101,7 @@ describe('LimitsResolver', () => {
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_members') return chain({ organization_id: 'org-1' });
         if (table === 'profiles') return chain({ personal_plan_key: 'base' });
         if (table === 'organizations') return chain({ plan: 'hub' });
         if (table === 'plan_limits') {
@@ -117,11 +118,34 @@ describe('LimitsResolver', () => {
       expect(mock.from).not.toHaveBeenCalledWith('org_limits');
     });
 
+    it('resolves the org plan for a member whose ctx has no orgRoleId', async () => {
+      // Membership decides the org branch, not `orgRoleId`: a real org_members
+      // row must still resolve the org plan when the ctx role id is missing.
+      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: null };
+
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_members') return chain({ organization_id: 'org-1' });
+        if (table === 'profiles') return chain({ personal_plan_key: 'base' });
+        if (table === 'organizations') return chain({ plan: 'hub' });
+        if (table === 'plan_limits') {
+          return filteredChain((f) =>
+            f.plan_key === 'hub' ? { limit_value: 500 } : { limit_value: 100 },
+          );
+        }
+        return chain(null);
+      });
+
+      await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(500);
+      expect(mock.from).toHaveBeenCalledWith('org_members');
+    });
+
     it('uses the org plan limit when the user has no personal plan', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_members') return chain({ organization_id: 'org-1' });
         if (table === 'profiles') return chain({ personal_plan_key: null });
         if (table === 'organizations') return chain({ plan: 'launch' });
         if (table === 'plan_limits') return chain({ limit_value: 50 });
@@ -138,6 +162,7 @@ describe('LimitsResolver', () => {
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_members') return chain({ organization_id: 'org-1' });
         if (table === 'profiles') return chain({ personal_plan_key: 'base' });
         if (table === 'organizations') return chain({ plan: 'launch' });
         if (table === 'plan_limits') {
@@ -158,6 +183,7 @@ describe('LimitsResolver', () => {
         { plan_key: 'base', limit_key: 'max_decks' },
         { plan_key: 'launch', limit_key: 'max_decks' },
       ]);
+      expect(mock.from).toHaveBeenCalledWith('org_members');
       expect(mock.from).toHaveBeenCalledWith('organizations');
       expect(mock.from).not.toHaveBeenCalledWith('org_limits');
     });
@@ -176,6 +202,7 @@ describe('LimitsResolver', () => {
       expect(limit).toBe(999);
       expect(mock.from).not.toHaveBeenCalledWith('profiles');
       expect(mock.from).not.toHaveBeenCalledWith('organizations');
+      expect(mock.from).not.toHaveBeenCalledWith('org_members');
       expect(mock.from).not.toHaveBeenCalledWith('org_limits');
     });
 
@@ -195,39 +222,14 @@ describe('LimitsResolver', () => {
       expect(mock.from).not.toHaveBeenCalledWith('organizations');
     });
 
-    it('follows a plan change that was never snapshotted to org_limits (#230)', async () => {
-      // The org was created on `launch` (max_flashcards 100) and upgraded to
-      // `hub` without going through the old sync path. Resolution must follow
-      // the live `organizations.plan`, never a stale copy.
-      const ctx = { ...baseCtx, activeOrgId: 'org-1', orgRoleId: 'role-member' };
-      const planLimitFilters: Record<string, string>[] = [];
-
-      mock.from.mockImplementation((table: string) => {
-        if (table === 'org_seat_assignments') return chain(null);
-        if (table === 'profiles') return chain({ personal_plan_key: 'base' });
-        if (table === 'organizations') return chain({ plan: 'hub' });
-        if (table === 'plan_limits') {
-          return filteredChain((filters) => {
-            planLimitFilters.push({ ...filters });
-            return { limit_value: filters.plan_key === 'hub' ? 2000 : 100 };
-          });
-        }
-        return chain(null);
-      });
-
-      await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(2000);
-      expect(planLimitFilters).toContainEqual({ plan_key: 'hub', limit_key: 'max_flashcards' });
-      expect(mock.from).not.toHaveBeenCalledWith('org_limits');
-    });
-
     it('ignores a spoofed active-org cookie without a verified membership', async () => {
-      // withAuth only sets orgRoleId when the caller has an org_members row, so
-      // a foreign value in the client-controlled active_org_id cookie (here
-      // orgRoleId stays null) must not widen limits to the org plan.
+      // `active_org_id` is client-controlled, so without an org_members row the
+      // foreign org plan must not widen limits.
       const ctx = { ...baseCtx, activeOrgId: 'org-other', orgRoleId: null };
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_members') return chain(null);
         if (table === 'profiles') return chain({ personal_plan_key: 'base' });
         if (table === 'organizations') return chain({ plan: 'campus' });
         if (table === 'plan_limits') {
@@ -237,6 +239,7 @@ describe('LimitsResolver', () => {
       });
 
       await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(100);
+      expect(mock.from).toHaveBeenCalledWith('org_members');
       expect(mock.from).not.toHaveBeenCalledWith('organizations');
     });
 
@@ -245,6 +248,7 @@ describe('LimitsResolver', () => {
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_members') return chain({ organization_id: 'org-1' });
         if (table === 'profiles') return chain({ personal_plan_key: 'pro' });
         if (table === 'organizations') return chain({ plan: 'hub' });
         if (table === 'plan_limits') {
@@ -405,6 +409,7 @@ describe('LimitsResolver', () => {
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_members') return chain({ organization_id: 'org-1' });
         if (table === 'profiles') return chain({ personal_plan_key: 'base' });
         if (table === 'organizations') return chain({ plan: 'hub' });
         if (table === 'user_daily_activity') {
