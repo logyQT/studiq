@@ -1,5 +1,6 @@
 import { context, SpanStatusCode, trace } from '@opentelemetry/api';
 import type { AccountType, PermissionScope, RequestContext } from '@studiq/authz';
+import { ACTIVE_ORG_COOKIE } from '@studiq/server/lib/active-org-cookie';
 import { AppError } from '@studiq/server/lib/errors';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
 import { error as logError, warn as logWarn } from '@studiq/server/lib/log';
@@ -113,7 +114,12 @@ export async function withAuth(
         }
 
         const accountType = user.app_metadata?.account_type as AccountType;
-        const cookieOrgId = req.cookies.get('active_org_id')?.value ?? null;
+        const cookieOrgId = req.cookies.get(ACTIVE_ORG_COOKIE)?.value ?? null;
+        // The cookie is only a *hint*. It becomes the tenant scope exclusively when
+        // the caller has an `org_members` row for that exact org — membership-row
+        // presence is the proof (same rule as limits.resolver), so a forged or
+        // stale id from a previous session can never widen the tenant scope.
+        let activeOrgId: string | null = null;
         let orgRoleId: string | null = null;
         let groupIds: string[] = [];
         const permissionScopes: Partial<Record<string, PermissionScope>> = {};
@@ -129,7 +135,10 @@ export async function withAuth(
             supabase.from('group_members').select('group_id').eq('user_id', user.id),
           ]);
 
-          orgRoleId = membershipResult.data?.org_role_id ?? null;
+          if (membershipResult.data) {
+            activeOrgId = cookieOrgId;
+            orgRoleId = membershipResult.data.org_role_id ?? null;
+          }
           groupIds = (groupsResult.data ?? []).map((r) => r.group_id);
 
           if (orgRoleId) {
@@ -156,7 +165,7 @@ export async function withAuth(
           userId: user.id,
           accountType,
           orgRoleId,
-          activeOrgId: cookieOrgId,
+          activeOrgId,
           url: req.url,
           method: req.method,
           groupIds,

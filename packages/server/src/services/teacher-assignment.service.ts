@@ -42,6 +42,29 @@ interface StudentAttemptSummaryRow {
   started_at: string | null;
 }
 
+export type AnswersExportStatus = 'graded' | 'submitted' | 'in_progress';
+
+/** One row of the results view, as serialised by the answers CSV export. */
+export interface AnswersExportRow {
+  studentName: string | null;
+  email: string | null;
+  /** `3/4`, or `-` when the attempt is not completed. */
+  score: string;
+  status: AnswersExportStatus;
+  /** ISO timestamp; the route formats it for the requested locale. */
+  completedAt: string | null;
+}
+
+/**
+ * PostgREST returns a to-one relation as an object, while the generated types
+ * describe it as an array. Accept both so the mapping matches what the API
+ * actually returns.
+ */
+function joinOne<T>(value: T | T[] | null | undefined): T | null {
+  const related = Array.isArray(value) ? value[0] : value;
+  return related ?? null;
+}
+
 export class TeacherAssignmentService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
@@ -500,7 +523,18 @@ export class TeacherAssignmentService {
     if (error) return toDbFailure(error);
     if (!attempt) return failure('NOT_FOUND');
 
-    return success(attempt);
+    const maxPoints = await this.loadAssignmentPoints(supabase, id);
+    if (isFailure(maxPoints)) return maxPoints;
+
+    return success({
+      ...attempt,
+      quiz_attempt_questions: (attempt.quiz_attempt_questions ?? []).map(
+        (q: { question_id: string }) => ({
+          ...q,
+          max_points: maxPoints.data.get(q.question_id) ?? null,
+        }),
+      ),
+    });
   }
 
   async gradeAnswer(
@@ -522,6 +556,18 @@ export class TeacherAssignmentService {
       .single();
 
     if (!attempt) return failure('NOT_FOUND');
+
+    // The bound is per question (`assignment_questions.points`), so it cannot
+    // live in the Zod schema. Reject before writing: points above the maximum
+    // used to be persisted and inflated the attempt score (#169).
+    const maxPoints = await this.loadAssignmentPoints(supabase, id);
+    if (isFailure(maxPoints)) return maxPoints;
+
+    const questionMax = maxPoints.data.get(data.questionId);
+    // Also closes the forged-question-id hole: an answer for a question that is
+    // not part of this assignment can no longer inflate `quiz_attempts.score`.
+    if (questionMax === undefined) return failure('NOT_FOUND');
+    if (data.points > questionMax) return failure('UNPROCESSABLE_ENTITY');
 
     const { data: existingAnswer } = await supabase
       .from('student_answers')
@@ -571,6 +617,23 @@ export class TeacherAssignmentService {
   }
 
   /**
+   * question_id → max awardable points, from the assignment's current question
+   * set. A missing key means the question is no longer part of the assignment.
+   */
+  private async loadAssignmentPoints(
+    supabase: SupabaseClient,
+    assignmentId: string,
+  ): Promise<ServiceResult<Map<string, number>>> {
+    const { data, error } = await supabase
+      .from('assignment_questions')
+      .select('question_id, points')
+      .eq('assignment_id', assignmentId);
+
+    if (error) return toDbFailure(error);
+    return success(new Map((data ?? []).map((q) => [q.question_id, q.points ?? 0])));
+  }
+
+  /**
    * Awarded points for an assignment attempt: manual teacher points win,
    * otherwise a correct auto-graded answer earns the question's points.
    * Answers are deduplicated per question because multi-select / matching
@@ -581,12 +644,8 @@ export class TeacherAssignmentService {
     attemptId: string,
     assignmentId: string,
   ): Promise<ServiceResult<number>> {
-    const { data: questionRows, error: questionsError } = await supabase
-      .from('assignment_questions')
-      .select('question_id, points')
-      .eq('assignment_id', assignmentId);
-
-    if (questionsError) return toDbFailure(questionsError);
+    const pointsByQuestion = await this.loadAssignmentPoints(supabase, assignmentId);
+    if (isFailure(pointsByQuestion)) return pointsByQuestion;
 
     const { data: answers, error: answersError } = await supabase
       .from('student_answers')
@@ -594,10 +653,6 @@ export class TeacherAssignmentService {
       .eq('attempt_id', attemptId);
 
     if (answersError) return toDbFailure(answersError);
-
-    const pointsByQuestion = new Map<string, number>(
-      (questionRows ?? []).map((q) => [q.question_id, q.points ?? 0]),
-    );
 
     const perQuestion = new Map<string, { teacherPoints: number | null; isCorrect: boolean }>();
     for (const answer of answers ?? []) {
@@ -617,10 +672,16 @@ export class TeacherAssignmentService {
 
     let score = 0;
     for (const [questionId, entry] of perQuestion) {
+      const questionMax = pointsByQuestion.data.get(questionId);
       if (entry.teacherPoints !== null) {
-        score += entry.teacherPoints;
+        // Legacy rows written before the upper bound existed (a 2-point
+        // question graded 5) must not keep inflating the score (#169).
+        score +=
+          questionMax === undefined
+            ? entry.teacherPoints
+            : Math.min(entry.teacherPoints, questionMax);
       } else if (entry.isCorrect) {
-        score += pointsByQuestion.get(questionId) ?? 0;
+        score += questionMax ?? 0;
       }
     }
 
@@ -949,34 +1010,29 @@ export class TeacherAssignmentService {
     return success({ ...toAttemptPayload(attempt), questions });
   }
 
+  /**
+   * Rows for the answers CSV — the same summary the results view renders
+   * (one row per attempt: student, e-mail, score, status, completion date).
+   * Ownership already proves the assignment exists, so the questions/answer
+   * key payload is not read here.
+   */
   async exportAnswers(
     id: string,
     studentId: string | undefined,
     ctx: RequestContext,
-  ): Promise<ServiceResult<unknown>> {
+  ): Promise<ServiceResult<AnswersExportRow[]>> {
     const supabase = await this.createClient();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
 
-    const { data: assignment, error: assignmentError } = await supabase
-      .from('teacher_assignments')
-      .select(
-        '*, assignment_questions(*, question:question_id(*, question_answers:question_options(*)))',
-      )
-      .eq('id', id)
-      .single();
-
-    if (assignmentError) return toDbFailure(assignmentError);
-    if (!assignment) return failure('NOT_FOUND');
-
     let query = supabase
       .from('quiz_attempts')
       .select(
-        '*, user:user_id(id, email, full_name), quiz_answers:student_answers(*), assignment_answer_images(*)',
+        'id, score, total_questions, total_points, completed_at, graded_at, user:user_id(id, email, full_name)',
       )
       .eq('assignment_id', id)
-      .order('started_at', { ascending: true });
+      .order('started_at', { ascending: false });
 
     if (studentId) {
       query = query.eq('user_id', studentId);
@@ -986,10 +1042,24 @@ export class TeacherAssignmentService {
 
     if (attemptsError) return toDbFailure(attemptsError);
 
-    return success({
-      assignment,
-      attempts: attempts ?? [],
+    const rows = (attempts ?? []).map((attempt) => {
+      const user = joinOne(attempt.user);
+      return {
+        studentName: user?.full_name ?? null,
+        email: user?.email ?? null,
+        score: attempt.completed_at
+          ? `${attempt.score ?? 0}/${attempt.total_points || attempt.total_questions || 0}`
+          : '-',
+        status: attempt.graded_at
+          ? ('graded' as const)
+          : attempt.completed_at
+            ? ('submitted' as const)
+            : ('in_progress' as const),
+        completedAt: attempt.completed_at,
+      };
     });
+
+    return success(rows);
   }
 
   async uploadImage(

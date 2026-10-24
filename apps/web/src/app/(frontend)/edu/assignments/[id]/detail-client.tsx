@@ -206,6 +206,13 @@ export default function AssignmentDetailClient() {
   const [publishDeadline, setPublishDeadline] = useState<string>('');
   const [publishStartTime, setPublishStartTime] = useState<string>('');
   const [scheduleRelease, setScheduleRelease] = useState(false);
+  // The results view formats dates in the browser's timezone; pass it to the
+  // CSV export so the downloaded file matches what the teacher sees.
+  const [timeZone, setTimeZone] = useState<string>();
+
+  useEffect(() => {
+    setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  }, []);
 
   useEffect(() => {
     if (assignment?.deadline) {
@@ -861,11 +868,15 @@ export default function AssignmentDetailClient() {
                 </Button>
               </Link>
             )}
-            <Link href={`/api/v1/teacher/assignments/${id}/export-answers`}>
-              <Button variant="outline">
+            <Button variant="outline" asChild>
+              <a
+                href={`/api/v1/teacher/assignments/${id}/export-answers${
+                  timeZone ? `?tz=${encodeURIComponent(timeZone)}` : ''
+                }`}
+              >
                 <Download className="w-4 h-4 mr-1.5" /> {t('export_answers')}
-              </Button>
-            </Link>
+              </a>
+            </Button>
           </CardContent>
         </Card>
       )}

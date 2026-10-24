@@ -128,10 +128,10 @@ export class StatsService {
    * `quiz_attempts` has no `organization_id` column and RLS is disabled, so the
    * scope must be applied here: resolve the org's student members (`member`
    * role) and only aggregate completed attempts made by them. Without an
-   * active org (or without a verified membership — `active_org_id` is a
-   * client-controlled cookie, `withAuth` only sets `orgRoleId` when the caller
-   * is actually a member) there is no class to report on, so the list is empty
-   * rather than falling back to every attempt in the deployment.
+   * active org (or without a verified membership — `withAuth` only sets
+   * `activeOrgId`/`orgRoleId` when the caller is actually a member) there is no
+   * class to report on, so the list is empty rather than falling back to every
+   * attempt in the deployment.
    */
   async getTeacherQuizStats(ctx: RequestContext): Promise<ServiceResult<TeacherQuizStatsItem[]>> {
     const supabase = await this.createClient();
