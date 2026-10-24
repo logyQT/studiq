@@ -2278,6 +2278,7 @@
     "update": "Aktualizuj",
     "content_required": "Treść pytania jest wymagana",
     "mcq_min_answers": "Pytania WW wymagają co najmniej 2 odpowiedzi",
+    "answers_required": "Dodaj co najmniej jedną odpowiedź",
     "tf_true": "Prawda",
     "tf_false": "Fałsz",
     "generate_tf": "Generuj opcje Prawda/Fałsz",
