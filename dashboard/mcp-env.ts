@@ -59,7 +59,10 @@ const TOOLS = [
 ];
 
 async function run(action: string): Promise<any> {
-  const proc = Bun.spawn(['python3', QA_ENV, action], {
+  // Tool names are snake_case (`restart_app`); qa-env takes kebab-case
+  // (`restart-app`). Passing it raw made the CLI answer "unknown command".
+  const command = action.replace(/_/g, '-');
+  const proc = Bun.spawn(['python3', QA_ENV, command], {
     cwd: process.cwd(),
     stdout: 'pipe',
     stderr: 'pipe',

@@ -277,12 +277,71 @@ def wait_http(port: int, tries: int = 120) -> bool:
     return False
 
 
-def ensure_build(app_dir: Path, log_path: Path) -> None:
-    """Build once; production Next servers are stable at ~120-200 MB PSS."""
-    if (app_dir / ".next" / "BUILD_ID").is_file():
+def git_head(wt: Path) -> str:
+    try:
+        proc = subprocess.run(["git", "-C", str(wt), "rev-parse", "HEAD"],
+                              capture_output=True, text=True, timeout=15)
+        return (proc.stdout or "").strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def git_source_state(wt: Path) -> str:
+    """Tracked-source fingerprint: HEAD plus local edits under the app packages."""
+    try:
+        proc = subprocess.run(["git", "-C", str(wt), "status", "--porcelain",
+                               "--", "apps/web", "apps/admin", "packages", "bun.lock"],
+                              capture_output=True, text=True, timeout=20)
+        return (proc.stdout or "").strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def build_marker(wt: Path) -> Path:
+    return wt / "apps" / "web" / ".next" / ".qa-build.json"
+
+
+def mark_build(wt: Path) -> None:
+    marker = build_marker(wt)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(json.dumps({"head": git_head(wt),
+                                  "sources": git_source_state(wt),
+                                  "at": int(time.time())}))
+
+
+def build_state(env: dict) -> dict:
+    """Is the served bundle the one this checkout should be running?
+
+    The app is `next start` over a prebuilt `.next`, so a checkout that moved -
+    even to an older commit - would silently serve the previous build's code.
+    """
+    wt = env["_worktree"]
+    if not (wt / "apps" / "web" / ".next" / "BUILD_ID").is_file():
+        return {"stale": True, "why": "no build"}
+    marker = build_marker(wt)
+    if not marker.is_file():
+        return {"stale": True, "why": "build predates the marker - rebuild once"}
+    try:
+        recorded = json.loads(marker.read_text())
+    except (OSError, ValueError):
+        return {"stale": True, "why": "build marker unreadable"}
+    if recorded.get("head") != git_head(wt):
+        return {"stale": True, "why": "checkout moved since the build",
+                "built_head": (recorded.get("head") or "")[:12],
+                "head": git_head(wt)[:12]}
+    if recorded.get("sources") != git_source_state(wt):
+        return {"stale": True, "why": "sources edited since the build"}
+    return {"stale": False, "why": "fresh", "built_head": (recorded.get("head") or "")[:12]}
+
+
+def ensure_build(app_dir: Path, log_path: Path, env: dict | None = None) -> None:
+    """Build when missing or older than the checked-out commit."""
+    state = build_state(env) if env else {"stale": not (app_dir / ".next" / "BUILD_ID").is_file(),
+                                          "why": "missing"}
+    if not state["stale"]:
         return
     with open(log_path, "ab") as log:
-        log.write(b"\n=== building app (one-time) ===\n")
+        log.write(f"\n=== building app ({state['why']}) ===\n".encode())
         log.flush()
         subprocess.run(
             ["bun", "run", "build"],
@@ -291,6 +350,8 @@ def ensure_build(app_dir: Path, log_path: Path) -> None:
             stderr=subprocess.STDOUT,
             check=True,
         )
+    if env:
+        mark_build(env["_worktree"])
 
 
 def start_app(env: dict) -> int:
@@ -300,7 +361,7 @@ def start_app(env: dict) -> int:
     if existing:
         return existing
     app_dir = wt / "apps" / "web"
-    ensure_build(app_dir, wt / ".qa-app.log")
+    ensure_build(app_dir, wt / ".qa-app.log", env)
     log = open(wt / ".qa-app.log", "ab")
     proc = subprocess.Popen(
         ["bun", "x", "next", "start", "-p", str(env["_app_port"])],
@@ -359,6 +420,7 @@ def cmd_status(env: dict) -> None:
         env=env["envId"],
         worktree=str(wt),
         app={"pid": read_pid(wt / ".qa-app.pid"), "http": http_code(f"http://127.0.0.1:{env['_app_port']}/")},
+        build=build_state(env),
         admin={
             "pid": read_pid(wt / ".qa-admin.pid"),
             "http": http_code(f"http://127.0.0.1:{env['_admin_port']}/"),
@@ -427,6 +489,7 @@ def cmd_rebuild_app(env: dict) -> None:
             if proc.returncode != 0:
                 fail("production build failed", env=env["envId"],
                      log=str(wt / ".qa-app.log"))
+            mark_build(wt)
             pid = start_app(env)
             healthy = wait_http(env["_app_port"])
         finally:

@@ -932,7 +932,7 @@ def stage_started_ms(rec: dict, stage: str) -> int:
 
 def require_fresh(path: Path, rec: dict, stage: str) -> None:
     started = stage_started_ms(rec, stage)
-    if not started:
+    if not started or not path.exists():
         return
     mtime = int(path.stat().st_mtime * 1000)
     if mtime < started - 1000:
@@ -1013,6 +1013,10 @@ def cmd_collect(args) -> None:
 
     if stage == "designing":
         p = d / f"design-r{a}.json"
+        if not p.exists():
+            ok(action="collect", issue=n, stage=stage, pending=[str(p)],
+               message="artifact not written yet - the session is still running")
+            return
         require_fresh(p, rec, "design")
         data = read_artifact(p)
         decision = data.get("decision")
@@ -1032,6 +1036,10 @@ def cmd_collect(args) -> None:
 
     elif stage == "implementing":
         p = d / f"impl-r{a}.json"
+        if not p.exists():
+            ok(action="collect", issue=n, stage=stage, pending=[str(p)],
+               message="artifact not written yet - the session is still running")
+            return
         require_fresh(p, rec, "implement")
         data = read_artifact(p)
         if data.get("status") == "pr_open":
@@ -1078,6 +1086,10 @@ def cmd_collect(args) -> None:
 
     elif stage == "qa_testing":
         p = d / f"qa-r{a}.json"
+        if not p.exists():
+            ok(action="collect", issue=n, stage=stage, pending=[str(p)],
+               message="artifact not written yet - the session is still running")
+            return
         require_fresh(p, rec, "qa")
         data = read_artifact(p)
         if data.get("decision") == "pass":
