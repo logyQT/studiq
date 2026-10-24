@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { apiGet, apiPost } from '@/lib/api';
 import { resolveNeedsOnboarding } from '@/lib/onboarding';
-import { featureKeys, permissionKeys } from '@/lib/query-keys';
+import { featureKeys, permissionKeys, questionReportKeys } from '@/lib/query-keys';
 
 export type OrgMembership = {
   id: string;
@@ -57,6 +57,10 @@ export function useOrgs() {
       // on the server and both hooks cache for 5 minutes.
       queryClient.invalidateQueries({ queryKey: permissionKeys.all });
       queryClient.invalidateQueries({ queryKey: featureKeys.all });
+
+      // Report rows are scoped to the active org for an org admin, so the
+      // previous org's inbox (`staleTime: Infinity`) must not survive a switch.
+      queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
 
       // Org-keyed query entries are intentionally not invalidated here: at this
       // point the observed org key may still be the previous one, so an active
