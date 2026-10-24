@@ -210,6 +210,31 @@ describe('InvitationService', () => {
       });
     });
 
+    // #236: the public preview is unauthenticated, so the request-scoped client
+    // would run as `anon` and PostgREST rejects `public.invitations` with 42501.
+    // The preview must resolve on the service-role client only.
+    it('resolves the public preview on the admin client, never the request client (#236)', async () => {
+      const requestClient = vi.fn(async () => {
+        throw new Error('request-scoped client must not be used for a public preview');
+      });
+      const admin = {
+        from: vi.fn(() => qb(inviteRow())),
+        rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
+      };
+      service = new InvitationService(requestClient as any, () => admin as any);
+
+      const result = await service.getInvitationByToken('public-token');
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).email).toBe('john@example.com');
+      expect(requestClient).not.toHaveBeenCalled();
+      expect(admin.from).toHaveBeenCalledWith('invitations');
+      expect(admin.rpc).toHaveBeenCalledWith('can_assign_org_role', {
+        p_actor: 'manager-1',
+        p_role_id: 'role-member',
+      });
+    });
+
     it('returns NOT_FOUND when token does not exist', async () => {
       mock.from.mockReturnValueOnce(qb(null, null));
 
@@ -492,6 +517,177 @@ describe('InvitationService', () => {
       // Single-use guard: the update only matches an unaccepted row.
       expect(acceptQb.update).toHaveBeenCalledWith({ is_accepted: true });
       expect(acceptQb.eq).toHaveBeenCalledWith('is_accepted', false);
+    });
+  });
+
+  // MGR-INV-03: an invitation id alone must never authorize a write. The
+  // caller has to prove membership of the active org (orgRoleId) and the row
+  // must belong to that org.
+  describe('deleteInvitation', () => {
+    const scopedCtx: RequestContext = {
+      ...managerCtx,
+      activeOrgId: 'org-a',
+      orgRoleId: 'role-a',
+    };
+
+    it('returns NOT_FOUND and never deletes an invitation of another organization', async () => {
+      const fetch = qb(null);
+      mock.from.mockReturnValueOnce(fetch);
+
+      const result = await service.deleteInvitation(scopedCtx, 'foreign-invite');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      expect(fetch.eq).toHaveBeenCalledWith('id', 'foreign-invite');
+      expect(fetch.eq).toHaveBeenCalledWith('organization_id', 'org-a');
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(fetch.delete).not.toHaveBeenCalled();
+    });
+
+    it('deletes a pending invitation of the active organization', async () => {
+      const fetch = qb({ id: 'invite-1', is_accepted: false });
+      const del = qb(null);
+      mock.from.mockReturnValueOnce(fetch).mockReturnValueOnce(del);
+
+      const result = await service.deleteInvitation(scopedCtx, 'invite-1');
+
+      expect(result.success).toBe(true);
+      expect(del.delete).toHaveBeenCalled();
+      expect(del.eq).toHaveBeenCalledWith('id', 'invite-1');
+      expect(del.eq).toHaveBeenCalledWith('organization_id', 'org-a');
+    });
+
+    it('refuses to delete an accepted invitation', async () => {
+      const fetch = qb({ id: 'invite-1', is_accepted: true });
+      mock.from.mockReturnValueOnce(fetch);
+
+      const result = await service.deleteInvitation(scopedCtx, 'invite-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(fetch.delete).not.toHaveBeenCalled();
+    });
+
+    it('returns FORBIDDEN without querying when there is no active organization', async () => {
+      const result = await service.deleteInvitation(
+        { ...scopedCtx, activeOrgId: null },
+        'invite-1',
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('returns FORBIDDEN for a forged active_org_id cookie (no membership row)', async () => {
+      // activeOrgId is client-controlled; only orgRoleId proves membership.
+      const result = await service.deleteInvitation({ ...scopedCtx, orgRoleId: null }, 'invite-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateInvitation', () => {
+    const scopedCtx: RequestContext = {
+      ...managerCtx,
+      activeOrgId: 'org-a',
+      orgRoleId: 'role-a',
+    };
+
+    it('returns NOT_FOUND and never updates an invitation of another organization', async () => {
+      const fetch = qb(null);
+      mock.from.mockReturnValueOnce(fetch);
+
+      const result = await service.updateInvitation(scopedCtx, 'foreign-invite', {
+        targetOrgRoleId: 'role-a',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      expect(fetch.eq).toHaveBeenCalledWith('organization_id', 'org-a');
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(fetch.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a target role that belongs to another organization', async () => {
+      const fetch = qb({ id: 'invite-1', is_accepted: false });
+      const roleLookup = qb(null);
+      mock.from.mockReturnValueOnce(fetch).mockReturnValueOnce(roleLookup);
+
+      const result = await service.updateInvitation(scopedCtx, 'invite-1', {
+        targetOrgRoleId: 'foreign-role',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(roleLookup.eq).toHaveBeenCalledWith('id', 'foreign-role');
+      expect(roleLookup.eq).toHaveBeenCalledWith('organization_id', 'org-a');
+      expect(roleLookup.update).not.toHaveBeenCalled();
+      expect(mock.from).toHaveBeenCalledTimes(2);
+    });
+
+    it('updates the role of a pending invitation of the active organization', async () => {
+      const fetch = qb({ id: 'invite-1', is_accepted: false });
+      const roleLookup = qb({ id: 'role-a' });
+      const update = qb(null);
+      mock.from
+        .mockReturnValueOnce(fetch)
+        .mockReturnValueOnce(roleLookup)
+        .mockReturnValueOnce(update);
+
+      const result = await service.updateInvitation(scopedCtx, 'invite-1', {
+        targetOrgRoleId: 'role-a',
+      });
+
+      expect(result.success).toBe(true);
+      expect(update.update).toHaveBeenCalledWith({ target_org_role_id: 'role-a' });
+      expect(update.eq).toHaveBeenCalledWith('id', 'invite-1');
+      expect(update.eq).toHaveBeenCalledWith('organization_id', 'org-a');
+    });
+
+    it('does nothing when there is no field to update', async () => {
+      const fetch = qb({ id: 'invite-1', is_accepted: false });
+      mock.from.mockReturnValueOnce(fetch);
+
+      const result = await service.updateInvitation(scopedCtx, 'invite-1', {});
+
+      expect(result.success).toBe(true);
+      expect(fetch.update).not.toHaveBeenCalled();
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses to update an accepted invitation', async () => {
+      const fetch = qb({ id: 'invite-1', is_accepted: true });
+      mock.from.mockReturnValueOnce(fetch);
+
+      const result = await service.updateInvitation(scopedCtx, 'invite-1', {
+        targetOrgRoleId: 'role-a',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(fetch.update).not.toHaveBeenCalled();
+    });
+
+    it('returns FORBIDDEN when there is no active organization or membership', async () => {
+      const noOrg = await service.updateInvitation(
+        { ...scopedCtx, activeOrgId: null },
+        'invite-1',
+        { targetOrgRoleId: 'role-a' },
+      );
+      const forgedCookie = await service.updateInvitation(
+        { ...scopedCtx, orgRoleId: null },
+        'invite-1',
+        { targetOrgRoleId: 'role-a' },
+      );
+
+      expect(noOrg.success).toBe(false);
+      expect(noOrg.error).toBe('FORBIDDEN');
+      expect(forgedCookie.success).toBe(false);
+      expect(forgedCookie.error).toBe('FORBIDDEN');
+      expect(mock.from).not.toHaveBeenCalled();
     });
   });
 });
