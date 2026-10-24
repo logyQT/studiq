@@ -1,7 +1,7 @@
 import { AccountType } from '@studiq/authz';
 import { organizationController } from '@studiq/server/controllers/organization.controller';
 import { requireFeature } from '@studiq/server/lib/features';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
+import { handleApiError, toNextResponse } from '@studiq/server/lib/http-utils';
 import { withAuth } from '@studiq/server/lib/with-auth';
 import { storageService } from '@studiq/server/services/storage.service';
 import { type NextRequest, NextResponse } from 'next/server';
@@ -26,7 +26,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // of surfacing as the 403 it should be.
       await requireFeature(ctx, 'branding');
 
-      const formData = await req.formData();
+      let formData: FormData;
+      try {
+        formData = await req.formData();
+      } catch (error) {
+        // Malformed or truncated multipart body — a client error, not a 500 (#185).
+        return handleApiError(error, 'BAD_REQUEST');
+      }
+
       const file = formData.get('file') as File | null;
       if (!file) {
         return NextResponse.json({ success: false, error: 'MISSING_FIELDS' }, { status: 422 });
@@ -35,8 +42,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       try {
         const { url } = await storageService.uploadToBucket(ctx.userId, file, 'org-logos', id);
         return toNextResponse(await organizationController.update(ctx, id, { logoUrl: url }));
-      } catch {
-        return NextResponse.json({ success: false, error: 'INTERNAL_SERVER' }, { status: 500 });
+      } catch (error) {
+        // Surface validation failures (422) and oversize uploads (413) instead
+        // of collapsing every one of them into a 500.
+        return handleApiError(error);
       }
     },
     { allowedAccountTypes: [AccountType.MANAGER] },

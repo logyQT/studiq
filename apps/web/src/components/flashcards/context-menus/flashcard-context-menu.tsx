@@ -8,11 +8,11 @@ import {
   DropdownMenuSubTrigger,
 } from '@studiq/ui';
 import {
+  ArrowRight,
   CheckSquare,
   Copy,
   ExternalLink,
   Flag,
-  Link2,
   Pencil,
   Plus,
   Settings,
@@ -29,7 +29,7 @@ interface FlashcardContextMenuProps {
   onAddTopic?: () => void;
   onManageTopics?: () => void;
   onViewByTopic?: () => void;
-  onLink?: () => void;
+  onMove?: () => void;
   onCopy: () => void;
   onReport?: (() => void) | null;
   onDelete?: (() => void) | null;
@@ -43,7 +43,7 @@ export function FlashcardContextMenu({
   onAddTopic,
   onManageTopics,
   onViewByTopic,
-  onLink,
+  onMove,
   onCopy,
   onReport,
   onDelete,
@@ -103,14 +103,14 @@ export function FlashcardContextMenu({
         </DropdownMenuSub>
       )}
       {mode === 'owned' && <DropdownMenuSeparator />}
-      {onLink && (
+      {onMove && (
         <DropdownMenuItem
           onClick={(e) => {
             e.stopPropagation();
-            onLink();
+            onMove();
           }}
         >
-          <Link2 className="mr-2 h-4 w-4" /> {t('menu_link')}
+          <ArrowRight className="mr-2 h-4 w-4" /> {t('menu_move')}
         </DropdownMenuItem>
       )}
       <DropdownMenuItem

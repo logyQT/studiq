@@ -16,12 +16,12 @@ export interface DialogsState {
   createCardOpen: boolean;
   editCard: Flashcard | null;
   deleteId: string | null;
-  linkOpen: boolean;
+  moveOpen: boolean;
   copyOpen: boolean;
   reportOpen: boolean;
   copyResult: { id: string; deckId: string } | null;
   activeFlashcardId: string | null;
-  linkDeckIds: string[];
+  moveTargetDeckId: string | null;
   copyTargetDeckId: string | null;
   deckEditOpen: boolean;
   deckDeleteOpen: boolean;
@@ -31,8 +31,6 @@ export interface DialogsState {
   topicActionIds: string[];
   selectedIds: string[];
   bulkDeleteOpen: boolean;
-  bulkLinkOpen: boolean;
-  bulkLinkDeckIds: string[];
   bulkMoveOpen: boolean;
   bulkMoveTargetDeckId: string | null;
   bulkCopyOpen: boolean;
@@ -46,7 +44,7 @@ export interface DialogsHandlers {
   onCreateCardOpenChange: (open: boolean) => void;
   onEditCardOpenChange: (card: Flashcard | null) => void;
   onDeleteOpenChange: () => void;
-  onLinkOpenChange: (open: boolean) => void;
+  onMoveOpenChange: (open: boolean) => void;
   onCopyOpenChange: (open: boolean) => void;
   onReportOpenChange: (open: boolean) => void;
   onCopyResultClose: () => void;
@@ -55,11 +53,11 @@ export interface DialogsHandlers {
   onViewTopicIdChange: (id: string | null) => void;
   onAddTopicOpenChange: (open: boolean) => void;
   onManageTopicOpenChange: (open: boolean) => void;
-  onLinkDeckIdsChange: (ids: string[]) => void;
+  onMoveTargetDeckIdChange: (id: string | null) => void;
   onCopyTargetDeckIdChange: (id: string | null) => void;
   onTopicActionIdsChange: (ids: string[]) => void;
   onDelete: () => void;
-  onLink: () => void;
+  onMove: () => void;
   onCopy: () => void;
   onDeckUpdate: (data: {
     name: string;
@@ -70,16 +68,13 @@ export interface DialogsHandlers {
   onDeckDelete: () => void;
   onAddTopicConfirm: () => void;
   onBulkDelete: () => void;
-  onBulkLink: () => void;
   onBulkTopics: () => void;
   onBulkMove: () => void;
   onBulkCopy: () => void;
   onBulkTopicsOperationChange: (op: 'add' | 'remove' | 'set') => void;
-  onBulkLinkDeckIdsChange: (ids: string[]) => void;
   onBulkMoveTargetDeckIdChange: (id: string | null) => void;
   onBulkTopicIdsChange: (ids: string[]) => void;
   onBulkDeleteOpenChange: (open: boolean) => void;
-  onBulkLinkOpenChange: (open: boolean) => void;
   onBulkMoveOpenChange: (open: boolean) => void;
   onBulkCopyOpenChange: (open: boolean) => void;
   onBulkCopyTargetDeckIdChange: (id: string | null) => void;
@@ -146,11 +141,11 @@ export function DeckDetailDialogs({
         t={t}
         basePath={basePath}
         ownedDecks={ownedDecks}
-        linkOpen={state.linkOpen}
-        linkDeckIds={state.linkDeckIds}
-        onLinkOpenChange={handlers.onLinkOpenChange}
-        onLinkDeckIdsChange={handlers.onLinkDeckIdsChange}
-        onLink={handlers.onLink}
+        moveOpen={state.moveOpen}
+        moveTargetDeckId={state.moveTargetDeckId}
+        onMoveOpenChange={handlers.onMoveOpenChange}
+        onMoveTargetDeckIdChange={handlers.onMoveTargetDeckIdChange}
+        onMove={handlers.onMove}
         copyOpen={state.copyOpen}
         copyTargetDeckId={state.copyTargetDeckId}
         onCopyOpenChange={handlers.onCopyOpenChange}
@@ -214,11 +209,6 @@ export function DeckDetailDialogs({
         bulkDeleteOpen={state.bulkDeleteOpen}
         onBulkDeleteChange={handlers.onBulkDeleteOpenChange}
         onBulkDelete={handlers.onBulkDelete}
-        bulkLinkOpen={state.bulkLinkOpen}
-        bulkLinkDeckIds={state.bulkLinkDeckIds}
-        onBulkLinkChange={handlers.onBulkLinkOpenChange}
-        onBulkLinkDeckIdsChange={handlers.onBulkLinkDeckIdsChange}
-        onBulkLink={handlers.onBulkLink}
         bulkMoveOpen={state.bulkMoveOpen}
         bulkMoveTargetDeckId={state.bulkMoveTargetDeckId}
         onBulkMoveChange={handlers.onBulkMoveOpenChange}
