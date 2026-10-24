@@ -1,0 +1,321 @@
+#!/usr/bin/env python3
+"""Health supervisor for the QA stack.
+
+    qa-supervisor status
+    qa-supervisor ensure      # idempotent: start anything that is down
+    qa-supervisor pause
+    qa-supervisor resume
+
+`ensure` is safe to run at the task cadence (every 2 minutes): components that are up are untouched,
+actions are rate-limited, and a lock prevents overlapping runs. It checks the
+four slot web apps, the dashboard, the Chromium instances and the Discord bots.
+Supabase and the nested Docker daemon are left to Docker's restart policy.
+"""
+from __future__ import annotations
+
+import base64
+import json
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+ROOT = Path("/workspaces/studiq")
+ENV_ROOT = ROOT / ".worktrees" / "qa-env"
+DASH = ENV_ROOT / "dashboard"
+BOTS = ROOT / ".worktrees" / "qa-discord" / "qa" / "discord"
+QA_ENV = ENV_ROOT / "qa" / "tools" / "qa-env"
+LOCKS = Path("/tmp/studiq-qa-locks")
+STATE = LOCKS / "supervisor-state.json"
+LOG = Path("/tmp/qa-supervisor.log")
+PAUSE = LOCKS / "paused"
+COOLDOWN = 90
+MAX_SLOTS = 8
+API_BASE = "http://127.0.0.1:4096"
+API_AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
+SESSION_LIMIT_MS = int(os.environ.get("QA_SESSION_LIMIT_MS", 3_600_000))
+STUCK_LIMIT_MS = int(os.environ.get("QA_STUCK_LIMIT_MS", 1_200_000))
+INTERRUPT_COOLDOWN_MS = 600_000
+
+
+def api(method: str, path: str, body: dict | None = None, timeout: int = 15) -> dict:
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(
+        API_BASE + path,
+        data=data,
+        method=method,
+        headers={"Authorization": API_AUTH, "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read()
+        return json.loads(raw) if raw else {}
+
+
+def log(line: str) -> None:
+    LOG.parent.mkdir(parents=True, exist_ok=True)
+    with LOG.open("a", encoding="utf-8") as fh:
+        fh.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {line}\n")
+
+
+def http(url: str, timeout: float = 3.0) -> int:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return resp.status
+    except urllib.error.HTTPError as exc:
+        return exc.code
+    except Exception:
+        return 0
+
+
+def pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def read_pid(path: Path) -> int | None:
+    try:
+        pid = int(path.read_text().strip())
+        return pid if pid_alive(pid) else None
+    except (OSError, ValueError):
+        return None
+
+
+def state() -> dict:
+    try:
+        return json.loads(STATE.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(data: dict) -> None:
+    LOCKS.mkdir(parents=True, exist_ok=True)
+    STATE.write_text(json.dumps(data, indent=1))
+
+
+def cooled(key: str) -> bool:
+    data = state()
+    last = float(data.get(key, 0))
+    return (time.time() - last) < COOLDOWN
+
+
+def mark(key: str) -> None:
+    data = state()
+    data[key] = time.time()
+    save_state(data)
+
+
+def run(cmd: list[str], cwd: Path, timeout: int = 300) -> tuple[int, str]:
+    try:
+        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        return proc.returncode, (proc.stdout or proc.stderr or "").strip()
+    except subprocess.TimeoutExpired:
+        return 124, "timeout"
+    except OSError as exc:
+        return 1, str(exc)
+
+
+def slots() -> list[tuple[int, Path]]:
+    out = []
+    for n in range(1, MAX_SLOTS + 1):
+        wt = ROOT / ".worktrees" / f"qa-env-{n}"
+        if (wt / "qa" / "env.json").is_file():
+            out.append((n, wt))
+    return out
+
+
+def components() -> dict:
+    checks: dict[str, dict] = {}
+    for n, wt in slots():
+        if (wt / ".qa-app.building").exists():
+            checks[f"app-{n}"] = {"up": True, "http": 0, "building": True}
+            continue
+        code = http(f"http://127.0.0.1:{3009 + n}/")
+        checks[f"app-{n}"] = {"up": 200 <= code < 500, "http": code}
+    code = http("http://127.0.0.1:5000/")
+    checks["dashboard"] = {"up": 200 <= code < 500, "http": code}
+    browsers = {}
+    for n, _ in slots():
+        code = http(f"http://127.0.0.1:{9220 + n}/json/version")
+        browsers[f"browser-{n}"] = {"up": code == 200, "http": code}
+    checks.update(browsers)
+    pid = read_pid(BOTS / ".pid")
+    checks["bots"] = {"up": pid is not None, "pid": pid}
+    return checks
+
+
+def enforce_session_timeouts(actions: list[dict]) -> None:
+    """Backstop for agent runs: interrupt absolute-long or no-progress sessions."""
+    now = int(time.time() * 1000)
+    data = state()
+    sessions = data.setdefault("sessions", {})
+
+    try:
+        active = api("GET", "/api/session/active").get("data", {}) or {}
+    except Exception as exc:  # noqa: BLE001
+        log(f"session watch: active query failed: {exc}")
+        return
+
+    active_ids = set(active.keys())
+    for sid in list(sessions):
+        if sid not in active_ids:
+            sessions.pop(sid, None)
+
+    for sid in active_ids:
+        try:
+            msgs = api("GET", f"/api/session/{sid}/message?limit=1&order=desc").get("data", []) or []
+        except Exception:  # noqa: BLE001
+            continue
+        last_id = str(msgs[0].get("id", "")) if msgs else ""
+        rec = sessions.get(sid)
+        if rec is None:
+            sessions[sid] = {
+                "firstSeen": now,
+                "changedAt": now,
+                "lastId": last_id,
+                "interruptedAt": 0,
+            }
+            continue
+        if rec.get("lastId") != last_id:
+            rec["lastId"] = last_id
+            rec["changedAt"] = now
+
+        interrupted = int(rec.get("interruptedAt") or 0)
+        if interrupted and now - interrupted < INTERRUPT_COOLDOWN_MS:
+            continue
+
+        reason = None
+        if now - int(rec.get("firstSeen", now)) > SESSION_LIMIT_MS:
+            reason = "absolute"
+        elif now - int(rec.get("changedAt", now)) > STUCK_LIMIT_MS:
+            reason = "stuck"
+        if reason is None:
+            continue
+
+        try:
+            api("POST", f"/api/session/{sid}/interrupt", {})
+            rec["interruptedAt"] = now
+            log(f"session {sid}: interrupted ({reason})")
+            actions.append({"component": f"session-{sid}", "action": "interrupt", "reason": reason})
+        except Exception as exc:  # noqa: BLE001
+            log(f"session {sid}: interrupt failed: {exc}")
+
+    save_state(data)
+
+
+def ensure() -> dict:
+    checks = components()
+    actions: list[dict] = []
+    if PAUSE.exists():
+        return {"ok": True, "paused": True, "checks": checks, "actions": actions}
+    if (LOCKS / "rotation.lock").exists():
+        return {"ok": True, "skipped": "session rotation in progress", "checks": checks, "actions": actions}
+
+    enforce_session_timeouts(actions)
+
+    # Web apps: start each missing one through the env-scoped tool.
+    for n, _ in slots():
+        key = f"app-{n}"
+        if checks[key]["up"]:
+            continue
+        if (LOCKS / f"qa-env-{n}.lock").exists():
+            actions.append({"component": key, "skipped": "env lock held"})
+            continue
+        if cooled(key):
+            continue
+        wt = ROOT / ".worktrees" / f"qa-env-{n}"
+        code, out = run(["python3", str(QA_ENV), "restart-app"], wt)
+        mark(key)
+        log(f"restart-app {n}: exit {code} {out[:160]}")
+        actions.append({"component": key, "action": "restart-app", "exit": code})
+
+    # Dashboard first: run.sh also supervises the browsers.
+    if not checks["dashboard"]["up"] and not cooled("dashboard"):
+        code, out = run(["./run.sh"], DASH, timeout=180)
+        mark("dashboard")
+        log(f"dashboard: exit {code} {out[-160:]}")
+        actions.append({"component": "dashboard", "action": "start", "exit": code})
+
+    # Browsers can die while the dashboard stays up.
+    browsers_down = [n for n, _ in slots() if not checks[f"browser-{n}"]["up"]]
+    if browsers_down and not cooled("browsers"):
+        code, out = run(["./run.sh", "browsers", "start"], DASH, timeout=180)
+        mark("browsers")
+        log(f"browsers {browsers_down}: exit {code} {out[-160:]}")
+        actions.append({"component": "browsers", "action": "start", "exit": code, "slots": browsers_down})
+
+    # Discord bots.
+    if not checks["bots"]["up"] and not cooled("bots"):
+        code, out = run(["./run.sh", "start"], BOTS, timeout=120)
+        mark("bots")
+        log(f"bots: exit {code} {out[-160:]}")
+        actions.append({"component": "bots", "action": "start", "exit": code})
+
+    # Context rotation: rare, only when the manager session exceeds the limit.
+    rotate = ENV_ROOT / "qa" / "tools" / "qa-rotate"
+    if rotate.is_file():
+        code, out = run(["python3", str(rotate), "manager", "--auto"], ROOT, timeout=240)
+        if code == 0 and '"action": "rotated"' in out:
+            try:
+                new_sid = json.loads(out).get("new_session")
+            except ValueError:
+                new_sid = "?"
+            log(f"manager session rotated -> {new_sid}")
+            actions.append({"component": "manager-session", "action": "rotate"})
+        elif code != 0:
+            log(f"context rotation check failed ({code}): {out[-200:]}")
+
+    return {"ok": True, "checks": components(), "actions": actions}
+
+
+def main() -> None:
+    command = sys.argv[1] if len(sys.argv) > 1 else "status"
+    LOCKS.mkdir(parents=True, exist_ok=True)
+
+    if command == "pause":
+        PAUSE.touch()
+        print(json.dumps({"ok": True, "paused": True}))
+        return
+    if command == "resume":
+        PAUSE.unlink(missing_ok=True)
+        print(json.dumps({"ok": True, "paused": False}))
+        return
+    if command == "status":
+        print(json.dumps({"ok": True, "paused": PAUSE.exists(), "checks": components()}, indent=1))
+        return
+    if command != "ensure":
+        print(json.dumps({"ok": False, "error": f"unknown command {command!r}"}))
+        sys.exit(2)
+
+    lock = LOCKS / "supervisor.lock"
+    try:
+        lock.mkdir()
+        (lock / "pid").write_text(str(os.getpid()))
+    except FileExistsError:
+        try:
+            holder = int((lock / "pid").read_text())
+        except (OSError, ValueError):
+            holder = 0
+        if holder and pid_alive(holder):
+            print(json.dumps({"ok": True, "skipped": "another supervisor is running"}))
+            return
+        shutil.rmtree(lock, ignore_errors=True)
+        lock.mkdir()
+        (lock / "pid").write_text(str(os.getpid()))
+
+    try:
+        result = ensure()
+    finally:
+        shutil.rmtree(lock, ignore_errors=True)
+    print(json.dumps(result, indent=1))
+
+
+if __name__ == "__main__":
+    main()

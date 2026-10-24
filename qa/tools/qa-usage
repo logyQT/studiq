@@ -1,0 +1,464 @@
+#!/usr/bin/env python3
+"""OpenCode Go usage watchdog.
+
+Reads the rolling / weekly / monthly allowance from the OpenCode Console API with
+the credential the local OpenCode server already holds, writes a snapshot to
+.qa-fix/usage.json, renders it for the Discord dashboard, and prompts the fix
+manager when a meter is high or its current burn rate would take it over 100%
+before the reset.
+
+  qa-usage                 one fetch, print the line
+  qa-usage --json          one fetch, print the snapshot as JSON
+  qa-usage tick            fetch + persist + notify the manager on a level change
+  qa-usage loop            tick every --interval seconds (default 300), pidfile
+  qa-usage status          print the last persisted snapshot, no network
+  qa-usage stop            stop a running loop
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import os
+import signal
+import sqlite3
+import sys
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(os.environ.get("QA_ROOT", "/workspaces/studiq/.worktrees/qa-env"))
+FIX = Path(os.environ.get("QA_FIX_DIR", "/workspaces/studiq/.qa-fix"))
+USAGE_PATH = FIX / "usage.json"
+PID_PATH = FIX / "usage.pid"
+LOG_PATH = FIX / "usage.log"
+DISCORD_STATE = ROOT.parent / "qa-discord" / "qa" / "discord" / "state.json"
+DB_PATH = Path("~/.local/share/opencode/opencode.db").expanduser()
+
+BASE = "http://127.0.0.1:4096"
+AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
+# Cloudflare in front of opencode.ai rejects Python's default user agent (1010).
+UA = "opencode/2.1.4"
+API = "https://opencode.ai/zen/go/v1/usage"
+
+METERS = ("rolling", "weekly", "monthly")
+LABELS = {"rolling": "rolling", "weekly": "week", "monthly": "month"}
+
+# warn  = keep an eye on it, hold = stop taking NEW issues (in-flight work goes on)
+WARN_PERCENT = 70.0
+HOLD_PERCENT = 90.0
+WARN_PROJECTED = 90.0
+HOLD_PROJECTED = 100.0
+HISTORY_MAX = 2500
+HISTORY_WINDOW_MS = 8 * 24 * 60 * 60 * 1000
+
+# Window length per meter, used only to decide how much history a projection
+# needs before it can be trusted. Percentages are integers, so a 1-point blip
+# extrapolated over a week is noise, not a burn rate.
+WINDOW_HOURS = {"rolling": 5.0, "weekly": 7 * 24.0, "monthly": 30 * 24.0}
+MIN_COVERAGE = 0.2    # need >=20% of the window's worth of samples...
+MIN_MOVE = 5.0        # ...and >=5 percentage points of real movement
+
+
+def now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def iso(ms: int) -> str:
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def human_in(ms: int) -> str:
+    delta = max(0, ms - now_ms()) // 1000
+    if delta <= 0:
+        return "now"
+    days, rest = divmod(delta, 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes = rest // 60
+    if days:
+        return f"{days}d{hours}h" if hours else f"{days}d"
+    if hours:
+        return f"{hours}h{minutes}m" if minutes else f"{hours}h"
+    return f"{minutes}m"
+
+
+def credential() -> tuple[str, str]:
+    """The OpenCode Console token + workspace the local server is signed in with."""
+    if not DB_PATH.exists():
+        raise SystemExit(f"opencode database not found: {DB_PATH}")
+    con = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    try:
+        row = con.execute(
+            "select value from credential where integration_id='opencode' and active=1 "
+            "order by time_updated desc limit 1"
+        ).fetchone()
+    finally:
+        con.close()
+    if not row:
+        raise SystemExit("no active opencode credential in the database (run `opencode auth login`)")
+    value = json.loads(row[0])
+    token = value.get("access") or value.get("key")
+    org = (value.get("metadata") or {}).get("orgID")
+    if not token or not org:
+        raise SystemExit("opencode credential has no access token / workspace id")
+    return token, org
+
+
+def fetch() -> dict:
+    token, org = credential()
+    req = urllib.request.Request(
+        API,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "x-opencode-org-id": org,
+            "Accept": "application/json",
+            "User-Agent": UA,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            body = json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        detail = exc.read()[:200].decode("utf-8", "replace")
+        raise SystemExit(f"usage API -> HTTP {exc.code}: {detail}")
+    except urllib.error.URLError as exc:
+        raise SystemExit(f"usage API unreachable: {exc.reason}")
+    usage = body.get("usage") or {}
+    meters = {}
+    for name in METERS:
+        raw = usage.get(name) or {}
+        resets = raw.get("resetsAt")
+        resets_ms = int(datetime.fromisoformat(resets.replace("Z", "+00:00")).timestamp() * 1000) if resets else 0
+        meters[name] = {
+            "percent": round(float(raw.get("percent", 0)), 1),
+            "limited": raw.get("status") == "rate-limited",
+            "resetsAt": resets_ms,
+        }
+    return meters
+
+
+def load() -> dict:
+    try:
+        return json.load(open(USAGE_PATH))
+    except Exception:
+        return {}
+
+
+def save(snapshot: dict) -> None:
+    FIX.mkdir(parents=True, exist_ok=True)
+    tmp = USAGE_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(snapshot, indent=1))
+    tmp.replace(USAGE_PATH)
+
+
+def project(meters: dict, history: list) -> dict:
+    """Linear burn-rate projection per meter, when the data can carry one.
+
+    A projection is only trusted when the samples cover a real fraction of the
+    meter's own window (20%: an hour of rolling, most of a day of weekly, six
+    days of monthly) and the meter actually moved a few points. Before that the
+    reading is reported as-is, so a 1% -> 2% blip on a weekly meter can never
+    turn into "146% at reset".
+    """
+    cutoff = now_ms() - HISTORY_WINDOW_MS
+    out = {}
+    for name in METERS:
+        current = meters[name]["percent"]
+        resets = meters[name]["resetsAt"]
+        window_hours = WINDOW_HOURS.get(name, 24.0)
+        window_ms = window_hours * 3_600_000
+        # never mix samples from before this window's reset
+        floor = max(cutoff, resets - window_ms)
+        series = [
+            (h["t"], h[name])
+            for h in history
+            if h.get("t", 0) >= floor and isinstance(h.get(name), (int, float))
+        ]
+        trusted = False
+        projected = current
+        per_hour = 0.0
+        if len(series) >= 2 and resets:
+            first_t, first_p = series[0]
+            last_t, last_p = series[-1]
+            span_h = (last_t - first_t) / 3_600_000
+            covered = span_h / window_hours
+            moved = abs(last_p - first_p)
+            if covered >= MIN_COVERAGE and moved >= MIN_MOVE and last_p >= first_p:
+                per_hour = (last_p - first_p) / span_h
+                remaining_h = max(0.0, (resets - now_ms()) / 3_600_000)
+                projected = round(max(current, current + per_hour * remaining_h), 1)
+                trusted = True
+        out[name] = {
+            "projected": projected,
+            "burnPerHour": round(per_hour, 2) if trusted else 0.0,
+            "samples": len(series),
+            "coverage": round((series[-1][0] - series[0][0]) / 3_600_000 / window_hours, 3)
+            if len(series) >= 2 else 0.0,
+            "trusted": trusted,
+        }
+    return out
+
+
+def level_for(meters: dict, projection: dict) -> str:
+    level = "ok"
+    for name in METERS:
+        meter = meters[name]
+        proj = projection[name]
+        forecast = proj.get("projected", 0.0) if proj.get("trusted") else 0.0
+        if meter["limited"] or meter["percent"] >= HOLD_PERCENT or forecast >= HOLD_PROJECTED:
+            return "hold"
+        if meter["percent"] >= WARN_PERCENT or forecast >= WARN_PROJECTED:
+            level = "warn"
+    return level
+
+
+def pct(value: float) -> str:
+    return f"{value:.0f}%" if float(value).is_integer() else f"{value:.1f}%"
+
+
+def block_for(snapshot: dict) -> list[str]:
+    """The allowance, one meter per line, for #dashboard and `$FIX status`."""
+    meters = snapshot.get("meters") or {}
+    projection = snapshot.get("projection") or {}
+    head = "Usage"
+    if snapshot.get("level") == "hold":
+        head += " — HOLD new issues"
+    elif snapshot.get("level") == "warn":
+        head += " — watch"
+    lines = [head]
+    for name in METERS:
+        meter = meters.get(name) or {}
+        proj = projection.get(name) or {}
+        now = pct(meter.get("percent", 0))
+        if meter.get("limited"):
+            now += " (rate-limited)"
+        forecast = pct(proj.get("projected", 0)) if proj.get("trusted") else "n/a"
+        lines.append(
+            f"{LABELS[name]}: {now} now, resets in {human_in(meter.get('resetsAt', 0))}, "
+            f"projected {forecast}"
+        )
+    return lines
+
+
+def line_for(snapshot: dict) -> str:
+    """One-line form, kept for raw snapshots written before `block` existed."""
+    return " · ".join(block_for(snapshot)).replace("\n", " · ")
+
+
+def manager_session() -> str | None:
+    try:
+        return json.load(open(DISCORD_STATE)).get("managerSessionId")
+    except Exception:
+        return None
+
+
+def notify(text: str) -> bool:
+    sid = manager_session()
+    if not sid:
+        return False
+    body = json.dumps({"text": text}).encode()
+    req = urllib.request.Request(
+        f"{BASE}/api/session/{sid}/prompt",
+        data=body,
+        method="POST",
+        headers={"Authorization": AUTH, "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30):
+            return True
+    except Exception:
+        return False
+
+
+def message_for(level: str, meters: dict, projection: dict, previous: str) -> str:
+    parts = []
+    for name in METERS:
+        meter = meters[name]
+        proj = projection[name]
+        part = f"{name} {meter['percent']:.0f}% (resets in {human_in(meter['resetsAt'])})"
+        if proj.get("trusted"):
+            part += f", burning {proj['burnPerHour']:.1f}%/h -> {proj['projected']:.0f}% at reset"
+        if meter["limited"]:
+            part += ", LIMITED"
+        parts.append(part)
+    detail = "; ".join(parts)
+    if level == "hold":
+        return (
+            f"[qa-usage] HOLD new issues. {detail}.\n"
+            "Stop taking new issues until this clears: finish the pipeline as usual "
+            "(implement -> review -> QA -> merge, design loop for rejected fixes), but do not "
+            "dispatch a design for an issue that is not already in the pipeline. `$FIX` refuses "
+            "those while the hold is on; I will message you when it clears."
+        )
+    if level == "warn":
+        return (
+            f"[qa-usage] Usage is getting high. {detail}.\n"
+            "Keep going, but prefer finishing what is in flight over starting new work."
+        )
+    return (
+        f"[qa-usage] Usage is back to normal (was {previous}). {detail}.\n"
+        "New issues are allowed again."
+    )
+
+
+def tick(args) -> dict:
+    previous = load()
+    meters = fetch()
+    history = [h for h in (previous.get("history") or []) if h.get("t", 0) > now_ms() - HISTORY_WINDOW_MS]
+    history.append({"t": now_ms(), **{name: meters[name]["percent"] for name in METERS}})
+    history = history[-HISTORY_MAX:]
+    projection = project(meters, history)
+    level = level_for(meters, projection)
+    snapshot = {
+        "fetchedAt": now_ms(),
+        "meters": meters,
+        "projection": projection,
+        "level": level,
+        "hold": level == "hold",
+        "line": "",
+        "history": history,
+        "notified": previous.get("notified") or {},
+    }
+    snapshot["block"] = block_for(snapshot)
+    snapshot["line"] = line_for(snapshot)
+    save(snapshot)
+
+    previous_level = previous.get("level") or "ok"
+    last_notified = snapshot["notified"].get("level")
+    if not args.no_notify and level != previous_level and (level != last_notified):
+        if notify(message_for(level, meters, projection, previous_level)):
+            snapshot["notified"] = {"level": level, "at": now_ms()}
+            save(snapshot)
+    return snapshot
+
+
+def selftest() -> None:
+    """Guard the projection rules: quiet meters must never invent a hold."""
+    now = now_ms()
+
+    def meter(percent: int, hours: float) -> dict:
+        return {"percent": percent, "limited": False, "resetsAt": now + int(hours * 3_600_000)}
+
+    def run(name: str, p0: float, p1: float, span_h: float, left_h: float) -> tuple[str, dict]:
+        meters = {key: meter(0, 24) for key in METERS}
+        meters[name] = meter(int(p1), left_h)
+        history = [{"t": now - int(span_h * 3_600_000), **{k: 0 for k in METERS}},
+                   {"t": now, **{k: 0 for k in METERS}}]
+        history[0][name] = p0
+        history[1][name] = p1
+        projection = project(meters, history)
+        return level_for(meters, projection), projection[name]
+
+    cases = [
+        # the reported false alarm: a 1-point blip on a weekly meter
+        ("weekly blip", "weekly", 0, 1, 10 / 60, 27, "ok", False),
+        # not enough of the window yet, even with real movement
+        ("rolling early", "rolling", 1, 3, 0.3, 4.5, "ok", False),
+        # a genuine overshoot: 40 points in 2h of a 5h window, 2h left
+        ("rolling overshoot", "rolling", 20, 60, 2, 2, "hold", True),
+        # same burn with room to spare
+        ("weekly overshoot", "weekly", 40, 70, 48, 60, "hold", True),
+        # small move over a long span is not a trend
+        ("weekly drift", "weekly", 30, 33, 72, 96, "ok", False),
+    ]
+    failures = []
+    for label, name, p0, p1, span, left, want_level, want_trusted in cases:
+        got_level, detail = run(name, p0, p1, span, left)
+        if got_level != want_level or detail["trusted"] != want_trusted:
+            failures.append(f"{label}: level {got_level} trusted {detail['trusted']}")
+    if failures:
+        raise SystemExit("selftest failed:\n  " + "\n  ".join(failures))
+    print(f"selftest ok ({len(cases)} cases)")
+
+
+def loop(args) -> None:
+    FIX.mkdir(parents=True, exist_ok=True)
+    PID_PATH.write_text(str(os.getpid()))
+    stop = {"flag": False}
+
+    def handle(_sig, _frame):
+        stop["flag"] = True
+
+    signal.signal(signal.SIGTERM, handle)
+    signal.signal(signal.SIGINT, handle)
+    while not stop["flag"]:
+        started = time.time()
+        try:
+            snap = tick(args)
+            line = " | ".join(snap.get("block") or [snap.get("line", "")])
+        except SystemExit as exc:
+            line = f"usage unavailable: {exc}"
+        except Exception as exc:  # never let the watcher die on one bad poll
+            line = f"usage unavailable: {exc}"
+        with open(LOG_PATH, "a") as log:
+            log.write(f"{iso(now_ms())} {line}\n")
+        elapsed = time.time() - started
+        wait = max(5, args.interval - elapsed)
+        deadline = time.time() + wait
+        while time.time() < deadline and not stop["flag"]:
+            time.sleep(min(5, deadline - time.time()))
+    try:
+        # only remove the pidfile if it is still ours: a restart writes the new
+        # pid before the old process gets to clean up
+        if int(PID_PATH.read_text().strip()) == os.getpid():
+            PID_PATH.unlink()
+    except (FileNotFoundError, ValueError):
+        pass
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="qa-usage", description="OpenCode Go usage watchdog")
+    parser.add_argument("action", nargs="?", default="print",
+                        choices=("print", "tick", "loop", "status", "stop", "selftest"))
+    parser.add_argument("--interval", type=int, default=300, help="seconds between polls in loop mode")
+    parser.add_argument("--json", action="store_true", help="print the snapshot as JSON")
+    parser.add_argument("--no-notify", action="store_true", help="never prompt the manager")
+    args = parser.parse_args()
+
+    if args.action == "stop":
+        try:
+            pid = int(PID_PATH.read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+            print(f"stopped usage loop (pid {pid})")
+        except FileNotFoundError:
+            print("no usage loop running")
+        except ProcessLookupError:
+            PID_PATH.unlink(missing_ok=True)
+            print("usage loop was not running (stale pidfile removed)")
+        return
+
+    if args.action == "selftest":
+        selftest()
+        return
+
+    if args.action == "loop":
+        loop(args)
+        return
+
+    if args.action == "status":
+        snapshot = load()
+        if not snapshot:
+            raise SystemExit("no snapshot yet - run `qa-usage tick`")
+    else:
+        snapshot = tick(args) if args.action == "tick" else {
+            "fetchedAt": now_ms(),
+            "meters": fetch(),
+            "level": "ok",
+        }
+        if args.action == "print":
+            snapshot["projection"] = project(snapshot["meters"], (load().get("history") or []))
+            snapshot["level"] = level_for(snapshot["meters"], snapshot["projection"])
+            snapshot["block"] = block_for(snapshot)
+            snapshot["line"] = line_for(snapshot)
+
+    if args.json:
+        print(json.dumps(snapshot, indent=1))
+    else:
+        print("\n".join(snapshot.get("block") or block_for(snapshot)))
+
+
+if __name__ == "__main__":
+    main()

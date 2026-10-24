@@ -1,0 +1,254 @@
+#!/usr/bin/env python3
+"""Rotate long-lived sessions before context compaction eats the good details.
+
+    qa-rotate status
+    qa-rotate init                 # create memory files if missing
+    qa-rotate manager [--limit N] [--dry-run] [--no-restart] [--auto]
+    qa-rotate probe                # create a disposable session to test creation
+
+Context is measured from the last assistant message: input + cache.read tokens
+(the prompt the model actually received). Only idle sessions are rotated.
+The new manager session is seeded with the durable memory file, so continuity
+does not depend on compaction.
+"""
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.request
+from pathlib import Path
+
+ROOT = Path("/workspaces/studiq")
+ENV_ROOT = ROOT / ".worktrees" / "qa-env"
+BOTS = ROOT / ".worktrees" / "qa-discord" / "qa" / "discord"
+STATE = BOTS / "state.json"
+MEM = ROOT / ".qa-memory"
+ROTATE_LOCK = Path("/tmp/studiq-qa-locks/rotation.lock")
+PROMPT_FILE = ENV_ROOT / "qa" / "fixing" / "FIX-MANAGER.md"
+# Durable memory for the fix manager (distinct from the retired campaign manager).
+MEMORY_NAME = "fix-manager"
+API_BASE = "http://127.0.0.1:4096"
+API_AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
+MODEL = {"providerID": "opencode-go", "id": "deepseek-v4.1-flash", "variant": "high"}
+
+
+def api(method: str, path: str, body: dict | None = None, timeout: int = 60) -> dict:
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(
+        API_BASE + path,
+        data=data,
+        method=method,
+        headers={"Authorization": API_AUTH, "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read()
+        return json.loads(raw) if raw else {}
+
+
+def active_sessions() -> set[str]:
+    return set((api("GET", "/api/session/active").get("data") or {}).keys())
+
+
+def context_tokens(session_id: str) -> int:
+    msgs = api("GET", f"/api/session/{session_id}/message?limit=1&order=desc&type=assistant").get(
+        "data", []
+    ) or []
+    if not msgs:
+        return 0
+    tokens = msgs[0].get("tokens") or {}
+    cache = tokens.get("cache") or {}
+    return int(tokens.get("input") or 0) + int(cache.get("read") or 0)
+
+
+def manager_session() -> str:
+    data = json.loads(STATE.read_text())
+    sid = data.get("managerSessionId")
+    if not sid:
+        raise SystemExit("no managerSessionId in state.json")
+    return str(sid)
+
+
+def memory_path(name: str) -> Path:
+    return MEM / f"{name}.md"
+
+
+def header(name: str) -> str:
+    return (
+        f"# Durable memory — {name}\n\n"
+        "Append short, timestamped notes. This file is read by a fresh session "
+        "after context rotation, so keep it factual and current.\n\n"
+    )
+
+
+def ensure_memory() -> None:
+    MEM.mkdir(parents=True, exist_ok=True)
+    targets = [MEMORY_NAME]
+    created = []
+    for name in targets:
+        path = memory_path(name)
+        if not path.exists():
+            path.write_text(header(name), encoding="utf-8")
+            created.append(str(path))
+    print(json.dumps({"ok": True, "created": created}, indent=1))
+
+
+def read_memory(name: str) -> str:
+    path = memory_path(name)
+    return path.read_text(encoding="utf-8").strip() if path.exists() else header(name).strip()
+
+
+def manager_prompt_base() -> str:
+    text = PROMPT_FILE.read_text(encoding="utf-8")
+    match = re.search(r"```markdown\s*\n([\s\S]*?)```", text)
+    return (match.group(1) if match else text).strip()
+
+
+def cmd_status(args) -> None:
+    ensure_memory()
+    sid = manager_session()
+    ctx = context_tokens(sid)
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "manager": sid,
+                "context": ctx,
+                "limit": args.limit,
+                "memory_chars": len(read_memory(MEMORY_NAME)),
+                "active": sid in active_sessions(),
+            },
+            indent=1,
+        )
+    )
+
+
+def stop_bots() -> None:
+    proc = subprocess.run(["./run.sh", "stop"], cwd=BOTS, capture_output=True, text=True, timeout=60)
+    if proc.returncode != 0:
+        raise SystemExit(f"could not stop bots: {proc.stderr.strip()[:300]}")
+
+
+def start_bots() -> None:
+    subprocess.run(["./run.sh", "start"], cwd=BOTS, capture_output=True, text=True, timeout=120)
+
+
+def cmd_manager(args) -> None:
+    ensure_memory()
+    sid = manager_session()
+    ctx = context_tokens(sid)
+    limit = args.limit
+    result = {"ok": True, "manager": sid, "context": ctx, "limit": limit}
+
+    if ctx < limit:
+        print(json.dumps({**result, "action": "skip", "reason": "below limit"}, indent=1))
+        return
+    if sid in active_sessions():
+        print(json.dumps({**result, "action": "skip", "reason": "session is active"}, indent=1))
+        if not args.auto:
+            sys.exit(1)
+        return
+
+    prompt = (
+        manager_prompt_base()
+        + "\n\n## Durable memory (from the previous session)\n\n"
+        + read_memory(MEMORY_NAME)
+        + "\n\nContinue from this memory. Do not ask me to re-explain anything that is written here."
+    )
+    if args.dry_run:
+        print(
+            json.dumps(
+                {**result, "action": "would-rotate", "prompt_chars": len(prompt)},
+                indent=1,
+            )
+        )
+        return
+
+    ROTATE_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    ROTATE_LOCK.write_text(str(os.getpid()))
+    stop_bots()
+    try:
+        created = api(
+            "POST",
+            "/api/session",
+            {
+                "title": "Discord Manager",
+                "location": {"directory": str(ENV_ROOT)},
+                "model": MODEL,
+            },
+        )
+        session = created.get("data", created)
+        new_sid = session["id"]
+        api("POST", f"/api/session/{new_sid}/prompt", {"text": prompt})
+        data = json.loads(STATE.read_text())
+        data["managerSessionId"] = new_sid
+        STATE.write_text(json.dumps(data, indent=2) + "\n")
+    finally:
+        start_bots()
+        ROTATE_LOCK.unlink(missing_ok=True)
+
+    print(
+        json.dumps(
+            {**result, "action": "rotated", "new_session": new_sid, "prompt_chars": len(prompt)},
+            indent=1,
+        )
+    )
+
+
+def cmd_probe(args) -> None:
+    ensure_memory()
+    body = (
+        "Session-rotation probe. Reply with exactly: memory check ok.\n\n"
+        "## Memory sample\n"
+        + read_memory("qa-env-8")[:2000]
+    )
+    created = api(
+        "POST",
+        "/api/session",
+        {
+            "title": "Rotation probe",
+            "location": {"directory": str(ROOT / ".worktrees" / "qa-env-8")},
+            "model": MODEL,
+        },
+    )
+    session = created.get("data", created)
+    sid = session["id"]
+    api("POST", f"/api/session/{sid}/prompt", {"text": body})
+    print(json.dumps({"ok": True, "session": sid}, indent=1))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--limit", type=int, default=int(os.environ.get("QA_CONTEXT_LIMIT", 500_000)))
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    sub.add_parser("status")
+    sub.add_parser("init")
+    sub.add_parser("probe")
+
+    m = sub.add_parser("manager")
+    m.add_argument("--limit", type=int, default=parser.get_default("limit"))
+    m.add_argument("--dry-run", action="store_true")
+    m.add_argument("--no-restart", action="store_true")
+    m.add_argument("--auto", action="store_true")
+
+    args = parser.parse_args()
+    if args.command == "status":
+        cmd_status(args)
+    elif args.command == "init":
+        ensure_memory()
+    elif args.command == "probe":
+        cmd_probe(args)
+    elif args.command == "manager":
+        if args.no_restart:
+            # Dry-run style: create nothing, just report.
+            args.dry_run = True
+        cmd_manager(args)
+
+
+if __name__ == "__main__":
+    main()
