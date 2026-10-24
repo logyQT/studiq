@@ -5,7 +5,7 @@
 --
 -- Mirror of supabase/seeds/99_dev_grants.sql — keep both files in sync.
 -- RLS is the authorization floor for PostgREST access
--- (20261023233122_rls_all_public_tables.sql): tenant floor everywhere, plus a
+-- (20261024124756_rls_all_public_tables.sql): tenant floor everywhere, plus a
 -- role-authority floor (member.manage / group.manage) on control-plane tables.
 -- Fine-grained intra-organization authorization stays in the app layer
 -- (buildQueryFilter, checkPermission).

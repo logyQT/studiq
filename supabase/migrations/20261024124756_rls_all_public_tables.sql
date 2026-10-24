@@ -285,7 +285,7 @@ $$;
 -- ==========================================
 -- Public pricing (unauthenticated pricing page).
 -- anon keeps its SELECT grant from 20261020000001; RLS needs a matching policy.
--- Writes are revoked from authenticated in 20261023233123.
+-- Writes are revoked from authenticated in 20261024124757.
 -- ==========================================
 CREATE POLICY "Public pricing read" ON public.subscription_plans
   FOR SELECT TO anon, authenticated USING (true);

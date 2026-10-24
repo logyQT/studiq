@@ -1,7 +1,7 @@
 -- ==========================================
 -- Function and grant hardening for issue #191 (SEC-13), part 2.
 --
--- Part 1 (20261023233122_rls_all_public_tables.sql) enabled RLS everywhere and
+-- Part 1 (20261024124756_rls_all_public_tables.sql) enabled RLS everywhere and
 -- added the org/owner policies. This migration closes the remaining
 -- unauthenticated surface — Postgres FUNCTIONS — and gives `authenticated` only
 -- the table/function privileges the web app actually uses.

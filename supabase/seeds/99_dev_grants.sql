@@ -4,7 +4,7 @@
 -- exists when grants are issued.
 --
 -- RLS is the authorization floor for PostgREST access
--- (20261023233122_rls_all_public_tables.sql): a row is visible/writable only by
+-- (20261024124756_rls_all_public_tables.sql): a row is visible/writable only by
 -- its creator or by a member of the row's organization and, for control-plane
 -- tables (membership, invitations, billing, seats, roles, groups), only by a
 -- caller whose org role holds the capability the app layer requires
@@ -15,7 +15,7 @@
 -- Supabase grants `authenticated` ALL on every table by default, so the blanket
 -- grants below are immediately narrowed to what the app actually needs — the
 -- same narrowing the migrations apply. This file MUST stay in sync with
--- 20261023233123_rls_function_and_grant_hardening.sql: seeds run after
+-- 20261024124757_rls_function_and_grant_hardening.sql: seeds run after
 -- migrations, so anything not repeated here would be re-opened on every
 -- `supabase db reset` (this is how apply_org_plan ended up executable by
 -- `authenticated` locally despite its own migration revoking it).
