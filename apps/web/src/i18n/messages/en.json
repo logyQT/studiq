@@ -2579,7 +2579,8 @@
     "due": "Due: {date}",
     "in_progress": "In progress",
     "completed": "Completed ({count})",
-    "completed_on": "Completed: {date}"
+    "completed_on": "Completed: {date}",
+    "attempts_left": "Attempts left: {left}/{total}"
   },
   "AppAssignmentDetailPage": {
     "not_found": "Assignment not found",
@@ -2594,7 +2595,11 @@
     "loading": "Loading...",
     "continue": "Continue",
     "starting": "Starting...",
-    "start": "Start Assignment"
+    "start": "Start Assignment",
+    "start_again": "Start another attempt",
+    "last_attempt": "Last attempt",
+    "attempts_left": "Attempts left: {left}/{total}",
+    "attempts_exhausted": "All attempts used ({total}/{total})"
   },
   "AppAssignmentTakePage": {
     "upload_failed": "Upload failed",

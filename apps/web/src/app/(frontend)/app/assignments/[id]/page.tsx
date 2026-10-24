@@ -7,27 +7,24 @@ import { useParams, useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import {
+  type AttemptSummary,
+  attemptsLeft,
+  openAttempt,
+  type StudentAssignmentAttemptState,
+} from '@/lib/assignment-attempts';
 import { timeUntil } from '@/lib/datetime';
 import { studentAssignmentKeys } from '@/lib/query-keys';
 
-interface AssignmentDetail {
+interface AssignmentDetail extends StudentAssignmentAttemptState {
   id: string;
   title: string;
   description: string | null;
   deadline: string | null;
   start_time: string | null;
   time_limit_min: number | null;
-  max_attempts: number;
   question_count: number;
   shuffle_questions: boolean;
-  attempt: {
-    id: string;
-    score: number;
-    total_questions: number;
-    total_points: number | null;
-    completed_at: string | null;
-    started_at: string;
-  } | null;
 }
 
 export default function StudentAssignmentDetailPage() {
@@ -89,13 +86,14 @@ export default function StudentAssignmentDetailPage() {
     return <div className="p-6 text-center text-muted-foreground">{t('not_found')}</div>;
   }
 
-  const isCompleted = assignment.attempt?.completed_at;
-  const isInProgress = assignment.attempt && !isCompleted;
+  const running = openAttempt(assignment);
+  const lastCompleted: AttemptSummary | null = assignment.last_completed_attempt;
+  const left = attemptsLeft(assignment);
   const now = new Date();
-  const isPastDeadline = assignment.deadline && now > new Date(assignment.deadline);
-  const isScheduled = assignment.start_time && now < new Date(assignment.start_time);
+  const isPastDeadline = !!assignment.deadline && now > new Date(assignment.deadline);
+  const isScheduled = !!assignment.start_time && now < new Date(assignment.start_time);
 
-  const canStart = !isCompleted && !isInProgress && !isPastDeadline && !isScheduled;
+  const canStart = !running && left > 0 && !isPastDeadline && !isScheduled;
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
@@ -185,7 +183,7 @@ export default function StudentAssignmentDetailPage() {
         </Card>
       )}
 
-      {isPastDeadline && !isCompleted && (
+      {isPastDeadline && !running && (
         <Card className="border-gray-200 dark:border-gray-800 opacity-60">
           <CardContent className="pt-6 text-center">
             <p className="text-sm text-muted-foreground">This assignment is closed.</p>
@@ -193,34 +191,48 @@ export default function StudentAssignmentDetailPage() {
         </Card>
       )}
 
-      {isCompleted && assignment.attempt && (
+      {lastCompleted && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">{t('completed')}</CardTitle>
+            <CardTitle className="text-base">
+              {left > 0 ? t('last_attempt') : t('completed')}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-lg font-bold">
               {t('score', {
-                earned: assignment.attempt.score,
-                total: assignment.attempt.total_points || assignment.attempt.total_questions,
+                earned: lastCompleted.score,
+                total: lastCompleted.total_points || lastCompleted.total_questions,
               })}
             </p>
-            <Link href={`/app/assignments/${id}/review`}>
+            <Link href={`/app/assignments/${id}/review?attemptId=${lastCompleted.id}`}>
               <Button variant="outline">{t('view_review')}</Button>
             </Link>
           </CardContent>
         </Card>
       )}
 
+      {assignment.max_attempts > 1 && (
+        <p className="text-sm text-muted-foreground">
+          {left > 0
+            ? t('attempts_left', { left, total: assignment.max_attempts })
+            : t('attempts_exhausted', { total: assignment.max_attempts })}
+        </p>
+      )}
+
       <div className="flex gap-3">
-        {isInProgress && (
+        {running && (
           <Button onClick={handleStart} disabled={startMutation.isPending}>
             {startMutation.isPending ? t('loading') : t('continue')}
           </Button>
         )}
         {canStart && (
           <Button onClick={handleStart} disabled={startMutation.isPending}>
-            {startMutation.isPending ? t('starting') : t('start')}
+            {startMutation.isPending
+              ? t('starting')
+              : assignment.attempts_used > 0
+                ? t('start_again')
+                : t('start')}
           </Button>
         )}
       </div>
