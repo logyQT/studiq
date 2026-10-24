@@ -270,7 +270,7 @@ export class Bridge {
     }
 
     const body = this.opts.overseer
-      ? text.replaceAll('@operator', `<@${this.config.ownerId}>`)
+      ? text.replace(/@(operator|logy)\b/gi, `<@${this.config.ownerId}>`)
       : text;
     const mentions = this.opts.overseer
       ? { users: [this.config.ownerId] }
