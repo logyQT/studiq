@@ -1,4 +1,4 @@
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { AttachmentBuilder, type Client, type TextChannel } from 'discord.js';
 import type { Config } from './config';
@@ -16,6 +16,8 @@ export interface BridgeOptions {
   channelId: string;
   directory: string;
   manager: boolean;
+  overseer?: boolean;
+  sessionFile?: string;
 }
 
 export class Bridge {
@@ -116,7 +118,13 @@ export class Bridge {
     this.lastSessionCheck = now;
 
     let next: string | null = null;
-    if (this.opts.manager) {
+    if (this.opts.sessionFile) {
+      try {
+        next = JSON.parse(readFileSync(this.opts.sessionFile, 'utf8')).session ?? null;
+      } catch {
+        next = null;
+      }
+    } else if (this.opts.manager) {
       next = this.state.managerSessionId ?? null;
     } else {
       const session = await this.opencode.resolveSession(this.opts.directory).catch(() => null);
@@ -261,8 +269,14 @@ export class Bridge {
       return;
     }
 
-    for (const chunk of chunkText(text, MAX_CHUNK)) {
-      await channel.send({ content: chunk, allowedMentions: { parse: [] } });
+    const body = this.opts.overseer
+      ? text.replaceAll('@operator', `<@${this.config.ownerId}>`)
+      : text;
+    const mentions = this.opts.overseer
+      ? { users: [this.config.ownerId] }
+      : { parse: [] as never[] };
+    for (const chunk of chunkText(body, MAX_CHUNK)) {
+      await channel.send({ content: chunk, allowedMentions: mentions });
     }
   }
 

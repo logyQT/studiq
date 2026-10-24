@@ -29,6 +29,7 @@ export interface Config {
   statePath: string;
   dashboardChannelId: string;
   manager: { token: string; channelId: string; directory: string };
+  overseer?: { token: string; channelId: string; directory: string; sessionFile: string };
   slots: SlotConfig[];
 }
 
@@ -84,6 +85,17 @@ export function readConfig(): { config: Config; errors: string[] } {
   const managerToken = need('DISCORD_MANAGER_TOKEN');
   const managerChannelId = need('DISCORD_MANAGER_CHANNEL_ID');
   const dashboardChannelId = need('DISCORD_DASHBOARD_CHANNEL_ID');
+  const overseerToken = (env.DISCORD_OVERSEER_TOKEN ?? '').trim();
+  const overseerChannelId = (env.DISCORD_OVERSEER_CHANNEL_ID ?? '').trim();
+  if (!!overseerToken !== !!overseerChannelId) {
+    errors.push('DISCORD_OVERSEER_TOKEN and DISCORD_OVERSEER_CHANNEL_ID must both be set or both be empty');
+  }
+  if (overseerToken && !TOKEN.test(overseerToken)) {
+    errors.push('DISCORD_OVERSEER_TOKEN does not look like a bot token');
+  }
+  if (overseerChannelId && !SNOWFLAKE.test(overseerChannelId)) {
+    errors.push('DISCORD_OVERSEER_CHANNEL_ID is not a snowflake');
+  }
 
   const slots: SlotConfig[] = [];
   for (let n = 1; n <= 8; n++) {
@@ -109,6 +121,7 @@ export function readConfig(): { config: Config; errors: string[] } {
   const channelIds = [
     managerChannelId,
     dashboardChannelId,
+    overseerChannelId,
     ...slots.map((s) => s.channelId),
   ].filter(Boolean);
   if (new Set(channelIds).size !== channelIds.length) errors.push('channel IDs must be distinct');
@@ -143,6 +156,14 @@ export function readConfig(): { config: Config; errors: string[] } {
     statePath: join(packageRoot, 'state.json'),
     dashboardChannelId,
     manager: { token: managerToken, channelId: managerChannelId, directory: liveRoot },
+    overseer: overseerToken
+      ? {
+          token: overseerToken,
+          channelId: overseerChannelId,
+          directory: liveRoot,
+          sessionFile: (env.QA_FIX_OVERSEER_STATE ?? '/workspaces/studiq/.qa-fix/overseer.json').trim(),
+        }
+      : undefined,
     slots,
   };
 

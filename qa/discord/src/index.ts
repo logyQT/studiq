@@ -222,12 +222,16 @@ async function main(): Promise<void> {
   const managerClient = createClient('manager', log);
   const envClients = new Map<number, Client>();
   for (const slot of config.slots) envClients.set(slot.n, createClient(slot.label, log));
+  const overseerClient = config.overseer ? createClient('overseer', log) : null;
 
   const clients: Array<[string, Client, string]> = [
     ['manager', managerClient, config.manager.token],
   ];
   for (const slot of config.slots) {
     clients.push([slot.label, envClients.get(slot.n)!, slot.token]);
+  }
+  if (overseerClient && config.overseer) {
+    clients.push(['overseer', overseerClient, config.overseer.token]);
   }
 
   log.info('main', `starting ${clients.length} clients (dry-run=${config.dryRun})`);
@@ -256,6 +260,18 @@ async function main(): Promise<void> {
     manager: true,
   });
   bridges.set('manager', managerBridge);
+
+  if (overseerClient && config.overseer) {
+    const overseerBridge = new Bridge(config, log, state, opencode, overseerClient, {
+      label: 'overseer',
+      channelId: config.overseer.channelId,
+      directory: config.overseer.directory,
+      manager: false,
+      overseer: true,
+      sessionFile: config.overseer.sessionFile,
+    });
+    bridges.set('overseer', overseerBridge);
+  }
 
   for (const slot of config.slots) {
     const client = envClients.get(slot.n)!;
@@ -319,6 +335,15 @@ async function main(): Promise<void> {
   };
 
   wire(managerClient, 'manager', config.manager.channelId, managerBridge, false);
+  if (overseerClient && config.overseer) {
+    wire(
+      overseerClient,
+      'overseer',
+      config.overseer.channelId,
+      bridges.get('overseer')!,
+      false,
+    );
+  }
   for (const slot of config.slots) {
     wire(
       envClients.get(slot.n)!,
@@ -336,11 +361,16 @@ async function main(): Promise<void> {
   if (!config.dryRun) {
     for (const [label, channelId] of [
       ['manager', config.manager.channelId],
+      ...(config.overseer ? [['overseer', config.overseer.channelId] as [string, string]] : []),
       ...config.slots.map((s) => [s.label, s.channelId] as [string, string]),
     ] as Array<[string, string]>) {
       try {
         const client =
-          label === 'manager' ? managerClient : envClients.get(Number(label.slice(4)))!;
+          label === 'manager'
+            ? managerClient
+            : label === 'overseer'
+              ? overseerClient!
+              : envClients.get(Number(label.slice(4)))!;
         const channel = await client.channels.fetch(channelId);
         if (!channel?.isTextBased()) continue;
         const text = `ready · ${label}`;
