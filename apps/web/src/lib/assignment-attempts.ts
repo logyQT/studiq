@@ -34,3 +34,15 @@ export function attemptsLeft(a: StudentAssignmentAttemptState): number {
 export function hasAttemptsLeft(a: StudentAssignmentAttemptState): boolean {
   return attemptsLeft(a) > 0;
 }
+
+/**
+ * Review page: an explicit `?attemptId=` always wins (older attempts stay
+ * linkable); otherwise use the latest submitted attempt — the same row the
+ * detail page's „Zobacz podsumowanie” link points at.
+ */
+export function reviewAttemptId(
+  requestedAttemptId: string | null | undefined,
+  assignment: StudentAssignmentAttemptState | null | undefined,
+): string | null {
+  return requestedAttemptId || assignment?.last_completed_attempt?.id || null;
+}

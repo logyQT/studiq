@@ -2597,7 +2597,14 @@
   "AppAssignmentReviewPage": {
     "not_available": "Podsumowanie niedostępne",
     "back": "Powrót",
-    "feedback": "Informacja zwrotna: {text}"
+    "feedback": "Informacja zwrotna: {text}",
+    "your_answer": "Twoja odpowiedź",
+    "no_answer": "Brak odpowiedzi",
+    "pending_review": "Oczekuje na ocenę",
+    "points_awarded": "Przyznane punkty: {points}",
+    "explanation": "Wyjaśnienie",
+    "correct": "Poprawnie",
+    "incorrect": "Niepoprawnie"
   },
   "AnswerImageUpload": {
     "uploading": "Przesyłanie...",

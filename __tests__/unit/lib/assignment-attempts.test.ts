@@ -4,6 +4,7 @@ import {
   attemptsLeft,
   hasAttemptsLeft,
   openAttempt,
+  reviewAttemptId,
   type StudentAssignmentAttemptState,
 } from '@/lib/assignment-attempts';
 
@@ -79,5 +80,35 @@ describe('assignment attempt helpers (#372)', () => {
   it('does not treat a completed attempt as open', () => {
     const completed = attempt();
     expect(openAttempt(state({ attempt: completed, attempts_used: 1 }))).toBeNull();
+  });
+});
+
+describe('reviewAttemptId (#175)', () => {
+  it('prefers an explicit attempt id so older attempts stay linkable', () => {
+    const completed = attempt({ id: 'attempt-latest' });
+    const s = state({ last_completed_attempt: completed });
+    expect(reviewAttemptId('attempt-older', s)).toBe('attempt-older');
+  });
+
+  it('falls back to the latest completed attempt when no id is requested', () => {
+    const completed = attempt({ id: 'attempt-latest' });
+    const s = state({ last_completed_attempt: completed });
+    expect(reviewAttemptId(null, s)).toBe('attempt-latest');
+  });
+
+  it('falls back when the query param is an empty string', () => {
+    const completed = attempt({ id: 'attempt-latest' });
+    const s = state({ last_completed_attempt: completed });
+    expect(reviewAttemptId('', s)).toBe('attempt-latest');
+  });
+
+  it('returns null when nothing was completed and no id was requested', () => {
+    const s = state({ attempt: attempt({ completed_at: null }) });
+    expect(reviewAttemptId(undefined, s)).toBeNull();
+  });
+
+  it('returns null when the assignment is not loaded yet', () => {
+    expect(reviewAttemptId(null, undefined)).toBeNull();
+    expect(reviewAttemptId(null, null)).toBeNull();
   });
 });
