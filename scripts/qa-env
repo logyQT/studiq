@@ -418,6 +418,17 @@ seed_buckets() {
     warn "storage bucket seed attempt $i failed for qa-env-$n; retrying"
     sleep 2
   done
+  # The storage service can come up against a pre-reset schema and keep
+  # returning PG 42P10. Restart it once so it reapplies its migrations, then
+  # retry the bucket seed.
+  warn "restarting storage for qa-env-$n after repeated bucket-seed failures"
+  docker restart "supabase_storage_qa-env-$n" >/dev/null 2>&1 || true
+  sleep 4
+  for i in 1 2 3 4 5; do
+    ( cd "$wt" && bunx supabase seed buckets --local --workdir "$wt" --yes ) && return 0
+    warn "storage bucket seed retry $i after restart failed for qa-env-$n"
+    sleep 3
+  done
   return 1
 }
 
