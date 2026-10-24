@@ -313,6 +313,21 @@ describe('TeacherAssignmentController', () => {
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
     });
+
+    it('maps a service rejection above the question maximum to 422 (#169)', async () => {
+      mockService.gradeAnswer.mockResolvedValueOnce(failure('UNPROCESSABLE_ENTITY'));
+
+      const response = await controller.gradeAnswer(
+        'a-1',
+        's-1',
+        { questionId: '550e8400-e29b-41d4-a716-446655440000', points: 5 },
+        mockCtx,
+      );
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      if (!response.success) expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+    });
   });
 
   describe('listForStudent', () => {

@@ -408,10 +408,10 @@ export class InvitationService {
     id: string,
     data: { targetOrgRoleId?: string },
   ): Promise<ServiceResult<void>> {
-    // activeOrgId is the client-controlled `active_org_id` cookie; withAuth only
-    // sets orgRoleId when a real org_members row exists for that exact org+user,
-    // so the pair is the membership proof. Without it a forged cookie would let
-    // any manager retarget another tenant's pending invitation (MGR-INV-03).
+    // withAuth only sets activeOrgId (and orgRoleId) when a real org_members row
+    // exists for that exact org+user, so the pair is the membership proof. Without
+    // it a forged cookie would let any manager retarget another tenant's pending
+    // invitation (MGR-INV-03).
     if (!ctx.activeOrgId || !ctx.orgRoleId) return failure('FORBIDDEN');
 
     const supabase = await this.createClient();

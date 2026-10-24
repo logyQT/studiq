@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseGradePoints, resolveGradeDraft } from '@/lib/grading';
+import { exceedsGradeMax, parseGradePoints, resolveGradeDraft } from '@/lib/grading';
 
 describe('resolveGradeDraft', () => {
   it('hydrates points and feedback from the persisted grade', () => {
@@ -87,5 +87,26 @@ describe('parseGradePoints', () => {
   it('returns null for fractional or negative input', () => {
     expect(parseGradePoints('2.5')).toBeNull();
     expect(parseGradePoints('-1')).toBeNull();
+  });
+});
+
+describe('exceedsGradeMax', () => {
+  it('rejects points above a known maximum (#169)', () => {
+    expect(exceedsGradeMax(5, 2)).toBe(true);
+  });
+
+  it('accepts points equal to or below the maximum', () => {
+    expect(exceedsGradeMax(2, 2)).toBe(false);
+    expect(exceedsGradeMax(1, 2)).toBe(false);
+    expect(exceedsGradeMax(0, 0)).toBe(false);
+  });
+
+  it('never caps when the points are invalid', () => {
+    expect(exceedsGradeMax(null, 2)).toBe(false);
+  });
+
+  it('never caps when the maximum is unknown', () => {
+    expect(exceedsGradeMax(5, null)).toBe(false);
+    expect(exceedsGradeMax(5, undefined)).toBe(false);
   });
 });

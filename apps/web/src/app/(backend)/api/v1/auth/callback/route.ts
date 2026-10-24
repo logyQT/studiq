@@ -1,12 +1,11 @@
 import { APP_ERRORS } from '@studiq/server/lib/errors';
+import { setActiveOrgCookie } from '@studiq/server/lib/active-org-cookie';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { authService } from '@studiq/server/services/auth.service';
 import type { EmailOtpType, User } from '@supabase/supabase-js';
 import { type NextRequest, NextResponse } from 'next/server';
 
 const FALLBACK_REDIRECT = '/';
-
-const COOKIE_OPTIONS = { path: '/', maxAge: 60 * 60 * 24 * 365, sameSite: 'lax' as const };
 
 /**
  * The e-mail address is proven at this point, so this is the only safe moment to
@@ -21,7 +20,7 @@ async function finish(user: User | null, origin: string, next: string) {
   const response = NextResponse.redirect(`${origin}${next}`);
 
   if (claimed) {
-    response.cookies.set('active_org_id', claimed.orgId, COOKIE_OPTIONS);
+    setActiveOrgCookie(response, claimed.orgId);
   }
 
   return response;
