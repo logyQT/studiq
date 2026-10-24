@@ -61,6 +61,8 @@ Read the issue's repro/expected behavior and the design's test plan. Use the liv
 3. At least one adjacent regression path for the touched area.
 4. Network/API responses and console errors; capture `x-trace-id` if a request fails.
 
+For Playwright, run `/workspaces/studiq/.worktrees/qa-env/qa/tools/qa-playwright` from the slot instead of creating a temp config; it sets `PLAYWRIGHT_BASE_URL` from `qa/env.json` and uses the shared config.
+
 Evidence is mandatory for a pass or fail: screenshots under `dashboard/shots/`, plus the browser network entries/statuses. Do not mark pass from code reading alone.
 
 ## Output (required)
