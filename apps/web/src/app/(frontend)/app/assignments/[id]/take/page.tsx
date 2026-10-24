@@ -19,7 +19,6 @@ interface AttemptData {
     question_answers?: Array<{
       id: string;
       content: string;
-      is_correct: boolean;
     }>;
   }>;
 }

@@ -1,5 +1,9 @@
 import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
+import {
+  IN_PROGRESS_QUESTION_SELECT,
+  REVIEW_QUESTION_SELECT,
+} from '@studiq/server/lib/question-view';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -37,9 +41,17 @@ export class QuizAttemptService {
 
     if (attemptError || !attempt) return failure('NOT_FOUND');
 
+    // A finished attempt is a review: it may show which option was correct and
+    // the explanation. A running attempt never may (#331).
+    const isCompleted = attempt.completed_at !== null;
+
     const { data: attemptQuestions, error: questionsError } = await supabase
       .from('quiz_attempt_questions')
-      .select('order_index, question_id, questions(*, question_answers:question_options(*))')
+      .select(
+        `order_index, question_id, questions(${
+          isCompleted ? REVIEW_QUESTION_SELECT : IN_PROGRESS_QUESTION_SELECT
+        })`,
+      )
       .eq('attempt_id', attemptId)
       .order('order_index', { ascending: true });
 
@@ -58,13 +70,13 @@ export class QuizAttemptService {
 
     const answerObj: Record<
       string,
-      { selected_answer_id: string | null; text_answer: string | null; is_correct: boolean }
+      { selected_answer_id: string | null; text_answer: string | null; is_correct?: boolean }
     > = {};
     (answers ?? []).forEach((a) => {
       answerObj[a.question_id] = {
         selected_answer_id: a.selected_option_id,
         text_answer: a.text_answer,
-        is_correct: a.is_correct,
+        ...(isCompleted ? { is_correct: a.is_correct } : {}),
       };
     });
 

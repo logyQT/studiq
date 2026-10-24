@@ -25,7 +25,7 @@ interface Question {
   id: string;
   content: string;
   type: string;
-  question_answers: Array<{ id: string; content: string; is_correct: boolean }>;
+  question_answers: Array<{ id: string; content: string }>;
 }
 
 interface AttemptDetails {
@@ -34,7 +34,7 @@ interface AttemptDetails {
   total_questions: number;
   completed_at: string | null;
   questions: Question[];
-  answers: Record<string, { selected_answer_id: string | null; is_correct: boolean }>;
+  answers: Record<string, { selected_answer_id: string | null; is_correct?: boolean }>;
 }
 
 interface SubmitAnswer {
