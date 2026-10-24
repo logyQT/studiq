@@ -11,6 +11,41 @@ import type {
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+/** Shape of the `question_topic_assignments(topic_id, topics(id, name))` embed. */
+type QuestionTopicLink = {
+  topic_id: string;
+  topics: { id: string; name: string } | null;
+};
+
+type QuestionTopicRow = {
+  question_topic_assignments?: QuestionTopicLink[] | null;
+};
+
+/**
+ * Flattens the assignment embed into the `topics` array the client renders.
+ * Topics the caller cannot read (RLS) come back as `null` and are dropped.
+ */
+function withTopics<T extends { question_topic_assignments?: QuestionTopicLink[] | null }>(
+  row: T,
+): Omit<T, 'question_topic_assignments'> & { topics: Array<{ id: string; name: string }> } {
+  const { question_topic_assignments, ...rest } = row;
+  return {
+    ...rest,
+    topics: (question_topic_assignments ?? [])
+      .map((link) => link.topics)
+      .filter((topic): topic is { id: string; name: string } => topic != null),
+  };
+}
+
+/**
+ * Question read projection. `!inner` is required when filtering by topic, so
+ * the embed narrows parent rows instead of only filtering the nested array.
+ */
+function questionSelect(topicFilter = false) {
+  const embed = `question_topic_assignments${topicFilter ? '!inner' : ''}(topic_id, topics(id, name))`;
+  return `*, question_answers:question_options(*), ${embed}`;
+}
+
 export class QuestionService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
@@ -84,11 +119,7 @@ export class QuestionService {
     const topicIds = filters?.topicIds?.split(',').filter(Boolean) ?? [];
     const hasTopicFilter = topicIds.length > 0;
 
-    let query = supabase
-      .from('questions')
-      .select(
-        `*, question_answers:question_options(*), question_topic_assignments${hasTopicFilter ? '!inner' : ''}(topic_id)`,
-      );
+    let query = supabase.from('questions').select(questionSelect(hasTopicFilter));
 
     if (filter.or) query = query.or(filter.or);
     if (filter.created_by) query = query.eq('created_by', filter.created_by);
@@ -103,7 +134,10 @@ export class QuestionService {
 
     const { data, error } = await query;
     if (error) return toDbFailure(error);
-    return success(data ?? []);
+    // `select()` receives a dynamic projection string, so PostgREST cannot infer
+    // the row shape here; the cast matches the embed declared above.
+    const rows = (data ?? []) as unknown as QuestionTopicRow[];
+    return success(rows.map((row) => withTopics(row)));
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
@@ -112,10 +146,7 @@ export class QuestionService {
     const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
     if (filter._impossible) return failure('NOT_FOUND');
 
-    let query = supabase
-      .from('questions')
-      .select('*, question_answers:question_options(*), question_topic_assignments(topic_id)')
-      .eq('id', id);
+    let query = supabase.from('questions').select(questionSelect()).eq('id', id);
 
     if (filter.or) query = query.or(filter.or);
     if (filter.created_by) query = query.eq('created_by', filter.created_by);
@@ -123,7 +154,7 @@ export class QuestionService {
 
     const { data: question, error } = await query.single();
     if (error || !question) return failure('NOT_FOUND');
-    return success(question);
+    return success(withTopics(question as unknown as QuestionTopicRow));
   }
 
   async update(

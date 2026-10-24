@@ -8,6 +8,7 @@ import {
 } from '#test/helpers/test-user';
 import {
   applyRegisteredMock,
+  cleanupFlashcardTopics,
   cleanupOrganizationByName,
   cleanupQuestions,
   mockUser,
@@ -44,6 +45,8 @@ forEachCopy((copyId) => {
     });
 
     afterAll(async () => {
+      await cleanupFlashcardTopics(educator.user.id, `q-test-topic-${copyId}`);
+      await cleanupFlashcardTopics(educator.user.id, `copy-${copyId}-topic-`);
       await cleanupOrganizationByName('seed-org-');
     });
 
@@ -246,6 +249,81 @@ forEachCopy((copyId) => {
         expect(getResponse.status).toBe(200);
         expect(getBody.data.id).toBe(body.data.id);
         expect(getBody.data.question_answers).toEqual([]);
+      });
+
+      it('round-trips topic assignments through create, list and update', async () => {
+        const bankId = await createBank(`q-test-topic-bank-${copyId}`);
+        const topicName = `q-test-topic-${copyId}`;
+        const topicId = await createTopic(topicName);
+
+        mockUser(educator.user);
+        const createReq = createNextRequest(
+          'http://localhost/api/v1/questions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bankId,
+              type: 'mcq',
+              content: `copy-${copyId}-Topic question`,
+              topicIds: [topicId],
+              answers: [{ content: 'Answer', isCorrect: true, orderIndex: 0 }],
+            }),
+          },
+          orgCookies(),
+        );
+        const createRes = await POST(createReq);
+        const createBody = await createRes.json();
+
+        expect(createRes.status).toBe(201);
+        expect(createBody.data.topics).toEqual([{ id: topicId, name: topicName }]);
+        expect(createBody.data.question_topic_assignments).toBeUndefined();
+
+        const listReq = createNextRequest(
+          `http://localhost/api/v1/questions?bankId=${bankId}`,
+          undefined,
+          orgCookies(),
+        );
+        const listRes = await GET_LIST(listReq);
+        const listBody = await listRes.json();
+
+        expect(listRes.status).toBe(200);
+        expect(listBody.data).toHaveLength(1);
+        expect(listBody.data[0].topics).toEqual([{ id: topicId, name: topicName }]);
+
+        // A content edit that resubmits the hydrated topicIds must keep the
+        // assignment — the pre-fix dialog always sent [] here and silently cleared it.
+        const keep = createNextRequestWithParams(
+          `http://localhost/api/v1/questions/${createBody.data.id}`,
+          { id: createBody.data.id },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: 'Updated (topic kept)', topicIds: [topicId] }),
+          },
+          orgCookies(),
+        );
+        const keepRes = await PUT(keep.request, { params: keep.params });
+        const keepBody = await keepRes.json();
+
+        expect(keepRes.status).toBe(200);
+        expect(keepBody.data.topics).toEqual([{ id: topicId, name: topicName }]);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/questions/${createBody.data.id}`,
+          { id: createBody.data.id },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: 'Updated', topicIds: [] }),
+          },
+          orgCookies(),
+        );
+        const putRes = await PUT(request, { params });
+        const putBody = await putRes.json();
+
+        expect(putRes.status).toBe(200);
+        expect(putBody.data.topics).toEqual([]);
       });
 
       it('returns 401 when not authenticated', async () => {
