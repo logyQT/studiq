@@ -1,42 +1,91 @@
 import { AppError } from '@studiq/server/lib/errors';
+import {
+  extensionForMimeType,
+  sniffMimeType,
+  UPLOAD_MIME_TYPES,
+  type UploadMimeType,
+} from '@studiq/server/lib/file-signature';
+import { error as logError } from '@studiq/server/lib/log';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 const BUCKET = 'flashcard-media';
 
-const ALLOWED_TYPES = [
+/** Flashcard media cap. Keep `MAX_REQUEST_BYTES` in sync with next.config.mjs. */
+export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+/** Upload body cap: the file plus the multipart envelope headroom. */
+export const MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES + 1024 * 1024;
+
+const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
+const IMAGE_MIME_TYPES: readonly UploadMimeType[] = [
   'image/png',
   'image/jpeg',
   'image/gif',
   'image/webp',
-  'audio/mpeg',
-  'audio/wav',
-  'audio/ogg',
 ];
-const MAX_SIZE = 50 * 1024 * 1024;
 
-function validateFile(file: File): void {
-  if (!ALLOWED_TYPES.includes(file.type)) {
+/** Bytes read from the head of the file for signature sniffing. */
+const SNIFF_BYTES = 32;
+
+/**
+ * Validates an upload by content, not by the client-declared Content-Type: the
+ * declared type must be allow-listed **and** the actual bytes must sniff to that
+ * same type. Returns the sniffed type, which is what the caller must persist.
+ */
+async function validateUpload(
+  file: File,
+  allowed: readonly UploadMimeType[],
+  maxBytes: number,
+): Promise<UploadMimeType> {
+  if (!allowed.includes(file.type as UploadMimeType)) {
     throw new AppError('UNPROCESSABLE_ENTITY');
   }
-  if (file.size > MAX_SIZE) {
+  if (file.size === 0) {
     throw new AppError('UNPROCESSABLE_ENTITY');
   }
+  if (file.size > maxBytes) {
+    throw new AppError('PAYLOAD_TOO_LARGE');
+  }
+
+  const head = new Uint8Array(await file.slice(0, SNIFF_BYTES).arrayBuffer());
+  const detected = sniffMimeType(head);
+  if (!detected || detected !== file.type) {
+    throw new AppError('UNPROCESSABLE_ENTITY');
+  }
+
+  return detected;
+}
+
+/** Never leak provider messages to the client; keep them in the log instead. */
+function throwStorageError(bucket: string, error: unknown): never {
+  const status = Number(
+    (error as { status?: number }).status ?? (error as { statusCode?: string }).statusCode,
+  );
+  const statusForLog = Number.isFinite(status) ? status : 0;
+
+  logError('Storage upload failed', { bucket, status: statusForLog });
+
+  if (statusForLog === 413) throw new AppError('PAYLOAD_TOO_LARGE');
+  throw new AppError('INTERNAL_SERVER');
 }
 
 export class StorageService {
-  async uploadFile(userId: string, file: File): Promise<{ url: string }> {
-    validateFile(file);
+  constructor(private createClient: () => SupabaseClient = createServiceClient) {}
 
-    const supabase = createServiceClient();
-    const ext = file.name.split('.').pop() ?? 'bin';
-    const storagePath = `${userId}/${crypto.randomUUID()}.${ext}`;
+  async uploadFile(userId: string, file: File): Promise<{ url: string }> {
+    const mimeType = await validateUpload(file, UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES);
+
+    const supabase = this.createClient();
+    // Path/extension/Content-Type all come from the sniffed bytes — never from
+    // the attacker-controlled file name or declared type.
+    const storagePath = `${userId}/${crypto.randomUUID()}.${extensionForMimeType(mimeType)}`;
 
     const { error } = await supabase.storage.from(BUCKET).upload(storagePath, file, {
-      contentType: file.type,
+      contentType: mimeType,
       upsert: false,
     });
 
-    if (error) throw new AppError('INTERNAL_SERVER');
+    if (error) throwStorageError(BUCKET, error);
 
     const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
 
@@ -49,24 +98,17 @@ export class StorageService {
     bucket: string,
     pathPrefix: string,
   ): Promise<{ url: string }> {
-    const allowedImageTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-    if (!allowedImageTypes.includes(file.type)) {
-      throw new AppError('UNPROCESSABLE_ENTITY');
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      throw new AppError('UNPROCESSABLE_ENTITY');
-    }
+    const mimeType = await validateUpload(file, IMAGE_MIME_TYPES, MAX_IMAGE_UPLOAD_BYTES);
 
-    const supabase = createServiceClient();
-    const ext = file.name.split('.').pop() ?? 'png';
-    const storagePath = `${pathPrefix}/${crypto.randomUUID()}.${ext}`;
+    const supabase = this.createClient();
+    const storagePath = `${pathPrefix}/${crypto.randomUUID()}.${extensionForMimeType(mimeType)}`;
 
     const { error } = await supabase.storage.from(bucket).upload(storagePath, file, {
-      contentType: file.type,
+      contentType: mimeType,
       upsert: false,
     });
 
-    if (error) throw new AppError('INTERNAL_SERVER');
+    if (error) throwStorageError(bucket, error);
 
     const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(storagePath);
 

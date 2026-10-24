@@ -8,6 +8,10 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltipContent,
   Skeleton,
   Table,
   TableBody,
@@ -19,17 +23,7 @@ import {
 import { BookOpen, ClipboardList, Target, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Legend,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts';
 
 type StudentRow = {
   id: string;
@@ -213,43 +207,64 @@ export default function TeacherActivityPage() {
               <CardDescription>{t(`range_${range}`)}</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={data.dailyActivity}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 11 }}
-                      tickFormatter={(d: string) => {
-                        const date = new Date(d);
-                        return `${date.getMonth() + 1}/${date.getDate()}`;
-                      }}
-                    />
-                    <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '8px', border: '1px solid hsl(var(--border))' }}
-                      labelFormatter={(d: string) => new Date(d).toLocaleDateString()}
-                    />
-                    <Legend />
-                    <Bar
-                      yAxisId="left"
-                      dataKey="reviews"
-                      name={t('reviews')}
-                      fill="hsl(var(--primary))"
-                      radius={[4, 4, 0, 0]}
-                    />
-                    <Line
-                      yAxisId="right"
-                      dataKey="activeStudents"
-                      name={t('active_students_chart')}
-                      stroke="hsl(var(--destructive))"
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
+              <ChartContainer
+                config={{
+                  reviews: { label: t('reviews'), color: 'var(--primary)' },
+                  activeStudents: {
+                    label: t('active_students_chart'),
+                    // Dark `--destructive` is 2.17:1 on the dark card; the readable red of the
+                    // same family keeps the line above WCAG 1.4.11 (10.48:1).
+                    theme: {
+                      light: 'var(--destructive)',
+                      dark: 'var(--destructive-foreground)',
+                    },
+                  },
+                }}
+                className="aspect-auto h-72 w-full"
+              >
+                <ComposedChart data={data.dailyActivity}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(d: string) => {
+                      const date = new Date(d);
+                      return `${date.getMonth() + 1}/${date.getDate()}`;
+                    }}
+                  />
+                  <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <Tooltip
+                    content={
+                      <ChartTooltipContent
+                        labelFormatter={(value) => new Date(String(value)).toLocaleDateString()}
+                      />
+                    }
+                  />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  <Bar
+                    yAxisId="left"
+                    dataKey="reviews"
+                    fill="var(--color-reviews)"
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Line
+                    yAxisId="right"
+                    dataKey="activeStudents"
+                    stroke="var(--color-activeStudents)"
+                    strokeWidth={2}
+                    dot={{ r: 3, fill: 'var(--color-activeStudents)' }}
+                  />
+                </ComposedChart>
+              </ChartContainer>
             </CardContent>
           </Card>
 

@@ -150,7 +150,7 @@ test.describe('Flashcard Deck Detail', () => {
     }
   });
 
-  test('flashcard link dialog opens from context menu', async ({ page }) => {
+  test('flashcard move dialog opens from context menu', async ({ page }) => {
     await loginTeacher(page);
     await page.goto('/edu/flashcards/decks');
     await page.waitForLoadState('networkidle');
@@ -170,9 +170,9 @@ test.describe('Flashcard Deck Detail', () => {
       .first();
     await menuButton.click();
 
-    await page.getByRole('menuitem', { name: t('EduDeckViewPage.menu_link') }).click();
+    await page.getByRole('menuitem', { name: t('EduDeckViewPage.menu_move') }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
-    await expect(page.getByText(t('EduDeckViewPage.link_title'))).toBeVisible();
+    await expect(page.getByText(t('EduDeckViewPage.move_title'))).toBeVisible();
   });
 
   test('flashcard delete removes it from grid', async ({ page }) => {

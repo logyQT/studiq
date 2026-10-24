@@ -10,10 +10,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     req,
     async (ctx) => {
       const { id } = await params;
-      // ctx.activeOrgId reflects the active_org_id cookie, which the
-      // client controls — with-auth.ts only proves real membership via
-      // orgRoleId (populated from a genuine org_members row for this
-      // exact org+user; null otherwise). Both checks are required.
+      // with-auth.ts only sets ctx.activeOrgId (and ctx.orgRoleId) when a
+      // real org_members row exists for this exact org+user, so a forged
+      // active_org_id cookie cannot reach here. Both checks are kept as
+      // defence in depth.
       if (id !== ctx.activeOrgId || !ctx.orgRoleId) throw new AppError('FORBIDDEN');
       return toNextResponse(await organizationController.getById(id));
     },

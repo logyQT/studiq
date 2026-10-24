@@ -51,8 +51,11 @@ export async function handleApiError(
 
   logError('Unhandled API error', { error });
 
+  // Same shape as withAuth()'s generic catch and toNextResponse(): the app error
+  // *key* (e.g. `BAD_REQUEST`), not APP_ERRORS[...].code, so every response in
+  // the API carries one consistent code.
   return NextResponse.json(
-    { success: false, error: APP_ERRORS[fallback].code },
-    { status, headers: { 'x-error-code': APP_ERRORS[fallback].code } },
+    { success: false, error: fallback },
+    { status, headers: { 'x-error-code': fallback } },
   );
 }

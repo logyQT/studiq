@@ -52,6 +52,10 @@ export function DailyActivityChart({ data, goal, range, onRangeChange }: DailyAc
         config={{
           reviews: { label: t('reviews'), color: 'oklch(0.546 0.245 265)' },
           correct: { label: t('correct'), color: 'oklch(0.65 0.17 155)' },
+          goal: {
+            label: t('daily_goal'),
+            theme: { light: 'var(--destructive)', dark: 'var(--destructive-foreground)' },
+          },
         }}
       >
         <ResponsiveContainer width="100%" height="100%">
@@ -63,12 +67,12 @@ export function DailyActivityChart({ data, goal, range, onRangeChange }: DailyAc
             {goal > 0 && (
               <ReferenceLine
                 y={goal}
-                stroke="hsl(var(--destructive))"
+                stroke="var(--color-goal)"
                 strokeDasharray="4 4"
                 label={{
                   value: t('daily_goal'),
                   position: 'insideTopRight',
-                  fill: 'hsl(var(--destructive))',
+                  fill: 'var(--color-goal)',
                   fontSize: 11,
                 }}
               />

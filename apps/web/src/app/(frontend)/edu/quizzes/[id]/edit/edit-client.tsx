@@ -7,6 +7,7 @@ import {
   DragOverlay,
   type DragStartEvent,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -33,6 +34,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { QuestionBrowser } from '@/app/(frontend)/edu/quizzes/[id]/edit/question-browser';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { parsePointsInput } from '@/lib/quiz-editor';
 import { quizKeys } from '@/lib/query-keys';
 
 interface QuizQuestion {
@@ -65,14 +67,55 @@ interface SaveData {
   questions: QuizQuestion[];
 }
 
+function PointsInput({
+  value,
+  label,
+  onChange,
+}: {
+  value: number;
+  label: string;
+  onChange: (points: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  return (
+    <Input
+      type="number"
+      inputMode="numeric"
+      min={0}
+      step={1}
+      value={draft}
+      aria-label={label}
+      className="h-8 w-16 shrink-0 text-right"
+      onChange={(event) => {
+        const raw = event.target.value;
+        setDraft(raw);
+        const next = parsePointsInput(raw);
+        if (next !== null && next !== value) onChange(next);
+      }}
+      onBlur={() => setDraft(String(value))}
+    />
+  );
+}
+
+const QUIZ_EMPTY_DROPZONE_ID = 'quiz-empty-dropzone';
+
 function SortableQuestion({
   question,
   index,
   onRemove,
+  onPointsChange,
+  pointsLabel,
 }: {
   question: QuizQuestion;
   index: number;
   onRemove: (id: string) => void;
+  onPointsChange: (id: string, points: number) => void;
+  pointsLabel: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: question.question_id,
@@ -108,13 +151,42 @@ function SortableQuestion({
           </Badge>
         )}
       </div>
-      <span className="text-sm text-muted-foreground shrink-0">{question.points} pts</span>
+      <div className="flex items-center gap-1 shrink-0">
+        <PointsInput
+          value={question.points}
+          label={pointsLabel}
+          onChange={(points) => onPointsChange(question.question_id, points)}
+        />
+        <span className="text-sm text-muted-foreground">pts</span>
+      </div>
       <button
         onClick={() => onRemove(question.question_id)}
         className="text-muted-foreground hover:text-destructive"
       >
         <Trash2 className="w-4 h-4" />
       </button>
+    </div>
+  );
+}
+
+/**
+ * Drop target for the empty state. It must live *inside* `<DndContext>`: a
+ * `useDroppable` call in `EditQuizClient` would sit above the provider and never
+ * register, which is exactly why dropping the first question was a silent no-op.
+ */
+function EmptyQuizDropzone({ label, description }: { label: string; description: string }) {
+  const { setNodeRef, isOver } = useDroppable({ id: QUIZ_EMPTY_DROPZONE_ID });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex flex-col items-center justify-center py-12 text-center rounded-lg border-2 border-dashed transition-colors ${
+        isOver ? 'border-primary bg-primary/5' : 'border-transparent'
+      }`}
+    >
+      <ScrollText className="h-12 w-12 text-muted-foreground mb-4" />
+      <p className="text-muted-foreground">{label}</p>
+      <p className="text-sm text-muted-foreground">{description}</p>
     </div>
   );
 }
@@ -226,6 +298,11 @@ export function EditQuizClient() {
     triggerAutoSave();
   };
 
+  const handlePointsChange = (questionId: string, points: number) => {
+    setQuestions((prev) => prev.map((q) => (q.question_id === questionId ? { ...q, points } : q)));
+    triggerAutoSave();
+  };
+
   const handleBrowseAdd = (selectedQuestions: BrowseQuestion[]) => {
     if (selectedQuestions.length === 0) return;
     const maxIndex = questions.reduce((max, q) => Math.max(max, q.order_index), -1);
@@ -251,13 +328,18 @@ export function EditQuizClient() {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over) return;
+    if (!over) {
+      setActiveDragItem(null);
+      return;
+    }
 
     if (active.data.current?.source === 'browser') {
       const question = active.data.current.question as BrowseQuestion;
       setQuestions((prev) => {
         const overIndex = prev.findIndex((q) => q.question_id === over.id);
-        const insertIndex = overIndex >= 0 ? overIndex : prev.length;
+        // Empty quiz → the only droppable is the placeholder → append (= index 0).
+        const insertIndex =
+          over.id === QUIZ_EMPTY_DROPZONE_ID || overIndex < 0 ? prev.length : overIndex;
         const next = [...prev];
         next.splice(insertIndex, 0, {
           question_id: question.id,
@@ -320,6 +402,7 @@ export function EditQuizClient() {
         collisionDetection={closestCenter}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveDragItem(null)}
       >
         <div className="px-6 pb-20 max-w-7xl mx-auto scrollbar-gutter-stable">
           <h1 className="text-2xl font-bold tracking-tight mb-6">{t('title')}</h1>
@@ -374,17 +457,15 @@ export function EditQuizClient() {
                       question={q}
                       index={i}
                       onRemove={handleRemove}
+                      onPointsChange={handlePointsChange}
+                      pointsLabel={t('points_label', { index: i + 1 })}
                     />
                   ))}
                 </div>
               </SortableContext>
 
               {questions.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <ScrollText className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">{t('no_questions')}</p>
-                  <p className="text-sm text-muted-foreground">{t('no_questions_desc')}</p>
-                </div>
+                <EmptyQuizDropzone label={t('no_questions')} description={t('no_questions_desc')} />
               )}
             </div>
 
