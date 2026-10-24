@@ -276,11 +276,14 @@ BEGIN
   ELSIF p_organization_id IS NOT NULL THEN
     SELECT COUNT(*) INTO total
     FROM public.flashcards f
-    WHERE f.organization_id = p_organization_id AND f.visibility = 'group'
-      AND EXISTS (
-        SELECT 1 FROM public.deck_groups dg
-        JOIN public.group_members gm ON gm.group_id = dg.group_id
-        WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+    WHERE f.organization_id = p_organization_id
+      AND (
+        f.created_by = p_user_id
+        OR EXISTS (
+          SELECT 1 FROM public.deck_groups dg
+          JOIN public.group_members gm ON gm.group_id = dg.group_id
+          WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+        )
       )
       AND NOT EXISTS (
         SELECT 1 FROM public.suspended_decks sd
@@ -297,11 +300,14 @@ BEGIN
     FROM public.flashcards f
     LEFT JOIN public.flashcard_review_state rs
       ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
-    WHERE f.organization_id = p_organization_id AND f.visibility = 'group'
-      AND EXISTS (
-        SELECT 1 FROM public.deck_groups dg
-        JOIN public.group_members gm ON gm.group_id = dg.group_id
-        WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+    WHERE f.organization_id = p_organization_id
+      AND (
+        f.created_by = p_user_id
+        OR EXISTS (
+          SELECT 1 FROM public.deck_groups dg
+          JOIN public.group_members gm ON gm.group_id = dg.group_id
+          WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+        )
       )
       AND NOT EXISTS (
         SELECT 1 FROM public.suspended_decks sd

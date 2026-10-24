@@ -72,6 +72,52 @@ forEachCopy((copyId) => {
         expect(body.data.reviewState.interval_days).toBeGreaterThanOrEqual(1);
       });
 
+      it('grades a new card Good (confidenceLevel 3) into learning step 1 / 10 min / EF 2.36', async () => {
+        mockUser(student.user);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
+          { id: flashcardId },
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wasCorrect: true, confidenceLevel: 3 }),
+          },
+        );
+
+        const response = await logPractice(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(201);
+        expect(body.data.reviewState.learning_state).toBe('learning');
+        expect(body.data.reviewState.learning_step).toBe(1);
+        expect(body.data.reviewState.interval_days).toBe(10);
+        expect(body.data.reviewState.easiness_factor).toBe(2.36);
+      });
+
+      it('grades a new card Again (confidenceLevel 1) into learning step 0 / 1 min / EF 1.7', async () => {
+        mockUser(student.user);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
+          { id: flashcardId },
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wasCorrect: false, confidenceLevel: 1 }),
+          },
+        );
+
+        const response = await logPractice(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(201);
+        expect(body.data.reviewState.learning_state).toBe('learning');
+        expect(body.data.reviewState.learning_step).toBe(0);
+        expect(body.data.reviewState.interval_days).toBe(1);
+        expect(body.data.reviewState.easiness_factor).toBe(1.7);
+      });
+
       it('logs practice with optional fields and returns 201', async () => {
         mockUser(student.user);
 

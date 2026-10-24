@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/lib/authz', () => ({
-  buildQueryFilter: vi.fn().mockReturnValue({ created_by: 'user-1' }),
+  accessibleFilter: vi.fn().mockResolvedValue({ created_by: 'user-1' }),
   Permission: { FLASHCARD_READ: 'flashcard.read' },
 }));
 
@@ -16,6 +16,7 @@ function qb(data: any, error: any = null) {
   b.update = vi.fn(() => b);
   b.delete = vi.fn(() => b);
   b.eq = vi.fn(() => b);
+  b.or = vi.fn(() => b);
   b.in = vi.fn(() => b);
   b.not = vi.fn(() => b);
   b.order = vi.fn(() => b);
@@ -27,6 +28,20 @@ function qb(data: any, error: any = null) {
   b.finally = promise.finally.bind(promise);
   return b;
 }
+
+const emptyRpcResult = {
+  summary: {
+    totalDecks: 0,
+    totalFlashcards: 0,
+    totalPractices: 0,
+    totalStudents: 0,
+    overallAccuracy: 0,
+    averageEasinessFactor: 0,
+    difficultyBreakdown: { easy: 0, medium: 0, hard: 0, new: 0 },
+  },
+  byDeck: [],
+  byTopic: [],
+};
 
 describe('FlashcardStatsService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
@@ -51,13 +66,33 @@ describe('FlashcardStatsService', () => {
 
   describe('getTeacherStats', () => {
     it('returns empty when filter is impossible', async () => {
-      const { buildQueryFilter } = await import('@studiq/server/lib/authz');
-      vi.mocked(buildQueryFilter).mockReturnValueOnce({ _impossible: true } as any);
+      const { accessibleFilter } = await import('@studiq/server/lib/authz');
+      vi.mocked(accessibleFilter).mockResolvedValueOnce({ _impossible: true } as any);
 
       const result = await service.getTeacherStats(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data.summary.totalFlashcards).toBe(0);
+    });
+
+    it('applies the resolved group filter before querying cards', async () => {
+      const { accessibleFilter } = await import('@studiq/server/lib/authz');
+      vi.mocked(accessibleFilter).mockResolvedValueOnce({
+        organization_id: 'org-1',
+        or: 'created_by.eq.teacher-1,id.in.(fc-1)',
+      } as any);
+      const flashcardQuery = qb([{ id: 'fc-1' }]);
+      mock.from.mockReturnValueOnce(flashcardQuery);
+      mock.rpc.mockResolvedValueOnce({
+        data: { ...emptyRpcResult, summary: { ...emptyRpcResult.summary, totalFlashcards: 1 } },
+        error: null,
+      });
+
+      const result = await service.getTeacherStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(flashcardQuery.or).toHaveBeenCalledWith('created_by.eq.teacher-1,id.in.(fc-1)');
+      expect(flashcardQuery.eq).toHaveBeenCalledWith('organization_id', 'org-1');
     });
 
     it('returns empty when no flashcards', async () => {
@@ -104,13 +139,34 @@ describe('FlashcardStatsService', () => {
 
   describe('getDifficultyCards', () => {
     it('returns empty when filter is impossible', async () => {
-      const { buildQueryFilter } = await import('@studiq/server/lib/authz');
-      vi.mocked(buildQueryFilter).mockReturnValueOnce({ _impossible: true } as any);
+      const { accessibleFilter } = await import('@studiq/server/lib/authz');
+      vi.mocked(accessibleFilter).mockResolvedValueOnce({ _impossible: true } as any);
 
       const result = await service.getDifficultyCards(ctx, 'easy');
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual([]);
+    });
+
+    it('applies the resolved group filter before querying cards', async () => {
+      const { accessibleFilter } = await import('@studiq/server/lib/authz');
+      vi.mocked(accessibleFilter).mockResolvedValueOnce({
+        organization_id: 'org-1',
+        or: 'created_by.eq.teacher-1,id.in.(fc-1)',
+      } as any);
+      const flashcardQuery = qb([{ id: 'fc-1', front: 'F', back: 'B' }]);
+      mock.from
+        .mockReturnValueOnce(flashcardQuery)
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([]));
+
+      const result = await service.getDifficultyCards(ctx, 'new');
+
+      expect(result.success).toBe(true);
+      expect(flashcardQuery.or).toHaveBeenCalledWith('created_by.eq.teacher-1,id.in.(fc-1)');
+      expect(flashcardQuery.eq).toHaveBeenCalledWith('organization_id', 'org-1');
     });
 
     it('returns empty when no flashcards', async () => {

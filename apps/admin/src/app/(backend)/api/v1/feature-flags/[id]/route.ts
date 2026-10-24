@@ -1,20 +1,20 @@
 import { featureFlagController } from '@admin/server/controllers/feature-flag.controller';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
 
-type RouteContext = { params: Promise<{ key: string }> };
+type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, { params }: RouteContext) {
-  const { key } = await params;
-  return toNextResponse(await featureFlagController.getById(key));
+  const { id } = await params;
+  return toNextResponse(await featureFlagController.getById(id));
 }
 
 export async function PUT(request: Request, { params }: RouteContext) {
-  const { key } = await params;
+  const { id } = await params;
   const body = await request.json();
-  return toNextResponse(await featureFlagController.update(key, body));
+  return toNextResponse(await featureFlagController.update(id, body));
 }
 
 export async function DELETE(_request: Request, { params }: RouteContext) {
-  const { key } = await params;
-  return toNextResponse(await featureFlagController.delete(key));
+  const { id } = await params;
+  return toNextResponse(await featureFlagController.delete(id));
 }
