@@ -1186,14 +1186,17 @@ def cmd_verdict(args) -> None:
                   + ("" if all_green else " - see the findings above."),
               "", "_Automated pass; the author owns the merge._"]
     body = chr(10).join(lines)
-    gh(["pr", "comment", str(rec["pr"]), "--body", body])
     approved = False
-    if args.approve:
-        if not all_green:
+    if args.approve or args.request_changes:
+        if args.approve and not all_green:
             fail("cannot approve: review/QA gates are not all green", body=body[:400])
-        gh(["pr", "review", str(rec["pr"]), "--approve",
-            "--body", "Automated review + QA passed (two approvals + QA pass)."])
-        approved = True
+        if args.request_changes and all_green:
+            fail("every gate is green - use --approve", body=body[:400])
+        gh(["pr", "review", str(rec["pr"]),
+            "--approve" if args.approve else "--request-changes", "--body", body])
+        approved = bool(args.approve)
+    else:
+        gh(["pr", "comment", str(rec["pr"]), "--body", body])
     prev = rec["stage"]
     rec["stage"] = "done" if (all_green or args.close) else prev
     rec["verdict"] = "approve" if all_green else "changes_requested"
@@ -1450,6 +1453,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("verdict"); s.add_argument("issue", type=int)
     s.add_argument("--approve", action="store_true",
                    help="also submit an approving GitHub review when every gate is green")
+    s.add_argument("--request-changes", action="store_true",
+                   help="submit a request-changes review with the findings")
     s.add_argument("--close", action="store_true",
                    help="mark the record done even when changes are requested")
     s.set_defaults(fn=cmd_verdict)

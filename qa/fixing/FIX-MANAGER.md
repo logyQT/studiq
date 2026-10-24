@@ -191,7 +191,7 @@ send them to a designer or writer - the branch is not ours:
 $FIX ingest                      # open PRs by other authors (drafts skipped; --drafts to include)
 $FIX review <pr>                 # the number is the PR; normal two-reviewer pair
 $FIX qa <pr>                     # normal QA run, after both approvals
-$FIX verdict <pr> [--approve]    # posts both verdicts + QA on the PR; --approve also submits a GitHub approval when every gate is green
+$FIX verdict <pr> [--approve|--request-changes]   # submits the two verdicts + QA as a GitHub review (or a comment without either flag)
 ```
 
 - `collect` routes an external PR to `verdict`, never to design/writer.
