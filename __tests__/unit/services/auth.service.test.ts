@@ -1,6 +1,16 @@
+import { AppError } from '@studiq/server/lib/errors';
+import { failure, success } from '@studiq/server/lib/service-result';
 import { AuthService } from '@studiq/server/services/auth.service';
+import type { InvitationService } from '@studiq/server/services/invitation.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
+
+function stubInvitationService() {
+  return {
+    getInvitationByToken: vi.fn(),
+    acceptInvitationForUser: vi.fn(),
+  };
+}
 
 describe('AuthService', () => {
   let mock: ReturnType<typeof mockSupabaseClient>;
@@ -75,6 +85,138 @@ describe('AuthService', () => {
       expect(result.error).toBe('INTERNAL_SERVER');
 
       vi.unstubAllEnvs();
+    });
+  });
+
+  // #311 / ONB-08: the invite link must survive registration and be accepted
+  // after the e-mail is verified, otherwise the invitee stays standalone.
+  describe('register with an invitation token', () => {
+    let invites: ReturnType<typeof stubInvitationService>;
+
+    const registration = {
+      name: 'John Doe',
+      email: 'invitee@example.com',
+      password: 'SecurePass1',
+      accountType: 'student' as const,
+    };
+
+    const preview = {
+      email: 'invitee@example.com',
+      organizationId: 'org-1',
+      organizationName: 'WSB Merito',
+      targetRole: 'role-member',
+      orgRoleName: 'member',
+    };
+
+    beforeEach(() => {
+      invites = stubInvitationService();
+      service = new AuthService(async () => mock as any, invites as unknown as InvitationService);
+    });
+
+    it('leaves a plain registration untouched', async () => {
+      mock.auth.signUp.mockResolvedValueOnce({ data: {}, error: null });
+
+      const result = await service.register(registration);
+
+      expect(result.success).toBe(true);
+      expect(invites.getInvitationByToken).not.toHaveBeenCalled();
+      expect(mock.auth.signUp).toHaveBeenCalledWith({
+        email: 'invitee@example.com',
+        password: 'SecurePass1',
+        options: { data: { name: 'John Doe', account_type: 'student' } },
+      });
+      expect(mock.auth.signUp.mock.calls[0][0].options.data).not.toHaveProperty('invite_token');
+    });
+
+    it('stores a usable token in the sign-up metadata', async () => {
+      // E-mail comparison is case-insensitive: the address is stored as typed
+      // by the manager, the form may normalize it.
+      invites.getInvitationByToken.mockResolvedValueOnce(success(preview));
+      mock.auth.signUp.mockResolvedValueOnce({ data: {}, error: null });
+
+      const result = await service.register({ ...registration, inviteToken: 'tok-1' });
+
+      expect(result.success).toBe(true);
+      expect(invites.getInvitationByToken).toHaveBeenCalledWith('tok-1');
+      expect(mock.auth.signUp).toHaveBeenCalledWith({
+        email: 'invitee@example.com',
+        password: 'SecurePass1',
+        options: {
+          data: { name: 'John Doe', account_type: 'student', invite_token: 'tok-1' },
+        },
+      });
+    });
+
+    it('does not create an account when the invitation is gone', async () => {
+      invites.getInvitationByToken.mockResolvedValueOnce(failure('GONE'));
+
+      const result = await service.register({ ...registration, inviteToken: 'dead' });
+
+      expect(result).toEqual({ success: false, error: 'GONE' });
+      expect(mock.auth.signUp).not.toHaveBeenCalled();
+    });
+
+    it('propagates NOT_FOUND for an unknown token', async () => {
+      invites.getInvitationByToken.mockResolvedValueOnce(failure('NOT_FOUND'));
+
+      const result = await service.register({ ...registration, inviteToken: 'unknown' });
+
+      expect(result).toEqual({ success: false, error: 'NOT_FOUND' });
+      expect(mock.auth.signUp).not.toHaveBeenCalled();
+    });
+
+    it('rejects a token issued to a different address without creating an account', async () => {
+      invites.getInvitationByToken.mockResolvedValueOnce(
+        success({ ...preview, email: 'someone-else@example.com' }),
+      );
+
+      const result = await service.register({ ...registration, inviteToken: 'foreign' });
+
+      expect(result).toEqual({ success: false, error: 'BAD_REQUEST' });
+      expect(mock.auth.signUp).not.toHaveBeenCalled();
+    });
+  });
+
+  // #311: the callback calls this after verifyOtp; it must never block
+  // activation/login, and it must not bypass the accept authorization.
+  describe('claimInvitation', () => {
+    let invites: ReturnType<typeof stubInvitationService>;
+
+    const user = { id: 'user-1', user_metadata: { invite_token: 'tok-1' } };
+    const membership = { id: 'org-1', name: 'WSB Merito', orgRoleId: 'role-member' };
+
+    beforeEach(() => {
+      invites = stubInvitationService();
+      service = new AuthService(async () => mock as any, invites as unknown as InvitationService);
+    });
+
+    it('returns null without calling the invitation service when no token was carried', async () => {
+      expect(await service.claimInvitation({ id: 'user-1', user_metadata: {} })).toBeNull();
+      expect(
+        await service.claimInvitation({ id: 'user-1', user_metadata: { invite_token: '  ' } }),
+      ).toBeNull();
+      expect(invites.acceptInvitationForUser).not.toHaveBeenCalled();
+    });
+
+    it('accepts the invitation for the verified user and returns the org id', async () => {
+      invites.acceptInvitationForUser.mockResolvedValueOnce(success(membership));
+
+      const result = await service.claimInvitation(user);
+
+      expect(result).toEqual({ orgId: 'org-1' });
+      expect(invites.acceptInvitationForUser).toHaveBeenCalledWith('user-1', 'tok-1');
+    });
+
+    it('returns null when the invitation cannot be accepted', async () => {
+      invites.acceptInvitationForUser.mockResolvedValueOnce(failure('GONE'));
+
+      expect(await service.claimInvitation(user)).toBeNull();
+    });
+
+    it('swallows a thrown usage-limit error so activation still succeeds', async () => {
+      invites.acceptInvitationForUser.mockRejectedValueOnce(new AppError('USAGE_LIMIT_EXCEEDED'));
+
+      await expect(service.claimInvitation(user)).resolves.toBeNull();
     });
   });
 

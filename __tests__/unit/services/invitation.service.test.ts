@@ -523,6 +523,43 @@ describe('InvitationService', () => {
       );
     });
 
+    it('accepts by user id for the activation callback (#311)', async () => {
+      // Same flow as `acceptInvitation`, but addressed by user id: the callback
+      // has a verified Supabase user and no withAuth() RequestContext.
+      const admin = adminClient();
+      const count = countQb(1);
+      admin.from
+        .mockReturnValueOnce(qb(invitation))
+        .mockReturnValueOnce(count)
+        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
+        .mockReturnValueOnce(qb({ id: 'inv-1' })) // single-use claim
+        .mockReturnValueOnce(qb({ organization_id: 'org-1' }))
+        .mockReturnValueOnce(qb({ id: 'group-1' }))
+        .mockReturnValue(qb(null));
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+      );
+
+      const result = await service.acceptInvitationForUser('joining-user', 'tok');
+
+      expect(result).toEqual({
+        success: true,
+        data: { id: 'org-1', name: 'Test Org', orgRoleId: 'role-member' },
+      });
+      // The invitee (not the inviter, not the caller's ctx) is the member-insert
+      // subject and is excluded from the seat count.
+      expect(count.neq).toHaveBeenCalledWith('user_id', 'joining-user');
+      expect(limitsResolver.checkOrgLimit).toHaveBeenCalledWith(
+        'org-1',
+        'max_students',
+        1,
+        1,
+        admin.client,
+      );
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
     it('returns a DB failure when the member count cannot be read', async () => {
       const admin = adminClient();
       admin.from

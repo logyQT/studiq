@@ -113,6 +113,43 @@ describe('RegisterSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('works without inviteToken (plain registration)', () => {
+    const result = RegisterSchema.safeParse({
+      name: 'John Doe',
+      email: 'john@example.com',
+      password: 'SecurePass1',
+      accountType: 'student',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.inviteToken).toBeUndefined();
+  });
+
+  it('rejects a non-string inviteToken', () => {
+    const result = RegisterSchema.safeParse({
+      name: 'John Doe',
+      email: 'john@example.com',
+      password: 'SecurePass1',
+      accountType: 'student',
+      inviteToken: 42,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe(ValidationErrorCode.INVALID_INPUT);
+    }
+  });
+
+  it('rejects an empty or oversized inviteToken', () => {
+    const base = {
+      name: 'John Doe',
+      email: 'john@example.com',
+      password: 'SecurePass1',
+      accountType: 'student',
+    };
+
+    expect(RegisterSchema.safeParse({ ...base, inviteToken: '' }).success).toBe(false);
+    expect(RegisterSchema.safeParse({ ...base, inviteToken: 'a'.repeat(129) }).success).toBe(false);
+  });
 });
 
 describe('LoginSchema', () => {

@@ -1,7 +1,15 @@
+import { AppError } from '@studiq/server/lib/errors';
+import { warn } from '@studiq/server/lib/log';
 import { wrapService } from '@studiq/server/lib/observability';
-import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import type { LoginInput, RegisterInput, User } from '@studiq/server/models/auth.model';
+import {
+  // Aliased: the constructor parameter below shadows the barrel name, and a
+  // self-referencing default would be a TDZ error at module init.
+  invitationService as defaultInvitationService,
+  type InvitationService,
+} from '@studiq/server/services/invitation.service';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 
 export class AuthService {
@@ -11,19 +19,47 @@ export class AuthService {
    */
   private static readonly OTP_SESSION_MAX_AGE_SECONDS = 30 * 60;
 
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  constructor(
+    private createClient: () => Promise<SupabaseClient>,
+    private invitationService: InvitationService = defaultInvitationService,
+  ) {}
 
-  async register(data: RegisterInput): Promise<ServiceResult<void, 'INTERNAL_SERVER'>> {
+  async register(
+    data: RegisterInput,
+  ): Promise<ServiceResult<void, 'INTERNAL_SERVER' | 'NOT_FOUND' | 'GONE' | 'BAD_REQUEST'>> {
+    // Invite-link registration (/join?token=…): refuse a token that is already
+    // dead or was issued to a different address *before* creating an account, so
+    // the invitee never ends up as a silent standalone account (ONB-08, #311).
+    let inviteToken: string | undefined;
+
+    if (data.inviteToken) {
+      const preview = await this.invitationService.getInvitationByToken(data.inviteToken);
+
+      if (isFailure(preview)) {
+        return failure(preview.error);
+      }
+
+      if (preview.data.email.toLowerCase() !== data.email.toLowerCase()) {
+        return failure('BAD_REQUEST');
+      }
+
+      inviteToken = data.inviteToken;
+    }
+
     const supabase = await this.createClient();
+
+    const metadata: Record<string, unknown> = {
+      name: data.name,
+      account_type: data.accountType,
+    };
+    // Only present on the invite flow, so a plain registration stays identical.
+    if (inviteToken) metadata.invite_token = inviteToken;
 
     const { error } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
       options: {
-        data: {
-          name: data.name,
-          account_type: data.accountType,
-        },
+        data: metadata,
       },
     });
 
@@ -41,6 +77,43 @@ export class AuthService {
     }
 
     return success(undefined);
+  }
+
+  /**
+   * Accept the invitation carried in `user_metadata.invite_token` after the
+   * e-mail address has been proven (the activation callback). Best-effort by
+   * design: a dead invitation, a demoted inviter or a full organization must
+   * never block activation or login — the invitation simply stays pending and
+   * can still be accepted later via `/app/join`. Never throws.
+   */
+  async claimInvitation(
+    user: Pick<User, 'id' | 'user_metadata'>,
+  ): Promise<{ orgId: string } | null> {
+    const token = user.user_metadata?.invite_token;
+    if (typeof token !== 'string' || token.trim() === '') return null;
+
+    try {
+      // Same authorization as the explicit accept path: the token must be live,
+      // unused and internally consistent, and the inviter must still be allowed
+      // to grant the target role. Nothing is bypassed here (#311).
+      const result = await this.invitationService.acceptInvitationForUser(user.id, token);
+
+      if (isFailure(result)) {
+        warn('Invitation not accepted during activation', {
+          'user.id': user.id,
+          'error.code': result.error,
+        });
+        return null;
+      }
+
+      return { orgId: result.data.id };
+    } catch (error) {
+      warn('Invitation acceptance failed during activation', {
+        'user.id': user.id,
+        'error.code': error instanceof AppError ? error.code : 'INTERNAL_SERVER',
+      });
+      return null;
+    }
   }
 
   async login(

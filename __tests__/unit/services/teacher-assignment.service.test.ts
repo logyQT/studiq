@@ -14,6 +14,7 @@ function chain(result: any, count?: number) {
   c.or = vi.fn(() => c);
   c.order = vi.fn(() => c);
   c.filter = vi.fn(() => c);
+  c.is = vi.fn(() => c);
   c.limit = vi.fn(() => c);
   c.single = terminal;
   c.maybeSingle = terminal;
@@ -21,6 +22,16 @@ function chain(result: any, count?: number) {
   c.update = vi.fn(() => c);
   c.delete = vi.fn(() => c);
   c.upsert = vi.fn(() => c);
+  c.then = (onfulfilled: any) => Promise.resolve(resolved).then(onfulfilled);
+  return c;
+}
+
+/** A chain whose every terminal (await, `.single()`, `.maybeSingle()`) fails. */
+function failingChain(error: { code: string; message: string }) {
+  const c = chain(null);
+  const resolved = { data: null, error };
+  c.single = vi.fn().mockResolvedValue(resolved);
+  c.maybeSingle = c.single;
   c.then = (onfulfilled: any) => Promise.resolve(resolved).then(onfulfilled);
   return c;
 }
@@ -1301,6 +1312,143 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(true);
       if (result.success) expect(result.data.questions).toHaveLength(2);
+    });
+
+    it('resumes the open attempt instead of inserting a new one (#369)', async () => {
+      const openAttempt = {
+        id: 'attempt-open',
+        assignment_id: assignmentId,
+        user_id: userId,
+        completed_at: null,
+        started_at: '2026-10-23T13:13:26Z',
+      };
+      const attemptsChain = chain([openAttempt]);
+      const resumeQuestionsChain = chain([
+        { order_index: 0, question_id: 'q-1', questions: { id: 'q-1', content: 'What?' } },
+        { order_index: 1, question_id: 'q-2', questions: { id: 'q-2', content: 'Why?' } },
+      ]);
+      mock.from
+        .mockReturnValueOnce(chain(assignment))
+        .mockReturnValueOnce(attemptsChain)
+        .mockReturnValueOnce(resumeQuestionsChain);
+
+      const result = await service.startAttempt(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.id).toBe('attempt-open');
+        expect(result.data.questions).toHaveLength(2);
+      }
+      // Read from the attempt's own snapshot, not the assignment's questions.
+      expect(resumeQuestionsChain.eq).toHaveBeenCalledWith('attempt_id', 'attempt-open');
+      // Only: assignment lookup + attempt lookup + snapshot read. No insert.
+      expect(mock.from).toHaveBeenCalledTimes(3);
+    });
+
+    it('resumes the open attempt even when max_attempts is already used up (#369)', async () => {
+      mock.from
+        .mockReturnValueOnce(chain({ ...assignment, max_attempts: 1 }))
+        .mockReturnValueOnce(
+          chain([{ id: 'attempt-open', completed_at: null, started_at: '2026-10-23T13:13:26Z' }]),
+        )
+        .mockReturnValueOnce(
+          chain([{ order_index: 0, question_id: 'q-1', questions: { id: 'q-1' } }]),
+        );
+
+      const result = await service.startAttempt(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.id).toBe('attempt-open');
+    });
+
+    it('resumes an open attempt even when the assignment questions were emptied (#369)', async () => {
+      mock.from
+        .mockReturnValueOnce(chain({ ...assignment, assignment_questions: [] }))
+        .mockReturnValueOnce(chain([{ id: 'attempt-open', completed_at: null }]))
+        .mockReturnValueOnce(
+          chain([{ order_index: 0, question_id: 'q-1', questions: { id: 'q-1' } }]),
+        );
+
+      const result = await service.startAttempt(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.id).toBe('attempt-open');
+    });
+
+    it('never ships the draft column or the answer key when resuming (#331, #349)', async () => {
+      const resumeQuestionsChain = chain([
+        { order_index: 0, question_id: 'q-1', questions: { id: 'q-1', content: 'What?' } },
+      ]);
+      mock.from
+        .mockReturnValueOnce(chain(assignment))
+        .mockReturnValueOnce(
+          chain([
+            {
+              id: 'attempt-open',
+              completed_at: null,
+              draft_answers: { 'q-1': { selected_answer_id: 'opt-1', text_answer: null } },
+            },
+          ]),
+        )
+        .mockReturnValueOnce(resumeQuestionsChain);
+
+      const result = await service.startAttempt(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).not.toHaveProperty('draft_answers');
+        expect(JSON.stringify(result.data)).not.toContain('opt-1');
+      }
+      const projection = resumeQuestionsChain.select.mock.calls[0][0] as string;
+      expect(projection).not.toContain('is_correct');
+      expect(projection).not.toContain('explanation');
+      expect(projection).not.toContain('search_vector');
+    });
+
+    it('still starts a new attempt when every previous attempt is completed (#369)', async () => {
+      const attemptChain = chain({ id: 'attempt-2' });
+      mock.from
+        .mockReturnValueOnce(chain({ ...assignment, max_attempts: 2 }))
+        .mockReturnValueOnce(chain([{ id: 'attempt-1', completed_at: '2026-10-23T12:00:00Z' }]))
+        .mockReturnValueOnce(chain([{ id: 'q-1', content: 'What?', question_answers: [] }]))
+        .mockReturnValueOnce(attemptChain)
+        .mockReturnValue(chain(null));
+
+      const result = await service.startAttempt(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.id).toBe('attempt-2');
+      expect(attemptChain.insert).toHaveBeenCalled();
+    });
+
+    it('falls back to the open attempt when a concurrent start wins the insert race (#369)', async () => {
+      const racedAttempt = { id: 'attempt-raced', completed_at: null };
+      mock.from
+        .mockReturnValueOnce(chain(assignment))
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([{ id: 'q-1', content: 'What?', question_answers: [] }]))
+        .mockReturnValueOnce(failingChain({ code: '23505', message: 'duplicate key value' }))
+        .mockReturnValueOnce(chain(racedAttempt))
+        .mockReturnValueOnce(
+          chain([{ order_index: 0, question_id: 'q-1', questions: { id: 'q-1' } }]),
+        );
+
+      const result = await service.startAttempt(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.id).toBe('attempt-raced');
+    });
+
+    it('surfaces an attempt lookup error instead of starting a second attempt (#369)', async () => {
+      mock.from
+        .mockReturnValueOnce(chain(assignment))
+        .mockReturnValueOnce(failingChain({ code: 'XX000', message: 'attempts lookup failed' }));
+
+      const result = await service.startAttempt(assignmentId, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
   });
 
