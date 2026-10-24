@@ -44,23 +44,26 @@ export class FlashcardSpacedRepetitionService {
     return mapping[rating];
   }
 
+  /**
+   * Canonical SM-2 easiness-factor update, shared by every scheduling path so a
+   * grade moves EF whether the card is new, learning, relearning or in review.
+   * Clamped at 1.3 and rounded to 2 dp so stored values stay comparable across
+   * paths (issue #340: EF used to be recalculated only for review cards).
+   */
+  private applyEasinessFactor(easinessFactor: number, rating: Rating): number {
+    const quality = this.mapToQuality(rating);
+    const next = easinessFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
+    return Math.round(Math.max(1.3, next) * 100) / 100;
+  }
+
+  /**
+   * A brand-new card is by definition at step 0 of the learning ladder, so it
+   * reuses the same "advance or graduate" logic as every later learning grade
+   * instead of keeping a second copy that can drift (issue #340: Good on a new
+   * card stayed on step 0 because this path ignored the rating).
+   */
   private handleNew(input: CalculateNextReviewInput): CalculateNextReviewOutput {
-    if (input.rating === 4) {
-      return this.graduateToReview(input.easinessFactor, input.lapseCount, input.leechThreshold);
-    }
-    const delay = input.learningSteps[0] ?? 1;
-    const nextReviewAt = new Date(Date.now() + delay * 60 * 1000);
-    return {
-      learningState: 'learning',
-      learningStep: 0,
-      newEasinessFactor: input.easinessFactor,
-      newInterval: delay,
-      newRepetitions: 0,
-      nextReviewAt,
-      intervalUnit: 'minutes',
-      lapseCount: input.lapseCount,
-      isLeech: this.checkLeech(input.lapseCount, input.leechThreshold),
-    };
+    return this.handleLearningStep('learning', { ...input, currentStep: 0 });
   }
 
   private handleLearningStep(
@@ -82,7 +85,7 @@ export class FlashcardSpacedRepetitionService {
         return {
           learningState: currentState,
           learningStep: 0,
-          newEasinessFactor: easinessFactor,
+          newEasinessFactor: this.applyEasinessFactor(easinessFactor, rating),
           newInterval: delay,
           newRepetitions: 0,
           nextReviewAt: scheduleMinutes(delay),
@@ -97,7 +100,7 @@ export class FlashcardSpacedRepetitionService {
         return {
           learningState: currentState,
           learningStep: currentStep,
-          newEasinessFactor: easinessFactor,
+          newEasinessFactor: this.applyEasinessFactor(easinessFactor, rating),
           newInterval: delay,
           newRepetitions: 0,
           nextReviewAt: scheduleMinutes(delay),
@@ -108,14 +111,14 @@ export class FlashcardSpacedRepetitionService {
       }
       case 3: {
         if (currentStep >= totalSteps - 1) {
-          return this.graduateToReview(easinessFactor, lapseCount, leechThreshold);
+          return this.graduateToReview(easinessFactor, lapseCount, leechThreshold, rating);
         }
         const nextStep = currentStep + 1;
         const delay = learningSteps[nextStep] ?? 10;
         return {
           learningState: currentState,
           learningStep: nextStep,
-          newEasinessFactor: easinessFactor,
+          newEasinessFactor: this.applyEasinessFactor(easinessFactor, rating),
           newInterval: delay,
           newRepetitions: 0,
           nextReviewAt: scheduleMinutes(delay),
@@ -125,7 +128,7 @@ export class FlashcardSpacedRepetitionService {
         };
       }
       case 4: {
-        return this.graduateToReview(easinessFactor, lapseCount, leechThreshold);
+        return this.graduateToReview(easinessFactor, lapseCount, leechThreshold, rating);
       }
     }
   }
@@ -138,7 +141,7 @@ export class FlashcardSpacedRepetitionService {
       return {
         learningState: 'relearning',
         learningStep: 0,
-        newEasinessFactor: input.easinessFactor,
+        newEasinessFactor: this.applyEasinessFactor(input.easinessFactor, input.rating),
         newInterval: delay,
         newRepetitions: input.repetitions,
         nextReviewAt,
@@ -148,23 +151,18 @@ export class FlashcardSpacedRepetitionService {
       };
     }
 
-    const qualityMap: Record<number, number> = { 2: 2, 3: 3, 4: 5 };
-    const quality = qualityMap[input.rating];
-
-    let newEF = input.easinessFactor;
     let newInterval = input.interval;
     const newRepetitions = input.repetitions + 1;
 
+    // Interval maths uses the pre-update factor, then EF moves — SM-2 ordering.
     if (newRepetitions === 1) {
       newInterval = 1;
     } else if (newRepetitions === 2) {
       newInterval = 6;
     } else {
-      newInterval = Math.round(newInterval * newEF);
+      newInterval = Math.round(newInterval * input.easinessFactor);
     }
 
-    newEF = newEF + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
-    if (newEF < 1.3) newEF = 1.3;
     if (newInterval > this.MAX_INTERVAL_DAYS) newInterval = this.MAX_INTERVAL_DAYS;
 
     const nextReviewAt = new Date();
@@ -174,7 +172,7 @@ export class FlashcardSpacedRepetitionService {
     return {
       learningState: 'review',
       learningStep: 0,
-      newEasinessFactor: Math.round(newEF * 100) / 100,
+      newEasinessFactor: this.applyEasinessFactor(input.easinessFactor, input.rating),
       newInterval,
       newRepetitions,
       nextReviewAt,
@@ -188,6 +186,7 @@ export class FlashcardSpacedRepetitionService {
     easinessFactor: number,
     lapseCount: number,
     leechThreshold: number,
+    rating: Rating,
   ): CalculateNextReviewOutput {
     const nextReviewAt = new Date();
     nextReviewAt.setDate(nextReviewAt.getDate() + 1);
@@ -196,7 +195,7 @@ export class FlashcardSpacedRepetitionService {
     return {
       learningState: 'review',
       learningStep: 0,
-      newEasinessFactor: easinessFactor,
+      newEasinessFactor: this.applyEasinessFactor(easinessFactor, rating),
       newInterval: 1,
       newRepetitions: 1,
       nextReviewAt,
