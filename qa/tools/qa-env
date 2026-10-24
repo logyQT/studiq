@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -202,6 +203,71 @@ def stop_group(pid: int) -> None:
         time.sleep(1.5)
 
 
+def pids_on_port(port: int) -> set[int]:
+    out: set[int] = set()
+    try:
+        text = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True,
+                              timeout=10).stdout
+    except Exception:
+        text = ""
+    for line in text.splitlines():
+        if f":{port} " not in line and not line.rstrip().endswith(f":{port}"):
+            continue
+        for m in re.finditer(r"pid=(\d+)", line):
+            out.add(int(m.group(1)))
+    return out
+
+
+def pids_for_app(wt: Path, port: int) -> set[int]:
+    pids = set(pids_on_port(port))
+    for proc in Path("/proc").iterdir():
+        if not proc.name.isdigit():
+            continue
+        try:
+            if os.readlink(proc / "cwd") == str(wt / "apps" / "web"):
+                pids.add(int(proc.name))
+        except OSError:
+            continue
+    pids.discard(os.getpid())
+    return pids
+
+
+def stop_pids(pids: set[int]) -> None:
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    deadline = time.time() + 6
+    while time.time() < deadline and pids:
+        alive = set()
+        for pid in pids:
+            try:
+                os.kill(pid, 0)
+                alive.add(pid)
+            except OSError:
+                pass
+        pids = alive
+        if pids:
+            time.sleep(0.25)
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+
+def wait_port_free(port: int, timeout: float = 8) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        pids = pids_on_port(port)
+        if not pids:
+            return True
+        stop_pids(pids)
+        time.sleep(0.25)
+    return not pids_on_port(port)
+
+
 def wait_http(port: int, tries: int = 120) -> bool:
     for _ in range(tries):
         code = http_code(f"http://127.0.0.1:{port}/", 3)
@@ -273,6 +339,7 @@ def stop_app(env: dict) -> None:
     pid = read_pid(pidfile)
     if pid:
         stop_group(pid)
+    stop_pids(pids_for_app(wt, env["_app_port"]))
     pidfile.unlink(missing_ok=True)
 
 
@@ -325,6 +392,8 @@ def cmd_reset(env: dict) -> None:
 def cmd_restart_app(env: dict) -> None:
     with EnvLock(env["envId"]):
         stop_app(env)
+        if not wait_port_free(env["_app_port"]):
+            fail("app port still in use after stop", env=env["envId"])
         pid = start_app(env)
         healthy = wait_http(env["_app_port"])
     if not healthy:
@@ -343,6 +412,8 @@ def cmd_rebuild_app(env: dict) -> None:
         marker.write_text(str(os.getpid()))
         try:
             stop_app(env)
+            if not wait_port_free(env["_app_port"]):
+                fail("app port still in use after stop", env=env["envId"])
             log = open(wt / ".qa-app.log", "ab")
             log.write(b"\n=== forced rebuild (PR branch) ===\n")
             log.flush()

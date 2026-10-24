@@ -191,7 +191,7 @@ ensure_build() {
 }
 
 start_app() {
-  local wt=$1 port=$2 log=$3 pidfile=$4 _script=$5
+  local wt=$1 port=$2 log=$3 pidfile=$4 _script=${5:-}
   if [ -f "$wt/$pidfile" ] && kill -0 "$(cat "$wt/$pidfile")" 2>/dev/null; then
     return 0
   fi
@@ -230,15 +230,20 @@ ensure_inbucket() {
 
 # Rebuild the web app from the current worktree (use after checking out a PR).
 rebuild_env() {
-  local n=$1 wt
+  local n=$1 wt port
   wt=$(wt_for "$n")
+  port=$(app_port "$n")
   [ -d "$wt" ] || die "qa-env-$n has no worktree"
   touch "$wt/.qa-app.building"
-  stop_app "$wt" "$(app_port "$n")" ".qa-app.pid"
+  stop_app "$wt" "$port" ".qa-app.pid"
+  if [ -n "$(pids_on_port "$port")" ]; then
+    rm -f "$wt/.qa-app.building"
+    die "qa-env-$n app port is still in use after stop"
+  fi
   rm -f "$wt/apps/web/.next/BUILD_ID"
-  if start_app "$wt" "$(app_port "$n")" ".qa-app.log" ".qa-app.pid"; then
-    wait_http "http://localhost:$(app_port "$n")/login" 180 \
-      || warn "qa-env-$n rebuilt but did not answer on :$(app_port "$n")"
+  if start_app "$wt" "$port" ".qa-app.log" ".qa-app.pid"; then
+    wait_http "http://localhost:$port/login" 180 \
+      || warn "qa-env-$n rebuilt but did not answer on :$port"
     info "qa-env-$n rebuilt and restarted"
   else
     rm -f "$wt/.qa-app.building"
@@ -256,6 +261,18 @@ pids_on_port() {
   } | sort -u
 }
 
+# Kill any process still rooted in this slot's web app, not just the launcher.
+pids_for_app() {
+  local wt=$1 port=$2 p cwd
+  {
+    pids_on_port "$port"
+    for p in /proc/[0-9]*; do
+      cwd=$(readlink "$p/cwd" 2>/dev/null) || continue
+      [ "$cwd" = "$wt/apps/web" ] && echo "${p##*/}"
+    done
+  } | sort -u
+}
+
 stop_app() {
   local wt=$1 port=$2 pidfile=$3 pid p
   if [ -f "$wt/$pidfile" ]; then
@@ -266,8 +283,19 @@ stop_app() {
     kill -KILL -- "-$pid" 2>/dev/null || true
     rm -f "$wt/$pidfile"
   fi
-  for p in $(pids_on_port "$port"); do
-    kill "$p" 2>/dev/null || true
+  for p in $(pids_for_app "$wt" "$port"); do
+    kill -TERM "$p" 2>/dev/null || true
+  done
+  for _ in $(seq 1 20); do
+    [ -z "$(pids_on_port "$port")" ] && break
+    sleep 0.25
+  done
+  for p in $(pids_for_app "$wt" "$port"); do
+    kill -KILL "$p" 2>/dev/null || true
+  done
+  for _ in $(seq 1 20); do
+    [ -z "$(pids_on_port "$port")" ] && break
+    sleep 0.25
   done
 }
 
