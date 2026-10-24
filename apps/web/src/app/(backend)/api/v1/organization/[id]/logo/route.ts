@@ -26,7 +26,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // of surfacing as the 403 it should be.
       await requireFeature(ctx, 'branding');
 
-      const formData = await req.formData();
+      let formData: FormData;
+      try {
+        formData = await req.formData();
+      } catch (error) {
+        // Malformed or truncated multipart body — a client error, not a 500 (#185).
+        return handleApiError(error, 'BAD_REQUEST');
+      }
+
       const file = formData.get('file') as File | null;
       if (!file) {
         return NextResponse.json({ success: false, error: 'MISSING_FIELDS' }, { status: 422 });

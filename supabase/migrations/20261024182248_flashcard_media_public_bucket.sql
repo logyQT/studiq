@@ -7,12 +7,16 @@
 -- was created private, which made every returned URL answer
 -- 400 {"error":"Bucket not found"}.
 --
+-- `buckets.public = true` is what makes /object/public/... fetchable. Do NOT add
+-- a storage.objects SELECT policy: it would also authorise the Storage list
+-- endpoint (POST /storage/v1/object/list/flashcard-media) for anon, letting
+-- anyone enumerate every user's media. The app never lists/downloads with a user
+-- JWT — writes and reads go through the service-role client (bypasses RLS) and
+-- public URLs, so no policy is needed. (review-1-r1, finding #1)
+--
 -- Writes still go exclusively through the service-role client
--- (packages/server/src/lib/supabase/service.ts), which bypasses RLS, so only a
--- public-read policy is needed — the same pattern as org-logos
--- (20260920000002_org_branding.sql) and assignment-images
--- (20260713000001_teacher_assignments.sql). Existing objects become readable
--- as soon as the bucket flips public; no backfill.
+-- (packages/server/src/lib/supabase/service.ts). Existing objects become
+-- readable as soon as the bucket flips public; no backfill.
 --
 -- config.toml carries the same setting for local `supabase start` / `db reset`.
 -- ==========================================
@@ -29,11 +33,3 @@ ON CONFLICT (id) DO UPDATE
   SET public = EXCLUDED.public,
       file_size_limit = EXCLUDED.file_size_limit,
       allowed_mime_types = EXCLUDED.allowed_mime_types;
-
-DROP POLICY IF EXISTS "flashcard_media_select_public" ON storage.objects;
-
-CREATE POLICY "flashcard_media_select_public"
-  ON storage.objects
-  FOR SELECT
-  TO public
-  USING (bucket_id = 'flashcard-media');

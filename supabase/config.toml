@@ -112,6 +112,7 @@ file_size_limit = "50MiB"
 # Public-read: uploaded media URLs are persisted inside flashcard markdown, so
 # they must keep working without expiring. Hosted projects get the same setting
 # from supabase/migrations/20261024182248_flashcard_media_public_bucket.sql (#185).
+# No storage.objects SELECT policy: listing must stay denied (see migration).
 public = true
 file_size_limit = "50MiB"
 allowed_mime_types = ["image/png", "image/jpeg", "image/gif", "image/webp", "audio/mpeg", "audio/wav", "audio/ogg"]

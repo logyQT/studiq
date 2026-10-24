@@ -36,7 +36,7 @@
     "ERROR_NOT_FOUND": "The requested resource could not be found.",
     "ERROR_GONE": "This resource is no longer available.",
     "ERROR_CONFLICT": "A conflict occurred. The resource may already exist.",
-    "ERROR_PAYLOAD_TOO_LARGE": "The file is too large. Maximum size is 50 MB.",
+    "ERROR_PAYLOAD_TOO_LARGE": "The file is too large.",
     "ERROR_UNPROCESSABLE_ENTITY": "The request could not be processed due to validation errors.",
     "ERROR_INVALID_CREDENTIALS": "Invalid email address or password.",
     "ERROR_USER_ALREADY_EXISTS": "An account with this email address already exists.",
