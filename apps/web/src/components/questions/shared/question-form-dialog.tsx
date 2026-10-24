@@ -21,6 +21,7 @@ import {
 import { Plus, X } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
+import { type QuestionFormError, validateQuestionForm } from '@/lib/question-form';
 
 interface AnswerForm {
   content: string;
@@ -39,7 +40,7 @@ interface QuestionFormDialogProps {
     topicIds?: string[];
     bankId: string;
     answers: { content: string; isCorrect: boolean; orderIndex: number }[];
-  }) => Promise<void>;
+  }) => Promise<boolean>;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -58,9 +59,11 @@ export function QuestionFormDialog({
   const [explanation, setExplanation] = useState('');
   const [answers, setAnswers] = useState<AnswerForm[]>([{ content: '', isCorrect: false }]);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<QuestionFormError | 'save_failed' | null>(null);
 
   useEffect(() => {
     if (open) {
+      setError(null);
       if (initialValues) {
         setContent(initialValues.content);
         setType(initialValues.type);
@@ -79,6 +82,11 @@ export function QuestionFormDialog({
       }
     }
   }, [open, initialValues]);
+
+  // Clear a stale inline message as soon as the user edits the form.
+  useEffect(() => {
+    setError(null);
+  }, [content, type, answers]);
 
   function addAnswer() {
     setAnswers([...answers, { content: '', isCorrect: false }]);
@@ -107,16 +115,16 @@ export function QuestionFormDialog({
   }
 
   async function handleSubmit() {
-    if (!content.trim()) {
-      return;
-    }
-    if (type === 'mcq' && answers.filter((a) => a.content.trim()).length < 2) {
+    const validationError = validateQuestionForm({ type, content, answers });
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
+    setError(null);
     setSubmitting(true);
     try {
-      await onSubmit({
+      const saved = await onSubmit({
         content: content.trim(),
         type,
         explanation: explanation.trim() || undefined,
@@ -133,7 +141,11 @@ export function QuestionFormDialog({
                   orderIndex: i,
                 })),
       });
-      onOpenChange(false);
+      if (saved) onOpenChange(false);
+    } catch {
+      // Callers catch and return `false`, so this only guards a contract
+      // violation — never leak the rejection as an unhandled one.
+      setError('save_failed');
     } finally {
       setSubmitting(false);
     }
@@ -222,6 +234,11 @@ export function QuestionFormDialog({
             />
           </div>
         </div>
+        {error && (
+          <p className="text-sm font-medium text-destructive" role="alert">
+            {t(error)}
+          </p>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
             {t('cancel')}
