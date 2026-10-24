@@ -7,6 +7,7 @@ import {
   DragOverlay,
   type DragStartEvent,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -65,6 +66,8 @@ interface SaveData {
   questions: QuizQuestion[];
 }
 
+const QUIZ_EMPTY_DROPZONE_ID = 'quiz-empty-dropzone';
+
 function SortableQuestion({
   question,
   index,
@@ -115,6 +118,28 @@ function SortableQuestion({
       >
         <Trash2 className="w-4 h-4" />
       </button>
+    </div>
+  );
+}
+
+/**
+ * Drop target for the empty state. It must live *inside* `<DndContext>`: a
+ * `useDroppable` call in `EditQuizClient` would sit above the provider and never
+ * register, which is exactly why dropping the first question was a silent no-op.
+ */
+function EmptyQuizDropzone({ label, description }: { label: string; description: string }) {
+  const { setNodeRef, isOver } = useDroppable({ id: QUIZ_EMPTY_DROPZONE_ID });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex flex-col items-center justify-center py-12 text-center rounded-lg border-2 border-dashed transition-colors ${
+        isOver ? 'border-primary bg-primary/5' : 'border-transparent'
+      }`}
+    >
+      <ScrollText className="h-12 w-12 text-muted-foreground mb-4" />
+      <p className="text-muted-foreground">{label}</p>
+      <p className="text-sm text-muted-foreground">{description}</p>
     </div>
   );
 }
@@ -251,13 +276,18 @@ export function EditQuizClient() {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over) return;
+    if (!over) {
+      setActiveDragItem(null);
+      return;
+    }
 
     if (active.data.current?.source === 'browser') {
       const question = active.data.current.question as BrowseQuestion;
       setQuestions((prev) => {
         const overIndex = prev.findIndex((q) => q.question_id === over.id);
-        const insertIndex = overIndex >= 0 ? overIndex : prev.length;
+        // Empty quiz → the only droppable is the placeholder → append (= index 0).
+        const insertIndex =
+          over.id === QUIZ_EMPTY_DROPZONE_ID || overIndex < 0 ? prev.length : overIndex;
         const next = [...prev];
         next.splice(insertIndex, 0, {
           question_id: question.id,
@@ -320,6 +350,7 @@ export function EditQuizClient() {
         collisionDetection={closestCenter}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveDragItem(null)}
       >
         <div className="px-6 pb-20 max-w-7xl mx-auto scrollbar-gutter-stable">
           <h1 className="text-2xl font-bold tracking-tight mb-6">{t('title')}</h1>
@@ -380,11 +411,7 @@ export function EditQuizClient() {
               </SortableContext>
 
               {questions.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <ScrollText className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">{t('no_questions')}</p>
-                  <p className="text-sm text-muted-foreground">{t('no_questions_desc')}</p>
-                </div>
+                <EmptyQuizDropzone label={t('no_questions')} description={t('no_questions_desc')} />
               )}
             </div>
 

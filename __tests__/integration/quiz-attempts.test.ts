@@ -219,6 +219,65 @@ forEachCopy((copyId) => {
           expect(typeof answer.is_correct).toBe('boolean');
         }
       });
+
+      it('serves the review payload the assignment review page consumes (#175)', async () => {
+        mockUser(student.user);
+
+        const supabase = createServiceClient();
+        const { data: attemptQuestions } = await supabase
+          .from('quiz_attempt_questions')
+          .select('question_id')
+          .eq('attempt_id', attemptId);
+
+        const questionIds = (attemptQuestions ?? []).map((q) => q.question_id);
+
+        const { data: options } = await supabase
+          .from('question_options')
+          .select('id, question_id')
+          .in('question_id', questionIds);
+
+        const submitReq = createNextRequest(`http://localhost/api/v1/quiz/${attemptId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            answers: (options ?? []).map((o) => ({
+              questionId: o.question_id,
+              selectedAnswerId: o.id,
+            })),
+          }),
+        });
+        const submitRes = await attemptPost(submitReq, { params: Promise.resolve({ attemptId }) });
+        expect(submitRes.status).toBe(200);
+
+        // A teacher grades one answer after submission.
+        const gradedQuestionId = questionIds[0];
+        const { error: gradeError } = await supabase
+          .from('student_answers')
+          .update({ teacher_points: 2, teacher_feedback: 'Dobrze, ale brakuje liberum veto.' })
+          .eq('attempt_id', attemptId)
+          .eq('question_id', gradedQuestionId);
+        if (gradeError) throw new Error(`Failed to grade answer: ${gradeError.message}`);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/quiz/${attemptId}`,
+          { attemptId },
+        );
+        const response = await attemptGet(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.completed_at).not.toBeNull();
+        expect(body.data.questions).toHaveLength(questionIds.length);
+        expect(Object.keys(body.data.answers).sort()).toEqual([...questionIds].sort());
+        expect(body.data.answers[gradedQuestionId].teacher_points).toBe(2);
+        expect(body.data.answers[gradedQuestionId].teacher_feedback).toBe(
+          'Dobrze, ale brakuje liberum veto.',
+        );
+        for (const question of body.data.questions) {
+          expect(question).toHaveProperty('question_answers');
+          expect(question).toHaveProperty('explanation');
+        }
+      });
     });
 
     describe('POST /api/v1/quiz/:attemptId', () => {

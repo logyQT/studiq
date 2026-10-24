@@ -26,3 +26,8 @@ export function parseGradePoints(raw: string): number | null {
   const points = Number(trimmed);
   return Number.isInteger(points) && points >= 0 ? points : null;
 }
+
+/** True when parsed points exceed a known question maximum. Missing max never caps. */
+export function exceedsGradeMax(points: number | null, max: number | null | undefined): boolean {
+  return points !== null && max != null && points > max;
+}
