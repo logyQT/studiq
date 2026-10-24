@@ -816,9 +816,11 @@ export class FlashcardPracticeService {
  * Maps the compound filter from buildQueryFilter to the RPC
  * parameter format expected by practice functions.
  *
- *   visibility = 'group'  → university scope (shared group content)
- *   created_by present   → own scope (user's content in current org)
- *   empty filter         → any scope (no filtering)
+ *   `_useRpc` (group scope) → 'university': own cards in the active
+ *                             organization **or** cards shared with the
+ *                             caller's groups (mirrors `accessibleFilter`)
+ *   created_by present      → own scope (user's content in current org)
+ *   empty filter            → any scope (no filtering)
  */
 function resolveFilterType(
   filter: Record<string, unknown>,
