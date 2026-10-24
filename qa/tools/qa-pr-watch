@@ -1,0 +1,275 @@
+#!/usr/bin/env python3
+"""Watch GitHub for PRs that need review and push an event to the fix manager.
+
+Damian (or anyone else) opens a PR; the manager does not poll GitHub itself - this
+watcher turns "a PR opened" into a message in the manager's session, which is how
+the rest of the pipeline already receives work.
+
+  qa-pr-watch                 one poll, print what it found
+  qa-pr-watch baseline        mark every open PR as seen (no notifications)
+  qa-pr-watch loop            poll every --interval seconds (default 60), pidfile
+  qa-pr-watch status          last snapshot + what is being watched
+  qa-pr-watch stop            stop a running loop
+
+New PRs by the system account are skipped unless --all is passed: our own PRs are
+pipeline output and the manager already knows about them.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import os
+import signal
+import subprocess
+import time
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(os.environ.get("QA_ROOT", "/workspaces/studiq/.worktrees/qa-env"))
+FIX = Path(os.environ.get("QA_FIX_DIR", "/workspaces/studiq/.qa-fix"))
+STATE_PATH = FIX / "pr-watch.json"
+PID_PATH = FIX / "pr-watch.pid"
+LOG_PATH = FIX / "pr-watch.log"
+DISCORD_STATE = ROOT.parent / "qa-discord" / "qa" / "discord" / "state.json"
+
+BASE = "http://127.0.0.1:4096"
+AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
+
+FIELDS = "number,title,author,isDraft,createdAt,url,headRefName,baseRefName,additions,deletions,changedFiles"
+
+
+def now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def iso(ms: int) -> str:
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def load() -> dict:
+    try:
+        return json.load(open(STATE_PATH))
+    except Exception:
+        return {}
+
+
+def save(state: dict) -> None:
+    FIX.mkdir(parents=True, exist_ok=True)
+    tmp = STATE_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=1))
+    tmp.replace(STATE_PATH)
+
+
+def gh(*args: str) -> str:
+    return subprocess.run(["gh", *args], capture_output=True, text=True, check=True).stdout
+
+
+def open_prs() -> list[dict]:
+    raw = json.loads(gh("pr", "list", "--state", "open", "--limit", "100", "--json", FIELDS))
+    return raw
+
+
+def system_login() -> str:
+    try:
+        return gh("api", "user", "--jq", ".login").strip()
+    except Exception:
+        return ""
+
+
+def manager_session() -> str | None:
+    try:
+        return json.load(open(DISCORD_STATE)).get("managerSessionId")
+    except Exception:
+        return None
+
+
+def notify(text: str, session: str | None = None) -> bool:
+    sid = session or manager_session()
+    if not sid:
+        return False
+    body = json.dumps({"text": text}).encode()
+    req = urllib.request.Request(
+        f"{BASE}/api/session/{sid}/prompt",
+        data=body,
+        method="POST",
+        headers={"Authorization": AUTH, "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30):
+            return True
+    except Exception:
+        return False
+
+
+def message(pr: dict, ready: bool) -> str:
+    author = ((pr.get("author") or {}).get("login") or "?")
+    draft = " (draft)" if pr.get("isDraft") else ""
+    head = f"`{pr.get('headRefName')}` -> `{pr.get('baseRefName')}`"
+    size = f"+{pr.get('additions', 0)}/-{pr.get('deletions', 0)} in {pr.get('changedFiles', 0)} files"
+    if ready:
+        lead = f"[pr-watch] PR #{pr['number']} is ready for review (was draft)."
+    else:
+        lead = f"[pr-watch] New PR #{pr['number']} by {author}{draft}."
+    body = (
+        f"{lead}\n"
+        f"\"{pr['title']}\" - {size} - {head}\n"
+        f"{pr.get('url', '')}\n\n"
+        f"Review + QA it: `$FIX ingest --author {author}` then `$FIX review {pr['number']}` "
+        f"and `$FIX qa {pr['number']}`. Two independent reviews and one QA on the same head; "
+        f"the author owns the merge."
+    )
+    return body
+
+
+def poll(args, state: dict) -> list[dict]:
+    me = (state.get("me") or system_login() or "").lower()
+    prs = open_prs()
+    seen = state.setdefault("seen", {})
+    found = []
+    for pr in prs:
+        n = str(pr["number"])
+        author = ((pr.get("author") or {}).get("login") or "").lower()
+        was = seen.get(n)
+        is_draft = bool(pr.get("isDraft"))
+        if was is None:
+            entry = {"title": pr["title"], "author": author, "draft": is_draft, "at": now_ms()}
+            seen[n] = entry
+            if not args.all and me and author == me:
+                continue
+            if is_draft and not args.drafts:
+                continue
+            found.append({"pr": pr, "ready": False})
+        elif was.get("draft") and not is_draft:
+            was["draft"] = False
+            was["at"] = now_ms()
+            if not args.all and me and author == me:
+                continue
+            found.append({"pr": pr, "ready": True})
+    state["me"] = me
+    state["checkedAt"] = now_ms()
+    state["open"] = len(prs)
+    return found
+
+
+def tick(args, state: dict) -> list[dict]:
+    found = poll(args, state)
+    save(state)
+    for item in found:
+        pr = item["pr"]
+        text = message(pr, item["ready"])
+        if args.dry_run:
+            print("[dry-run] would notify:", text.splitlines()[0])
+            continue
+        if notify(text, args.session):
+            with open(LOG_PATH, "a") as log:
+                log.write(f"{iso(now_ms())} notified #{pr['number']} "
+                          f"{'ready' if item['ready'] else 'new'} {pr['title'][:80]}\n")
+        else:
+            with open(LOG_PATH, "a") as log:
+                log.write(f"{iso(now_ms())} FAILED to notify #{pr['number']}\n")
+    return found
+
+
+def loop(args, state: dict) -> None:
+    FIX.mkdir(parents=True, exist_ok=True)
+    PID_PATH.write_text(str(os.getpid()))
+    stop = {"flag": False}
+
+    def handle(_sig, _frame):
+        stop["flag"] = True
+
+    signal.signal(signal.SIGTERM, handle)
+    signal.signal(signal.SIGINT, handle)
+    while not stop["flag"]:
+        started = time.time()
+        try:
+            found = tick(args, state)
+            line = ", ".join(f"#{f['pr']['number']}" for f in found) or "no new PRs"
+        except Exception as exc:
+            line = f"poll failed: {exc}"
+        with open(LOG_PATH, "a") as log:
+            log.write(f"{iso(now_ms())} {line}\n")
+        wait = max(5, args.interval - (time.time() - started))
+        deadline = time.time() + wait
+        while time.time() < deadline and not stop["flag"]:
+            time.sleep(min(5, deadline - time.time()))
+    try:
+        if int(PID_PATH.read_text().strip()) == os.getpid():
+            PID_PATH.unlink()
+    except (FileNotFoundError, ValueError):
+        pass
+
+
+def baseline(args) -> dict:
+    state = load()
+    me = system_login()
+    prs = open_prs()
+    state["seen"] = {
+        str(pr["number"]): {
+            "title": pr["title"],
+            "author": ((pr.get("author") or {}).get("login") or "").lower(),
+            "draft": bool(pr.get("isDraft")),
+            "at": now_ms(),
+        }
+        for pr in prs
+    }
+    state["me"] = me
+    state["since"] = now_ms()
+    state["checkedAt"] = now_ms()
+    state["open"] = len(prs)
+    save(state)
+    print(f"baselined {len(prs)} open PR(s) as seen (system account: {me or '?'})")
+    return state
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="qa-pr-watch")
+    parser.add_argument("action", nargs="?", default="once",
+                        choices=("once", "baseline", "loop", "status", "stop"))
+    parser.add_argument("--interval", type=int, default=60, help="seconds between polls")
+    parser.add_argument("--all", action="store_true", help="include PRs by the system account")
+    parser.add_argument("--drafts", action="store_true", help="notify on drafts too")
+    parser.add_argument("--session", help="manager session id (default: from the bridge state)")
+    parser.add_argument("--dry-run", action="store_true", help="print instead of notifying")
+    args = parser.parse_args()
+
+    state = load()
+
+    if args.action == "stop":
+        try:
+            pid = int(PID_PATH.read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+            print(f"stopped pr-watch (pid {pid})")
+        except FileNotFoundError:
+            print("no pr-watch loop running")
+        except ProcessLookupError:
+            PID_PATH.unlink(missing_ok=True)
+            print("pr-watch was not running (stale pidfile removed)")
+        return
+
+    if args.action == "baseline":
+        baseline(args)
+        return
+
+    if args.action == "status":
+        print(json.dumps({k: v for k, v in state.items() if k != "seen"}, indent=1))
+        print(f"watching {len(state.get('seen') or {})} PR(s); "
+              f"loop {'running' if PID_PATH.exists() else 'stopped'}")
+        return
+
+    if args.action == "loop":
+        loop(args, state)
+        return
+
+    found = tick(args, state)
+    for item in found:
+        print(message(item["pr"], item["ready"]))
+    if not found:
+        print(f"no new PRs ({state.get('open', 0)} open)")
+
+
+if __name__ == "__main__":
+    main()

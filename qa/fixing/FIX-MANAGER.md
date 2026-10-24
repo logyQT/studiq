@@ -287,3 +287,18 @@ you never poll it.**
     a close-out. The watcher messages you again when it clears; then new issues are
     allowed again.
 - Treat a stale line (marked `(stale)`) as no information: do not invent a hold.
+
+### 11. PR watch (incoming PRs)
+`qa/tools/qa-pr-watch` (a standalone watcher, pid in `.qa-fix/pr-watch.pid`) polls GitHub and
+posts an event into your session when someone opens a PR, or when a draft becomes ready:
+
+```
+[pr-watch] New PR #467 by damian.
+"fix(web): ..." - +12/-3 in 4 files - `fix/...` -> `main`
+https://github.com/logyQT/studiq/pull/467
+Review + QA it: `$FIX ingest --author damian` then `$FIX review 467` and `$FIX qa 467`.
+```
+
+It skips drafts, our own PRs and anything already tracked; it never polls your behalf, so
+never poll GitHub yourself. On a review-only day use `qa/fixing/PR-REVIEW-DAY.md` as the
+prompt: ingest -> two reviews -> QA -> verdict, author merges.
