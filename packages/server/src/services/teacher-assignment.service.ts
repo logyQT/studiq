@@ -1,5 +1,6 @@
 import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
+import { IN_PROGRESS_QUESTION_SELECT } from '@studiq/server/lib/question-view';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -790,7 +791,7 @@ export class TeacherAssignmentService {
 
     const { data: fullQuestions, error: questionsError } = await supabase
       .from('questions')
-      .select('*, question_answers:question_options(*)')
+      .select(IN_PROGRESS_QUESTION_SELECT)
       .in(
         'id',
         orderedQuestions.map((q) => q.question_id),

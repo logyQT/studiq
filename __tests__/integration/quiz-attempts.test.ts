@@ -115,6 +115,86 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(404);
         expect(body.success).toBe(false);
       });
+
+      it('never returns the answer key while the attempt is in progress (#331)', async () => {
+        mockUser(student.user);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/quiz/${attemptId}`,
+          { attemptId },
+        );
+        const response = await attemptGet(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.completed_at).toBeNull();
+        expect(body.data.questions.length).toBeGreaterThan(0);
+        expect(body.data.answers).toEqual({});
+
+        for (const question of body.data.questions) {
+          expect(question).not.toHaveProperty('explanation');
+          expect(question).not.toHaveProperty('search_vector');
+          expect(question.question_answers.length).toBeGreaterThan(0);
+          for (const option of question.question_answers) {
+            expect(option).not.toHaveProperty('is_correct');
+            expect(option.content).toBeDefined();
+          }
+        }
+      });
+
+      it('reveals the answer key once the attempt is submitted (#331)', async () => {
+        mockUser(student.user);
+
+        const supabase = createServiceClient();
+        const { data: attemptQuestions } = await supabase
+          .from('quiz_attempt_questions')
+          .select('question_id')
+          .eq('attempt_id', attemptId);
+
+        const { data: answers } = await supabase
+          .from('question_options')
+          .select('id, question_id')
+          .in(
+            'question_id',
+            attemptQuestions!.map((q) => q.question_id),
+          );
+
+        const submittedAnswers = answers!.map((a) => ({
+          questionId: a.question_id,
+          selectedAnswerId: a.id,
+        }));
+
+        const { request: submitRequest, params: submitParams } = createNextRequestWithParams(
+          `http://localhost/api/v1/quiz/${attemptId}`,
+          { attemptId },
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answers: submittedAnswers }),
+          },
+        );
+        const submitResponse = await attemptPost(submitRequest, { params: submitParams });
+        expect(submitResponse.status).toBe(200);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/quiz/${attemptId}`,
+          { attemptId },
+        );
+        const response = await attemptGet(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.completed_at).not.toBeNull();
+        for (const question of body.data.questions) {
+          expect(question).toHaveProperty('explanation');
+          for (const option of question.question_answers) {
+            expect(typeof option.is_correct).toBe('boolean');
+          }
+        }
+        for (const answer of Object.values(body.data.answers) as Array<Record<string, unknown>>) {
+          expect(typeof answer.is_correct).toBe('boolean');
+        }
+      });
     });
 
     describe('POST /api/v1/quiz/:attemptId', () => {

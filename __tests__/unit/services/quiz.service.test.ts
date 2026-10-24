@@ -123,5 +123,23 @@ describe('QuizService', () => {
         'created_by.eq.test-user-id,id.in.(q-1,q-2)',
       );
     });
+
+    it('never exposes the answer key in the generated quiz payload (#331)', async () => {
+      const questionsBuilder = qb([
+        { id: 'q-1', type: 'mcq', content: 'Q1', question_answers: [] },
+      ]);
+      mock.from.mockReturnValueOnce(questionsBuilder);
+      mock.from.mockReturnValueOnce(qb({ id: 'attempt-1', user_id: ctx.userId }));
+      mock.from.mockReturnValueOnce(qb(null));
+
+      const result = await service.generateQuiz({ questionTypes: ['mcq'], questionCount: 1 }, ctx);
+
+      expect(result.success).toBe(true);
+      const projection = questionsBuilder.select.mock.calls[0][0] as string;
+      expect(projection).not.toContain('*');
+      expect(projection).not.toContain('is_correct');
+      expect(projection).not.toContain('explanation');
+      expect(projection).not.toContain('search_vector');
+    });
   });
 });

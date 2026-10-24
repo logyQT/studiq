@@ -298,13 +298,10 @@ BEGIN
     WHERE f.organization_id = p_organization_id
       AND (
         f.created_by = p_user_id
-        OR (
-          f.visibility = 'group'
-          AND EXISTS (
-            SELECT 1 FROM public.deck_groups dg
-            JOIN public.group_members gm ON gm.group_id = dg.group_id
-            WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
-          )
+        OR EXISTS (
+          SELECT 1 FROM public.deck_groups dg
+          JOIN public.group_members gm ON gm.group_id = dg.group_id
+          WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
         )
       )
       AND NOT EXISTS (
@@ -325,13 +322,10 @@ BEGIN
     WHERE f.organization_id = p_organization_id
       AND (
         f.created_by = p_user_id
-        OR (
-          f.visibility = 'group'
-          AND EXISTS (
-            SELECT 1 FROM public.deck_groups dg
-            JOIN public.group_members gm ON gm.group_id = dg.group_id
-            WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
-          )
+        OR EXISTS (
+          SELECT 1 FROM public.deck_groups dg
+          JOIN public.group_members gm ON gm.group_id = dg.group_id
+          WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
         )
       )
       AND NOT EXISTS (
