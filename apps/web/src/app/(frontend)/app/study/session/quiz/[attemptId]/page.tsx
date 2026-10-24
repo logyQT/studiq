@@ -14,12 +14,14 @@ import {
   RadioGroupItem,
   Textarea,
 } from '@studiq/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, Send } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
 import { apiGet, apiPost } from '@/lib/api';
+import { quizAttemptKeys } from '@/lib/query-keys';
 
 interface Question {
   id: string;
@@ -46,6 +48,7 @@ interface SubmitAnswer {
 export default function QuizTakingPage() {
   const params = useParams();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const attemptId = params.attemptId as string;
 
   const [attempt, setAttempt] = useState<AttemptDetails | null>(null);
@@ -83,6 +86,7 @@ export default function QuizTakingPage() {
 
     try {
       await apiPost(`/api/v1/quiz/${attemptId}`, { answers: quizAnswers });
+      await queryClient.invalidateQueries({ queryKey: quizAttemptKeys.all });
       router.push(`/app/study/session/quiz/${attemptId}/review`);
     } catch {
       toast.error('Failed to submit quiz');
