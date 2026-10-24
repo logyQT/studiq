@@ -423,6 +423,15 @@ describe('RLS tenant isolation (#191)', () => {
     expect(profileError).toBeNull();
     expect(ownProfile).toHaveLength(1);
 
+    // The org-wide manager report inbox (#276) relies on the DB floor being
+    // org-scoped: a plain member reads same-org reports, not only their own.
+    const { data: orgReports, error: orgReportsError } = await studentSession
+      .from('question_reports')
+      .select('id')
+      .eq('organization_id', orgA.orgId);
+    expect(orgReportsError, 'question_reports read failed').toBeNull();
+    expect(orgReports?.length, 'member cannot read a same-org report').toBeGreaterThan(0);
+
     // Catalog data is readable by any signed-in user.
     const { data: flags, error: flagsError } = await studentSession
       .from('feature_flags')
@@ -457,6 +466,7 @@ describe('RLS tenant isolation (#191)', () => {
       ['profiles', { id: outsiderId }],
       ['user_daily_activity', { user_id: outsiderId }],
       ['quiz_attempts', { user_id: outsiderId }],
+      ['question_reports', { organization_id: orgB.orgId }],
       ['invitations', { organization_id: orgB.orgId }],
     ];
 

@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -10,6 +10,13 @@ import type {
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type ReportTarget = { questionId: string } | { groupId: string };
+
+function isReportParticipant(
+  report: { reported_by: string; teacher_id: string },
+  userId: string,
+): boolean {
+  return report.reported_by === userId || report.teacher_id === userId;
+}
 
 export class QuestionReportService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -97,18 +104,21 @@ export class QuestionReportService {
 
   async list(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
+    const orgScope = await this.resolveOrgWideReportScope(ctx, supabase);
 
-    const { data, error } = await supabase
-      .from('question_reports')
-      .select(
-        `*,
+    let query = supabase.from('question_reports').select(
+      `*,
         question:question_id(id, content),
         group:group_id(id, name),
         reporter:reported_by(id, full_name, email),
         teacher:teacher_id(id, full_name, email)`,
-      )
-      .or(`reported_by.eq.${ctx.userId},teacher_id.eq.${ctx.userId}`)
-      .order('updated_at', { ascending: false });
+    );
+
+    query = orgScope
+      ? query.eq('organization_id', orgScope)
+      : query.or(`reported_by.eq.${ctx.userId},teacher_id.eq.${ctx.userId}`);
+
+    const { data, error } = await query.order('updated_at', { ascending: false });
 
     if (error) return toDbFailure(error);
 
@@ -127,8 +137,8 @@ export class QuestionReportService {
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const participant = await this.fetchParticipantReport(id, ctx);
-    if (!participant) return failure('NOT_FOUND');
+    const accessible = await this.fetchAccessibleReport(id, ctx);
+    if (!accessible) return failure('NOT_FOUND');
 
     const { data: report, error: reportError } = await supabase
       .from('question_reports')
@@ -162,7 +172,7 @@ export class QuestionReportService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const report = await this.fetchParticipantReport(id, ctx);
+    const report = await this.fetchAccessibleReport(id, ctx);
     if (!report) return failure('NOT_FOUND');
 
     const { data: message, error } = await supabase
@@ -178,8 +188,12 @@ export class QuestionReportService {
   async markRead(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const report = await this.fetchParticipantReport(id, ctx);
+    const report = await this.fetchAccessibleReport(id, ctx);
     if (!report) return failure('NOT_FOUND');
+
+    // An org admin observing a thread they are not part of must not write the
+    // participants' read receipts — that would clear the teacher's unread badge.
+    if (!isReportParticipant(report, ctx.userId)) return success(null);
 
     const column =
       report.reported_by === ctx.userId ? 'reporter_last_read_at' : 'teacher_last_read_at';
@@ -195,13 +209,19 @@ export class QuestionReportService {
 
   async unreadCount(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
+    const orgScope = await this.resolveOrgWideReportScope(ctx, supabase);
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('question_reports')
       .select(
         'id, reported_by, teacher_id, updated_at, reporter_last_read_at, teacher_last_read_at',
-      )
-      .or(`reported_by.eq.${ctx.userId},teacher_id.eq.${ctx.userId}`);
+      );
+
+    query = orgScope
+      ? query.eq('organization_id', orgScope)
+      : query.or(`reported_by.eq.${ctx.userId},teacher_id.eq.${ctx.userId}`);
+
+    const { data, error } = await query;
 
     if (error) return toDbFailure(error);
 
@@ -215,7 +235,7 @@ export class QuestionReportService {
     return success({ count });
   }
 
-  private async fetchParticipantReport(id: string, ctx: RequestContext) {
+  private async fetchAccessibleReport(id: string, ctx: RequestContext) {
     const supabase = await this.createClient();
     const { data: report } = await supabase
       .from('question_reports')
@@ -224,8 +244,33 @@ export class QuestionReportService {
       .single();
 
     if (!report) return null;
-    if (report.reported_by !== ctx.userId && report.teacher_id !== ctx.userId) return null;
+    if (isReportParticipant(report, ctx.userId)) return report;
+
+    const orgScope = await this.resolveOrgWideReportScope(ctx, supabase);
+    if (!orgScope || report.organization_id !== orgScope) return null;
     return report;
+  }
+
+  /**
+   * Active org id when the caller is the org's admin and may read every report
+   * in it; null otherwise (participant-only scope applies).
+   */
+  private async resolveOrgWideReportScope(
+    ctx: RequestContext,
+    supabase: SupabaseClient,
+  ): Promise<string | null> {
+    if (ctx.accountType !== AccountType.MANAGER) return null;
+    const orgId = ctx.activeOrgId;
+    if (!orgId || !ctx.orgRoleId) return null;
+
+    const { data } = await supabase
+      .from('org_roles')
+      .select('name')
+      .eq('id', ctx.orgRoleId)
+      .eq('organization_id', orgId)
+      .maybeSingle();
+
+    return data?.name === 'admin' ? orgId : null;
   }
 }
 export const questionReportService = wrapService(
