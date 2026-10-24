@@ -59,7 +59,7 @@ export function QuestionBankDetailScreen({
 
   const { data: topicsData } = useApiQuery<{ items: Topic[] }>({
     queryKey: topicKeys.options(activeOrg?.id),
-    url: '/api/v1/topics?limit=100',
+    url: '/api/v1/topics?limit=200',
     enabled: !orgsPending,
   });
   const topics = topicsData?.items ?? [];

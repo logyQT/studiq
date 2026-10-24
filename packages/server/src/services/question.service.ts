@@ -33,7 +33,7 @@ function withTopics<T extends { question_topic_assignments?: QuestionTopicLink[]
     ...rest,
     topics: (question_topic_assignments ?? [])
       .map((link) => link.topics)
-      .filter((topic): topic is { id: string; name: string } => topic !== null),
+      .filter((topic): topic is { id: string; name: string } => topic != null),
   };
 }
 

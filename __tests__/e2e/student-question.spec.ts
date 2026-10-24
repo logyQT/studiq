@@ -43,7 +43,9 @@ test.describe('Student Question Flow', () => {
     await expect(
       formDialog.getByRole('heading', { name: t('QuestionForm.create_title') }),
     ).toBeVisible();
-    await formDialog.getByRole('combobox').click();
+    // The dialog has two comboboxes: the question-type Select (first field) and the
+    // topics MultiSelect. Target the type select explicitly.
+    await formDialog.getByRole('combobox').first().click();
     await page.getByRole('option', { name: t('QuestionForm.open_answer') }).click();
     await formDialog.getByPlaceholder(t('QuestionForm.question_placeholder')).fill(questionContent);
     await formDialog.getByRole('button', { name: t('QuestionForm.create') }).click();

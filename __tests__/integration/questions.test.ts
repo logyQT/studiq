@@ -8,6 +8,7 @@ import {
 } from '#test/helpers/test-user';
 import {
   applyRegisteredMock,
+  cleanupFlashcardTopics,
   cleanupOrganizationByName,
   cleanupQuestions,
   mockUser,
@@ -44,6 +45,8 @@ forEachCopy((copyId) => {
     });
 
     afterAll(async () => {
+      await cleanupFlashcardTopics(educator.user.id, `q-test-topic-${copyId}`);
+      await cleanupFlashcardTopics(educator.user.id, `copy-${copyId}-topic-`);
       await cleanupOrganizationByName('seed-org-');
     });
 
@@ -287,6 +290,24 @@ forEachCopy((copyId) => {
         expect(listRes.status).toBe(200);
         expect(listBody.data).toHaveLength(1);
         expect(listBody.data[0].topics).toEqual([{ id: topicId, name: topicName }]);
+
+        // A content edit that resubmits the hydrated topicIds must keep the
+        // assignment — the pre-fix dialog always sent [] here and silently cleared it.
+        const keep = createNextRequestWithParams(
+          `http://localhost/api/v1/questions/${createBody.data.id}`,
+          { id: createBody.data.id },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: 'Updated (topic kept)', topicIds: [topicId] }),
+          },
+          orgCookies(),
+        );
+        const keepRes = await PUT(keep.request, { params: keep.params });
+        const keepBody = await keepRes.json();
+
+        expect(keepRes.status).toBe(200);
+        expect(keepBody.data.topics).toEqual([{ id: topicId, name: topicName }]);
 
         const { request, params } = createNextRequestWithParams(
           `http://localhost/api/v1/questions/${createBody.data.id}`,
