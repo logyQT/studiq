@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { apiGet, apiPost } from '@/lib/api';
+import { resolveNeedsOnboarding } from '@/lib/onboarding';
 import { featureKeys, permissionKeys, questionReportKeys } from '@/lib/query-keys';
 
 export type OrgMembership = {
@@ -25,7 +26,12 @@ export function useOrgs() {
   const router = useRouter();
   const hasAutoSelected = useRef(false);
 
-  const { data: orgs = [], isLoading } = useQuery<OrgMembership[]>({
+  const {
+    data: orgs = [],
+    isLoading,
+    isPending,
+    isFetching,
+  } = useQuery<OrgMembership[]>({
     queryKey: ['orgs'],
     queryFn: () => apiGet<OrgMembership[]>('/api/v1/me/orgs'),
     enabled: !!user,
@@ -77,10 +83,12 @@ export function useOrgs() {
 
   const activeOrg = orgs.find((o) => o.isActive) || null;
   const jwtAccountType = user?.app_metadata?.account_type as string | undefined;
-  const needsOnboarding =
-    !isLoading &&
-    orgs.length === 0 &&
-    (jwtAccountType === 'educator' || jwtAccountType === 'manager');
+  const needsOnboarding = resolveNeedsOnboarding({
+    orgsCount: orgs.length,
+    isPending,
+    isFetching,
+    accountType: jwtAccountType,
+  });
 
   useEffect(() => {
     if (needsOnboarding) return;
