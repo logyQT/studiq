@@ -1,7 +1,7 @@
 import { AccountType } from '@studiq/authz';
 import { organizationController } from '@studiq/server/controllers/organization.controller';
 import { requireFeature } from '@studiq/server/lib/features';
-import { toNextResponse } from '@studiq/server/lib/http-utils';
+import { handleApiError, toNextResponse } from '@studiq/server/lib/http-utils';
 import { withAuth } from '@studiq/server/lib/with-auth';
 import { storageService } from '@studiq/server/services/storage.service';
 import { type NextRequest, NextResponse } from 'next/server';
@@ -35,8 +35,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       try {
         const { url } = await storageService.uploadToBucket(ctx.userId, file, 'org-logos', id);
         return toNextResponse(await organizationController.update(ctx, id, { logoUrl: url }));
-      } catch {
-        return NextResponse.json({ success: false, error: 'INTERNAL_SERVER' }, { status: 500 });
+      } catch (error) {
+        // Surface validation failures (422) and oversize uploads (413) instead
+        // of collapsing every one of them into a 500.
+        return handleApiError(error);
       }
     },
     { allowedAccountTypes: [AccountType.MANAGER] },
