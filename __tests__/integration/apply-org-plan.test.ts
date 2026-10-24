@@ -2,7 +2,12 @@ import type { RequestContext } from '@studiq/authz';
 import { LimitsResolver } from '@studiq/server/services/limits.resolver';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cleanupOrganizationDeep, createServiceClient } from '#test/integration/helpers';
+import {
+  cleanupOrganizationDeep,
+  createServiceClient,
+  seedOrgMembership,
+  TEST_USERS,
+} from '#test/integration/helpers';
 
 // Issue #177: apply_org_plan() changes organizations.plan and re-syncs the
 // org_role_features snapshot. Limits are no longer snapshotted (#229) — they
@@ -12,6 +17,7 @@ import { cleanupOrganizationDeep, createServiceClient } from '#test/integration/
 describe('apply_org_plan()', () => {
   let service: SupabaseClient;
   let orgId: string;
+  let adminRoleId: string;
 
   async function roleFeatures(roleName: string): Promise<string[]> {
     const { data, error } = await service
@@ -25,16 +31,22 @@ describe('apply_org_plan()', () => {
 
   /**
    * Probe the live limit through the real resolver (service-role client). The
-   * user id belongs to no seat, so this exercises the org-plan path only.
+   * caller is a real member of this org and belongs to no seat, so this
+   * exercises the org-plan path only.
+   *
+   * `TEST_USERS.TEACHER` has personal plan `lite` (max_students 5, max_groups 1)
+   * — both at or below the launch/hub org values, so `Math.max(personal, org)`
+   * is still decided by the org plan. The seeded student is `base`
+   * (max_students -1 = unlimited), which would silently break the assertions.
    */
   async function limit(key: string): Promise<number> {
     const resolver = new LimitsResolver(async () => service);
     const ctx: RequestContext = {
       traceId: 'apply-org-plan',
-      userId: '00000000-0000-4000-8000-000000000000',
-      accountType: 'STUDENT',
+      userId: TEST_USERS.TEACHER.id,
+      accountType: 'EDUCATOR',
       activeOrgId: orgId,
-      orgRoleId: null,
+      orgRoleId: adminRoleId,
       url: '/api/v1/features/me',
       method: 'GET',
       groupIds: [],
@@ -57,6 +69,23 @@ describe('apply_org_plan()', () => {
       .single();
     if (error || !data) throw new Error(`org create failed: ${error?.message}`);
     orgId = data.id;
+
+    const { data: role, error: roleError } = await service
+      .from('org_roles')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('name', 'admin')
+      .single();
+    if (roleError || !role) throw new Error(`admin role lookup failed: ${roleError?.message}`);
+    adminRoleId = role.id;
+
+    // `getEffectiveLimit` trusts `activeOrgId` only for a verified `org_members`
+    // row (#230), so seed the real membership the probe ctx models.
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: TEST_USERS.TEACHER.id,
+      orgRoleId: adminRoleId,
+    });
   });
 
   afterAll(async () => {

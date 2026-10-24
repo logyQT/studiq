@@ -6,6 +6,8 @@ import {
   applyRegisteredMock,
   cleanupOrganizationDeep,
   createServiceClient,
+  seedOrgMembership,
+  TEST_USERS,
 } from '#test/integration/helpers';
 
 forEachCopy((copyId) => {
@@ -153,9 +155,63 @@ forEachCopy((copyId) => {
 
       // The org defaults to the 'launch' plan. Limits are no longer copied into
       // an org_limits snapshot (#229) — they resolve live from the plan template.
+      const { data: adminRole } = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('name', 'admin')
+        .single();
+      if (!adminRole) throw new Error('admin role missing');
+
+      await seedOrgMembership({
+        organizationId: orgId,
+        userId: TEST_USERS.STUDENT.id,
+        orgRoleId: adminRole.id,
+      });
+
+      // A real membership ctx, exactly as withAuth builds it for an org member.
       const ctx: RequestContext = {
         traceId: 'org-features',
-        userId: '00000000-0000-4000-8000-000000000000',
+        userId: TEST_USERS.STUDENT.id,
+        accountType: 'STUDENT',
+        activeOrgId: orgId,
+        orgRoleId: adminRole.id,
+        url: '/api/v1/features/me',
+        method: 'GET',
+        groupIds: [],
+        permissionScopes: {},
+      };
+
+      // base (personal) = 100/50/10 and launch (org) = 100/50/10, so the values
+      // are unchanged — the point is that they resolve from the live plan.
+      await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(100);
+      await expect(resolver.getEffectiveLimit(ctx, 'max_questions')).resolves.toBe(50);
+      await expect(resolver.getEffectiveLimit(ctx, 'max_decks')).resolves.toBe(10);
+    });
+
+    it('resolves the org plan for a member even when ctx.orgRoleId is null', async () => {
+      const supabase = createServiceClient();
+      const resolver = new LimitsResolver(async () => supabase);
+
+      // The org_members row — not the ctx role id — decides the org branch, so a
+      // member whose ctx lost its role id must still resolve the org plan.
+      const { data: adminRole } = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('name', 'admin')
+        .single();
+      if (!adminRole) throw new Error('admin role missing');
+
+      await seedOrgMembership({
+        organizationId: orgId,
+        userId: TEST_USERS.STUDENT.id,
+        orgRoleId: adminRole.id,
+      });
+
+      const ctx: RequestContext = {
+        traceId: 'org-features-null-role',
+        userId: TEST_USERS.STUDENT.id,
         accountType: 'STUDENT',
         activeOrgId: orgId,
         orgRoleId: null,
