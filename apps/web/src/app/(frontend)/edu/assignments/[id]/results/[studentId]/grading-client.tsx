@@ -35,6 +35,7 @@ interface StudentAnswers {
     id: string;
     question_id: string;
     selected_answer_id: string | null;
+    text_answer: string | null;
     is_correct: boolean;
     teacher_points: number | null;
     teacher_feedback: string | null;
@@ -184,6 +185,11 @@ export default function StudentGradingClient() {
 
                 {!isAutoGraded && (
                   <div className="space-y-3">
+                    {studentAnswer?.text_answer && (
+                      <p className="text-sm whitespace-pre-wrap break-words">
+                        {t('text_answer', { text: studentAnswer.text_answer })}
+                      </p>
+                    )}
                     {images.length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         {images.map((img) => (

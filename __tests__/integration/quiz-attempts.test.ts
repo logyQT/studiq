@@ -157,6 +157,95 @@ forEachCopy((copyId) => {
         expect(body.data.score).toBeDefined();
       });
 
+      it('persists an open answer as text and submits (#176)', async () => {
+        mockUser(student.user);
+
+        const supabase = createServiceClient();
+        const { data: bank } = await supabase
+          .from('question_banks')
+          .select('id')
+          .eq('created_by', student.user.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!bank) throw new Error('seed question bank not found');
+
+        const { data: openQuestion, error: openQuestionError } = await supabase
+          .from('questions')
+          .insert({
+            bank_id: bank.id,
+            created_by: student.user.id,
+            type: 'open',
+            content: 'seed-question-open-176',
+            explanation: 'Rozbiory, słaba władza centralna, liberum veto.',
+          })
+          .select('id')
+          .single();
+        if (openQuestionError || !openQuestion) {
+          throw new Error(`Failed to seed open question: ${openQuestionError?.message}`);
+        }
+
+        await supabase.from('quiz_attempt_questions').insert({
+          attempt_id: attemptId,
+          question_id: openQuestion.id,
+          order_index: 3,
+        });
+
+        const { data: attemptQuestions } = await supabase
+          .from('quiz_attempt_questions')
+          .select('question_id')
+          .eq('attempt_id', attemptId)
+          .neq('question_id', openQuestion.id);
+
+        const { data: options } = await supabase
+          .from('question_options')
+          .select('id, question_id')
+          .in(
+            'question_id',
+            attemptQuestions!.map((q) => q.question_id),
+          );
+
+        const textAnswer = 'Rozbiory, słaba władza centralna, liberum veto.';
+        const submittedAnswers = [
+          ...options!.map((a) => ({ questionId: a.question_id, selectedAnswerId: a.id })),
+          { questionId: openQuestion.id, textAnswer },
+        ];
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/quiz/${attemptId}`,
+          { attemptId },
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answers: submittedAnswers }),
+          },
+        );
+        const response = await attemptPost(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+
+        const { data: storedAnswer } = await supabase
+          .from('student_answers')
+          .select('text_answer, selected_option_id, question_type, is_correct')
+          .eq('attempt_id', attemptId)
+          .eq('question_id', openQuestion.id)
+          .single();
+
+        expect(storedAnswer?.text_answer).toBe(textAnswer);
+        expect(storedAnswer?.selected_option_id).toBeNull();
+        expect(storedAnswer?.question_type).toBe('open');
+        expect(storedAnswer?.is_correct).toBe(false);
+
+        const { data: attempt } = await supabase
+          .from('quiz_attempts')
+          .select('completed_at')
+          .eq('id', attemptId)
+          .single();
+        expect(attempt?.completed_at).not.toBeNull();
+      });
+
       it('returns 400 when submitting already completed attempt', async () => {
         mockUser(student.user);
 

@@ -2521,6 +2521,7 @@
     "incorrect": "Incorrect",
     "correct_answer": "Correct: {explanation}",
     "selected_answer_id": "Selected answer ID: {id}",
+    "text_answer": "Student's answer: {text}",
     "view_image": "View uploaded image",
     "points": "Points",
     "feedback": "Feedback",
@@ -2596,7 +2597,8 @@
     "previous": "Previous",
     "next": "Next",
     "submitting": "Submitting...",
-    "submit": "Submit"
+    "submit": "Submit",
+    "submit_failed": "Could not send your answers. Please try again."
   },
   "AppAssignmentReviewPage": {
     "not_available": "Review not available",

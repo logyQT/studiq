@@ -9,6 +9,11 @@ export const SubmitQuizAttemptSchema = registry.register(
       z.object({
         questionId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
         selectedAnswerId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+        textAnswer: z
+          .string()
+          .trim()
+          .max(10000, { error: ValidationErrorCode.TOO_LONG })
+          .optional(),
       }),
     ),
   }),
