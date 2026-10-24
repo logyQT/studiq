@@ -75,6 +75,29 @@ forEachCopy((copyId) => {
         expect(body.data.length).toBeGreaterThanOrEqual(1);
       });
 
+      it('lists a completed attempt with the review fields', async () => {
+        mockUser(student.user);
+
+        const supabase = createServiceClient();
+        const { error: completeError } = await supabase
+          .from('quiz_attempts')
+          .update({ completed_at: new Date().toISOString(), score: 2 })
+          .eq('id', attemptId);
+        if (completeError) throw new Error(`Failed to complete attempt: ${completeError.message}`);
+
+        const req = createNextRequest('http://localhost/api/v1/quiz/attempts');
+        const response = await attemptsGet(req);
+        const body = await response.json();
+
+        const row = body.data.find((a: { id: string }) => a.id === attemptId);
+
+        expect(row).toBeTruthy();
+        expect(row.completed_at).toBeTruthy();
+        expect(row.score).toBe(2);
+        expect(row.total_questions).toBe(3);
+        expect(row.assignment_id).toBeNull();
+      });
+
       it('returns 401 when not authenticated', async () => {
         mockUser(null);
 

@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Badge,
   Button,
   Card,
   CardContent,
@@ -15,20 +16,24 @@ import {
   Label,
   Slider,
 } from '@studiq/ui';
-import { ListChecks, Lock, Play, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { History, ListChecks, Lock, Play, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
 import { apiPost } from '@/lib/api';
+import { quizAttemptKeys } from '@/lib/query-keys';
 
 interface QuizAttempt {
   id: string;
   score: number;
   total_questions: number;
+  total_points: number | null;
+  assignment_id: string | null;
   config: {
     questionTypes?: string[];
     questionCount?: number;
@@ -36,6 +41,8 @@ interface QuizAttempt {
   started_at: string;
   completed_at: string | null;
 }
+
+type CompletedQuizAttempt = QuizAttempt & { completed_at: string };
 
 const QUESTION_TYPE_OPTIONS = [
   { value: 'mcq', label: 'MCQ' },
@@ -45,13 +52,17 @@ const QUESTION_TYPE_OPTIONS = [
 
 export function QuizContent() {
   const t = useTranslations('AppFlashcardStudyPage');
+  const tQuiz = useTranslations('AppQuizPage');
+  const locale = useLocale();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const feature = useFeature();
   const hasAccess = feature('quiz');
 
-  const { data: attemptsData } = useApiQuery<QuizAttempt[]>({
-    queryKey: ['quiz', 'attempts'],
+  const { data: attemptsData, isLoading: attemptsLoading } = useApiQuery<QuizAttempt[]>({
+    queryKey: quizAttemptKeys.all,
     url: '/api/v1/quiz/attempts',
+    staleTime: 0,
   });
   const attempts = attemptsData;
 
@@ -60,6 +71,12 @@ export function QuizContent() {
   const [quizSubmitting, setQuizSubmitting] = useState(false);
 
   const inProgressAttempt = attempts?.find((a) => !a.completed_at) ?? null;
+
+  // Practice attempts only: assignment attempts keep their own review entry point
+  // under /app/assignments and score in points, not correct answers.
+  const completedAttempts = (attempts ?? [])
+    .filter((a): a is CompletedQuizAttempt => a.completed_at !== null && a.assignment_id === null)
+    .slice(0, 5);
 
   function toggleQuizType(type: string) {
     setQuizTypes((prev) =>
@@ -74,6 +91,7 @@ export function QuizContent() {
         ...(quizTypes.length > 0 ? { questionTypes: quizTypes } : {}),
         questionCount: quizCount,
       });
+      await queryClient.invalidateQueries({ queryKey: quizAttemptKeys.all });
       router.push(`/app/study/session/quiz/${data.id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
@@ -118,6 +136,50 @@ export function QuizContent() {
                 <Trash2 className="size-3.5" /> {t('abort_quiz')}
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {!attemptsLoading && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <History className="size-5" /> {t('recent_quizzes')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {completedAttempts.length === 0 ? (
+              <div className="text-sm text-muted-foreground">
+                <p className="font-medium text-foreground">{t('no_history')}</p>
+                <p className="mt-1">{t('no_history_desc')}</p>
+              </div>
+            ) : (
+              <ul className="flex flex-col divide-y">
+                {completedAttempts.map((attempt) => {
+                  const total = attempt.total_points ?? attempt.total_questions;
+                  return (
+                    <li
+                      key={attempt.id}
+                      className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                    >
+                      <span className="text-sm text-muted-foreground">
+                        {new Date(attempt.completed_at).toLocaleDateString(locale)}
+                      </span>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <Badge variant="secondary">
+                          {total > 0 ? `${attempt.score}/${total}` : '-'}
+                        </Badge>
+                        <Button variant="outline" size="sm" asChild>
+                          <Link href={`/app/study/session/quiz/${attempt.id}/review`}>
+                            {tQuiz('review')}
+                          </Link>
+                        </Button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </CardContent>
         </Card>
       )}

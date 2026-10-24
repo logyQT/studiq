@@ -15,9 +15,10 @@ ticket for the fix.
 - Cause: `getEffectiveLimit(ctx, 'max_students')` resolved limits from the *accepting
   student's* personal plan (`base` has no `max_students` row) → `[]` → `0` → blocked.
 - Fix: new `PlanResolver.checkOrgLimit(orgId, key, count)` — capacity resolved against the
-  invitation's **organization** (org `plan` → `plan_limits`, plus `org_limits` override,
-  default `-1`). `acceptInvitation` now uses it. `regression: invite-accept.test.ts`,
-  members suite exercises the real accept route (seed fallback removed).
+  invitation's **organization** (org `plan` → `plan_limits`, derived live; the per-org
+  override table was removed in #229, default `-1`). `acceptInvitation` now uses it.
+  `regression: invite-accept.test.ts`, members suite exercises the real accept route
+  (seed fallback removed).
 - Hardening (`supabase/seeds/00_plans.sql`): `base` plan now carries
   `max_students=-1` / `max_groups=-1` so personal-plan paths never resolve org-management
   limits to `0`. `regression: plan-limits.test.ts`.
@@ -33,8 +34,8 @@ ticket for the fix.
 ### O1 — New org group limit is 1 (`max_groups`) — FIXED
 
 - Cause: `launch` plan (default `organizations.plan`) had `max_groups: 1`; org owners could
-  create only 1 group total (`org_limits` copied from `plan_limits` by
-  `handle_new_organization`).
+  create only 1 group total (`max_groups` comes from the org's `plan` → `plan_limits`,
+  derived live since the per-org override table was removed in #229).
 - Fix: raised `launch` `max_groups` to 3 (between `lite`=1 and `guide`=5) in
   `supabase/seeds/00_plans.sql` (plan templates are seed-managed config).
   `regression: plan-limits.test.ts` creates 2 extra groups (3 total) through the real API.

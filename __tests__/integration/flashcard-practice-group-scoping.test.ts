@@ -18,6 +18,7 @@ import { createNextRequest } from '#test/integration/test-utils';
 import { POST as createDeckPost } from '@/app/(backend)/api/v1/flashcards/decks/route';
 import { GET as getCardsStats } from '@/app/(backend)/api/v1/flashcards/practice/cards-stats/route';
 import { GET as getDueBreakdown } from '@/app/(backend)/api/v1/flashcards/practice/due/breakdown/route';
+import { GET as getDueCount } from '@/app/(backend)/api/v1/flashcards/practice/due/count/route';
 import { GET as getDueCards } from '@/app/(backend)/api/v1/flashcards/practice/new/route';
 import { GET as getPrepare } from '@/app/(backend)/api/v1/flashcards/practice/prepare/route';
 import { GET as getSettings } from '@/app/(backend)/api/v1/flashcards/practice/settings/route';
@@ -247,6 +248,165 @@ forEachCopy((copyId) => {
       const bodyB = await resB.json();
       expect(resB.status).toBe(200);
       expect(bodyB.data.some((c: { id: string }) => c.id === flashcardId)).toBe(false);
+    });
+
+    // #345: `flashcard.read = group` means own cards + group-shared cards, so a
+    // member's own personal deck must be offered/counted by all four study RPCs
+    // while other members of the same org still never see it.
+    it("offers and counts a member's own personal new cards (group scope)", async () => {
+      const orgId = teacher.orgId!;
+      mockUser(studentInGroupA);
+
+      // Distinct prefixes (not the `own-*` ones used by the #343 fixtures) so
+      // the prefix-scoped cleanup below never deletes another test's cards.
+      const deckName = `345-own-deck-${copyId}`;
+      const frontPrefix = `345-own-front-${copyId}-`;
+
+      const deckRes = await createDeckPost(
+        createNextRequest(
+          'http://localhost/api/v1/flashcards/decks',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: deckName, visibility: 'personal' }),
+          },
+          { active_org_id: orgId },
+        ),
+      );
+      const deckBody = await deckRes.json();
+      if (!deckRes.ok || !deckBody.success) {
+        throw new Error(`[setup] own deck creation failed: ${JSON.stringify(deckBody)}`);
+      }
+      const ownDeckId = deckBody.data.id as string;
+
+      const ownCardIds: string[] = [];
+      for (const n of [1, 2]) {
+        const cardRes = await createFlashcardPost(
+          createNextRequest(
+            'http://localhost/api/v1/flashcards',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                front: `${frontPrefix}${n}`,
+                back: `345-own-back-${copyId}-${n}`,
+                deckId: ownDeckId,
+              }),
+            },
+            { active_org_id: orgId },
+          ),
+        );
+        const cardBody = await cardRes.json();
+        if (!cardRes.ok || !cardBody.success) {
+          throw new Error(`[setup] own card creation failed: ${JSON.stringify(cardBody)}`);
+        }
+        ownCardIds.push(cardBody.data.id as string);
+      }
+
+      try {
+        // Whole study queue: the two own cards plus the group-shared card.
+        const newRes = await getDueCards(
+          createNextRequest('http://localhost/api/v1/flashcards/practice/new?limit=50', undefined, {
+            active_org_id: orgId,
+          }),
+        );
+        const newBody = await newRes.json();
+        expect(newRes.status).toBe(200);
+        const offeredIds = newBody.data.map((c: { id: string }) => c.id);
+        for (const ownCardId of ownCardIds) expect(offeredIds).toContain(ownCardId);
+        expect(offeredIds).toContain(flashcardId);
+
+        // The issue's deck-filtered repro: the own deck yields exactly its cards.
+        const ownDeckRes = await getDueCards(
+          createNextRequest(
+            `http://localhost/api/v1/flashcards/practice/new?limit=50&deckIds=${ownDeckId}`,
+            undefined,
+            { active_org_id: orgId },
+          ),
+        );
+        const ownDeckBody = await ownDeckRes.json();
+        expect(ownDeckRes.status).toBe(200);
+        expect(ownDeckBody.data.map((c: { id: string }) => c.id).sort()).toEqual(
+          [...ownCardIds].sort(),
+        );
+
+        // Learn badge / "N nowych kart": own new + group-shared new.
+        const settingsRes = await getSettings(
+          createNextRequest('http://localhost/api/v1/flashcards/practice/settings', undefined, {
+            active_org_id: orgId,
+          }),
+        );
+        const settingsBody = await settingsRes.json();
+        expect(settingsRes.status).toBe(200);
+        expect(settingsBody.data.totalNewCards).toBeGreaterThanOrEqual(3);
+
+        // Stats overview counts them as well.
+        const statesRes = await getStateBreakdown(
+          createNextRequest('http://localhost/api/v1/flashcards/practice/states', undefined, {
+            active_org_id: orgId,
+          }),
+        );
+        const statesBody = await statesRes.json();
+        expect(statesRes.status).toBe(200);
+        expect(statesBody.data.totalCards).toBeGreaterThanOrEqual(3);
+        expect(statesBody.data.neverPracticed).toBeGreaterThanOrEqual(3);
+
+        // Own due reviews are visible too (get_due_breakdown feeds the badge).
+        const service = createServiceClient();
+        const pastDue = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { error: reviewStateError } = await service.from('flashcard_review_state').insert({
+          user_id: studentInGroupA.id,
+          flashcard_id: ownCardIds[0],
+          easiness_factor: 2.5,
+          interval_days: 1,
+          repetitions: 1,
+          next_review_at: pastDue,
+          last_reviewed_at: pastDue,
+          last_quality: 4,
+          learning_state: 'review',
+          learning_step: 0,
+          lapse_count: 0,
+          is_leech: false,
+        });
+        if (reviewStateError) {
+          throw new Error(`[setup] own review state insert failed: ${reviewStateError.message}`);
+        }
+
+        const dueCountRes = await getDueCount(
+          createNextRequest('http://localhost/api/v1/flashcards/practice/due/count', undefined, {
+            active_org_id: orgId,
+          }),
+        );
+        const dueCountBody = await dueCountRes.json();
+        expect(dueCountRes.status).toBe(200);
+        expect(dueCountBody.data.count).toBeGreaterThanOrEqual(1);
+
+        // Isolation: another member of the same org never sees these own cards.
+        mockUser(studentInGroupB);
+        const otherRes = await getDueCards(
+          createNextRequest(
+            `http://localhost/api/v1/flashcards/practice/new?limit=50&deckIds=${ownDeckId}`,
+            undefined,
+            { active_org_id: orgId },
+          ),
+        );
+        const otherBody = await otherRes.json();
+        expect(otherRes.status).toBe(200);
+        expect(otherBody.data).toEqual([]);
+
+        const otherSettingsRes = await getSettings(
+          createNextRequest('http://localhost/api/v1/flashcards/practice/settings', undefined, {
+            active_org_id: orgId,
+          }),
+        );
+        const otherSettingsBody = await otherSettingsRes.json();
+        expect(otherSettingsRes.status).toBe(200);
+        expect(otherSettingsBody.data.totalNewCards).toBe(0);
+      } finally {
+        await cleanupFlashcardReviewState(studentInGroupA.id);
+        await cleanupFlashcards(studentInGroupA.id, frontPrefix);
+        await cleanupFlashcardDecks(studentInGroupA.id, deckName);
+      }
     });
 
     it('count_new_cards (via /practice/settings): only the group member is offered the card', async () => {
