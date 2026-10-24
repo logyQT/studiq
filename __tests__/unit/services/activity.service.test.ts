@@ -21,6 +21,7 @@ function qb(data: any, error: any = null) {
   b.lte = vi.fn(() => b);
   b.gt = vi.fn(() => b);
   b.lt = vi.fn(() => b);
+  b.is = vi.fn(() => b);
   b.not = vi.fn(() => b);
   b.order = vi.fn(() => b);
   b.single = vi.fn().mockResolvedValue({ data: data ?? null, error });
@@ -106,13 +107,17 @@ describe('ActivityService', () => {
       mock.from.mockReturnValueOnce(qb(profiles)); // profiles
       mock.from.mockReturnValueOnce(qb(activity)); // user_daily_activity
       mock.from.mockReturnValueOnce(qb(lastPractice)); // flashcard_practice
-      mock.from.mockReturnValueOnce(qb(attempts)); // quiz_attempts
+      const attemptsBuilder = qb(attempts);
+      mock.from.mockReturnValueOnce(attemptsBuilder); // quiz_attempts
 
       const result = await service.getClassActivity(ctx, { range: '7d' });
 
       expect(result.success).toBe(true);
       expect(result.data.students).toHaveLength(1);
       expect(result.data.students[0].name).toBe('Student');
+      // Assignment attempts are scored in points; they don't belong to the
+      // practice-quiz difficulty report (#167).
+      expect(attemptsBuilder.is).toHaveBeenCalledWith('assignment_id', null);
     });
 
     it('handles 30d range', async () => {

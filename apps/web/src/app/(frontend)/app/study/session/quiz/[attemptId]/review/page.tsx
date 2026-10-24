@@ -29,6 +29,8 @@ interface AttemptDetails {
   id: string;
   score: number;
   total_questions: number;
+  /** Max awardable points for assignment attempts; null for practice quizzes. */
+  total_points: number | null;
   config: {
     questionTypes?: string[];
     questionCount?: number;
@@ -65,7 +67,10 @@ export default function QuizReviewPage() {
   if (!attempt)
     return <EntityNotFound titleKey="attempt_not_found" descriptionKey="attempt_not_found_desc" />;
 
-  const percentage = Math.round((attempt.score / attempt.total_questions) * 100);
+  // Assignment attempts are scored in points (score = awarded points, max =
+  // total_points); practice quizzes keep the correct-answer count.
+  const total = attempt.total_points || attempt.total_questions;
+  const percentage = total > 0 ? Math.round((attempt.score / total) * 100) : 0;
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
@@ -82,7 +87,7 @@ export default function QuizReviewPage() {
         <CardHeader className="text-center">
           <CardTitle className="text-3xl">Score: {percentage}%</CardTitle>
           <CardDescription>
-            {attempt.score} out of {attempt.total_questions} correct
+            {attempt.score} out of {total} {attempt.total_points ? 'points' : 'correct'}
           </CardDescription>
         </CardHeader>
         <CardContent>
