@@ -1,3 +1,5 @@
+import type { QueryKey } from '@tanstack/react-query';
+
 export const flashcardKeys = {
   all: ['flashcards'] as const,
   decks: {
@@ -84,6 +86,15 @@ export const assignmentKeys = {
   results: (id: string) => ['teacher-assignments', id, 'results'] as const,
   studentResults: (id: string, studentId: string) =>
     ['teacher-assignments', id, 'results', studentId] as const,
+  /**
+   * Keys a grading mutation must invalidate (#168): the results *list* prefix.
+   * It also matches the nested `studentResults(id, studentId)` entry, so the
+   * grading header refreshes too. Invalidating only `studentResults` leaves the
+   * results table cached: `useApiQuery` defaults to `staleTime: Infinity`, so the
+   * stale row survives in-app navigation and is only refetched once the list key
+   * is invalidated (a full reload works because it clears the cache).
+   */
+  gradingInvalidations: (id: string): QueryKey[] => [assignmentKeys.results(id)],
 };
 
 export const studentAssignmentKeys = {

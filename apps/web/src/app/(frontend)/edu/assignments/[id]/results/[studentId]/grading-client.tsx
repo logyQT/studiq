@@ -82,7 +82,7 @@ export default function StudentGradingClient() {
       });
       if (!res.ok) throw new Error(t('grade_failed'));
     },
-    invalidateKeys: [assignmentKeys.results(id), assignmentKeys.studentResults(id, studentId)],
+    invalidateKeys: assignmentKeys.gradingInvalidations(id),
   });
 
   const getGrade = (questionId: string) =>
