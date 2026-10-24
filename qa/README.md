@@ -24,10 +24,9 @@ index, agent prompt) is English, matching the repo/issue convention.
 
 ## Running a scenario
 
-Four slots are provisioned ahead of time by `scripts/qa-env` (run it from the
-main checkout): **`qa-env-1` … `qa-env-4`**. Each slot is a detached
-`qa-testing` worktree with its own Supabase stack, web app, admin app and
-`qa/env.json`. Agents do **not** create, reset or tear down environments.
+Eight slots are provisioned ahead of time by `scripts/qa-env` (run it from the
+main checkout): **`qa-env-1` … `qa-env-8`**. Each slot is a detached `main`
+worktree with its own Supabase stack, web app, admin app and `qa/env.json`. Agents do **not** create, reset or tear down environments.
 
 1. Bring the slots up once: `scripts/qa-env up all` (check with
    `scripts/qa-env status`; stop with `scripts/qa-env down all`).

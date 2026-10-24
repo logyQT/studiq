@@ -16,13 +16,13 @@ Run the manual QA scenario given at the bottom in the dashboard's live QA browse
 
 ## Environment (pre-provisioned — do not rebuild it)
 
-You run in one of four persistent, isolated slots: **`qa-env-1` … `qa-env-4`**.
+You run in one of eight persistent, isolated slots: **`qa-env-1` … `qa-env-8`**.
 Your checkout is a detached worktree with its own Supabase stack, web app and
 admin app. `qa/env.json` in this checkout is authoritative:
 
 | key | use |
 |---|---|
-| `envId` | `qa-env-1` … `qa-env-4` |
+| `envId` | `qa-env-1` … `qa-env-8` |
 | `appUrl` | web app (replaces `http://localhost:3000`) |
 | `adminUrl` | admin app (replaces `http://localhost:4000`) |
 | `supabaseUrl` | this slot's Supabase API |
@@ -33,11 +33,10 @@ admin app. `qa/env.json` in this checkout is authoritative:
   the app.** Slots are provisioned from the main checkout with `scripts/qa-env`;
   a broken slot is an `env` problem, never a `bug`. If the slot is down, say so
   in the report and stop.
-- The worktree is detached at `origin/qa-testing`; do not rely on
-  `git branch --show-current` and do not create branches. `qa-testing` is kept
-  in sync with `main` and carries the unmerged features some cases need
-  (e.g. PR #130 for `ADM-USR-*`); do not file a bug for a feature that is absent
-  only because it is not merged.
+- Your slot is a `main` checkout (detached, or on the branch under test); do
+  not rely on `git branch --show-current` and do not create branches. If a
+  feature is missing from `main`, note it in the report instead of filing a bug:
+  it is out of scope for the corpus.
 - The seed database is per slot. Resetting it is the operator's job, not yours.
 - Shared observability stack: Tempo + Loki + Prometheus + Grafana at
   `http://localhost:3001` (already running; the `grafana` MCP server points at it).
