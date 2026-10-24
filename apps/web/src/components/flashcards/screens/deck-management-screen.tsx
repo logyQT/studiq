@@ -55,7 +55,7 @@ interface DeckManagementScreenProps {
 }
 
 export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps) {
-  const { activeOrg } = useOrgs();
+  const { activeOrg, isPending: orgsPending } = useOrgs();
   const feature = useFeature();
   const permission = usePermission();
 
@@ -93,14 +93,17 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     isFetchingNextPage,
     isLoading,
   } = useCursorPagination<Deck>({
-    queryKey: flashcardKeys.decks.paginated({
-      q: debouncedSearch,
-      owner,
-      groupFilter,
-      sortBy,
-      sortOrder,
-      includeSuspended: includeSuspended ? 'true' : undefined,
-    }),
+    queryKey: flashcardKeys.decks.paginated(
+      {
+        q: debouncedSearch,
+        owner,
+        groupFilter,
+        sortBy,
+        sortOrder,
+        includeSuspended: includeSuspended ? 'true' : undefined,
+      },
+      activeOrg?.id,
+    ),
     url: '/api/v1/flashcards/decks',
     filters: {
       q: debouncedSearch || undefined,
@@ -112,6 +115,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
     },
     limit: 24,
     staleTime: Infinity,
+    enabled: !orgsPending,
   });
 
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -321,7 +325,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
 
       <PageGrid
         cols={4}
-        isLoading={isLoading}
+        isLoading={isLoading || orgsPending}
         skeleton={
           <Card className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">
             <div className="flex items-center gap-3 p-4 sm:hidden">

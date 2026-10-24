@@ -44,7 +44,7 @@ function loadPersistedFilters() {
 
 export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManagementScreenProps) {
   const _router = useRouter();
-  const { activeOrg } = useOrgs();
+  const { activeOrg, isPending: orgsPending } = useOrgs();
   const feature = useFeature();
   const permission = usePermission();
 
@@ -103,7 +103,7 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     isFetchingNextPage,
     isLoading,
   } = useInfiniteQuery({
-    queryKey: questionKeys.banks.paginated(filters),
+    queryKey: questionKeys.banks.paginated(filters, activeOrg?.id),
     queryFn: ({ pageParam }) =>
       apiGet<{ items: QuestionBank[]; nextCursor: string | null; hasMore: boolean }>(
         `/api/v1/questions/banks?limit=24${queryString ? `&${queryString}` : ''}${pageParam ? `&cursor=${pageParam}` : ''}`,
@@ -112,6 +112,7 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     initialPageParam: '',
     staleTime: Infinity,
     refetchOnMount: false,
+    enabled: !orgsPending,
   });
 
   const banks = banksData?.pages.flatMap((page) => page.items) ?? [];
@@ -302,7 +303,7 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
 
       <PageGrid
         cols={4}
-        isLoading={isLoading}
+        isLoading={isLoading || orgsPending}
         skeleton={
           <Card className="flex flex-col h-full max-sm:py-0 min-w-0 p-0">
             <div className="flex items-center gap-3 p-4 sm:hidden">

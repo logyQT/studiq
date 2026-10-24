@@ -23,7 +23,9 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useOrgs } from '@/hooks/use-orgs';
 import { apiPost } from '@/lib/api';
+import { flashcardKeys } from '@/lib/query-keys';
 
 const NEW_DECK_VALUE = '__new__';
 
@@ -45,6 +47,7 @@ export function CreateFromQuestionDialog({
   onOpenChange,
 }: CreateFromQuestionDialogProps) {
   const t = useTranslations('CreateFlashcardFromQuestion');
+  const { activeOrg, isPending: orgsPending } = useOrgs();
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
   const [deckId, setDeckId] = useState<string>('');
@@ -52,9 +55,9 @@ export function CreateFromQuestionDialog({
   const isNewDeck = deckId === NEW_DECK_VALUE;
 
   const { data: decksResult } = useApiQuery<{ items: Deck[] }>({
-    queryKey: ['flashcards', 'decks', 'owned-limit-200'],
+    queryKey: flashcardKeys.decks.options(activeOrg?.id),
     url: '/api/v1/flashcards/decks?limit=200',
-    enabled: open,
+    enabled: open && !orgsPending,
   });
   const decks = decksResult?.items ?? [];
 
