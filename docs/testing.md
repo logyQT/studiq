@@ -57,6 +57,17 @@ bun test:watch        # Watch mode (re-runs on file changes)
 bun test:coverage     # Run with coverage report
 ```
 
+## Manual QA (agent-driven)
+
+The manual test plan lives in [`qa/`](../qa/README.md) — 215 scenarios with
+steps, expected results and prerequisite chains. Agents run them in a real
+browser against the observability stack (Tempo + Loki + Prometheus) so failures
+are reported with the underlying span/log evidence instead of a bare status code.
+
+- Start here: [`qa/AGENT-PROMPT.md`](../qa/AGENT-PROMPT.md) (copy-paste prompt, one scenario per session).
+- Corpus index: [`qa/index.md`](../qa/index.md); global rules and seed data: [`qa/context.md`](../qa/context.md).
+- Debugging loop: [`docs/observability-debugging.md`](./observability-debugging.md).
+
 ## Test Configuration
 
 - **Setup file:** `__tests__/setup.ts` — configures Supabase mock passthrough
