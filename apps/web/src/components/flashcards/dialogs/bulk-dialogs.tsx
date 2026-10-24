@@ -13,7 +13,6 @@ import {
   DialogTitle,
 } from '@studiq/ui';
 import type { useTranslations } from 'next-intl';
-import { DeckCheckboxSelector } from '@/components/flashcards/shared/deck-checkbox-selector';
 import { DeckRadioSelector } from '@/components/flashcards/shared/deck-radio-selector';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { getGradientHex } from '@/lib/color-utils';
@@ -25,11 +24,6 @@ interface BulkDialogsProps {
   bulkDeleteOpen: boolean;
   onBulkDeleteChange: (open: boolean) => void;
   onBulkDelete: () => void;
-  bulkLinkOpen: boolean;
-  bulkLinkDeckIds: string[];
-  onBulkLinkChange: (open: boolean) => void;
-  onBulkLinkDeckIdsChange: (ids: string[]) => void;
-  onBulkLink: () => void;
   bulkMoveOpen: boolean;
   bulkMoveTargetDeckId: string | null;
   onBulkMoveChange: (open: boolean) => void;
@@ -57,11 +51,6 @@ export function BulkDialogs({
   bulkDeleteOpen,
   onBulkDeleteChange,
   onBulkDelete,
-  bulkLinkOpen,
-  bulkLinkDeckIds,
-  onBulkLinkChange,
-  onBulkLinkDeckIdsChange,
-  onBulkLink,
   bulkMoveOpen,
   bulkMoveTargetDeckId,
   onBulkMoveChange,
@@ -91,25 +80,6 @@ export function BulkDialogs({
         description={t('bulk_delete_desc', { count: selectedIds.length })}
         cancelText={t('common_cancel')}
         confirmText={t('common_delete')}
-      />
-
-      <DeckCheckboxSelector
-        open={bulkLinkOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            onBulkLinkChange(false);
-            onBulkLinkDeckIdsChange([]);
-          }
-        }}
-        decks={ownedDecks}
-        selectedIds={bulkLinkDeckIds}
-        onSelectionChange={onBulkLinkDeckIdsChange}
-        title={t('link_title')}
-        description={t('link_desc')}
-        buttonLabel={t('link_button', { count: bulkLinkDeckIds.length })}
-        onConfirm={onBulkLink}
-        cancelLabel={t('common_cancel')}
-        emptyLabel={t('no_other_decks')}
       />
 
       <DeckRadioSelector

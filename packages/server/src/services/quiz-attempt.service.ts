@@ -105,7 +105,13 @@ export class QuizAttemptService {
 
     const answerObj: Record<
       string,
-      { selected_answer_id: string | null; text_answer: string | null; is_correct?: boolean }
+      {
+        selected_answer_id: string | null;
+        text_answer: string | null;
+        is_correct?: boolean;
+        teacher_points?: number | null;
+        teacher_feedback?: string | null;
+      }
     > = {};
     if (isCompleted) {
       (answers ?? []).forEach((a) => {
@@ -113,6 +119,8 @@ export class QuizAttemptService {
           selected_answer_id: a.selected_option_id,
           text_answer: a.text_answer,
           is_correct: a.is_correct,
+          teacher_points: a.teacher_points,
+          teacher_feedback: a.teacher_feedback,
         };
       });
     } else {

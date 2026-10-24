@@ -1,6 +1,7 @@
 'use client';
 
 import type { Question } from '@studiq/server/models/question.model';
+import type { Topic } from '@studiq/server/models/topic.model';
 import {
   Button,
   Dialog,
@@ -11,6 +12,7 @@ import {
   DialogTitle,
   Input,
   Label,
+  MultiSelect,
   Select,
   SelectContent,
   SelectItem,
@@ -33,6 +35,8 @@ interface QuestionFormDialogProps {
   onOpenChange: (open: boolean) => void;
   initialValues: Question | null;
   bankId: string;
+  /** Topic options for the picker, fetched by the screen from `GET /api/v1/topics`. */
+  topics?: Topic[];
   onSubmit: (data: {
     content: string;
     type: string;
@@ -51,12 +55,14 @@ export function QuestionFormDialog({
   onOpenChange,
   initialValues,
   bankId,
+  topics = [],
   onSubmit,
   t,
 }: QuestionFormDialogProps) {
   const [content, setContent] = useState('');
   const [type, setType] = useState<string>('mcq');
   const [explanation, setExplanation] = useState('');
+  const [topicIds, setTopicIds] = useState<string[]>([]);
   const [answers, setAnswers] = useState<AnswerForm[]>([{ content: '', isCorrect: false }]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<QuestionFormError | 'save_failed' | null>(null);
@@ -68,6 +74,7 @@ export function QuestionFormDialog({
         setContent(initialValues.content);
         setType(initialValues.type);
         setExplanation(initialValues.explanation ?? '');
+        setTopicIds(initialValues.topics?.map((topic) => topic.id) ?? []);
         setAnswers(
           (initialValues.question_answers ?? []).map((a) => ({
             content: a.content,
@@ -78,6 +85,7 @@ export function QuestionFormDialog({
         setContent('');
         setType('mcq');
         setExplanation('');
+        setTopicIds([]);
         setAnswers([{ content: '', isCorrect: false }]);
       }
     }
@@ -86,7 +94,7 @@ export function QuestionFormDialog({
   // Clear a stale inline message as soon as the user edits the form.
   useEffect(() => {
     setError(null);
-  }, [content, type, answers]);
+  }, [content, type, answers, topicIds]);
 
   function addAnswer() {
     setAnswers([...answers, { content: '', isCorrect: false }]);
@@ -128,7 +136,7 @@ export function QuestionFormDialog({
         content: content.trim(),
         type,
         explanation: explanation.trim() || undefined,
-        topicIds: [],
+        topicIds,
         bankId,
         answers:
           type === 'open'
@@ -150,6 +158,16 @@ export function QuestionFormDialog({
       setSubmitting(false);
     }
   }
+
+  // Options come from the fetched topic list; the question's own topics are
+  // merged back in so an assignment outside the fetched page keeps its label.
+  const mergedTopics = [
+    ...topics,
+    ...(initialValues?.topics ?? []).filter(
+      (topic) => !topics.some((fetched) => fetched.id === topic.id),
+    ),
+  ];
+  const topicOptions = mergedTopics.map((topic) => ({ label: topic.name, value: topic.id }));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -231,6 +249,16 @@ export function QuestionFormDialog({
               onChange={(e) => setExplanation(e.target.value)}
               placeholder={t('explanation_placeholder')}
               rows={2}
+            />
+          </div>
+
+          <div>
+            <Label className="mb-2 block">{t('topics_label')}</Label>
+            <MultiSelect
+              options={topicOptions}
+              selected={topicIds}
+              onChange={setTopicIds}
+              placeholder={t('topics_placeholder')}
             />
           </div>
         </div>

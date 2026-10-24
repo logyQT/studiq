@@ -8,14 +8,12 @@ import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   BatchCopyInput,
   BatchDeleteInput,
-  BatchLinkInput,
   BatchMoveInput,
   BatchTopicsInput,
   BulkCreateFlashcardsInput,
   CopyFlashcardInput,
   CreateFlashcardInput,
   FlashcardData,
-  LinkFlashcardInput,
   UpdateFlashcardInput,
 } from '@studiq/server/models/flashcard.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
@@ -330,49 +328,6 @@ export class FlashcardService {
     return success(undefined);
   }
 
-  async link(
-    id: string,
-    data: LinkFlashcardInput,
-    ctx: RequestContext,
-  ): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
-
-    const { data: flashcard, error: fetchError } = await supabase
-      .from('flashcards')
-      .select()
-      .eq('id', id)
-      .single();
-
-    if (fetchError || !flashcard) return failure('NOT_FOUND');
-    // Linking re-parents the card (deck_id is a single NOT NULL FK), so it is a move:
-    // gate on UPDATE of the source card, not READ — group members may read but must not move.
-    await check(ctx, Permission.FLASHCARD_UPDATE, flashcard);
-
-    const { data: deck } = await supabase
-      .from('flashcard_decks')
-      .select('*')
-      .eq('id', data.deckId)
-      .single();
-    if (!deck) return failure('NOT_FOUND');
-    await check(ctx, Permission.DECK_UPDATE, deck);
-
-    const { error: updateError } = await supabase
-      .from('flashcards')
-      .update({ deck_id: data.deckId })
-      .eq('id', id);
-
-    if (updateError) return toDbFailure(updateError);
-
-    const { data: updatedFlashcard } = await supabase
-      .from('flashcards')
-      .select('*, flashcard_topic_assignments(topic_id), deck_id')
-      .eq('id', id)
-      .single();
-
-    if (!updatedFlashcard) return failure('NOT_FOUND');
-    return success(updatedFlashcard);
-  }
-
   async copy(
     id: string,
     data: CopyFlashcardInput,
@@ -459,42 +414,6 @@ export class FlashcardService {
     if (error) return toDbFailure(error);
 
     return success({ deleted: data.ids.length });
-  }
-
-  async batchLink(data: BatchLinkInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
-
-    const { data: flashcards, error: fetchError } = await supabase
-      .from('flashcards')
-      .select('id, created_by, organization_id')
-      .in('id', data.ids);
-
-    if (fetchError) return toDbFailure(fetchError);
-    if (!flashcards || flashcards.length === 0) return failure('NOT_FOUND');
-
-    for (const fc of flashcards) {
-      // Same as link(): moving a card requires UPDATE on the source card.
-      await check(ctx, Permission.FLASHCARD_UPDATE, fc);
-    }
-
-    const { data: decks } = await supabase
-      .from('flashcard_decks')
-      .select('id, created_by, organization_id')
-      .eq('id', data.deckId);
-
-    const deckMap = new Map(decks?.map((d) => [d.id, d]) ?? []);
-    const deck = deckMap.get(data.deckId);
-    if (!deck) return failure('NOT_FOUND');
-    await check(ctx, Permission.DECK_UPDATE, deck);
-
-    const { error: updateError } = await supabase
-      .from('flashcards')
-      .update({ deck_id: data.deckId })
-      .in('id', data.ids);
-
-    if (updateError) return toDbFailure(updateError);
-
-    return success({ linked: data.ids.length });
   }
 
   async batchTopics(data: BatchTopicsInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {

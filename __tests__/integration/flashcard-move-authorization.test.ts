@@ -14,20 +14,19 @@ import {
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
-import { POST as linkFlashcard } from '@/app/(backend)/api/v1/flashcards/[id]/link/route';
 import { POST as batchAction } from '@/app/(backend)/api/v1/flashcards/batch/[action]/route';
 import { PUT as updateDeck } from '@/app/(backend)/api/v1/flashcards/decks/[id]/route';
 import { POST as createDeck } from '@/app/(backend)/api/v1/flashcards/decks/route';
 
 /**
- * Regression coverage for #334: the link endpoints re-parent a card, which is a
- * move (`flashcards.deck_id` is a single NOT NULL FK). They used to authorize the
- * source card with `flashcard.read`, so any group member could take a
- * teacher-authored card into a personal deck. The gate is now
- * `flashcard.update` on every source card.
+ * Regression coverage for #334: moving a card re-parents it (`flashcards.deck_id`
+ * is a single NOT NULL FK). The move endpoint used to authorize the source card
+ * with `flashcard.read`, so any group member could take a teacher-authored card
+ * into a personal deck. The gate is now `flashcard.update` on every source card
+ * plus `deck.update` on the target deck.
  */
 forEachCopy((copyId) => {
-  describe(`Flashcard Link Authorization [${copyId}]`, () => {
+  describe(`Flashcard Move Authorization [${copyId}]`, () => {
     registerMock(copyId, null);
 
     let teacher!: BeforeResult;
@@ -142,37 +141,20 @@ forEachCopy((copyId) => {
       if (teacher.orgId) await cleanupOrganizationDeep(teacher.orgId);
     });
 
-    it('POST /api/v1/flashcards/:id/link returns 403 for a card the caller can only read', async () => {
+    it('POST /api/v1/flashcards/batch/move returns 403 for a card the caller can only read', async () => {
       mockUser(member);
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/${foreignCardId}/link`,
-        { id: foreignCardId },
+        'http://localhost/api/v1/flashcards/batch/move',
+        { action: 'move' },
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ deckId: memberDeckId }),
-        },
-        orgCookies(),
-      );
-      const response = await linkFlashcard(request, { params });
-      const body = await response.json();
-
-      expect(response.status).toBe(403);
-      expect(body).toMatchObject({ success: false, error: 'FORBIDDEN' });
-      expect(await deckIdOf(foreignCardId)).toBe(teacherDeckId);
-    });
-
-    it('POST /api/v1/flashcards/batch/link returns 403 for a card the caller can only read', async () => {
-      mockUser(member);
-
-      const { request, params } = createNextRequestWithParams(
-        'http://localhost/api/v1/flashcards/batch/link',
-        { action: 'link' },
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: [foreignCardId], deckId: memberDeckId }),
+          body: JSON.stringify({
+            ids: [foreignCardId],
+            sourceDeckId: teacherDeckId,
+            targetDeckId: memberDeckId,
+          }),
         },
         orgCookies(),
       );
@@ -182,6 +164,32 @@ forEachCopy((copyId) => {
       expect(response.status).toBe(403);
       expect(body).toMatchObject({ success: false, error: 'FORBIDDEN' });
       expect(await deckIdOf(foreignCardId)).toBe(teacherDeckId);
+    });
+
+    it('POST /api/v1/flashcards/batch/move rejects the whole batch when one card can only be read', async () => {
+      mockUser(member);
+
+      const { request, params } = createNextRequestWithParams(
+        'http://localhost/api/v1/flashcards/batch/move',
+        { action: 'move' },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ids: [foreignCardId, ownCardId],
+            sourceDeckId: teacherDeckId,
+            targetDeckId: memberDeckId,
+          }),
+        },
+        orgCookies(),
+      );
+      const response = await batchAction(request, { params });
+      const body = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(body).toMatchObject({ success: false, error: 'FORBIDDEN' });
+      expect(await deckIdOf(foreignCardId)).toBe(teacherDeckId);
+      expect(await deckIdOf(ownCardId)).toBe(secondTeacherDeckId);
     });
 
     it('PUT /api/v1/flashcards/decks/:id returns 403 for foreign flashcardIds', async () => {
@@ -205,25 +213,29 @@ forEachCopy((copyId) => {
       expect(await deckIdOf(foreignCardId)).toBe(teacherDeckId);
     });
 
-    it('POST /api/v1/flashcards/:id/link still works for a card the caller owns', async () => {
+    it('POST /api/v1/flashcards/batch/move still works for a card the caller owns', async () => {
       mockUser(teacher.user);
 
       const { request, params } = createNextRequestWithParams(
-        `http://localhost/api/v1/flashcards/${ownCardId}/link`,
-        { id: ownCardId },
+        'http://localhost/api/v1/flashcards/batch/move',
+        { action: 'move' },
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ deckId: teacherDeckId }),
+          body: JSON.stringify({
+            ids: [ownCardId],
+            sourceDeckId: secondTeacherDeckId,
+            targetDeckId: teacherDeckId,
+          }),
         },
         orgCookies(),
       );
-      const response = await linkFlashcard(request, { params });
+      const response = await batchAction(request, { params });
       const body = await response.json();
 
       expect(response.status).toBe(200);
       expect(body.success).toBe(true);
-      expect(body.data.deck_id).toBe(teacherDeckId);
+      expect(body.data).toEqual({ moved: 1 });
       expect(await deckIdOf(ownCardId)).toBe(teacherDeckId);
     });
   });

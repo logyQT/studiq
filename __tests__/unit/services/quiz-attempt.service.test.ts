@@ -72,9 +72,18 @@ describe('QuizAttemptService', () => {
 
   describe('getById', () => {
     it('returns attempt with questions and answers', async () => {
-      const attempt = { id: 'a-1', user_id: ctx.userId };
+      const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: '2026-10-24T10:00:00.000Z' };
       const attemptQuestions = [{ order_index: 0, question_id: 'q-1', questions: { id: 'q-1' } }];
-      const answers = [{ question_id: 'q-1', selected_answer_id: 'ans-1', is_correct: true }];
+      const answers = [
+        {
+          question_id: 'q-1',
+          selected_option_id: 'ans-1',
+          text_answer: null,
+          is_correct: true,
+          teacher_points: null,
+          teacher_feedback: null,
+        },
+      ];
 
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(qb(attemptQuestions));
@@ -269,6 +278,41 @@ describe('QuizAttemptService', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).answers['q-1'].is_correct).toBe(true);
+    });
+
+    it('includes teacher grading in the answers map for a completed attempt (#175)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        assignment_id: 'assignment-1',
+        completed_at: '2026-10-24T10:00:00.000Z',
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          {
+            question_id: 'q-open',
+            selected_option_id: null,
+            text_answer: 'Rozbiory',
+            is_correct: false,
+            teacher_points: 2,
+            teacher_feedback: 'Dobrze, ale brakuje liberum veto.',
+          },
+        ]),
+      );
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).answers['q-open']).toEqual({
+        selected_answer_id: null,
+        text_answer: 'Rozbiory',
+        is_correct: false,
+        teacher_points: 2,
+        teacher_feedback: 'Dobrze, ale brakuje liberum veto.',
+      });
     });
   });
 

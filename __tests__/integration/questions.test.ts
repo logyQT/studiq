@@ -8,6 +8,7 @@ import {
 } from '#test/helpers/test-user';
 import {
   applyRegisteredMock,
+  cleanupFlashcardTopics,
   cleanupOrganizationByName,
   cleanupQuestions,
   mockUser,
@@ -16,6 +17,7 @@ import { createNextRequest, createNextRequestWithParams } from '#test/integratio
 import { DELETE, GET, PUT } from '@/app/(backend)/api/v1/questions/[id]/route';
 import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/route';
 import { GET as GET_LIST, POST } from '@/app/(backend)/api/v1/questions/route';
+import { POST as createTopicPost } from '@/app/(backend)/api/v1/topics/route';
 
 forEachCopy((copyId) => {
   describe(`Questions Integration [${copyId}]`, () => {
@@ -43,6 +45,8 @@ forEachCopy((copyId) => {
     });
 
     afterAll(async () => {
+      await cleanupFlashcardTopics(educator.user.id, `q-test-topic-${copyId}`);
+      await cleanupFlashcardTopics(educator.user.id, `copy-${copyId}-topic-`);
       await cleanupOrganizationByName('seed-org-');
     });
 
@@ -67,7 +71,7 @@ forEachCopy((copyId) => {
 
     async function createQuestion(
       content: string,
-      opts: { type?: 'mcq' | 'true_false' } = {},
+      opts: { type?: 'mcq' | 'true_false'; topicIds?: string[] } = {},
     ): Promise<{ id: string; bankId: string }> {
       const bankId = await createBank(`q-test-bank-${copyId}-${Date.now()}-${Math.random()}`);
       mockUser(educator.user);
@@ -82,6 +86,7 @@ forEachCopy((copyId) => {
             type: opts.type ?? 'mcq',
             content: prefixedContent,
             answers: [{ content: 'Answer', isCorrect: true, orderIndex: 0 }],
+            ...(opts.topicIds ? { topicIds: opts.topicIds } : {}),
           }),
         },
         orgCookies(),
@@ -90,6 +95,23 @@ forEachCopy((copyId) => {
       const body = await res.json();
       if (res.status !== 201) throw new Error(`question create failed: ${JSON.stringify(body)}`);
       return { id: body.data.id as string, bankId };
+    }
+
+    async function createTopic(name: string): Promise<string> {
+      mockUser(educator.user);
+      const req = createNextRequest(
+        'http://localhost/api/v1/topics',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        },
+        orgCookies(),
+      );
+      const res = await createTopicPost(req);
+      const body = await res.json();
+      if (res.status !== 201) throw new Error(`topic create failed: ${JSON.stringify(body)}`);
+      return body.data.id as string;
     }
 
     describe('POST /api/v1/questions', () => {
@@ -229,6 +251,81 @@ forEachCopy((copyId) => {
         expect(getBody.data.question_answers).toEqual([]);
       });
 
+      it('round-trips topic assignments through create, list and update', async () => {
+        const bankId = await createBank(`q-test-topic-bank-${copyId}`);
+        const topicName = `q-test-topic-${copyId}`;
+        const topicId = await createTopic(topicName);
+
+        mockUser(educator.user);
+        const createReq = createNextRequest(
+          'http://localhost/api/v1/questions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bankId,
+              type: 'mcq',
+              content: `copy-${copyId}-Topic question`,
+              topicIds: [topicId],
+              answers: [{ content: 'Answer', isCorrect: true, orderIndex: 0 }],
+            }),
+          },
+          orgCookies(),
+        );
+        const createRes = await POST(createReq);
+        const createBody = await createRes.json();
+
+        expect(createRes.status).toBe(201);
+        expect(createBody.data.topics).toEqual([{ id: topicId, name: topicName }]);
+        expect(createBody.data.question_topic_assignments).toBeUndefined();
+
+        const listReq = createNextRequest(
+          `http://localhost/api/v1/questions?bankId=${bankId}`,
+          undefined,
+          orgCookies(),
+        );
+        const listRes = await GET_LIST(listReq);
+        const listBody = await listRes.json();
+
+        expect(listRes.status).toBe(200);
+        expect(listBody.data).toHaveLength(1);
+        expect(listBody.data[0].topics).toEqual([{ id: topicId, name: topicName }]);
+
+        // A content edit that resubmits the hydrated topicIds must keep the
+        // assignment — the pre-fix dialog always sent [] here and silently cleared it.
+        const keep = createNextRequestWithParams(
+          `http://localhost/api/v1/questions/${createBody.data.id}`,
+          { id: createBody.data.id },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: 'Updated (topic kept)', topicIds: [topicId] }),
+          },
+          orgCookies(),
+        );
+        const keepRes = await PUT(keep.request, { params: keep.params });
+        const keepBody = await keepRes.json();
+
+        expect(keepRes.status).toBe(200);
+        expect(keepBody.data.topics).toEqual([{ id: topicId, name: topicName }]);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/questions/${createBody.data.id}`,
+          { id: createBody.data.id },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: 'Updated', topicIds: [] }),
+          },
+          orgCookies(),
+        );
+        const putRes = await PUT(request, { params });
+        const putBody = await putRes.json();
+
+        expect(putRes.status).toBe(200);
+        expect(putBody.data.topics).toEqual([]);
+      });
+
       it('returns 401 when not authenticated', async () => {
         mockUser(null);
 
@@ -332,6 +429,25 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(200);
         expect(body.data.length).toBe(1);
         expect(body.data[0].type).toBe('true_false');
+      });
+
+      it('filters by topicIds', async () => {
+        // A fresh topic per copy: no other question in the org can match it.
+        const topicId = await createTopic(`copy-${copyId}-topic-${Date.now()}`);
+        const tagged = await createQuestion('Tagged question', { topicIds: [topicId] });
+        await createQuestion('Untagged question');
+
+        mockUser(educator.user);
+        const req = createNextRequest(
+          `http://localhost/api/v1/questions?topicIds=${topicId}`,
+          undefined,
+          orgCookies(),
+        );
+        const response = await GET_LIST(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.map((q: { id: string }) => q.id)).toEqual([tagged.id]);
       });
     });
 

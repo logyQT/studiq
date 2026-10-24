@@ -1,8 +1,9 @@
 'use client';
 
 import type { StateBreakdown } from '@studiq/server/models/flashcard-practice.model';
+import { ChartContainer, ChartTooltipContent } from '@studiq/ui';
 import { useTranslations } from 'next-intl';
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import { Cell, Legend, Pie, PieChart, Tooltip } from 'recharts';
 
 interface StateBreakdownChartProps {
   states: StateBreakdown;
@@ -20,34 +21,36 @@ export function StateBreakdownChart({ states }: StateBreakdownChartProps) {
   const t = useTranslations('AppStatsPage');
 
   const data = [
-    { name: t('state_new'), value: states.neverPracticed, color: COLORS.neverPracticed },
-    { name: t('state_learning'), value: states.learning, color: COLORS.learning },
-    { name: t('state_review'), value: states.review, color: COLORS.review },
-    { name: t('state_relearning'), value: states.relearning, color: COLORS.relearning },
-    { name: t('state_leech'), value: states.leeched, color: COLORS.leeched },
+    { name: t('state_new'), value: states.neverPracticed, fill: COLORS.neverPracticed },
+    { name: t('state_learning'), value: states.learning, fill: COLORS.learning },
+    { name: t('state_review'), value: states.review, fill: COLORS.review },
+    { name: t('state_relearning'), value: states.relearning, fill: COLORS.relearning },
+    { name: t('state_leech'), value: states.leeched, fill: COLORS.leeched },
   ].filter((d) => d.value > 0);
 
   return (
-    <div className="min-h-[260px] flex items-center justify-center">
-      <ResponsiveContainer width="100%" height={260}>
-        <PieChart>
-          <Tooltip />
-          <Legend />
-          <Pie
-            data={data}
-            cx="50%"
-            cy="50%"
-            innerRadius={60}
-            outerRadius={100}
-            paddingAngle={2}
-            dataKey="value"
-          >
-            {data.map((entry, index) => (
-              <Cell key={index} fill={entry.color} />
-            ))}
-          </Pie>
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
+    // Slices carry their own `fill` and the tooltip labels come from the translated
+    // slice `name`, so no config keys are needed (the chart context still is).
+    <ChartContainer config={{}} className="aspect-auto h-[260px] w-full">
+      <PieChart>
+        <Tooltip content={<ChartTooltipContent />} />
+        {/* Recharts sets the label span's colour inline to the slice colour (entry.fill).
+            The inner span restores a readable token; the icon keeps the slice colour. */}
+        <Legend formatter={(value) => <span className="text-foreground">{value}</span>} />
+        <Pie
+          data={data}
+          cx="50%"
+          cy="50%"
+          innerRadius={60}
+          outerRadius={100}
+          paddingAngle={2}
+          dataKey="value"
+        >
+          {data.map((entry, index) => (
+            <Cell key={index} fill={entry.fill} />
+          ))}
+        </Pie>
+      </PieChart>
+    </ChartContainer>
   );
 }
