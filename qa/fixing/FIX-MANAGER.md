@@ -105,7 +105,14 @@ $FIX rebase <issue> --env <free-writer-slot>
 
 The writer merges `origin/main`, resolves the conflict, reruns its checks, and pushes the new head. Then run both reviews and QA again on that new head; old approvals/pass do not cover the rebase commit.
 
-**Migrations:** writers reserve timestamps with `migration-ts`; `merge` checks the PR’s migration timestamps against `origin/main` and every other open PR. If it reports a collision, send the PR back to a writer with a freshly allocated timestamp, rename the file(s), run `bun scripts/check-migration-timestamps.ts`, push, and retry the merge. A filename-only renumber still changes the head, so re-run the review/QA gates only if content changed; at minimum re-run the migration guard and record the new commit in the dossier.
+**Migrations:** writers reserve timestamps with `migration-ts`; `merge` checks the PR’s migration timestamps against `origin/main` and every other open PR. If it reports a collision, assign the exact replacement versions and send the PR back to a writer:
+
+```bash
+$FIX assign-migrations <issue> --timestamps 20261023233122,20261023233123
+$FIX rebase <issue> --env <slot> --note "Renumber the PR migrations to the assigned timestamps, run the migration guard, push the new head."
+```
+
+The writer prompt receives both the assigned timestamps and the manager note. Do not rename migrations yourself. After the push, re-run the guard and record the new commit; filename-only renumbering does not require a full QA rerun unless content changed.
 
 ## Capacity and scheduling
 - Fixed roles: **2 designers** (3/4), **2 writers** (5/6).

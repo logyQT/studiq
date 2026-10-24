@@ -291,6 +291,17 @@ def cmd_migration_release(args) -> None:
     ok(action="migration-release", issue=args.issue)
 
 
+def cmd_assign_migrations(args) -> None:
+    state = load_state()
+    rec = get_rec(state, args.issue)
+    stamps = [s.strip() for s in args.timestamps.split(",") if s.strip()]
+    if not stamps or any(not s.isdigit() or len(s) < 14 for s in stamps):
+        fail("--timestamps must be comma-separated 14+ digit migration versions")
+    rec["assigned_migrations"] = stamps
+    history(state, args.issue, {"event": "migrations_assigned", "timestamps": stamps})
+    ok(action="assign-migrations", issue=args.issue, timestamps=stamps)
+
+
 def normalize_map(raw: list[dict]) -> dict:
     items = []
     for i in raw:
@@ -474,6 +485,8 @@ def dispatch_prompt(role: str, n: int, stage: str, env: int, rec: dict,
         "QA_RESULT": str(issue_dir(n) / f"qa-r{a}.json"),
         "IMPL_RESULT": str(issue_dir(n) / f"impl-r{a}.json"),
         "DESIGN_RESULT": str(issue_dir(n) / f"design-r{a}.json"),
+        "MANAGER_NOTE": rec.get("manager_note") or "none",
+        "ASSIGNED_MIGRATIONS": ", ".join(rec.get("assigned_migrations") or []) or "none",
     }
     # previous artifacts for the designer / writer on a retry
     prev = max(1, a - 1)
@@ -596,6 +609,8 @@ def cmd_implement(args) -> None:
     sid = create_session(env, title, dispatch_prompt("WRITER", n, "implement", env, rec))
     rec["stage"] = "implementing"
     rec["stage_started"] = int(time.time() * 1000)
+    if args.note is not None:
+        rec["manager_note"] = args.note
     rec["writer"] = env
     rec["sessions"]["implement"] = sid
     history(state, n, {"event": "rebase_requested" if rebase else "implement_dispatched",
@@ -910,13 +925,17 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("next").set_defaults(fn=cmd_next)
     for name in ("design", "implement", "qa"):
         s = sub.add_parser(name); s.add_argument("issue", type=int)
-        s.add_argument("--env", type=int); s.set_defaults(fn={"design": cmd_design,
+        s.add_argument("--env", type=int)
+        s.add_argument("--note", help="manager note injected into the role prompt")
+        s.set_defaults(fn={"design": cmd_design,
                        "implement": cmd_implement, "qa": cmd_qa}[name])
     s = sub.add_parser("review"); s.add_argument("issue", type=int)
     s.add_argument("--envs", help="two comma-separated QA/review slots, e.g. 7,8")
     s.set_defaults(fn=cmd_review)
     s = sub.add_parser("rebase"); s.add_argument("issue", type=int)
-    s.add_argument("--env", type=int); s.set_defaults(fn=cmd_implement)
+    s.add_argument("--env", type=int)
+    s.add_argument("--note", help="manager note injected into the writer prompt")
+    s.set_defaults(fn=cmd_implement)
     s = sub.add_parser("collect"); s.add_argument("issue", type=int); s.set_defaults(fn=cmd_collect)
     s = sub.add_parser("merge"); s.add_argument("issue", type=int); s.set_defaults(fn=cmd_merge)
     s = sub.add_parser("migration-ts"); s.add_argument("issue", type=int)
@@ -925,6 +944,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--pr", type=int); s.set_defaults(fn=cmd_migration_check)
     s = sub.add_parser("migration-release"); s.add_argument("issue", type=int)
     s.set_defaults(fn=cmd_migration_release)
+    s = sub.add_parser("assign-migrations"); s.add_argument("issue", type=int)
+    s.add_argument("--timestamps", required=True)
+    s.set_defaults(fn=cmd_assign_migrations)
     s = sub.add_parser("block"); s.add_argument("issue", type=int); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_block)
     sub.add_parser("status").set_defaults(fn=cmd_status)
     sub.add_parser("roles").set_defaults(fn=cmd_roles)

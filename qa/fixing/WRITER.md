@@ -39,6 +39,16 @@ Use the returned timestamp in `supabase/migrations/<timestamp>_<name>.sql`, then
 `bun scripts/check-migration-timestamps.ts`. For multiple files use `--count N` and
 consume the returned timestamps in order.
 
+## Assigned migrations / manager note
+- Assigned timestamps: **{{ASSIGNED_MIGRATIONS}}**
+- Manager note: **{{MANAGER_NOTE}}**
+
+If assigned timestamps are not `none`, **renumber the migration file(s) added by this
+branch to exactly those timestamps, in the listed order**, instead of minting new ones.
+Then run `bun scripts/check-migration-timestamps.ts` and include the renamed paths in
+the implementation artifact. If the manager note asks for a specific rebase or
+collision fix, follow it explicitly; do not silently ignore it.
+
 ## Verify
 Run the checks that matter for the change:
 - `bun run typecheck` (or the narrow package typecheck)
