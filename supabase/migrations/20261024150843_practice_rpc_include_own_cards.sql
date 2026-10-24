@@ -1,0 +1,458 @@
+-- ==========================================
+-- Migration: 20261024150843
+-- Description: #345 - the spaced-repetition RPCs excluded a user's *own*
+-- flashcards when the caller's `flashcard.read` scope resolved to `group`
+-- (every organization member, i.e. every student).
+--
+-- `flashcard.read = group` means "own cards OR cards shared with my groups":
+-- `can()` allows `resource.created_by === userId` for any scope and
+-- `accessibleFilter(..., 'group')` returns
+-- `organization_id = activeOrg AND (created_by = userId OR <group-shared ids>)`,
+-- which is what the flashcards library and deck lists use. The practice RPCs
+-- however implemented `group` (passed as filterType `'university'`) as
+-- "org-scoped AND visibility = 'group' AND caller is a member of the deck's
+-- group", so personal cards (`created_by = caller`, `visibility = 'personal'`)
+-- matched neither that arm nor the `'own'` arm. Result: `GET
+-- /practice/new` and `GET /practice/settings` reported zero new cards for a
+-- student while their own new cards existed (issue #345).
+--
+-- Fix: make the study RPCs implement exactly the `accessibleFilter(..., 'group')`
+-- semantics:
+--   group scope  = f.organization_id = p_organization_id
+--                  AND ( f.created_by = p_user_id
+--                        OR ( f.visibility = 'group' AND caller is in the deck's group ) )
+--   own scope    = f.created_by = p_user_id
+--                  AND ( p_organization_id IS NULL OR f.organization_id = p_organization_id )
+--
+-- The second half of the `own` arm also repairs a dead branch: the previous
+-- predicate required `f.organization_id = p_organization_id` while
+-- `p_organization_id` was NULL, so an org-less user's own due/new cards counted
+-- as zero (`NULL = NULL` is `NULL`).
+--
+-- Deliberately unchanged: the group-membership requirement for other people's
+-- cards, the `visibility = 'group'` requirement, suspended_decks exclusion,
+-- review-state joins, leech handling and limits. The functions stay
+-- `SECURITY INVOKER` and the signatures are identical, so `CREATE OR REPLACE`
+-- keeps the existing grants.
+-- ==========================================
+
+CREATE OR REPLACE FUNCTION get_due_flashcards(
+  p_user_id UUID,
+  p_filter_type TEXT DEFAULT 'own',
+  p_organization_id UUID DEFAULT NULL,
+  p_limit INTEGER DEFAULT 20,
+  p_deck_ids UUID[] DEFAULT NULL,
+  p_topic_ids UUID[] DEFAULT NULL,
+  p_new_card_limit INTEGER DEFAULT 5,
+  p_new_only BOOLEAN DEFAULT false
+)
+RETURNS JSON
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  v_result JSON;
+BEGIN
+  WITH matching AS (
+    SELECT f.id, f.front, f.back, f.created_at
+    FROM flashcards f
+    WHERE
+      CASE p_filter_type
+        WHEN 'impossible' THEN FALSE
+        WHEN 'any' THEN TRUE
+        WHEN 'own' THEN f.created_by = p_user_id
+          AND (p_organization_id IS NULL OR f.organization_id = p_organization_id)
+        WHEN 'university' THEN f.organization_id = p_organization_id
+          AND (
+            f.created_by = p_user_id
+            OR (
+              f.visibility = 'group'
+              AND EXISTS (
+                SELECT 1 FROM deck_groups dg
+                JOIN group_members gm ON gm.group_id = dg.group_id
+                WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+              )
+            )
+          )
+        ELSE FALSE
+      END
+      AND (p_deck_ids IS NULL OR f.deck_id = ANY(p_deck_ids))
+      AND (p_topic_ids IS NULL OR f.id IN (
+        SELECT flashcard_id FROM flashcard_topic_assignments WHERE topic_id = ANY(p_topic_ids)
+      ))
+      AND NOT EXISTS (
+        SELECT 1 FROM suspended_decks sd
+        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
+      )
+  ),
+  with_state AS (
+    SELECT
+      m.id, m.front, m.back, m.created_at,
+      rs.easiness_factor, rs.interval_days, rs.repetitions,
+      rs.next_review_at, rs.last_reviewed_at, rs.last_quality,
+      rs.learning_state, rs.learning_step, rs.lapse_count, rs.is_leech
+    FROM matching m
+    LEFT JOIN flashcard_review_state rs
+      ON rs.flashcard_id = m.id AND rs.user_id = p_user_id
+  ),
+  due_cards AS (
+    SELECT * FROM with_state
+    WHERE easiness_factor IS NOT NULL
+      AND next_review_at <= NOW()
+      AND NOT is_leech
+    ORDER BY next_review_at ASC
+    LIMIT p_limit
+  ),
+  new_cards AS (
+    SELECT * FROM with_state
+    WHERE easiness_factor IS NULL
+    ORDER BY created_at ASC
+    LIMIT p_new_card_limit
+  ),
+  combined AS (
+    SELECT * FROM due_cards WHERE NOT p_new_only
+    UNION ALL
+    SELECT * FROM new_cards WHERE p_new_only
+    LIMIT p_limit
+  )
+  SELECT COALESCE(
+    (SELECT json_agg(json_build_object(
+      'id', c.id,
+      'front', c.front,
+      'back', c.back,
+      'createdAt', c.created_at,
+      'reviewState', CASE WHEN c.easiness_factor IS NOT NULL THEN
+        json_build_object(
+          'easinessFactor', c.easiness_factor,
+          'intervalDays', c.interval_days,
+          'repetitions', c.repetitions,
+          'nextReviewAt', c.next_review_at,
+          'lastReviewedAt', c.last_reviewed_at,
+          'lastQuality', c.last_quality,
+          'learningState', c.learning_state,
+          'learningStep', c.learning_step,
+          'lapseCount', c.lapse_count,
+          'isLeech', c.is_leech
+        )
+      ELSE NULL END,
+      'deckName', (SELECT fd.name FROM flashcard_decks fd WHERE fd.id = f.deck_id),
+      'topicNames', COALESCE(
+        (SELECT array_agg(DISTINCT t.name)
+         FROM flashcard_topic_assignments fta
+         JOIN topics t ON t.id = fta.topic_id
+         WHERE fta.flashcard_id = c.id),
+        '{}'
+      )
+    )) FROM combined c LEFT JOIN flashcards f ON f.id = c.id),
+    '[]'::json
+  ) INTO v_result;
+
+  RETURN v_result;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_due_breakdown(
+  p_user_id uuid,
+  p_created_by uuid DEFAULT NULL,
+  p_organization_id uuid DEFAULT NULL,
+  p_topic_ids uuid[] DEFAULT NULL,
+  p_deck_ids uuid[] DEFAULT NULL
+)
+RETURNS json
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  total int;
+  next_review_at timestamptz;
+  by_topic json;
+  by_deck json;
+BEGIN
+  CREATE TEMP TABLE _due ON COMMIT DROP AS
+  SELECT f.id
+  FROM public.flashcards f
+  JOIN public.flashcard_review_state rs ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
+  WHERE rs.next_review_at <= NOW()
+    AND NOT rs.is_leech
+    AND NOT EXISTS (
+      SELECT 1 FROM public.suspended_decks sd
+      WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
+    )
+    AND (
+      (p_created_by IS NULL AND p_organization_id IS NULL)
+      OR (p_created_by IS NOT NULL AND p_organization_id IS NOT NULL AND f.created_by = p_created_by AND f.organization_id = p_organization_id)
+      OR (p_created_by IS NULL AND p_organization_id IS NOT NULL AND f.organization_id = p_organization_id
+          AND (
+            f.created_by = p_user_id
+            OR (
+              f.visibility = 'group'
+              AND EXISTS (
+                SELECT 1 FROM public.deck_groups dg
+                JOIN public.group_members gm ON gm.group_id = dg.group_id
+                WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+              )
+            )
+          ))
+      OR (p_created_by IS NOT NULL AND p_organization_id IS NULL AND f.created_by = p_created_by)
+    );
+
+  CREATE TEMP TABLE _filtered ON COMMIT DROP AS
+  SELECT d.id FROM _due d
+  WHERE (p_topic_ids IS NULL OR EXISTS (
+    SELECT 1 FROM public.flashcard_topic_assignments WHERE flashcard_id = d.id AND topic_id = ANY(p_topic_ids)
+  ))
+  AND (p_deck_ids IS NULL OR EXISTS (
+    SELECT 1 FROM public.flashcards WHERE id = d.id AND deck_id = ANY(p_deck_ids)
+  ));
+
+  SELECT COUNT(*) INTO total FROM _filtered;
+
+  CREATE TEMP TABLE _accessible ON COMMIT DROP AS
+  SELECT f.id
+  FROM public.flashcards f
+  WHERE ( (p_created_by IS NULL AND p_organization_id IS NULL)
+    OR (p_created_by IS NOT NULL AND p_organization_id IS NOT NULL AND f.created_by = p_created_by AND f.organization_id = p_organization_id)
+    OR (p_created_by IS NULL AND p_organization_id IS NOT NULL AND f.organization_id = p_organization_id
+        AND (
+          f.created_by = p_user_id
+          OR (
+            f.visibility = 'group'
+            AND EXISTS (
+              SELECT 1 FROM public.deck_groups dg
+              JOIN public.group_members gm ON gm.group_id = dg.group_id
+              WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+            )
+          )
+        ))
+    OR (p_created_by IS NOT NULL AND p_organization_id IS NULL AND f.created_by = p_created_by) )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.suspended_decks sd
+      WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
+    );
+
+  SELECT MIN(rs.next_review_at) INTO next_review_at
+  FROM _accessible a
+  JOIN public.flashcard_review_state rs ON rs.flashcard_id = a.id AND rs.user_id = p_user_id
+  WHERE rs.next_review_at > NOW();
+
+  SELECT COALESCE(json_agg(json_build_object('topic_id', t.topic_id, 'count', t.cnt)), '[]'::json)
+  INTO by_topic
+  FROM (
+    SELECT fta.topic_id, COUNT(*)::int as cnt
+    FROM public.flashcard_topic_assignments fta
+    JOIN _filtered d ON d.id = fta.flashcard_id
+    GROUP BY fta.topic_id
+  ) t;
+
+  SELECT COALESCE(json_agg(json_build_object('deck_id', d.deck_id, 'count', d.cnt)), '[]'::json)
+  INTO by_deck
+  FROM (
+    SELECT f.deck_id, COUNT(*)::int as cnt
+    FROM public.flashcards f
+    JOIN _filtered d ON d.id = f.id
+    WHERE f.deck_id IS NOT NULL
+    GROUP BY f.deck_id
+  ) d;
+
+  RETURN json_build_object(
+    'total', total,
+    'nextReviewAt', next_review_at,
+    'byTopic', by_topic,
+    'byDeck', by_deck
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_practice_state_breakdown(
+  p_user_id uuid,
+  p_created_by uuid DEFAULT NULL,
+  p_organization_id uuid DEFAULT NULL
+)
+RETURNS json
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  total int;
+  never_practiced int;
+  learning_count int;
+  review_count int;
+  relearning_count int;
+  leeched_count int;
+BEGIN
+  IF p_created_by IS NOT NULL AND p_organization_id IS NOT NULL THEN
+    SELECT COUNT(*) INTO total
+    FROM public.flashcards f
+    WHERE f.created_by = p_created_by AND f.organization_id = p_organization_id
+      AND NOT EXISTS (
+        SELECT 1 FROM public.suspended_decks sd
+        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
+      );
+
+    SELECT
+      COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
+      COUNT(*) FILTER (WHERE rs.learning_state = 'learning' AND NOT rs.is_leech) AS learning,
+      COUNT(*) FILTER (WHERE rs.learning_state = 'review' AND NOT rs.is_leech) AS review,
+      COUNT(*) FILTER (WHERE rs.learning_state = 'relearning' AND NOT rs.is_leech) AS relearning,
+      COUNT(*) FILTER (WHERE rs.is_leech) AS leeched
+    INTO never_practiced, learning_count, review_count, relearning_count, leeched_count
+    FROM public.flashcards f
+    LEFT JOIN public.flashcard_review_state rs
+      ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
+    WHERE f.created_by = p_created_by AND f.organization_id = p_organization_id
+      AND NOT EXISTS (
+        SELECT 1 FROM public.suspended_decks sd
+        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
+      );
+
+  ELSIF p_organization_id IS NOT NULL THEN
+    SELECT COUNT(*) INTO total
+    FROM public.flashcards f
+    WHERE f.organization_id = p_organization_id
+      AND (
+        f.created_by = p_user_id
+        OR (
+          f.visibility = 'group'
+          AND EXISTS (
+            SELECT 1 FROM public.deck_groups dg
+            JOIN public.group_members gm ON gm.group_id = dg.group_id
+            WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+          )
+        )
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM public.suspended_decks sd
+        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
+      );
+
+    SELECT
+      COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
+      COUNT(*) FILTER (WHERE rs.learning_state = 'learning' AND NOT rs.is_leech) AS learning,
+      COUNT(*) FILTER (WHERE rs.learning_state = 'review' AND NOT rs.is_leech) AS review,
+      COUNT(*) FILTER (WHERE rs.learning_state = 'relearning' AND NOT rs.is_leech) AS relearning,
+      COUNT(*) FILTER (WHERE rs.is_leech) AS leeched
+    INTO never_practiced, learning_count, review_count, relearning_count, leeched_count
+    FROM public.flashcards f
+    LEFT JOIN public.flashcard_review_state rs
+      ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
+    WHERE f.organization_id = p_organization_id
+      AND (
+        f.created_by = p_user_id
+        OR (
+          f.visibility = 'group'
+          AND EXISTS (
+            SELECT 1 FROM public.deck_groups dg
+            JOIN public.group_members gm ON gm.group_id = dg.group_id
+            WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+          )
+        )
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM public.suspended_decks sd
+        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
+      );
+
+  ELSIF p_created_by IS NOT NULL THEN
+    SELECT COUNT(*) INTO total
+    FROM public.flashcards f
+    WHERE f.created_by = p_created_by
+      AND NOT EXISTS (
+        SELECT 1 FROM public.suspended_decks sd
+        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
+      );
+
+    SELECT
+      COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
+      COUNT(*) FILTER (WHERE rs.learning_state = 'learning' AND NOT rs.is_leech) AS learning,
+      COUNT(*) FILTER (WHERE rs.learning_state = 'review' AND NOT rs.is_leech) AS review,
+      COUNT(*) FILTER (WHERE rs.learning_state = 'relearning' AND NOT rs.is_leech) AS relearning,
+      COUNT(*) FILTER (WHERE rs.is_leech) AS leeched
+    INTO never_practiced, learning_count, review_count, relearning_count, leeched_count
+    FROM public.flashcards f
+    LEFT JOIN public.flashcard_review_state rs
+      ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
+    WHERE f.created_by = p_created_by
+      AND NOT EXISTS (
+        SELECT 1 FROM public.suspended_decks sd
+        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
+      );
+
+  ELSE
+    SELECT COUNT(*) INTO total
+    FROM public.flashcards f
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.suspended_decks sd
+      WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
+    );
+
+    SELECT
+      COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
+      COUNT(*) FILTER (WHERE rs.learning_state = 'learning' AND NOT rs.is_leech) AS learning,
+      COUNT(*) FILTER (WHERE rs.learning_state = 'review' AND NOT rs.is_leech) AS review,
+      COUNT(*) FILTER (WHERE rs.learning_state = 'relearning' AND NOT rs.is_leech) AS relearning,
+      COUNT(*) FILTER (WHERE rs.is_leech) AS leeched
+    INTO never_practiced, learning_count, review_count, relearning_count, leeched_count
+    FROM public.flashcards f
+    LEFT JOIN public.flashcard_review_state rs
+      ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.suspended_decks sd
+      WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
+    );
+  END IF;
+
+  RETURN json_build_object(
+    'totalCards', total,
+    'neverPracticed', never_practiced,
+    'learning', learning_count,
+    'review', review_count,
+    'relearning', relearning_count,
+    'leeched', leeched_count
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION count_new_cards(
+  p_user_id UUID,
+  p_filter_type TEXT DEFAULT 'own',
+  p_organization_id UUID DEFAULT NULL
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  v_count INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO v_count
+  FROM flashcards f
+  WHERE
+    CASE p_filter_type
+      WHEN 'impossible' THEN FALSE
+      WHEN 'any' THEN TRUE
+      WHEN 'own' THEN f.created_by = p_user_id
+        AND (p_organization_id IS NULL OR f.organization_id = p_organization_id)
+      WHEN 'university' THEN f.organization_id = p_organization_id
+        AND (
+          f.created_by = p_user_id
+          OR (
+            f.visibility = 'group'
+            AND EXISTS (
+              SELECT 1 FROM deck_groups dg
+              JOIN group_members gm ON gm.group_id = dg.group_id
+              WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+            )
+          )
+        )
+      ELSE FALSE
+    END
+    AND NOT EXISTS (
+      SELECT 1 FROM flashcard_review_state rs
+      WHERE rs.flashcard_id = f.id AND rs.user_id = p_user_id
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM suspended_decks sd
+      WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
+    );
+
+  RETURN v_count;
+END;
+$$;

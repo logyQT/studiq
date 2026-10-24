@@ -496,6 +496,31 @@ describe('FlashcardPracticeService', () => {
     });
   });
 
+  describe('getSettings', () => {
+    it('counts new cards through the group-scope RPC filter (own + group-shared)', async () => {
+      const { buildQueryFilter } = await import('@studiq/server/lib/authz');
+      vi.mocked(buildQueryFilter).mockReturnValueOnce({
+        _useRpc: true,
+        organization_id: 'org-1',
+      } as any);
+
+      const c = settingsChain();
+      mock.from.mockReturnValue({ select: vi.fn(() => c), update: vi.fn(() => c) });
+      mock.rpc.mockResolvedValue({ data: 3, error: null });
+
+      const groupCtx: RequestContext = { ...ctx, activeOrgId: 'org-1' };
+      const result = await service.getSettings(groupCtx);
+
+      expect(mock.rpc).toHaveBeenCalledWith('count_new_cards', {
+        p_user_id: ctx.userId,
+        p_filter_type: 'university',
+        p_organization_id: 'org-1',
+      });
+      expect(result.success).toBe(true);
+      expect((result.data as any).totalNewCards).toBe(3);
+    });
+  });
+
   describe('getDueBreakdown', () => {
     it('returns breakdown from RPC', async () => {
       const rpcMock = vi.fn().mockResolvedValue({
