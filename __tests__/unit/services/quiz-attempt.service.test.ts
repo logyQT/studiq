@@ -119,6 +119,8 @@ describe('QuizAttemptService', () => {
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
       expect((result.data as any).score).toBe(1);
+      // Practice quizzes must not look up assignment points.
+      expect(mock.from).not.toHaveBeenCalledWith('assignment_questions');
       expect(insertQb.insert).toHaveBeenCalledWith([
         expect.objectContaining({
           question_id: 'q-1',
@@ -128,6 +130,32 @@ describe('QuizAttemptService', () => {
           is_correct: true,
         }),
       ]);
+    });
+
+    it('counts a practice-quiz question once even when it produced several answer rows', async () => {
+      const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
+      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      mock.from.mockReturnValueOnce(qb(null)); // attempt update
+      mock.from.mockReturnValueOnce(qb(null)); // answers insert
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [
+            { questionId: 'q-1', selectedAnswerId: 'ans-1' },
+            { questionId: 'q-1', selectedAnswerId: 'ans-2' },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).score).toBe(1);
+      expect(mock.from).not.toHaveBeenCalledWith('assignment_questions');
     });
 
     it('stores an open answer as text and does not auto-score it', async () => {
@@ -166,6 +194,90 @@ describe('QuizAttemptService', () => {
       ]);
       // No option lookup is performed for an open question.
       expect(mock.from).toHaveBeenCalledTimes(4);
+    });
+
+    it('awards assignment points instead of counting correct answers (#167)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        completed_at: null,
+        assignment_id: 'assignment-1',
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb({ deadline: null })); // teacher_assignments
+      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
+      mock.from.mockReturnValueOnce(qb({ is_correct: true })); // question_options
+      mock.from.mockReturnValueOnce(qb(null)); // attempt update
+      mock.from.mockReturnValueOnce(qb(null)); // answers insert
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [{ questionId: 'q-1', selectedAnswerId: 'ans-1' }],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).score).toBe(2);
+    });
+
+    it('awards a question once even when it produced several answer rows', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        completed_at: null,
+        assignment_id: 'assignment-1',
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb({ deadline: null }));
+      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
+      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      mock.from.mockReturnValueOnce(qb(null));
+      mock.from.mockReturnValueOnce(qb(null));
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [
+            { questionId: 'q-1', selectedAnswerId: 'ans-1' },
+            { questionId: 'q-1', selectedAnswerId: 'ans-2' },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).score).toBe(2);
+    });
+
+    it('returns INTERNAL_SERVER when assignment points cannot be loaded', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        completed_at: null,
+        assignment_id: 'assignment-1',
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb({ deadline: null }));
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [{ questionId: 'q-1', selectedAnswerId: 'ans-1' }],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
     });
 
     it('returns NOT_FOUND when attempt does not exist', async () => {

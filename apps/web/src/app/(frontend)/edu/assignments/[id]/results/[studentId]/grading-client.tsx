@@ -15,6 +15,7 @@ interface StudentAnswers {
   user_id: string;
   score: number;
   total_questions: number;
+  total_points: number | null;
   graded_at: string | null;
   quiz_attempt_questions: Array<{
     question_id: string;
@@ -74,7 +75,7 @@ export default function StudentGradingClient() {
       });
       if (!res.ok) throw new Error(t('grade_failed'));
     },
-    invalidateKeys: [assignmentKeys.studentResults(id, studentId)],
+    invalidateKeys: [assignmentKeys.results(id)],
   });
 
   const getGrade = (questionId: string) =>
@@ -129,7 +130,10 @@ export default function StudentGradingClient() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-muted-foreground">
-            {t('score', { earned: attempt.score, total: attempt.total_questions })}
+            {t('score', {
+              earned: attempt.score,
+              total: attempt.total_points || attempt.total_questions,
+            })}
             {attempt.graded_at && ` ${t('graded')}`}
           </p>
         </div>

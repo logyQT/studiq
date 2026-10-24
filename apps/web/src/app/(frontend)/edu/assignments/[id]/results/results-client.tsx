@@ -12,6 +12,7 @@ interface Attempt {
   user_id: string;
   score: number;
   total_questions: number;
+  total_points: number | null;
   completed_at: string | null;
   started_at: string;
   graded_at: string | null;
@@ -94,7 +95,9 @@ export default function ResultsClient() {
                   <td className="p-3 font-medium">{attempt.user?.full_name ?? t('unknown')}</td>
                   <td className="p-3 text-muted-foreground">{attempt.user?.email}</td>
                   <td className="p-3 text-center">
-                    {attempt.completed_at ? `${attempt.score}/${attempt.total_questions}` : '-'}
+                    {attempt.completed_at
+                      ? `${attempt.score}/${attempt.total_points || attempt.total_questions}`
+                      : '-'}
                   </td>
                   <td className="p-3 text-center">
                     <span

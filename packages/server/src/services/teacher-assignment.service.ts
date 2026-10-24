@@ -526,12 +526,77 @@ export class TeacherAssignmentService {
       if (error) return toDbFailure(error);
     }
 
-    await supabase
+    const scoreResult = await this.computeAttemptScore(supabase, attempt.id, id);
+    if (isFailure(scoreResult)) return scoreResult;
+
+    const { error: gradeError } = await supabase
       .from('quiz_attempts')
-      .update({ graded_at: new Date().toISOString() })
+      .update({
+        score: scoreResult.data,
+        graded_at: new Date().toISOString(),
+      })
       .eq('id', attempt.id);
 
+    if (gradeError) return toDbFailure(gradeError);
+
     return success(null);
+  }
+
+  /**
+   * Awarded points for an assignment attempt: manual teacher points win,
+   * otherwise a correct auto-graded answer earns the question's points.
+   * Answers are deduplicated per question because multi-select / matching
+   * questions store one row per selected unit.
+   */
+  private async computeAttemptScore(
+    supabase: SupabaseClient,
+    attemptId: string,
+    assignmentId: string,
+  ): Promise<ServiceResult<number>> {
+    const { data: questionRows, error: questionsError } = await supabase
+      .from('assignment_questions')
+      .select('question_id, points')
+      .eq('assignment_id', assignmentId);
+
+    if (questionsError) return toDbFailure(questionsError);
+
+    const { data: answers, error: answersError } = await supabase
+      .from('student_answers')
+      .select('question_id, is_correct, teacher_points')
+      .eq('attempt_id', attemptId);
+
+    if (answersError) return toDbFailure(answersError);
+
+    const pointsByQuestion = new Map<string, number>(
+      (questionRows ?? []).map((q) => [q.question_id, q.points ?? 0]),
+    );
+
+    const perQuestion = new Map<string, { teacherPoints: number | null; isCorrect: boolean }>();
+    for (const answer of answers ?? []) {
+      const entry = perQuestion.get(answer.question_id) ?? {
+        teacherPoints: null,
+        isCorrect: false,
+      };
+      if (answer.teacher_points !== null && answer.teacher_points !== undefined) {
+        entry.teacherPoints =
+          entry.teacherPoints === null
+            ? answer.teacher_points
+            : Math.max(entry.teacherPoints, answer.teacher_points);
+      }
+      entry.isCorrect = entry.isCorrect || answer.is_correct;
+      perQuestion.set(answer.question_id, entry);
+    }
+
+    let score = 0;
+    for (const [questionId, entry] of perQuestion) {
+      if (entry.teacherPoints !== null) {
+        score += entry.teacherPoints;
+      } else if (entry.isCorrect) {
+        score += pointsByQuestion.get(questionId) ?? 0;
+      }
+    }
+
+    return success(score);
   }
 
   /**
@@ -596,7 +661,7 @@ export class TeacherAssignmentService {
     const attemptIds = filtered.map((a) => a.id);
     const { data: attempts } = await supabase
       .from('quiz_attempts')
-      .select('assignment_id, id, score, total_questions, completed_at, started_at')
+      .select('assignment_id, id, score, total_questions, total_points, completed_at, started_at')
       .in('assignment_id', attemptIds)
       .eq('user_id', ctx.userId);
 
@@ -693,6 +758,11 @@ export class TeacherAssignmentService {
       orderedQuestions = orderedQuestions.sort(() => Math.random() - 0.5);
     }
 
+    // Snapshot the assignment's scale on the attempt: an assignment is scored
+    // in points, and the denominator must stay stable if the assignment's
+    // questions change later (same reasoning as total_questions).
+    const totalPoints = orderedQuestions.reduce((sum, q) => sum + (q.points ?? 1), 0);
+
     const { data: fullQuestions, error: questionsError } = await supabase
       .from('questions')
       .select('*, question_answers:question_options(*)')
@@ -718,6 +788,7 @@ export class TeacherAssignmentService {
         assignment_id: id,
         score: 0,
         total_questions: orderedQuestions.length,
+        total_points: totalPoints,
       })
       .select()
       .single();
