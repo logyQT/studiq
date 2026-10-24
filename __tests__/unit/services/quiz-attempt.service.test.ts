@@ -100,11 +100,13 @@ describe('QuizAttemptService', () => {
     it('submits answers and returns score', async () => {
       const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
       const answer = { id: 'ans-1', is_correct: true };
+      const insertQb = qb(null);
 
       mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
       mock.from.mockReturnValueOnce(qb(answer));
       mock.from.mockReturnValueOnce(qb(null));
-      mock.from.mockReturnValueOnce(qb(null));
+      mock.from.mockReturnValueOnce(insertQb);
 
       const result = await service.submit(
         {
@@ -117,6 +119,53 @@ describe('QuizAttemptService', () => {
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
       expect((result.data as any).score).toBe(1);
+      expect(insertQb.insert).toHaveBeenCalledWith([
+        expect.objectContaining({
+          question_id: 'q-1',
+          selected_option_id: 'ans-1',
+          text_answer: null,
+          question_type: 'mcq',
+          is_correct: true,
+        }),
+      ]);
+    });
+
+    it('stores an open answer as text and does not auto-score it', async () => {
+      const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
+      const insertQb = qb(null);
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-open', type: 'open' }]));
+      mock.from.mockReturnValueOnce(qb(null));
+      mock.from.mockReturnValueOnce(insertQb);
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [
+            {
+              questionId: 'q-open',
+              textAnswer: '  Rozbiory, słaba władza centralna, liberum veto.  ',
+            },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).score).toBe(0);
+      expect(insertQb.insert).toHaveBeenCalledWith([
+        {
+          attempt_id: 'a-1',
+          question_id: 'q-open',
+          question_type: 'open',
+          selected_option_id: null,
+          text_answer: 'Rozbiory, słaba władza centralna, liberum veto.',
+          is_correct: false,
+        },
+      ]);
+      // No option lookup is performed for an open question.
+      expect(mock.from).toHaveBeenCalledTimes(4);
     });
 
     it('returns NOT_FOUND when attempt does not exist', async () => {
