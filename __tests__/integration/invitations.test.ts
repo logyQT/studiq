@@ -12,6 +12,8 @@ import {
   cleanupOrganizationDeep,
   createServiceClient,
   mockUser,
+  seedOrganization,
+  seedOrgMembership,
   useRealSupabase,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
@@ -37,6 +39,13 @@ forEachCopy((copyId) => {
     let foreignFixture!: BeforeResult;
     let foreignOrgId!: string;
     let foreignAdminRoleId!: string;
+    /** #242: a foreign org's member role — M1 may not invite into that org. */
+    let foreignMemberRoleId!: string;
+    /**
+     * #242 control: the fixture manager IS a member here, but it is not the
+     * active org. `organizationId` may select it.
+     */
+    let controlOrg!: Awaited<ReturnType<typeof seedOrganization>>;
 
     beforeAll(async () => {
       // Manager creates the org via the API and becomes its admin member.
@@ -65,6 +74,24 @@ forEachCopy((copyId) => {
         .single();
       if (!foreignAdminRole) throw new Error('Admin role not found for foreign org');
       foreignAdminRoleId = foreignAdminRole.id;
+
+      const { data: foreignMemberRole } = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', foreignOrgId)
+        .eq('name', 'member')
+        .single();
+      if (!foreignMemberRole) throw new Error('Member role not found for foreign org');
+      foreignMemberRoleId = foreignMemberRole.id;
+
+      // #242 control: a second membership for the fixture manager. It is not the
+      // active org, but `organizationId` may still select it.
+      controlOrg = await seedOrganization(`QA #242 control ${copyId} ${Date.now()}`);
+      await seedOrgMembership({
+        organizationId: controlOrg.org.id,
+        userId: fixture.user.id,
+        orgRoleId: controlOrg.adminRoleId,
+      });
     });
 
     beforeEach(async () => {
@@ -81,6 +108,9 @@ forEachCopy((copyId) => {
       }
       if (foreignOrgId) {
         await cleanupOrganizationDeep(foreignOrgId);
+      }
+      if (controlOrg?.org.id) {
+        await cleanupOrganizationDeep(controlOrg.org.id);
       }
     });
 
@@ -107,6 +137,132 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(201);
         expect(body.success).toBe(true);
+      });
+
+      // #242: the body-supplied organizationId must not extend the caller's
+      // tenant. manager@fixture is not a member of the foreign org.
+      it('returns 403 and writes no row for a foreign organizationId (#242)', async () => {
+        mockUser(fixture.user);
+        const email = `qa-cross-org-ag-${copyId}-${Date.now()}@example.com`;
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email,
+              targetOrgRoleId: foreignMemberRoleId,
+              organizationId: foreignOrgId,
+            }),
+          },
+          { active_org_id: orgId },
+        );
+
+        const response = await invitePost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
+        expect(body.error).toBe('FORBIDDEN');
+
+        const { data } = await createServiceClient()
+          .from('invitations')
+          .select('id, organization_id')
+          .eq('email', email);
+        expect(data).toEqual([]);
+      });
+
+      // #242: active_org_id is a client-controlled cookie, so pointing it at a
+      // foreign org must not become a write target either.
+      it('returns 403 and writes no row for a forged active_org_id cookie (#242)', async () => {
+        mockUser(fixture.user);
+        const email = `qa-cookie-spoof-${copyId}-${Date.now()}@example.com`;
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, targetOrgRoleId: foreignMemberRoleId }),
+          },
+          { active_org_id: foreignOrgId },
+        );
+
+        const response = await invitePost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
+
+        const { data } = await createServiceClient()
+          .from('invitations')
+          .select('id')
+          .eq('email', email);
+        expect(data).toEqual([]);
+      });
+
+      // #242: a role from another org would leak that tenant's permission
+      // scopes into the target org when the invitation is accepted.
+      it('returns 403 and writes no row for a role from another org (#242)', async () => {
+        mockUser(fixture.user);
+        const email = `qa-cross-org-role-${copyId}-${Date.now()}@example.com`;
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, targetOrgRoleId: foreignMemberRoleId }),
+          },
+          { active_org_id: orgId },
+        );
+
+        const response = await invitePost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
+
+        const { data } = await createServiceClient()
+          .from('invitations')
+          .select('id')
+          .eq('email', email);
+        expect(data).toEqual([]);
+      });
+
+      // #242 control (the issue's UE Wrocław case): a membership that is not the
+      // active org is a valid target, so the field is scoped, not ignored.
+      it('creates the invitation in a member org that is not active (#242 control)', async () => {
+        mockUser(fixture.user);
+        const email = `qa-control-${copyId}-${Date.now()}@example.com`;
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email,
+              targetOrgRoleId: controlOrg.memberRoleId,
+              organizationId: controlOrg.org.id,
+            }),
+          },
+          { active_org_id: orgId },
+        );
+
+        const response = await invitePost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(201);
+        expect(body.success).toBe(true);
+
+        const { data } = await createServiceClient()
+          .from('invitations')
+          .select('organization_id')
+          .eq('email', email)
+          .single();
+        expect(data?.organization_id).toBe(controlOrg.org.id);
       });
 
       it('returns 422 when email is invalid', async () => {

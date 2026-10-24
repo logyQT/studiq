@@ -8,6 +8,9 @@ export const CreateInviteSchema = registry.register(
       .email({ error: ValidationErrorCode.EMAIL_INVALID })
       .nonempty({ error: ValidationErrorCode.REQUIRED }),
     targetOrgRoleId: z.string().uuid({ error: ValidationErrorCode.UUID_INVALID }),
+    // Target organization. Optional: defaults to the caller's active organization.
+    // It may only select an org the caller is a member of (enforced in
+    // InvitationService); it can never override the caller's tenant.
     organizationId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
   }),
 );
