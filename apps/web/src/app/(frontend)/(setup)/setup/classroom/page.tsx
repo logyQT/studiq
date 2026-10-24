@@ -17,12 +17,14 @@ import {
   Input,
   Separator,
 } from '@studiq/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { Check, Loader2, Plus, School, Users, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import { featureKeys, permissionKeys } from '@/lib/query-keys';
 
 const ClassroomFormSchema = z.object({
   name: z
@@ -42,6 +44,7 @@ type ClassroomFormValues = z.infer<typeof ClassroomFormSchema>;
 export default function ClassroomPage() {
   const t = useTranslations('SetupPage');
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -77,6 +80,19 @@ export default function ClassroomPage() {
       const orgBody = await res.json();
       const memberRoleId = orgBody.data?.memberRoleId as string | undefined;
       if (!memberRoleId) throw new Error();
+
+      // #305: the organization exists and is already the active org (the route
+      // set the `active_org_id` cookie), but `['orgs']` still holds the empty
+      // list cached before it existed. Refresh it here, before the invite step
+      // (an invite failure must not leave the org context stale).
+      // `refetchType: 'all'` is required: under `/setup` no `useOrgs()` observer
+      // is mounted, so the default `active`-only refetch would fetch nothing.
+      await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
+      // Permission scopes and plan features are resolved from the active org on
+      // the server and cache for 5 minutes. No observer here, so they are only
+      // marked stale and refetch on mount in `/edu` (as in `useOrgs.switchOrgMutation`).
+      queryClient.invalidateQueries({ queryKey: permissionKeys.all });
+      queryClient.invalidateQueries({ queryKey: featureKeys.all });
 
       const filtered = values.invites.filter((i) => i.email.trim());
       if (filtered.length > 0) {
