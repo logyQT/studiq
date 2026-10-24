@@ -11,6 +11,7 @@ import {
   cleanupFlashcardTopics,
   cleanupOrganizationByName,
   cleanupQuestions,
+  createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
@@ -42,6 +43,11 @@ forEachCopy((copyId) => {
       // Keep the org's question set clean between tests.
       // Scope cleanup to THIS copy's questions only via content prefix.
       await cleanupQuestions(educator.user.id, `copy-${copyId}`);
+      // The create path now enforces `max_question_banks` (#183), so leaked
+      // per-test banks would push later tests over the plan limit. Questions
+      // cascade with their bank.
+      const service = createServiceClient();
+      await service.from('question_banks').delete().eq('created_by', educator.user.id);
     });
 
     afterAll(async () => {

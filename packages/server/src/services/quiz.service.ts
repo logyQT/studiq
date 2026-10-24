@@ -6,6 +6,7 @@ import { failure, type ServiceResult, success } from '@studiq/server/lib/service
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { GenerateQuizInput } from '@studiq/server/models/quiz.model';
+import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class QuizService {
@@ -19,6 +20,21 @@ export class QuizService {
 
     const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
     if (filter._impossible) return success({ questions: [], attemptId: '' });
+
+    // Daily practice-quiz quota: count only attempts started today that are not
+    // part of a teacher assignment (assignment attempts are capped by
+    // `teacher_assignments.max_attempts` instead).
+    const dayStart = new Date();
+    dayStart.setUTCHours(0, 0, 0, 0);
+
+    const { count: attemptsToday } = await supabase
+      .from('quiz_attempts')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', ctx.userId)
+      .is('assignment_id', null)
+      .gte('started_at', dayStart.toISOString());
+
+    await limitsResolver.checkLimit(ctx, 'max_quiz_attempts_per_day', attemptsToday ?? 0);
 
     let query = supabase.from('questions').select(IN_PROGRESS_QUESTION_SELECT);
 
