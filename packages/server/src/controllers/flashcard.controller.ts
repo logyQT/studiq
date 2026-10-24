@@ -9,14 +9,12 @@ import { isFailure } from '@studiq/server/lib/service-result';
 import {
   BatchCopySchema,
   BatchDeleteSchema,
-  BatchLinkSchema,
   BatchMoveSchema,
   BatchTopicsSchema,
   BulkCreateFlashcardsSchema,
   CopyFlashcardSchema,
   CreateFlashcardSchema,
   FlashcardListQuerySchema,
-  LinkFlashcardSchema,
   UpdateFlashcardSchema,
 } from '@studiq/server/models/flashcard.model';
 import { type FlashcardService, flashcardService } from '@studiq/server/services/flashcard.service';
@@ -127,22 +125,6 @@ export class FlashcardController {
     return controllerResponse.success({ success: true });
   }
 
-  async link(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    const parsed = LinkFlashcardSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
-    }
-
-    const result = await this.flashcardService.link(id, parsed.data, ctx);
-
-    if (isFailure(result)) {
-      return controllerResponse.error(result.error);
-    }
-
-    return controllerResponse.success(result.data);
-  }
-
   async copy(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
     const parsed = CopyFlashcardSchema.safeParse(body);
 
@@ -167,22 +149,6 @@ export class FlashcardController {
     }
 
     const result = await this.flashcardService.batchDelete(parsed.data, ctx);
-
-    if (isFailure(result)) {
-      return controllerResponse.error(result.error);
-    }
-
-    return controllerResponse.success(result.data);
-  }
-
-  async batchLink(body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
-    const parsed = BatchLinkSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
-    }
-
-    const result = await this.flashcardService.batchLink(parsed.data, ctx);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);
