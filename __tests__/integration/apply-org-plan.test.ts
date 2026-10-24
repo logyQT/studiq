@@ -12,6 +12,7 @@ import { cleanupOrganizationDeep, createServiceClient } from '#test/integration/
 describe('apply_org_plan()', () => {
   let service: SupabaseClient;
   let orgId: string;
+  let adminRoleId: string;
 
   async function roleFeatures(roleName: string): Promise<string[]> {
     const { data, error } = await service
@@ -26,6 +27,9 @@ describe('apply_org_plan()', () => {
   /**
    * Probe the live limit through the real resolver (service-role client). The
    * user id belongs to no seat, so this exercises the org-plan path only.
+   * `orgRoleId` is set because `getEffectiveLimit` only trusts `activeOrgId`
+   * for verified members (#230) — here the service client bypasses RLS, so the
+   * synthetic ctx still resolves the org plan.
    */
   async function limit(key: string): Promise<number> {
     const resolver = new LimitsResolver(async () => service);
@@ -34,7 +38,7 @@ describe('apply_org_plan()', () => {
       userId: '00000000-0000-4000-8000-000000000000',
       accountType: 'STUDENT',
       activeOrgId: orgId,
-      orgRoleId: null,
+      orgRoleId: adminRoleId,
       url: '/api/v1/features/me',
       method: 'GET',
       groupIds: [],
@@ -57,6 +61,15 @@ describe('apply_org_plan()', () => {
       .single();
     if (error || !data) throw new Error(`org create failed: ${error?.message}`);
     orgId = data.id;
+
+    const { data: role, error: roleError } = await service
+      .from('org_roles')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('name', 'admin')
+      .single();
+    if (roleError || !role) throw new Error(`admin role lookup failed: ${roleError?.message}`);
+    adminRoleId = role.id;
   });
 
   afterAll(async () => {

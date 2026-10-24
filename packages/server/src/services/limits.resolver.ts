@@ -15,6 +15,12 @@ export interface UsageInfo {
 export class LimitsResolver {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
+  /**
+   * Effective limit for the caller's current context: a seated user gets the
+   * seat's plan only; otherwise the highest value of the personal plan and —
+   * for verified org members — the organization's plan (`organizations.plan` →
+   * `plan_limits`). `-1` means unlimited, `0` means no limit is defined.
+   */
   async getEffectiveLimit(ctx: RequestContext, limitKey: string): Promise<number> {
     const supabase = await this.createClient();
 
@@ -54,7 +60,13 @@ export class LimitsResolver {
       if (pl) limits.push(pl.limit_value);
     }
 
-    if (ctx.activeOrgId) {
+    // Org capacity: organizations.plan → plan_limits (org_limits is gone, #229).
+    // Membership-gated: `active_org_id` is a client-controlled cookie, so only
+    // trust it for actual members — withAuth sets `orgRoleId` solely when an
+    // org_members row exists (same guard as stats.service and the org routes).
+    // The organizations RLS policy filters non-members too, but this keeps the
+    // boundary explicit and independent of that policy.
+    if (ctx.activeOrgId && ctx.orgRoleId) {
       const { data: org } = await supabase
         .from('organizations')
         .select('plan')
