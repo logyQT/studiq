@@ -118,8 +118,9 @@ def message(pr: dict, ready: bool) -> str:
         f"\"{pr['title']}\" - {size} - {head}\n"
         f"{pr.get('url', '')}\n\n"
         f"Review + QA it: `$FIX ingest --author {author}` then `$FIX review {pr['number']}` "
-        f"and `$FIX qa {pr['number']}`. Two independent reviews and one QA on the same head; "
-        f"the author owns the merge."
+        f"and `$FIX qa {pr['number']}`. Two independent reviews and one QA on the same head: "
+        f"merge when every gate is green (`verdict {pr['number']} --approve`), otherwise post one "
+        f"consolidated `--request-changes` review and wait for the author's fix. Never push code."
     )
     return body
 

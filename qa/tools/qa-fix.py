@@ -1290,7 +1290,8 @@ def cmd_verdict(args) -> None:
                  and (q or {}).get("decision") == "pass")
     lines += ["", f"**Verdict: {'ready to merge' if all_green else 'changes needed'}**"
                   + ("" if all_green else " - see the findings above."),
-              "", "_Automated pass; the author owns the merge._"]
+              "", "_Automated pass; merged when every gate is green._" if all_green
+              else "_Changes requested; waiting for the author's fix._"]
     body = chr(10).join(lines)
     approved = False
     if args.approve or args.request_changes:
@@ -1303,14 +1304,30 @@ def cmd_verdict(args) -> None:
         approved = bool(args.approve)
     else:
         gh(["pr", "comment", str(rec["pr"]), "--body", body])
+    merged = False
+    if all_green and approved:
+        # review day: a green PR is ours to merge, a red one goes back to its author
+        view = json.loads(gh(["pr", "view", str(rec["pr"]),
+                              "--json", "number,state,isDraft,mergeable,url"]))
+        if view.get("state") != "OPEN":
+            fail(f"PR #{rec['pr']} is {view.get('state')}, not OPEN", pr=view)
+        if view.get("isDraft"):
+            fail(f"PR #{rec['pr']} is still a draft", pr=view)
+        if str(view.get("mergeable") or "").upper() == "CONFLICTING":
+            fail(f"PR #{rec['pr']} is not mergeable (conflicts) - post `--request-changes` instead",
+                 pr=view)
+        gh(["pr", "merge", str(rec["pr"]), "--squash", "--delete-branch"])
+        merged = True
     prev = rec["stage"]
     rec["stage"] = "done" if (all_green or args.close) else prev
     rec["verdict"] = "approve" if all_green else "changes_requested"
+    if merged:
+        rec["merged_at"] = now()
     history(state, n, {"event": "verdict", "pr": rec["pr"],
                        "verdict": rec["verdict"], "approved_on_github": approved,
-                       "stage_after": rec["stage"]})
+                       "merged": merged, "stage_after": rec["stage"]})
     ok(action="verdict", issue=n, pr=rec["pr"], verdict=rec["verdict"],
-       approved_on_github=approved, stage=rec["stage"])
+       approved_on_github=approved, merged=merged, stage=rec["stage"])
 
 
 def cmd_merge(args) -> None:
@@ -1318,8 +1335,8 @@ def cmd_merge(args) -> None:
     n = args.issue
     rec = get_rec(state, n)
     if rec.get("external"):
-        fail("refusing to merge an external PR: the author owns the merge",
-             hint="post the result with `verdict <pr> --approve` instead")
+        fail("external PRs merge through `verdict <pr> --approve`",
+             hint="that posts the approving review and merges when every gate is green")
     if rec["stage"] != "qa_passed":
         fail(f"cannot merge from stage {rec['stage']}")
     require_fresh(issue_dir(n) / f"qa-r{attempt(rec)}.json", rec, "qa")

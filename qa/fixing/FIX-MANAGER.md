@@ -241,7 +241,9 @@ $FIX verdict <pr> [--approve|--request-changes]   # submits the two verdicts + Q
 ```
 
 - `collect` routes an external PR to `verdict`, never to design/writer.
-- `merge` refuses external PRs; the author owns the merge.
+- On review days a green external PR is merged with `verdict <pr> --approve` (squash + delete
+  branch); a red or conflicting one gets one consolidated `--request-changes` review and waits
+  for the author's fix. Never write or push code for an external PR.
 - Run `ingest` after every merge batch and every ~30 minutes while the pipeline runs, so teammates' PRs do not pile up.
 
 ### 8. Pause (free the slots)
