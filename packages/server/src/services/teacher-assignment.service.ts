@@ -608,10 +608,28 @@ export class TeacherAssignmentService {
     supabase: SupabaseClient,
     assignment: {
       created_by?: string | null;
+      organization_id?: string | null;
       assignment_targets?: { group_id?: string | null; student_id?: string | null }[] | null;
     },
     userId: string,
   ): Promise<ServiceResult<boolean>> {
+    // Org content requires current org membership; group_members is not an
+    // authorization source on its own (#249). Without this a stale
+    // group_members row keeps granting access after the user was removed from
+    // the organization (the author included: "after removal you lose access to
+    // all organization data").
+    if (assignment.organization_id) {
+      const { data: membership, error } = await supabase
+        .from('org_members')
+        .select('id')
+        .eq('organization_id', assignment.organization_id)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error) return toDbFailure(error);
+      if (!membership) return success(false);
+    }
+
     if (assignment.created_by === userId) return success(true);
 
     const targets = assignment.assignment_targets ?? [];
@@ -633,13 +651,16 @@ export class TeacherAssignmentService {
   async listForStudent(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const { data: groups, error: groupError } = await supabase
-      .from('group_members')
-      .select('group_id')
-      .eq('user_id', ctx.userId);
+    const [{ data: groups, error: groupError }, { data: orgRows, error: orgError }] =
+      await Promise.all([
+        supabase.from('group_members').select('group_id').eq('user_id', ctx.userId),
+        supabase.from('org_members').select('organization_id').eq('user_id', ctx.userId),
+      ]);
 
     if (groupError) return toDbFailure(groupError);
+    if (orgError) return toDbFailure(orgError);
     const groupIds = groups?.map((g) => g.group_id) ?? [];
+    const orgIds = new Set((orgRows ?? []).map((r) => r.organization_id));
 
     const { data: assignments, error } = await supabase
       .from('teacher_assignments')
@@ -650,6 +671,10 @@ export class TeacherAssignmentService {
     if (error) return toDbFailure(error);
 
     const filtered = (assignments ?? []).filter((a) => {
+      // Org content is only visible to current members of that org: a stale
+      // group_members row must not surface it (#249). Personal assignments
+      // (organization_id = null) keep the target-based rule.
+      if (a.organization_id && !orgIds.has(a.organization_id)) return false;
       if (a.created_by === ctx.userId) return true;
       const targets = a.assignment_targets ?? [];
       return targets.some(
