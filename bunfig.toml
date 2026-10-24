@@ -1,0 +1,46 @@
+# Bun-native toolchain (phase 1: functional parity with the Biome + tsc setup).
+# Phase 2 (stricter rules, type-aware categories, max-warnings = 0) is deliberately deferred.
+
+[fmt]
+printWidth = 100
+singleQuote = true
+# The old Biome formatter only touched JS/TS/JSON/CSS. Keep Markdown, YAML, TOML and
+# HTML out of scope so the switch does not reformat documentation or config prose.
+ignorePatterns = ["**/*.md", "**/*.yml", "**/*.yaml", "**/*.toml", "**/*.html", "**/*.jsonc"]
+
+[lint]
+# Scope is passed by the scripts (`bun run lint` covers apps/*/src, packages and
+# __tests__; each workspace lints its own src/), matching the old Biome includes.
+# bun lint itself already skips node_modules and .gitignore'd paths.
+[lint.rules]
+"@typescript-eslint/no-explicit-any" = "off"
+"@typescript-eslint/no-unused-vars" = "error"
+"no-shadow-restricted-names" = "off"
+"react-hooks/exhaustive-deps" = "error"
+"react/button-has-type" = "off"
+"react/no-danger" = "error"
+"jsx-a11y/*" = "off"
+"no-empty" = "off"
+"array-callback-return" = "off" # biome: suspicious/useIterableCallbackReturn off
+"oxc/no-barrel-file" = ["error", { threshold = 0 }]
+"typescript/prefer-optional-chain" = "warn"
+"no-restricted-imports" = [
+  "error",
+  { patterns = [
+    { group = ["./**"], message = "Relative import detected. Use the '@/' alias instead (e.g. '@/lib/something') - see AGENTS.md 'Import Paths'." },
+    { group = ["../**"], message = "Relative import detected. Use the '@/' alias instead (e.g. '@/lib/something') - see AGENTS.md 'Import Paths'." },
+  ] },
+]
+
+# Biome overrides
+[[lint.overrides]]
+files = ["packages/**"]
+rules = { "no-restricted-imports" = "off" }
+
+[[lint.overrides]]
+files = ["packages/*/src/index.ts"]
+rules = { "oxc/no-barrel-file" = "off" }
+
+[[lint.overrides]]
+files = ["__tests__/**"]
+rules = { "react-hooks/rules-of-hooks" = "off" }

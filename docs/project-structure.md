@@ -94,7 +94,7 @@ studiq/
 ├── package.json                      # Workspace root — workspaces: apps/*, packages/*
 ├── vitest.config.ts                  # Vitest config + path aliases
 ├── playwright.config.ts              # Playwright config
-├── biome.json                        # Lint/format config (replaces ESLint + Prettier)
+├── bunfig.toml                       # Lint/format config for Bun's native tools
 ├── lefthook.yml                      # Git hooks
 ├── knip.json                         # Unused-code detection
 ├── tsconfig.json                     # Root TS config with workspace path aliases
@@ -116,7 +116,7 @@ studiq/
 
 There are **no barrel files** — every module is imported from its own file path.
 `packages/server` exposes subpath exports (`@studiq/server/services/*`,
-`@studiq/server/controllers/*`, `@studiq/server/lib/*`, ...), and Biome's
+`@studiq/server/controllers/*`, `@studiq/server/lib/*`, ...), and Bun lint's
 `noBarrelFile` / `noReExportAll` rules keep it that way:
 
 ```typescript
@@ -125,7 +125,7 @@ import { toNextResponse } from '@studiq/server/lib/http-utils';
 ```
 
 Relative imports (`./...`, `../...`) are banned everywhere — see **Import
-Aliases** below. `bun run lint` enforces this with Biome's `noRestrictedImports`
+Aliases** below. `bun run lint` enforces this with Bun lint's `no-restricted-imports`
 plus `scripts/check-import-paths.ts`.
 
 ### Naming Conventions

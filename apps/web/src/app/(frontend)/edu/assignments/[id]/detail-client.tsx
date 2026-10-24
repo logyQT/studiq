@@ -270,18 +270,21 @@ export default function AssignmentDetailClient() {
     invalidateKeys: [assignmentKeys.detail(id)],
   });
 
+  // `mutate` is stable across renders; the mutation object itself is not.
+  const saveTargets = setTargetsMutation.mutate;
+
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
       if (targetGroupIds.length > 0 || targetStudentIds.length > 0) {
-        setTargetsMutation.mutate(undefined);
+        saveTargets();
       }
     }, 500);
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [targetGroupIds, targetStudentIds, setTargetsMutation.mutate]);
+  }, [targetGroupIds, targetStudentIds, saveTargets]);
 
   const handleDelete = async () => {
     if (!window.confirm(t('delete_confirm'))) return;

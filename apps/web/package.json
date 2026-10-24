@@ -6,8 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --incremental --skipLibCheck --noEmit",
-    "lint": "biome ci src/",
+    "typecheck": "bun check",
+    "lint": "bun lint --no-script src/",
     "test": "vitest run",
     "test:unit": "vitest run __tests__/unit/",
     "test:integration": "vitest run __tests__/integration"

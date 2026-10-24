@@ -177,11 +177,9 @@ export class QuestionBankService {
     if (error || !bank) return failure('NOT_FOUND');
 
     const countArr = (bank as Record<string, unknown>).question_count as
-      | { count: number }[]
-      | undefined;
+      { count: number }[] | undefined;
     const groups = (bank as Record<string, unknown>).bank_groups as
-      | { group_id: string }[]
-      | undefined;
+      { group_id: string }[] | undefined;
     return success({
       ...bank,
       question_count: countArr?.[0]?.count ?? 0,

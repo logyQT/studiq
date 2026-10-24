@@ -5,13 +5,7 @@ type QueuedEvent = {
   agentName: string;
   iteration?: number;
   eventType:
-    | 'step'
-    | 'tool_call'
-    | 'tool_result'
-    | 'llm_request'
-    | 'llm_response'
-    | 'error'
-    | 'retry';
+    'step' | 'tool_call' | 'tool_result' | 'llm_request' | 'llm_response' | 'error' | 'retry';
   label: string;
   data: Record<string, unknown>;
 };
