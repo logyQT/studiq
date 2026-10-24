@@ -541,6 +541,11 @@ def is_flex(state: dict) -> bool:
     return bool(state.get("flex"))
 
 
+def is_closeout(state: dict) -> bool:
+    """Close-out: finish what is in flight, start nothing new."""
+    return bool(state.get("closeout"))
+
+
 def attempt(rec: dict) -> int:
     return int(rec.get("attempt", 1))
 
@@ -653,6 +658,10 @@ def cmd_map(args) -> None:
 def cmd_next(args) -> None:
     m = load_map()
     st = load_state()
+    if is_closeout(st):
+        ok(action="next", issue=None,
+           message="close-out: do not start new issues; finish or park the in-flight ones")
+        return
     active = {int(n) for n, r in st["issues"].items()
               if r.get("stage") not in ("done", "needs_design", "blocked")}
     for n in m["queue"]:
@@ -690,6 +699,9 @@ def role_for_stage(stage: str) -> str:
 def cmd_design(args) -> None:
     state = load_state()
     n = args.issue
+    if is_closeout(state):
+        fail("close-out in progress: no new issues",
+             hint="finish the in-flight issues, then `qa-fix.py closeout off` to resume")
     flex = is_flex(state)
     if args.env:
         env = args.env
@@ -1085,6 +1097,17 @@ def cmd_merge(args) -> None:
     ok(action="merge", issue=n, pr=pr, stage="done", url=view.get("url"))
 
 
+def cmd_closeout(args) -> None:
+    state = load_state()
+    on = args.mode == "on"
+    state["closeout"] = on
+    state["events"].append({"at": now(), "event": "closeout", "on": on})
+    state["events"] = state["events"][-500:]
+    save_state(state)
+    ok(action="closeout", closeout=on,
+       message=("no new issues; finish or park in-flight work" if on else "resumed"))
+
+
 def cmd_block(args) -> None:
     state = load_state()
     n = args.issue
@@ -1305,6 +1328,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--recommendation")
     s.add_argument("--blocking", action="store_true")
     s.set_defaults(fn=cmd_escalate)
+    s = sub.add_parser("closeout"); s.add_argument("mode", choices=("on", "off"))
+    s.set_defaults(fn=cmd_closeout)
     sub.add_parser("escalations-pending").set_defaults(fn=cmd_escalations_pending)
     s = sub.add_parser("escalations-show"); s.add_argument("id"); s.set_defaults(fn=cmd_escalations_show)
     s = sub.add_parser("escalations-answer"); s.add_argument("id")

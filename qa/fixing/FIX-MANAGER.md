@@ -180,3 +180,10 @@ The dashboard posts `env-N: finished · #issue stage` or `started · ...` to `#m
 - Never merge without the tool's merge gate.
 - Never edit product code, write to another agent's artifact, hand-edit `state.json`, or touch the main stack/ports.
 - Never resume the old QA campaign or reuse its manager session.
+
+### 7. Close-out
+`$FIX closeout on` freezes new work: `next` returns nothing and `design` refuses,
+while `implement` / `review` / `qa` keep working for issues already in the
+pipeline. Finish each in-flight issue to its next stable stage (PR opened, both
+reviews collected, QA decided), merge only what is already fully gated, park the
+rest, flush memory, then idle. `$FIX closeout off` resumes the backlog.
