@@ -50,6 +50,9 @@ export default function StudentAssignmentDetailPage() {
       if (!res.ok) throw new Error(json.error);
       return json.data;
     },
+    // Starting/resuming changes `attempt`; without this the detail page keeps a
+    // stale `attempt: null` and offers „Rozpocznij” after the student quits.
+    invalidateKeys: [studentAssignmentKeys.all],
   });
 
   const handleStart = async () => {

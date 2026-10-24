@@ -15,6 +15,16 @@ import type {
 } from '@studiq/server/models/teacher-assignment.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+/**
+ * The `draft_answers` column is only ever served through
+ * `GET /api/v1/quiz/:attemptId`, which maps it to `answers` (#349). The start
+ * payload never serialises the raw column, so both payload shapes stay equal.
+ */
+function toAttemptPayload(attempt: Record<string, unknown>): Record<string, unknown> {
+  const { draft_answers: _draftAnswers, ...attemptFields } = attempt;
+  return attemptFields;
+}
+
 export class TeacherAssignmentService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
@@ -763,13 +773,26 @@ export class TeacherAssignmentService {
       }
     }
 
-    const { data: existingAttempt } = await supabase
+    const { data: existingAttempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
-      .select('id, completed_at')
+      .select('*')
       .eq('assignment_id', id)
-      .eq('user_id', ctx.userId);
+      .eq('user_id', ctx.userId)
+      .order('started_at', { ascending: false });
 
-    const attempts = existingAttempt ?? [];
+    // Never swallow this error: starting a new attempt because the lookup
+    // failed is exactly the duplicate-attempt bug this endpoint had (#369).
+    if (attemptsError) return toDbFailure(attemptsError);
+
+    const attempts = existingAttempts ?? [];
+    const openAttempt = attempts.find((a) => !a.completed_at);
+
+    // „Kontynuuj" must reopen the same attempt, never mint a new one —
+    // otherwise a student farms fresh attempts and dodges max_attempts (#369).
+    if (openAttempt) {
+      return this.loadAttemptForTake(supabase, openAttempt);
+    }
+
     const completedCount = attempts.filter((a) => a.completed_at).length;
 
     if (completedCount >= assignment.max_attempts) {
@@ -819,7 +842,24 @@ export class TeacherAssignmentService {
       .select()
       .single();
 
-    if (attemptError) return toDbFailure(attemptError);
+    if (attemptError) {
+      // Two concurrent „Rozpocznij” calls can both pass the resume check. The
+      // partial unique index makes the loser fail with 23505; it must resume
+      // the winner's attempt instead of surfacing a conflict (#369).
+      if (attemptError.code === '23505') {
+        const { data: raced } = await supabase
+          .from('quiz_attempts')
+          .select('*')
+          .eq('assignment_id', id)
+          .eq('user_id', ctx.userId)
+          .is('completed_at', null)
+          .maybeSingle();
+
+        if (raced) return this.loadAttemptForTake(supabase, raced);
+      }
+
+      return toDbFailure(attemptError);
+    }
 
     const attemptQuestions = orderedQuestions.map((q, i) => ({
       attempt_id: attempt.id,
@@ -834,9 +874,34 @@ export class TeacherAssignmentService {
     if (linkError) return toDbFailure(linkError);
 
     return success({
-      ...attempt,
+      ...toAttemptPayload(attempt),
       questions: fullQuestions ?? [],
     });
+  }
+
+  /**
+   * Continue payload: the attempt's own question snapshot (the assignment may
+   * have been edited since), never the answer key (#331), never the raw
+   * `draft_answers` column (#349).
+   *
+   * Reading `quiz_attempt_questions` keeps the ordering/shuffling from the
+   * original start, so „Kontynuuj” shows the questions the student already had.
+   */
+  private async loadAttemptForTake(
+    supabase: SupabaseClient,
+    attempt: Record<string, unknown>,
+  ): Promise<ServiceResult<unknown>> {
+    const { data: rows, error } = await supabase
+      .from('quiz_attempt_questions')
+      .select(`order_index, question_id, questions(${IN_PROGRESS_QUESTION_SELECT})`)
+      .eq('attempt_id', attempt.id as string)
+      .order('order_index', { ascending: true });
+
+    if (error) return toDbFailure(error);
+
+    const questions = (rows ?? []).map((row) => row.questions).filter(Boolean);
+
+    return success({ ...toAttemptPayload(attempt), questions });
   }
 
   async exportAnswers(
