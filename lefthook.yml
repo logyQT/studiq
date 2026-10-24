@@ -3,7 +3,11 @@ pre-commit:
   commands:
     format:
       glob: '*.{ts,tsx,js,jsx,mjs,cjs,json,css}'
-      run: bunx biome check --write {staged_files}
+      run: bun fmt --staged
+      stage_fixed: true
+    fix:
+      glob: '*.{ts,tsx,js,jsx,mjs,cjs}'
+      run: bun lint --no-script --staged --fix
       stage_fixed: true
     lint:
       run: bun run lint

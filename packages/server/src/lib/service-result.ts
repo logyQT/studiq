@@ -1,8 +1,7 @@
 import type { AppErrorCode } from '@studiq/server/lib/errors';
 
 export type ServiceResult<T, E extends AppErrorCode = AppErrorCode> =
-  | { success: true; data: T }
-  | { success: false; error: E };
+  { success: true; data: T } | { success: false; error: E };
 
 export function isSuccess<T, E extends AppErrorCode>(
   result: ServiceResult<T, E>,

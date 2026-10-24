@@ -37,6 +37,10 @@ interface TopicDialogsProps {
   onAddTopicConfirm: () => void;
 }
 
+function getTopicIds(fc: Flashcard | undefined) {
+  return fc?.flashcard_topic_assignments?.map((a) => a.topic_id) ?? [];
+}
+
 export function TopicDialogs({
   t,
   topics,
@@ -55,10 +59,6 @@ export function TopicDialogs({
   const [newTopicName, setNewTopicName] = useState('');
   const [creatingTopic, setCreatingTopic] = useState(false);
   const [topicActionIds, setTopicActionIds] = useState<string[]>([]);
-
-  function getTopicIds(fc: Flashcard | undefined) {
-    return fc?.flashcard_topic_assignments?.map((a) => a.topic_id) ?? [];
-  }
 
   const handleCreateAndLinkTopic = useCallback(async () => {
     const name = newTopicName.trim();
@@ -87,8 +87,7 @@ export function TopicDialogs({
     } finally {
       setCreatingTopic(false);
     }
-    // biome-ignore lint/correctness/useExhaustiveDependencies: getTopicIds is a callback ref
-  }, [newTopicName, activeFlashcardId, flashcards, queryClient, onAddTopicOpenChange, getTopicIds]);
+  }, [newTopicName, activeFlashcardId, flashcards, queryClient, onAddTopicOpenChange]);
 
   const handleManageTopicsConfirm = useCallback(async () => {
     if (!activeFlashcardId) return;

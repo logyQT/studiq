@@ -14,10 +14,10 @@
     "typecheck": "bun run --filter @studiq/web typecheck",
     "typecheck:packages": "bun run --filter @studiq/server typecheck && bun run --filter @studiq/authz typecheck && bun run --filter @studiq/ui typecheck",
     "typecheck:all": "bun run typecheck && bun run typecheck:admin && bun run typecheck:packages",
-    "lint": "biome ci . && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts",
+    "lint": "bun scripts/check-bun-version.ts && bun lint --no-script apps/web/src apps/admin/src packages __tests__ && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts",
     "lint:all": "bun run typecheck:all && bun run lint",
-    "format": "biome check --write .",
-    "format:check": "biome ci .",
+    "format": "bun scripts/check-bun-version.ts && bun fmt .",
+    "format:check": "bun scripts/check-bun-version.ts && bun fmt --check .",
     "test": "vitest run",
     "test:unit": "vitest run __tests__/unit/",
     "test:integration": "vitest run __tests__/integration",
@@ -131,7 +131,6 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.13",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/bun": "^1.4.2",
@@ -150,5 +149,8 @@
     "tailwindcss": "^4.3.3",
     "tw-animate-css": "1.3.3",
     "typescript": "^7.0.2"
+  },
+  "engines": {
+    "bun": ">=1.4.4-canary"
   }
 }
