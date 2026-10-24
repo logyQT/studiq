@@ -114,7 +114,9 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
       await row.getByRole('link', { name: t('EduAssignmentResultsPage.grade') }).click();
       await page.waitForURL(new RegExp(`/results/${STUDENT_ID}$`, 'i'));
 
-      await page.locator('input[type="number"]').first().fill('2');
+      // `POST …/questions` does not take points, so `assignment_questions.points`
+      // stays at the schema default 1 (#169 rejects anything above it).
+      await page.locator('input[type="number"]').first().fill('1');
 
       const saveGrade = page.waitForResponse(
         (res) =>
@@ -138,6 +140,8 @@ test.describe('teacher assignment grading refreshes the results table (#168)', (
 
       await expect(row.getByText(t('EduAssignmentResultsPage.graded'))).toBeVisible();
       await expect(row.getByText(t('EduAssignmentResultsPage.submitted'))).toHaveCount(0);
+      // Status alone is not enough: a stale score with a fresh status must fail too.
+      await expect(row.locator('td').nth(2)).toHaveText('1/1');
     } finally {
       if (createdAssignmentId) {
         await page.request
