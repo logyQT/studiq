@@ -1736,6 +1736,155 @@ describe('TeacherAssignmentService', () => {
     });
   });
 
+  describe('exportAnswers', () => {
+    const ownedAssignment = () =>
+      chain({ id: assignmentId, created_by: userId, organization_id: orgId });
+
+    it('maps every attempt to the results-view row', async () => {
+      const attempts = [
+        {
+          id: 'attempt-1',
+          score: 3,
+          total_questions: 4,
+          total_points: 4,
+          completed_at: '2026-10-19T09:00:00.000Z',
+          graded_at: '2026-10-20T09:00:00.000Z',
+          user: {
+            id: 'student-1',
+            email: 'student-classroom@dev.local',
+            full_name: 'Classroom Student',
+          },
+        },
+        {
+          id: 'attempt-2',
+          score: 2,
+          total_questions: 4,
+          total_points: 4,
+          completed_at: '2026-10-18T09:00:00.000Z',
+          graded_at: null,
+          user: {
+            id: 'student-2',
+            email: 'second@dev.local',
+            full_name: 'Second Student',
+          },
+        },
+        {
+          id: 'attempt-3',
+          score: 0,
+          total_questions: 4,
+          total_points: null,
+          completed_at: null,
+          graded_at: null,
+          user: null,
+        },
+      ];
+
+      mock.from.mockReturnValueOnce(ownedAssignment()).mockReturnValueOnce(chain(attempts));
+
+      const result = await service.exportAnswers(assignmentId, undefined, ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toEqual([
+          {
+            studentName: 'Classroom Student',
+            email: 'student-classroom@dev.local',
+            score: '3/4',
+            status: 'graded',
+            completedAt: '2026-10-19T09:00:00.000Z',
+          },
+          {
+            studentName: 'Second Student',
+            email: 'second@dev.local',
+            score: '2/4',
+            status: 'submitted',
+            completedAt: '2026-10-18T09:00:00.000Z',
+          },
+          {
+            studentName: null,
+            email: null,
+            score: '-',
+            status: 'in_progress',
+            completedAt: null,
+          },
+        ]);
+      }
+
+      // Ownership check + one attempt query — the assignment/question payload
+      // is not read by an export download.
+      expect(mock.from).toHaveBeenCalledTimes(2);
+    });
+
+    it('falls back to total_questions when total_points is 0 or null', async () => {
+      const attempts = [
+        {
+          id: 'attempt-1',
+          score: 5,
+          total_questions: 8,
+          total_points: 0,
+          completed_at: '2026-10-19T09:00:00.000Z',
+          graded_at: null,
+          user: null,
+        },
+        {
+          id: 'attempt-2',
+          score: 3,
+          total_questions: 8,
+          total_points: null,
+          completed_at: '2026-10-18T09:00:00.000Z',
+          graded_at: null,
+          user: null,
+        },
+      ];
+
+      mock.from.mockReturnValueOnce(ownedAssignment()).mockReturnValueOnce(chain(attempts));
+
+      const result = await service.exportAnswers(assignmentId, undefined, ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.map((row) => row.score)).toEqual(['5/8', '3/8']);
+    });
+
+    it('returns an empty list when there are no attempts', async () => {
+      mock.from.mockReturnValueOnce(ownedAssignment()).mockReturnValueOnce(chain([]));
+
+      const result = await service.exportAnswers(assignmentId, undefined, ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).toEqual([]);
+    });
+
+    it('filters by studentId when provided', async () => {
+      const attemptsChain = chain([]);
+      mock.from.mockReturnValueOnce(ownedAssignment()).mockReturnValue(attemptsChain);
+
+      await service.exportAnswers(assignmentId, 'student-1', ctx);
+
+      expect(attemptsChain.eq).toHaveBeenCalledWith('user_id', 'student-1');
+    });
+
+    it('returns NOT_FOUND when the caller does not own the assignment', async () => {
+      mock.from.mockReturnValueOnce(chain(null));
+
+      const result = await service.exportAnswers(assignmentId, undefined, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('maps a database error to a failure', async () => {
+      mock.from
+        .mockReturnValueOnce(ownedAssignment())
+        .mockReturnValueOnce(failingChain({ code: 'XX000', message: 'attempts lookup failed' }));
+
+      const result = await service.exportAnswers(assignmentId, undefined, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
+    });
+  });
+
   describe('uploadImage', () => {
     it('uploads image successfully', async () => {
       mock.from

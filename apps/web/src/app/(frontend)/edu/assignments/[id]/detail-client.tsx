@@ -861,11 +861,11 @@ export default function AssignmentDetailClient() {
                 </Button>
               </Link>
             )}
-            <Link href={`/api/v1/teacher/assignments/${id}/export-answers`}>
-              <Button variant="outline">
+            <Button variant="outline" asChild>
+              <a href={`/api/v1/teacher/assignments/${id}/export-answers`}>
                 <Download className="w-4 h-4 mr-1.5" /> {t('export_answers')}
-              </Button>
-            </Link>
+              </a>
+            </Button>
           </CardContent>
         </Card>
       )}
