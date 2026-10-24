@@ -1,13 +1,17 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useOrgs } from '@/hooks/use-orgs';
 
+const FULL_WIDTH_ROUTES = ['/edu/ai'];
+
 export default function EduLayout({ children }: { children: React.ReactNode }) {
   const { needsOnboarding } = useOrgs();
   const router = useRouter();
+  const pathname = usePathname();
+  const fullWidth = FULL_WIDTH_ROUTES.some((route) => pathname === route);
 
   useEffect(() => {
     if (needsOnboarding) {
@@ -15,5 +19,5 @@ export default function EduLayout({ children }: { children: React.ReactNode }) {
     }
   }, [needsOnboarding, router]);
 
-  return <DashboardLayout>{children}</DashboardLayout>;
+  return <DashboardLayout fullWidth={fullWidth}>{children}</DashboardLayout>;
 }

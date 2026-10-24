@@ -39,7 +39,7 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
       label: 'sidebar_main',
       items: [
         { titleKey: 'edu_overview', href: '/edu', icon: LayoutDashboard },
-        { titleKey: 'ai_chat', href: '/edu/ai', icon: Sparkles },
+        { titleKey: 'ai_chat', href: '/edu/ai', icon: Sparkles, feature: 'ai.chat' },
       ],
     },
     // UI_HIDDEN: classroom section — stale for org-managed flow
@@ -74,10 +74,7 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
   '/manage': [
     {
       label: 'sidebar_main',
-      items: [
-        { titleKey: 'manage_overview', href: '/manage', icon: LayoutDashboard },
-        { titleKey: 'ai_chat', href: '/manage/ai', icon: Sparkles },
-      ],
+      items: [{ titleKey: 'manage_overview', href: '/manage', icon: LayoutDashboard }],
     },
     {
       label: 'sidebar_administration',
