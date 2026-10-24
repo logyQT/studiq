@@ -63,6 +63,7 @@ describe('active_org_id membership gate (#186)', () => {
   let orgId: string;
   let member: Session;
   let outsider: Session;
+  let testUsers: TestUserFixture[] = [];
 
   beforeAll(async () => {
     const managerUser = await createTestUser({ role: 'manager', password: PASSWORD });
@@ -97,10 +98,14 @@ describe('active_org_id membership gate (#186)', () => {
 
     member = await signIn(memberUser.email, memberUser);
     outsider = await signIn(outsiderUser.email, outsiderUser);
+    testUsers = [managerUser, memberUser, outsiderUser];
   });
 
   afterAll(async () => {
     if (orgId) await cleanupOrganizationDeep(orgId);
+    for (const user of testUsers) {
+      if (user?.id) await service.auth.admin.deleteUser(user.id).catch(() => {});
+    }
   });
 
   it('serves the org plan to a legitimate member', async () => {
@@ -154,6 +159,7 @@ describe('active_org_id membership gate (#186)', () => {
 
     expect(res.status).toBe(200);
     expect(header).toContain('active_org_id=;');
-    expect(header).toContain('Max-Age=0');
+    expect(header).toContain('Expires=Thu, 01 Jan 1970');
+    expect(header).not.toContain('Max-Age');
   });
 });

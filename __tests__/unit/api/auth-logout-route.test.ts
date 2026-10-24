@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { NEXT_COOKIE_EPOCH, reSerializeThroughNext } from '#test/helpers/next-cookie-round-trip';
 
 const { logout } = vi.hoisted(() => ({
   logout: vi.fn(
@@ -28,12 +29,26 @@ describe('POST /api/v1/auth/logout (#186)', () => {
 
     expect(res.status).toBe(200);
     expect(header).toContain('active_org_id=;');
-    expect(header).toContain('Max-Age=0');
+    expect(header).toContain(NEXT_COOKIE_EPOCH);
+    expect(header).not.toContain('Max-Age');
     expect(header).toContain('HttpOnly');
     expect(await res.json()).toEqual({
       success: true,
       data: { message: 'SUCCESS_LOGOUT' },
     });
+  });
+
+  it('keeps the deletion after Next re-serializes the Set-Cookie headers', async () => {
+    // `supabase.auth.signOut()` mutates cookies() on this route, which makes Next
+    // re-parse and re-serialize every Set-Cookie header. A `maxAge: 0` deletion is
+    // dropped by that round-trip and leaves an empty session cookie behind.
+    const res = await POST();
+    const headers = reSerializeThroughNext(res);
+    const header = headers.find((cookie) => cookie.startsWith('active_org_id'));
+
+    expect(header).toBeDefined();
+    expect(header).toContain(NEXT_COOKIE_EPOCH);
+    expect(header).not.toContain('Max-Age');
   });
 
   it('still clears the cookie when signOut fails', async () => {
@@ -44,8 +59,11 @@ describe('POST /api/v1/auth/logout (#186)', () => {
     });
 
     const res = await POST();
+    const headers = reSerializeThroughNext(res);
+    const header = headers.find((cookie) => cookie.startsWith('active_org_id'));
 
     expect(res.status).toBe(500);
-    expect(res.headers.get('set-cookie')).toContain('active_org_id=;');
+    expect(header).toBeDefined();
+    expect(header).toContain(NEXT_COOKIE_EPOCH);
   });
 });

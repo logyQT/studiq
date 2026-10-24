@@ -11,10 +11,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     req,
     async (ctx) => {
       const { id } = await params;
-      // ctx.activeOrgId reflects the client-controlled active_org_id
-      // cookie — orgRoleId is only non-null when with-auth.ts found a
-      // real org_members row for this exact org+user, so both checks
-      // are required to prove genuine membership.
+      // with-auth.ts only sets ctx.activeOrgId (and ctx.orgRoleId) when a
+      // real org_members row exists for this exact org+user, so a forged
+      // active_org_id cookie cannot reach here. Both checks are kept as
+      // defence in depth.
       if (id !== ctx.activeOrgId || !ctx.orgRoleId) {
         return NextResponse.json({ success: false, error: 'FORBIDDEN' }, { status: 403 });
       }
