@@ -1,0 +1,9 @@
+*.log
+.pid
+sessions.json
+.DS_Store
+browsers.json
+tabs.json
+.profiles/
+shots/
+logs/
