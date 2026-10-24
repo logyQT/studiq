@@ -7,7 +7,12 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
-import { type GradeDraft, parseGradePoints, resolveGradeDraft } from '@/lib/grading';
+import {
+  type GradeDraft,
+  exceedsGradeMax,
+  parseGradePoints,
+  resolveGradeDraft,
+} from '@/lib/grading';
 import { assignmentKeys } from '@/lib/query-keys';
 
 interface StudentAnswers {
@@ -20,6 +25,8 @@ interface StudentAnswers {
   quiz_attempt_questions: Array<{
     question_id: string;
     order_index: number;
+    /** Null when the question is no longer part of the assignment. */
+    max_points: number | null;
     question: {
       id: string;
       content: string;
@@ -75,7 +82,7 @@ export default function StudentGradingClient() {
       });
       if (!res.ok) throw new Error(t('grade_failed'));
     },
-    invalidateKeys: [assignmentKeys.results(id)],
+    invalidateKeys: [assignmentKeys.results(id), assignmentKeys.studentResults(id, studentId)],
   });
 
   const getGrade = (questionId: string) =>
@@ -91,10 +98,10 @@ export default function StudentGradingClient() {
     }));
   };
 
-  const handleGrade = async (questionId: string) => {
+  const handleGrade = async (questionId: string, maxPoints: number | null) => {
     const g = getGrade(questionId);
     const points = parseGradePoints(g.points);
-    if (points === null) return;
+    if (points === null || exceedsGradeMax(points, maxPoints)) return;
     await gradeMutation.mutateAsync({ questionId, points, feedback: g.feedback });
   };
 
@@ -149,7 +156,12 @@ export default function StudentGradingClient() {
             const images = getImages(aq.question_id);
             const isAutoGraded = aq.question.type === 'mcq' || aq.question.type === 'true_false';
             const grade = getGrade(aq.question_id);
-            const isValidPoints = parseGradePoints(grade.points) !== null;
+            const parsedPoints = parseGradePoints(grade.points);
+            const tooBig = exceedsGradeMax(parsedPoints, aq.max_points);
+            // A question removed from the assignment has no known maximum; the
+            // server rejects it with 404, so keep it read-only here (#169).
+            const isGradable = aq.max_points != null;
+            const isValidPoints = isGradable && parsedPoints !== null && !tooBig;
 
             return (
               <div key={aq.question_id} className="rounded-lg border p-4 space-y-3">
@@ -209,15 +221,27 @@ export default function StudentGradingClient() {
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>{t('points')}</Label>
+                        <Label>
+                          {aq.max_points == null
+                            ? t('points')
+                            : t('points_range', { max: aq.max_points })}
+                        </Label>
                         <Input
                           type="number"
                           min={0}
+                          max={aq.max_points ?? undefined}
                           step={1}
                           placeholder="0"
                           value={grade.points}
+                          disabled={!isGradable}
+                          aria-invalid={tooBig}
                           onChange={(e) => setGrade(aq.question_id, 'points', e.target.value)}
                         />
+                        {tooBig && (
+                          <p className="text-xs text-destructive">
+                            {t('points_too_big', { max: aq.max_points ?? 0 })}
+                          </p>
+                        )}
                       </div>
                       <div className="space-y-2">
                         <Label>{t('feedback')}</Label>
@@ -231,7 +255,7 @@ export default function StudentGradingClient() {
 
                     <Button
                       size="sm"
-                      onClick={() => handleGrade(aq.question_id)}
+                      onClick={() => handleGrade(aq.question_id, aq.max_points)}
                       disabled={gradeMutation.isPending || !isValidPoints}
                     >
                       <Check className="w-3 h-3 mr-1" />

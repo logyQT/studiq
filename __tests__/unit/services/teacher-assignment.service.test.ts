@@ -660,12 +660,40 @@ describe('TeacherAssignmentService', () => {
         .mockReturnValueOnce(
           chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
         )
-        .mockReturnValue(chain(attempt));
+        .mockReturnValueOnce(chain(attempt))
+        .mockReturnValueOnce(chain([]));
 
       const result = await service.getStudentAnswers(assignmentId, 'student-1', ctx);
 
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data.id).toBe('attempt-1');
+      if (result.success) expect((result.data as { id: string }).id).toBe('attempt-1');
+    });
+
+    it('attaches the per-question maximum and null for a removed question (#169)', async () => {
+      const gradedAttempt = {
+        ...attempt,
+        quiz_attempt_questions: [
+          { question_id: 'q-open', order_index: 0, question: { id: 'q-open' } },
+          { question_id: 'q-gone', order_index: 1, question: { id: 'q-gone' } },
+        ],
+      };
+
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(chain(gradedAttempt))
+        .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]));
+
+      const result = await service.getStudentAnswers(assignmentId, 'student-1', ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        const rows = (
+          result.data as { quiz_attempt_questions: Array<{ max_points: number | null }> }
+        ).quiz_attempt_questions;
+        expect(rows.map((q) => q.max_points)).toEqual([2, null]);
+      }
     });
 
     it('returns NOT_FOUND when no attempt', async () => {
@@ -712,6 +740,7 @@ describe('TeacherAssignmentService', () => {
       baseSetup();
       mock.from
         .mockReturnValueOnce(attemptChain)
+        .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }])) // max points
         .mockReturnValueOnce(chain({ id: 'answer-1' }))
         .mockReturnValueOnce(chain(null)) // student_answers upsert
         .mockReturnValueOnce(questionsChain)
@@ -733,12 +762,124 @@ describe('TeacherAssignmentService', () => {
       });
     });
 
+    it('rejects points above the question maximum (#169)', async () => {
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]));
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'student-1',
+        { questionId: 'q-open', points: 5 },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      // Rejected before any write: ownership, attempt, max-points lookup only.
+      expect(mock.from).toHaveBeenCalledTimes(3);
+    });
+
+    it('accepts points equal to the question maximum (#169)', async () => {
+      const attemptChain = chain({ id: 'attempt-1' });
+      const questionsChain = chain([{ question_id: 'q-open', points: 2 }]);
+      const answersChain = chain([{ question_id: 'q-open', is_correct: false, teacher_points: 2 }]);
+      const updateChain = chain(null);
+
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(attemptChain)
+        .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]))
+        .mockReturnValueOnce(chain({ id: 'answer-1' }))
+        .mockReturnValueOnce(chain(null)) // student_answers update
+        .mockReturnValueOnce(questionsChain)
+        .mockReturnValueOnce(answersChain)
+        .mockReturnValueOnce(updateChain);
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'student-1',
+        { questionId: 'q-open', points: 2 },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(updateChain.update).toHaveBeenCalledWith({
+        score: 2,
+        graded_at: expect.any(String),
+      });
+    });
+
+    it('rejects a question that is not part of the assignment (#169)', async () => {
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain([{ question_id: 'q-open', points: 2 }]));
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'student-1',
+        { questionId: 'q-forged', points: 1 },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
+      expect(mock.from).toHaveBeenCalledTimes(3);
+    });
+
+    it('clamps legacy teacher points above the maximum when recomputing the score (#169)', async () => {
+      const updateChain = chain(null);
+
+      baseSetup();
+      mock.from
+        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(
+          chain([
+            { question_id: 'q-open', points: 2 },
+            { question_id: 'q-other', points: 3 },
+          ]),
+        )
+        .mockReturnValueOnce(chain({ id: 'answer-1' }))
+        .mockReturnValueOnce(chain(null)) // student_answers update
+        .mockReturnValueOnce(
+          chain([
+            { question_id: 'q-open', points: 2 },
+            { question_id: 'q-other', points: 3 },
+          ]),
+        )
+        .mockReturnValueOnce(
+          chain([
+            // Pre-fix row: 5 points on a 2-point question.
+            { question_id: 'q-open', is_correct: true, teacher_points: 5 },
+            { question_id: 'q-other', is_correct: false, teacher_points: 1 },
+          ]),
+        )
+        .mockReturnValueOnce(updateChain);
+
+      const result = await service.gradeAnswer(
+        assignmentId,
+        'student-1',
+        { questionId: 'q-other', points: 1 },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      // 5 → clamped to 2, plus the new 1 point on q-other.
+      expect(updateChain.update).toHaveBeenCalledWith({
+        score: 3,
+        graded_at: expect.any(String),
+      });
+    });
+
     it('lets manual points win over auto correctness (0 points on a correct answer)', async () => {
       const updateChain = chain(null);
 
       baseSetup();
       mock.from
         .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain([{ question_id: 'q-mcq', points: 1 }]))
         .mockReturnValueOnce(chain({ id: 'answer-1' }))
         .mockReturnValueOnce(chain(null)) // student_answers upsert
         .mockReturnValueOnce(chain([{ question_id: 'q-mcq', points: 1 }]))
@@ -765,6 +906,7 @@ describe('TeacherAssignmentService', () => {
       baseSetup();
       mock.from
         .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain([{ question_id: 'q-1', points: 1 }]))
         .mockReturnValueOnce(chain({ id: 'answer-1' }))
         .mockReturnValueOnce(chain(null)) // student_answers upsert
         .mockReturnValueOnce(chain([{ question_id: 'q-1', points: 1 }]))
@@ -796,6 +938,7 @@ describe('TeacherAssignmentService', () => {
       baseSetup();
       mock.from
         .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValueOnce(chain([{ question_id: 'q-1', points: 5 }]))
         .mockReturnValueOnce(chain(null)) // no existing answer
         .mockReturnValueOnce(chain(null)) // student_answers insert
         .mockReturnValueOnce(chain([{ question_id: 'q-1', points: 5 }]))

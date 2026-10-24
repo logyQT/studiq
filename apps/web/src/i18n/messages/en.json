@@ -2534,6 +2534,8 @@
     "text_answer": "Student's answer: {text}",
     "view_image": "View uploaded image",
     "points": "Points",
+    "points_range": "Points (0–{max})",
+    "points_too_big": "Points cannot exceed {max}",
     "feedback": "Feedback",
     "feedback_placeholder": "Optional feedback",
     "saving": "Saving...",

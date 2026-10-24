@@ -500,7 +500,18 @@ export class TeacherAssignmentService {
     if (error) return toDbFailure(error);
     if (!attempt) return failure('NOT_FOUND');
 
-    return success(attempt);
+    const maxPoints = await this.loadAssignmentPoints(supabase, id);
+    if (isFailure(maxPoints)) return maxPoints;
+
+    return success({
+      ...attempt,
+      quiz_attempt_questions: (attempt.quiz_attempt_questions ?? []).map(
+        (q: { question_id: string }) => ({
+          ...q,
+          max_points: maxPoints.data.get(q.question_id) ?? null,
+        }),
+      ),
+    });
   }
 
   async gradeAnswer(
@@ -522,6 +533,18 @@ export class TeacherAssignmentService {
       .single();
 
     if (!attempt) return failure('NOT_FOUND');
+
+    // The bound is per question (`assignment_questions.points`), so it cannot
+    // live in the Zod schema. Reject before writing: points above the maximum
+    // used to be persisted and inflated the attempt score (#169).
+    const maxPoints = await this.loadAssignmentPoints(supabase, id);
+    if (isFailure(maxPoints)) return maxPoints;
+
+    const questionMax = maxPoints.data.get(data.questionId);
+    // Also closes the forged-question-id hole: an answer for a question that is
+    // not part of this assignment can no longer inflate `quiz_attempts.score`.
+    if (questionMax === undefined) return failure('NOT_FOUND');
+    if (data.points > questionMax) return failure('UNPROCESSABLE_ENTITY');
 
     const { data: existingAnswer } = await supabase
       .from('student_answers')
@@ -571,6 +594,23 @@ export class TeacherAssignmentService {
   }
 
   /**
+   * question_id → max awardable points, from the assignment's current question
+   * set. A missing key means the question is no longer part of the assignment.
+   */
+  private async loadAssignmentPoints(
+    supabase: SupabaseClient,
+    assignmentId: string,
+  ): Promise<ServiceResult<Map<string, number>>> {
+    const { data, error } = await supabase
+      .from('assignment_questions')
+      .select('question_id, points')
+      .eq('assignment_id', assignmentId);
+
+    if (error) return toDbFailure(error);
+    return success(new Map((data ?? []).map((q) => [q.question_id, q.points ?? 0])));
+  }
+
+  /**
    * Awarded points for an assignment attempt: manual teacher points win,
    * otherwise a correct auto-graded answer earns the question's points.
    * Answers are deduplicated per question because multi-select / matching
@@ -581,12 +621,8 @@ export class TeacherAssignmentService {
     attemptId: string,
     assignmentId: string,
   ): Promise<ServiceResult<number>> {
-    const { data: questionRows, error: questionsError } = await supabase
-      .from('assignment_questions')
-      .select('question_id, points')
-      .eq('assignment_id', assignmentId);
-
-    if (questionsError) return toDbFailure(questionsError);
+    const pointsByQuestion = await this.loadAssignmentPoints(supabase, assignmentId);
+    if (isFailure(pointsByQuestion)) return pointsByQuestion;
 
     const { data: answers, error: answersError } = await supabase
       .from('student_answers')
@@ -594,10 +630,6 @@ export class TeacherAssignmentService {
       .eq('attempt_id', attemptId);
 
     if (answersError) return toDbFailure(answersError);
-
-    const pointsByQuestion = new Map<string, number>(
-      (questionRows ?? []).map((q) => [q.question_id, q.points ?? 0]),
-    );
 
     const perQuestion = new Map<string, { teacherPoints: number | null; isCorrect: boolean }>();
     for (const answer of answers ?? []) {
@@ -617,10 +649,16 @@ export class TeacherAssignmentService {
 
     let score = 0;
     for (const [questionId, entry] of perQuestion) {
+      const questionMax = pointsByQuestion.data.get(questionId);
       if (entry.teacherPoints !== null) {
-        score += entry.teacherPoints;
+        // Legacy rows written before the upper bound existed (a 2-point
+        // question graded 5) must not keep inflating the score (#169).
+        score +=
+          questionMax === undefined
+            ? entry.teacherPoints
+            : Math.min(entry.teacherPoints, questionMax);
       } else if (entry.isCorrect) {
-        score += pointsByQuestion.get(questionId) ?? 0;
+        score += questionMax ?? 0;
       }
     }
 
