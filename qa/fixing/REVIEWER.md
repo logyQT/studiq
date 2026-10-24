@@ -18,8 +18,11 @@ Use `gh pr view {{PR}} --json title,body,files,commits,statusCheckRollup` and `g
 4. Tests/verification: are they meaningful, and do they actually prove the behavior?
 5. Scope: unrelated changes, generated files, secrets, force-push/history damage.
 6. Hook integrity: the branch must have gone through the repo hooks (`pre-commit`:
-   format-staged + `bun run lint` + `bun run typecheck:all`; `pre-push`:
-   merge-conflict check + `format:check` + `lint` + `typecheck:all` + `test:unit`).
+   `bun fmt --staged` + `bun lint --no-script --staged --fix` + `bun run lint` +
+   `bun run typecheck:all`; `pre-push`: merge-conflict check + `bun run format:check`
+   + `bun run lint` + `bun run typecheck:all` + `bun run test:unit`). The repo is on
+   the Bun-native toolchain (`bun fmt` / `bun lint` / `bun check`) — a writer running
+   `biome` or `bunx tsc` by habit is working against tools that no longer exist.
    If the writer skipped a hook with `--no-verify`, check the `hooks` field of
    `{{IMPL_PATH}}` and the PR body's `## Hooks` section against the exemption
    policy: allowed only for a partial fix of a larger issue where the failing

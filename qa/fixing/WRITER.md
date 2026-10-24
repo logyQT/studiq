@@ -51,28 +51,30 @@ the implementation artifact. If the manager note asks for a specific rebase or
 collision fix, follow it explicitly; do not silently ignore it.
 
 ## Verify
-Run the checks that matter for the change:
-- `bun run typecheck` (or the narrow package typecheck)
+Run the checks that matter for the change (the repo uses the **Bun-native toolchain**:
+`bun fmt`, `bun lint`, `bun check` — no Biome, no standalone `tsc`):
+- `bun run typecheck` (or the narrow package typecheck, e.g. `bun run --filter @studiq/server typecheck`)
 - targeted tests for the changed area
-- `bunx biome check <changed files>`
+- `bun lint --no-script <changed paths>` and/or `bun fmt --check <changed paths>`
 - for UI changes, a local build if practical (`bun run --filter @studiq/web build`)
 
 ### Git hooks are a gate, not an obstacle
 Commit and push **normally**. The repo hooks are part of the quality gate that
 reviewers and the manager rely on:
-- **pre-commit**: format-on-staged (`biome check --write`), `bun run lint`, `bun run typecheck:all`
+- **pre-commit**: `bun fmt --staged` (rewrites and re-stages), `bun lint --no-script --staged --fix` (same), `bun run lint`, `bun run typecheck:all`
 - **pre-push**: merge-conflict check against `origin/main`, `bun run format:check`, `bun run lint`, `bun run typecheck:all`, `bun run test:unit`
 
 A green push through both hooks is the default and expected outcome. Fix the
-failure instead of skipping it: format the file, fix the lint finding, fix the
-type error, make the worktree clean.
+failure instead of skipping it: format the file (`bun fmt .`), fix the lint finding
+(`bun lint --no-script --fix <path>`), fix the type error, make the worktree clean.
 
-If a hook fails with a wall of errors in files you never touched (e.g. a rule that
-does not exist in your tool version, or duplicated package types), suspect a broken
-install rather than a broken repo: check `bunx biome --version` against `bun.lock`
-and run `bun install --frozen-lockfile` before anything else. Never "fix" that by
-skipping the hook, and never run `pnpm`/`npm` in this repo — it is Bun-only and a
-foreign install breaks the lock and every later check.
+If a hook fails with a wall of errors in files you never touched — or with
+"unknown command"/toolchain errors — suspect the install rather than the repo:
+run `bun scripts/check-bun-version.ts` (it names the missing native command and the
+Bun version needed), check `bun --version` against `.devcontainer`/the script's
+minimum, then `bun install --frozen-lockfile`. Never "fix" that by skipping the
+hook, and never run `pnpm`/`npm` in this repo — it is Bun-only and a foreign install
+breaks the lock and every later check.
 
 ### `--no-verify` — rare exception, never a shortcut
 `--no-verify` is allowed **only** when this PR is a partial fix of a larger issue
