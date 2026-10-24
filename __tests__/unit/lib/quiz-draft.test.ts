@@ -69,6 +69,14 @@ describe('toSaveAnswersPayload (#349)', () => {
     expect(toSaveAnswersPayload(questions, {})).toEqual([]);
   });
 
+  it('sends a UUID-shaped open answer as text, never as an option id (#320)', () => {
+    const uuid = '550e8400-e29b-41d4-a716-446655440000';
+
+    expect(toSaveAnswersPayload([{ id: 'q-open', type: 'open' }], { 'q-open': uuid })).toEqual([
+      { questionId: 'q-open', textAnswer: uuid },
+    ]);
+  });
+
   it('round-trips what seedQuizAnswers restored', () => {
     const answers = {
       'q-mcq': { selected_answer_id: 'ans-1', text_answer: null },

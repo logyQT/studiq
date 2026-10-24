@@ -21,6 +21,7 @@ import {
 } from '@/app/(backend)/api/v1/quiz/[attemptId]/route';
 import { GET as attemptsGet } from '@/app/(backend)/api/v1/quiz/attempts/route';
 import { POST as quizPost } from '@/app/(backend)/api/v1/quiz/new/route';
+import { toSaveAnswersPayload } from '@/lib/quiz-draft';
 
 forEachCopy((copyId) => {
   describe(`Quiz Attempts Integration [${copyId}]`, () => {
@@ -368,11 +369,35 @@ forEachCopy((copyId) => {
             attemptQuestions!.map((q) => q.question_id),
           );
 
+        const attemptQuestionIds = attemptQuestions!.map((q) => q.question_id);
+        const { data: attemptQuestionRows, error: typesError } = await supabase
+          .from('questions')
+          .select('id, type')
+          .in('id', attemptQuestionIds);
+        if (typesError) throw new Error(`Failed to load question types: ${typesError.message}`);
+
+        const typeById = new Map((attemptQuestionRows ?? []).map((q) => [q.id, q.type] as const));
+
         const textAnswer = 'Rozbiory, słaba władza centralna, liberum veto.';
-        const submittedAnswers = [
-          ...options!.map((a) => ({ questionId: a.question_id, selectedAnswerId: a.id })),
-          { questionId: openQuestion.id, textAnswer },
-        ];
+        // Go through the same client helper the take pages use, so a regression
+        // that puts open text into `selectedAnswerId` fails here too (#320).
+        const localAnswers: Record<string, string> = {};
+        // One option per question is exactly the helper's single-value contract;
+        // `multi_select` is outside it and not covered here.
+        for (const option of options ?? []) localAnswers[option.question_id] ??= option.id;
+        localAnswers[openQuestion.id] = textAnswer;
+
+        const submittedAnswers = toSaveAnswersPayload(
+          [
+            ...attemptQuestionIds.map((id) => {
+              const type = typeById.get(id);
+              if (!type) throw new Error(`Question ${id} not found for attempt ${attemptId}`);
+              return { id, type };
+            }),
+            { id: openQuestion.id, type: 'open' },
+          ],
+          localAnswers,
+        );
 
         const { request, params } = createNextRequestWithParams(
           `http://localhost/api/v1/quiz/${attemptId}`,
