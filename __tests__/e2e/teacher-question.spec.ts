@@ -70,4 +70,53 @@ test.describe('Teacher Question Flow', () => {
     await expect(page.getByText('typeof null')).toBeVisible();
     await expect(page.getByText('GROUP BY')).toBeVisible();
   });
+
+  test('Teacher deletes a question with the question-specific dialog and delete toast', async ({
+    page,
+  }) => {
+    const bankName = `QA157 Bank ${Date.now()}`;
+    const questionContent = 'QA157 question content';
+
+    await page.getByRole('link', { name: t('DashboardLayout.edu_questions') }).click();
+    await page.waitForURL(/\/edu\/questions/);
+
+    // Create an own bank so the test only ever touches its own data.
+    await page
+      .getByRole('button', { name: t('QuestionBankManagement.new_bank') })
+      .first()
+      .click();
+    const bankDialog = page.getByRole('dialog');
+    await bankDialog.getByLabel(t('QuestionBankManagement.name_label')).fill(bankName);
+    await bankDialog.getByRole('button', { name: t('Common.common_create') }).click();
+
+    const bankCard = page.getByText(bankName).filter({ visible: true });
+    await expect(bankCard.first()).toBeVisible({ timeout: 10000 });
+    await bankCard.first().click();
+    await page.waitForURL(/\/edu\/questions\/[^/]+$/);
+
+    // Create a question in it
+    await page.getByRole('button', { name: t('QuestionBankDetail.create_question') }).click();
+    const formDialog = page.getByRole('dialog');
+    await expect(
+      formDialog.getByRole('heading', { name: t('QuestionForm.create_title') }),
+    ).toBeVisible();
+    await formDialog.getByRole('combobox').click();
+    await page.getByRole('option', { name: t('QuestionForm.open_answer') }).click();
+    await formDialog.getByPlaceholder(t('QuestionForm.question_placeholder')).fill(questionContent);
+    await formDialog.getByRole('button', { name: t('QuestionForm.create') }).click();
+    await expect(page.getByText(t('QuestionForm.created'))).toBeVisible();
+    await expect(page.locator('tbody').getByText(questionContent).first()).toBeVisible();
+
+    // The confirm dialog must use the question-specific copy, not the generic
+    // "Delete" / "Confirm" strings (regression guard for EDU-Q-05).
+    await page.getByTitle(t('Common.common_delete')).first().click();
+    const deleteDialog = page.getByRole('dialog');
+    await expect(deleteDialog.getByText(t('QuestionBankDetail.delete_title'))).toBeVisible();
+    await expect(deleteDialog.getByText(t('Common.common_confirm'))).toHaveCount(0);
+
+    await deleteDialog.getByRole('button', { name: t('Common.common_delete') }).click();
+    await expect(page.getByText(t('QuestionForm.deleted'))).toBeVisible();
+    await expect(page.getByText(t('QuestionForm.updated'))).toHaveCount(0);
+    await expect(page.locator('tbody').getByText(questionContent)).not.toBeVisible();
+  });
 });

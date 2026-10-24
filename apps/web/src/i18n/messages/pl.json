@@ -2288,7 +2288,8 @@
     "created": "Pytanie utworzone",
     "updated": "Pytanie zaktualizowane",
     "deleted": "Pytanie usunięte",
-    "save_failed": "Nie udało się zapisać pytania"
+    "save_failed": "Nie udało się zapisać pytania",
+    "delete_failed": "Nie udało się usunąć pytania"
   },
   "AccountPage": {
     "title": "Konto",
