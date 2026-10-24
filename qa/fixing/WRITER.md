@@ -42,6 +42,7 @@ consume the returned timestamps in order.
 ## Assigned migrations / manager note
 - Assigned timestamps: **{{ASSIGNED_MIGRATIONS}}**
 - Manager note: **{{MANAGER_NOTE}}**
+{{ASSIGNMENT_RULE}}
 
 If assigned timestamps are not `none`, **renumber the migration file(s) added by this
 branch to exactly those timestamps, in the listed order**, instead of minting new ones.

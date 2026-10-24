@@ -323,6 +323,29 @@ def pr_migrations(pr: int) -> list[str]:
             if f.get("path", "").startswith("supabase/migrations/")]
 
 
+def migration_stamp(path: str) -> str:
+    return Path(path).name.split("_", 1)[0]
+
+
+def assignment_mismatch(rec: dict, pr: int) -> dict | None:
+    """PR migration timestamps vs the ones assigned to this issue.
+
+    A writer that ignores `assign-migrations` ships a head that is silently below
+    main's max; failing at collect keeps two reviews and a QA run from being spent
+    on an unmergeable branch.
+    """
+    want = sorted({str(t) for t in (rec.get("assigned_migrations") or [])})
+    if not want:
+        return None
+    try:
+        have = sorted({migration_stamp(p) for p in pr_migrations(pr)})
+    except Exception:
+        return None
+    if have != want:
+        return {"assigned": want, "in_pr": have}
+    return None
+
+
 def migration_collisions(n: int, pr: int) -> list[dict]:
     mine = pr_migrations(pr)
     if not mine:
@@ -584,6 +607,12 @@ def dispatch_prompt(role: str, n: int, stage: str, env: int, rec: dict,
         if rec.get("manager_note_attempt") == a else "none",
         "ASSIGNED_MIGRATIONS": (", ".join(rec.get("assigned_migrations") or []) or "none")
         if rec.get("assigned_migrations_attempt") == a else "none",
+        "ASSIGNMENT_RULE": (
+            "The assigned timestamps above are authoritative for this dispatch. If the "
+            "manager note names any other timestamp, that note is stale: rename the "
+            "migration file(s) to the assigned value(s) and keep the SQL byte-identical."
+            if rec.get("assigned_migrations")
+            and rec.get("assigned_migrations_attempt") == a else ""),
     }
     # previous artifacts for the designer / writer on a retry
     prev = max(1, a - 1)
@@ -718,12 +747,15 @@ def cmd_implement(args) -> None:
         fail(f"slot {env} is {ROLES.get(env)}, not writer")
     if env in busy:
         fail(f"slot {env} is busy")
+    # The note has to be on the record BEFORE the prompt is rendered: setting it
+    # after create_session handed every writer the previous dispatch's note (the
+    # #191 and #229 renumber misses).
+    rec["manager_note"] = args.note or ""
+    rec["manager_note_attempt"] = attempt(rec)
     title = f"#{n} {'rebase' if rebase else 'implement'} r{attempt(rec)}"
     sid = create_session(env, title, dispatch_prompt("WRITER", n, "implement", env, rec))
     rec["stage"] = "implementing"
     rec["stage_started"] = int(time.time() * 1000)
-    rec["manager_note"] = args.note or ""
-    rec["manager_note_attempt"] = attempt(rec)
     rec["writer"] = env
     rec["sessions"]["implement"] = sid
     history(state, n, {"event": "rebase_requested" if rebase else "implement_dispatched",
@@ -962,6 +994,12 @@ def cmd_collect(args) -> None:
         require_fresh(p, rec, "implement")
         data = read_artifact(p)
         if data.get("status") == "pr_open":
+            pr = data.get("pr")
+            mismatch = assignment_mismatch(rec, int(pr)) if pr else None
+            if mismatch:
+                fail("assigned migration timestamps not applied", issue=n, pr=pr, **mismatch,
+                     hint="rename the PR migration file(s) to the assigned timestamps, push, "
+                          "then collect again - do not send this head to review")
             rec["stage"] = "pr_open"
             rec["branch"] = data.get("branch") or rec.get("branch")
             rec["pr"] = data.get("pr")
