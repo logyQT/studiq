@@ -950,6 +950,135 @@ describe('RLS tenant isolation (#191)', () => {
     expect(renameSystemError?.code).toBe('42501');
   });
 
+  it('a seated custom role cannot resolve manager authority (RLS mirrors FeatureResolver)', async () => {
+    // A custom role from the role builder has ZERO org_role_features rows, so
+    // the org-plan fallback used to grant every plan capability. FeatureResolver
+    // strips ADMIN_ONLY_FEATURES (org.manage/member.manage/role.builder) for a
+    // seated non-admin role; RLS must not be wider (review-1-r2 B1).
+    const seatedEmail = `rls191-seated-custom-${tag}@dev.local`;
+    const unseatedEmail = `rls191-unseated-custom-${tag}@dev.local`;
+
+    const { data: customRole, error: customRoleError } = await service
+      .from('org_roles')
+      .insert({
+        organization_id: orgA.orgId,
+        name: `rls191-custom-seated-${tag}`,
+        display_name: `Custom seated ${tag}`,
+        description: null,
+        is_system: false,
+      })
+      .select('id')
+      .single();
+    expect(customRoleError).toBeNull();
+
+    const { count: roleFeatureCount } = await service
+      .from('org_role_features')
+      .select('id', { count: 'exact', head: true })
+      .eq('org_role_id', customRole?.id as string);
+    expect(roleFeatureCount).toBe(0);
+
+    const seatedCustomId = await createUser(seatedEmail, 'student', 'seated-custom');
+    const unseatedCustomId = await createUser(unseatedEmail, 'student', 'unseated-custom');
+
+    try {
+      for (const userId of [seatedCustomId, unseatedCustomId]) {
+        await seedOrgMembership({
+          organizationId: orgA.orgId,
+          userId,
+          orgRoleId: customRole?.id as string,
+        });
+      }
+
+      const { data: pool, error: poolError } = await service
+        .from('org_seat_pools')
+        .insert({ organization_id: orgA.orgId, plan_key: 'master', total: 5, assigned: 0 })
+        .select('id')
+        .single();
+      expect(poolError).toBeNull();
+
+      const { error: seatError } = await service.from('org_seat_assignments').insert({
+        organization_id: orgA.orgId,
+        pool_id: pool?.id as string,
+        user_id: seatedCustomId,
+      });
+      expect(seatError).toBeNull();
+
+      const unseatedSession = await signIn(unseatedEmail);
+      const seatedSession = await signIn(seatedEmail);
+
+      // Control: a NON-seated custom role keeps today's plan entitlements.
+      const { data: unseatedManager } = await unseatedSession.rpc('rls_caller_is_org_manager', {
+        p_organization_id: orgA.orgId,
+      });
+      expect(unseatedManager).toBe(true);
+
+      const { data: unseatedGroupManage } = await unseatedSession.rpc(
+        'rls_caller_has_org_feature',
+        { p_organization_id: orgA.orgId, p_feature: 'group.manage' },
+      );
+      expect(unseatedGroupManage).toBe(true);
+
+      // A seat must not add management authority the app withholds.
+      const { data: seatedManager } = await seatedSession.rpc('rls_caller_is_org_manager', {
+        p_organization_id: orgA.orgId,
+      });
+      expect(seatedManager).toBe(false);
+
+      // Peer promotion is filtered out by the org_members UPDATE policy.
+      const { data: promoted, error: promoteError } = await seatedSession
+        .from('org_members')
+        .update({ org_role_id: orgA.adminRoleId })
+        .eq('organization_id', orgA.orgId)
+        .eq('user_id', studentId)
+        .select('user_id, org_role_id');
+      expect(promoteError).toBeNull();
+      expect(promoted).toEqual([]);
+
+      const { data: studentMembership } = await service
+        .from('org_members')
+        .select('org_role_id')
+        .eq('organization_id', orgA.orgId)
+        .eq('user_id', studentId)
+        .single();
+      expect(studentMembership?.org_role_id).toBe(orgA.memberRoleId);
+
+      // The B1 admin-invite escalation stays closed for this class of user.
+      const { error: inviteError } = await seatedSession.from('invitations').insert({
+        email: `rls191-seated-admin-${tag}@dev.local`,
+        organization_id: orgA.orgId,
+        inviter_id: seatedCustomId,
+        target_org_role_id: orgA.adminRoleId,
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+      expect(inviteError?.code).toBe('42501');
+
+      // ...and so does writing a seat assignment.
+      const { error: selfSeatError } = await seatedSession.from('org_seat_assignments').insert({
+        organization_id: orgA.orgId,
+        pool_id: pool?.id as string,
+        user_id: seatedCustomId,
+      });
+      expect(selfSeatError?.code).toBe('42501');
+
+      // The system admin role is untouched by the seat carve-out.
+      const { data: adminManager } = await adminSession.rpc('rls_caller_is_org_manager', {
+        p_organization_id: orgA.orgId,
+      });
+      expect(adminManager).toBe(true);
+    } finally {
+      await service.from('org_seat_assignments').delete().eq('organization_id', orgA.orgId);
+      await service.from('org_seat_pools').delete().eq('organization_id', orgA.orgId);
+      await service.from('org_members').delete().in('user_id', [seatedCustomId, unseatedCustomId]);
+      await service
+        .from('org_roles')
+        .delete()
+        .eq('id', customRole?.id as string);
+      for (const userId of [seatedCustomId, unseatedCustomId]) {
+        await service.auth.admin.deleteUser(userId).catch(() => {});
+      }
+    }
+  });
+
   it('cross-tenant role references are rejected (B1/B2)', async () => {
     const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 

@@ -30,6 +30,10 @@
 -- capability, an enabled `org_role_features` row grants that capability, and a
 -- role with zero feature rows (custom role) inherits the org's `plan_features`.
 -- Per-user overrides and seat tiers deliberately do NOT raise this floor.
+-- For a SEATED custom role the resolver additionally strips ADMIN_ONLY_FEATURES
+-- (`org.manage`, `member.manage`, `role.builder`) so a seat can never grant
+-- management authority; `has_org_feature` mirrors that (see the fallback
+-- below), because RLS must never exceed the app gate.
 --
 -- What is NOT allowed by policy and therefore moves to the service-role client
 -- in the same PR:
@@ -124,6 +128,25 @@ AS $$
         OR (
           NOT EXISTS (
             SELECT 1 FROM public.org_role_features f2 WHERE f2.org_role_id = r.id
+          )
+          -- FeatureResolver parity for SEATED users: a seated role with zero
+          -- feature rows inherits the SEAT plan, and the resolver strips
+          -- ADMIN_ONLY_FEATURES (`org.manage`, `member.manage`,
+          -- `role.builder`) for every seated non-admin role "to prevent
+          -- privilege escalation through seats". The org-plan fallback must
+          -- not hand those three capabilities to a seated caller, otherwise a
+          -- manager-created custom role plus a seat would be an org manager in
+          -- RLS while the app denies it (review-1-r2 B1, issue #191).
+          AND (
+            p_feature NOT IN ('org.manage', 'member.manage', 'role.builder')
+            OR NOT EXISTS (
+              SELECT 1
+              FROM public.org_seat_assignments sa
+              JOIN public.org_seat_pools sp ON sp.id = sa.pool_id
+              WHERE sa.user_id = p_actor
+                AND sa.organization_id = p_organization_id
+                AND sp.plan_key IS NOT NULL
+            )
           )
           AND EXISTS (
             SELECT 1
