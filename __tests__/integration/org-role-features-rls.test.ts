@@ -10,12 +10,13 @@ import {
   seedOrgMembership,
 } from '#test/integration/helpers';
 
-// Regression tests for issue #124: org_role_features and org_limits had
-// RLS enabled with zero policies, so every user-session query silently
-// returned [] (service_role bypasses RLS, which is why nothing noticed).
-// These tests sign in a REAL user with the anon key — the exact access path
-// feature.resolver.ts / limits.resolver.ts use in production — and assert the
-// rows are visible, scoped to the caller's own organizations.
+// Regression tests for issue #124: org_role_features had RLS enabled with zero
+// policies, so every user-session query silently returned [] (service_role
+// bypasses RLS, which is why nothing noticed). These tests sign in a REAL user
+// with the anon key — the exact access path feature.resolver.ts uses in
+// production — and assert the rows are visible, scoped to the caller's own
+// organizations. org_limits carried the same bug but was dropped in #229, so it
+// no longer has an RLS surface to test.
 
 const PASSWORD = 'Rls4Test!';
 
@@ -32,7 +33,7 @@ function anonSession(email: string): Promise<SupabaseClient> {
 }
 
 forEachCopy((copyId) => {
-  describe(`org_role_features / org_limits RLS [${copyId}]`, () => {
+  describe(`org_role_features RLS [${copyId}]`, () => {
     registerMock(copyId, null);
 
     const tag = `${copyId}-${Date.now()}`;
@@ -143,23 +144,6 @@ forEachCopy((copyId) => {
       expect(foreign).toEqual([]);
 
       const { data: outsiderRows } = await outsiderSession.from('org_role_features').select('id');
-      expect(outsiderRows).toEqual([]);
-    });
-
-    it('member session reads org_limits overrides for their org only', async () => {
-      const { data: own } = await memberSession
-        .from('org_limits')
-        .select('limit_key, max_value')
-        .eq('organization_id', org1);
-      expect(own?.length).toBeGreaterThan(0);
-
-      const { data: foreign } = await memberSession
-        .from('org_limits')
-        .select('id')
-        .eq('organization_id', org2);
-      expect(foreign).toEqual([]);
-
-      const { data: outsiderRows } = await outsiderSession.from('org_limits').select('id');
       expect(outsiderRows).toEqual([]);
     });
 
