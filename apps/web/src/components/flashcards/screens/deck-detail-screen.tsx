@@ -217,6 +217,7 @@ export function DeckDetailScreen({
     mutationFn: (suspended: boolean) =>
       apiPut<Deck>(`/api/v1/flashcards/decks/${deckId}`, { suspended }),
     invalidateKeys: [flashcardKeys.decks.all, flashcardKeys.decks.detail(deckId)],
+    onError: () => toast.error(t('save_failed')),
   });
 
   const deleteDeck = useApiMutation({

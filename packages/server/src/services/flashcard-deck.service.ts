@@ -100,6 +100,29 @@ export class FlashcardDeckService {
     return null;
   }
 
+  /**
+   * Read-access guard for per-user deck preferences (suspended_decks).
+   * Fails closed: unknown ids are NOT_FOUND, unreadable ids throw FORBIDDEN from `check`.
+   */
+  private async assertDecksReadable(
+    supabase: SupabaseClient,
+    ids: string[],
+    ctx: RequestContext,
+  ): Promise<ServiceResult<never> | null> {
+    const { data: decks, error } = await supabase
+      .from('flashcard_decks')
+      .select('id, created_by, organization_id')
+      .in('id', ids);
+
+    if (error) return toDbFailure(error);
+    if (!decks || decks.length !== new Set(ids).size) return failure('NOT_FOUND');
+
+    for (const deck of decks) {
+      await check(ctx, Permission.DECK_READ, deck);
+    }
+    return null;
+  }
+
   private async getSuspendedDeckIds(ctx: RequestContext): Promise<Set<string>> {
     const supabase = await this.createClient();
     const { data } = await supabase
@@ -262,7 +285,23 @@ export class FlashcardDeckService {
 
     if (fetchError && fetchError.code !== 'PGRST116') return toDbFailure(fetchError);
     if (!existing) return failure('NOT_FOUND');
-    await check(ctx, Permission.DECK_UPDATE, existing);
+
+    // Suspension is a per-user preference (suspended_decks), so a suspend-only body
+    // only needs read access. Anything that edits the deck itself — including a mixed
+    // body and a no-op PUT — keeps the deck.update gate, so a reader can never borrow
+    // this path to mutate content.
+    const touchesDeckContent =
+      data.name !== undefined ||
+      data.description !== undefined ||
+      data.visibility !== undefined ||
+      data.groupIds !== undefined ||
+      data.flashcardIds !== undefined;
+
+    if (touchesDeckContent || data.suspended === undefined) {
+      await check(ctx, Permission.DECK_UPDATE, existing);
+    } else {
+      await check(ctx, Permission.DECK_READ, existing);
+    }
 
     const requestedGroupIds = data.groupIds !== undefined ? [...new Set(data.groupIds)] : null;
     if (requestedGroupIds !== null && requestedGroupIds.length > 0) {
@@ -423,9 +462,13 @@ export class FlashcardDeckService {
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
+    const deckIds = [...new Set(data.deckIds)];
+
+    const guard = await this.assertDecksReadable(supabase, deckIds, ctx);
+    if (guard) return guard;
 
     if (data.suspended) {
-      const rows = data.deckIds.map((deckId) => ({
+      const rows = deckIds.map((deckId) => ({
         user_id: ctx.userId,
         deck_id: deckId,
       }));
@@ -439,11 +482,11 @@ export class FlashcardDeckService {
         .from('suspended_decks')
         .delete()
         .eq('user_id', ctx.userId)
-        .in('deck_id', data.deckIds);
+        .in('deck_id', deckIds);
       if (error) return toDbFailure(error);
     }
 
-    return success({ updated: data.deckIds.length });
+    return success({ updated: deckIds.length });
   }
 }
 export const flashcardDeckService = wrapService(
