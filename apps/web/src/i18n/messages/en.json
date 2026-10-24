@@ -2232,6 +2232,8 @@
     "actions": "Actions",
     "no_questions": "No questions in this bank. Create your first question!",
     "back_to_banks": "Back to Banks",
+    "delete_title": "Delete question?",
+    "delete_desc": "This will permanently delete this question and all its answers. This action cannot be undone.",
     "mcq": "Multiple Choice",
     "true_false_label": "True / False",
     "open_label": "Open Answer",
@@ -2304,6 +2306,7 @@
     "open_label": "Open",
     "created": "Question created",
     "updated": "Question updated",
+    "deleted": "Question deleted",
     "save_failed": "Failed to save question"
   },
   "AccountPage": {

@@ -2212,6 +2212,8 @@
     "actions": "Akcje",
     "no_questions": "Brak pytań w tym banku. Utwórz swoje pierwsze pytanie!",
     "back_to_banks": "Powrót do banków",
+    "delete_title": "Usunąć pytanie?",
+    "delete_desc": "To trwale usunie to pytanie i wszystkie jego odpowiedzi. Tej akcji nie można cofnąć.",
     "mcq": "Wielokrotnego wyboru",
     "true_false_label": "Prawda / Fałsz",
     "open_label": "Otwarte",
@@ -2284,6 +2286,7 @@
     "open_label": "Otwarte",
     "created": "Pytanie utworzone",
     "updated": "Pytanie zaktualizowane",
+    "deleted": "Pytanie usunięte",
     "save_failed": "Nie udało się zapisać pytania"
   },
   "AccountPage": {
