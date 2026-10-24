@@ -19,7 +19,7 @@ function created<T>(data: T): ControllerResponse<T> {
   return { success: true, statusCode: 201, data };
 }
 
-function error(code: AppErrorCode, details?: ZodIssue[]): ControllerResponse {
+function error(code: AppErrorCode, details?: ZodIssue[]): ControllerResponse<never> {
   const statusCode = APP_ERRORS[code]?.status ?? 500;
   return { success: false, statusCode, error: code, ...(details ? { details } : {}) };
 }
