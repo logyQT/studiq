@@ -109,7 +109,9 @@ function JoinContent() {
       const res = await fetch('/api/v1/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+        // The invitation token is what makes registration join the organization;
+        // the backend validates it and accepts it after e-mail verification (#311).
+        body: JSON.stringify({ ...values, inviteToken: token ?? undefined }),
       });
 
       const result = await res.json();

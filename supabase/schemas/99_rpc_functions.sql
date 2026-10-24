@@ -36,12 +36,19 @@ BEGIN
       CASE p_filter_type
         WHEN 'impossible' THEN FALSE
         WHEN 'any' THEN TRUE
-        WHEN 'own' THEN f.created_by = p_user_id AND f.organization_id = p_organization_id
-        WHEN 'university' THEN f.organization_id = p_organization_id AND f.visibility = 'group'
-          AND EXISTS (
-            SELECT 1 FROM deck_groups dg
-            JOIN group_members gm ON gm.group_id = dg.group_id
-            WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+        WHEN 'own' THEN f.created_by = p_user_id
+          AND (p_organization_id IS NULL OR f.organization_id = p_organization_id)
+        WHEN 'university' THEN f.organization_id = p_organization_id
+          AND (
+            f.created_by = p_user_id
+            OR (
+              f.visibility = 'group'
+              AND EXISTS (
+                SELECT 1 FROM deck_groups dg
+                JOIN group_members gm ON gm.group_id = dg.group_id
+                WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+              )
+            )
           )
         ELSE FALSE
       END
@@ -155,13 +162,19 @@ BEGIN
     AND (
       (p_created_by IS NULL AND p_organization_id IS NULL)
       OR (p_created_by IS NOT NULL AND p_organization_id IS NOT NULL AND f.created_by = p_created_by AND f.organization_id = p_organization_id)
-      OR (p_created_by IS NULL AND p_organization_id IS NOT NULL AND f.organization_id = p_organization_id AND f.visibility = 'group'
-          AND EXISTS (
-            SELECT 1 FROM public.deck_groups dg
-            JOIN public.group_members gm ON gm.group_id = dg.group_id
-            WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+      OR (p_created_by IS NULL AND p_organization_id IS NOT NULL AND f.organization_id = p_organization_id
+          AND (
+            f.created_by = p_user_id
+            OR (
+              f.visibility = 'group'
+              AND EXISTS (
+                SELECT 1 FROM public.deck_groups dg
+                JOIN public.group_members gm ON gm.group_id = dg.group_id
+                WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+              )
+            )
           ))
-      OR (p_created_by IS NOT NULL AND p_organization_id IS NULL AND f.created_by = p_created_by AND f.organization_id = p_organization_id)
+      OR (p_created_by IS NOT NULL AND p_organization_id IS NULL AND f.created_by = p_created_by)
     );
 
   CREATE TEMP TABLE _filtered ON COMMIT DROP AS
@@ -180,13 +193,19 @@ BEGIN
   FROM public.flashcards f
   WHERE ( (p_created_by IS NULL AND p_organization_id IS NULL)
     OR (p_created_by IS NOT NULL AND p_organization_id IS NOT NULL AND f.created_by = p_created_by AND f.organization_id = p_organization_id)
-    OR (p_created_by IS NULL AND p_organization_id IS NOT NULL AND f.organization_id = p_organization_id AND f.visibility = 'group'
-        AND EXISTS (
-          SELECT 1 FROM public.deck_groups dg
-          JOIN public.group_members gm ON gm.group_id = dg.group_id
-          WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+    OR (p_created_by IS NULL AND p_organization_id IS NOT NULL AND f.organization_id = p_organization_id
+        AND (
+          f.created_by = p_user_id
+          OR (
+            f.visibility = 'group'
+            AND EXISTS (
+              SELECT 1 FROM public.deck_groups dg
+              JOIN public.group_members gm ON gm.group_id = dg.group_id
+              WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+            )
+          )
         ))
-    OR (p_created_by IS NOT NULL AND p_organization_id IS NULL AND f.created_by = p_created_by AND f.organization_id = p_organization_id) )
+    OR (p_created_by IS NOT NULL AND p_organization_id IS NULL AND f.created_by = p_created_by) )
     AND NOT EXISTS (
       SELECT 1 FROM public.suspended_decks sd
       WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
@@ -683,12 +702,19 @@ BEGIN
     CASE p_filter_type
       WHEN 'impossible' THEN FALSE
       WHEN 'any' THEN TRUE
-      WHEN 'own' THEN f.created_by = p_user_id AND f.organization_id = p_organization_id
-      WHEN 'university' THEN f.organization_id = p_organization_id AND f.visibility = 'group'
-        AND EXISTS (
-          SELECT 1 FROM deck_groups dg
-          JOIN group_members gm ON gm.group_id = dg.group_id
-          WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+      WHEN 'own' THEN f.created_by = p_user_id
+        AND (p_organization_id IS NULL OR f.organization_id = p_organization_id)
+      WHEN 'university' THEN f.organization_id = p_organization_id
+        AND (
+          f.created_by = p_user_id
+          OR (
+            f.visibility = 'group'
+            AND EXISTS (
+              SELECT 1 FROM deck_groups dg
+              JOIN group_members gm ON gm.group_id = dg.group_id
+              WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
+            )
+          )
         )
       ELSE FALSE
     END

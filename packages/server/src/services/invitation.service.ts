@@ -200,13 +200,16 @@ export class InvitationService {
   }
 
   async getInvitationByToken(token: string): Promise<
-    ServiceResult<{
-      email: string;
-      organizationId: string;
-      organizationName: string;
-      targetRole: string;
-      orgRoleName: string;
-    }>
+    ServiceResult<
+      {
+        email: string;
+        organizationId: string;
+        organizationName: string;
+        targetRole: string;
+        orgRoleName: string;
+      },
+      'NOT_FOUND' | 'GONE'
+    >
   > {
     const invite = await this.loadInvite(token);
     if (!invite) return failure('NOT_FOUND');
@@ -226,6 +229,19 @@ export class InvitationService {
 
   async acceptInvitation(
     ctx: RequestContext,
+    token: string,
+  ): Promise<ServiceResult<{ id: string; name: string; orgRoleId: string }>> {
+    return this.acceptInvitationForUser(ctx.userId, token);
+  }
+
+  /**
+   * Same accept flow, addressed by user id instead of a `RequestContext`. Used by
+   * the activation callback, where the user is proven by the OTP but there is no
+   * `withAuth()` context yet (#311). Every authorization check below still runs:
+   * this is not a privileged shortcut.
+   */
+  async acceptInvitationForUser(
+    userId: string,
     token: string,
   ): Promise<ServiceResult<{ id: string; name: string; orgRoleId: string }>> {
     // The accepting user is not a member yet, and org_members has no INSERT
@@ -259,7 +275,7 @@ export class InvitationService {
       .from('org_members')
       .select('*', { count: 'exact', head: true })
       .eq('organization_id', organizationId)
-      .neq('user_id', ctx.userId);
+      .neq('user_id', userId);
     if (countError) return toDbFailure(countError);
     await limitsResolver.checkOrgLimit(
       organizationId,
@@ -303,7 +319,7 @@ export class InvitationService {
       .upsert(
         {
           organization_id: organizationId,
-          user_id: ctx.userId,
+          user_id: userId,
           org_role_id: invite.targetOrgRoleId,
         },
         { onConflict: 'organization_id,user_id' },
@@ -326,7 +342,7 @@ export class InvitationService {
       const { error: me } = await supabase.from('group_members').upsert(
         {
           group_id: defaultGroup.id,
-          user_id: ctx.userId,
+          user_id: userId,
           role: 'member',
         },
         { onConflict: 'group_id,user_id', ignoreDuplicates: true },

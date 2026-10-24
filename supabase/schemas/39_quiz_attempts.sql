@@ -18,3 +18,9 @@ CREATE TABLE public.quiz_attempts (
 
 CREATE INDEX idx_quiz_attempts_user ON public.quiz_attempts(user_id);
 CREATE INDEX idx_quiz_attempts_assignment ON public.quiz_attempts(assignment_id);
+
+-- At most one *running* attempt per assignment and student (#369). Completed
+-- attempts stay unlimited — `max_attempts` is enforced by the service.
+CREATE UNIQUE INDEX quiz_attempts_one_open_per_assignment
+  ON public.quiz_attempts (assignment_id, user_id)
+  WHERE completed_at IS NULL AND assignment_id IS NOT NULL;
