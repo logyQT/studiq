@@ -75,7 +75,7 @@ export default function ManageOverviewPage() {
             <CardDescription>{t('quick_actions_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Link href="/manage/invitations">
+            <Link href="/manage/invites">
               <Button variant="outline" className="w-full justify-between">
                 <span className="flex items-center gap-2">
                   <Plus className="h-4 w-4" /> {t('invite_members')}

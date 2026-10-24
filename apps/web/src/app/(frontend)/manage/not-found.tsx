@@ -45,7 +45,7 @@ export default function ManageNotFound() {
               {t('members')}
             </Link>
             <Link
-              href="/manage/invitations"
+              href="/manage/invites"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
             >
               <Send className="h-3.5 w-3.5" />
