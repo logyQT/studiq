@@ -66,7 +66,7 @@ export const QuestionBankCard = memo(
         {/* Mobile: Compact row */}
         <div className="relative flex items-center justify-between gap-3 p-3.5 sm:hidden max-w-[calc(100vw-2rem)]">
           {isSelecting && (
-            <div className="absolute top-4 right-4 z-10">
+            <div className="absolute top-4 right-4 z-10" onClick={(e) => e.stopPropagation()}>
               <Checkbox
                 checked={isSelected}
                 onCheckedChange={onToggleSelect}
@@ -146,7 +146,10 @@ export const QuestionBankCard = memo(
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              {/* The menu is portaled to body but stays a React child of the clickable Card,
+                  so clicks on its items still bubble through the React tree. Stop them here
+                  or item activation triggers Card's onClick (router.push) and unmounts the dialog. */}
+              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                 {canUpdate && (
                   <DropdownMenuItem onSelect={onEdit}>{t('common_edit')}</DropdownMenuItem>
                 )}
@@ -173,7 +176,7 @@ export const QuestionBankCard = memo(
         {/* Desktop: Card grid item */}
         <div className="hidden sm:flex flex-col flex-1 p-5 relative">
           {isSelecting && (
-            <div className="absolute top-4 right-4 z-10">
+            <div className="absolute top-4 right-4 z-10" onClick={(e) => e.stopPropagation()}>
               <Checkbox
                 checked={isSelected}
                 onCheckedChange={onToggleSelect}
@@ -237,7 +240,8 @@ export const QuestionBankCard = memo(
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  {/* Portaled to body but still in the Card's React subtree — see mobile variant. */}
+                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                     {canUpdate && (
                       <DropdownMenuItem onSelect={onEdit}>{t('common_edit')}</DropdownMenuItem>
                     )}
@@ -312,6 +316,8 @@ export const QuestionBankCard = memo(
       prev.bank.description === next.bank.description &&
       prev.isSelecting === next.isSelecting &&
       prev.isSelected === next.isSelected &&
+      prev.canUpdate === next.canUpdate &&
+      prev.canDelete === next.canDelete &&
       prev.groupNames?.join(',') === next.groupNames?.join(',')
     );
   },
