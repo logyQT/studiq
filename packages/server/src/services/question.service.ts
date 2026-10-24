@@ -81,21 +81,24 @@ export class QuestionService {
     const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
     if (filter._impossible) return success([]);
 
+    const topicIds = filters?.topicIds?.split(',').filter(Boolean) ?? [];
+    const hasTopicFilter = topicIds.length > 0;
+
     let query = supabase
       .from('questions')
-      .select('*, question_answers:question_options(*), question_topic_assignments(topic_id)');
+      .select(
+        `*, question_answers:question_options(*), question_topic_assignments${hasTopicFilter ? '!inner' : ''}(topic_id)`,
+      );
 
     if (filter.or) query = query.or(filter.or);
     if (filter.created_by) query = query.eq('created_by', filter.created_by);
     if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
 
     if (filters?.bankId) query = query.eq('bank_id', filters.bankId);
-    if (filters?.topicIds)
-      query = query.filter(
-        'question_topic_assignments.topic_id',
-        'in',
-        `(${filters.topicIds.split(',').join(',')})`,
-      );
+    // The topic embed must be `!inner` for the filter to narrow the parent rows —
+    // a plain embed only filters the nested array (same approach as flashcard.service).
+    if (hasTopicFilter)
+      query = query.filter('question_topic_assignments.topic_id', 'in', `(${topicIds.join(',')})`);
     if (filters?.type) query = query.eq('type', filters.type);
 
     const { data, error } = await query;

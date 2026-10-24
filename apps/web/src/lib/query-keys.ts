@@ -32,6 +32,9 @@ export const topicKeys = {
   all: ['topics'] as const,
   paginated: (filters?: Record<string, string | undefined>, orgId?: string | null) =>
     ['topics', 'paginated', orgId ?? null, filters] as const,
+  // Topic pickers (`?limit=200`) — org-scoped, and nested under `topicKeys.all`
+  // so topic CRUD invalidations refresh them.
+  options: (orgId?: string | null) => ['topics', 'options', orgId ?? null] as const,
 };
 
 export const questionKeys = {
