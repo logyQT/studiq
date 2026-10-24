@@ -209,6 +209,21 @@ Generate a new PAT at <https://github.com/settings/tokens> and re-authenticate:
 gh auth login --with-token <<< "ghp_new_token_here"
 ```
 
+#### `bun run format:check` reports hundreds of files on Windows
+
+Windows Git installs often default to `core.autocrlf=true`, which rewrites every
+checked-out text file to CRLF. The repo pins LF in `.gitattributes`, so fresh clones are
+fine; an older clone needs a one-time re-checkout. **Commit or push your work first** —
+this rewrites the working tree:
+
+```bash
+git rm --cached -r . --quiet
+git reset --hard
+```
+
+(`bun run format` + `git add --renormalize .` also clears the formatter failures without
+discarding work, but leaves Markdown/SQL/etc. as CRLF until the next checkout.)
+
 ---
 
 ## Quick Start

@@ -1,0 +1,6 @@
+# Editors must not reintroduce CRLF on Windows checkouts — see .gitattributes / #129.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
