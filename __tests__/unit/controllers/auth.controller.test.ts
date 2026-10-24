@@ -61,6 +61,24 @@ describe('AuthController', () => {
       expect(response.statusCode).toBe(500);
       expect((response as any).error).toBe('INTERNAL_SERVER');
     });
+
+    // #311: an invite token that died between the /join preview and submit maps
+    // to 410 so the client can tell the invitee the link is no longer usable.
+    it('maps a GONE invite token to 410', async () => {
+      mockService.register.mockResolvedValueOnce(failure('GONE'));
+
+      const response = await controller.register({
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'SecurePass1',
+        accountType: 'student',
+        inviteToken: 'dead-token',
+      });
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(410);
+      expect((response as any).error).toBe('GONE');
+    });
   });
 
   describe('login', () => {

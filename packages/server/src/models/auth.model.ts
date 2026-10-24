@@ -28,6 +28,14 @@ export const RegisterSchema = registry.register(
     accountType: z.enum(['student', 'educator', 'manager'], {
       error: ValidationErrorCode.INVALID_INPUT,
     }),
+    // Only sent by the invite-link flow (`/join?token=…`). The token is the
+    // capability; its validity is checked in `AuthService.register()` before the
+    // account exists and it is consumed after the e-mail is verified (#311).
+    inviteToken: z
+      .string({ error: ValidationErrorCode.INVALID_INPUT })
+      .nonempty({ error: ValidationErrorCode.REQUIRED })
+      .max(128, { error: ValidationErrorCode.INVALID_INPUT })
+      .optional(),
   }),
 );
 
