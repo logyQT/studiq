@@ -994,7 +994,7 @@ export class TeacherAssignmentService {
         'id, score, total_questions, total_points, completed_at, graded_at, user:user_id(id, email, full_name)',
       )
       .eq('assignment_id', id)
-      .order('started_at', { ascending: true });
+      .order('started_at', { ascending: false });
 
     if (studentId) {
       query = query.eq('user_id', studentId);

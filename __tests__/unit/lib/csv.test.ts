@@ -1,4 +1,4 @@
-import { buildCsv, escapeCsvCell } from '@studiq/server/lib/csv';
+import { buildCsv, escapeCsvCell, neutralizeCsvFormula } from '@studiq/server/lib/csv';
 import { describe, expect, it } from 'vitest';
 
 describe('escapeCsvCell', () => {
@@ -19,6 +19,36 @@ describe('escapeCsvCell', () => {
   it('quotes values containing newlines', () => {
     expect(escapeCsvCell('line 1\nline 2')).toBe('"line 1\nline 2"');
     expect(escapeCsvCell('line 1\rline 2')).toBe('"line 1\rline 2"');
+  });
+});
+
+describe('neutralizeCsvFormula', () => {
+  it('leaves ordinary user names untouched', () => {
+    expect(neutralizeCsvFormula('Classroom Student')).toBe('Classroom Student');
+    expect(neutralizeCsvFormula('Kowalski, Jan')).toBe('Kowalski, Jan');
+    expect(neutralizeCsvFormula('')).toBe('');
+  });
+
+  it('prefixes every formula trigger with an apostrophe', () => {
+    expect(neutralizeCsvFormula('=1+1')).toBe("'=1+1");
+    expect(neutralizeCsvFormula('+1')).toBe("'+1");
+    expect(neutralizeCsvFormula('-1')).toBe("'-1");
+    expect(neutralizeCsvFormula('@x')).toBe("'@x");
+    expect(neutralizeCsvFormula('\tfoo')).toBe("'\tfoo");
+    expect(neutralizeCsvFormula('\rfoo')).toBe("'\rfoo");
+  });
+
+  it('neutralises a command payload without quoting it', () => {
+    expect(neutralizeCsvFormula("=cmd|' /C calc'!A0")).toBe("'=cmd|' /C calc'!A0");
+  });
+
+  it('stays inert after RFC 4180 escaping', () => {
+    expect(escapeCsvCell(neutralizeCsvFormula('=HYPERLINK("http://evil")'))).toBe(
+      `"'=HYPERLINK(""http://evil"")"`,
+    );
+    expect(buildCsv([['=HYPERLINK("http://evil")'].map(neutralizeCsvFormula)])).toBe(
+      `\uFEFF"'=HYPERLINK(""http://evil"")"`,
+    );
   });
 });
 

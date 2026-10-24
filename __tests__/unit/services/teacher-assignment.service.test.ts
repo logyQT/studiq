@@ -1863,6 +1863,15 @@ describe('TeacherAssignmentService', () => {
       expect(attemptsChain.eq).toHaveBeenCalledWith('user_id', 'student-1');
     });
 
+    it('orders attempts like the results view, newest first', async () => {
+      const attemptsChain = chain([]);
+      mock.from.mockReturnValueOnce(ownedAssignment()).mockReturnValueOnce(attemptsChain);
+
+      await service.exportAnswers(assignmentId, undefined, ctx);
+
+      expect(attemptsChain.order).toHaveBeenCalledWith('started_at', { ascending: false });
+    });
+
     it('returns NOT_FOUND when the caller does not own the assignment', async () => {
       mock.from.mockReturnValueOnce(chain(null));
 

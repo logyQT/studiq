@@ -9,6 +9,20 @@ export function escapeCsvCell(value: string): string {
   return value;
 }
 
+/** First character that makes Excel/LibreOffice/Sheets evaluate a cell. */
+const FORMULA_TRIGGER = /^[=+\-@\t\r]/;
+
+/**
+ * CWE-1236 (CSV formula injection) mitigation for cells whose value is
+ * user-controlled. A leading `'` makes Excel/LibreOffice/Sheets treat the cell
+ * as literal text (the apostrophe itself is not displayed). Keep this separate
+ * from `escapeCsvCell` so numeric/date columns and the literal `-` placeholders
+ * are untouched.
+ */
+export function neutralizeCsvFormula(value: string): string {
+  return FORMULA_TRIGGER.test(value) ? `'${value}` : value;
+}
+
 /**
  * Builds a CSV document from rows, joining cells with `,` and rows with `\n`.
  * The UTF-8 BOM is required so Excel on Windows renders Polish characters
