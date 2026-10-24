@@ -40,7 +40,7 @@ interface TopicManagementScreenProps {
 
 export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
   const queryClient = useQueryClient();
-  const { activeOrg } = useOrgs();
+  const { activeOrg, isPending: orgsPending } = useOrgs();
   const feature = useFeature();
 
   const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
@@ -74,7 +74,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     isFetchingNextPage,
     isLoading,
   } = useInfiniteQuery({
-    queryKey: topicKeys.paginated(filters),
+    queryKey: topicKeys.paginated(filters, activeOrg?.id),
     queryFn: ({ pageParam }) =>
       apiGet<{ items: Topic[]; nextCursor: string | null; hasMore: boolean }>(
         `/api/v1/flashcards/topics?limit=50${queryString ? `&${queryString}` : ''}${pageParam ? `&cursor=${pageParam}` : ''}`,
@@ -83,6 +83,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     initialPageParam: '',
     staleTime: Infinity,
     refetchOnMount: false,
+    enabled: !orgsPending,
   });
 
   const topics = topicsData?.pages.flatMap((page) => page.items) ?? [];
@@ -350,7 +351,7 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
 
       <PageGrid
         cols={4}
-        isLoading={isLoading}
+        isLoading={isLoading || orgsPending}
         skeleton={
           <Card className="flex flex-col h-full max-sm:py-0 min-w-0">
             <div className="flex items-center gap-3 p-4 sm:hidden">

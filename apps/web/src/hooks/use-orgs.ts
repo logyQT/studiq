@@ -65,7 +65,8 @@ export function useOrgs() {
       // Org-keyed query entries are intentionally not invalidated here: at this
       // point the observed org key may still be the previous one, so an active
       // refetch would write the new org's rows under the old org's cache key.
-      // The key change is what drives their refetch.
+      // The key change is what drives their refetch — every org-scoped list
+      // query is keyed by `activeOrg.id` (#135, #216).
       const switchedOrg = orgs.find((o) => o.id === variables);
       const jwtAccountType = user?.app_metadata?.account_type as string | undefined;
       const ROLE_TO_ACCOUNT_TYPE: Record<string, string> = {
@@ -102,6 +103,10 @@ export function useOrgs() {
     orgs,
     activeOrg,
     isLoading,
+    // `true` until `['orgs']` settles. Org-scoped list queries gate on this so
+    // they do not fetch under a `null` org and then refetch under the real one
+    // (content → skeleton → content flicker on a cold load).
+    isPending,
     needsOnboarding,
     switchOrg: switchOrgMutation.mutate,
     isSwitching: switchOrgMutation.isPending,

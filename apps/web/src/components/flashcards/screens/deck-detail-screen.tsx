@@ -94,7 +94,7 @@ export function DeckDetailScreen({
   const queryClient = useQueryClient();
   const permission = usePermission();
   const feature = useFeature();
-  const { activeOrg } = useOrgs();
+  const { activeOrg, isPending: orgsPending } = useOrgs();
   const { user } = useAuth();
   const headerGrad = getGradientHex(deckId);
 
@@ -136,8 +136,9 @@ export function DeckDetailScreen({
     nextCursor: string | null;
     hasMore: boolean;
   }>({
-    queryKey: topicKeys.paginated({}),
+    queryKey: topicKeys.paginated({}, activeOrg?.id),
     url: '/api/v1/flashcards/topics?limit=200',
+    enabled: !orgsPending,
   });
   const { data: currentDeck, isLoading: decksLoading } = useApiQuery<Deck>({
     queryKey: flashcardKeys.decks.detail(deckId),
@@ -150,8 +151,9 @@ export function DeckDetailScreen({
     nextCursor: string | null;
     hasMore: boolean;
   }>({
-    queryKey: flashcardKeys.decks.all,
+    queryKey: flashcardKeys.decks.options(activeOrg?.id),
     url: '/api/v1/flashcards/decks?limit=200',
+    enabled: !orgsPending,
   });
 
   const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
