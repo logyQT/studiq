@@ -327,43 +327,83 @@ export class InvitationService {
   }
 
   async updateInvitation(
-    _ctx: RequestContext,
+    ctx: RequestContext,
     id: string,
     data: { targetOrgRoleId?: string },
   ): Promise<ServiceResult<void>> {
+    // activeOrgId is the client-controlled `active_org_id` cookie; withAuth only
+    // sets orgRoleId when a real org_members row exists for that exact org+user,
+    // so the pair is the membership proof. Without it a forged cookie would let
+    // any manager retarget another tenant's pending invitation (MGR-INV-03).
+    if (!ctx.activeOrgId || !ctx.orgRoleId) return failure('FORBIDDEN');
+
     const supabase = await this.createClient();
 
     const { data: invite, error: fetchError } = await supabase
       .from('invitations')
       .select('id, is_accepted')
       .eq('id', id)
-      .single();
+      .eq('organization_id', ctx.activeOrgId)
+      .maybeSingle();
 
-    if (fetchError || !invite) return failure('NOT_FOUND');
+    if (fetchError) return toDbFailure(fetchError);
+    if (!invite) return failure('NOT_FOUND');
     if (invite.is_accepted) return failure('FORBIDDEN');
 
     const updateData: Record<string, string> = {};
-    if (data.targetOrgRoleId) updateData.target_org_role_id = data.targetOrgRoleId;
 
-    const { error } = await supabase.from('invitations').update(updateData).eq('id', id);
+    if (data.targetOrgRoleId) {
+      // A role from another organization would let the acceptor inherit that
+      // tenant's permission scopes — reject it before the update.
+      const { data: role, error: roleError } = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('id', data.targetOrgRoleId)
+        .eq('organization_id', ctx.activeOrgId)
+        .maybeSingle();
+
+      if (roleError) return toDbFailure(roleError);
+      if (!role) return failure('UNPROCESSABLE_ENTITY');
+
+      updateData.target_org_role_id = data.targetOrgRoleId;
+    }
+
+    if (Object.keys(updateData).length === 0) return success(undefined);
+
+    const { error } = await supabase
+      .from('invitations')
+      .update(updateData)
+      .eq('id', id)
+      .eq('organization_id', ctx.activeOrgId);
     if (error) return toDbFailure(error);
 
     return success(undefined);
   }
 
-  async deleteInvitation(_ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
+  async deleteInvitation(ctx: RequestContext, id: string): Promise<ServiceResult<void>> {
+    // See updateInvitation: the cookie alone proves nothing, orgRoleId does.
+    if (!ctx.activeOrgId || !ctx.orgRoleId) return failure('FORBIDDEN');
+
     const supabase = await this.createClient();
 
     const { data: invite, error: fetchError } = await supabase
       .from('invitations')
       .select('id, is_accepted')
       .eq('id', id)
-      .single();
+      .eq('organization_id', ctx.activeOrgId)
+      .maybeSingle();
 
-    if (fetchError || !invite) return failure('NOT_FOUND');
+    if (fetchError) return toDbFailure(fetchError);
+    // A foreign or unknown id is indistinguishable to the caller (no existence
+    // oracle), and the row is never touched.
+    if (!invite) return failure('NOT_FOUND');
     if (invite.is_accepted) return failure('FORBIDDEN');
 
-    const { error } = await supabase.from('invitations').delete().eq('id', id);
+    const { error } = await supabase
+      .from('invitations')
+      .delete()
+      .eq('id', id)
+      .eq('organization_id', ctx.activeOrgId);
     if (error) return toDbFailure(error);
 
     return success(undefined);

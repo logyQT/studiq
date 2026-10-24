@@ -652,7 +652,9 @@ describe('GroupService', () => {
           groups: { id: 'g-1', name: 'Group 1', organization_id: 'org-1' },
         },
       ];
-      mock.from.mockReturnValueOnce(qb(data));
+      mock.from
+        .mockReturnValueOnce(qb([{ organization_id: 'org-1' }]))
+        .mockReturnValueOnce(qb(data));
 
       const result = await service.listMyGroups(ctx);
 
@@ -661,7 +663,28 @@ describe('GroupService', () => {
       expect(result.data[0].id).toBe('g-1');
     });
 
+    it('returns [] when the caller has no org memberships (#249)', async () => {
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.listMyGroups(ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).toEqual([]);
+      // No group_members query is issued once the org list is empty.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
     it('returns error on DB failure', async () => {
+      mock.from
+        .mockReturnValueOnce(qb([{ organization_id: 'org-1' }]))
+        .mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.listMyGroups(ctx);
+
+      expect(result.success).toBe(false);
+    });
+
+    it('returns error when the org membership query fails', async () => {
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
       const result = await service.listMyGroups(ctx);
