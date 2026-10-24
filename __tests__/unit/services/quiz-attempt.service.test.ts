@@ -100,11 +100,13 @@ describe('QuizAttemptService', () => {
     it('submits answers and returns score', async () => {
       const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
       const answer = { id: 'ans-1', is_correct: true };
+      const insertQb = qb(null);
 
       mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
       mock.from.mockReturnValueOnce(qb(answer));
       mock.from.mockReturnValueOnce(qb(null));
-      mock.from.mockReturnValueOnce(qb(null));
+      mock.from.mockReturnValueOnce(insertQb);
 
       const result = await service.submit(
         {
@@ -118,14 +120,23 @@ describe('QuizAttemptService', () => {
       expect(result.data).toBeDefined();
       expect((result.data as any).score).toBe(1);
       // Practice quizzes must not look up assignment points.
-      expect(mock.from).toHaveBeenCalledTimes(4);
       expect(mock.from).not.toHaveBeenCalledWith('assignment_questions');
+      expect(insertQb.insert).toHaveBeenCalledWith([
+        expect.objectContaining({
+          question_id: 'q-1',
+          selected_option_id: 'ans-1',
+          text_answer: null,
+          question_type: 'mcq',
+          is_correct: true,
+        }),
+      ]);
     });
 
     it('counts a practice-quiz question once even when it produced several answer rows', async () => {
       const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
 
       mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
       mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       mock.from.mockReturnValueOnce(qb(null)); // attempt update
@@ -147,6 +158,44 @@ describe('QuizAttemptService', () => {
       expect(mock.from).not.toHaveBeenCalledWith('assignment_questions');
     });
 
+    it('stores an open answer as text and does not auto-score it', async () => {
+      const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
+      const insertQb = qb(null);
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-open', type: 'open' }]));
+      mock.from.mockReturnValueOnce(qb(null));
+      mock.from.mockReturnValueOnce(insertQb);
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [
+            {
+              questionId: 'q-open',
+              textAnswer: '  Rozbiory, słaba władza centralna, liberum veto.  ',
+            },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).score).toBe(0);
+      expect(insertQb.insert).toHaveBeenCalledWith([
+        {
+          attempt_id: 'a-1',
+          question_id: 'q-open',
+          question_type: 'open',
+          selected_option_id: null,
+          text_answer: 'Rozbiory, słaba władza centralna, liberum veto.',
+          is_correct: false,
+        },
+      ]);
+      // No option lookup is performed for an open question.
+      expect(mock.from).toHaveBeenCalledTimes(4);
+    });
+
     it('awards assignment points instead of counting correct answers (#167)', async () => {
       const attempt = {
         id: 'a-1',
@@ -158,6 +207,7 @@ describe('QuizAttemptService', () => {
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(qb({ deadline: null })); // teacher_assignments
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
       mock.from.mockReturnValueOnce(qb({ is_correct: true })); // question_options
       mock.from.mockReturnValueOnce(qb(null)); // attempt update
       mock.from.mockReturnValueOnce(qb(null)); // answers insert
@@ -185,6 +235,7 @@ describe('QuizAttemptService', () => {
       mock.from.mockReturnValueOnce(qb(attempt));
       mock.from.mockReturnValueOnce(qb({ deadline: null }));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
       mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       mock.from.mockReturnValueOnce(qb({ is_correct: true }));
       mock.from.mockReturnValueOnce(qb(null));

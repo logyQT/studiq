@@ -37,6 +37,12 @@ interface AttemptDetails {
   answers: Record<string, { selected_answer_id: string | null; is_correct: boolean }>;
 }
 
+interface SubmitAnswer {
+  questionId: string;
+  selectedAnswerId?: string;
+  textAnswer?: string;
+}
+
 export default function QuizTakingPage() {
   const params = useParams();
   const router = useRouter();
@@ -66,12 +72,13 @@ export default function QuizTakingPage() {
   async function submitQuiz() {
     if (!attempt) return;
 
-    const quizAnswers = attempt.questions.map((q) => {
-      const selectedAnswerId = answers[q.id];
-      return {
-        questionId: q.id,
-        ...(selectedAnswerId ? { selectedAnswerId } : {}),
-      };
+    // `open` questions carry free text; only mcq/true_false carry an option id.
+    const quizAnswers: SubmitAnswer[] = attempt.questions.flatMap((q): SubmitAnswer[] => {
+      const value = answers[q.id]?.trim();
+      if (!value) return [];
+      return q.type === 'open'
+        ? [{ questionId: q.id, textAnswer: value }]
+        : [{ questionId: q.id, selectedAnswerId: value }];
     });
 
     try {

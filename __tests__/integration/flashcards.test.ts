@@ -19,7 +19,7 @@ import {
   GET as getById,
   PUT as update,
 } from '@/app/(backend)/api/v1/flashcards/[id]/route';
-import { POST as bulkCreate } from '@/app/(backend)/api/v1/flashcards/batch/[action]/route';
+import { POST as batchAction } from '@/app/(backend)/api/v1/flashcards/batch/[action]/route';
 import { GET, POST } from '@/app/(backend)/api/v1/flashcards/route';
 
 forEachCopy((copyId) => {
@@ -240,7 +240,7 @@ forEachCopy((copyId) => {
             }),
           },
         );
-        const response = await bulkCreate(request, { params });
+        const response = await batchAction(request, { params });
         const body = await response.json();
 
         expect(response.status).toBe(201);
@@ -260,11 +260,89 @@ forEachCopy((copyId) => {
             body: JSON.stringify({ cards: [] }),
           },
         );
-        const response = await bulkCreate(request, { params });
+        const response = await batchAction(request, { params });
         const body = await response.json();
 
         expect(response.status).toBe(422);
         expect(body.success).toBe(false);
+      });
+    });
+
+    describe('POST /api/v1/flashcards/batch/delete', () => {
+      async function createCards(count: number) {
+        mockUser(teacher.user);
+        const { request, params } = createNextRequestWithParams(
+          'http://localhost/api/v1/flashcards/batch/create',
+          { action: 'create' },
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              deckId,
+              cards: Array.from({ length: count }, (_, i) => ({
+                front: `fc-${copyId}-delete-${i}`,
+                back: `A${i}`,
+              })),
+            }),
+          },
+        );
+        const response = await batchAction(request, { params });
+        const body = await response.json();
+        return (body.data as Array<{ id: string }>).map((fc) => fc.id);
+      }
+
+      function batchDeleteRequest(ids: string[]) {
+        return createNextRequestWithParams(
+          'http://localhost/api/v1/flashcards/batch/delete',
+          { action: 'delete' },
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids }),
+          },
+        );
+      }
+
+      it('deletes own cards and returns 200', async () => {
+        const ids = await createCards(2);
+        mockUser(teacher.user);
+
+        const { request, params } = batchDeleteRequest(ids);
+        const response = await batchAction(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+        expect(body.data).toEqual({ deleted: 2 });
+
+        // The cards no longer exist.
+        const { request: getRequest, params: getParams } = createNextRequestWithParams(
+          `http://localhost/api/v1/flashcards/${ids[0]}`,
+          { id: ids[0] },
+        );
+        const getResponse = await getById(getRequest, { params: getParams });
+        expect(getResponse.status).toBe(404);
+      });
+
+      it('returns 403 when deleting another user cards and keeps them', async () => {
+        const ids = await createCards(1);
+        mockUser(other);
+
+        const { request, params } = batchDeleteRequest(ids);
+        const response = await batchAction(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
+
+        // Still present for the owner.
+        mockUser(teacher.user);
+        const { request: getRequest, params: getParams } = createNextRequestWithParams(
+          `http://localhost/api/v1/flashcards/${ids[0]}`,
+          { id: ids[0] },
+        );
+        const getResponse = await getById(getRequest, { params: getParams });
+        expect(getResponse.status).toBe(200);
       });
     });
 

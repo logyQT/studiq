@@ -56,11 +56,14 @@ export class QuizAttemptService {
       .sort((a, b) => a.order_index - b.order_index)
       .map((aq) => aq.questions);
 
-    const answerObj: Record<string, { selected_answer_id: string | null; is_correct: boolean }> =
-      {};
+    const answerObj: Record<
+      string,
+      { selected_answer_id: string | null; text_answer: string | null; is_correct: boolean }
+    > = {};
     (answers ?? []).forEach((a) => {
       answerObj[a.question_id] = {
         selected_answer_id: a.selected_option_id,
+        text_answer: a.text_answer,
         is_correct: a.is_correct,
       };
     });
@@ -124,9 +127,29 @@ export class QuizAttemptService {
     const answerRecords = [];
     const awardedQuestions = new Set<string>();
 
+    // One lookup per submit so an `open` answer is stored as text (never as an
+    // option id) and only auto-graded types are scored (#176).
+    const questionIds = [...new Set(data.answers.map((a) => a.questionId))];
+    let questionTypeById = new Map<string, string>();
+    if (questionIds.length > 0) {
+      const { data: questionRows, error: questionsError } = await supabase
+        .from('questions')
+        .select('id, type')
+        .in('id', questionIds);
+
+      if (questionsError) return toDbFailure(questionsError);
+
+      questionTypeById = new Map((questionRows ?? []).map((q) => [q.id, q.type]));
+    }
+
     for (const ans of data.answers) {
+      const questionType = questionTypeById.get(ans.questionId) ?? null;
+      const textAnswer = ans.textAnswer?.trim() || null;
+      // Fall back to "open iff text was sent" when the question row is missing.
+      const isOpen = questionType === 'open' || (questionType === null && textAnswer !== null);
+
       let isCorrect = false;
-      if (ans.selectedAnswerId) {
+      if (!isOpen && ans.selectedAnswerId) {
         const { data: answer } = await supabase
           .from('question_options')
           .select('is_correct')
@@ -143,7 +166,9 @@ export class QuizAttemptService {
       answerRecords.push({
         attempt_id: data.attemptId,
         question_id: ans.questionId,
-        selected_option_id: ans.selectedAnswerId ?? null,
+        question_type: questionType,
+        selected_option_id: isOpen ? null : (ans.selectedAnswerId ?? null),
+        text_answer: isOpen ? textAnswer : null,
         is_correct: isCorrect,
       });
     }

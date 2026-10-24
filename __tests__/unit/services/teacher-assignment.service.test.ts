@@ -917,6 +917,21 @@ describe('TeacherAssignmentService', () => {
       }
     });
 
+    it('returns the latest attempt instead of failing on multiple rows (#176)', async () => {
+      const attemptChain = chain({ id: 'attempt-2', score: 4 });
+      mock.from.mockReturnValueOnce(chain(assignment)).mockReturnValueOnce(attemptChain);
+
+      const result = await service.getForStudent(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      expect(attemptChain.order).toHaveBeenCalledWith('started_at', { ascending: false });
+      expect(attemptChain.limit).toHaveBeenCalledWith(1);
+      expect(attemptChain.maybeSingle).toHaveBeenCalled();
+      if (result.success) {
+        expect((result.data.attempt as { id: string }).id).toBe('attempt-2');
+      }
+    });
+
     it('allows a student targeted through one of their groups', async () => {
       mock.from
         .mockReturnValueOnce(
