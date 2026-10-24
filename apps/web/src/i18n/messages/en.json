@@ -2620,7 +2620,14 @@
   "AppAssignmentReviewPage": {
     "not_available": "Review not available",
     "back": "Back",
-    "feedback": "Feedback: {text}"
+    "feedback": "Feedback: {text}",
+    "your_answer": "Your answer",
+    "no_answer": "No answer",
+    "pending_review": "Pending review",
+    "points_awarded": "Points awarded: {points}",
+    "explanation": "Explanation",
+    "correct": "Correct",
+    "incorrect": "Incorrect"
   },
   "AnswerImageUpload": {
     "uploading": "Uploading...",
