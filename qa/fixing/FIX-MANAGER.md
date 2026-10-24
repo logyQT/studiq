@@ -39,6 +39,8 @@ A retry increments `attempt`; the previous review/QA artifacts stay in the dossi
 `collect` prints `stage`, `next`, the artifact path(s) and a **digest**: `decision`/`status`, `blocking` count, one 200-char `first_blocking` line, and a 200-char `note`. That is everything routing needs, and it keeps this session small. Open the artifact (`/workspaces/studiq/.qa-fix/issues/<n>/review-1-rN.json` etc.) or run `collect <issue> --full` only when you actually need the full findings — never paste whole artifacts back into context.
 
 ### 1. Design
+**Assigned issues are out of scope.** Any issue with an assignee belongs to a teammate: `next` never offers them, and `design <n>` refuses with the assignee's name. Do not hand-pick them, do not unassign them, do not "help" by designing them.
+
 Pick `next` (priority order: critical, high, medium, low). Dispatch a free designer:
 
 ```bash

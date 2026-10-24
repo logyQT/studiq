@@ -218,11 +218,13 @@ def gh(args: list[str], timeout: int = 90) -> str:
 
 
 def ignored_assignees() -> set[str]:
-    """Human owners whose issues must stay out of the fix backlog.
+    """Who owns issues that must stay out of the fix backlog.
 
-    Configurable with QA_FIX_IGNORE_ASSIGNEES (comma separated, case-insensitive).
+    Default `*`: any assignee means a human on the team is already on it, so the
+    crew leaves it alone. Override with QA_FIX_IGNORE_ASSIGNEES as a comma
+    separated login list (case-insensitive) to narrow that to specific people.
     """
-    raw = os.environ.get("QA_FIX_IGNORE_ASSIGNEES", "P3RyVeR")
+    raw = os.environ.get("QA_FIX_IGNORE_ASSIGNEES", "*")
     return {a.strip().lower() for a in raw.split(",") if a.strip()}
 
 
@@ -405,7 +407,8 @@ def normalize_map(raw: list[dict]) -> dict:
         labels = [l["name"] for l in i["labels"]]
         priority = next((p for p in ("critical", "high", "medium", "low") if p in labels), "none")
         assignees = [a["login"] for a in (i.get("assignees") or [])]
-        parked = sorted(a for a in assignees if a.lower() in ignore)
+        parked = sorted(assignees) if "*" in ignore else sorted(
+            a for a in assignees if a.lower() in ignore)
         items.append({
             "number": i["number"], "title": i["title"], "url": i["url"],
             "labels": labels, "priority": priority,
@@ -667,7 +670,12 @@ def cmd_next(args) -> None:
     for n in m["queue"]:
         if n not in active:
             i = issue_from_map(m, n)
-            ok(action="next", issue=i, remaining=len(m["queue"]))
+            # Routing summary only: the full snapshot (body included) is written to
+            # the issue dossier by start_issue, and echoing it here cost ~1.5k
+            # tokens per call in a loop that runs after every merge.
+            brief = {k: i.get(k) for k in
+                     ("number", "title", "priority", "areas", "url", "assignees")}
+            ok(action="next", issue=brief, remaining=len(m["queue"]))
             return
     ok(action="next", issue=None, message="queue exhausted")
 
@@ -677,6 +685,9 @@ def start_issue(state: dict, n: int, role: str, env: int) -> dict:
     issue = issue_from_map(m, n)
     if issue["needs_design"]:
         fail(f"issue #{n} is excluded (needs-design)")
+    if role == "designer" and issue.get("parked"):
+        fail(f"issue #{n} is assigned to {', '.join(issue.get('assignees') or ['someone'])}",
+             hint="assigned issues belong to a teammate; pick an unassigned issue from the queue")
     rec = state["issues"].get(str(n))
     if not rec:
         rec = {
