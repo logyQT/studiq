@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { OnboardingChecklist } from '@/components/edu/onboarding-checklist';
+import { apiGet } from '@/lib/api';
 
 interface TeacherStats {
   totalQuestions: number;
@@ -19,13 +20,10 @@ export default function EduOverviewPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/v1/stats/teacher')
-      .then((res) => res.json())
-      .then((data) => {
-        setStats(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    apiGet<TeacherStats>('/api/v1/stats/teacher')
+      .then(setStats)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   return (

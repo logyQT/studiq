@@ -69,6 +69,7 @@ export default function FeatureFlagsPage() {
   const [editing, setEditing] = useState<FeatureFlag | null>(null);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<FeatureFlag | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const createMutation = useMutation({
     mutationFn: (data: FormData) => apiPost('/feature-flags', data),
@@ -76,22 +77,32 @@ export default function FeatureFlagsPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
       setDialogOpen(false);
       setForm(EMPTY_FORM);
+      setFormError(null);
     },
+    onError: (error: Error) => setFormError(t('save_failed', { code: error.message })),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ key, ...data }: FormData & { key: string }) =>
-      apiPut(`/feature-flags/${key}`, data),
+    mutationFn: ({
+      id,
+      name,
+      description,
+      isEnabled,
+      rolloutPercentage,
+    }: FormData & { id: string }) =>
+      apiPut(`/feature-flags/${id}`, { name, description, isEnabled, rolloutPercentage }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
       setDialogOpen(false);
       setEditing(null);
       setForm(EMPTY_FORM);
+      setFormError(null);
     },
+    onError: (error: Error) => setFormError(t('save_failed', { code: error.message })),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (key: string) => apiDelete(`/feature-flags/${key}`),
+    mutationFn: (id: string) => apiDelete(`/feature-flags/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags.all });
       setDeleteTarget(null);
@@ -101,11 +112,13 @@ export default function FeatureFlagsPage() {
   function openCreate() {
     setEditing(null);
     setForm(EMPTY_FORM);
+    setFormError(null);
     setDialogOpen(true);
   }
 
   function openEdit(flag: FeatureFlag) {
     setEditing(flag);
+    setFormError(null);
     setForm({
       key: flag.key,
       name: flag.name,
@@ -119,7 +132,7 @@ export default function FeatureFlagsPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (editing) {
-      updateMutation.mutate(form);
+      updateMutation.mutate({ ...form, id: editing.id });
     } else {
       createMutation.mutate(form);
     }
@@ -197,6 +210,11 @@ export default function FeatureFlagsPage() {
             <DialogTitle>{editing ? t('edit') : t('create')}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {formError && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {formError}
+              </p>
+            )}
             <div className="space-y-2">
               <Label htmlFor="key">{t('col_key')}</Label>
               <Input
@@ -259,7 +277,7 @@ export default function FeatureFlagsPage() {
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title={t('delete_title')}
         description={t('delete_desc', { key: deleteTarget?.key ?? '' })}
-        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.key)}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
         confirmLabel={tc('delete')}
         destructive
       />

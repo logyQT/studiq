@@ -8,6 +8,7 @@ function createMockQuizAttemptService() {
     list: vi.fn(),
     getById: vi.fn(),
     submit: vi.fn(),
+    saveDraft: vi.fn(),
   };
 }
 
@@ -117,6 +118,62 @@ describe('QuizAttemptController', () => {
       );
 
       expect(response).toEqual({ success: false, statusCode: 404, error: 'NOT_FOUND' });
+    });
+  });
+
+  describe('saveAnswers (#349)', () => {
+    const attemptId = '550e8400-e29b-41d4-a716-446655440000';
+
+    it('returns the saved count when the draft is stored', async () => {
+      mockService.saveDraft.mockResolvedValueOnce(success({ saved: 1 }));
+
+      const response = await controller.saveAnswers(
+        {
+          answers: [
+            {
+              questionId: '550e8400-e29b-41d4-a716-446655440001',
+              selectedAnswerId: '550e8400-e29b-41d4-a716-446655440002',
+            },
+          ],
+        },
+        attemptId,
+        mockCtx,
+      );
+
+      expect(response).toEqual({ success: true, statusCode: 200, data: { saved: 1 } });
+      expect(mockService.saveDraft).toHaveBeenCalledWith(
+        {
+          attemptId,
+          answers: [
+            {
+              questionId: '550e8400-e29b-41d4-a716-446655440001',
+              selectedAnswerId: '550e8400-e29b-41d4-a716-446655440002',
+            },
+          ],
+        },
+        mockCtx,
+      );
+    });
+
+    it('returns UNPROCESSABLE_ENTITY when the body fails validation', async () => {
+      const response = await controller.saveAnswers(
+        { answers: [{ questionId: 'not-a-uuid' }] },
+        attemptId,
+        mockCtx,
+      );
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(mockService.saveDraft).not.toHaveBeenCalled();
+    });
+
+    it('maps a service failure to its status code', async () => {
+      mockService.saveDraft.mockResolvedValueOnce(failure('BAD_REQUEST'));
+
+      const response = await controller.saveAnswers({ answers: [] }, attemptId, mockCtx);
+
+      expect(response).toEqual({ success: false, statusCode: 400, error: 'BAD_REQUEST' });
     });
   });
 });

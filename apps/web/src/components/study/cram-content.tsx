@@ -7,19 +7,22 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { CramDeckCard } from '@/components/flashcards/cards/cram-deck-card';
 import { useApiQuery } from '@/hooks/use-api';
+import { useOrgs } from '@/hooks/use-orgs';
 import { flashcardKeys } from '@/lib/query-keys';
 
 export function CramContent() {
   const t = useTranslations('AppFlashcardStudyPage');
   const router = useRouter();
+  const { activeOrg, isPending: orgsPending } = useOrgs();
 
   const { data: decksData, isLoading } = useApiQuery<{
     items: Deck[];
     nextCursor: string | null;
     hasMore: boolean;
   }>({
-    queryKey: flashcardKeys.decks.all,
+    queryKey: flashcardKeys.decks.options(activeOrg?.id),
     url: '/api/v1/flashcards/decks?limit=200',
+    enabled: !orgsPending,
   });
   const decks = decksData?.items;
 
@@ -31,7 +34,7 @@ export function CramContent() {
     <div className="flex flex-col gap-6">
       <p className="text-muted-foreground">{t('deck_picker_desc')}</p>
 
-      {isLoading ? (
+      {isLoading || orgsPending ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <Card key={i} className="flex min-w-0 flex-col max-sm:py-0">

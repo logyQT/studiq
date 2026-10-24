@@ -12,7 +12,9 @@ import {
 import { ArrowRight, GraduationCap, Plus, UserCheck, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { useApiQuery } from '@/hooks/use-api';
+import { useOrgs } from '@/hooks/use-orgs';
+import { organizationKeys } from '@/lib/query-keys';
 
 interface Member {
   id: string;
@@ -24,20 +26,21 @@ interface Member {
 
 export default function ManageOverviewPage() {
   const t = useTranslations('ManageOverviewPage');
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { activeOrg } = useOrgs();
 
-  useEffect(() => {
-    fetch('/api/v1/organization/members')
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.success && Array.isArray(res.data)) {
-          setMembers(res.data);
-        }
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
+  // `/api/v1/organization/members` scopes itself from the `active_org_id`
+  // cookie, so the cache entry is keyed by the active org: when the org
+  // changes, React Query observes a new key and fetches with the new cookie.
+  // `staleTime: 0` keeps the dashboard fresh when it remounts, as the previous
+  // one-shot fetch did.
+  const { data: members = [], isPending } = useApiQuery<Member[]>({
+    queryKey: organizationKeys.members(activeOrg?.id),
+    url: '/api/v1/organization/members',
+    enabled: !!activeOrg?.id,
+    staleTime: 0,
+  });
+
+  const loading = !activeOrg || isPending;
 
   const teachers = members.filter((m) => m.orgRoleName === 'teacher');
   const students = members.filter((m) => m.orgRoleName === 'member');

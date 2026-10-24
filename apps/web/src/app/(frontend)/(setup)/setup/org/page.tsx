@@ -11,15 +11,19 @@ import {
   Input,
   Label,
 } from '@studiq/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { apiPost } from '@/lib/api';
+import { featureKeys, permissionKeys } from '@/lib/query-keys';
 
 export default function OrgSetupPage() {
   const t = useTranslations('Onboarding');
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -27,26 +31,35 @@ export default function OrgSetupPage() {
     if (!name) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/organization', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      });
+      // apiPost() unwraps the `{ success, data }` envelope. The previous code read
+      // `id` off the envelope, so the follow-up switch was sent with `orgId: undefined` (#306).
+      const org = await apiPost<{ id: string }>('/api/v1/organization', { name });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'FAILED');
+      // POST /api/v1/organization already set `active_org_id` for the creator, so the
+      // org is active server-side; the client cache is the only stale piece. Refetch it
+      // *before* leaving this screen: `manage/layout.tsx` bounces back to /setup/org
+      // while `['orgs']` still holds the cached empty list.
+      // `refetchType: 'all'` also refetches the inactive entry — under /setup there is
+      // no useOrgs() observer, and the default 'active' would only mark it stale.
+      await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
+
+      const cachedOrgs = queryClient.getQueryData<Array<{ id: string }>>(['orgs']);
+
+      // Permission scopes and plan features are resolved from the active org on the
+      // server and both hooks cache for 5 minutes (same as useOrgs.switchOrgMutation).
+      queryClient.invalidateQueries({ queryKey: permissionKeys.all });
+      queryClient.invalidateQueries({ queryKey: featureKeys.all });
+
+      if (cachedOrgs && !cachedOrgs.some((o) => o.id === org.id)) {
+        // The refresh failed while a stale list is cached. A full load drops the SPA
+        // cache, so the successfully created org is not "lost" and cannot bounce.
+        window.location.assign('/manage');
+        return;
       }
 
-      const data = await res.json();
-
-      await fetch('/api/v1/me/orgs/switch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: data.id }),
-      });
-
-      router.push('/manage');
+      // replace, not push: /setup/org must not stay in history, otherwise "back"
+      // re-opens the create form and can produce a duplicate organization.
+      router.replace('/manage');
     } catch {
       toast.error(t('create_failed') || APP_ERRORS.INTERNAL_SERVER.code);
     } finally {

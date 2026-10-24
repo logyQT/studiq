@@ -16,3 +16,30 @@ CREATE TABLE public.org_members (
 
 CREATE INDEX idx_org_members_org ON public.org_members(organization_id);
 CREATE INDEX idx_org_members_user ON public.org_members(user_id);
+
+-- Group membership ends when organization membership ends (#249). There is no
+-- FK between group_members and org_members, so the invariant is enforced by a
+-- SECURITY DEFINER trigger on org_members (see
+-- 20261024141104_cleanup_group_members_on_org_member_removal.sql).
+CREATE OR REPLACE FUNCTION public.cleanup_group_members_on_org_member_delete()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  DELETE FROM public.group_members gm
+  USING public.groups g
+  WHERE g.id = gm.group_id
+    AND g.organization_id = OLD.organization_id
+    AND gm.user_id = OLD.user_id;
+
+  RETURN OLD;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.cleanup_group_members_on_org_member_delete() FROM PUBLIC;
+
+CREATE TRIGGER cleanup_group_members_on_org_member_delete
+  AFTER DELETE ON public.org_members
+  FOR EACH ROW EXECUTE FUNCTION public.cleanup_group_members_on_org_member_delete();

@@ -4,24 +4,22 @@ import { ClipboardCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { useApiQuery } from '@/hooks/use-api';
+import {
+  attemptsLeft,
+  hasAttemptsLeft,
+  openAttempt,
+  type StudentAssignmentAttemptState,
+} from '@/lib/assignment-attempts';
 import { studentAssignmentKeys } from '@/lib/query-keys';
 
-interface StudentAssignment {
+interface StudentAssignment extends StudentAssignmentAttemptState {
   id: string;
   title: string;
   description: string | null;
   deadline: string | null;
   start_time: string | null;
   time_limit_min: number | null;
-  max_attempts: number;
   question_count: number;
-  attempt: {
-    id: string;
-    score: number;
-    total_questions: number;
-    completed_at: string | null;
-    started_at: string;
-  } | null;
 }
 
 export default function StudentAssignmentsPage() {
@@ -39,26 +37,16 @@ export default function StudentAssignmentsPage() {
   };
 
   const now = new Date();
-  const scheduled =
-    assignments?.filter((a) => {
-      if (a.attempt?.completed_at) return false;
-      if (!a.start_time) return false;
-      return now < new Date(a.start_time);
-    }) ?? [];
+  const isScheduled = (a: StudentAssignment) =>
+    hasAttemptsLeft(a) && !!a.start_time && now < new Date(a.start_time);
+  const isClosed = (a: StudentAssignment) =>
+    hasAttemptsLeft(a) && !isScheduled(a) && !!a.deadline && now > new Date(a.deadline);
+
+  const scheduled = assignments?.filter(isScheduled) ?? [];
+  const closed = assignments?.filter(isClosed) ?? [];
+  const completed = assignments?.filter((a) => !hasAttemptsLeft(a)) ?? [];
   const pending =
-    assignments?.filter((a) => {
-      if (a.attempt?.completed_at) return false;
-      if (a.start_time && now < new Date(a.start_time)) return false;
-      if (a.deadline && now > new Date(a.deadline)) return false;
-      return true;
-    }) ?? [];
-  const closed =
-    assignments?.filter((a) => {
-      if (a.attempt?.completed_at) return false;
-      if (!a.deadline) return false;
-      return now > new Date(a.deadline);
-    }) ?? [];
-  const completed = assignments?.filter((a) => a.attempt?.completed_at) ?? [];
+    assignments?.filter((a) => hasAttemptsLeft(a) && !isScheduled(a) && !isClosed(a)) ?? [];
 
   return (
     <div className="p-6 space-y-8 max-w-3xl mx-auto">
@@ -127,9 +115,17 @@ export default function StudentAssignmentsPage() {
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       {a.deadline && <span>{t('due', { date: formatDate(a.deadline) })}</span>}
                       {a.time_limit_min && <span>{a.time_limit_min} min</span>}
-                      {a.attempt && (
+                      {openAttempt(a) && (
                         <span className="text-amber-600 dark:text-amber-400 font-medium">
                           {t('in_progress')}
+                        </span>
+                      )}
+                      {a.max_attempts > 1 && (
+                        <span>
+                          {t('attempts_left', {
+                            left: attemptsLeft(a),
+                            total: a.max_attempts,
+                          })}
                         </span>
                       )}
                     </div>
@@ -162,23 +158,29 @@ export default function StudentAssignmentsPage() {
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
                 {t('completed', { count: completed.length })}
               </h2>
-              {completed.map((a) => (
-                <Link key={a.id} href={`/app/assignments/${a.id}`}>
-                  <div className="rounded-lg border p-4 hover:bg-accent/50 transition-colors cursor-pointer space-y-2">
-                    <div className="flex items-start justify-between">
-                      <h3 className="font-semibold">{a.title}</h3>
-                      <span className="text-xs text-muted-foreground">
-                        {a.attempt?.score}/{a.attempt?.total_questions}
-                      </span>
+              {completed.map((a) => {
+                const lastCompleted = a.last_completed_attempt;
+                return (
+                  <Link key={a.id} href={`/app/assignments/${a.id}`}>
+                    <div className="rounded-lg border p-4 hover:bg-accent/50 transition-colors cursor-pointer space-y-2">
+                      <div className="flex items-start justify-between">
+                        <h3 className="font-semibold">{a.title}</h3>
+                        <span className="text-xs text-muted-foreground">
+                          {lastCompleted?.score}/
+                          {lastCompleted?.total_points || lastCompleted?.total_questions}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <span>
+                          {t('completed_on', {
+                            date: formatDate(lastCompleted?.completed_at ?? null),
+                          })}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span>
-                        {t('completed_on', { date: formatDate(a.attempt?.completed_at ?? null) })}
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                );
+              })}
             </section>
           )}
         </>

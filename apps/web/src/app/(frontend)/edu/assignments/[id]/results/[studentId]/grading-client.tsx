@@ -7,6 +7,7 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { type GradeDraft, parseGradePoints, resolveGradeDraft } from '@/lib/grading';
 import { assignmentKeys } from '@/lib/query-keys';
 
 interface StudentAnswers {
@@ -14,6 +15,7 @@ interface StudentAnswers {
   user_id: string;
   score: number;
   total_questions: number;
+  total_points: number | null;
   graded_at: string | null;
   quiz_attempt_questions: Array<{
     question_id: string;
@@ -34,6 +36,7 @@ interface StudentAnswers {
     id: string;
     question_id: string;
     selected_answer_id: string | null;
+    text_answer: string | null;
     is_correct: boolean;
     teacher_points: number | null;
     teacher_feedback: string | null;
@@ -48,7 +51,7 @@ interface StudentAnswers {
 export default function StudentGradingClient() {
   const { id, studentId } = useParams<{ id: string; studentId: string }>();
   const t = useTranslations('EduGradingPage');
-  const [grades, setGrades] = useState<Record<string, { points: string; feedback: string }>>({});
+  const [grades, setGrades] = useState<Record<string, Partial<GradeDraft>>>({});
 
   const { data: attempt, isLoading } = useApiQuery<StudentAnswers>({
     queryKey: assignmentKeys.studentResults(id, studentId),
@@ -63,7 +66,7 @@ export default function StudentGradingClient() {
     }: {
       questionId: string;
       points: number;
-      feedback?: string;
+      feedback: string;
     }) => {
       const res = await fetch(`/api/v1/teacher/assignments/${id}/results/${studentId}`, {
         method: 'PUT',
@@ -72,12 +75,14 @@ export default function StudentGradingClient() {
       });
       if (!res.ok) throw new Error(t('grade_failed'));
     },
-    invalidateKeys: [assignmentKeys.studentResults(id, studentId)],
+    invalidateKeys: [assignmentKeys.results(id)],
   });
 
-  const getGrade = (questionId: string) => {
-    return grades[questionId] ?? { points: '', feedback: '' };
-  };
+  const getGrade = (questionId: string) =>
+    resolveGradeDraft(
+      attempt?.quiz_answers?.find((a) => a.question_id === questionId),
+      grades[questionId],
+    );
 
   const setGrade = (questionId: string, field: 'points' | 'feedback', value: string) => {
     setGrades((prev) => ({
@@ -88,21 +93,9 @@ export default function StudentGradingClient() {
 
   const handleGrade = async (questionId: string) => {
     const g = getGrade(questionId);
-    await gradeMutation.mutateAsync({
-      questionId,
-      points: parseInt(g.points, 10) || 0,
-      feedback: g.feedback || undefined,
-    });
-  };
-
-  const _getSelectedAnswerContent = (questionId: string) => {
-    const answer = attempt?.quiz_answers?.find((a) => a.question_id === questionId);
-    if (!answer) return null;
-    return {
-      selectedAnswerId: answer.selected_answer_id,
-      teacherPoints: answer.teacher_points,
-      teacherFeedback: answer.teacher_feedback,
-    };
+    const points = parseGradePoints(g.points);
+    if (points === null) return;
+    await gradeMutation.mutateAsync({ questionId, points, feedback: g.feedback });
   };
 
   const getImages = (questionId: string) => {
@@ -137,7 +130,10 @@ export default function StudentGradingClient() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-muted-foreground">
-            {t('score', { earned: attempt.score, total: attempt.total_questions })}
+            {t('score', {
+              earned: attempt.score,
+              total: attempt.total_points || attempt.total_questions,
+            })}
             {attempt.graded_at && ` ${t('graded')}`}
           </p>
         </div>
@@ -152,6 +148,8 @@ export default function StudentGradingClient() {
             );
             const images = getImages(aq.question_id);
             const isAutoGraded = aq.question.type === 'mcq' || aq.question.type === 'true_false';
+            const grade = getGrade(aq.question_id);
+            const isValidPoints = parseGradePoints(grade.points) !== null;
 
             return (
               <div key={aq.question_id} className="rounded-lg border p-4 space-y-3">
@@ -191,6 +189,11 @@ export default function StudentGradingClient() {
 
                 {!isAutoGraded && (
                   <div className="space-y-3">
+                    {studentAnswer?.text_answer && (
+                      <p className="text-sm whitespace-pre-wrap break-words">
+                        {t('text_answer', { text: studentAnswer.text_answer })}
+                      </p>
+                    )}
                     {images.length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         {images.map((img) => (
@@ -210,8 +213,9 @@ export default function StudentGradingClient() {
                         <Input
                           type="number"
                           min={0}
+                          step={1}
                           placeholder="0"
-                          value={getGrade(aq.question_id).points}
+                          value={grade.points}
                           onChange={(e) => setGrade(aq.question_id, 'points', e.target.value)}
                         />
                       </div>
@@ -219,7 +223,7 @@ export default function StudentGradingClient() {
                         <Label>{t('feedback')}</Label>
                         <Textarea
                           placeholder={t('feedback_placeholder')}
-                          value={getGrade(aq.question_id).feedback}
+                          value={grade.feedback}
                           onChange={(e) => setGrade(aq.question_id, 'feedback', e.target.value)}
                         />
                       </div>
@@ -228,7 +232,7 @@ export default function StudentGradingClient() {
                     <Button
                       size="sm"
                       onClick={() => handleGrade(aq.question_id)}
-                      disabled={gradeMutation.isPending}
+                      disabled={gradeMutation.isPending || !isValidPoints}
                     >
                       <Check className="w-3 h-3 mr-1" />
                       {gradeMutation.isPending ? t('saving') : t('save')}

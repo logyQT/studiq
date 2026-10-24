@@ -20,7 +20,8 @@ import { useMemo, useState } from 'react';
 import { DeckDetailSkeleton } from '@/components/flashcards/shared/deck-detail-skeleton';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { useApiQuery } from '@/hooks/use-api';
-import { flashcardKeys } from '@/lib/query-keys';
+import { useOrgs } from '@/hooks/use-orgs';
+import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 
 type NamedItem = { id: string; name: string };
 
@@ -28,13 +29,15 @@ export default function DifficultyBucketClient() {
   const params = useParams();
   const bucket = params.bucket as string;
   const t = useTranslations('DifficultyPage');
+  const { activeOrg, isPending: orgsPending } = useOrgs();
   const [deckIds, setDeckIds] = useState<string[]>([]);
   const [topicIds, setTopicIds] = useState<string[]>([]);
 
   const deckOpts = useApiQuery<{ items: NamedItem[]; nextCursor: string | null; hasMore: boolean }>(
     {
-      queryKey: ['flashcards', 'decks'],
+      queryKey: flashcardKeys.decks.options(activeOrg?.id),
       url: '/api/v1/flashcards/decks?limit=200',
+      enabled: !orgsPending,
     },
   );
 
@@ -43,8 +46,9 @@ export default function DifficultyBucketClient() {
     nextCursor: string | null;
     hasMore: boolean;
   }>({
-    queryKey: ['flashcards', 'topics'],
+    queryKey: topicKeys.paginated({}, activeOrg?.id),
     url: '/api/v1/flashcards/topics?limit=200',
+    enabled: !orgsPending,
   });
 
   const { data, isLoading } = useApiQuery<DifficultyFlashcardDetail[]>({

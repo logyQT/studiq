@@ -261,6 +261,7 @@ export class ActivityService {
       .from('quiz_attempts')
       .select('score, total_questions, config, completed_at')
       .in('user_id', studentIds)
+      .is('assignment_id', null)
       .gte('completed_at', rangeStart.toISOString())
       .not('completed_at', 'is', null);
 

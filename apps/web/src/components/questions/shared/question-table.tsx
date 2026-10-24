@@ -35,6 +35,9 @@ interface QuestionTableProps {
   onEdit: (question: Question) => void;
   onDelete: (id: string) => void;
   onCreateFlashcard?: (question: Question) => void;
+  canUpdate: (question: Question) => boolean;
+  canDelete: (question: Question) => boolean;
+  /** Additionally offer the report action; it never replaces the authoring actions. */
   showReportButton?: boolean;
   t: ReturnType<typeof useTranslations>;
 }
@@ -52,6 +55,8 @@ export function QuestionTable({
   onEdit,
   onDelete,
   onCreateFlashcard,
+  canUpdate,
+  canDelete,
   showReportButton = false,
   t,
 }: QuestionTableProps) {
@@ -173,28 +178,37 @@ export function QuestionTable({
                 <TableCell>{q.question_answers?.length ?? 0}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    {showReportButton ? (
-                      <ReportQuestionDialog questionId={q.id} />
-                    ) : (
-                      <>
-                        {onCreateFlashcard && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title={t('create_flashcard_title')}
-                            onClick={() => onCreateFlashcard(q)}
-                          >
-                            <Layers className="h-4 w-4" />
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="icon" onClick={() => onEdit(q)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => onDelete(q.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </>
+                    {onCreateFlashcard && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title={t('create_flashcard_title')}
+                        onClick={() => onCreateFlashcard(q)}
+                      >
+                        <Layers className="h-4 w-4" />
+                      </Button>
                     )}
+                    {canUpdate(q) && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title={t('common_edit')}
+                        onClick={() => onEdit(q)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {canDelete(q) && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title={t('common_delete')}
+                        onClick={() => onDelete(q.id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
+                    {showReportButton && <ReportQuestionDialog questionId={q.id} />}
                   </div>
                 </TableCell>
               </TableRow>

@@ -171,13 +171,27 @@ export class OrganizationMemberService {
       return failure('FORBIDDEN');
     }
 
-    const { error } = await supabase
+    // The RLS manager predicate + validate_org_member_org_role trigger are the
+    // authoritative gates; this lookup turns a cross-org role id into a clean
+    // 403 instead of a database error and avoids a pointless update.
+    const { data: role, error: roleError } = await supabase
+      .from('org_roles')
+      .select('id, organization_id')
+      .eq('id', newOrgRoleId)
+      .eq('organization_id', ctx.activeOrgId)
+      .maybeSingle();
+    if (roleError) return toDbFailure(roleError);
+    if (!role) return failure('FORBIDDEN');
+
+    const { data: updated, error } = await supabase
       .from('org_members')
       .update({ org_role_id: newOrgRoleId })
       .eq('organization_id', ctx.activeOrgId)
-      .eq('user_id', targetUserId);
+      .eq('user_id', targetUserId)
+      .select('user_id');
 
     if (error) return toDbFailure(error);
+    if (!updated || updated.length === 0) return failure('NOT_FOUND');
 
     return success({ success: true });
   }
@@ -193,6 +207,10 @@ export class OrganizationMemberService {
       return failure('FORBIDDEN');
     }
 
+    // group_members rows for this org are removed by the
+    // cleanup_group_members_on_org_member_delete trigger (no FK exists — see
+    // #249). Do not add a duplicate DELETE here: it would be filtered by the
+    // group.manage RLS policy while removal is gated on member.manage.
     const { error } = await supabase
       .from('org_members')
       .delete()
@@ -200,6 +218,21 @@ export class OrganizationMemberService {
       .eq('user_id', targetUserId);
 
     if (error) return toDbFailure(error);
+
+    // A removed member keeps no license. Without this the assignment survives
+    // (there is no FK cascade), the pool's `assigned` counter stays consumed,
+    // and the RLS-narrowed `profiles` read hides the orphan from /manage/seats.
+    // The manager-only DELETE policy on org_seat_assignments is the
+    // authoritative gate and `maintain_seat_counts` returns the seat to the
+    // pool. Member first, seat second: a failure here leaves a visible orphan
+    // the manager can still unassign, not a member without a license.
+    const { error: seatError } = await supabase
+      .from('org_seat_assignments')
+      .delete()
+      .eq('organization_id', ctx.activeOrgId)
+      .eq('user_id', targetUserId);
+
+    if (seatError) return toDbFailure(seatError);
 
     return success({ success: true });
   }

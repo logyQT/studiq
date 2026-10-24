@@ -29,7 +29,7 @@ interface FlashcardContextMenuProps {
   onAddTopic?: () => void;
   onManageTopics?: () => void;
   onViewByTopic?: () => void;
-  onLink: () => void;
+  onLink?: () => void;
   onCopy: () => void;
   onReport?: (() => void) | null;
   onDelete?: (() => void) | null;
@@ -103,14 +103,16 @@ export function FlashcardContextMenu({
         </DropdownMenuSub>
       )}
       {mode === 'owned' && <DropdownMenuSeparator />}
-      <DropdownMenuItem
-        onClick={(e) => {
-          e.stopPropagation();
-          onLink();
-        }}
-      >
-        <Link2 className="mr-2 h-4 w-4" /> {t('menu_link')}
-      </DropdownMenuItem>
+      {onLink && (
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            onLink();
+          }}
+        >
+          <Link2 className="mr-2 h-4 w-4" /> {t('menu_link')}
+        </DropdownMenuItem>
+      )}
       <DropdownMenuItem
         onClick={(e) => {
           e.stopPropagation();

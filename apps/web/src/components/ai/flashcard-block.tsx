@@ -2,6 +2,7 @@
 
 import { Badge, Button, Input } from '@studiq/ui';
 import { Check, ExternalLink, Layers, Loader2, Pencil, Trash2 } from 'lucide-react';
+import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -29,6 +30,10 @@ export function FlashcardBlock({
   readOnly = false,
 }: FlashcardBlockProps) {
   const t = useTranslations('AiChatPage');
+  const pathname = usePathname();
+  // The AI chat is reachable from both the student and the educator dashboards,
+  // so the saved-deck link has to stay inside the current dashboard.
+  const deckBasePath = pathname.startsWith('/edu') ? '/edu' : '/app';
   const [saving, setSaving] = useState(false);
   const [savedDeckId, setSavedDeckId] = useState<string | null>(null);
   const [name, setName] = useState(deckName || t('flashcard_deck_name'));
@@ -109,7 +114,7 @@ export function FlashcardBlock({
           <span>{t('flashcard_saved', { count: visibleCards.length })}</span>
         </div>
         <a
-          href={`/app/flashcards/${savedDeckId}`}
+          href={`${deckBasePath}/flashcards/${savedDeckId}`}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"

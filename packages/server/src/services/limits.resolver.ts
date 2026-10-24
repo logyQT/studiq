@@ -15,6 +15,12 @@ export interface UsageInfo {
 export class LimitsResolver {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
+  /**
+   * Effective limit for the caller's current context: a seated user gets the
+   * seat's plan only; otherwise the highest value of the personal plan and —
+   * for verified org members — the organization's plan (`organizations.plan` →
+   * `plan_limits`). `-1` means unlimited, `0` means no limit is defined.
+   */
   async getEffectiveLimit(ctx: RequestContext, limitKey: string): Promise<number> {
     const supabase = await this.createClient();
 
@@ -35,7 +41,7 @@ export class LimitsResolver {
       }
     }
 
-    // No seat (or no org context): personal plan + org override fallback
+    // No seat (or no org context): personal plan + org plan fallback
     const limits: number[] = [];
 
     const { data: profile } = await supabase
@@ -54,14 +60,38 @@ export class LimitsResolver {
       if (pl) limits.push(pl.limit_value);
     }
 
+    // Org capacity: organizations.plan → plan_limits (org_limits is gone, #229).
+    // `active_org_id` is a client-controlled cookie, so only trust it for an
+    // actual member: verify the caller's `org_members` row for that org. Using
+    // membership (not `orgRoleId`) keeps an org member with a missing role id on
+    // the org plan, while a spoofed cookie has no row and falls back to the
+    // personal plan. The `"Org members read organization"` RLS policy also hides
+    // foreign orgs, but this keeps the boundary explicit and independent of it.
     if (ctx.activeOrgId) {
-      const { data: ol } = await supabase
-        .from('org_limits')
-        .select('max_value')
+      const { data: membership } = await supabase
+        .from('org_members')
+        .select('organization_id')
         .eq('organization_id', ctx.activeOrgId)
-        .eq('limit_key', limitKey)
+        .eq('user_id', ctx.userId)
         .maybeSingle();
-      if (ol) limits.push(ol.max_value);
+
+      if (membership) {
+        const { data: org } = await supabase
+          .from('organizations')
+          .select('plan')
+          .eq('id', ctx.activeOrgId)
+          .maybeSingle();
+
+        if (org?.plan) {
+          const { data: pl } = await supabase
+            .from('plan_limits')
+            .select('limit_value')
+            .eq('plan_key', org.plan)
+            .eq('limit_key', limitKey)
+            .maybeSingle();
+          if (pl) limits.push(pl.limit_value);
+        }
+      }
     }
 
     if (limits.length === 0) return 0;
@@ -83,17 +113,26 @@ export class LimitsResolver {
 
   /**
    * Org-centric limit check: capacity is governed by the organization's plan
-   * (plan_limits) plus any org_limits override, never by the acting user's
-   * personal plan. Used where the actor is not yet in the org context — e.g.
-   * a student accepting an invitation. Missing limits default to unlimited (-1).
+   * (organizations.plan → plan_limits), never by the acting user's personal
+   * plan. Used where the actor is not yet in the org context — e.g. a student
+   * accepting an invitation. Missing limits default to unlimited (-1).
+   *
+   * Deliberately has **no** ctx-membership gate: it takes an explicit
+   * organization id and runs before membership exists (invite accept), so the
+   * caller passes the service-role client (#182/#191).
+   *
+   * `client` lets the caller pass the service-role client: before the caller is
+   * an org member, RLS hides `organizations`, which would silently turn every
+   * limit into "unlimited" (#182 regression).
    */
   async checkOrgLimit(
     organizationId: string,
     limitKey: string,
     currentCount: number,
     increment = 1,
+    client?: SupabaseClient,
   ): Promise<void> {
-    const supabase = await this.createClient();
+    const supabase = client ?? (await this.createClient());
 
     const limits: number[] = [];
 
@@ -111,14 +150,6 @@ export class LimitsResolver {
         .maybeSingle();
       if (pl) limits.push(pl.limit_value);
     }
-
-    const { data: ol } = await supabase
-      .from('org_limits')
-      .select('max_value')
-      .eq('organization_id', organizationId)
-      .eq('limit_key', limitKey)
-      .maybeSingle();
-    if (ol) limits.push(ol.max_value);
 
     const limit = limits.length === 0 ? -1 : Math.max(...limits);
     if (limit !== -1 && currentCount + increment > limit) {

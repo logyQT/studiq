@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
+import { IN_PROGRESS_QUESTION_SELECT } from '@studiq/server/lib/question-view';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -19,7 +20,7 @@ export class QuizService {
     const filter = await accessibleFilter(ctx, Permission.QUESTION_READ, 'question');
     if (filter._impossible) return success({ questions: [], attemptId: '' });
 
-    let query = supabase.from('questions').select('*, question_answers:question_options(*)');
+    let query = supabase.from('questions').select(IN_PROGRESS_QUESTION_SELECT);
 
     if (filter.or) query = query.or(filter.or);
     if (filter.created_by) query = query.eq('created_by', filter.created_by);

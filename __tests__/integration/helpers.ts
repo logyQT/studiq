@@ -235,7 +235,6 @@ export async function cleanupOrganizationDeep(orgId: string) {
     await supabase.from('org_role_permissions').delete().in('org_role_id', roleIds);
   }
   await supabase.from('org_roles').delete().eq('organization_id', orgId);
-  await supabase.from('org_limits').delete().eq('organization_id', orgId);
   await supabase.from('organizations').delete().eq('id', orgId);
 }
 
@@ -343,6 +342,25 @@ export async function cleanupQuizAttempts(userId: string) {
     await supabase.from('quiz_attempt_questions').delete().in('attempt_id', attemptIds);
     await supabase.from('quiz_attempts').delete().eq('user_id', userId);
   }
+}
+
+/**
+ * Deletes a teacher's assignments. Assignment questions/targets and any
+ * uploaded answer images cascade; `quiz_attempts.assignment_id` is
+ * ON DELETE SET NULL, so the students' attempts are removed explicitly.
+ */
+export async function cleanupTeacherAssignments(teacherId: string) {
+  const supabase = createServiceClient();
+  const { data: assignments } = await supabase
+    .from('teacher_assignments')
+    .select('id')
+    .eq('created_by', teacherId);
+
+  const assignmentIds = (assignments ?? []).map((a) => a.id);
+  if (assignmentIds.length === 0) return;
+
+  await supabase.from('quiz_attempts').delete().in('assignment_id', assignmentIds);
+  await supabase.from('teacher_assignments').delete().in('id', assignmentIds);
 }
 
 export async function cleanupInvitations(userId: string) {

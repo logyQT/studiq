@@ -7,6 +7,7 @@ function createMockStatsService() {
   return {
     getTeacherStats: vi.fn(),
     getStudentStats: vi.fn(),
+    getTeacherQuizStats: vi.fn(),
   };
 }
 
@@ -72,6 +73,27 @@ describe('StatsController', () => {
       mockService.getStudentStats.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
       const response = await controller.getStudentStats(mockCtx);
+
+      expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
+    });
+  });
+
+  describe('getTeacherQuizStats', () => {
+    it('returns aggregated quiz stats', async () => {
+      const stats = [
+        { id: 'Quiz A', title: 'Quiz A', totalAttempts: 2, avgScore: 7, avgCompletionRate: 10 },
+      ];
+      mockService.getTeacherQuizStats.mockResolvedValueOnce(success(stats));
+
+      const response = await controller.getTeacherQuizStats(mockCtx);
+
+      expect(response).toEqual({ success: true, statusCode: 200, data: stats });
+    });
+
+    it('returns error when service returns failure', async () => {
+      mockService.getTeacherQuizStats.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
+
+      const response = await controller.getTeacherQuizStats(mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });

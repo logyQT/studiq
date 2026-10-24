@@ -1,5 +1,6 @@
 import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
+import { IN_PROGRESS_QUESTION_SELECT } from '@studiq/server/lib/question-view';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
@@ -13,6 +14,33 @@ import type {
   UpdateTeacherAssignmentInput,
 } from '@studiq/server/models/teacher-assignment.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
+
+/**
+ * The `draft_answers` column is only ever served through
+ * `GET /api/v1/quiz/:attemptId`, which maps it to `answers` (#349). The start
+ * payload never serialises the raw column, so both payload shapes stay equal.
+ */
+function toAttemptPayload(attempt: Record<string, unknown>): Record<string, unknown> {
+  const { draft_answers: _draftAnswers, ...attemptFields } = attempt;
+  return attemptFields;
+}
+
+/**
+ * Columns shared by the student list and detail attempt payloads. Explicit
+ * columns keep `draft_answers` out of the read path (#349).
+ */
+const STUDENT_ATTEMPT_SELECT =
+  'assignment_id, id, score, total_questions, total_points, completed_at, started_at';
+
+interface StudentAttemptSummaryRow {
+  assignment_id: string;
+  id: string;
+  score: number;
+  total_questions: number;
+  total_points: number | null;
+  completed_at: string | null;
+  started_at: string | null;
+}
 
 export class TeacherAssignmentService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -526,12 +554,77 @@ export class TeacherAssignmentService {
       if (error) return toDbFailure(error);
     }
 
-    await supabase
+    const scoreResult = await this.computeAttemptScore(supabase, attempt.id, id);
+    if (isFailure(scoreResult)) return scoreResult;
+
+    const { error: gradeError } = await supabase
       .from('quiz_attempts')
-      .update({ graded_at: new Date().toISOString() })
+      .update({
+        score: scoreResult.data,
+        graded_at: new Date().toISOString(),
+      })
       .eq('id', attempt.id);
 
+    if (gradeError) return toDbFailure(gradeError);
+
     return success(null);
+  }
+
+  /**
+   * Awarded points for an assignment attempt: manual teacher points win,
+   * otherwise a correct auto-graded answer earns the question's points.
+   * Answers are deduplicated per question because multi-select / matching
+   * questions store one row per selected unit.
+   */
+  private async computeAttemptScore(
+    supabase: SupabaseClient,
+    attemptId: string,
+    assignmentId: string,
+  ): Promise<ServiceResult<number>> {
+    const { data: questionRows, error: questionsError } = await supabase
+      .from('assignment_questions')
+      .select('question_id, points')
+      .eq('assignment_id', assignmentId);
+
+    if (questionsError) return toDbFailure(questionsError);
+
+    const { data: answers, error: answersError } = await supabase
+      .from('student_answers')
+      .select('question_id, is_correct, teacher_points')
+      .eq('attempt_id', attemptId);
+
+    if (answersError) return toDbFailure(answersError);
+
+    const pointsByQuestion = new Map<string, number>(
+      (questionRows ?? []).map((q) => [q.question_id, q.points ?? 0]),
+    );
+
+    const perQuestion = new Map<string, { teacherPoints: number | null; isCorrect: boolean }>();
+    for (const answer of answers ?? []) {
+      const entry = perQuestion.get(answer.question_id) ?? {
+        teacherPoints: null,
+        isCorrect: false,
+      };
+      if (answer.teacher_points !== null && answer.teacher_points !== undefined) {
+        entry.teacherPoints =
+          entry.teacherPoints === null
+            ? answer.teacher_points
+            : Math.max(entry.teacherPoints, answer.teacher_points);
+      }
+      entry.isCorrect = entry.isCorrect || answer.is_correct;
+      perQuestion.set(answer.question_id, entry);
+    }
+
+    let score = 0;
+    for (const [questionId, entry] of perQuestion) {
+      if (entry.teacherPoints !== null) {
+        score += entry.teacherPoints;
+      } else if (entry.isCorrect) {
+        score += pointsByQuestion.get(questionId) ?? 0;
+      }
+    }
+
+    return success(score);
   }
 
   /**
@@ -543,10 +636,28 @@ export class TeacherAssignmentService {
     supabase: SupabaseClient,
     assignment: {
       created_by?: string | null;
+      organization_id?: string | null;
       assignment_targets?: { group_id?: string | null; student_id?: string | null }[] | null;
     },
     userId: string,
   ): Promise<ServiceResult<boolean>> {
+    // Org content requires current org membership; group_members is not an
+    // authorization source on its own (#249). Without this a stale
+    // group_members row keeps granting access after the user was removed from
+    // the organization (the author included: "after removal you lose access to
+    // all organization data").
+    if (assignment.organization_id) {
+      const { data: membership, error } = await supabase
+        .from('org_members')
+        .select('id')
+        .eq('organization_id', assignment.organization_id)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error) return toDbFailure(error);
+      if (!membership) return success(false);
+    }
+
     if (assignment.created_by === userId) return success(true);
 
     const targets = assignment.assignment_targets ?? [];
@@ -565,16 +676,41 @@ export class TeacherAssignmentService {
     return success((memberships ?? []).length > 0);
   }
 
+  /**
+   * Attempt state shared by the student list and detail payloads.
+   * `attempts_used` counts *completed* attempts only — the same rule
+   * `startAttempt` enforces. A running attempt is resumed, not counted.
+   * `attempt` stays the newest attempt (running or completed) so „Kontynuuj”
+   * keeps working; `last_completed_attempt` feeds the result card/review link
+   * even while a retake is running.
+   */
+  private summarizeAttempts(rows: StudentAttemptSummaryRow[]) {
+    const ordered = [...rows].sort((a, b) => {
+      const at = a.started_at ? new Date(a.started_at).getTime() : 0;
+      const bt = b.started_at ? new Date(b.started_at).getTime() : 0;
+      return at - bt || a.id.localeCompare(b.id);
+    });
+    const completed = ordered.filter((row) => row.completed_at !== null);
+    return {
+      attempt: ordered.at(-1) ?? null,
+      last_completed_attempt: completed.at(-1) ?? null,
+      attempts_used: completed.length,
+    };
+  }
+
   async listForStudent(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const { data: groups, error: groupError } = await supabase
-      .from('group_members')
-      .select('group_id')
-      .eq('user_id', ctx.userId);
+    const [{ data: groups, error: groupError }, { data: orgRows, error: orgError }] =
+      await Promise.all([
+        supabase.from('group_members').select('group_id').eq('user_id', ctx.userId),
+        supabase.from('org_members').select('organization_id').eq('user_id', ctx.userId),
+      ]);
 
     if (groupError) return toDbFailure(groupError);
+    if (orgError) return toDbFailure(orgError);
     const groupIds = groups?.map((g) => g.group_id) ?? [];
+    const orgIds = new Set((orgRows ?? []).map((r) => r.organization_id));
 
     const { data: assignments, error } = await supabase
       .from('teacher_assignments')
@@ -585,6 +721,10 @@ export class TeacherAssignmentService {
     if (error) return toDbFailure(error);
 
     const filtered = (assignments ?? []).filter((a) => {
+      // Org content is only visible to current members of that org: a stale
+      // group_members row must not surface it (#249). Personal assignments
+      // (organization_id = null) keep the target-based rule.
+      if (a.organization_id && !orgIds.has(a.organization_id)) return false;
       if (a.created_by === ctx.userId) return true;
       const targets = a.assignment_targets ?? [];
       return targets.some(
@@ -594,17 +734,24 @@ export class TeacherAssignmentService {
     });
 
     const attemptIds = filtered.map((a) => a.id);
-    const { data: attempts } = await supabase
+    const { data: attempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
-      .select('assignment_id, id, score, total_questions, completed_at, started_at')
+      .select(STUDENT_ATTEMPT_SELECT)
       .in('assignment_id', attemptIds)
       .eq('user_id', ctx.userId);
 
-    const attemptMap = new Map((attempts ?? []).map((a) => [a.assignment_id, a]));
+    if (attemptsError) return toDbFailure(attemptsError);
+
+    const attemptsByAssignment = new Map<string, StudentAttemptSummaryRow[]>();
+    for (const row of (attempts ?? []) as StudentAttemptSummaryRow[]) {
+      const rows = attemptsByAssignment.get(row.assignment_id) ?? [];
+      rows.push(row);
+      attemptsByAssignment.set(row.assignment_id, rows);
+    }
 
     const result = filtered.map((a) => ({
       ...a,
-      attempt: attemptMap.get(a.id) ?? null,
+      ...this.summarizeAttempts(attemptsByAssignment.get(a.id) ?? []),
     }));
 
     return success(result);
@@ -627,16 +774,17 @@ export class TeacherAssignmentService {
     if (isFailure(targeted)) return targeted;
     if (!targeted.data) return failure('NOT_FOUND');
 
-    const { data: attempt } = await supabase
+    const { data: attempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
-      .select('*')
+      .select(STUDENT_ATTEMPT_SELECT)
       .eq('assignment_id', id)
-      .eq('user_id', ctx.userId)
-      .single();
+      .eq('user_id', ctx.userId);
+
+    if (attemptsError) return toDbFailure(attemptsError);
 
     return success({
       ...assignment,
-      attempt: attempt ?? null,
+      ...this.summarizeAttempts((attempts ?? []) as StudentAttemptSummaryRow[]),
     });
   }
 
@@ -670,13 +818,26 @@ export class TeacherAssignmentService {
       }
     }
 
-    const { data: existingAttempt } = await supabase
+    const { data: existingAttempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
-      .select('id, completed_at')
+      .select('*')
       .eq('assignment_id', id)
-      .eq('user_id', ctx.userId);
+      .eq('user_id', ctx.userId)
+      .order('started_at', { ascending: false });
 
-    const attempts = existingAttempt ?? [];
+    // Never swallow this error: starting a new attempt because the lookup
+    // failed is exactly the duplicate-attempt bug this endpoint had (#369).
+    if (attemptsError) return toDbFailure(attemptsError);
+
+    const attempts = existingAttempts ?? [];
+    const openAttempt = attempts.find((a) => !a.completed_at);
+
+    // „Kontynuuj" must reopen the same attempt, never mint a new one —
+    // otherwise a student farms fresh attempts and dodges max_attempts (#369).
+    if (openAttempt) {
+      return this.loadAttemptForTake(supabase, openAttempt);
+    }
+
     const completedCount = attempts.filter((a) => a.completed_at).length;
 
     if (completedCount >= assignment.max_attempts) {
@@ -691,9 +852,14 @@ export class TeacherAssignmentService {
       orderedQuestions = orderedQuestions.sort(() => Math.random() - 0.5);
     }
 
+    // Snapshot the assignment's scale on the attempt: an assignment is scored
+    // in points, and the denominator must stay stable if the assignment's
+    // questions change later (same reasoning as total_questions).
+    const totalPoints = orderedQuestions.reduce((sum, q) => sum + (q.points ?? 1), 0);
+
     const { data: fullQuestions, error: questionsError } = await supabase
       .from('questions')
-      .select('*, question_answers:question_options(*)')
+      .select(IN_PROGRESS_QUESTION_SELECT)
       .in(
         'id',
         orderedQuestions.map((q) => q.question_id),
@@ -716,11 +882,29 @@ export class TeacherAssignmentService {
         assignment_id: id,
         score: 0,
         total_questions: orderedQuestions.length,
+        total_points: totalPoints,
       })
       .select()
       .single();
 
-    if (attemptError) return toDbFailure(attemptError);
+    if (attemptError) {
+      // Two concurrent „Rozpocznij” calls can both pass the resume check. The
+      // partial unique index makes the loser fail with 23505; it must resume
+      // the winner's attempt instead of surfacing a conflict (#369).
+      if (attemptError.code === '23505') {
+        const { data: raced } = await supabase
+          .from('quiz_attempts')
+          .select('*')
+          .eq('assignment_id', id)
+          .eq('user_id', ctx.userId)
+          .is('completed_at', null)
+          .maybeSingle();
+
+        if (raced) return this.loadAttemptForTake(supabase, raced);
+      }
+
+      return toDbFailure(attemptError);
+    }
 
     const attemptQuestions = orderedQuestions.map((q, i) => ({
       attempt_id: attempt.id,
@@ -735,9 +919,34 @@ export class TeacherAssignmentService {
     if (linkError) return toDbFailure(linkError);
 
     return success({
-      ...attempt,
+      ...toAttemptPayload(attempt),
       questions: fullQuestions ?? [],
     });
+  }
+
+  /**
+   * Continue payload: the attempt's own question snapshot (the assignment may
+   * have been edited since), never the answer key (#331), never the raw
+   * `draft_answers` column (#349).
+   *
+   * Reading `quiz_attempt_questions` keeps the ordering/shuffling from the
+   * original start, so „Kontynuuj” shows the questions the student already had.
+   */
+  private async loadAttemptForTake(
+    supabase: SupabaseClient,
+    attempt: Record<string, unknown>,
+  ): Promise<ServiceResult<unknown>> {
+    const { data: rows, error } = await supabase
+      .from('quiz_attempt_questions')
+      .select(`order_index, question_id, questions(${IN_PROGRESS_QUESTION_SELECT})`)
+      .eq('attempt_id', attempt.id as string)
+      .order('order_index', { ascending: true });
+
+    if (error) return toDbFailure(error);
+
+    const questions = (rows ?? []).map((row) => row.questions).filter(Boolean);
+
+    return success({ ...toAttemptPayload(attempt), questions });
   }
 
   async exportAnswers(

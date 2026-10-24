@@ -29,6 +29,8 @@ interface AttemptDetails {
   id: string;
   score: number;
   total_questions: number;
+  /** Max awardable points for assignment attempts; null for practice quizzes. */
+  total_points: number | null;
   config: {
     questionTypes?: string[];
     questionCount?: number;
@@ -36,7 +38,10 @@ interface AttemptDetails {
   started_at: string;
   completed_at: string | null;
   questions: Question[];
-  answers: Record<string, { selected_answer_id: string | null; is_correct: boolean }>;
+  answers: Record<
+    string,
+    { selected_answer_id: string | null; text_answer: string | null; is_correct: boolean }
+  >;
 }
 
 export default function QuizReviewPage() {
@@ -62,7 +67,10 @@ export default function QuizReviewPage() {
   if (!attempt)
     return <EntityNotFound titleKey="attempt_not_found" descriptionKey="attempt_not_found_desc" />;
 
-  const percentage = Math.round((attempt.score / attempt.total_questions) * 100);
+  // Assignment attempts are scored in points (score = awarded points, max =
+  // total_points); practice quizzes keep the correct-answer count.
+  const total = attempt.total_points || attempt.total_questions;
+  const percentage = total > 0 ? Math.round((attempt.score / total) * 100) : 0;
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
@@ -79,7 +87,7 @@ export default function QuizReviewPage() {
         <CardHeader className="text-center">
           <CardTitle className="text-3xl">Score: {percentage}%</CardTitle>
           <CardDescription>
-            {attempt.score} out of {attempt.total_questions} correct
+            {attempt.score} out of {total} {attempt.total_points ? 'points' : 'correct'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -95,10 +103,7 @@ export default function QuizReviewPage() {
         {attempt.questions.map((q, i) => {
           const userAnswer = attempt.answers[q.id];
           const isCorrect = userAnswer?.is_correct ?? false;
-          const correctAnswer = q.question_answers.find((a) => a.is_correct);
-          const selectedAnswer = q.question_answers.find(
-            (a) => a.id === userAnswer?.selected_answer_id,
-          );
+          const isOpenQuestion = q.type === 'open';
 
           return (
             <Card key={q.id}>
@@ -106,9 +111,16 @@ export default function QuizReviewPage() {
                 <div className="flex items-center gap-2">
                   <Badge variant="outline">Q{i + 1}</Badge>
                   <Badge variant="outline">{q.type.replace('_', ' ')}</Badge>
-                  <Badge variant={isCorrect ? 'default' : 'destructive'} className="ml-auto">
-                    {isCorrect ? 'Correct' : 'Incorrect'}
-                  </Badge>
+                  {isOpenQuestion ? (
+                    // Open answers are always graded by the teacher, never auto-scored.
+                    <Badge variant="outline" className="ml-auto">
+                      Pending review
+                    </Badge>
+                  ) : (
+                    <Badge variant={isCorrect ? 'default' : 'destructive'} className="ml-auto">
+                      {isCorrect ? 'Correct' : 'Incorrect'}
+                    </Badge>
+                  )}
                 </div>
                 <CardTitle className="mt-2 text-lg">{q.content}</CardTitle>
               </CardHeader>
@@ -168,17 +180,11 @@ export default function QuizReviewPage() {
                   </div>
                 )}
                 {q.type === 'open' && (
-                  <div className="flex flex-col gap-2">
-                    <div className="rounded-lg border bg-muted p-3">
-                      <span className="text-sm text-muted-foreground">Your answer: </span>
-                      <span className="font-medium">
-                        {selectedAnswer?.content || '(no answer)'}
-                      </span>
-                    </div>
-                    <div className="rounded-lg border bg-green-50 p-3">
-                      <span className="text-sm text-green-600">Correct answer: </span>
-                      <span className="font-medium">{correctAnswer?.content || '(N/A)'}</span>
-                    </div>
+                  <div className="rounded-lg border bg-muted p-3">
+                    <span className="text-sm text-muted-foreground">Your answer: </span>
+                    <span className="font-medium whitespace-pre-wrap">
+                      {userAnswer?.text_answer || '(no answer)'}
+                    </span>
                   </div>
                 )}
                 {q.explanation && (

@@ -44,7 +44,10 @@ describe('OrganizationService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new OrganizationService(async () => mock as any);
+    service = new OrganizationService(
+      async () => mock as any,
+      () => mock as any,
+    );
   });
 
   describe('createAndJoin', () => {
@@ -150,6 +153,64 @@ describe('OrganizationService', () => {
       if (!result.success) {
         expect(result.error).toBe('BAD_REQUEST');
       }
+    });
+  });
+
+  describe('delete', () => {
+    it('returns FORBIDDEN without touching the admin client when the active org differs', async () => {
+      const userClient = { rpc: vi.fn(), from: vi.fn() } as any;
+      const adminClient = { from: vi.fn() } as any;
+      service = new OrganizationService(
+        async () => userClient,
+        () => adminClient,
+      );
+
+      const result = await service.delete({ ...ctx, activeOrgId: 'other-org' }, 'org-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(userClient.rpc).not.toHaveBeenCalled();
+      expect(adminClient.from).not.toHaveBeenCalled();
+    });
+
+    it('returns FORBIDDEN when the caller is not an org manager', async () => {
+      const userClient = {
+        rpc: vi.fn().mockResolvedValue({ data: false, error: null }),
+        from: vi.fn(),
+      } as any;
+      const adminClient = { from: vi.fn() } as any;
+      service = new OrganizationService(
+        async () => userClient,
+        () => adminClient,
+      );
+
+      const result = await service.delete({ ...ctx, activeOrgId: 'org-1' }, 'org-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(userClient.rpc).toHaveBeenCalledWith('rls_caller_is_org_manager', {
+        p_organization_id: 'org-1',
+      });
+      expect(adminClient.from).not.toHaveBeenCalled();
+    });
+
+    it('deletes the organization when the caller is its manager', async () => {
+      const userClient = {
+        rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
+        from: vi.fn(),
+      } as any;
+      const adminClient = { from: vi.fn() } as any;
+      adminClient.from.mockReturnValueOnce(chain({ id: 'org-1' })).mockReturnValueOnce(chain(null));
+      service = new OrganizationService(
+        async () => userClient,
+        () => adminClient,
+      );
+
+      const result = await service.delete({ ...ctx, activeOrgId: 'org-1' }, 'org-1');
+
+      expect(result.success).toBe(true);
+      expect(adminClient.from).toHaveBeenNthCalledWith(1, 'organizations');
+      expect(adminClient.from).toHaveBeenNthCalledWith(2, 'organizations');
     });
   });
 

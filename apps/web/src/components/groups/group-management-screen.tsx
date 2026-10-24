@@ -17,6 +17,11 @@ import {
   Input,
   Label,
   MultiSelect,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Table,
   TableBody,
   TableCell,
@@ -29,6 +34,13 @@ import type { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
+import {
+  type AddableOrgMember,
+  ensureMemberRoles,
+  type GroupMemberOption,
+  type GroupMemberRole,
+  toGroupMemberOptions,
+} from '@/lib/group-role';
 
 interface Group {
   id: string;
@@ -254,7 +266,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
       </Card>
 
       <Dialog open={!!managingMembers} onOpenChange={(o) => !o && setManagingMembers(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('manage_members')}</DialogTitle>
             <DialogDescription>{t('manage_members_desc')}</DialogDescription>
@@ -286,8 +298,8 @@ function ManageMembersForm({
 }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [options, setOptions] = useState<{ label: string; value: string }[]>([]);
-  const [roleByUserId, setRoleByUserId] = useState<Record<string, 'teacher' | 'member'>>({});
+  const [options, setOptions] = useState<GroupMemberOption[]>([]);
+  const [roleByUserId, setRoleByUserId] = useState<Record<string, GroupMemberRole>>({});
   const [selected, setSelected] = useState<string[]>([]);
 
   useEffect(() => {
@@ -304,16 +316,11 @@ function ManageMembersForm({
         if (cancelled) return;
 
         if (addableJson.success) {
-          setOptions(
-            addableJson.data.map((m: { id: string; email: string; fullName: string | null }) => ({
-              label: m.fullName ? `${m.fullName} (${m.email})` : m.email,
-              value: m.id,
-            })),
-          );
+          setOptions(toGroupMemberOptions(addableJson.data as AddableOrgMember[]));
         }
         if (currentJson.success) {
-          const roles: Record<string, 'teacher' | 'member'> = {};
-          for (const m of currentJson.data as { userId: string; role: 'teacher' | 'member' }[]) {
+          const roles: Record<string, GroupMemberRole> = {};
+          for (const m of currentJson.data as { userId: string; role: GroupMemberRole }[]) {
             roles[m.userId] = m.role;
           }
           setRoleByUserId(roles);
@@ -373,18 +380,45 @@ function ManageMembersForm({
           selected={selected}
           onChange={(ids) => {
             setSelected(ids);
-            setRoleByUserId((prev) => {
-              const next = { ...prev };
-              for (const id of ids) {
-                if (!next[id]) next[id] = 'member';
-              }
-              return next;
-            });
+            setRoleByUserId((prev) => ensureMemberRoles(prev, ids, options));
           }}
           placeholder={t('members_placeholder')}
           emptyText={t('members_empty')}
         />
       </div>
+      {selected.length > 0 && (
+        <div className="space-y-2">
+          <Label>{t('member_roles_label')}</Label>
+          <div className="max-h-[40vh] space-y-2 overflow-y-auto pr-1">
+            {selected.map((userId) => {
+              const option = options.find((o) => o.value === userId);
+              const label = option?.label ?? userId;
+              return (
+                <div key={userId} className="flex items-center gap-3">
+                  <span className="flex-1 truncate text-sm">{label}</span>
+                  <Select
+                    value={roleByUserId[userId] ?? 'member'}
+                    onValueChange={(value) =>
+                      setRoleByUserId((prev) => ({ ...prev, [userId]: value as GroupMemberRole }))
+                    }
+                  >
+                    <SelectTrigger
+                      className="w-32 h-8"
+                      aria-label={`${label}: ${t('member_roles_label')}`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="teacher">{t('role_teacher')}</SelectItem>
+                      <SelectItem value="member">{t('role_member')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <DialogFooter>
         <Button variant="outline" onClick={onDone}>
           {t('cancel')}

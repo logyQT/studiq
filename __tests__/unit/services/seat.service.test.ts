@@ -230,6 +230,41 @@ describe('SeatService', () => {
       expect(result.data[0].userFullName).toBeNull();
     });
 
+    it('keeps an assignment whose profile is hidden by RLS (orphaned seat)', async () => {
+      // `profiles` is RLS-narrowed to the caller's own row and to users who
+      // share an organization. An assignment left behind by a removed member
+      // must still be listed (#191 review-2-r3 B2) with an empty email/name so
+      // the manager can unassign it; the embed is a left join.
+      const dbRows = [
+        {
+          id: 'assign-orphan',
+          user_id: 'user-orphan',
+          pool_id: 'pool-1',
+          assigned_at: '2024-01-01T00:00:00Z',
+          pool: { plan_key: 'pro' },
+          profile: null,
+        },
+      ];
+
+      mock.from.mockReturnValue(chain(dbRows));
+
+      const result = await service.listAssignments(ctx);
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.data).toEqual([
+        {
+          id: 'assign-orphan',
+          userId: 'user-orphan',
+          poolId: 'pool-1',
+          planKey: 'pro',
+          userEmail: '',
+          userFullName: null,
+          assignedAt: '2024-01-01T00:00:00Z',
+        },
+      ]);
+    });
+
     it('returns FORBIDDEN when no activeOrgId', async () => {
       const noOrgCtx = { ...ctx, activeOrgId: null };
 

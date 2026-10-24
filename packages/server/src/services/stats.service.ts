@@ -3,6 +3,7 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
+import type { TeacherQuizStatsItem } from '@studiq/server/models/stats.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class StatsService {
@@ -38,7 +39,7 @@ export class StatsService {
     // multiple orgs will see their activity from all of them combined here.
     const { data: attempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
-      .select('score, total_questions, started_at, config')
+      .select('score, total_questions, total_points, started_at, config')
       .eq('user_id', ctx.userId)
       .order('started_at', { ascending: false });
 
@@ -86,11 +87,14 @@ export class StatsService {
     if (dueError) return toDbFailure(dueError);
 
     const totalQuizzes = attempts?.length ?? 0;
+    // Assignment attempts carry total_points (awarded points / max points);
+    // practice quizzes only have a question count.
+    const attemptTotal = (a: { total_questions: number; total_points?: number | null }) =>
+      Math.max(a.total_points ?? a.total_questions, 1);
     const avgScore =
       attempts && attempts.length > 0
         ? Math.round(
-            (attempts.reduce((sum, a) => sum + a.score / Math.max(a.total_questions, 1), 0) /
-              attempts.length) *
+            (attempts.reduce((sum, a) => sum + a.score / attemptTotal(a), 0) / attempts.length) *
               100,
           )
         : 0;
@@ -112,10 +116,79 @@ export class StatsService {
         attempts?.map((a) => ({
           date: a.started_at,
           score: a.score,
-          total: a.total_questions,
-          percentage: Math.round((a.score / Math.max(a.total_questions, 1)) * 100),
+          total: attemptTotal(a),
+          percentage: Math.round((a.score / attemptTotal(a)) * 100),
         })) ?? [],
     });
+  }
+
+  /**
+   * Aggregated quiz performance for the caller's active organization.
+   *
+   * `quiz_attempts` has no `organization_id` column and RLS is disabled, so the
+   * scope must be applied here: resolve the org's student members (`member`
+   * role) and only aggregate completed attempts made by them. Without an
+   * active org (or without a verified membership — `active_org_id` is a
+   * client-controlled cookie, `withAuth` only sets `orgRoleId` when the caller
+   * is actually a member) there is no class to report on, so the list is empty
+   * rather than falling back to every attempt in the deployment.
+   */
+  async getTeacherQuizStats(ctx: RequestContext): Promise<ServiceResult<TeacherQuizStatsItem[]>> {
+    const supabase = await this.createClient();
+
+    if (!ctx.activeOrgId || !ctx.orgRoleId) return success([]);
+
+    const { data: members, error: membersError } = await supabase
+      .from('org_members')
+      .select('user_id, org_roles!inner(name)')
+      .eq('organization_id', ctx.activeOrgId)
+      .eq('org_roles.name', 'member');
+
+    if (membersError) return toDbFailure(membersError);
+
+    const studentIds = (members ?? []).map((m) => m.user_id as string);
+    if (studentIds.length === 0) return success([]);
+
+    // Practice quizzes only: assignment attempts are scored in points
+    // (quiz_attempts.score = awarded points, max = total_points), so mixing
+    // them into these correct-answer-count averages would skew the report.
+    const { data, error } = await supabase
+      .from('quiz_attempts')
+      .select('id, score, total_questions, started_at, completed_at, config')
+      .in('user_id', studentIds)
+      .is('assignment_id', null)
+      .not('completed_at', 'is', null);
+
+    if (error) return toDbFailure(error);
+
+    const quizMap = new Map<
+      string,
+      { totalAttempts: number; totalScore: number; totalCompletion: number }
+    >();
+
+    for (const row of data ?? []) {
+      const config = row.config as { title?: string } | null;
+      const title = config?.title ?? 'Untitled Quiz';
+
+      if (!quizMap.has(title)) {
+        quizMap.set(title, { totalAttempts: 0, totalScore: 0, totalCompletion: 0 });
+      }
+
+      const stats = quizMap.get(title)!;
+      stats.totalAttempts += 1;
+      stats.totalScore += row.score ?? 0;
+      stats.totalCompletion += row.total_questions ?? 0;
+    }
+
+    return success(
+      Array.from(quizMap.entries()).map(([title, stats]) => ({
+        id: title,
+        title,
+        totalAttempts: stats.totalAttempts,
+        avgScore: stats.totalScore / stats.totalAttempts,
+        avgCompletionRate: stats.totalCompletion / stats.totalAttempts,
+      })),
+    );
   }
 
   async getActivity(
@@ -214,9 +287,9 @@ export class StatsService {
       .slice(0, 5);
 
     // Step 3: Build flashcard → topic lookup
-    const { data: topicAssignments, error: taError } = await supabase
-      .from('flashcard_topic_assignments')
-      .select(`
+    const { data: topicAssignments, error: taError } = await supabase.from(
+      'flashcard_topic_assignments',
+    ).select(`
         flashcard_id,
         topic_id,
         topics(name)

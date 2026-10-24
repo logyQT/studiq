@@ -4,8 +4,15 @@ export const flashcardKeys = {
     all: ['flashcards', 'decks'] as const,
     list: (filters?: Record<string, string | undefined>) =>
       ['flashcards', 'decks', 'list', filters] as const,
-    paginated: (filters?: Record<string, string | undefined>) =>
-      ['flashcards', 'decks', 'paginated', filters] as const,
+    // Org-scoped list endpoints resolve their rows from the `active_org_id`
+    // cookie, so the cache entry must be keyed by the active org too —
+    // otherwise switching orgs keeps serving the previous org's rows (#135).
+    // The org id sits after the kind segment so `decks.all` stays a valid
+    // invalidation prefix.
+    paginated: (filters?: Record<string, string | undefined>, orgId?: string | null) =>
+      ['flashcards', 'decks', 'paginated', orgId ?? null, filters] as const,
+    // Deck pickers (`?limit=200`) — also org-scoped, never `decks.all` itself.
+    options: (orgId?: string | null) => ['flashcards', 'decks', 'options', orgId ?? null] as const,
     detail: (id: string) => ['flashcards', 'decks', id] as const,
   },
   list: (filters?: Record<string, string[]>) => ['flashcards', 'list', filters] as const,
@@ -23,8 +30,8 @@ export const flashcardKeys = {
 
 export const topicKeys = {
   all: ['topics'] as const,
-  paginated: (filters?: Record<string, string | undefined>) =>
-    ['topics', 'paginated', filters] as const,
+  paginated: (filters?: Record<string, string | undefined>, orgId?: string | null) =>
+    ['topics', 'paginated', orgId ?? null, filters] as const,
 };
 
 export const questionKeys = {
@@ -33,8 +40,8 @@ export const questionKeys = {
   detail: (id: string) => ['questions', id] as const,
   banks: {
     all: ['questions', 'banks'] as const,
-    paginated: (filters?: Record<string, string | undefined>) =>
-      ['questions', 'banks', 'paginated', filters] as const,
+    paginated: (filters?: Record<string, string | undefined>, orgId?: string | null) =>
+      ['questions', 'banks', 'paginated', orgId ?? null, filters] as const,
     detail: (id: string) => ['questions', 'banks', id] as const,
   },
 };
@@ -55,6 +62,11 @@ export const groupKeys = {
   detail: (id: string) => ['groups', id] as const,
   members: (groupId: string) => ['groups', groupId, 'members'] as const,
   my: ['groups', 'my'] as const,
+};
+
+export const organizationKeys = {
+  all: ['organization'] as const,
+  members: (orgId?: string) => ['organization', orgId, 'members'] as const,
 };
 
 export const questionReportKeys = {
@@ -79,6 +91,10 @@ export const studentAssignmentKeys = {
 export const quizKeys = {
   all: ['teacher-quizzes'] as const,
   detail: (id: string) => ['teacher-quizzes', id] as const,
+};
+
+export const quizAttemptKeys = {
+  all: ['quiz', 'attempts'] as const,
 };
 
 export const searchKeys = {

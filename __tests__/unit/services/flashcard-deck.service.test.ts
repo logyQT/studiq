@@ -1,10 +1,22 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { check } from '@studiq/server/lib/authz';
+import { AppError } from '@studiq/server/lib/errors';
 import { FlashcardDeckService } from '@studiq/server/services/flashcard-deck.service';
+import { groupService } from '@studiq/server/services/group.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
+vi.mock('@studiq/server/lib/authz', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@studiq/server/lib/authz')>();
+  return { ...actual, check: vi.fn().mockResolvedValue(undefined) };
+});
+
 vi.mock('@studiq/server/services/limits.resolver', () => ({
   limitsResolver: { checkLimit: vi.fn().mockResolvedValue(undefined) },
+}));
+
+vi.mock('@studiq/server/services/group.service', () => ({
+  groupService: { canShareContentToGroups: vi.fn() },
 }));
 
 function qb(data: any, error: any = null, count?: number) {
@@ -14,6 +26,7 @@ function qb(data: any, error: any = null, count?: number) {
   const b: any = {};
   b.select = vi.fn(() => b);
   b.insert = vi.fn(() => b);
+  b.upsert = vi.fn(() => b);
   b.update = vi.fn(() => b);
   b.delete = vi.fn(() => b);
   b.eq = vi.fn(() => b);
@@ -51,9 +64,69 @@ describe('FlashcardDeckService', () => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
     service = new FlashcardDeckService(async () => mock as any);
+    vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
+      success: true,
+      data: true,
+    });
   });
 
   describe('create', () => {
+    const foreignCard = { id: 'fc-teacher', created_by: 'teacher-1', organization_id: 'org-1' };
+
+    it('checks flashcard.update on flashcardIds before inserting the deck', async () => {
+      const mockDeck = { id: 'd-1', name: 'Study Deck', created_by: ctx.userId };
+
+      mock.from.mockReturnValueOnce(qb([], null, 0));
+      mock.from.mockReturnValueOnce(qb([foreignCard]));
+      mock.from.mockReturnValueOnce(qb(mockDeck));
+      mock.from.mockReturnValueOnce(qb(null));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb(mockDeck));
+
+      const result = await service.create(
+        { name: 'Study Deck', flashcardIds: ['fc-teacher'] },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.update', foreignCard);
+      expect(mock.from.mock.calls.map((c) => c[0])).toEqual([
+        'flashcard_decks',
+        'flashcards',
+        'flashcard_decks',
+        'flashcards',
+        'suspended_decks',
+        'flashcard_decks',
+      ]);
+    });
+
+    it('rejects and never inserts the deck when a card is not updatable', async () => {
+      mock.from.mockReturnValueOnce(qb([], null, 0));
+      mock.from.mockReturnValueOnce(qb([foreignCard]));
+      vi.mocked(check).mockRejectedValueOnce(new AppError('FORBIDDEN'));
+
+      await expect(
+        service.create({ name: 'Study Deck', flashcardIds: ['fc-teacher'] }, ctx),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
+      // The deck insert is never reached.
+      expect(mock.from.mock.calls.map((c) => c[0])).toEqual(['flashcard_decks', 'flashcards']);
+    });
+
+    it('rejects unknown card ids instead of silently skipping the guard', async () => {
+      mock.from.mockReturnValueOnce(qb([], null, 0));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.create(
+        { name: 'Study Deck', flashcardIds: ['fc-missing'] },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      expect(mock.from.mock.calls.map((c) => c[0])).toEqual(['flashcard_decks', 'flashcards']);
+    });
+
     it('inserts deck and returns it', async () => {
       const mockDeck = { id: 'd-1', name: 'Study Deck', created_by: ctx.userId };
       mock.from.mockReturnValueOnce(qb([], null, 0));
@@ -75,6 +148,104 @@ describe('FlashcardDeckService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
+    it('links a group deck when the caller teaches the requested groups', async () => {
+      const mockDeck = { id: 'd-1', name: 'Group Deck', created_by: ctx.userId };
+      mock.from.mockReturnValueOnce(qb([], null, 0)); // deck count
+      mock.from.mockReturnValueOnce(qb(mockDeck)); // deck insert
+      mock.from.mockReturnValueOnce(qb(undefined)); // deck_groups insert
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
+      mock.from.mockReturnValueOnce(qb(mockDeck)); // getById
+
+      const result = await service.create(
+        { name: 'Group Deck', visibility: 'group', groupIds: ['g-1'] },
+        { ...ctx, activeOrgId: 'org-1' },
+      );
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-1'],
+        'org-1',
+      );
+      expect(mock.from).toHaveBeenCalledWith('deck_groups');
+      const insertCall = mock.from.mock.results[2].value.insert;
+      expect(insertCall).toHaveBeenCalledWith([{ deck_id: 'd-1', group_id: 'g-1' }]);
+    });
+
+    it('de-duplicates group ids before authorizing and inserting', async () => {
+      const mockDeck = { id: 'd-1', name: 'Group Deck', created_by: ctx.userId };
+      mock.from.mockReturnValueOnce(qb([], null, 0));
+      mock.from.mockReturnValueOnce(qb(mockDeck));
+      mock.from.mockReturnValueOnce(qb(undefined));
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb(mockDeck));
+
+      const result = await service.create(
+        { name: 'Group Deck', visibility: 'group', groupIds: ['g-1', 'g-1'] },
+        { ...ctx, activeOrgId: 'org-1' },
+      );
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-1'],
+        'org-1',
+      );
+      const insertCall = mock.from.mock.results[2].value.insert;
+      expect(insertCall).toHaveBeenCalledWith([{ deck_id: 'd-1', group_id: 'g-1' }]);
+    });
+
+    it('returns FORBIDDEN and writes nothing when the caller cannot share to the group', async () => {
+      vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
+        success: true,
+        data: false,
+      });
+
+      const result = await service.create(
+        { name: 'Group Deck', visibility: 'group', groupIds: ['g-untaugh'] },
+        { ...ctx, activeOrgId: 'org-1' },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-untaugh'],
+        'org-1',
+      );
+      // The guard runs before any write — not even the deck count query runs.
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('propagates the helper failure code', async () => {
+      vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
+        success: false,
+        error: 'INTERNAL_SERVER',
+      });
+
+      const result = await service.create(
+        { name: 'Group Deck', visibility: 'group', groupIds: ['g-1'] },
+        { ...ctx, activeOrgId: 'org-1' },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('does not run the group guard for a personal deck', async () => {
+      const mockDeck = { id: 'd-1', name: 'Personal Deck', created_by: ctx.userId };
+      mock.from.mockReturnValueOnce(qb([], null, 0));
+      mock.from.mockReturnValueOnce(qb(mockDeck));
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb(mockDeck));
+
+      const result = await service.create({ name: 'Personal Deck', visibility: 'personal' }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
     });
   });
 
@@ -164,6 +335,27 @@ describe('FlashcardDeckService', () => {
       expect(result.success).toBe(true);
     });
 
+    it('rejects flashcardIds the caller cannot update before mutating the deck', async () => {
+      const existing = { id: 'd-1', name: 'Original', created_by: ctx.userId };
+      const foreignCard = { id: 'fc-teacher', created_by: 'teacher-1', organization_id: 'org-1' };
+      mock.from.mockReturnValueOnce(qb(existing));
+      mock.from.mockReturnValueOnce(qb([foreignCard]));
+      vi.mocked(check)
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new AppError('FORBIDDEN'));
+
+      await expect(
+        service.update('d-1', { flashcardIds: ['fc-teacher'] }, ctx),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
+      expect(vi.mocked(check).mock.calls.map((c) => [c[1], c[2]])).toEqual([
+        ['deck.update', existing],
+        ['flashcard.update', foreignCard],
+      ]);
+      // Only the deck lookup and the card guard ran — no update statements.
+      expect(mock.from.mock.calls.map((c) => c[0])).toEqual(['flashcard_decks', 'flashcards']);
+    });
+
     it('returns NOT_FOUND when deck does not exist', async () => {
       mock.from.mockReturnValueOnce(qb(null, null));
 
@@ -171,6 +363,298 @@ describe('FlashcardDeckService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('returns FORBIDDEN and leaves links untouched when adding an untaught group', async () => {
+      const existing = { id: 'd-1', name: 'Original', created_by: ctx.userId, visibility: 'group' };
+      mock.from.mockReturnValueOnce(qb(existing));
+      vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
+        success: true,
+        data: false,
+      });
+
+      const result = await service.update(
+        'd-1',
+        { groupIds: ['g-untaugh'] },
+        { ...ctx, activeOrgId: 'org-1' },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-untaugh'],
+        'org-1',
+      );
+      // Only the existence read happened — no deck update, no group link writes.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('deck_groups');
+    });
+
+    it('replaces group links when every requested group is taught', async () => {
+      const existing = { id: 'd-1', name: 'Original', created_by: ctx.userId, visibility: 'group' };
+      const linked = { id: 'd-1', name: 'Original', created_by: ctx.userId, groupIds: ['g-1'] };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete links
+      mock.from.mockReturnValueOnce(qb(undefined)); // insert links
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
+      mock.from.mockReturnValueOnce(qb(linked)); // getById
+
+      const result = await service.update(
+        'd-1',
+        { groupIds: ['g-1'] },
+        { ...ctx, activeOrgId: 'org-1' },
+      );
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-1'],
+        'org-1',
+      );
+      const insertCall = mock.from.mock.results[2].value.insert;
+      expect(insertCall).toHaveBeenCalledWith([{ deck_id: 'd-1', group_id: 'g-1' }]);
+    });
+
+    it('rejects a group from another org than the deck, even when the caller teaches it there', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        organization_id: 'org-A',
+      };
+      mock.from.mockReturnValueOnce(qb(existing));
+      vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
+        success: true,
+        data: false,
+      });
+
+      const result = await service.update(
+        'd-1',
+        { groupIds: ['g-in-B'] },
+        { ...ctx, activeOrgId: 'org-B' },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      // The guard receives the deck's org, not the caller's active org.
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-in-B'],
+        'org-A',
+      );
+      // Only the existence read happened — no deck update, no group link writes.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('deck_groups');
+    });
+
+    it('falls back to the active org when the deck has no organization', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        organization_id: null,
+      };
+      const linked = { id: 'd-1', name: 'Original', created_by: ctx.userId, groupIds: ['g-1'] };
+      mock.from.mockReturnValueOnce(qb(existing));
+      mock.from.mockReturnValueOnce(qb(undefined));
+      mock.from.mockReturnValueOnce(qb(undefined));
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb(linked));
+
+      const result = await service.update(
+        'd-1',
+        { groupIds: ['g-1'] },
+        { ...ctx, activeOrgId: 'org-B' },
+      );
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).toHaveBeenCalledWith(
+        expect.anything(),
+        ['g-1'],
+        'org-B',
+      );
+    });
+
+    it('clears group links for an empty groupIds list without calling the guard', async () => {
+      const existing = { id: 'd-1', name: 'Original', created_by: ctx.userId, visibility: 'group' };
+      const cleared = { id: 'd-1', name: 'Original', created_by: ctx.userId, groupIds: [] };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete links
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
+      mock.from.mockReturnValueOnce(qb(cleared)); // getById
+
+      const result = await service.update('d-1', { groupIds: [] }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      expect(mock.from).toHaveBeenCalledWith('deck_groups');
+    });
+
+    const viewerCtx: RequestContext = {
+      ...ctx,
+      activeOrgId: 'org-1',
+      groupIds: ['g-1'],
+      permissionScopes: { 'deck.read': 'group' },
+    };
+    const sharedDeck = {
+      id: 'd-1',
+      name: 'Shared',
+      created_by: 'teacher-1',
+      organization_id: 'org-1',
+    };
+
+    it('suspends a readable deck with the deck.read gate, not deck.update', async () => {
+      const suspendedDeck = { ...sharedDeck, groupIds: ['g-1'], suspended: true };
+      mock.from.mockReturnValueOnce(qb(sharedDeck)); // existence read
+      mock.from.mockReturnValueOnce(qb(undefined)); // suspended_decks upsert
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
+      mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }])); // accessibleFilter group scope
+      mock.from.mockReturnValueOnce(qb(suspendedDeck)); // getById
+
+      const result = await service.update('d-1', { suspended: true }, viewerCtx);
+
+      expect(result.success).toBe(true);
+      expect(vi.mocked(check).mock.calls.map((c) => [c[1], c[2]])).toEqual([
+        ['deck.read', sharedDeck],
+      ]);
+      expect(mock.from.mock.calls.map((c) => c[0])).toEqual([
+        'flashcard_decks',
+        'suspended_decks',
+        'suspended_decks',
+        'deck_groups',
+        'flashcard_decks',
+      ]);
+      expect(mock.from.mock.results[1].value.upsert).toHaveBeenCalledWith(
+        { user_id: viewerCtx.userId, deck_id: 'd-1' },
+        { onConflict: 'user_id,deck_id' },
+      );
+    });
+
+    it('unsuspends a readable deck with the deck.read gate, scoped to the caller', async () => {
+      const restoredDeck = { ...sharedDeck, groupIds: ['g-1'], suspended: false };
+      mock.from.mockReturnValueOnce(qb(sharedDeck)); // existence read
+      mock.from.mockReturnValueOnce(qb(undefined)); // suspended_decks delete
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
+      mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }])); // accessibleFilter group scope
+      mock.from.mockReturnValueOnce(qb(restoredDeck)); // getById
+
+      const result = await service.update('d-1', { suspended: false }, viewerCtx);
+
+      expect(result.success).toBe(true);
+      expect(vi.mocked(check).mock.calls.map((c) => [c[1], c[2]])).toEqual([
+        ['deck.read', sharedDeck],
+      ]);
+      const deleteBuilder = mock.from.mock.results[1].value;
+      expect(deleteBuilder.delete).toHaveBeenCalled();
+      expect(deleteBuilder.eq).toHaveBeenCalledWith('user_id', viewerCtx.userId);
+      expect(deleteBuilder.eq).toHaveBeenCalledWith('deck_id', 'd-1');
+    });
+
+    it('keeps the deck.update gate for a mixed body and writes nothing', async () => {
+      mock.from.mockReturnValueOnce(qb(sharedDeck)); // existence read
+      vi.mocked(check).mockRejectedValueOnce(new AppError('FORBIDDEN'));
+
+      await expect(
+        service.update('d-1', { name: 'Hacked', suspended: true }, viewerCtx),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
+      expect(vi.mocked(check).mock.calls.map((c) => [c[1], c[2]])).toEqual([
+        ['deck.update', sharedDeck],
+      ]);
+      // Only the existence read happened — no deck content write, no suspension row.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('suspended_decks');
+    });
+
+    it('keeps the deck.update gate for a no-op body', async () => {
+      mock.from.mockReturnValueOnce(qb(sharedDeck)); // existence read
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
+      mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }])); // accessibleFilter group scope
+      mock.from.mockReturnValueOnce(qb({ ...sharedDeck, suspended: false })); // getById
+
+      const result = await service.update('d-1', {}, viewerCtx);
+
+      expect(result.success).toBe(true);
+      expect(vi.mocked(check).mock.calls.map((c) => [c[1], c[2]])).toEqual([
+        ['deck.update', sharedDeck],
+      ]);
+    });
+  });
+
+  describe('batchToggleSuspend', () => {
+    const viewerCtx: RequestContext = {
+      ...ctx,
+      activeOrgId: 'org-1',
+      groupIds: ['g-1'],
+      permissionScopes: { 'deck.read': 'group' },
+    };
+    const deckA = { id: 'd-1', created_by: 'teacher-1', organization_id: 'org-1' };
+    const deckB = { id: 'd-2', created_by: 'teacher-1', organization_id: 'org-1' };
+
+    it('checks deck.read once per unique deck, then upserts', async () => {
+      mock.from.mockReturnValueOnce(qb([deckA, deckB])); // read guard
+      mock.from.mockReturnValueOnce(qb(undefined)); // suspended_decks upsert
+
+      const result = await service.batchToggleSuspend(
+        { deckIds: ['d-1', 'd-1', 'd-2'], suspended: true },
+        viewerCtx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ updated: 2 });
+      expect(vi.mocked(check).mock.calls.map((c) => [c[1], c[2]])).toEqual([
+        ['deck.read', deckA],
+        ['deck.read', deckB],
+      ]);
+      expect(mock.from.mock.results[1].value.upsert).toHaveBeenCalledWith(
+        [
+          { user_id: viewerCtx.userId, deck_id: 'd-1' },
+          { user_id: viewerCtx.userId, deck_id: 'd-2' },
+        ],
+        { onConflict: 'user_id,deck_id', ignoreDuplicates: true },
+      );
+    });
+
+    it('propagates FORBIDDEN and never touches suspended_decks when a deck is unreadable', async () => {
+      mock.from.mockReturnValueOnce(qb([deckA])); // read guard
+      vi.mocked(check).mockRejectedValueOnce(new AppError('FORBIDDEN'));
+
+      await expect(
+        service.batchToggleSuspend({ deckIds: ['d-1'], suspended: true }, viewerCtx),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
+      expect(mock.from.mock.calls.map((c) => c[0])).toEqual(['flashcard_decks']);
+    });
+
+    it('returns NOT_FOUND and writes nothing for unknown deck ids', async () => {
+      mock.from.mockReturnValueOnce(qb([deckA])); // one row for two ids
+
+      const result = await service.batchToggleSuspend(
+        { deckIds: ['d-1', 'd-missing'], suspended: true },
+        viewerCtx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      expect(mock.from.mock.calls.map((c) => c[0])).toEqual(['flashcard_decks']);
+    });
+
+    it('unsuspends with the read guard and deletes rows scoped to the caller', async () => {
+      mock.from.mockReturnValueOnce(qb([deckA, deckB])); // read guard
+      mock.from.mockReturnValueOnce(qb(undefined)); // suspended_decks delete
+
+      const result = await service.batchToggleSuspend(
+        { deckIds: ['d-1', 'd-2'], suspended: false },
+        viewerCtx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ updated: 2 });
+      const deleteBuilder = mock.from.mock.results[1].value;
+      expect(deleteBuilder.delete).toHaveBeenCalled();
+      expect(deleteBuilder.eq).toHaveBeenCalledWith('user_id', viewerCtx.userId);
+      expect(deleteBuilder.in).toHaveBeenCalledWith('deck_id', ['d-1', 'd-2']);
     });
   });
 

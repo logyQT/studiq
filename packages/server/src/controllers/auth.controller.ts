@@ -120,7 +120,10 @@ export class AuthController {
       };
     }
 
-    const result = await this.authService.updatePassword(parsed.data.password);
+    const result = await this.authService.updatePassword({
+      currentPassword: parsed.data.currentPassword,
+      password: parsed.data.password,
+    });
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

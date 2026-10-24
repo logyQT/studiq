@@ -73,7 +73,7 @@ describe('FlashcardSpacedRepetitionService', () => {
       expect(result.newInterval).toBe(Math.round(6 * 2.5));
     });
 
-    it('Again on review: lapse into relearning at step 0', () => {
+    it('Again on review: lapse into relearning at step 0 and drops EF', () => {
       const result = flashcardSpacedRepetitionService.calculateNextReview(
         reviewInput({
           learningState: 'review',
@@ -86,6 +86,7 @@ describe('FlashcardSpacedRepetitionService', () => {
       expect(result.learningStep).toBe(0);
       expect(result.lapseCount).toBe(3);
       expect(result.intervalUnit).toBe('minutes');
+      expect(result.newEasinessFactor).toBe(1.7);
     });
 
     it('EF never goes below 1.3', () => {
@@ -116,11 +117,11 @@ describe('FlashcardSpacedRepetitionService', () => {
   });
 
   describe('calculateNextReview - new state', () => {
-    it('Again/Hard/Good on new card: starts learning at step 0', () => {
+    it('Again on new card: starts learning at step 0 and drops EF', () => {
       const result = flashcardSpacedRepetitionService.calculateNextReview(
         reviewInput({
           learningState: 'new',
-          rating: 3,
+          rating: 1,
         }),
       );
 
@@ -128,9 +129,40 @@ describe('FlashcardSpacedRepetitionService', () => {
       expect(result.learningStep).toBe(0);
       expect(result.intervalUnit).toBe('minutes');
       expect(result.newInterval).toBe(1);
+      expect(result.newEasinessFactor).toBe(1.7);
     });
 
-    it('Easy on new card: graduates to review immediately', () => {
+    it('Hard on new card: stays on step 0 with a 1.5× delay and lowers EF', () => {
+      const result = flashcardSpacedRepetitionService.calculateNextReview(
+        reviewInput({
+          learningState: 'new',
+          rating: 2,
+        }),
+      );
+
+      expect(result.learningState).toBe('learning');
+      expect(result.learningStep).toBe(0);
+      expect(result.newInterval).toBe(2);
+      expect(result.newEasinessFactor).toBe(2.18);
+    });
+
+    it('Good on new card: advances to the next learning step (10 min)', () => {
+      const result = flashcardSpacedRepetitionService.calculateNextReview(
+        reviewInput({
+          learningState: 'new',
+          rating: 3,
+          learningSteps: [1, 10],
+        }),
+      );
+
+      expect(result.learningState).toBe('learning');
+      expect(result.learningStep).toBe(1);
+      expect(result.intervalUnit).toBe('minutes');
+      expect(result.newInterval).toBe(10);
+      expect(result.newEasinessFactor).toBe(2.36);
+    });
+
+    it('Easy on new card: graduates to review immediately and raises EF', () => {
       const result = flashcardSpacedRepetitionService.calculateNextReview(
         reviewInput({
           learningState: 'new',
@@ -142,6 +174,23 @@ describe('FlashcardSpacedRepetitionService', () => {
       expect(result.newInterval).toBe(1);
       expect(result.intervalUnit).toBe('days');
       expect(result.newRepetitions).toBe(1);
+      expect(result.newEasinessFactor).toBe(2.6);
+    });
+
+    it('Good on new card graduates when the ladder has a single step', () => {
+      const result = flashcardSpacedRepetitionService.calculateNextReview(
+        reviewInput({
+          learningState: 'new',
+          rating: 3,
+          learningSteps: [5],
+        }),
+      );
+
+      expect(result.learningState).toBe('review');
+      expect(result.learningStep).toBe(0);
+      expect(result.newInterval).toBe(1);
+      expect(result.intervalUnit).toBe('days');
+      expect(result.newEasinessFactor).toBe(2.36);
     });
   });
 
@@ -158,6 +207,7 @@ describe('FlashcardSpacedRepetitionService', () => {
       expect(result.learningState).toBe('learning');
       expect(result.learningStep).toBe(0);
       expect(result.newInterval).toBe(1);
+      expect(result.newEasinessFactor).toBe(1.7);
     });
 
     it('Hard stays on same step with 1.5× delay', () => {
@@ -172,6 +222,7 @@ describe('FlashcardSpacedRepetitionService', () => {
       expect(result.learningState).toBe('learning');
       expect(result.learningStep).toBe(0);
       expect(result.newInterval).toBe(Math.round(1 * 1.5));
+      expect(result.newEasinessFactor).toBe(2.18);
     });
 
     it('Good advances to next step', () => {
@@ -187,6 +238,7 @@ describe('FlashcardSpacedRepetitionService', () => {
       expect(result.learningState).toBe('learning');
       expect(result.learningStep).toBe(1);
       expect(result.newInterval).toBe(10);
+      expect(result.newEasinessFactor).toBe(2.36);
     });
 
     it('Good on last step graduates to review', () => {
@@ -203,6 +255,7 @@ describe('FlashcardSpacedRepetitionService', () => {
       expect(result.learningStep).toBe(0);
       expect(result.newInterval).toBe(1);
       expect(result.intervalUnit).toBe('days');
+      expect(result.newEasinessFactor).toBe(2.36);
     });
 
     it('Easy graduates to review', () => {
@@ -218,6 +271,7 @@ describe('FlashcardSpacedRepetitionService', () => {
       expect(result.learningStep).toBe(0);
       expect(result.newInterval).toBe(1);
       expect(result.intervalUnit).toBe('days');
+      expect(result.newEasinessFactor).toBe(2.6);
     });
   });
 
@@ -235,6 +289,7 @@ describe('FlashcardSpacedRepetitionService', () => {
       expect(result.learningState).toBe('review');
       expect(result.learningStep).toBe(0);
       expect(result.intervalUnit).toBe('days');
+      expect(result.newEasinessFactor).toBe(2.36);
     });
 
     it('Again resets to step 0 in relearning', () => {

@@ -74,13 +74,13 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 | `bun build:admin`                    | Build the admin app for production                                      |
 | `bun start`                          | Start the web app production server — same as `bun start:web`           |
 | `bun start:admin`                    | Start the admin app production server                                   |
-| `bun lint`                           | Lint only: Biome + import-path guard + migration-timestamp guard (**no typecheck**) |
-| `bun typecheck`                      | TypeScript typecheck for the web app (`typecheck:all` = every workspace)|
+| `bun lint`                           | Lint only: Bun native linter + import-path guard + migration-timestamp guard (**no typecheck**) |
+| `bun typecheck`                      | Typecheck the web app with `bun check` (`typecheck:all` = every workspace) |
 | `bun lint:all`                       | `typecheck:all` + `lint` in one run                                      |
 | `bun lint:web` / `bun typecheck:web` | Lint / typecheck the web app only                                       |
 | `bun lint:admin` / `bun typecheck:admin` | Lint / typecheck the admin app only                                 |
-| `bun format`                         | Format with **Biome** (writes, whole repo: `biome check --write .`)      |
-| `bun format:check`                   | Check formatting with Biome (no writes, whole repo: `biome ci .`)        |
+| `bun format`                         | Format with **`bun fmt`** (writes, whole repo)                           |
+| `bun format:check`                   | Check formatting with `bun fmt --check` (no writes, whole repo)          |
 | `bun test`                           | Run all Vitest tests (unit + integration)                               |
 | `bun test:unit`                      | Run unit tests                                                          |
 | `bun test:integration`               | Run integration tests (requires local Supabase)                         |

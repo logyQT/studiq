@@ -74,7 +74,7 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
 
   return (
     <style
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: shadcn theme injection
+      // eslint-disable-next-line react/no-danger -- shadcn theme injection
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES)
           .map(

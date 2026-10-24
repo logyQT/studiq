@@ -1,9 +1,13 @@
+import type { RequestContext } from '@studiq/authz';
+import { LimitsResolver } from '@studiq/server/services/limits.resolver';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
 import {
   applyRegisteredMock,
   cleanupOrganizationDeep,
   createServiceClient,
+  seedOrgMembership,
+  TEST_USERS,
 } from '#test/integration/helpers';
 
 forEachCopy((copyId) => {
@@ -145,28 +149,81 @@ forEachCopy((copyId) => {
       expect(features?.every((f) => f.is_enabled)).toBe(true);
     });
 
-    it('seeds org limits from plan template', async () => {
+    it('derives org limits from plan_limits (no snapshot)', async () => {
       const supabase = createServiceClient();
+      const resolver = new LimitsResolver(async () => supabase);
 
-      const { data: limits } = await supabase
-        .from('org_limits')
-        .select('limit_key, max_value')
-        .eq('organization_id', orgId);
+      // The org defaults to the 'launch' plan. Limits are no longer copied into
+      // an org_limits snapshot (#229) — they resolve live from the plan template.
+      const { data: adminRole } = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('name', 'admin')
+        .single();
+      if (!adminRole) throw new Error('admin role missing');
 
-      expect(limits?.length).toBeGreaterThan(0);
+      await seedOrgMembership({
+        organizationId: orgId,
+        userId: TEST_USERS.STUDENT.id,
+        orgRoleId: adminRole.id,
+      });
 
-      // Org defaults to 'launch' plan — check launch plan limits
-      const launchLimits = [
-        { limit_key: 'max_flashcards', max_value: 100 },
-        { limit_key: 'max_questions', max_value: 50 },
-        { limit_key: 'max_decks', max_value: 10 },
-      ];
+      // A real membership ctx, exactly as withAuth builds it for an org member.
+      const ctx: RequestContext = {
+        traceId: 'org-features',
+        userId: TEST_USERS.STUDENT.id,
+        accountType: 'STUDENT',
+        activeOrgId: orgId,
+        orgRoleId: adminRole.id,
+        url: '/api/v1/features/me',
+        method: 'GET',
+        groupIds: [],
+        permissionScopes: {},
+      };
 
-      for (const expected of launchLimits) {
-        const match = limits?.find((l) => l.limit_key === expected.limit_key);
-        expect(match).toBeDefined();
-        expect(match?.max_value).toBe(expected.max_value);
-      }
+      // base (personal) = 100/50/10 and launch (org) = 100/50/10, so the values
+      // are unchanged — the point is that they resolve from the live plan.
+      await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(100);
+      await expect(resolver.getEffectiveLimit(ctx, 'max_questions')).resolves.toBe(50);
+      await expect(resolver.getEffectiveLimit(ctx, 'max_decks')).resolves.toBe(10);
+    });
+
+    it('resolves the org plan for a member even when ctx.orgRoleId is null', async () => {
+      const supabase = createServiceClient();
+      const resolver = new LimitsResolver(async () => supabase);
+
+      // The org_members row — not the ctx role id — decides the org branch, so a
+      // member whose ctx lost its role id must still resolve the org plan.
+      const { data: adminRole } = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('name', 'admin')
+        .single();
+      if (!adminRole) throw new Error('admin role missing');
+
+      await seedOrgMembership({
+        organizationId: orgId,
+        userId: TEST_USERS.STUDENT.id,
+        orgRoleId: adminRole.id,
+      });
+
+      const ctx: RequestContext = {
+        traceId: 'org-features-null-role',
+        userId: TEST_USERS.STUDENT.id,
+        accountType: 'STUDENT',
+        activeOrgId: orgId,
+        orgRoleId: null,
+        url: '/api/v1/features/me',
+        method: 'GET',
+        groupIds: [],
+        permissionScopes: {},
+      };
+
+      await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(100);
+      await expect(resolver.getEffectiveLimit(ctx, 'max_questions')).resolves.toBe(50);
+      await expect(resolver.getEffectiveLimit(ctx, 'max_decks')).resolves.toBe(10);
     });
   });
 });

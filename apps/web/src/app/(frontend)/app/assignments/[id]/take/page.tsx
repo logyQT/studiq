@@ -5,8 +5,10 @@ import { ArrowLeft, Check, Clock, ImagePlus, Upload } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { studentAssignmentKeys } from '@/lib/query-keys';
 
 interface AttemptData {
   id: string;
@@ -17,9 +19,16 @@ interface AttemptData {
     question_answers?: Array<{
       id: string;
       content: string;
-      is_correct: boolean;
     }>;
   }>;
+  /** Answers the server already holds: the autosaved draft while in progress (#349). */
+  answers?: Record<string, { selected_answer_id: string | null; text_answer: string | null }>;
+}
+
+interface SubmitAnswer {
+  questionId: string;
+  selectedAnswerId?: string;
+  textAnswer?: string;
 }
 
 export default function TakeAssignmentPage() {
@@ -34,6 +43,7 @@ export default function TakeAssignmentPage() {
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
+  const autoSubmitted = useRef(false);
 
   const deadlineParam = searchParams.get('deadline');
 
@@ -53,11 +63,24 @@ export default function TakeAssignmentPage() {
     enabled: !!attemptId,
   });
 
+  // „Kontynuuj” reopens the same attempt, so seed the inputs from whatever the
+  // server already holds for it (the autosaved draft, #349) — otherwise the
+  // resumed attempt looks empty (#369).
+  const seededAttemptId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!attempt || seededAttemptId.current === attempt.id) return;
+    seededAttemptId.current = attempt.id;
+
+    const restored: Record<string, string> = {};
+    for (const [questionId, answer] of Object.entries(attempt.answers ?? {})) {
+      const value = answer.selected_answer_id ?? answer.text_answer;
+      if (value) restored[questionId] = value;
+    }
+    setAnswers(restored);
+  }, [attempt]);
+
   const submitMutation = useApiMutation({
-    mutationFn: async (body: {
-      attemptId: string;
-      answers: Array<{ questionId: string; selectedAnswerId?: string }>;
-    }) => {
+    mutationFn: async (body: { attemptId: string; answers: SubmitAnswer[] }) => {
       const res = await fetch(`/api/v1/quiz/${body.attemptId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -67,6 +90,7 @@ export default function TakeAssignmentPage() {
       if (!res.ok) throw new Error(json.error);
       return json.data;
     },
+    invalidateKeys: [studentAssignmentKeys.all],
   });
 
   const handleUploadImage = useCallback(
@@ -91,25 +115,42 @@ export default function TakeAssignmentPage() {
   );
 
   const performSubmit = useCallback(async () => {
-    if (!attempt) return;
+    if (!attempt || submitting) return;
     setSubmitting(true);
+    try {
+      // `open` questions carry free text; only mcq/true_false carry an option id.
+      const typeById = new Map((attempt.questions ?? []).map((q) => [q.id, q.type]));
+      const formattedAnswers: SubmitAnswer[] = Object.entries(answers).flatMap(
+        ([questionId, value]): SubmitAnswer[] => {
+          if (!value.trim()) return [];
+          return typeById.get(questionId) === 'open'
+            ? [{ questionId, textAnswer: value.trim() }]
+            : [{ questionId, selectedAnswerId: value }];
+        },
+      );
 
-    const formattedAnswers = Object.entries(answers).map(([questionId, selectedAnswerId]) => ({
-      questionId,
-      selectedAnswerId: selectedAnswerId || undefined,
-    }));
+      await submitMutation.mutateAsync({ attemptId: attempt.id, answers: formattedAnswers });
+      router.push(`/app/assignments/${id}`);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [attempt, answers, submitting, submitMutation, id, router]);
 
-    await submitMutation.mutateAsync({ attemptId: attempt.id, answers: formattedAnswers });
-    router.push(`/app/assignments/${id}/review`);
-  }, [attempt, answers, submitMutation, id, router]);
-
-  const handleSubmit = performSubmit;
+  const handleSubmit = useCallback(async () => {
+    try {
+      await performSubmit();
+    } catch {
+      toast.error(t('submit_failed'));
+    }
+  }, [performSubmit, t]);
 
   useEffect(() => {
-    if (remainingMs === 0 && attempt && !submitting) {
-      performSubmit();
+    if (remainingMs === 0 && attempt && !submitting && !autoSubmitted.current) {
+      // Auto-submit on timeout only once: a failed attempt must not loop.
+      autoSubmitted.current = true;
+      handleSubmit();
     }
-  }, [remainingMs, attempt, submitting, performSubmit]);
+  }, [remainingMs, attempt, submitting, handleSubmit]);
 
   if (isLoading || !attempt) {
     return (

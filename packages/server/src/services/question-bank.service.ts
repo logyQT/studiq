@@ -2,7 +2,7 @@ import type { RequestContext } from '@studiq/authz';
 import { accessibleFilter, check, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
-import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
@@ -13,6 +13,7 @@ import type {
   QuestionBankListQuery,
   UpdateQuestionBankInput,
 } from '@studiq/server/models/question-bank.model';
+import { groupService } from '@studiq/server/services/group.service';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class QuestionBankService {
@@ -23,6 +24,14 @@ export class QuestionBankService {
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
+
+    const groupIds = data.visibility === 'group' ? [...new Set(data.groupIds ?? [])] : [];
+    if (groupIds.length > 0) {
+      const shareCheck = await groupService.canShareContentToGroups(ctx, groupIds, ctx.activeOrgId);
+      if (isFailure(shareCheck)) return failure(shareCheck.error);
+      if (!shareCheck.data) return failure('FORBIDDEN');
+    }
+
     const { data: bank, error } = await supabase
       .from('question_banks')
       .insert({
@@ -38,18 +47,8 @@ export class QuestionBankService {
     if (error) return toDbFailure(error);
     if (!bank) return failure('NOT_FOUND');
 
-    if ((data as any).visibility === 'group' && (data as any).groupIds?.length) {
-      const { groupService } = await import('@studiq/server/services/group.service');
-      let authorized = false;
-      for (const gid of (data as any).groupIds) {
-        if (await groupService.isTeacherInGroup(ctx, gid)) {
-          authorized = true;
-          break;
-        }
-      }
-      if (!authorized) return failure('FORBIDDEN');
-
-      const rows = (data as any).groupIds.map((gid: string) => ({
+    if (groupIds.length > 0) {
+      const rows = groupIds.map((gid) => ({
         bank_id: bank.id,
         group_id: gid,
       }));
@@ -178,11 +177,9 @@ export class QuestionBankService {
     if (error || !bank) return failure('NOT_FOUND');
 
     const countArr = (bank as Record<string, unknown>).question_count as
-      | { count: number }[]
-      | undefined;
+      { count: number }[] | undefined;
     const groups = (bank as Record<string, unknown>).bank_groups as
-      | { group_id: string }[]
-      | undefined;
+      { group_id: string }[] | undefined;
     return success({
       ...bank,
       question_count: countArr?.[0]?.count ?? 0,
@@ -205,6 +202,20 @@ export class QuestionBankService {
 
     if (fetchError || !existing) return failure('NOT_FOUND');
     await check(ctx, Permission.QUESTION_BANK_UPDATE, existing);
+
+    const requestedGroupIds = data.groupIds !== undefined ? [...new Set(data.groupIds)] : null;
+    if (requestedGroupIds !== null && requestedGroupIds.length > 0) {
+      // The link must belong to the CONTENT's org, not the caller's current UI org.
+      // NULL-org content (legacy personal rows) falls back to the active org.
+      const contentOrgId = existing.organization_id ?? ctx.activeOrgId ?? null;
+      const shareCheck = await groupService.canShareContentToGroups(
+        ctx,
+        requestedGroupIds,
+        contentOrgId,
+      );
+      if (isFailure(shareCheck)) return failure(shareCheck.error);
+      if (!shareCheck.data) return failure('FORBIDDEN');
+    }
 
     const updateFields: Record<string, unknown> = {};
     if (data.name !== undefined) updateFields.name = data.name;
@@ -238,11 +249,11 @@ export class QuestionBankService {
       }
     }
 
-    if ((data as any).groupIds !== undefined) {
+    if (requestedGroupIds !== null) {
       const { error: de } = await supabase.from('bank_groups').delete().eq('bank_id', id);
       if (de) return toDbFailure(de);
-      if ((data as any).groupIds.length > 0) {
-        const rows = (data as any).groupIds.map((gid: string) => ({ bank_id: id, group_id: gid }));
+      if (requestedGroupIds.length > 0) {
+        const rows = requestedGroupIds.map((gid) => ({ bank_id: id, group_id: gid }));
         const { error: ae } = await supabase.from('bank_groups').insert(rows);
         if (ae) return toDbFailure(ae);
       }

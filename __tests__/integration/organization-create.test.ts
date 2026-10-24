@@ -1,3 +1,4 @@
+import type { NextResponse } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
 import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
@@ -8,6 +9,7 @@ import {
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
+import { GET as listOrgsGet } from '@/app/(backend)/api/v1/me/orgs/route';
 import { POST } from '@/app/(backend)/api/v1/organization/route';
 
 forEachCopy((copyId) => {
@@ -117,7 +119,40 @@ forEachCopy((copyId) => {
       expect(body.data.teacherRoleId).toBeDefined();
       expect(body.data.memberRoleId).toBeDefined();
       expect(body.data.defaultGroupId).toBeDefined();
+      expect((response as NextResponse).cookies.get('active_org_id')?.value).toBe(body.data.id);
       createdOrgIds.push(body.data.id);
+    });
+
+    it('activates the new organization for the creator', async () => {
+      mockUser(manager);
+
+      const req = createNextRequest('http://localhost/api/v1/organization', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: `org-create-${copyId}-active-${Date.now()}` }),
+      });
+
+      const response = await POST(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(201);
+      createdOrgIds.push(body.data.id);
+
+      // Creating the organization is what makes it the caller's active org — the
+      // setup screen relies on this instead of calling POST /api/v1/me/orgs/switch (#306).
+      const activeOrgId = (response as NextResponse).cookies.get('active_org_id')?.value;
+      expect(activeOrgId).toBe(body.data.id);
+
+      const listResponse = await listOrgsGet(
+        createNextRequest('http://localhost/api/v1/me/orgs', undefined, {
+          active_org_id: activeOrgId as string,
+        }),
+      );
+      const listBody = await listResponse.json();
+
+      expect(listResponse.status).toBe(200);
+      const created = listBody.data.find((org: { id: string }) => org.id === body.data.id);
+      expect(created).toMatchObject({ isActive: true, orgRoleName: 'admin' });
     });
 
     it('returns 403 when student tries to create', async () => {

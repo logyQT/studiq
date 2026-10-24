@@ -12,7 +12,7 @@
       "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "supabase.supabase"]
     }
   },
-  "postCreateCommand": "npm install -g supabase",
+  "postCreateCommand": "npm install -g supabase && bun upgrade --canary",
   "remoteUser": "node",
   "runArgs": ["--cpus=3", "--memory=10g", "--memory-reservation=10g"],
   "hostRequirements": {

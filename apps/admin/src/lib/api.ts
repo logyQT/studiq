@@ -1,8 +1,7 @@
 const BASE_URL = '/api/v1';
 
 type ApiResponse<T> =
-  | { success: true; data: T }
-  | { success: false; error: string; issues?: unknown };
+  { success: true; data: T } | { success: false; error: string; issues?: unknown };
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {

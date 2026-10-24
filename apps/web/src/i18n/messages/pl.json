@@ -43,6 +43,8 @@
     "ERROR_AUTH_CALLBACK_FAILED": "Link weryfikacyjny jest nieprawidłowy lub wygasł.",
     "ERROR_SESSION_EXPIRED": "Twoja sesja wygasła. Zaloguj się ponownie.",
     "ERROR_SAME_PASSWORD": "Nowe hasło nie może być takie samo jak obecne.",
+    "ERROR_INVALID_CURRENT_PASSWORD": "Obecne hasło jest nieprawidłowe.",
+    "ERROR_RATE_LIMITED": "Zbyt wiele prób. Spróbuj ponownie później.",
     "ERROR_PASSWORD_UPDATE_FAILED": "Nie udało się zmienić hasła. Link mógł wygasnąć.",
     "ERROR_PASSWORD_RESET_FAILED": "Nie udało się wysłać linku resetującego.",
     "ERROR_EMAIL_INVALID": "Wprowadź poprawny adres e-mail.",
@@ -177,6 +179,9 @@
     "back_to_login": "Przejdź do logowania",
     "activation_instructions": "Aby aktywować konto, kliknij w link przesłany w wiadomości e-mail. Jeśli nie widzisz wiadomości, sprawdź folder SPAM.",
     "SUCCESS_ACTIVATION_LINK_SENT": "Link aktywacyjny został wysłany. Sprawdź swoją skrzynkę e-mail.",
+    "join_title": "Dołącz do organizacji",
+    "join_desc": "Uzupełnij swoje dane i ustaw hasło, aby aktywować konto.",
+    "activate_account": "Aktywuj konto",
     "account_type_label": "Jestem",
     "account_type_placeholder": "Powiedz nam, kim jesteś",
     "account_type_student": "Uczniem",
@@ -1044,6 +1049,9 @@
     "members_empty": "Nie znaleziono osób",
     "members_updated": "Skład grupy zaktualizowany",
     "members_update_failed": "Nie udało się zaktualizować składu grupy",
+    "member_roles_label": "Role w grupie",
+    "role_teacher": "Nauczyciel",
+    "role_member": "Członek",
     "saving": "Zapisywanie..."
   },
   "ManageRolesPage": {
@@ -2204,6 +2212,8 @@
     "actions": "Akcje",
     "no_questions": "Brak pytań w tym banku. Utwórz swoje pierwsze pytanie!",
     "back_to_banks": "Powrót do banków",
+    "delete_title": "Usunąć pytanie?",
+    "delete_desc": "To trwale usunie to pytanie i wszystkie jego odpowiedzi. Tej akcji nie można cofnąć.",
     "mcq": "Wielokrotnego wyboru",
     "true_false_label": "Prawda / Fałsz",
     "open_label": "Otwarte",
@@ -2276,6 +2286,7 @@
     "open_label": "Otwarte",
     "created": "Pytanie utworzone",
     "updated": "Pytanie zaktualizowane",
+    "deleted": "Pytanie usunięte",
     "save_failed": "Nie udało się zapisać pytania"
   },
   "AccountPage": {
@@ -2295,6 +2306,9 @@
     "confirm_password": "Potwierdź hasło",
     "password_mismatch": "Hasła nie są zgodne",
     "password_updated": "Hasło zaktualizowane pomyślnie",
+    "invalid_current_password": "Obecne hasło jest nieprawidłowe.",
+    "password_update_failed": "Nie udało się zaktualizować hasła. Spróbuj ponownie.",
+    "too_many_attempts": "Zbyt wiele prób. Spróbuj ponownie później.",
     "update_password": "Zaktualizuj hasło",
     "saving": "Zapisywanie...",
     "payments_title": "Historia płatności",
@@ -2496,6 +2510,7 @@
     "incorrect": "Niepoprawna",
     "correct_answer": "Poprawna: {explanation}",
     "selected_answer_id": "ID wybranej odpowiedzi: {id}",
+    "text_answer": "Odpowiedź ucznia: {text}",
     "view_image": "Zobacz przesłane zdjęcie",
     "points": "Punkty",
     "feedback": "Informacja zwrotna",
@@ -2544,7 +2559,8 @@
     "due": "Termin: {date}",
     "in_progress": "W trakcie",
     "completed": "Ukończone ({count})",
-    "completed_on": "Ukończono: {date}"
+    "completed_on": "Ukończono: {date}",
+    "attempts_left": "Pozostało prób: {left}/{total}"
   },
   "AppAssignmentDetailPage": {
     "not_found": "Nie znaleziono kartkówki",
@@ -2559,7 +2575,11 @@
     "loading": "Ładowanie...",
     "continue": "Kontynuuj",
     "starting": "Rozpoczynanie...",
-    "start": "Rozpocznij kartkówkę"
+    "start": "Rozpocznij kartkówkę",
+    "start_again": "Rozpocznij kolejną próbę",
+    "last_attempt": "Ostatnia próba",
+    "attempts_left": "Pozostało prób: {left}/{total}",
+    "attempts_exhausted": "Wykorzystano wszystkie próby ({total}/{total})"
   },
   "AppAssignmentTakePage": {
     "upload_failed": "Błąd przesyłania",
@@ -2571,7 +2591,8 @@
     "previous": "Poprzednie",
     "next": "Następne",
     "submitting": "Wysyłanie...",
-    "submit": "Wyślij"
+    "submit": "Wyślij",
+    "submit_failed": "Nie udało się wysłać odpowiedzi. Spróbuj ponownie."
   },
   "AppAssignmentReviewPage": {
     "not_available": "Podsumowanie niedostępne",

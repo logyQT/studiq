@@ -44,6 +44,8 @@
     "ERROR_AUTH_CALLBACK_FAILED": "The verification link is invalid or has expired.",
     "ERROR_SESSION_EXPIRED": "Your session has expired. Please log in again.",
     "ERROR_SAME_PASSWORD": "The new password cannot be the same as the current one.",
+    "ERROR_INVALID_CURRENT_PASSWORD": "Current password is incorrect.",
+    "ERROR_RATE_LIMITED": "Too many attempts. Please try again later.",
     "ERROR_PASSWORD_UPDATE_FAILED": "Failed to update password. The link might have expired.",
     "ERROR_PASSWORD_RESET_FAILED": "Failed to send the reset link.",
     "ERROR_EMAIL_INVALID": "Please enter a valid email address.",
@@ -138,6 +140,9 @@
     "back_to_login": "Go to login",
     "activation_instructions": "To activate your account, click the link sent to your email address. If you don't see the message, check your SPAM folder.",
     "SUCCESS_ACTIVATION_LINK_SENT": "Activation link has been sent. Please check your inbox.",
+    "join_title": "Join an organization",
+    "join_desc": "Complete your details and set a password to activate your account.",
+    "activate_account": "Activate account",
     "ERROR_EMAIL_REQUIRED": "Email address is required.",
     "ERROR_EMAIL_INVALID": "Please enter a valid email address.",
     "ERROR_PASSWORD_REQUIRED": "Password is required.",
@@ -1063,6 +1068,9 @@
     "members_empty": "No people found",
     "members_updated": "Group members updated",
     "members_update_failed": "Failed to update group members",
+    "member_roles_label": "Group roles",
+    "role_teacher": "Teacher",
+    "role_member": "Member",
     "saving": "Saving..."
   },
   "ManageRolesPage": {
@@ -2224,6 +2232,8 @@
     "actions": "Actions",
     "no_questions": "No questions in this bank. Create your first question!",
     "back_to_banks": "Back to Banks",
+    "delete_title": "Delete question?",
+    "delete_desc": "This will permanently delete this question and all its answers. This action cannot be undone.",
     "mcq": "Multiple Choice",
     "true_false_label": "True / False",
     "open_label": "Open Answer",
@@ -2296,6 +2306,7 @@
     "open_label": "Open",
     "created": "Question created",
     "updated": "Question updated",
+    "deleted": "Question deleted",
     "save_failed": "Failed to save question"
   },
   "AccountPage": {
@@ -2315,6 +2326,9 @@
     "confirm_password": "Confirm password",
     "password_mismatch": "Passwords do not match",
     "password_updated": "Password updated successfully",
+    "invalid_current_password": "Current password is incorrect.",
+    "password_update_failed": "Failed to update password. Please try again.",
+    "too_many_attempts": "Too many attempts. Please try again later.",
     "update_password": "Update Password",
     "saving": "Saving...",
     "payments_title": "Payment History",
@@ -2516,6 +2530,7 @@
     "incorrect": "Incorrect",
     "correct_answer": "Correct: {explanation}",
     "selected_answer_id": "Selected answer ID: {id}",
+    "text_answer": "Student's answer: {text}",
     "view_image": "View uploaded image",
     "points": "Points",
     "feedback": "Feedback",
@@ -2564,7 +2579,8 @@
     "due": "Due: {date}",
     "in_progress": "In progress",
     "completed": "Completed ({count})",
-    "completed_on": "Completed: {date}"
+    "completed_on": "Completed: {date}",
+    "attempts_left": "Attempts left: {left}/{total}"
   },
   "AppAssignmentDetailPage": {
     "not_found": "Assignment not found",
@@ -2579,7 +2595,11 @@
     "loading": "Loading...",
     "continue": "Continue",
     "starting": "Starting...",
-    "start": "Start Assignment"
+    "start": "Start Assignment",
+    "start_again": "Start another attempt",
+    "last_attempt": "Last attempt",
+    "attempts_left": "Attempts left: {left}/{total}",
+    "attempts_exhausted": "All attempts used ({total}/{total})"
   },
   "AppAssignmentTakePage": {
     "upload_failed": "Upload failed",
@@ -2591,7 +2611,8 @@
     "previous": "Previous",
     "next": "Next",
     "submitting": "Submitting...",
-    "submit": "Submit"
+    "submit": "Submit",
+    "submit_failed": "Could not send your answers. Please try again."
   },
   "AppAssignmentReviewPage": {
     "not_available": "Review not available",

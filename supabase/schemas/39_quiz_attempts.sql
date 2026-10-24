@@ -8,7 +8,9 @@ CREATE TABLE public.quiz_attempts (
   user_id          uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
   score            int NOT NULL DEFAULT 0,
   total_questions  int NOT NULL DEFAULT 0,
+  total_points     int,
   config           jsonb,
+  draft_answers    jsonb NOT NULL DEFAULT '{}'::jsonb,
   started_at       timestamptz DEFAULT now(),
   completed_at     timestamptz,
   assignment_id    uuid REFERENCES public.teacher_assignments(id) ON DELETE SET NULL,
@@ -17,3 +19,9 @@ CREATE TABLE public.quiz_attempts (
 
 CREATE INDEX idx_quiz_attempts_user ON public.quiz_attempts(user_id);
 CREATE INDEX idx_quiz_attempts_assignment ON public.quiz_attempts(assignment_id);
+
+-- At most one *running* attempt per assignment and student (#369). Completed
+-- attempts stay unlimited — `max_attempts` is enforced by the service.
+CREATE UNIQUE INDEX quiz_attempts_one_open_per_assignment
+  ON public.quiz_attempts (assignment_id, user_id)
+  WHERE completed_at IS NULL AND assignment_id IS NOT NULL;

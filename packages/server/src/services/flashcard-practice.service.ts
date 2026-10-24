@@ -1,5 +1,5 @@
 import type { RequestContext } from '@studiq/authz';
-import { buildQueryFilter, Permission } from '@studiq/server/lib/authz';
+import { accessibleFilter, buildQueryFilter, Permission } from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -541,12 +541,18 @@ export class FlashcardPracticeService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const cardFilter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    // Group scope needs the resolved member-of-group card ids; the synchronous
+    // `buildQueryFilter` only signals `_useRpc` and would fall back to an
+    // org-wide read here (#343).
+    const cardFilter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     const suspendedCardIds = await this.getSuspendedCardIds(ctx);
 
     let query = supabase.from('flashcards').select('id, front, back, created_at');
 
     if (cardFilter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
+    if (cardFilter.or) {
+      query = query.or(cardFilter.or);
+    }
     if (cardFilter.organization_id) {
       query = query.eq('organization_id', cardFilter.organization_id);
     }
@@ -665,10 +671,13 @@ export class FlashcardPracticeService {
   ): Promise<string[]> {
     const supabase = await this.createClient();
 
-    const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
+    const filter = await accessibleFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
     let query = supabase.from('flashcards').select('id');
 
     if (filter._impossible) return [];
+    if (filter.or) {
+      query = query.or(filter.or);
+    }
     if (filter.organization_id) {
       query = query.eq('organization_id', filter.organization_id);
     }
@@ -807,9 +816,11 @@ export class FlashcardPracticeService {
  * Maps the compound filter from buildQueryFilter to the RPC
  * parameter format expected by practice functions.
  *
- *   visibility = 'group'  → university scope (shared group content)
- *   created_by present   → own scope (user's content in current org)
- *   empty filter         → any scope (no filtering)
+ *   `_useRpc` (group scope) → 'university': own cards in the active
+ *                             organization **or** cards shared with the
+ *                             caller's groups (mirrors `accessibleFilter`)
+ *   created_by present      → own scope (user's content in current org)
+ *   empty filter            → any scope (no filtering)
  */
 function resolveFilterType(
   filter: Record<string, unknown>,

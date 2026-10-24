@@ -94,7 +94,7 @@ export function DeckDetailScreen({
   const queryClient = useQueryClient();
   const permission = usePermission();
   const feature = useFeature();
-  const { activeOrg } = useOrgs();
+  const { activeOrg, isPending: orgsPending } = useOrgs();
   const { user } = useAuth();
   const headerGrad = getGradientHex(deckId);
 
@@ -136,8 +136,9 @@ export function DeckDetailScreen({
     nextCursor: string | null;
     hasMore: boolean;
   }>({
-    queryKey: topicKeys.paginated({}),
+    queryKey: topicKeys.paginated({}, activeOrg?.id),
     url: '/api/v1/flashcards/topics?limit=200',
+    enabled: !orgsPending,
   });
   const { data: currentDeck, isLoading: decksLoading } = useApiQuery<Deck>({
     queryKey: flashcardKeys.decks.detail(deckId),
@@ -150,8 +151,9 @@ export function DeckDetailScreen({
     nextCursor: string | null;
     hasMore: boolean;
   }>({
-    queryKey: flashcardKeys.decks.all,
+    queryKey: flashcardKeys.decks.options(activeOrg?.id),
     url: '/api/v1/flashcards/decks?limit=200',
+    enabled: !orgsPending,
   });
 
   const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
@@ -185,10 +187,9 @@ export function DeckDetailScreen({
     return () => observer.disconnect();
   }, [handleObserver]);
 
-  const unlinkFlashcard = useApiMutation({
-    mutationFn: (data: { id: string; deckId: string }) =>
-      apiPost(`/api/v1/flashcards/${data.id}/unlink`, { deckId: data.deckId }),
-    invalidateKeys: [flashcardQueryKey],
+  const deleteFlashcard = useApiMutation({
+    mutationFn: (id: string) => apiDelete(`/api/v1/flashcards/${id}`),
+    invalidateKeys: [flashcardQueryKey, flashcardKeys.decks.all],
   });
   const updateDeck = useApiMutation({
     mutationFn: ({
@@ -218,6 +219,7 @@ export function DeckDetailScreen({
     mutationFn: (suspended: boolean) =>
       apiPut<Deck>(`/api/v1/flashcards/decks/${deckId}`, { suspended }),
     invalidateKeys: [flashcardKeys.decks.all, flashcardKeys.decks.detail(deckId)],
+    onError: () => toast.error(t('save_failed')),
   });
 
   const deleteDeck = useApiMutation({
@@ -236,9 +238,9 @@ export function DeckDetailScreen({
     },
   });
 
-  const batchUnlinkCards = useApiMutation({
-    mutationFn: (data: { ids: string[]; deckId: string }) =>
-      apiPost('/api/v1/flashcards/batch/unlink', { ids: data.ids, deckId: data.deckId }),
+  const batchDeleteCards = useApiMutation({
+    mutationFn: (data: { ids: string[] }) =>
+      apiPost('/api/v1/flashcards/batch/delete', { ids: data.ids }),
     invalidateKeys: [flashcardQueryKey, flashcardKeys.decks.all],
   });
 
@@ -352,7 +354,7 @@ export function DeckDetailScreen({
   async function handleDelete() {
     if (!d.deleteId) return;
     try {
-      await unlinkFlashcard.mutateAsync({ id: d.deleteId, deckId });
+      await deleteFlashcard.mutateAsync(d.deleteId);
       toast.success(t('flashcard_deleted'));
     } catch {
       toast.error(t('delete_failed'));
@@ -458,7 +460,7 @@ export function DeckDetailScreen({
     const ids = d.selectedIds;
     if (ids.length === 0) return;
     try {
-      await batchUnlinkCards.mutateAsync({ ids, deckId });
+      await batchDeleteCards.mutateAsync({ ids });
       selection.handleClearSelection();
       setD((prev) => ({ ...prev, bulkDeleteOpen: false }));
       toast.success(t('flashcard_deleted'));
@@ -842,7 +844,7 @@ export function DeckDetailScreen({
             key={fc.id}
             fc={fc}
             canUpdate={permission('flashcard.update', { createdBy: fc.created_by })}
-            canDelete={permission('deck.update', { createdBy: currentDeck?.created_by })}
+            canDelete={permission('flashcard.delete', { createdBy: fc.created_by })}
             topics={topics}
             t={t}
             selected={selection.selectedIds.has(fc.id)}
@@ -868,8 +870,18 @@ export function DeckDetailScreen({
           selectedFlashcards.every((fc) =>
             permission('flashcard.update', { createdBy: fc.created_by }),
           );
+        const canBulkDelete =
+          selectedFlashcards.length > 0 &&
+          selectedFlashcards.every((fc) =>
+            permission('flashcard.delete', { createdBy: fc.created_by }),
+          );
         const canBulkMove =
           permission('deck.update', { createdBy: currentDeck?.created_by }) &&
+          selectedFlashcards.every((fc) =>
+            permission('flashcard.update', { createdBy: fc.created_by }),
+          );
+        const canBulkLink =
+          selectedFlashcards.length > 0 &&
           selectedFlashcards.every((fc) =>
             permission('flashcard.update', { createdBy: fc.created_by }),
           );
@@ -935,21 +947,23 @@ export function DeckDetailScreen({
                 <ArrowRight className="mr-1.5 h-4 w-4" /> {t('move')}
               </Button>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setD((prev) => ({
-                  ...prev,
-                  bulkLinkOpen: true,
-                  bulkLinkDeckIds: [],
-                  selectedIds: Array.from(selection.selectedIds),
-                }))
-              }
-            >
-              <Link2 className="mr-1.5 h-4 w-4" /> {t('link')}
-            </Button>
-            {permission('deck.update', { createdBy: currentDeck?.created_by }) && (
+            {canBulkLink && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setD((prev) => ({
+                    ...prev,
+                    bulkLinkOpen: true,
+                    bulkLinkDeckIds: [],
+                    selectedIds: Array.from(selection.selectedIds),
+                  }))
+                }
+              >
+                <Link2 className="mr-1.5 h-4 w-4" /> {t('link')}
+              </Button>
+            )}
+            {canBulkDelete && (
               <Button
                 variant="destructive"
                 size="sm"

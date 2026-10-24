@@ -5,6 +5,7 @@ import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
 vi.mock('@studiq/server/lib/authz', () => ({
   buildQueryFilter: vi.fn().mockReturnValue({}),
+  accessibleFilter: vi.fn().mockResolvedValue({}),
   Permission: { FLASHCARD_READ: 'flashcard.read' as const },
 }));
 
@@ -40,6 +41,10 @@ function chain(terminal: any = { data: null, error: null }) {
   c.in = vi.fn(() => c);
   c.or = vi.fn(() => c);
   c.order = vi.fn(() => c);
+  c.limit = vi.fn(() => c);
+  c.gt = vi.fn(() => c);
+  c.filter = vi.fn(() => c);
+  c.not = vi.fn(() => c);
   c.single = vi.fn().mockResolvedValue(terminal);
   c.maybeSingle = vi.fn().mockResolvedValue(terminal);
   c.insert = vi.fn(() => c);
@@ -96,6 +101,7 @@ describe('FlashcardPracticeService', () => {
           };
         return chain();
       });
+      return upsertMock;
     }
 
     it('inserts practice record and returns it with review state', async () => {
@@ -199,6 +205,52 @@ describe('FlashcardPracticeService', () => {
       expect(result.data.practice).toEqual(mockPractice);
       expect(result.data.reviewState.repetitions).toBe(2);
       expect(result.data.reviewState.interval_days).toBeGreaterThan(6);
+    });
+
+    it('maps confidenceLevel 3 (Good) on a new card to step 1, 10 min and EF 2.36', async () => {
+      const mockPractice = {
+        id: 'p-1',
+        user_id: ctx.userId,
+        flashcard_id: 'fc-1',
+        was_correct: true,
+      };
+
+      const upsertMock = setupMocks({ data: mockPractice, error: null }, null, {
+        data: { ...mockPractice, learning_state: 'learning', learning_step: 1 },
+        error: null,
+      });
+
+      const result = await service.log('fc-1', true, ctx, undefined, 3);
+
+      expect(result.success).toBe(true);
+      const payload = upsertMock.mock.calls[0][0];
+      expect(payload.learning_state).toBe('learning');
+      expect(payload.learning_step).toBe(1);
+      expect(payload.interval_days).toBe(10);
+      expect(payload.easiness_factor).toBe(2.36);
+    });
+
+    it('maps confidenceLevel 1 (Again) on a new card to step 0, 1 min and EF 1.7', async () => {
+      const mockPractice = {
+        id: 'p-1',
+        user_id: ctx.userId,
+        flashcard_id: 'fc-1',
+        was_correct: false,
+      };
+
+      const upsertMock = setupMocks({ data: mockPractice, error: null }, null, {
+        data: { ...mockPractice, learning_state: 'learning', learning_step: 0 },
+        error: null,
+      });
+
+      const result = await service.log('fc-1', false, ctx, undefined, 1);
+
+      expect(result.success).toBe(true);
+      const payload = upsertMock.mock.calls[0][0];
+      expect(payload.learning_state).toBe('learning');
+      expect(payload.learning_step).toBe(0);
+      expect(payload.interval_days).toBe(1);
+      expect(payload.easiness_factor).toBe(1.7);
     });
   });
 
@@ -449,6 +501,31 @@ describe('FlashcardPracticeService', () => {
     });
   });
 
+  describe('getSettings', () => {
+    it('counts new cards through the group-scope RPC filter (own + group-shared)', async () => {
+      const { buildQueryFilter } = await import('@studiq/server/lib/authz');
+      vi.mocked(buildQueryFilter).mockReturnValueOnce({
+        _useRpc: true,
+        organization_id: 'org-1',
+      } as any);
+
+      const c = settingsChain();
+      mock.from.mockReturnValue({ select: vi.fn(() => c), update: vi.fn(() => c) });
+      mock.rpc.mockResolvedValue({ data: 3, error: null });
+
+      const groupCtx: RequestContext = { ...ctx, activeOrgId: 'org-1' };
+      const result = await service.getSettings(groupCtx);
+
+      expect(mock.rpc).toHaveBeenCalledWith('count_new_cards', {
+        p_user_id: ctx.userId,
+        p_filter_type: 'university',
+        p_organization_id: 'org-1',
+      });
+      expect(result.success).toBe(true);
+      expect((result.data as any).totalNewCards).toBe(3);
+    });
+  });
+
   describe('getDueBreakdown', () => {
     it('returns breakdown from RPC', async () => {
       const rpcMock = vi.fn().mockResolvedValue({
@@ -475,6 +552,107 @@ describe('FlashcardPracticeService', () => {
       expect(result.data.total).toBe(2);
       expect(result.data.byTopic).toEqual({ 'topic-1': 1, 'topic-2': 1 });
       expect(result.data.byDeck).toEqual({ 'deck-1': 1, 'deck-2': 1 });
+    });
+  });
+
+  describe('getAllCardStats (#343)', () => {
+    async function mockAccessibleFilter(filter: Record<string, unknown>) {
+      const { accessibleFilter } = await import('@studiq/server/lib/authz');
+      vi.mocked(accessibleFilter).mockResolvedValueOnce(filter as any);
+    }
+
+    it('applies the resolved group filter so other groups/users are excluded', async () => {
+      await mockAccessibleFilter({
+        organization_id: 'org-1',
+        or: 'created_by.eq.test-user-id,id.in.(fc-1)',
+      });
+
+      const suspended = chain({ data: [], error: null });
+      const cardQuery = chain({
+        data: [{ id: 'fc-1', front: 'F', back: 'B', created_at: '2026-01-01T00:00:00Z' }],
+        error: null,
+      });
+      const states = chain({ data: [], error: null });
+      const practice = chain({ data: [], error: null });
+      mock.from
+        .mockReturnValueOnce(suspended)
+        .mockReturnValueOnce(cardQuery)
+        .mockReturnValueOnce(states)
+        .mockReturnValueOnce(practice);
+
+      const result = await service.getAllCardStats(ctx, { limit: 100 });
+
+      expect(result.success).toBe(true);
+      expect(cardQuery.or).toHaveBeenCalledWith('created_by.eq.test-user-id,id.in.(fc-1)');
+      expect(cardQuery.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+      expect((result.data as any).items.map((i: any) => i.id)).toEqual(['fc-1']);
+    });
+
+    it('returns an empty page when the filter is impossible', async () => {
+      await mockAccessibleFilter({ _impossible: true });
+
+      const suspended = chain({ data: [], error: null });
+      const cardQuery = chain({ data: [], error: null });
+      mock.from.mockReturnValueOnce(suspended).mockReturnValueOnce(cardQuery);
+
+      const result = await service.getAllCardStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false });
+      expect(cardQuery.limit).not.toHaveBeenCalled();
+    });
+
+    it('filters by created_by for own scope and never adds an or filter', async () => {
+      await mockAccessibleFilter({ created_by: 'test-user-id' });
+
+      const suspended = chain({ data: [], error: null });
+      const cardQuery = chain({
+        data: [{ id: 'fc-1', front: 'F', back: 'B', created_at: '2026-01-01T00:00:00Z' }],
+        error: null,
+      });
+      const states = chain({ data: [], error: null });
+      const practice = chain({ data: [], error: null });
+      mock.from
+        .mockReturnValueOnce(suspended)
+        .mockReturnValueOnce(cardQuery)
+        .mockReturnValueOnce(states)
+        .mockReturnValueOnce(practice);
+
+      const result = await service.getAllCardStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(cardQuery.eq).toHaveBeenCalledWith('created_by', 'test-user-id');
+      expect(cardQuery.or).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getCardsForPractice (#343)', () => {
+    it('only returns cards from the resolved accessible set', async () => {
+      const { accessibleFilter } = await import('@studiq/server/lib/authz');
+      vi.mocked(accessibleFilter).mockResolvedValueOnce({
+        organization_id: 'org-1',
+        or: 'created_by.eq.test-user-id,id.in.(fc-1)',
+      } as any);
+
+      const matching = chain({ data: [{ id: 'fc-1' }], error: null });
+      const reviewStates = chain({ data: [], error: null });
+      const fullCards = chain({
+        data: [{ id: 'fc-1', front: 'F', back: 'B', created_at: '2026-01-01T00:00:00Z' }],
+        error: null,
+      });
+      mock.from
+        .mockReturnValueOnce(matching)
+        .mockReturnValueOnce(reviewStates)
+        .mockReturnValueOnce(fullCards);
+
+      const result = await service.getCardsForPractice(ctx, { deckIds: ['deck-1'] });
+
+      expect(result.success).toBe(true);
+      expect(matching.or).toHaveBeenCalledWith('created_by.eq.test-user-id,id.in.(fc-1)');
+      expect(matching.in).toHaveBeenCalledWith('deck_id', ['deck-1']);
+      const ids = (result.data as any[]).map((c) => c.id);
+      expect(ids).toEqual(['fc-1']);
+      expect(ids).not.toContain('fc-2');
     });
   });
 

@@ -18,6 +18,7 @@ function qb(data: any, error: any = null) {
   b.or = vi.fn(() => b);
   b.not = vi.fn(() => b);
   b.neq = vi.fn(() => b);
+  b.is = vi.fn(() => b);
   b.rpc = vi.fn(() => b);
   b.single = vi.fn().mockResolvedValue(result);
   b.maybeSingle = vi.fn().mockResolvedValue(result);
@@ -94,17 +95,194 @@ describe('QuizAttemptService', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
     });
+
+    it('projects only take-page columns while the attempt is in progress (#331)', async () => {
+      const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
+      const questionsBuilder = qb([
+        { order_index: 0, question_id: 'q-1', questions: { id: 'q-1' } },
+      ]);
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(questionsBuilder);
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(true);
+      const projection = questionsBuilder.select.mock.calls[0][0] as string;
+      expect(projection).not.toContain('*');
+      expect(projection).not.toContain('is_correct');
+      expect(projection).not.toContain('explanation');
+      expect(projection).not.toContain('search_vector');
+      expect(projection).toContain('question_answers:question_options(id, content)');
+    });
+
+    it('includes the answer key once the attempt is completed (#331)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        completed_at: '2026-10-24T10:00:00.000Z',
+      };
+      const questionsBuilder = qb([
+        { order_index: 0, question_id: 'q-1', questions: { id: 'q-1' } },
+      ]);
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(questionsBuilder);
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(true);
+      const projection = questionsBuilder.select.mock.calls[0][0] as string;
+      expect(projection).toContain('explanation');
+      expect(projection).toContain('is_correct');
+    });
+
+    it('omits is_correct from the answers map while the attempt is in progress (#331)', async () => {
+      const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([]));
+      // Graded rows cannot appear before submission — only the draft is served.
+      mock.from.mockReturnValueOnce(
+        qb([
+          {
+            question_id: 'q-1',
+            selected_option_id: 'ans-1',
+            text_answer: null,
+            is_correct: true,
+          },
+        ]),
+      );
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).answers).toEqual({});
+    });
+
+    it('serves the saved draft as `answers` for an in-progress attempt (#349)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        completed_at: null,
+        draft_answers: {
+          'q-1': { selected_answer_id: 'ans-1', text_answer: null },
+          'q-2': { selected_answer_id: null, text_answer: 'Wisła' },
+        },
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(true);
+      const data = result.data as any;
+      expect(data.answers).toEqual({
+        'q-1': { selected_answer_id: 'ans-1', text_answer: null },
+        'q-2': { selected_answer_id: null, text_answer: 'Wisła' },
+      });
+      expect(data.answers['q-1']).not.toHaveProperty('is_correct');
+      // The raw column must never be serialised.
+      expect(data).not.toHaveProperty('draft_answers');
+    });
+
+    it('drops anything but the student selection out of a tampered draft (#331)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        completed_at: null,
+        draft_answers: {
+          'q-1': { selected_answer_id: 'ans-1', text_answer: null, is_correct: true },
+          'q-2': 'not-an-object',
+          'q-3': null,
+        },
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(true);
+      const data = result.data as any;
+      expect(data.answers).toEqual({
+        'q-1': { selected_answer_id: 'ans-1', text_answer: null },
+      });
+      expect(data.answers['q-1']).not.toHaveProperty('is_correct');
+    });
+
+    it('ignores the draft once the attempt is completed (#349)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        completed_at: '2026-10-24T10:00:00.000Z',
+        draft_answers: { 'q-1': { selected_answer_id: 'stale', text_answer: null } },
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          {
+            question_id: 'q-1',
+            selected_option_id: 'ans-1',
+            text_answer: null,
+            is_correct: true,
+          },
+        ]),
+      );
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).answers).toEqual({
+        'q-1': { selected_answer_id: 'ans-1', text_answer: null, is_correct: true },
+      });
+    });
+
+    it('keeps is_correct in the answers map for a completed attempt (#331)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        completed_at: '2026-10-24T10:00:00.000Z',
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          {
+            question_id: 'q-1',
+            selected_option_id: 'ans-1',
+            text_answer: null,
+            is_correct: true,
+          },
+        ]),
+      );
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).answers['q-1'].is_correct).toBe(true);
+    });
   });
 
   describe('submit', () => {
     it('submits answers and returns score', async () => {
       const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
       const answer = { id: 'ans-1', is_correct: true };
+      const insertQb = qb(null);
 
       mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
       mock.from.mockReturnValueOnce(qb(answer));
       mock.from.mockReturnValueOnce(qb(null));
-      mock.from.mockReturnValueOnce(qb(null));
+      mock.from.mockReturnValueOnce(insertQb);
 
       const result = await service.submit(
         {
@@ -117,6 +295,165 @@ describe('QuizAttemptService', () => {
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
       expect((result.data as any).score).toBe(1);
+      // Practice quizzes must not look up assignment points.
+      expect(mock.from).not.toHaveBeenCalledWith('assignment_questions');
+      expect(insertQb.insert).toHaveBeenCalledWith([
+        expect.objectContaining({
+          question_id: 'q-1',
+          selected_option_id: 'ans-1',
+          text_answer: null,
+          question_type: 'mcq',
+          is_correct: true,
+        }),
+      ]);
+    });
+
+    it('counts a practice-quiz question once even when it produced several answer rows', async () => {
+      const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
+      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      mock.from.mockReturnValueOnce(qb(null)); // attempt update
+      mock.from.mockReturnValueOnce(qb(null)); // answers insert
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [
+            { questionId: 'q-1', selectedAnswerId: 'ans-1' },
+            { questionId: 'q-1', selectedAnswerId: 'ans-2' },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).score).toBe(1);
+      expect(mock.from).not.toHaveBeenCalledWith('assignment_questions');
+    });
+
+    it('stores an open answer as text and does not auto-score it', async () => {
+      const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
+      const insertQb = qb(null);
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-open', type: 'open' }]));
+      mock.from.mockReturnValueOnce(qb(null));
+      mock.from.mockReturnValueOnce(insertQb);
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [
+            {
+              questionId: 'q-open',
+              textAnswer: '  Rozbiory, słaba władza centralna, liberum veto.  ',
+            },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).score).toBe(0);
+      expect(insertQb.insert).toHaveBeenCalledWith([
+        {
+          attempt_id: 'a-1',
+          question_id: 'q-open',
+          question_type: 'open',
+          selected_option_id: null,
+          text_answer: 'Rozbiory, słaba władza centralna, liberum veto.',
+          is_correct: false,
+        },
+      ]);
+      // No option lookup is performed for an open question.
+      expect(mock.from).toHaveBeenCalledTimes(4);
+    });
+
+    it('awards assignment points instead of counting correct answers (#167)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        completed_at: null,
+        assignment_id: 'assignment-1',
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb({ deadline: null })); // teacher_assignments
+      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
+      mock.from.mockReturnValueOnce(qb({ is_correct: true })); // question_options
+      mock.from.mockReturnValueOnce(qb(null)); // attempt update
+      mock.from.mockReturnValueOnce(qb(null)); // answers insert
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [{ questionId: 'q-1', selectedAnswerId: 'ans-1' }],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).score).toBe(2);
+    });
+
+    it('awards a question once even when it produced several answer rows', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        completed_at: null,
+        assignment_id: 'assignment-1',
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb({ deadline: null }));
+      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
+      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      mock.from.mockReturnValueOnce(qb(null));
+      mock.from.mockReturnValueOnce(qb(null));
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [
+            { questionId: 'q-1', selectedAnswerId: 'ans-1' },
+            { questionId: 'q-1', selectedAnswerId: 'ans-2' },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).score).toBe(2);
+    });
+
+    it('returns INTERNAL_SERVER when assignment points cannot be loaded', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        completed_at: null,
+        assignment_id: 'assignment-1',
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb({ deadline: null }));
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.submit(
+        {
+          attemptId: 'a-1',
+          answers: [{ questionId: 'q-1', selectedAnswerId: 'ans-1' }],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
     });
 
     it('returns NOT_FOUND when attempt does not exist', async () => {
@@ -136,6 +473,152 @@ describe('QuizAttemptService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('BAD_REQUEST');
+    });
+
+    it('clears the draft in the same update that completes the attempt (#349)', async () => {
+      const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
+      const updateQb = qb(null);
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
+      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      mock.from.mockReturnValueOnce(updateQb);
+      mock.from.mockReturnValueOnce(qb(null));
+
+      const result = await service.submit(
+        { attemptId: 'a-1', answers: [{ questionId: 'q-1', selectedAnswerId: 'ans-1' }] },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(updateQb.update).toHaveBeenCalledWith(
+        expect.objectContaining({ score: 1, draft_answers: {} }),
+      );
+    });
+  });
+
+  describe('saveDraft (#349)', () => {
+    const questionsQb = () => qb([{ question_id: 'q-1' }, { question_id: 'q-2' }]);
+
+    it('stores the normalised draft map and reports the saved count', async () => {
+      const updateQb = qb(null);
+
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
+      mock.from.mockReturnValueOnce(questionsQb());
+      mock.from.mockReturnValueOnce(updateQb);
+
+      const result = await service.saveDraft(
+        {
+          attemptId: 'a-1',
+          answers: [
+            { questionId: 'q-1', selectedAnswerId: 'ans-1' },
+            { questionId: 'q-2', textAnswer: '  Wisła  ' },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).saved).toBe(2);
+      expect(updateQb.update).toHaveBeenCalledWith({
+        draft_answers: {
+          'q-1': { selected_answer_id: 'ans-1', text_answer: null },
+          'q-2': { selected_answer_id: null, text_answer: 'Wisła' },
+        },
+      });
+      // A late autosave must never revive a submitted attempt.
+      expect(updateQb.is).toHaveBeenCalledWith('completed_at', null);
+      expect(updateQb.eq).toHaveBeenCalledWith('user_id', ctx.userId);
+    });
+
+    it('replaces the whole draft, so a cleared answer disappears', async () => {
+      const updateQb = qb(null);
+
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
+      mock.from.mockReturnValueOnce(questionsQb());
+      mock.from.mockReturnValueOnce(updateQb);
+
+      await service.saveDraft({ attemptId: 'a-1', answers: [] }, ctx);
+
+      expect(updateQb.update).toHaveBeenCalledWith({ draft_answers: {} });
+    });
+
+    it('keeps the last value when a question is sent twice', async () => {
+      const updateQb = qb(null);
+
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
+      mock.from.mockReturnValueOnce(questionsQb());
+      mock.from.mockReturnValueOnce(updateQb);
+
+      await service.saveDraft(
+        {
+          attemptId: 'a-1',
+          answers: [
+            { questionId: 'q-1', selectedAnswerId: 'ans-1' },
+            { questionId: 'q-1', selectedAnswerId: 'ans-2' },
+          ],
+        },
+        ctx,
+      );
+
+      expect(updateQb.update).toHaveBeenCalledWith({
+        draft_answers: { 'q-1': { selected_answer_id: 'ans-2', text_answer: null } },
+      });
+    });
+
+    it('returns NOT_FOUND for a foreign or missing attempt', async () => {
+      mock.from.mockReturnValueOnce(qb(null));
+
+      const result = await service.saveDraft({ attemptId: 'a-1', answers: [] }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+    });
+
+    it('returns BAD_REQUEST when the attempt is already submitted', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: '2026-10-24T10:00:00.000Z' }));
+
+      const result = await service.saveDraft({ attemptId: 'a-1', answers: [] }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('BAD_REQUEST');
+    });
+
+    it('returns UNPROCESSABLE_ENTITY when a question is not part of the attempt', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
+      mock.from.mockReturnValueOnce(questionsQb());
+
+      const result = await service.saveDraft(
+        { attemptId: 'a-1', answers: [{ questionId: 'q-stranger', selectedAnswerId: 'ans-1' }] },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+    });
+
+    it('returns INTERNAL_SERVER when the draft update fails', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
+      mock.from.mockReturnValueOnce(questionsQb());
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.saveDraft(
+        { attemptId: 'a-1', answers: [{ questionId: 'q-1', selectedAnswerId: 'ans-1' }] },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
+    it('returns INTERNAL_SERVER when the attempt questions cannot be loaded', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'a-1', completed_at: null }));
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.saveDraft({ attemptId: 'a-1', answers: [] }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
     });
   });
 });
