@@ -33,7 +33,7 @@ All under `/api/v1/`. Controllers live in `src/server/controllers/`, services in
 | Route | Methods |
 |-------|---------|
 | `feature-flags` | GET, POST |
-| `feature-flags/[key]` | GET, PUT, DELETE |
+| `feature-flags/[id]` | GET, PUT, DELETE |
 | `plan-features` | GET, POST |
 | `plan-features/[id]` | GET, DELETE |
 | `plan-limits` | GET (`?planKey=` filter), POST |
