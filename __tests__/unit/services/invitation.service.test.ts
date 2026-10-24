@@ -210,6 +210,31 @@ describe('InvitationService', () => {
       });
     });
 
+    // #236: the public preview is unauthenticated, so the request-scoped client
+    // would run as `anon` and PostgREST rejects `public.invitations` with 42501.
+    // The preview must resolve on the service-role client only.
+    it('resolves the public preview on the admin client, never the request client (#236)', async () => {
+      const requestClient = vi.fn(async () => {
+        throw new Error('request-scoped client must not be used for a public preview');
+      });
+      const admin = {
+        from: vi.fn(() => qb(inviteRow())),
+        rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
+      };
+      service = new InvitationService(requestClient as any, () => admin as any);
+
+      const result = await service.getInvitationByToken('public-token');
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).email).toBe('john@example.com');
+      expect(requestClient).not.toHaveBeenCalled();
+      expect(admin.from).toHaveBeenCalledWith('invitations');
+      expect(admin.rpc).toHaveBeenCalledWith('can_assign_org_role', {
+        p_actor: 'manager-1',
+        p_role_id: 'role-member',
+      });
+    });
+
     it('returns NOT_FOUND when token does not exist', async () => {
       mock.from.mockReturnValueOnce(qb(null, null));
 

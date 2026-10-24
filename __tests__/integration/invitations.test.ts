@@ -12,6 +12,7 @@ import {
   cleanupOrganizationDeep,
   createServiceClient,
   mockUser,
+  useRealSupabase,
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
 import { POST as bulkPost } from '@/app/(backend)/api/v1/organization/invites/bulk/route';
@@ -143,8 +144,8 @@ forEachCopy((copyId) => {
 
     describe('GET /api/v1/organization/invites?token=...', () => {
       it('returns invitation when token is valid', async () => {
-        // Use mockUser to get a service-role client — anon role has no
-        // SELECT permission on the invitations table (99_dev_grants.sql).
+        // Seed via the service-role client; the preview route itself is public and
+        // is covered by the anonymous test below.
         mockUser(fixture.user);
 
         const supabase = createServiceClient();
@@ -173,7 +174,7 @@ forEachCopy((copyId) => {
       });
 
       it('returns 404 when token does not exist', async () => {
-        // Use mockUser for consistent service-role access to invitations.
+        // Service-role client for consistent read access; the route is public.
         mockUser(fixture.user);
 
         const req = createNextRequest(
@@ -187,8 +188,7 @@ forEachCopy((copyId) => {
       });
 
       it('returns 410 when token is expired', async () => {
-        // Use mockUser to get a service-role client — anon role has no
-        // SELECT permission on the invitations table (99_dev_grants.sql).
+        // Service-role client for consistent read access; the route is public.
         mockUser(fixture.user);
 
         const supabase = createServiceClient();
@@ -210,6 +210,61 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(410);
         expect(body.success).toBe(false);
+      });
+
+      // #236: a logged-out visitor loads /join?token=… before they have an
+      // account. The preview must work with a real anon session — i.e. without
+      // the request-scoped client, which `anon` cannot use to read invitations.
+      it('returns a valid invitation to an anonymous caller (#236)', async () => {
+        const supabase = createServiceClient();
+        const token = `anon-valid-${copyId}-${Date.now()}`;
+        const { error } = await supabase.from('invitations').insert({
+          email: `anon-${copyId}@example.com`,
+          target_org_role_id: adminRoleId,
+          token,
+          expires_at: new Date(Date.now() + 86400000).toISOString(),
+          inviter_id: fixture.user.id,
+          organization_id: orgId,
+        });
+        if (error) throw new Error(`Failed to insert invitation: ${error.message}`);
+
+        // Real anon client: no session, no service-role key. Do NOT use
+        // mockUser(null) here — that helper still returns a service-role client
+        // and would mask a regression back to the request-scoped client.
+        useRealSupabase();
+
+        const req = createNextRequest(
+          `http://localhost/api/v1/organization/invites?token=${token}`,
+        );
+        const response = await inviteGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.email).toBe(`anon-${copyId}@example.com`);
+        expect(body.data.organizationName).toBeTruthy();
+        expect(body.data.orgRoleName).toBeTruthy();
+      });
+
+      it('returns 410 for an expired token to an anonymous caller (#236)', async () => {
+        const supabase = createServiceClient();
+        const token = `anon-expired-${copyId}-${Date.now()}`;
+        const { error } = await supabase.from('invitations').insert({
+          email: `anon-expired-${copyId}@example.com`,
+          target_org_role_id: adminRoleId,
+          token,
+          expires_at: new Date(Date.now() - 86400000).toISOString(),
+          inviter_id: fixture.user.id,
+          organization_id: orgId,
+        });
+        if (error) throw new Error(`Failed to insert invitation: ${error.message}`);
+
+        useRealSupabase();
+
+        const response = await inviteGet(
+          createNextRequest(`http://localhost/api/v1/organization/invites?token=${token}`),
+        );
+
+        expect(response.status).toBe(410);
       });
 
       it('returns 401 when token is empty (treated as no token, requires auth)', async () => {
