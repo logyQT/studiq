@@ -18,6 +18,17 @@ function isReportParticipant(
   return report.reported_by === userId || report.teacher_id === userId;
 }
 
+/**
+ * PostgREST filter for the reports the caller may see. An org admin sees every
+ * report of the active org *plus* the threads they participate in anywhere
+ * (legacy `organization_id IS NULL` rows included) — the pre-fix visibility is
+ * never taken away, org-wide rows are added on top.
+ */
+function reportVisibilityFilter(ctx: RequestContext, orgScope: string | null): string {
+  const participant = `reported_by.eq.${ctx.userId},teacher_id.eq.${ctx.userId}`;
+  return orgScope ? `organization_id.eq.${orgScope},${participant}` : participant;
+}
+
 export class QuestionReportService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
@@ -106,19 +117,17 @@ export class QuestionReportService {
     const supabase = await this.createClient();
     const orgScope = await this.resolveOrgWideReportScope(ctx, supabase);
 
-    let query = supabase.from('question_reports').select(
-      `*,
+    const { data, error } = await supabase
+      .from('question_reports')
+      .select(
+        `*,
         question:question_id(id, content),
         group:group_id(id, name),
         reporter:reported_by(id, full_name, email),
         teacher:teacher_id(id, full_name, email)`,
-    );
-
-    query = orgScope
-      ? query.eq('organization_id', orgScope)
-      : query.or(`reported_by.eq.${ctx.userId},teacher_id.eq.${ctx.userId}`);
-
-    const { data, error } = await query.order('updated_at', { ascending: false });
+      )
+      .or(reportVisibilityFilter(ctx, orgScope))
+      .order('updated_at', { ascending: false });
 
     if (error) return toDbFailure(error);
 
@@ -211,17 +220,12 @@ export class QuestionReportService {
     const supabase = await this.createClient();
     const orgScope = await this.resolveOrgWideReportScope(ctx, supabase);
 
-    let query = supabase
+    const { data, error } = await supabase
       .from('question_reports')
       .select(
         'id, reported_by, teacher_id, updated_at, reporter_last_read_at, teacher_last_read_at',
-      );
-
-    query = orgScope
-      ? query.eq('organization_id', orgScope)
-      : query.or(`reported_by.eq.${ctx.userId},teacher_id.eq.${ctx.userId}`);
-
-    const { data, error } = await query;
+      )
+      .or(reportVisibilityFilter(ctx, orgScope));
 
     if (error) return toDbFailure(error);
 
@@ -265,12 +269,12 @@ export class QuestionReportService {
 
     const { data } = await supabase
       .from('org_roles')
-      .select('name')
+      .select('name, is_system')
       .eq('id', ctx.orgRoleId)
       .eq('organization_id', orgId)
       .maybeSingle();
 
-    return data?.name === 'admin' ? orgId : null;
+    return data?.is_system === true && data.name === 'admin' ? orgId : null;
   }
 }
 export const questionReportService = wrapService(

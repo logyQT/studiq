@@ -14,11 +14,13 @@ import {
  * #276 (MGR-REP-01): a manager used to see only the report threads they
  * personally participate in, because `list`/`unreadCount` always applied the
  * reporter/recipient filter. The org admin must see (and answer) every report of
- * the active organization, while teachers and students stay participant-only.
+ * the active organization *in addition to* their own participant threads, while
+ * teachers and students stay participant-only.
  *
  * The services run on the service-role client (`mockUser`), i.e. with RLS out of
  * the picture, so these assertions prove the application-level scope rather than
- * the #191 policies.
+ * the #191 policies. The production read/reply path under a real user session
+ * (RLS enforced) is covered by `question-reports-api.test.ts`.
  */
 describe('Question reports org-wide manager scope (#276)', () => {
   const service = createServiceClient();
@@ -37,6 +39,7 @@ describe('Question reports org-wide manager scope (#276)', () => {
 
   let questionReportId: string;
   let groupReportId: string;
+  let legacyReportId: string;
   let otherOrgReportId: string;
 
   function ctxFor(overrides: Partial<RequestContext>): RequestContext {
@@ -55,7 +58,7 @@ describe('Question reports org-wide manager scope (#276)', () => {
   }
 
   async function seedReport(data: {
-    organizationId: string;
+    organizationId: string | null;
     reportedBy: string;
     teacherId: string;
     questionId?: string;
@@ -150,6 +153,15 @@ describe('Question reports org-wide manager scope (#276)', () => {
       groupId: seeded.defaultGroupId,
     });
 
+    // A legacy thread with no organization where the manager is the recipient:
+    // the org-wide branch must not take a manager's own participant threads away.
+    legacyReportId = await seedReport({
+      organizationId: null,
+      reportedBy: teacherId,
+      teacherId: managerId,
+      questionId: question.id,
+    });
+
     // A report in another organization must never leak into the active org. The
     // manager is not a participant of it, so it exercises the org check.
     otherOrgReportId = await seedReport({
@@ -166,8 +178,11 @@ describe('Question reports org-wide manager scope (#276)', () => {
     await service
       .from('question_report_messages')
       .delete()
-      .in('report_id', [questionReportId, groupReportId, otherOrgReportId]);
-    await service.from('question_reports').delete().in('organization_id', [orgId, otherOrgId]);
+      .in('report_id', [questionReportId, groupReportId, legacyReportId, otherOrgReportId]);
+    await service
+      .from('question_reports')
+      .delete()
+      .in('id', [questionReportId, groupReportId, legacyReportId, otherOrgReportId]);
     await service.from('questions').delete().eq('organization_id', orgId);
     await service.from('question_banks').delete().eq('organization_id', orgId);
     if (orgId) await cleanupOrganizationDeep(orgId);
@@ -183,16 +198,17 @@ describe('Question reports org-wide manager scope (#276)', () => {
     expect(result.success).toBe(true);
     if (!result.success) return;
     const ids = (result.data as Array<{ id: string }>).map((r) => r.id);
-    expect(ids).toEqual(expect.arrayContaining([questionReportId, groupReportId]));
+    expect(ids).toEqual(expect.arrayContaining([questionReportId, groupReportId, legacyReportId]));
     expect(ids).not.toContain(otherOrgReportId);
-    expect(ids).toHaveLength(2);
+    // Org rows are added on top of the admin's own participant threads.
+    expect(ids).toHaveLength(3);
   });
 
   it('counts the org-wide unread reports for its admin', async () => {
     const result = await questionReportService.unreadCount(ctxFor({}));
 
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data).toEqual({ count: 2 });
+    if (result.success) expect(result.data).toEqual({ count: 3 });
   });
 
   it('keeps teachers and students participant-only', async () => {
@@ -206,8 +222,11 @@ describe('Question reports org-wide manager scope (#276)', () => {
     expect(teacherResult.success).toBe(true);
     if (teacherResult.success) {
       const ids = (teacherResult.data as Array<{ id: string }>).map((r) => r.id);
-      // The teacher reported the group thread and received the question thread.
-      expect(ids).toEqual(expect.arrayContaining([questionReportId, groupReportId]));
+      // The teacher reported the group thread, received the question thread and
+      // reported the legacy NULL-org thread.
+      expect(ids).toEqual(
+        expect.arrayContaining([questionReportId, groupReportId, legacyReportId]),
+      );
       expect(ids).not.toContain(otherOrgReportId);
     }
 

@@ -301,7 +301,7 @@ describe('QuestionReportService', () => {
     };
 
     it('lists every report in the active org for its admin', async () => {
-      const roleQuery = qb({ name: 'admin' });
+      const roleQuery = qb({ name: 'admin', is_system: true });
       const listQuery = qb([foreignReport]);
       mock.from.mockReturnValueOnce(roleQuery).mockReturnValueOnce(listQuery);
 
@@ -310,14 +310,41 @@ describe('QuestionReportService', () => {
       expect(result.success).toBe(true);
       expect(mock.from).toHaveBeenNthCalledWith(1, 'org_roles');
       expect(mock.from).toHaveBeenNthCalledWith(2, 'question_reports');
-      expect(listQuery.eq).toHaveBeenCalledWith('organization_id', 'org-1');
-      expect(listQuery.or).not.toHaveBeenCalled();
+      // Org rows and the caller's own participant threads are unioned; neither
+      // branch alone may be dropped.
+      expect(listQuery.or).toHaveBeenCalledWith(
+        'organization_id.eq.org-1,reported_by.eq.manager-1,teacher_id.eq.manager-1',
+      );
+      expect(listQuery.eq).not.toHaveBeenCalled();
       // An observed thread is "unread" while its recipient has not read it.
       expect(result.data).toEqual([expect.objectContaining({ id: 'r-1', isUnread: true })]);
     });
 
+    it('keeps the admin participant threads outside the active org (legacy NULL org)', async () => {
+      const legacyReport = {
+        ...foreignReport,
+        id: 'r-legacy',
+        organization_id: null,
+        reported_by: 'teacher-2',
+        teacher_id: 'manager-1',
+      };
+      const listQuery = qb([foreignReport, legacyReport]);
+      mock.from
+        .mockReturnValueOnce(qb({ name: 'admin', is_system: true }))
+        .mockReturnValueOnce(listQuery);
+
+      const result = await service.list(managerCtx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        expect.objectContaining({ id: 'r-1' }),
+        // Legacy NULL-org thread: recipient has not read it yet.
+        expect.objectContaining({ id: 'r-legacy', isUnread: true }),
+      ]);
+    });
+
     it('keeps participant scope for a manager holding a non-admin org role', async () => {
-      const roleQuery = qb({ name: 'teacher' });
+      const roleQuery = qb({ name: 'teacher', is_system: true });
       const listQuery = qb([]);
       mock.from.mockReturnValueOnce(roleQuery).mockReturnValueOnce(listQuery);
 
@@ -325,6 +352,18 @@ describe('QuestionReportService', () => {
 
       expect(listQuery.eq).not.toHaveBeenCalled();
       expect(listQuery.or).toHaveBeenCalledWith('reported_by.eq.manager-1,teacher_id.eq.manager-1');
+    });
+
+    it('keeps participant scope for a custom, non-system role named admin', async () => {
+      const roleQuery = qb({ name: 'admin', is_system: false });
+      const listQuery = qb([]);
+      mock.from.mockReturnValueOnce(roleQuery).mockReturnValueOnce(listQuery);
+
+      await service.list(managerCtx);
+
+      expect(roleQuery.select).toHaveBeenCalledWith('name, is_system');
+      expect(listQuery.or).toHaveBeenCalledWith('reported_by.eq.manager-1,teacher_id.eq.manager-1');
+      expect(listQuery.or).not.toHaveBeenCalledWith(expect.stringContaining('organization_id.eq'));
     });
 
     it('keeps participant scope when the role does not belong to the active org', async () => {
@@ -336,7 +375,7 @@ describe('QuestionReportService', () => {
 
       expect(roleQuery.eq).toHaveBeenCalledWith('id', 'role-admin');
       expect(roleQuery.eq).toHaveBeenCalledWith('organization_id', 'org-1');
-      expect(listQuery.or).toHaveBeenCalled();
+      expect(listQuery.or).toHaveBeenCalledWith('reported_by.eq.manager-1,teacher_id.eq.manager-1');
     });
 
     it('does not look up the org role without verified membership', async () => {
@@ -361,7 +400,7 @@ describe('QuestionReportService', () => {
     });
 
     it('counts unread reports across the active org for its admin', async () => {
-      const roleQuery = qb({ name: 'admin' });
+      const roleQuery = qb({ name: 'admin', is_system: true });
       const countQuery = qb([
         { ...foreignReport, id: 'r-read', teacher_last_read_at: '2024-01-03T00:00:00Z' },
         { ...foreignReport, id: 'r-unread', teacher_last_read_at: null },
@@ -370,15 +409,17 @@ describe('QuestionReportService', () => {
 
       const result = await service.unreadCount(managerCtx);
 
-      expect(countQuery.eq).toHaveBeenCalledWith('organization_id', 'org-1');
-      expect(countQuery.or).not.toHaveBeenCalled();
+      expect(countQuery.or).toHaveBeenCalledWith(
+        'organization_id.eq.org-1,reported_by.eq.manager-1,teacher_id.eq.manager-1',
+      );
+      expect(countQuery.eq).not.toHaveBeenCalled();
       expect(result.data).toEqual({ count: 1 });
     });
 
     it('opens a non-participant report in the active org as its admin', async () => {
       mock.from
         .mockReturnValueOnce(qb(foreignReport))
-        .mockReturnValueOnce(qb({ name: 'admin' }))
+        .mockReturnValueOnce(qb({ name: 'admin', is_system: true }))
         .mockReturnValueOnce(qb(foreignReport))
         .mockReturnValueOnce(qb([{ id: 'm-1' }]));
 
@@ -394,7 +435,7 @@ describe('QuestionReportService', () => {
     it('returns NOT_FOUND for an org admin reading another organization report', async () => {
       mock.from
         .mockReturnValueOnce(qb({ ...foreignReport, organization_id: 'org-2' }))
-        .mockReturnValueOnce(qb({ name: 'admin' }));
+        .mockReturnValueOnce(qb({ name: 'admin', is_system: true }));
 
       const result = await service.getById('r-1', managerCtx);
 
@@ -403,7 +444,9 @@ describe('QuestionReportService', () => {
     });
 
     it('returns NOT_FOUND for a manager with a non-admin org role', async () => {
-      mock.from.mockReturnValueOnce(qb(foreignReport)).mockReturnValueOnce(qb({ name: 'teacher' }));
+      mock.from
+        .mockReturnValueOnce(qb(foreignReport))
+        .mockReturnValueOnce(qb({ name: 'teacher', is_system: true }));
 
       const result = await service.getById('r-1', managerCtx);
 
@@ -414,7 +457,7 @@ describe('QuestionReportService', () => {
     it('lets the org admin reply to a non-participant report', async () => {
       mock.from
         .mockReturnValueOnce(qb(foreignReport))
-        .mockReturnValueOnce(qb({ name: 'admin' }))
+        .mockReturnValueOnce(qb({ name: 'admin', is_system: true }))
         .mockReturnValueOnce(qb({ id: 'm-1', body: 'reply' }));
 
       const result = await service.addMessage('r-1', { body: 'reply' }, managerCtx);
@@ -424,7 +467,9 @@ describe('QuestionReportService', () => {
 
     it('does not write a read receipt when the org admin observes a thread', async () => {
       const reportQuery = qb(foreignReport);
-      mock.from.mockReturnValueOnce(reportQuery).mockReturnValueOnce(qb({ name: 'admin' }));
+      mock.from
+        .mockReturnValueOnce(reportQuery)
+        .mockReturnValueOnce(qb({ name: 'admin', is_system: true }));
 
       const result = await service.markRead('r-1', managerCtx);
 

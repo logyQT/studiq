@@ -56,6 +56,10 @@ interface OrgBundle {
   flashcardId: string;
   attemptId: string;
   invitationToken: string;
+  /** Report authored by `studentId` and addressed to `teacherId`. */
+  reportId: string;
+  /** Report authored by `peerId` and addressed to `teacherId` (#276 control). */
+  peerReportId: string | null;
 }
 
 describe('RLS tenant isolation (#191)', () => {
@@ -110,6 +114,8 @@ describe('RLS tenant isolation (#191)', () => {
     name: string;
     teacherId: string;
     studentId: string;
+    /** When set, also seed a report between this third party and the teacher. */
+    peerId?: string;
   }): Promise<OrgBundle> {
     const seeded = await seedOrganization(`${data.name}-${tag}`);
 
@@ -246,6 +252,27 @@ describe('RLS tenant isolation (#191)', () => {
       body: 'rls191',
     });
 
+    // #276 positive control: a same-org report between two OTHER users, so only
+    // the org-membership clause of "Report participants or org members" can make
+    // it readable for a plain member.
+    let peerReportId: string | null = null;
+    if (data.peerId) {
+      const { data: peerReport, error: peerReportError } = await service
+        .from('question_reports')
+        .insert({
+          question_id: question.id,
+          organization_id: seeded.org.id,
+          reported_by: data.peerId,
+          teacher_id: data.teacherId,
+        })
+        .select('id')
+        .single();
+      if (peerReportError || !peerReport) {
+        throw new Error(`peer report: ${peerReportError?.message}`);
+      }
+      peerReportId = peerReport.id;
+    }
+
     const { data: invitation, error: invitationError } = await service
       .from('invitations')
       .insert({
@@ -272,6 +299,8 @@ describe('RLS tenant isolation (#191)', () => {
       flashcardId: flashcard.id,
       attemptId: attempt.id,
       invitationToken: invitation.token,
+      reportId: report.id,
+      peerReportId,
     };
   }
 
@@ -295,7 +324,7 @@ describe('RLS tenant isolation (#191)', () => {
     lonerId = await createUser(lonerEmail, 'student', 'loner');
 
     // Org A: manager (admin), teacher, student.
-    orgA = await seedOrgBundle({ name: 'rls191-org-a', teacherId, studentId });
+    orgA = await seedOrgBundle({ name: 'rls191-org-a', teacherId, studentId, peerId });
     await seedOrgMembership({
       organizationId: orgA.orgId,
       userId: adminId,
@@ -309,6 +338,11 @@ describe('RLS tenant isolation (#191)', () => {
     await seedOrgMembership({
       organizationId: orgA.orgId,
       userId: studentId,
+      orgRoleId: orgA.memberRoleId,
+    });
+    await seedOrgMembership({
+      organizationId: orgA.orgId,
+      userId: peerId,
       orgRoleId: orgA.memberRoleId,
     });
 
@@ -424,13 +458,20 @@ describe('RLS tenant isolation (#191)', () => {
     expect(ownProfile).toHaveLength(1);
 
     // The org-wide manager report inbox (#276) relies on the DB floor being
-    // org-scoped: a plain member reads same-org reports, not only their own.
-    const { data: orgReports, error: orgReportsError } = await studentSession
+    // org-scoped. Read a report between TWO OTHER users: the participant clauses
+    // (`reported_by = auth.uid()`, `teacher_id = auth.uid()`) cannot satisfy it,
+    // so only `organization_id IN rls_caller_org_ids()` can. Removing that
+    // clause would silently reintroduce #276 with a green suite.
+    expect(orgA.peerReportId).toBeTruthy();
+    const { data: orgReport, error: orgReportError } = await studentSession
       .from('question_reports')
       .select('id')
-      .eq('organization_id', orgA.orgId);
-    expect(orgReportsError, 'question_reports read failed').toBeNull();
-    expect(orgReports?.length, 'member cannot read a same-org report').toBeGreaterThan(0);
+      .eq('id', orgA.peerReportId as string);
+    expect(orgReportError, 'question_reports read failed').toBeNull();
+    expect(
+      orgReport?.map((r) => r.id),
+      'member cannot read a same-org report',
+    ).toEqual([orgA.peerReportId]);
 
     // Catalog data is readable by any signed-in user.
     const { data: flags, error: flagsError } = await studentSession
@@ -453,6 +494,45 @@ describe('RLS tenant isolation (#191)', () => {
       expect(error, `${table} read failed`).toBeNull();
       expect(data?.length, `teacher cannot read ${table} of a same-org student`).toBeGreaterThan(0);
     }
+  });
+
+  it('org admin session reads, resolves its role and replies to a non-participant report (#276)', async () => {
+    // The exact production path of #276 with the manager's own JWT: the service
+    // reads `question_reports` and `org_roles` through PostgREST as this user and
+    // writes the reply with `question_report_messages` RLS in force.
+    expect(adminId).not.toBe(studentId);
+    expect(adminId).not.toBe(teacherId);
+
+    const { data: report, error: reportError } = await adminSession
+      .from('question_reports')
+      .select('id, reported_by, teacher_id, reporter:reported_by(id), teacher:teacher_id(id)')
+      .eq('id', orgA.reportId)
+      .single();
+    expect(reportError).toBeNull();
+    expect(report).toMatchObject({
+      id: orgA.reportId,
+      reported_by: studentId,
+      teacher_id: teacherId,
+    });
+
+    // The role lookup `resolveOrgWideReportScope` issues, including the exact
+    // predicate it now requires (`is_system` + `admin`).
+    const { data: role, error: roleError } = await adminSession
+      .from('org_roles')
+      .select('name, is_system')
+      .eq('id', orgA.adminRoleId)
+      .eq('organization_id', orgA.orgId)
+      .single();
+    expect(roleError).toBeNull();
+    expect(role).toMatchObject({ name: 'admin', is_system: true });
+
+    const { data: reply, error: replyError } = await adminSession
+      .from('question_report_messages')
+      .insert({ report_id: orgA.reportId, sender_id: adminId, body: 'rls191 manager reply' })
+      .select('id')
+      .single();
+    expect(replyError).toBeNull();
+    expect(reply?.id).toBeTruthy();
   });
 
   it('cross-org reads return nothing', async () => {
