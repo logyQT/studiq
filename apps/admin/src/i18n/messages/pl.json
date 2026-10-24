@@ -53,7 +53,8 @@
     "disabled": "Wyłączona",
     "empty": "Brak flag funkcji.",
     "delete_title": "Usuń flagę funkcji",
-    "delete_desc": "Czy na pewno chcesz usunąć flagę \"{key}\"? Tej operacji nie można cofnąć."
+    "delete_desc": "Czy na pewno chcesz usunąć flagę \"{key}\"? Tej operacji nie można cofnąć.",
+    "save_failed": "Nie udało się zapisać ({code})"
   },
   "SubscriptionPlans": {
     "title": "Plany subskrypcji",

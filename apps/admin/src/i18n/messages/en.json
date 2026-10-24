@@ -53,7 +53,8 @@
     "disabled": "Disabled",
     "empty": "No feature flags found.",
     "delete_title": "Delete Feature Flag",
-    "delete_desc": "Are you sure you want to delete the flag \"{key}\"? This action cannot be undone."
+    "delete_desc": "Are you sure you want to delete the flag \"{key}\"? This action cannot be undone.",
+    "save_failed": "Save failed ({code})"
   },
   "SubscriptionPlans": {
     "title": "Subscription Plans",
