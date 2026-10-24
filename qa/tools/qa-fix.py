@@ -846,6 +846,40 @@ def bump_attempt(rec: dict) -> None:
     rec["attempt"] = attempt(rec) + 1
 
 
+def digest(data: dict) -> dict:
+    """Compact routing summary of an agent artifact.
+
+    `collect` used to echo the whole artifact into the manager's context (~1.8k
+    tokens per call, 52% of a long session). Routing only needs the decision,
+    a blocking count and a one-line hint; the full payload stays on disk and in
+    `collect --full`.
+    """
+    out = {}
+    for key in ("decision", "status", "pr", "commit", "question"):
+        if data.get(key):
+            out[key] = data[key]
+    if out.get("commit"):
+        out["commit"] = str(out["commit"])[:12]
+    blocking = data.get("blocking") or []
+    if blocking:
+        out["blocking"] = len(blocking)
+        first = blocking[0] if isinstance(blocking[0], dict) else {}
+        hint = (first.get("problem") or first.get("reason") or "")
+        if hint:
+            out["first_blocking"] = " ".join(str(hint).split())[:200]
+    if data.get("non_blocking"):
+        out["non_blocking"] = len(data["non_blocking"])
+    for key in ("notes", "reason", "summary"):
+        if data.get(key):
+            out["note"] = " ".join(str(data[key]).split())[:200]
+            break
+    return out
+
+
+def emit_artifact(n: int, a: int, name: str) -> str:
+    return str(issue_dir(n) / f"{name}-r{a}.json")
+
+
 def cmd_collect(args) -> None:
     state = load_state()
     n = args.issue
@@ -853,6 +887,17 @@ def cmd_collect(args) -> None:
     a = attempt(rec)
     stage = rec["stage"]
     d = issue_dir(n)
+    full = bool(getattr(args, "full", False))
+
+    def art(path, data):
+        # compact by default: the full artifact stays on disk (`--full` echoes it)
+        return {"data": data} if full else {"artifact": str(path), "digest": digest(data)}
+
+    def arts(*pairs):
+        if full:
+            return {"reviews": [data for _, data in pairs]}
+        return {"artifacts": [str(path) for path, _ in pairs],
+                "digests": [digest(data) for _, data in pairs]}
 
     if stage == "designing":
         p = d / f"design-r{a}.json"
@@ -862,16 +907,16 @@ def cmd_collect(args) -> None:
         if decision == "ready":
             rec["stage"] = "design_ready"
             history(state, n, {"event": "design_ready", "decision": decision})
-            ok(action="collect", issue=n, stage="design_ready", next="implement", data=data)
+            ok(action="collect", issue=n, stage="design_ready", next="implement", **art(p, data))
         elif decision == "needs_design":
             add_label(n, "needs-design")
             rec["stage"] = "needs_design"
             history(state, n, {"event": "needs_design", "question": data.get("question", "")})
-            ok(action="collect", issue=n, stage="needs_design", next=None, data=data)
+            ok(action="collect", issue=n, stage="needs_design", next=None, **art(p, data))
         else:
             rec["stage"] = "blocked"
             history(state, n, {"event": "design_blocked", "data": data})
-            ok(action="collect", issue=n, stage="blocked", next=None, data=data)
+            ok(action="collect", issue=n, stage="blocked", next=None, **art(p, data))
 
     elif stage == "implementing":
         p = d / f"impl-r{a}.json"
@@ -882,11 +927,11 @@ def cmd_collect(args) -> None:
             rec["branch"] = data.get("branch") or rec.get("branch")
             rec["pr"] = data.get("pr")
             history(state, n, {"event": "pr_open", "pr": rec["pr"], "branch": rec["branch"]})
-            ok(action="collect", issue=n, stage="pr_open", next="review", data=data)
+            ok(action="collect", issue=n, stage="pr_open", next="review", **art(p, data))
         else:
             rec["stage"] = "blocked"
             history(state, n, {"event": "implementation_blocked", "data": data})
-            ok(action="collect", issue=n, stage="blocked", next=None, data=data)
+            ok(action="collect", issue=n, stage="blocked", next=None, **art(p, data))
 
     elif stage == "reviewing":
         r1 = d / f"review-1-r{a}.json"
@@ -903,14 +948,14 @@ def cmd_collect(args) -> None:
         if decisions == ("approve", "approve"):
             rec["stage"] = "approved"
             history(state, n, {"event": "reviews_approved", "reviews": [d1, d2]})
-            ok(action="collect", issue=n, stage="approved", next="qa", reviews=[d1, d2])
+            ok(action="collect", issue=n, stage="approved", next="qa", **arts((r1, d1), (r2, d2)))
         else:
             rec["stage"] = "changes_requested"
             bump_attempt(rec)
             history(state, n, {"event": "changes_requested", "reviews": [d1, d2],
                                "next_attempt": attempt(rec)})
             ok(action="collect", issue=n, stage="changes_requested",
-               next="design", attempt=attempt(rec), reviews=[d1, d2])
+               next="design", attempt=attempt(rec), **arts((r1, d1), (r2, d2)))
 
     elif stage == "qa_testing":
         p = d / f"qa-r{a}.json"
@@ -919,18 +964,18 @@ def cmd_collect(args) -> None:
         if data.get("decision") == "pass":
             rec["stage"] = "qa_passed"
             history(state, n, {"event": "qa_passed", "data": data})
-            ok(action="collect", issue=n, stage="qa_passed", next="merge", data=data)
+            ok(action="collect", issue=n, stage="qa_passed", next="merge", **art(p, data))
         elif data.get("decision") == "fail":
             rec["stage"] = "qa_failed"
             bump_attempt(rec)
             history(state, n, {"event": "qa_failed", "data": data,
                                "next_attempt": attempt(rec)})
             ok(action="collect", issue=n, stage="qa_failed", next="design",
-               attempt=attempt(rec), data=data)
+               attempt=attempt(rec), **art(p, data))
         else:
             rec["stage"] = "blocked"
             history(state, n, {"event": "qa_blocked", "data": data})
-            ok(action="collect", issue=n, stage="blocked", next=None, data=data)
+            ok(action="collect", issue=n, stage="blocked", next=None, **art(p, data))
     else:
         fail(f"nothing to collect from stage {stage}")
 
@@ -1149,7 +1194,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--env", type=int)
     s.add_argument("--note", help="manager note injected into the writer prompt")
     s.set_defaults(fn=cmd_implement)
-    s = sub.add_parser("collect"); s.add_argument("issue", type=int); s.set_defaults(fn=cmd_collect)
+    s = sub.add_parser("collect"); s.add_argument("issue", type=int)
+    s.add_argument("--full", action="store_true",
+                   help="echo the whole artifact instead of a compact digest")
+    s.set_defaults(fn=cmd_collect)
     s = sub.add_parser("merge"); s.add_argument("issue", type=int); s.set_defaults(fn=cmd_merge)
     s = sub.add_parser("migration-ts"); s.add_argument("issue", type=int)
     s.add_argument("--count", type=int, default=1); s.set_defaults(fn=cmd_migration_ts)

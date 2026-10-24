@@ -35,6 +35,9 @@ queued → designing → design_ready → implementing → pr_open → reviewing
 ```
 A retry increments `attempt`; the previous review/QA artifacts stay in the dossier and every new prompt points at them.
 
+### `collect` output — digests, not dumps
+`collect` prints `stage`, `next`, the artifact path(s) and a **digest**: `decision`/`status`, `blocking` count, one 200-char `first_blocking` line, and a 200-char `note`. That is everything routing needs, and it keeps this session small. Open the artifact (`/workspaces/studiq/.qa-fix/issues/<n>/review-1-rN.json` etc.) or run `collect <issue> --full` only when you actually need the full findings — never paste whole artifacts back into context.
+
 ### 1. Design
 Pick `next` (priority order: critical, high, medium, low). Dispatch a free designer:
 
@@ -75,7 +78,7 @@ $FIX review <issue>
 $FIX review <issue> --envs 1,7
 ```
 
-When each reviewer slot finishes, run `collect <issue>`. The first call returns `pending`; the second evaluates both artifacts. `collect` rejects artifacts older than the current dispatch, so stale pre-rebase reviews cannot satisfy the gate.
+When each reviewer slot finishes, run `collect <issue>`. The first call returns `pending`; the second evaluates both artifacts. `collect` rejects artifacts older than the current dispatch, so stale pre-rebase reviews cannot satisfy the gate. The digest tells you the two decisions and the blocking count; read the artifact files only for the findings you are about to route.
 - both `approve` → `approved`; dispatch QA.
 - any `request_changes` → `changes_requested`; send it back to a **designer first** with the reviewers' artifacts, then the writer. Do not send review findings straight to the writer unless the designer says no design change is needed.
 - If a reviewer cannot assess (missing repro/design), treat it as changes requested.
