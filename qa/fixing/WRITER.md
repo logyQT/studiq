@@ -66,6 +66,13 @@ A green push through both hooks is the default and expected outcome. Fix the
 failure instead of skipping it: format the file, fix the lint finding, fix the
 type error, make the worktree clean.
 
+If a hook fails with a wall of errors in files you never touched (e.g. a rule that
+does not exist in your tool version, or duplicated package types), suspect a broken
+install rather than a broken repo: check `bunx biome --version` against `bun.lock`
+and run `bun install --frozen-lockfile` before anything else. Never "fix" that by
+skipping the hook, and never run `pnpm`/`npm` in this repo — it is Bun-only and a
+foreign install breaks the lock and every later check.
+
 ### `--no-verify` — rare exception, never a shortcut
 `--no-verify` is allowed **only** when this PR is a partial fix of a larger issue
 and the failing check is provably pre-existing on `main`, not caused by your change:
