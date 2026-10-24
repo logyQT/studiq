@@ -171,7 +171,7 @@ export class SeatService {
         `
         id, user_id, pool_id, assigned_at,
         pool:org_seat_pools!inner(plan_key),
-        profile:profiles!inner(email, full_name)
+        profile:profiles(email, full_name)
       `,
       )
       .eq('organization_id', ctx.activeOrgId)
@@ -185,8 +185,13 @@ export class SeatService {
         userId: a.user_id,
         poolId: a.pool_id,
         planKey: (a.pool as unknown as { plan_key: string }).plan_key,
-        userEmail: (a.profile as unknown as { email: string }).email,
-        userFullName: (a.profile as unknown as { full_name: string | null }).full_name,
+        // Left join: `profiles` is RLS-narrowed to the caller's own row and the
+        // rows of users who share an organization with them. An assignment that
+        // outlived the membership (historical removals) must still be listed so
+        // a manager can free the seat, so `profile` may be null here.
+        userEmail: (a.profile as unknown as { email: string } | null)?.email ?? '',
+        userFullName:
+          (a.profile as unknown as { full_name: string | null } | null)?.full_name ?? null,
         assignedAt: a.assigned_at,
       })),
     );

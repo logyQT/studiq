@@ -39,6 +39,11 @@ const PG_ERROR_MAP: Record<string, AppErrorCode> = {
   '23503': 'BAD_REQUEST',
   '23502': 'BAD_REQUEST',
   '23514': 'BAD_REQUEST',
+  // RLS / table / function privilege denial. These are authorization failures
+  // (a policy or a grant rejected the caller), not server faults, so they must
+  // surface as 403 and not collapse into a 500. The span still carries
+  // db.error.code = 42501 for Tempo.
+  '42501': 'FORBIDDEN',
 };
 
 export class DatabaseError extends Error {

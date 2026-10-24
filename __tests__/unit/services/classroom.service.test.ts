@@ -38,7 +38,7 @@ describe('ClassroomService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
-    service = new ClassroomService(async () => mock as any);
+    service = new ClassroomService(() => mock as any);
   });
 
   describe('create', () => {

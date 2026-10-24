@@ -86,14 +86,19 @@ export class LimitsResolver {
    * (plan_limits) plus any org_limits override, never by the acting user's
    * personal plan. Used where the actor is not yet in the org context — e.g.
    * a student accepting an invitation. Missing limits default to unlimited (-1).
+   *
+   * `client` lets the caller pass the service-role client: before the caller is
+   * an org member, RLS hides `organizations`/`org_limits`, which would silently
+   * turn every limit into "unlimited" (#182 regression).
    */
   async checkOrgLimit(
     organizationId: string,
     limitKey: string,
     currentCount: number,
     increment = 1,
+    client?: SupabaseClient,
   ): Promise<void> {
-    const supabase = await this.createClient();
+    const supabase = client ?? (await this.createClient());
 
     const limits: number[] = [];
 

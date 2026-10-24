@@ -148,7 +148,7 @@ export class OrganizationController {
     return controllerResponse.success(detail.data);
   }
 
-  async delete(id: string): Promise<ControllerResponse> {
+  async delete(ctx: RequestContext, id: string): Promise<ControllerResponse> {
     const parsedId = OrganizationIdParamsSchema.safeParse({ id });
     if (!parsedId.success) {
       return {
@@ -158,7 +158,7 @@ export class OrganizationController {
       };
     }
 
-    const result = await this.organizationService.delete(parsedId.data.id);
+    const result = await this.organizationService.delete(ctx, parsedId.data.id);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

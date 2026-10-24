@@ -8,11 +8,91 @@ import type { CreateInviteInput } from '@studiq/server/models/invitation.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+/** Internal invitation shape used by preview + accept. Never sent to a caller. */
+interface LoadedInvite {
+  email: string;
+  /** Null for legacy rows; such an invite can never be accepted into authority. */
+  inviterId: string | null;
+  isAccepted: boolean;
+  expiresAt: string;
+  organizationId: string | null;
+  targetOrgRoleId: string;
+  organizationName: string;
+  orgRoleName: string;
+  /** Organization the target role belongs to — must match `organizationId`. */
+  roleOrganizationId: string | null;
+}
+
 export class InvitationService {
   constructor(
     private createClient: () => Promise<SupabaseClient>,
     private createAdminClient: () => SupabaseClient = createServiceClient,
   ) {}
+
+  /**
+   * Read an invitation on the service-role client. Public preview and accept both
+   * run before the caller is a member, so the invitation, its organization and
+   * its role are invisible under RLS. The 32-hex token is the capability.
+   */
+  private async loadInvite(token: string): Promise<LoadedInvite | null> {
+    const supabase = this.createAdminClient();
+
+    const { data, error } = await supabase
+      .from('invitations')
+      .select(
+        'email, inviter_id, is_accepted, expires_at, organization_id, target_org_role_id, organizations!inner(name), org_roles!inner(name, organization_id)',
+      )
+      .eq('token', token)
+      .single();
+
+    if (error || !data) return null;
+
+    const org = data.organizations as unknown as { name: string } | null;
+    const role = data.org_roles as unknown as { name: string; organization_id: string } | null;
+
+    return {
+      email: data.email,
+      inviterId: data.inviter_id ?? null,
+      isAccepted: data.is_accepted === true,
+      expiresAt: data.expires_at,
+      organizationId: data.organization_id ?? null,
+      targetOrgRoleId: data.target_org_role_id,
+      organizationName: org?.name ?? '',
+      orgRoleName: role?.name ?? '',
+      roleOrganizationId: role?.organization_id ?? null,
+    };
+  }
+
+  /**
+   * Common validity gate for preview and accept. An invitation is gone once it
+   * is expired, already used, or points at a role that is not part of its own
+   * organization (a cross-tenant reference would leak that org's permission
+   * scopes through the member row).
+   */
+  private isInviteUsable(invite: LoadedInvite): boolean {
+    return (
+      !invite.isAccepted &&
+      new Date(invite.expiresAt) >= new Date() &&
+      invite.organizationId !== null &&
+      invite.roleOrganizationId === invite.organizationId
+    );
+  }
+
+  /**
+   * The inviter must still be allowed to grant the target role. Re-checked at
+   * preview and accept: an invitation minted by a manager who was later demoted
+   * (or by a member who should never have had the capability) is dead.
+   */
+  private async isInviteAuthorized(invite: LoadedInvite): Promise<boolean> {
+    if (!invite.inviterId) return false;
+
+    const { data, error } = await this.createAdminClient().rpc('can_assign_org_role', {
+      p_actor: invite.inviterId,
+      p_role_id: invite.targetOrgRoleId,
+    });
+
+    return !error && data === true;
+  }
 
   async createInvitation(
     ctx: RequestContext,
@@ -71,33 +151,19 @@ export class InvitationService {
       orgRoleName: string;
     }>
   > {
-    const supabase = await this.createClient();
+    const invite = await this.loadInvite(token);
+    if (!invite) return failure('NOT_FOUND');
+    if (!this.isInviteUsable(invite)) return failure('GONE');
+    if (!(await this.isInviteAuthorized(invite))) return failure('GONE');
 
-    const { data, error } = await supabase
-      .from('invitations')
-      .select(
-        'email, expires_at, organization_id, target_org_role_id, organizations!inner(name), org_roles!inner(name)',
-      )
-      .eq('token', token)
-      .single();
-
-    if (error || !data) {
-      return failure('NOT_FOUND');
-    }
-
-    if (new Date(data.expires_at) < new Date()) {
-      return failure('GONE');
-    }
-
-    const org = data.organizations as unknown as { name: string };
-    const role = data.org_roles as unknown as { name: string };
-
+    // `inviterId` deliberately stays server-side: the public preview only needs
+    // the org/role names.
     return success({
-      email: data.email,
-      organizationId: data.organization_id,
-      organizationName: org?.name ?? '',
-      targetRole: data.target_org_role_id,
-      orgRoleName: role?.name ?? '',
+      email: invite.email,
+      organizationId: invite.organizationId as string,
+      organizationName: invite.organizationName,
+      targetRole: invite.targetOrgRoleId,
+      orgRoleName: invite.orgRoleName,
     });
   }
 
@@ -105,33 +171,51 @@ export class InvitationService {
     ctx: RequestContext,
     token: string,
   ): Promise<ServiceResult<{ id: string; name: string; orgRoleId: string }>> {
-    const supabase = await this.createClient();
+    // The accepting user is not a member yet, and org_members has no INSERT
+    // policy, so the whole accept flow runs on the service-role client. That
+    // bypasses RLS, so this method is the authorization choke point: the token
+    // must be live, unused, internally consistent, and the INVITER must still be
+    // allowed to grant the target role (#191 B1/B6). The member-count limit
+    // (#182) is still enforced below, in the same order as before.
+    const supabase = this.createAdminClient();
 
-    const inviteResult = await this.getInvitationByToken(token);
-    if (!inviteResult.success) return inviteResult;
-    const invite = inviteResult.data;
+    const invite = await this.loadInvite(token);
+    if (!invite) return failure('NOT_FOUND');
+    if (!this.isInviteUsable(invite)) return failure('GONE');
+
+    // A demoted inviter (or one who never had `member.manage`) cannot promote
+    // the acceptor. service_role may call the internal helper directly; any
+    // error is treated as an invalid invitation rather than a 500 so a forged
+    // token cannot probe the inviter's role.
+    if (!(await this.isInviteAuthorized(invite))) return failure('GONE');
+
+    // Narrowed by isInviteUsable(); re-checked for TypeScript.
+    const organizationId = invite.organizationId;
+    if (!organizationId) return failure('GONE');
 
     // The accepting user is not a member yet, and org_members has RLS, so a
     // user-scoped count would always see 0 rows and never hit the limit. The
     // caller is excluded: re-accepting an invitation (or a manager re-inviting
     // an existing member) updates that member's own row via the upsert below
     // and must not consume a second seat.
-    const { count: otherMemberCount, error: countError } = await this.createAdminClient()
+    const { count: otherMemberCount, error: countError } = await supabase
       .from('org_members')
       .select('*', { count: 'exact', head: true })
-      .eq('organization_id', invite.organizationId)
+      .eq('organization_id', organizationId)
       .neq('user_id', ctx.userId);
     if (countError) return toDbFailure(countError);
     await limitsResolver.checkOrgLimit(
-      invite.organizationId,
+      organizationId,
       'max_students',
       otherMemberCount ?? 0,
+      1,
+      supabase,
     );
 
     const { data: org, error: orgError } = await supabase
       .from('organizations')
       .select('id, name')
-      .eq('id', invite.organizationId)
+      .eq('id', organizationId)
       .single();
 
     if (orgError || !org) return failure('GONE');
@@ -143,9 +227,9 @@ export class InvitationService {
       .from('org_members')
       .upsert(
         {
-          organization_id: invite.organizationId,
+          organization_id: organizationId,
           user_id: ctx.userId,
-          org_role_id: invite.targetRole,
+          org_role_id: invite.targetOrgRoleId,
         },
         { onConflict: 'organization_id,user_id' },
       )
@@ -157,7 +241,7 @@ export class InvitationService {
     const { data: defaultGroup } = await supabase
       .from('groups')
       .select('id')
-      .eq('organization_id', invite.organizationId)
+      .eq('organization_id', organizationId)
       .eq('is_default', true)
       .single();
 
@@ -175,9 +259,18 @@ export class InvitationService {
       if (me) return toDbFailure(me);
     }
 
-    await supabase.from('invitations').update({ is_accepted: true }).eq('token', token);
+    // `is_accepted = false` makes the token single-use even under a race between
+    // two accepts: only one UPDATE can match. A token that was already consumed
+    // is rejected by isInviteUsable() above (410), so a demoted admin cannot
+    // re-play an old invite.
+    const { error: acceptError } = await supabase
+      .from('invitations')
+      .update({ is_accepted: true })
+      .eq('token', token)
+      .eq('is_accepted', false);
+    if (acceptError) return toDbFailure(acceptError);
 
-    return success({ id: org.id, name: org.name, orgRoleId: invite.targetRole });
+    return success({ id: org.id, name: org.name, orgRoleId: invite.targetOrgRoleId });
   }
 
   async listInvitations(

@@ -99,6 +99,42 @@ describe('LimitsResolver', () => {
     });
   });
 
+  describe('checkOrgLimit', () => {
+    it('uses the injected client, so a pre-membership caller still sees the plan (#191)', async () => {
+      const adminFrom = vi.fn((table: string) => {
+        if (table === 'organizations') return chain({ plan: 'launch' });
+        if (table === 'plan_limits') return chain({ limit_value: 40 });
+        if (table === 'org_limits') return chain(null);
+        return chain(null);
+      });
+      const admin = { from: adminFrom } as any;
+
+      await expect(
+        resolver.checkOrgLimit('org-1', 'max_students', 10, 1, admin),
+      ).resolves.toBeUndefined();
+
+      expect(adminFrom).toHaveBeenCalledWith('organizations');
+      // The user-session client would see nothing (RLS) and silently return
+      // "unlimited", which is the #182 regression this guards against.
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('throws when the injected client reports the org is at capacity', async () => {
+      const admin = {
+        from: vi.fn((table: string) => {
+          if (table === 'organizations') return chain({ plan: 'launch' });
+          if (table === 'plan_limits') return chain({ limit_value: 40 });
+          if (table === 'org_limits') return chain(null);
+          return chain(null);
+        }),
+      } as any;
+
+      await expect(resolver.checkOrgLimit('org-1', 'max_students', 40, 1, admin)).rejects.toThrow(
+        'USAGE_LIMIT_EXCEEDED',
+      );
+    });
+  });
+
   describe('checkLimit', () => {
     it('does not throw when under limit', async () => {
       mock.from.mockImplementation((table: string) => {

@@ -137,13 +137,10 @@ describe('OrganizationMemberService', () => {
 
   describe('changeRole', () => {
     it('changes role successfully', async () => {
-      mock.from.mockReturnValue({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: null, error: null }),
-          }),
-        }),
-      });
+      mock.from
+        // Target role must belong to the active org (#191 B2 defense in depth).
+        .mockReturnValueOnce(chain({ id: 'role-1', organization_id: 'uni-1' }))
+        .mockReturnValueOnce(chain([{ user_id: 'user-123' }]));
 
       const result = await service.changeRole(
         ctx,
@@ -153,7 +150,37 @@ describe('OrganizationMemberService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({ success: true });
-      expect(mock.from).toHaveBeenCalledWith('org_members');
+      expect(mock.from).toHaveBeenNthCalledWith(1, 'org_roles');
+      expect(mock.from).toHaveBeenNthCalledWith(2, 'org_members');
+    });
+
+    it('returns FORBIDDEN when the target role belongs to another organization', async () => {
+      mock.from.mockReturnValueOnce(chain(null));
+
+      const result = await service.changeRole(
+        ctx,
+        'user-123',
+        '00000000-0000-4000-8000-000000000002',
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns NOT_FOUND when the member update affects no rows', async () => {
+      mock.from
+        .mockReturnValueOnce(chain({ id: 'role-1', organization_id: 'uni-1' }))
+        .mockReturnValueOnce(chain([]));
+
+      const result = await service.changeRole(
+        ctx,
+        'user-123',
+        '00000000-0000-4000-8000-000000000001',
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
     });
 
     it('returns FORBIDDEN when user tries to change own role', async () => {

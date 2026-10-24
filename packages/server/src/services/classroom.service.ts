@@ -1,16 +1,20 @@
 import type { RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
-import { createClient } from '@studiq/server/lib/supabase/server';
+import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type { CreateClassroomInput } from '@studiq/server/models/classroom.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class ClassroomService {
-  constructor(private createClient: () => Promise<SupabaseClient>) {}
+  // Classroom provisioning is the only thing this service does, and every step
+  // runs before the caller is a member: RLS hides the new organization, its
+  // trigger-created roles and the membership row from a user-session client, so
+  // the whole sequence is service-role (authorization stays in the controller).
+  constructor(private createAdminClient: () => SupabaseClient = createServiceClient) {}
 
   async create(ctx: RequestContext, data: CreateClassroomInput): Promise<ServiceResult<unknown>> {
-    const supabase = await this.createClient();
+    const supabase = this.createAdminClient();
 
     const { data: org, error: orgError } = await supabase
       .from('organizations')
@@ -47,6 +51,6 @@ export class ClassroomService {
   }
 }
 export const classroomService = wrapService(
-  new ClassroomService(createClient),
+  new ClassroomService(createServiceClient),
   'classroom.service',
 );

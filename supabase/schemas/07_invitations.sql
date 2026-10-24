@@ -17,50 +17,50 @@ CREATE TABLE public.invitations (
 
 -- ==========================================
 -- TRIGGER: handle_new_user
--- Fires on auth.users INSERT.
--- If the signup carries a valid invite token:
---   - creates a profile
---   - creates an org_members entry
---   - marks the invitation as accepted
--- Otherwise creates a profile only. The account type is set by the
--- application code via admin.updateUserById() during signup.
+-- Fires on auth.users INSERT and creates the profile only.
+--
+-- Invitations are NOT applied at signup. 20260708000001_fix_handle_new_user
+-- removed the old `invite_token` branch (it pre-dated org roles and trusted a
+-- client-supplied token with no grant-authority check); joining an organization
+-- happens through POST /api/v1/organization/invites/accept, which runs on the
+-- service-role client after checking can_assign_org_role(inviter, target role).
+-- Keeping the branch out of this trigger is what stops a stale/demoted inviter
+-- from minting an org role during signup.
 -- ==========================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
-  passed_token     text   := NEW.raw_user_meta_data->>'invite_token';
-  invite_record    record;
+  acct_type    text;
+  plan_key_val text;
 BEGIN
-  IF passed_token IS NOT NULL THEN
-    SELECT * INTO invite_record
-    FROM public.invitations
-    WHERE token      = passed_token
-      AND is_accepted = false
-      AND expires_at  > now();
+  -- Prefer app_meta_data (server-controlled — seed, admin APIs).
+  -- Fallback to user_meta_data (client-supplied from signup) with validation.
+  acct_type := NEW.raw_app_meta_data->>'account_type';
 
-    IF FOUND THEN
-      INSERT INTO public.profiles (id, email, full_name)
-      VALUES (
-        NEW.id,
-        NEW.email,
-        NEW.raw_user_meta_data->>'name'
-      );
+  IF acct_type IS NULL THEN
+    acct_type := NEW.raw_user_meta_data->>'account_type';
 
-      INSERT INTO public.org_members (organization_id, user_id, org_role_id)
-      VALUES (invite_record.organization_id, NEW.id, invite_record.target_org_role_id)
-      ON CONFLICT DO NOTHING;
-
-      UPDATE public.invitations
-        SET is_accepted = true
-        WHERE id = invite_record.id;
-
-      RETURN NEW;
+    IF acct_type IS NULL OR acct_type NOT IN ('student', 'educator', 'manager') THEN
+      RAISE EXCEPTION 'Invalid account_type: %. Allowed: student, educator, manager', acct_type;
     END IF;
   END IF;
 
-  INSERT INTO public.profiles (id, email, full_name)
-  VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data->>'name');
+  plan_key_val := CASE acct_type
+    WHEN 'student'   THEN 'base'
+    WHEN 'educator'  THEN 'lite'
+    WHEN 'manager'   THEN 'launch'
+    ELSE 'base'
+  END;
+
+  INSERT INTO public.profiles (id, email, full_name, personal_plan_key)
+  VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data->>'name', plan_key_val);
+
+  -- Set app_metadata.account_type so withAuth() middleware can read it
+  -- without needing a service-role API call from the app layer
+  UPDATE auth.users
+  SET raw_app_meta_data = COALESCE(raw_app_meta_data, '{}'::jsonb) || jsonb_build_object('account_type', acct_type)
+  WHERE id = NEW.id;
 
   RETURN NEW;
 END;
