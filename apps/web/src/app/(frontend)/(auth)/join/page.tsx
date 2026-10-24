@@ -58,6 +58,7 @@ function JoinSkeleton() {
 
 function JoinContent() {
   const t = useTranslations('RegisterPage');
+  const tErr = useTranslations('Errors');
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
@@ -92,7 +93,6 @@ function JoinContent() {
         }
 
         form.setValue('email', result.data.email);
-        form.setValue('name', result.data.name);
       } catch {
         toast.error(APP_ERRORS.INTERNAL_SERVER.code);
         router.replace('/register');
@@ -112,9 +112,11 @@ function JoinContent() {
         body: JSON.stringify(values),
       });
 
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || 'ERROR_REGISTRATION_FAILED');
+      const result = await res.json();
+
+      if (!result.success) {
+        toast.error(tErr(result.error || APP_ERRORS.INTERNAL_SERVER.code));
+        return;
       }
 
       toast.success(t('success_header'), {
@@ -123,7 +125,7 @@ function JoinContent() {
 
       router.push('/login');
     } catch {
-      toast.error(t('Errors.ERROR_INTERNAL_SERVER'));
+      toast.error(tErr(APP_ERRORS.INTERNAL_SERVER.code));
     }
   }
 
@@ -148,7 +150,7 @@ function JoinContent() {
                 <FormItem>
                   <FormLabel>{t('name_label')}</FormLabel>
                   <FormControl>
-                    <Input {...field} readOnly className="bg-muted cursor-not-allowed" />
+                    <Input autoComplete="name" placeholder={t('name_placeholder')} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
