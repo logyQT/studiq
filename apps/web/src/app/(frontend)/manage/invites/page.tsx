@@ -107,7 +107,7 @@ export default function InvitationsPage() {
   }
 
   function addInviteRow() {
-    setInvites([...invites, { email: '', orgRoleId: orgRoles[0]?.id ?? '' }]);
+    setInvites([...invites, { email: '', orgRoleId: '' }]);
   }
 
   function removeInviteRow(index: number) {
@@ -141,7 +141,7 @@ export default function InvitationsPage() {
             count: bulkResults.filter((r: InvitationResult) => r.success).length,
           }),
         );
-        setInvites([{ email: '', orgRoleId: orgRoles[0]?.id ?? '' }]);
+        setInvites([{ email: '', orgRoleId: '' }]);
         fetchInvitations();
       }
     } catch {
