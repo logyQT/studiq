@@ -3,7 +3,10 @@ import type { ControllerResponse } from '@studiq/server/lib/controller-response'
 import { controllerResponse } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
-import { SubmitQuizAttemptSchema } from '@studiq/server/models/quiz-attempt.model';
+import {
+  SaveQuizAnswersSchema,
+  SubmitQuizAttemptSchema,
+} from '@studiq/server/models/quiz-attempt.model';
 import {
   type QuizAttemptService,
   quizAttemptService,
@@ -44,6 +47,32 @@ export class QuizAttemptController {
     }
 
     const result = await this.quizAttemptService.submit(parsed.data, ctx);
+
+    if (isFailure(result)) return controllerResponse.error(result.error);
+
+    return controllerResponse.success(result.data);
+  }
+
+  async saveAnswers(
+    body: unknown,
+    attemptId: string,
+    ctx: RequestContext,
+  ): Promise<ControllerResponse> {
+    const parsed = SaveQuizAnswersSchema.safeParse({
+      ...(body as Record<string, unknown>),
+      attemptId,
+    });
+
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
+
+    const result = await this.quizAttemptService.saveDraft(parsed.data, ctx);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 

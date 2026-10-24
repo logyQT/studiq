@@ -10,6 +10,7 @@ CREATE TABLE public.quiz_attempts (
   total_questions  int NOT NULL DEFAULT 0,
   total_points     int,
   config           jsonb,
+  draft_answers    jsonb NOT NULL DEFAULT '{}'::jsonb,
   started_at       timestamptz DEFAULT now(),
   completed_at     timestamptz,
   assignment_id    uuid REFERENCES public.teacher_assignments(id) ON DELETE SET NULL,

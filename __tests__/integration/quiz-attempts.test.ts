@@ -14,6 +14,7 @@ import {
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
+import { PUT as attemptAnswersPut } from '@/app/(backend)/api/v1/quiz/[attemptId]/answers/route';
 import {
   GET as attemptGet,
   POST as attemptPost,
@@ -446,6 +447,216 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(401);
         expect(body.success).toBe(false);
+      });
+    });
+
+    describe('PUT /api/v1/quiz/:attemptId/answers (#349)', () => {
+      async function loadAttemptAnswers() {
+        const supabase = createServiceClient();
+        const { data: attemptQuestions } = await supabase
+          .from('quiz_attempt_questions')
+          .select('question_id')
+          .eq('attempt_id', attemptId);
+        const questionIds = (attemptQuestions ?? []).map((q) => q.question_id);
+
+        const { data: options } = await supabase
+          .from('question_options')
+          .select('id, question_id')
+          .in('question_id', questionIds);
+
+        return { questionIds, options: options ?? [] };
+      }
+
+      function draftRequest(answers: unknown[]) {
+        return createNextRequestWithParams(
+          `http://localhost/api/v1/quiz/${attemptId}/answers`,
+          { attemptId },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answers }),
+          },
+        );
+      }
+
+      async function getAttempt() {
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/quiz/${attemptId}`,
+          { attemptId },
+        );
+        const response = await attemptGet(request, { params });
+        return { response, body: await response.json() };
+      }
+
+      async function countStudentAnswers() {
+        const supabase = createServiceClient();
+        const { count } = await supabase
+          .from('student_answers')
+          .select('id', { count: 'exact', head: true })
+          .eq('attempt_id', attemptId);
+        return count ?? 0;
+      }
+
+      it('saves a draft and serves it back on resume without grading it', async () => {
+        mockUser(student.user);
+        const { options } = await loadAttemptAnswers();
+        const first = options[0];
+
+        const { request, params } = draftRequest([
+          { questionId: first.question_id, selectedAnswerId: first.id },
+        ]);
+        const response = await attemptAnswersPut(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+        expect(body.data.saved).toBe(1);
+
+        // A resume goes through GET and must show the saved selection.
+        const { response: getResponse, body: getBody } = await getAttempt();
+        expect(getResponse.status).toBe(200);
+        expect(getBody.data.completed_at).toBeNull();
+        expect(getBody.data.answers).toEqual({
+          [first.question_id]: { selected_answer_id: first.id, text_answer: null },
+        });
+        // Progress must not be graded: nothing lands in student_answers yet.
+        expect(await countStudentAnswers()).toBe(0);
+      });
+
+      it('returns 404 for another user attempt', async () => {
+        mockUser(other);
+
+        const { request, params } = draftRequest([]);
+        const response = await attemptAnswersPut(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(404);
+        expect(body.success).toBe(false);
+      });
+
+      it('returns 401 when not authenticated', async () => {
+        mockUser(null);
+
+        const { request, params } = draftRequest([]);
+        const response = await attemptAnswersPut(request, { params });
+
+        expect(response.status).toBe(401);
+      });
+
+      it('returns 400 once the attempt is submitted', async () => {
+        mockUser(student.user);
+        const { options } = await loadAttemptAnswers();
+
+        const submitReq = createNextRequest(`http://localhost/api/v1/quiz/${attemptId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            answers: options.map((a) => ({ questionId: a.question_id, selectedAnswerId: a.id })),
+          }),
+        });
+        const submitRes = await attemptPost(submitReq, { params: Promise.resolve({ attemptId }) });
+        expect(submitRes.status).toBe(200);
+
+        const { request, params } = draftRequest([]);
+        const response = await attemptAnswersPut(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(body.success).toBe(false);
+      });
+
+      it('returns 422 for a question outside the attempt', async () => {
+        mockUser(student.user);
+
+        const { request, params } = draftRequest([
+          {
+            questionId: '00000000-0000-4000-8000-000000000099',
+            selectedAnswerId: '00000000-0000-4000-8000-000000000098',
+          },
+        ]);
+        const response = await attemptAnswersPut(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+      });
+
+      it('still never exposes the answer key after a draft save (#331)', async () => {
+        mockUser(student.user);
+        const { options } = await loadAttemptAnswers();
+        const first = options[0];
+
+        const { request, params } = draftRequest([
+          { questionId: first.question_id, selectedAnswerId: first.id },
+        ]);
+        await attemptAnswersPut(request, { params });
+
+        const { body } = await getAttempt();
+
+        expect(body.data.answers[first.question_id]).not.toHaveProperty('is_correct');
+        for (const question of body.data.questions) {
+          expect(question).not.toHaveProperty('explanation');
+          expect(question).not.toHaveProperty('search_vector');
+          for (const option of question.question_answers) {
+            expect(option).not.toHaveProperty('is_correct');
+          }
+        }
+      });
+
+      it('submits a resumed draft and stores one graded row per answered question', async () => {
+        mockUser(student.user);
+        const { questionIds, options } = await loadAttemptAnswers();
+        const perQuestion = new Map<string, string>();
+        for (const option of options) {
+          if (!perQuestion.has(option.question_id)) {
+            perQuestion.set(option.question_id, option.id);
+          }
+        }
+
+        const drafted = questionIds.map((questionId) => ({
+          questionId,
+          selectedAnswerId: perQuestion.get(questionId),
+        }));
+
+        const { request, params } = draftRequest(drafted);
+        expect((await attemptAnswersPut(request, { params })).status).toBe(200);
+
+        const { body: getBody } = await getAttempt();
+        expect(Object.keys(getBody.data.answers).sort()).toEqual([...questionIds].sort());
+
+        // The review/submit payload is built from the resumed answers.
+        const submitAnswers = questionIds.map((questionId) => ({
+          questionId,
+          selectedAnswerId: getBody.data.answers[questionId].selected_answer_id,
+        }));
+
+        const submitReq = createNextRequest(`http://localhost/api/v1/quiz/${attemptId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers: submitAnswers }),
+        });
+        const submitRes = await attemptPost(submitReq, { params: Promise.resolve({ attemptId }) });
+        expect(submitRes.status).toBe(200);
+
+        expect(await countStudentAnswers()).toBe(questionIds.length);
+
+        const supabase = createServiceClient();
+        const { data: attempt } = await supabase
+          .from('quiz_attempts')
+          .select('completed_at, draft_answers')
+          .eq('id', attemptId)
+          .single();
+
+        expect(attempt?.completed_at).not.toBeNull();
+        // Submit clears the draft.
+        expect(attempt?.draft_answers).toEqual({});
+
+        const { body: reviewBody } = await getAttempt();
+        for (const questionId of questionIds) {
+          expect(reviewBody.data.answers[questionId].selected_answer_id).toBe(
+            perQuestion.get(questionId),
+          );
+        }
       });
     });
   });
