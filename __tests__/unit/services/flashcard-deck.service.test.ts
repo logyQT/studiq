@@ -422,6 +422,7 @@ describe('FlashcardDeckService', () => {
         name: 'Original',
         created_by: ctx.userId,
         organization_id: 'org-A',
+        visibility: 'group',
       };
       mock.from.mockReturnValueOnce(qb(existing));
       vi.mocked(groupService.canShareContentToGroups).mockResolvedValue({
@@ -454,6 +455,7 @@ describe('FlashcardDeckService', () => {
         name: 'Original',
         created_by: ctx.userId,
         organization_id: null,
+        visibility: 'group',
       };
       const linked = { id: 'd-1', name: 'Original', created_by: ctx.userId, groupIds: ['g-1'] };
       mock.from.mockReturnValueOnce(qb(existing));
@@ -491,6 +493,113 @@ describe('FlashcardDeckService', () => {
       expect(mock.from).toHaveBeenCalledWith('deck_groups');
     });
 
+    it('clears group links when a partial PUT switches the deck to personal', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        visibility: 'group',
+      };
+      const updated = { ...existing, visibility: 'personal' };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(updated)); // deck update
+      mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }])); // cards of the deck
+      mock.from.mockReturnValueOnce(qb(undefined)); // card visibility flip
+      mock.from.mockReturnValueOnce(qb(undefined)); // deck_groups delete
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
+      mock.from.mockReturnValueOnce(qb({ ...updated, groupIds: [] })); // getById
+
+      const result = await service.update('d-1', { visibility: 'personal' }, ctx);
+
+      expect(result.success).toBe(true);
+      // No group list was sent, so there is nothing to authorize — the links are just dropped.
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      const linksBuilder = mock.from.mock.results[4].value;
+      expect(linksBuilder.delete).toHaveBeenCalled();
+      expect(linksBuilder.eq).toHaveBeenCalledWith('deck_id', 'd-1');
+      expect(linksBuilder.insert).not.toHaveBeenCalled();
+      expect(mock.from.mock.calls.map((c) => c[0])).toEqual([
+        'flashcard_decks',
+        'flashcard_decks',
+        'flashcards',
+        'flashcards',
+        'deck_groups',
+        'suspended_decks',
+        'flashcard_decks',
+      ]);
+      // The deck's cards follow the deck to personal.
+      expect(mock.from.mock.results[3].value.update).toHaveBeenCalledWith({
+        visibility: 'personal',
+      });
+    });
+
+    it('ignores a group list sent together with visibility personal', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        visibility: 'group',
+      };
+      const updated = { ...existing, visibility: 'personal' };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(updated)); // deck update
+      mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }])); // cards of the deck
+      mock.from.mockReturnValueOnce(qb(undefined)); // card visibility flip
+      mock.from.mockReturnValueOnce(qb(undefined)); // deck_groups delete
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
+      mock.from.mockReturnValueOnce(qb({ ...updated, groupIds: [] })); // getById
+
+      const result = await service.update(
+        'd-1',
+        { visibility: 'personal', groupIds: ['g-1'] },
+        { ...ctx, activeOrgId: 'org-1' },
+      );
+
+      expect(result.success).toBe(true);
+      // Parity with create(): a personal deck never carries group links, so no share guard runs.
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      const linksBuilder = mock.from.mock.results[4].value;
+      expect(linksBuilder.delete).toHaveBeenCalled();
+      expect(linksBuilder.insert).not.toHaveBeenCalled();
+    });
+
+    it('keeps existing links when visibility stays group without a new list', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        visibility: 'group',
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb(existing)); // deck update (no-op visibility)
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
+      mock.from.mockReturnValueOnce(qb({ ...existing, groupIds: ['g-1'] })); // getById
+
+      const result = await service.update('d-1', { visibility: 'group' }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      expect(mock.from).not.toHaveBeenCalledWith('deck_groups');
+    });
+
+    it('writes no group links for a name-only update of a shared deck', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        visibility: 'group',
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+      mock.from.mockReturnValueOnce(qb({ ...existing, name: 'Renamed' })); // deck update
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
+      mock.from.mockReturnValueOnce(qb({ ...existing, name: 'Renamed' })); // getById
+
+      const result = await service.update('d-1', { name: 'Renamed' }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(mock.from).not.toHaveBeenCalledWith('deck_groups');
+    });
+
     const viewerCtx: RequestContext = {
       ...ctx,
       activeOrgId: 'org-1',
@@ -509,7 +618,8 @@ describe('FlashcardDeckService', () => {
       mock.from.mockReturnValueOnce(qb(sharedDeck)); // existence read
       mock.from.mockReturnValueOnce(qb(undefined)); // suspended_decks upsert
       mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
-      mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }])); // accessibleFilter group scope
+      mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }])); // accessibleFilter group scope: links
+      mock.from.mockReturnValueOnce(qb([{ id: 'd-1' }])); // accessibleFilter group scope: deck visibility
       mock.from.mockReturnValueOnce(qb(suspendedDeck)); // getById
 
       const result = await service.update('d-1', { suspended: true }, viewerCtx);
@@ -524,11 +634,14 @@ describe('FlashcardDeckService', () => {
         'suspended_decks',
         'deck_groups',
         'flashcard_decks',
+        'flashcard_decks',
       ]);
       expect(mock.from.mock.results[1].value.upsert).toHaveBeenCalledWith(
         { user_id: viewerCtx.userId, deck_id: 'd-1' },
         { onConflict: 'user_id,deck_id' },
       );
+      // A suspend-only body must not reconcile share links (it only reads them for access).
+      expect(mock.from.mock.results[3].value.delete).not.toHaveBeenCalled();
     });
 
     it('unsuspends a readable deck with the deck.read gate, scoped to the caller', async () => {
@@ -536,7 +649,8 @@ describe('FlashcardDeckService', () => {
       mock.from.mockReturnValueOnce(qb(sharedDeck)); // existence read
       mock.from.mockReturnValueOnce(qb(undefined)); // suspended_decks delete
       mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
-      mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }])); // accessibleFilter group scope
+      mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }])); // accessibleFilter group scope: links
+      mock.from.mockReturnValueOnce(qb([{ id: 'd-1' }])); // accessibleFilter group scope: deck visibility
       mock.from.mockReturnValueOnce(qb(restoredDeck)); // getById
 
       const result = await service.update('d-1', { suspended: false }, viewerCtx);
@@ -570,7 +684,8 @@ describe('FlashcardDeckService', () => {
     it('keeps the deck.update gate for a no-op body', async () => {
       mock.from.mockReturnValueOnce(qb(sharedDeck)); // existence read
       mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
-      mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }])); // accessibleFilter group scope
+      mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }])); // accessibleFilter group scope: links
+      mock.from.mockReturnValueOnce(qb([{ id: 'd-1' }])); // accessibleFilter group scope: deck visibility
       mock.from.mockReturnValueOnce(qb({ ...sharedDeck, suspended: false })); // getById
 
       const result = await service.update('d-1', {}, viewerCtx);
