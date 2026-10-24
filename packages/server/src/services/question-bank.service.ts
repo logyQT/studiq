@@ -14,6 +14,7 @@ import type {
   UpdateQuestionBankInput,
 } from '@studiq/server/models/question-bank.model';
 import { groupService } from '@studiq/server/services/group.service';
+import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class QuestionBankService {
@@ -31,6 +32,12 @@ export class QuestionBankService {
       if (isFailure(shareCheck)) return failure(shareCheck.error);
       if (!shareCheck.data) return failure('FORBIDDEN');
     }
+
+    const { count: bankCount } = await supabase
+      .from('question_banks')
+      .select('*', { count: 'exact', head: true })
+      .eq('created_by', ctx.userId);
+    await limitsResolver.checkLimit(ctx, 'max_question_banks', bankCount ?? 0);
 
     const { data: bank, error } = await supabase
       .from('question_banks')
@@ -298,6 +305,13 @@ export class QuestionBankService {
     ctx: RequestContext,
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
+
+    const { count: bankCount } = await supabase
+      .from('question_banks')
+      .select('*', { count: 'exact', head: true })
+      .eq('created_by', ctx.userId);
+    await limitsResolver.checkLimit(ctx, 'max_question_banks', bankCount ?? 0, data.banks.length);
+
     const banks = data.banks.map((b) => ({
       name: b.name,
       description: b.description ?? null,
