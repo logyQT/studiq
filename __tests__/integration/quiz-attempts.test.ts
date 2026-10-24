@@ -310,6 +310,15 @@ forEachCopy((copyId) => {
             attemptQuestions!.map((q) => q.question_id),
           );
 
+        const attemptQuestionIds = attemptQuestions!.map((q) => q.question_id);
+        const { data: attemptQuestionRows, error: typesError } = await supabase
+          .from('questions')
+          .select('id, type')
+          .in('id', attemptQuestionIds);
+        if (typesError) throw new Error(`Failed to load question types: ${typesError.message}`);
+
+        const typeById = new Map((attemptQuestionRows ?? []).map((q) => [q.id, q.type] as const));
+
         const textAnswer = 'Rozbiory, słaba władza centralna, liberum veto.';
         // Go through the same client helper the take pages use, so a regression
         // that puts open text into `selectedAnswerId` fails here too (#320).
@@ -319,7 +328,11 @@ forEachCopy((copyId) => {
 
         const submittedAnswers = toSaveAnswersPayload(
           [
-            ...attemptQuestions!.map((q) => ({ id: q.question_id, type: 'mcq' })),
+            ...attemptQuestionIds.map((id) => {
+              const type = typeById.get(id);
+              if (!type) throw new Error(`Question ${id} not found for attempt ${attemptId}`);
+              return { id, type };
+            }),
             { id: openQuestion.id, type: 'open' },
           ],
           localAnswers,
