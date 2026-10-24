@@ -9,7 +9,6 @@ import type { NextRequest } from 'next/server';
 type ActionHandler = (body: unknown, ctx: RequestContext) => Promise<ControllerResponse>;
 
 const actionHandlers: Record<string, ActionHandler> = {
-  link: (body, ctx) => flashcardController.batchLink(body, ctx),
   copy: (body, ctx) => flashcardController.batchCopy(body, ctx),
   delete: (body, ctx) => flashcardController.batchDelete(body, ctx),
   topics: (body, ctx) => flashcardController.batchTopics(body, ctx),

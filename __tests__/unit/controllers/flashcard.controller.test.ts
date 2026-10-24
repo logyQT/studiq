@@ -12,6 +12,7 @@ function createMockService() {
     update: vi.fn(),
     delete: vi.fn(),
     batchDelete: vi.fn(),
+    batchMove: vi.fn(),
   };
 }
 
@@ -263,6 +264,57 @@ describe('FlashcardController', () => {
       mockService.batchDelete.mockResolvedValueOnce(failure('FORBIDDEN'));
 
       const response = await controller.batchDelete({ ids: [validId] }, mockCtx);
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(403);
+      expect((response as any).error).toBe('FORBIDDEN');
+    });
+  });
+
+  describe('batchMove', () => {
+    const validId = '550e8400-e29b-41d4-a716-446655440000';
+    const sourceDeckId = '550e8400-e29b-41d4-a716-446655440001';
+    const targetDeckId = '550e8400-e29b-41d4-a716-446655440002';
+
+    it('returns success when the service moves the cards', async () => {
+      mockService.batchMove.mockResolvedValueOnce(success({ moved: 1 }));
+
+      const body = { ids: [validId], sourceDeckId, targetDeckId };
+      const response = await controller.batchMove(body, mockCtx);
+
+      expect(response.success).toBe(true);
+      expect(response.statusCode).toBe(200);
+      expect((response as any).data).toEqual({ moved: 1 });
+      expect(mockService.batchMove).toHaveBeenCalledWith(body, mockCtx);
+    });
+
+    it('returns UNPROCESSABLE_ENTITY when the id list is empty', async () => {
+      const response = await controller.batchMove({ ids: [], sourceDeckId, targetDeckId }, mockCtx);
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).details?.length).toBeGreaterThan(0);
+      expect(mockService.batchMove).not.toHaveBeenCalled();
+    });
+
+    it('returns UNPROCESSABLE_ENTITY when targetDeckId is missing', async () => {
+      const response = await controller.batchMove({ ids: [validId], sourceDeckId }, mockCtx);
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).details?.length).toBeGreaterThan(0);
+      expect(mockService.batchMove).not.toHaveBeenCalled();
+    });
+
+    it('returns FORBIDDEN when the service returns failure', async () => {
+      mockService.batchMove.mockResolvedValueOnce(failure('FORBIDDEN'));
+
+      const response = await controller.batchMove(
+        { ids: [validId], sourceDeckId, targetDeckId },
+        mockCtx,
+      );
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(403);

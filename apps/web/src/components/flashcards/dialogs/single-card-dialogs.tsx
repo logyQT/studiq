@@ -5,7 +5,6 @@ import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from '@studi
 import { ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type { useTranslations } from 'next-intl';
-import { DeckCheckboxSelector } from '@/components/flashcards/shared/deck-checkbox-selector';
 import { DeckRadioSelector } from '@/components/flashcards/shared/deck-radio-selector';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 
@@ -13,11 +12,11 @@ interface SingleCardDialogsProps {
   t: ReturnType<typeof useTranslations>;
   basePath: string;
   ownedDecks: Deck[];
-  linkOpen: boolean;
-  linkDeckIds: string[];
-  onLinkOpenChange: (open: boolean) => void;
-  onLinkDeckIdsChange: (ids: string[]) => void;
-  onLink: () => void;
+  moveOpen: boolean;
+  moveTargetDeckId: string | null;
+  onMoveOpenChange: (open: boolean) => void;
+  onMoveTargetDeckIdChange: (id: string | null) => void;
+  onMove: () => void;
   copyOpen: boolean;
   copyTargetDeckId: string | null;
   onCopyOpenChange: (open: boolean) => void;
@@ -34,11 +33,11 @@ export function SingleCardDialogs({
   t,
   basePath,
   ownedDecks,
-  linkOpen,
-  linkDeckIds,
-  onLinkOpenChange,
-  onLinkDeckIdsChange,
-  onLink,
+  moveOpen,
+  moveTargetDeckId,
+  onMoveOpenChange,
+  onMoveTargetDeckIdChange,
+  onMove,
   copyOpen,
   copyTargetDeckId,
   onCopyOpenChange,
@@ -54,23 +53,24 @@ export function SingleCardDialogs({
 
   return (
     <>
-      <DeckCheckboxSelector
-        open={linkOpen}
+      <DeckRadioSelector
+        open={moveOpen}
         onOpenChange={(open) => {
           if (!open) {
-            onLinkOpenChange(false);
-            onLinkDeckIdsChange([]);
+            onMoveOpenChange(false);
+            onMoveTargetDeckIdChange(null);
           }
         }}
         decks={ownedDecks}
-        selectedIds={linkDeckIds}
-        onSelectionChange={onLinkDeckIdsChange}
-        title={t('link_title')}
-        description={t('link_desc')}
-        buttonLabel={t('link_button', { count: linkDeckIds.length })}
-        onConfirm={onLink}
+        selectedId={moveTargetDeckId}
+        onSelectionChange={onMoveTargetDeckIdChange}
+        title={t('move_title')}
+        description={t('move_desc')}
+        buttonLabel={t('move_button')}
+        onConfirm={onMove}
         cancelLabel={t('common_cancel')}
         emptyLabel={t('no_other_decks')}
+        countLabel={(count) => t('flashcards_count', { count })}
       />
 
       <DeckRadioSelector
