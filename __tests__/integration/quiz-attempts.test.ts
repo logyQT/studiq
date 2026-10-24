@@ -21,6 +21,7 @@ import {
 } from '@/app/(backend)/api/v1/quiz/[attemptId]/route';
 import { GET as attemptsGet } from '@/app/(backend)/api/v1/quiz/attempts/route';
 import { POST as quizPost } from '@/app/(backend)/api/v1/quiz/new/route';
+import { toSaveAnswersPayload } from '@/lib/quiz-draft';
 
 forEachCopy((copyId) => {
   describe(`Quiz Attempts Integration [${copyId}]`, () => {
@@ -310,10 +311,19 @@ forEachCopy((copyId) => {
           );
 
         const textAnswer = 'Rozbiory, słaba władza centralna, liberum veto.';
-        const submittedAnswers = [
-          ...options!.map((a) => ({ questionId: a.question_id, selectedAnswerId: a.id })),
-          { questionId: openQuestion.id, textAnswer },
-        ];
+        // Go through the same client helper the take pages use, so a regression
+        // that puts open text into `selectedAnswerId` fails here too (#320).
+        const localAnswers: Record<string, string> = {};
+        for (const option of options ?? []) localAnswers[option.question_id] ??= option.id;
+        localAnswers[openQuestion.id] = textAnswer;
+
+        const submittedAnswers = toSaveAnswersPayload(
+          [
+            ...attemptQuestions!.map((q) => ({ id: q.question_id, type: 'mcq' })),
+            { id: openQuestion.id, type: 'open' },
+          ],
+          localAnswers,
+        );
 
         const { request, params } = createNextRequestWithParams(
           `http://localhost/api/v1/quiz/${attemptId}`,
