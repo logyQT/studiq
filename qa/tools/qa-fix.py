@@ -40,6 +40,9 @@ QUEUE_PATH = FIX / "queue.txt"
 MIG_RESERVATIONS = FIX / "migration-reservations.json"
 MIG_LOCK = FIX / "migration.lock"
 STATE_LOCK = FIX / "state.lock"
+ESCALATIONS = FIX / "escalations"
+OVERSEER_STATE = FIX / "overseer.json"
+DISCORD_STATE = ROOT.parent / "qa-discord" / "qa" / "discord" / "state.json"
 MIGRATION_RE = re.compile(r"^(\d{14,})_.+\.sql$")
 BASE = "http://127.0.0.1:4096"
 AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
@@ -101,6 +104,65 @@ def sessions(directory: str, limit: int = 20) -> list[dict]:
 def session_info(sid: str) -> dict:
     data = api("GET", f"/api/session/{sid}")
     return data.get("data", data) if isinstance(data, dict) else data
+
+
+def manager_session_id() -> str | None:
+    sid = os.environ.get("QA_MANAGER_SESSION")
+    if sid:
+        return sid
+    try:
+        data = json.load(open(DISCORD_STATE))
+        return data.get("managerSessionId")
+    except Exception:
+        return None
+
+
+def ensure_overseer_session() -> str:
+    if OVERSEER_STATE.exists():
+        try:
+            sid = json.load(open(OVERSEER_STATE)).get("session")
+            if sid:
+                session_info(sid)
+                return sid
+        except Exception:
+            pass
+    prompt_path = ROOT / "qa" / "OVERSEER.md"
+    if not prompt_path.exists():
+        fail(f"Overseer prompt missing: {prompt_path}")
+    created = api("POST", "/api/session", {
+        "title": "Overseer",
+        "location": {"directory": str(ROOT)},
+        "model": MODEL,
+    })
+    session = created.get("data", created) if isinstance(created, dict) else created
+    sid = session.get("id")
+    if not sid:
+        fail("could not create Overseer session", response=str(created)[:400])
+    api("POST", f"/api/session/{sid}/prompt",
+        {"text": prompt_path.read_text(encoding="utf-8")})
+    json.dump({"session": sid, "created": now()}, open(OVERSEER_STATE, "w"), indent=1)
+    return sid
+
+
+def escalation_path(eid: str) -> Path:
+    return ESCALATIONS / f"{eid}.json"
+
+
+def load_escalation(eid: str) -> dict:
+    path = escalation_path(eid)
+    if not path.exists():
+        fail(f"unknown escalation: {eid}")
+    return json.load(open(path))
+
+
+def notify_session(sid: str, text: str) -> bool:
+    if not sid:
+        return False
+    try:
+        api("POST", f"/api/session/{sid}/prompt", {"text": text})
+        return True
+    except Exception:
+        return False
 
 
 def active_map() -> dict:
@@ -870,6 +932,90 @@ def cmd_block(args) -> None:
     ok(action="block", issue=n, stage="blocked")
 
 
+def cmd_escalate(args) -> None:
+    state = load_state()
+    ESCALATIONS.mkdir(parents=True, exist_ok=True)
+    eid = f"esc_{int(time.time() * 1000)}_{args.issue or 0}"
+    overseer = ensure_overseer_session()
+    data = {
+        "id": eid, "status": "open", "created": now(),
+        "issue": args.issue, "kind": args.kind, "severity": args.severity,
+        "summary": args.summary, "details": args.details or "",
+        "evidence": args.evidence or [], "options": args.options or [],
+        "recommendation": args.recommendation or "",
+        "blocking": args.blocking,
+        "manager_session": manager_session_id(),
+        "overseer_session": overseer,
+    }
+    json.dump(data, open(escalation_path(eid), "w"), indent=1, ensure_ascii=False)
+    text = (
+        f"# Overseer escalation {eid}\n"
+        f"Issue: #{args.issue or '-'} · kind={args.kind} · severity={args.severity} · "
+        f"blocking={args.blocking}\n\n"
+        f"## Summary\n{args.summary}\n\n"
+        f"## Details\n{args.details or 'none'}\n\n"
+        f"## Evidence\n" + "\n".join(f"- {x}" for x in (args.evidence or ["none"])) +
+        f"\n\n## Options\n" + "\n".join(f"- {x}" for x in (args.options or ["none"])) +
+        f"\n\n## Recommendation\n{args.recommendation or 'none'}\n\n"
+        f"Decide and close it with:\n"
+        f"python3 {ROOT}/qa/tools/qa-fix.py escalations answer {eid} "
+        f"--decision <decision> --note <short rationale> [--action <directive>]\n"
+        f"Then notify the manager. Do not edit product code."
+    )
+    notified = notify_session(overseer, text)
+    state["events"].append({"at": now(), "event": "escalation_open", "id": eid,
+                            "issue": args.issue, "severity": args.severity})
+    state["events"] = state["events"][-500:]
+    save_state(state)
+    ok(action="escalate", id=eid, overseer=overseer, notified=notified,
+       blocking=args.blocking)
+
+
+def cmd_escalations_pending(_args) -> None:
+    ESCALATIONS.mkdir(parents=True, exist_ok=True)
+    out = []
+    for path in sorted(ESCALATIONS.glob("*.json")):
+        try:
+            data = json.load(open(path))
+        except Exception:
+            continue
+        if data.get("status") == "open":
+            out.append(data)
+    ok(action="escalations-pending", count=len(out), escalations=out)
+
+
+def cmd_escalations_show(args) -> None:
+    ok(action="escalations-show", escalation=load_escalation(args.id))
+
+
+def cmd_escalations_answer(args) -> None:
+    data = load_escalation(args.id)
+    if data.get("status") != "open":
+        fail(f"escalation {args.id} is already {data.get('status')}")
+    data["status"] = "answered"
+    data["answered"] = now()
+    data["decision"] = args.decision
+    data["note"] = args.note or ""
+    data["action"] = args.action or ""
+    json.dump(data, open(escalation_path(args.id), "w"), indent=1, ensure_ascii=False)
+    manager = data.get("manager_session") or manager_session_id()
+    text = (
+        f"[Overseer decision] {args.id}\n"
+        f"Decision: {args.decision}\n"
+        f"Note: {args.note or 'none'}\n"
+        f"Action: {args.action or 'none'}\n"
+        f"Escalation: {escalation_path(args.id)}"
+    )
+    notified = notify_session(manager, text)
+    ok(action="escalations-answer", id=args.id, decision=args.decision,
+       manager_notified=notified)
+
+
+def cmd_overseer_start(_args) -> None:
+    sid = ensure_overseer_session()
+    ok(action="overseer-start", session=sid)
+
+
 def env_issue(rec: dict, env: int) -> tuple[dict, str] | None:
     stage = rec.get("stage")
     if stage in ("designing", "design_ready") and rec.get("designer") == env:
@@ -948,6 +1094,26 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--timestamps", required=True)
     s.set_defaults(fn=cmd_assign_migrations)
     s = sub.add_parser("block"); s.add_argument("issue", type=int); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_block)
+    s = sub.add_parser("escalate")
+    s.add_argument("--issue", type=int)
+    s.add_argument("--kind", required=True,
+                   choices=("architecture", "tooling", "state", "migration",
+                            "environment", "scope", "security", "scheduling",
+                            "merge-gate", "other"))
+    s.add_argument("--severity", default="p2", choices=("p0", "p1", "p2", "p3"))
+    s.add_argument("--summary", required=True)
+    s.add_argument("--details")
+    s.add_argument("--evidence", action="append")
+    s.add_argument("--options", action="append")
+    s.add_argument("--recommendation")
+    s.add_argument("--blocking", action="store_true")
+    s.set_defaults(fn=cmd_escalate)
+    sub.add_parser("escalations-pending").set_defaults(fn=cmd_escalations_pending)
+    s = sub.add_parser("escalations-show"); s.add_argument("id"); s.set_defaults(fn=cmd_escalations_show)
+    s = sub.add_parser("escalations-answer"); s.add_argument("id")
+    s.add_argument("--decision", required=True); s.add_argument("--note")
+    s.add_argument("--action"); s.set_defaults(fn=cmd_escalations_answer)
+    sub.add_parser("overseer-start").set_defaults(fn=cmd_overseer_start)
     sub.add_parser("status").set_defaults(fn=cmd_status)
     sub.add_parser("roles").set_defaults(fn=cmd_roles)
     sub.add_parser("repair-state").set_defaults(fn=cmd_repair_state)
@@ -959,7 +1125,8 @@ if __name__ == "__main__":
     args = build_parser().parse_args()
     FIX.mkdir(parents=True, exist_ok=True)
     ISSUES.mkdir(parents=True, exist_ok=True)
-    read_only = {"status", "map", "next", "roles", "migration-check"}
+    read_only = {"status", "map", "next", "roles", "migration-check",
+                 "escalations-pending", "escalations-show"}
     try:
         if args.cmd in read_only:
             args.fn(args)

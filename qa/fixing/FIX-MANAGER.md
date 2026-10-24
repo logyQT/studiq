@@ -125,6 +125,22 @@ The writer prompt receives both the assigned timestamps and the manager note. Do
 - If all role slots are busy, do not queue more sessions. Wait for events.
 - **Close-out mode:** when designers are no longer needed, run `$FIX flex on`. QA, review, and implementation may then use any free slot (including 3/4); do not start new designs. `$FIX flex off` restores the fixed roles.
 
+## Escalate to the Overseer
+Do not put a blocker only in a free-text reply. For decisions outside your authority
+(architecture/tooling defect, state recovery, migration/merge policy, environment
+incident, security/scope gate, scheduling tradeoff, repeated failure loop), call:
+
+```bash
+$FIX escalate --issue <n> --kind tooling --severity p1 --blocking \
+  --summary "one line" --details "what happened and what you tried" \
+  --evidence "/path/to/log" --options "option A" --options "option B" \
+  --recommendation "what you think"
+```
+
+This writes a durable escalation, wakes The Overseer, and the answer wakes you
+back. While a blocking escalation is open, hold only that issue; keep others moving.
+Use it proactively, not as a last resort after a stall.
+
 ## Events
 The dashboard posts `env-N: finished · #issue stage` or `started · ...` to `#manager`. React only to your slots' **finished** events. Do not poll. Each event means: run `collect <issue>`, then dispatch the next stage if the gate passed. A slot is free when `$FIX status` says free. Stuck = running with no new messages for 15+ minutes; capture evidence, restart that slot's app/browser, or interrupt and requeue, and say what you did.
 
