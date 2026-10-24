@@ -285,20 +285,82 @@ describe('OrgRoleService', () => {
   });
 
   describe('setPermissions', () => {
+    // setPermissions requires a verified membership for the active org
+    // (orgRoleId is only set when with-auth found a real org_members row).
+    const permCtx: RequestContext = { ...ctx, activeOrgId: 'org-1', orgRoleId: 'r-caller' };
+
+    function mockRoleLookup() {
+      const roleQb = qb({ id: 'r-1' });
+      mock.from.mockReturnValueOnce(roleQb);
+      return roleQb;
+    }
+
     it('returns FORBIDDEN when no activeOrgId', async () => {
-      const result = await service.setPermissions({ ...ctx, activeOrgId: null }, 'r-1', {
+      const result = await service.setPermissions({ ...permCtx, activeOrgId: null }, 'r-1', {
         permissions: [],
       });
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('returns FORBIDDEN when orgRoleId is null', async () => {
+      const result = await service.setPermissions({ ...permCtx, orgRoleId: null }, 'r-1', {
+        permissions: [],
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('returns NOT_FOUND for a role outside the active org', async () => {
+      mock.from.mockReturnValueOnce(
+        qb(null, {
+          code: 'PGRST116',
+          message: 'JSON object requested, multiple (or no) rows returned',
+        }),
+      );
+
+      const result = await service.setPermissions(permCtx, 'r-other-org', {
+        permissions: [{ permissionName: 'flashcard.read', scope: 'own' }],
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      // Only the role lookup ran — no DELETE, no INSERT.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('scopes the role lookup to the active org', async () => {
+      const roleQb = mockRoleLookup();
+      const deleteQb = qb(undefined);
+      const insertQb = qb(undefined);
+      mock.from.mockReturnValueOnce(deleteQb);
+      mock.from.mockReturnValueOnce(insertQb);
+
+      const result = await service.setPermissions(permCtx, 'r-1', {
+        permissions: [{ permissionName: 'flashcard.read', scope: 'own' }],
+      });
+
+      expect(result.success).toBe(true);
+      expect(mock.from).toHaveBeenNthCalledWith(1, 'org_roles');
+      expect(roleQb.eq).toHaveBeenCalledWith('id', 'r-1');
+      expect(roleQb.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(mock.from).toHaveBeenNthCalledWith(2, 'org_role_permissions');
+      expect(deleteQb.eq).toHaveBeenCalledWith('org_role_id', 'r-1');
+      expect(insertQb.insert).toHaveBeenCalledWith([
+        { org_role_id: 'r-1', permission_name: 'flashcard.read', scope: 'own' },
+      ]);
     });
 
     it('clears and re-inserts permissions', async () => {
+      mockRoleLookup();
       mock.from.mockReturnValueOnce(qb(undefined)); // delete
       mock.from.mockReturnValueOnce(qb(undefined)); // insert
 
-      const result = await service.setPermissions(ctx, 'r-1', {
+      const result = await service.setPermissions(permCtx, 'r-1', {
         permissions: [{ permissionName: 'flashcard.read', scope: 'own' }],
       });
 
@@ -306,26 +368,29 @@ describe('OrgRoleService', () => {
     });
 
     it('succeeds with empty permissions', async () => {
-      mock.from.mockReturnValueOnce(qb(undefined));
+      mockRoleLookup();
+      mock.from.mockReturnValueOnce(qb(undefined)); // delete
 
-      const result = await service.setPermissions(ctx, 'r-1', { permissions: [] });
+      const result = await service.setPermissions(permCtx, 'r-1', { permissions: [] });
 
       expect(result.success).toBe(true);
     });
 
     it('returns error on delete failure', async () => {
+      mockRoleLookup();
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
-      const result = await service.setPermissions(ctx, 'r-1', { permissions: [] });
+      const result = await service.setPermissions(permCtx, 'r-1', { permissions: [] });
 
       expect(result.success).toBe(false);
     });
 
     it('returns error on insert failure', async () => {
+      mockRoleLookup();
       mock.from.mockReturnValueOnce(qb(undefined));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
-      const result = await service.setPermissions(ctx, 'r-1', {
+      const result = await service.setPermissions(permCtx, 'r-1', {
         permissions: [{ permissionName: 'flashcard.read', scope: 'own' }],
       });
 

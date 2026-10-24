@@ -245,9 +245,24 @@ export class OrgRoleService {
   ): Promise<ServiceResult<void>> {
     const supabase = await this.createClient();
 
-    if (!ctx.activeOrgId) {
+    // active_org_id is a client-controlled cookie. orgRoleId is only set when
+    // with-auth found a real org_members row for this exact org+user, so both
+    // checks are required to prove the caller belongs to the active org.
+    if (!ctx.activeOrgId || !ctx.orgRoleId) {
       return failure('FORBIDDEN');
     }
+
+    // Scope the role to the active org before touching its permissions.
+    // A role outside the active org is indistinguishable from a missing role
+    // (PGRST116 -> NOT_FOUND, 404) so role ids cannot be probed across tenants.
+    const { error: roleError } = await supabase
+      .from('org_roles')
+      .select('id')
+      .eq('id', id)
+      .eq('organization_id', ctx.activeOrgId)
+      .single();
+
+    if (roleError) return toDbFailure(roleError);
 
     const { error: deleteError } = await supabase
       .from('org_role_permissions')
