@@ -487,13 +487,19 @@ BEGIN
   END IF;
 
   WITH
-    decks AS (
-      SELECT id, name FROM public.flashcard_decks WHERE created_by = p_user_id
-    ),
     deck_assignments AS (
       SELECT f.id AS flashcard_id, f.deck_id
       FROM public.flashcards f
       WHERE f.id = ANY(v_flashcard_ids) AND f.deck_id IS NOT NULL
+    ),
+    -- Decks represented in the caller's scoped flashcard set. `totalDecks` is
+    -- COUNT(*) of this CTE and `byDeck` joins it, so the summary card and the
+    -- "Podział na talie" table can never disagree (#149).
+    decks AS (
+      SELECT d.id, d.name
+      FROM public.flashcard_decks d
+      WHERE d.created_by = p_user_id
+        AND d.id IN (SELECT da.deck_id FROM deck_assignments da)
     ),
     topic_assignments AS (
       SELECT flashcard_id, topic_id

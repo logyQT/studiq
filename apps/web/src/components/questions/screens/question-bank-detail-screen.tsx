@@ -66,17 +66,23 @@ export function QuestionBankDetailScreen({
     topicIds?: string[];
     bankId: string;
     answers: { content: string; isCorrect: boolean; orderIndex: number }[];
-  }) {
-    if (editingQuestion) {
-      await apiPut(`/api/v1/questions/${editingQuestion.id}`, data);
-      toast.success(tForm('updated'));
-    } else {
-      await apiPost('/api/v1/questions', data);
-      toast.success(tForm('created'));
+  }): Promise<boolean> {
+    try {
+      if (editingQuestion) {
+        await apiPut(`/api/v1/questions/${editingQuestion.id}`, data);
+        toast.success(tForm('updated'));
+      } else {
+        await apiPost('/api/v1/questions', data);
+        toast.success(tForm('created'));
+      }
+    } catch {
+      toast.error(tForm('save_failed'));
+      return false;
     }
     invalidate();
     setDialogOpen(false);
     setEditingQuestion(null);
+    return true;
   }
 
   async function handleDelete() {
