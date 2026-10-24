@@ -2460,7 +2460,8 @@
     "saved": "Zapisano",
     "auto_save_failed": "Autozapis nieudany",
     "save_failed": "Zapis nieudany",
-    "unsaved": "Niezapisane zmiany"
+    "unsaved": "Niezapisane zmiany",
+    "points_label": "Punkty za pytanie {index}"
   },
   "EduQuizDetailPage": {
     "not_found": "Nie znaleziono quizu",
