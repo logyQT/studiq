@@ -1,5 +1,6 @@
 import type { RequestContext } from '@studiq/authz';
 import { FeatureResolver } from '@studiq/server/services/feature.resolver';
+import { LimitsResolver } from '@studiq/server/services/limits.resolver';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
@@ -15,8 +16,9 @@ import {
 // bypasses RLS, which is why nothing noticed). These tests sign in a REAL user
 // with the anon key — the exact access path feature.resolver.ts uses in
 // production — and assert the rows are visible, scoped to the caller's own
-// organizations. org_limits carried the same bug but was dropped in #229, so it
-// no longer has an RLS surface to test.
+// organizations. org_limits carried the same bug but was dropped in #229; org
+// capacity now resolves from `organizations.plan → plan_limits` through the
+// same user session, so the limits read path is covered here too.
 
 const PASSWORD = 'Rls4Test!';
 
@@ -43,8 +45,10 @@ forEachCopy((copyId) => {
     let service: SupabaseClient;
     let org1: string; // the member's org
     let org2: string; // a foreign org neither user belongs to
+    let hubOrg: string; // the member's org on a paid plan (limit RLS probe)
     let org1MemberRole: string;
     let org2AdminRole: string;
+    let hubMemberRole: string;
     let memberId: string;
     let outsiderId: string;
     let memberSession: SupabaseClient;
@@ -90,17 +94,33 @@ forEachCopy((copyId) => {
 
       org1 = await createOrg(`rls-org1-${tag}`);
       org2 = await createOrg(`rls-org2-${tag}`);
+      hubOrg = await createOrg(`rls-org-hub-${tag}`);
       org1MemberRole = await roleId(org1, 'member');
       org2AdminRole = await roleId(org2, 'admin');
+      hubMemberRole = await roleId(hubOrg, 'member');
+
+      // A paid plan makes org-derived limits differ from the member's personal
+      // (`base`) plan, so an RLS-hidden `organizations` row cannot masquerade
+      // as a correct answer in the LimitsResolver test below.
+      const { error: planError } = await service
+        .from('organizations')
+        .update({ plan: 'hub' })
+        .eq('id', hubOrg);
+      if (planError) throw new Error(`hub plan update failed: ${planError.message}`);
 
       memberId = await createUser(memberEmail);
       outsiderId = await createUser(outsiderEmail);
 
-      // Member belongs to org1 only; the outsider belongs to no org.
+      // Member belongs to org1 and hubOrg; the outsider belongs to no org.
       await seedOrgMembership({
         organizationId: org1,
         userId: memberId,
         orgRoleId: org1MemberRole,
+      });
+      await seedOrgMembership({
+        organizationId: hubOrg,
+        userId: memberId,
+        orgRoleId: hubMemberRole,
       });
 
       memberSession = await anonSession(memberEmail);
@@ -115,6 +135,7 @@ forEachCopy((copyId) => {
     afterAll(async () => {
       await cleanupOrganizationDeep(org1).catch(() => {});
       await cleanupOrganizationDeep(org2).catch(() => {});
+      await cleanupOrganizationDeep(hubOrg).catch(() => {});
       if (memberId) await service.auth.admin.deleteUser(memberId).catch(() => {});
       if (outsiderId) await service.auth.admin.deleteUser(outsiderId).catch(() => {});
     });
@@ -169,6 +190,45 @@ forEachCopy((copyId) => {
       // query returns [], the resolver falls through to the org plan and
       // over-grants member.manage / org.manage / group.manage instead.
       expect(features).toEqual(['flashcards', 'quiz', 'documents']);
+    });
+
+    it('LimitsResolver resolves org capacity from a real member session (RLS path)', async () => {
+      const resolver = new LimitsResolver(async () => memberSession);
+      const ctx: RequestContext = {
+        traceId: `rls-limits-${copyId}`,
+        userId: memberId,
+        accountType: 'STUDENT',
+        orgRoleId: hubMemberRole,
+        activeOrgId: hubOrg,
+        url: '/api/v1/decks',
+        method: 'POST',
+        groupIds: [],
+        permissionScopes: {},
+      };
+
+      // `hub` raises max_flashcards to 2000, while the member's personal `base`
+      // plan caps it at 100. If RLS hid the `organizations` row the resolver
+      // would silently fall back to 100 — the #124/#182 class of regression.
+      await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(2000);
+    });
+
+    it('LimitsResolver cannot read a foreign org plan through RLS', async () => {
+      const resolver = new LimitsResolver(async () => outsiderSession);
+      const ctx: RequestContext = {
+        traceId: `rls-limits-outsider-${copyId}`,
+        userId: outsiderId,
+        accountType: 'STUDENT',
+        orgRoleId: null,
+        activeOrgId: hubOrg,
+        url: '/api/v1/decks',
+        method: 'POST',
+        groupIds: [],
+        permissionScopes: {},
+      };
+
+      // Not a member of the hub org: its plan row must stay invisible, so only
+      // the outsider's own `base` plan (max_flashcards 100) applies.
+      await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(100);
     });
   });
 });

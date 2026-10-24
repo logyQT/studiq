@@ -128,18 +128,32 @@ describe('LimitsResolver', () => {
 
     it('derives the org limit from organizations.plan -> plan_limits, not a snapshot', async () => {
       const ctx = { ...baseCtx, activeOrgId: 'org-1' };
+      const planLimitFilters: Record<string, string>[] = [];
 
       mock.from.mockImplementation((table: string) => {
         if (table === 'org_seat_assignments') return chain(null);
         if (table === 'profiles') return chain({ personal_plan_key: 'base' });
         if (table === 'organizations') return chain({ plan: 'launch' });
-        if (table === 'plan_limits') return chain({ limit_value: 10 });
+        if (table === 'plan_limits') {
+          return filteredChain((filters) => {
+            planLimitFilters.push({ ...filters });
+            if (filters.limit_key !== 'max_decks') return null;
+            return { limit_value: filters.plan_key === 'launch' ? 40 : 10 };
+          });
+        }
         return chain(null);
       });
 
       const limit = await resolver.getEffectiveLimit(ctx, 'max_decks');
-      expect(limit).toBe(10);
+      // base (personal) = 10, launch (org) = 40 → max wins, so the org value can
+      // only come from the org's plan, not the personal plan or a snapshot.
+      expect(limit).toBe(40);
+      expect(planLimitFilters).toEqual([
+        { plan_key: 'base', limit_key: 'max_decks' },
+        { plan_key: 'launch', limit_key: 'max_decks' },
+      ]);
       expect(mock.from).toHaveBeenCalledWith('organizations');
+      expect(mock.from).not.toHaveBeenCalledWith('org_limits');
     });
 
     it('returns the seated plan limit and ignores the org plan', async () => {
