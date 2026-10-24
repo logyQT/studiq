@@ -96,6 +96,7 @@ describe('FlashcardPracticeService', () => {
           };
         return chain();
       });
+      return upsertMock;
     }
 
     it('inserts practice record and returns it with review state', async () => {
@@ -199,6 +200,52 @@ describe('FlashcardPracticeService', () => {
       expect(result.data.practice).toEqual(mockPractice);
       expect(result.data.reviewState.repetitions).toBe(2);
       expect(result.data.reviewState.interval_days).toBeGreaterThan(6);
+    });
+
+    it('maps confidenceLevel 3 (Good) on a new card to step 1, 10 min and EF 2.36', async () => {
+      const mockPractice = {
+        id: 'p-1',
+        user_id: ctx.userId,
+        flashcard_id: 'fc-1',
+        was_correct: true,
+      };
+
+      const upsertMock = setupMocks({ data: mockPractice, error: null }, null, {
+        data: { ...mockPractice, learning_state: 'learning', learning_step: 1 },
+        error: null,
+      });
+
+      const result = await service.log('fc-1', true, ctx, undefined, 3);
+
+      expect(result.success).toBe(true);
+      const payload = upsertMock.mock.calls[0][0];
+      expect(payload.learning_state).toBe('learning');
+      expect(payload.learning_step).toBe(1);
+      expect(payload.interval_days).toBe(10);
+      expect(payload.easiness_factor).toBe(2.36);
+    });
+
+    it('maps confidenceLevel 1 (Again) on a new card to step 0, 1 min and EF 1.7', async () => {
+      const mockPractice = {
+        id: 'p-1',
+        user_id: ctx.userId,
+        flashcard_id: 'fc-1',
+        was_correct: false,
+      };
+
+      const upsertMock = setupMocks({ data: mockPractice, error: null }, null, {
+        data: { ...mockPractice, learning_state: 'learning', learning_step: 0 },
+        error: null,
+      });
+
+      const result = await service.log('fc-1', false, ctx, undefined, 1);
+
+      expect(result.success).toBe(true);
+      const payload = upsertMock.mock.calls[0][0];
+      expect(payload.learning_state).toBe('learning');
+      expect(payload.learning_step).toBe(0);
+      expect(payload.interval_days).toBe(1);
+      expect(payload.easiness_factor).toBe(1.7);
     });
   });
 
