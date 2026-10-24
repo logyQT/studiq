@@ -1,5 +1,5 @@
 -- ==========================================
--- Migration: 20261024150843
+-- Migration: 20261024151134
 -- Description: #345 - the spaced-repetition RPCs excluded a user's *own*
 -- flashcards when the caller's `flashcard.read` scope resolved to `group`
 -- (every organization member, i.e. every student).
