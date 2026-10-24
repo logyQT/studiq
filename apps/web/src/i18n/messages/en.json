@@ -2448,7 +2448,8 @@
     "saved": "Saved",
     "auto_save_failed": "Auto-save failed",
     "save_failed": "Save failed",
-    "unsaved": "Unsaved changes"
+    "unsaved": "Unsaved changes",
+    "points_label": "Points for question {index}"
   },
   "EduQuizDetailPage": {
     "not_found": "Quiz not found",
