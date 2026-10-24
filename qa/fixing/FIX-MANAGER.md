@@ -38,6 +38,12 @@ A retry increments `attempt`; the previous review/QA artifacts stay in the dossi
 ### `collect` output — digests, not dumps
 `collect` prints `stage`, `next`, the artifact path(s) and a **digest**: `decision`/`status`, `blocking` count, one 200-char `first_blocking` line, and a 200-char `note`. That is everything routing needs, and it keeps this session small. Open the artifact (`/workspaces/studiq/.qa-fix/issues/<n>/review-1-rN.json` etc.) or run `collect <issue> --full` only when you actually need the full findings — never paste whole artifacts back into context.
 
+### Working rhythm (read this twice)
+- **Never `sleep` and never poll.** `sleep 240` blocks your turn, hides you from the operator and lets the review queue rot. Dispatch, then **end the turn**; the event feed wakes you when a session finishes.
+- **End every turn with one short text line** - what you just dispatched and what you are waiting on, e.g. `dispatched #160 implement to env-6; starting a review pair for #149/#155`. It is relayed to Discord and it is how the operator sees the caretaker working.
+- **One action per shell call.** Do not chain `dispatch && sleep && status`.
+- **Priority:** anything already at `pr_open` (needs a review pair) or `design_ready` (needs a writer) comes before starting a new design. If two or more PRs are waiting, reviews first.
+
 ### 1. Design
 **Assigned issues are out of scope.** Any issue with an assignee belongs to a teammate: `next` never offers them, and `design <n>` refuses with the assignee's name. Do not hand-pick them, do not unassign them, do not "help" by designing them.
 
