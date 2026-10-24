@@ -217,9 +217,19 @@ def gh(args: list[str], timeout: int = 90) -> str:
     return p.stdout
 
 
+def ignored_assignees() -> set[str]:
+    """Human owners whose issues must stay out of the fix backlog.
+
+    Configurable with QA_FIX_IGNORE_ASSIGNEES (comma separated, case-insensitive).
+    """
+    raw = os.environ.get("QA_FIX_IGNORE_ASSIGNEES", "P3RyVeR")
+    return {a.strip().lower() for a in raw.split(",") if a.strip()}
+
+
 def fetch_issues() -> list[dict]:
     raw = json.loads(gh(["issue", "list", "--state", "open", "--limit", "400",
-                         "--json", "number,title,labels,url,createdAt,updatedAt,body"]))
+                         "--json",
+                         "number,title,labels,url,createdAt,updatedAt,body,assignees"]))
     return raw
 
 
@@ -366,22 +376,29 @@ def cmd_assign_migrations(args) -> None:
 
 
 def normalize_map(raw: list[dict]) -> dict:
+    ignore = ignored_assignees()
     items = []
     for i in raw:
         labels = [l["name"] for l in i["labels"]]
         priority = next((p for p in ("critical", "high", "medium", "low") if p in labels), "none")
+        assignees = [a["login"] for a in (i.get("assignees") or [])]
+        parked = sorted(a for a in assignees if a.lower() in ignore)
         items.append({
             "number": i["number"], "title": i["title"], "url": i["url"],
             "labels": labels, "priority": priority,
             "areas": [a for a in AREAS if a in labels],
             "needs_design": "needs-design" in labels,
+            "assignees": assignees, "parked": bool(parked), "parked_by": parked,
             "created": i["createdAt"], "updated": i["updatedAt"],
             "body": i.get("body") or "",
         })
-    eligible = sorted((i for i in items if not i["needs_design"]),
+    eligible = sorted((i for i in items if not i["needs_design"] and not i["parked"]),
                       key=lambda i: (PRIORITY.get(i["priority"], 9), i["number"]))
     return {"generated": now(), "total_open": len(items),
-            "eligible": len(eligible), "needs_design": len(items) - len(eligible),
+            "eligible": len(eligible),
+            "needs_design": sum(1 for i in items if i["needs_design"]),
+            "parked": sum(1 for i in items if i["parked"] and not i["needs_design"]),
+            "ignored_assignees": sorted(ignore),
             "issues": items, "queue": [i["number"] for i in eligible]}
 
 
@@ -390,16 +407,19 @@ def write_map(m: dict) -> None:
     json.dump(m, open(MAP_PATH, "w"), indent=1)
     open(QUEUE_PATH, "w").write("\n".join(str(n) for n in m["queue"]) + "\n")
     md = ISSUES.parent / "issue-map.md"
-    c = collections.Counter(i["priority"] for i in m["issues"] if not i["needs_design"])
+    c = collections.Counter(i["priority"] for i in m["issues"]
+                            if not i["needs_design"] and not i["parked"])
+    parked_names = ", ".join(m.get("ignored_assignees") or []) or "-"
     with open(md, "w") as f:
         f.write("# StudiQ straightforward issue map\n\n")
         f.write(f"Generated {m['generated']}. Open: {m['total_open']} · "
-                f"eligible (no needs-design): {m['eligible']} · needs-design: {m['needs_design']}.\n\n")
+                f"eligible: {m['eligible']} · needs-design: {m['needs_design']} · "
+                f"parked (assigned to {parked_names}): {m.get('parked', 0)}.\n\n")
         f.write("Priority: " + ", ".join(f"{k}={c[k]}" for k in
                 ("critical", "high", "medium", "low", "none")) + "\n\n")
         f.write("| # | P | Areas | Title |\n|---|---|---|---|\n")
         for i in m["issues"]:
-            if i["needs_design"]:
+            if i["needs_design"] or i["parked"]:
                 continue
             title = i["title"].replace("|", "\\|")
             f.write(f"| [#{i['number']}]({i['url']}) | {i['priority']} | "
@@ -519,17 +539,29 @@ def render(role: str, **kw) -> str:
     return text
 
 
+def latest_round(n: int, stem: str, upto: int) -> int | None:
+    """Newest existing `<stem>-rN.md` at or below `upto` (None if there is none)."""
+    for r in range(upto, 0, -1):
+        if (issue_dir(n) / f"{stem}-r{r}.md").exists():
+            return r
+    return None
+
+
 def dispatch_prompt(role: str, n: int, stage: str, env: int, rec: dict,
                     review_no: int = 0) -> str:
     issue = json.load(open(issue_dir(n) / "issue.json"))
     a = attempt(rec)
+    # A retry that skips the designer (review/QA finding routed straight to the
+    # writer) has no design-r{a}: point those roles at the newest design that
+    # actually exists instead of a path that was never written.
+    d = a if role == "DESIGNER" else (latest_round(n, "design", a) or a)
     common = {
         "ISSUE": n,
         "TITLE": issue["title"],
         "URL": issue["url"],
         "ISSUE_PATH": str(issue_dir(n) / "issue.json"),
-        "DESIGN_PATH": str(issue_dir(n) / f"design-r{a}.md"),
-        "DESIGN_JSON": str(issue_dir(n) / f"design-r{a}.json"),
+        "DESIGN_PATH": str(issue_dir(n) / f"design-r{d}.md"),
+        "DESIGN_JSON": str(issue_dir(n) / f"design-r{d}.json"),
         "IMPL_PATH": str(issue_dir(n) / f"impl-r{a}.md"),
         "IMPL_JSON": str(issue_dir(n) / f"impl-r{a}.json"),
         "REVIEW_PATH": str(issue_dir(n) / f"review-{review_no}-r{a}.md"),
@@ -568,17 +600,21 @@ def cmd_sync(_args) -> None:
     m = normalize_map(raw)
     write_map(m)
     ok(action="sync", open=m["total_open"], eligible=m["eligible"],
-       needs_design=m["needs_design"], queue=m["queue"][:12])
+       needs_design=m["needs_design"], parked=m.get("parked", 0),
+       ignored_assignees=m.get("ignored_assignees", []), queue=m["queue"][:12])
 
 
 def cmd_map(args) -> None:
     m = load_map()
     if args.json:
         ok(action="map", total_open=m["total_open"], eligible=m["eligible"],
-           needs_design=m["needs_design"], map=str(MAP_PATH), markdown=str(ISSUES.parent / "issue-map.md"))
+           needs_design=m["needs_design"], parked=m.get("parked", 0),
+           map=str(MAP_PATH), markdown=str(ISSUES.parent / "issue-map.md"))
         return
-    c = collections.Counter(i["priority"] for i in m["issues"] if not i["needs_design"])
-    print(f"straightforward: {m['eligible']}  (open {m['total_open']}, needs-design {m['needs_design']})")
+    c = collections.Counter(i["priority"] for i in m["issues"]
+                            if not i["needs_design"] and not i["parked"])
+    print(f"straightforward: {m['eligible']}  (open {m['total_open']}, "
+          f"needs-design {m['needs_design']}, parked {m.get('parked', 0)})")
     print("priority: " + " ".join(f"{k}={c[k]}" for k in ("critical", "high", "medium", "low", "none")))
     print(f"map: {MAP_PATH}")
     print(f"md:  {ISSUES.parent / 'issue-map.md'}")
@@ -625,8 +661,20 @@ def role_for_stage(stage: str) -> str:
 def cmd_design(args) -> None:
     state = load_state()
     n = args.issue
-    env = args.env or ROLE_SLOTS["designer"][0]
-    if ROLES.get(env) != "designer":
+    flex = is_flex(state)
+    if args.env:
+        env = args.env
+    elif flex:
+        # flex mode: any free slot may design (the operator runs the backlog wide)
+        candidates = [3, 4, 5, 6, 1, 2, 7, 8]
+        busy = busy_slots()
+        free = [e for e in candidates if e not in busy]
+        if not free:
+            fail("no free slot for design", busy=sorted(busy))
+        env = free[0]
+    else:
+        env = ROLE_SLOTS["designer"][0]
+    if not flex and ROLES.get(env) != "designer":
         fail(f"slot {env} is {ROLES.get(env)}, not designer")
     rec = start_issue(state, n, "designer", env)
     if rec["stage"] not in ("queued", "design_ready", "changes_requested", "qa_failed", "designing"):
@@ -684,12 +732,40 @@ def cmd_implement(args) -> None:
        title=title, artifact=str(issue_dir(n) / f"impl-r{attempt(rec)}.json"))
 
 
+def hook_gate(rec: dict, n: int) -> dict:
+    """Refuse to move a head into review when its hooks were skipped unproven.
+
+    A skipped hook is legitimate only under the writer exemption (partial fix of
+    a larger issue, failure proven pre-existing on main). Missing hook data is
+    unknown, not a skip, so older artifacts still pass with a bare note.
+    """
+    path = issue_dir(n) / f"impl-r{attempt(rec)}.json"
+    try:
+        data = json.load(open(path))
+    except Exception:
+        return {}
+    hooks = data.get("hooks") or {}
+    skipped = [k for k in ("commit", "push")
+               if str(hooks.get(k, "")).lower().startswith("skipped")]
+    if not skipped:
+        return {}
+    evidence = (hooks.get("skipped_reason") or "").strip()
+    if not evidence:
+        fail("hook skipped without evidence", issue=n, skipped=skipped,
+             artifact=str(path),
+             hint="the writer must re-run the hooks, or record the exemption proof "
+                  "(hook, exact command, failing test/file, proof main fails the same "
+                  "way) in impl-rN.json and the PR body before reviews are dispatched")
+    return {"hooks_skipped": skipped, "hooks_evidence": evidence[:300]}
+
+
 def cmd_review(args) -> None:
     state = load_state()
     n = args.issue
     rec = get_rec(state, n)
     if rec["stage"] not in ("pr_open", "changes_requested"):
         fail(f"cannot review from stage {rec['stage']}")
+    hooks = hook_gate(rec, n)
     busy = busy_slots()
     flex = is_flex(state)
     candidates = POOL_SLOTS + ([3, 4, 5, 6] if flex else [])
@@ -723,7 +799,8 @@ def cmd_review(args) -> None:
     history(state, n, {"event": "review_dispatched", "sessions": sessions_out,
                        "attempt": attempt(rec)})
     ok(action="review", issue=n, sessions=sessions_out,
-       artifacts=[str(issue_dir(n) / f"review-{i}-r{attempt(rec)}.json") for i in (1, 2)])
+       artifacts=[str(issue_dir(n) / f"review-{i}-r{attempt(rec)}.json") for i in (1, 2)],
+       **hooks)
 
 
 def cmd_qa(args) -> None:
@@ -808,6 +885,40 @@ def bump_attempt(rec: dict) -> None:
     rec["attempt"] = attempt(rec) + 1
 
 
+def digest(data: dict) -> dict:
+    """Compact routing summary of an agent artifact.
+
+    `collect` used to echo the whole artifact into the manager's context (~1.8k
+    tokens per call, 52% of a long session). Routing only needs the decision,
+    a blocking count and a one-line hint; the full payload stays on disk and in
+    `collect --full`.
+    """
+    out = {}
+    for key in ("decision", "status", "pr", "commit", "question"):
+        if data.get(key):
+            out[key] = data[key]
+    if out.get("commit"):
+        out["commit"] = str(out["commit"])[:12]
+    blocking = data.get("blocking") or []
+    if blocking:
+        out["blocking"] = len(blocking)
+        first = blocking[0] if isinstance(blocking[0], dict) else {}
+        hint = (first.get("problem") or first.get("reason") or "")
+        if hint:
+            out["first_blocking"] = " ".join(str(hint).split())[:200]
+    if data.get("non_blocking"):
+        out["non_blocking"] = len(data["non_blocking"])
+    for key in ("notes", "reason", "summary"):
+        if data.get(key):
+            out["note"] = " ".join(str(data[key]).split())[:200]
+            break
+    return out
+
+
+def emit_artifact(n: int, a: int, name: str) -> str:
+    return str(issue_dir(n) / f"{name}-r{a}.json")
+
+
 def cmd_collect(args) -> None:
     state = load_state()
     n = args.issue
@@ -815,6 +926,17 @@ def cmd_collect(args) -> None:
     a = attempt(rec)
     stage = rec["stage"]
     d = issue_dir(n)
+    full = bool(getattr(args, "full", False))
+
+    def art(path, data):
+        # compact by default: the full artifact stays on disk (`--full` echoes it)
+        return {"data": data} if full else {"artifact": str(path), "digest": digest(data)}
+
+    def arts(*pairs):
+        if full:
+            return {"reviews": [data for _, data in pairs]}
+        return {"artifacts": [str(path) for path, _ in pairs],
+                "digests": [digest(data) for _, data in pairs]}
 
     if stage == "designing":
         p = d / f"design-r{a}.json"
@@ -824,16 +946,16 @@ def cmd_collect(args) -> None:
         if decision == "ready":
             rec["stage"] = "design_ready"
             history(state, n, {"event": "design_ready", "decision": decision})
-            ok(action="collect", issue=n, stage="design_ready", next="implement", data=data)
+            ok(action="collect", issue=n, stage="design_ready", next="implement", **art(p, data))
         elif decision == "needs_design":
             add_label(n, "needs-design")
             rec["stage"] = "needs_design"
             history(state, n, {"event": "needs_design", "question": data.get("question", "")})
-            ok(action="collect", issue=n, stage="needs_design", next=None, data=data)
+            ok(action="collect", issue=n, stage="needs_design", next=None, **art(p, data))
         else:
             rec["stage"] = "blocked"
             history(state, n, {"event": "design_blocked", "data": data})
-            ok(action="collect", issue=n, stage="blocked", next=None, data=data)
+            ok(action="collect", issue=n, stage="blocked", next=None, **art(p, data))
 
     elif stage == "implementing":
         p = d / f"impl-r{a}.json"
@@ -844,11 +966,11 @@ def cmd_collect(args) -> None:
             rec["branch"] = data.get("branch") or rec.get("branch")
             rec["pr"] = data.get("pr")
             history(state, n, {"event": "pr_open", "pr": rec["pr"], "branch": rec["branch"]})
-            ok(action="collect", issue=n, stage="pr_open", next="review", data=data)
+            ok(action="collect", issue=n, stage="pr_open", next="review", **art(p, data))
         else:
             rec["stage"] = "blocked"
             history(state, n, {"event": "implementation_blocked", "data": data})
-            ok(action="collect", issue=n, stage="blocked", next=None, data=data)
+            ok(action="collect", issue=n, stage="blocked", next=None, **art(p, data))
 
     elif stage == "reviewing":
         r1 = d / f"review-1-r{a}.json"
@@ -865,14 +987,14 @@ def cmd_collect(args) -> None:
         if decisions == ("approve", "approve"):
             rec["stage"] = "approved"
             history(state, n, {"event": "reviews_approved", "reviews": [d1, d2]})
-            ok(action="collect", issue=n, stage="approved", next="qa", reviews=[d1, d2])
+            ok(action="collect", issue=n, stage="approved", next="qa", **arts((r1, d1), (r2, d2)))
         else:
             rec["stage"] = "changes_requested"
             bump_attempt(rec)
             history(state, n, {"event": "changes_requested", "reviews": [d1, d2],
                                "next_attempt": attempt(rec)})
             ok(action="collect", issue=n, stage="changes_requested",
-               next="design", attempt=attempt(rec), reviews=[d1, d2])
+               next="design", attempt=attempt(rec), **arts((r1, d1), (r2, d2)))
 
     elif stage == "qa_testing":
         p = d / f"qa-r{a}.json"
@@ -881,18 +1003,18 @@ def cmd_collect(args) -> None:
         if data.get("decision") == "pass":
             rec["stage"] = "qa_passed"
             history(state, n, {"event": "qa_passed", "data": data})
-            ok(action="collect", issue=n, stage="qa_passed", next="merge", data=data)
+            ok(action="collect", issue=n, stage="qa_passed", next="merge", **art(p, data))
         elif data.get("decision") == "fail":
             rec["stage"] = "qa_failed"
             bump_attempt(rec)
             history(state, n, {"event": "qa_failed", "data": data,
                                "next_attempt": attempt(rec)})
             ok(action="collect", issue=n, stage="qa_failed", next="design",
-               attempt=attempt(rec), data=data)
+               attempt=attempt(rec), **art(p, data))
         else:
             rec["stage"] = "blocked"
             history(state, n, {"event": "qa_blocked", "data": data})
-            ok(action="collect", issue=n, stage="blocked", next=None, data=data)
+            ok(action="collect", issue=n, stage="blocked", next=None, **art(p, data))
     else:
         fail(f"nothing to collect from stage {stage}")
 
@@ -935,6 +1057,32 @@ def cmd_block(args) -> None:
     ok(action="block", issue=n, stage="blocked")
 
 
+def cmd_unblock(args) -> None:
+    """Resume a deferred/blocked issue through a sanctioned transition.
+
+    `blocked` is a terminal stage: nothing else may dispatch from it. Reopening
+    is an explicit, audited decision (never a hand edit), and it does not reset
+    attempt history, so the normal gates still apply to the reopened work.
+    """
+    state = load_state()
+    n = args.issue
+    rec = get_rec(state, n)
+    if rec["stage"] != "blocked":
+        fail(f"cannot unblock from stage {rec['stage']}")
+    if args.to == "pr_open" and not rec.get("pr"):
+        fail("no PR recorded for this issue; unblock to 'design_ready' or "
+             "'changes_requested' instead")
+    previous = rec.pop("blocked_reason", "") or ""
+    rec["stage"] = args.to
+    rec["stage_started"] = int(time.time() * 1000)
+    history(state, n, {"event": "unblocked", "to": args.to,
+                       "reason": args.reason, "previous_reason": previous})
+    nxt = {"pr_open": "review", "design_ready": "implement",
+           "changes_requested": "review or implement"}.get(args.to)
+    ok(action="unblock", issue=n, stage=args.to, next=nxt,
+       previous_reason=previous)
+
+
 def cmd_escalate(args) -> None:
     state = load_state()
     ESCALATIONS.mkdir(parents=True, exist_ok=True)
@@ -961,7 +1109,7 @@ def cmd_escalate(args) -> None:
         f"\n\n## Options\n" + "\n".join(f"- {x}" for x in (args.options or ["none"])) +
         f"\n\n## Recommendation\n{args.recommendation or 'none'}\n\n"
         f"Decide and close it with:\n"
-        f"python3 {ROOT}/qa/tools/qa-fix.py escalations answer {eid} "
+        f"python3 {ROOT}/qa/tools/qa-fix.py escalations-answer {eid} "
         f"--decision <decision> --note <short rationale> [--action <directive>]\n"
         f"Then notify the manager. Do not edit product code."
     )
@@ -1085,7 +1233,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--env", type=int)
     s.add_argument("--note", help="manager note injected into the writer prompt")
     s.set_defaults(fn=cmd_implement)
-    s = sub.add_parser("collect"); s.add_argument("issue", type=int); s.set_defaults(fn=cmd_collect)
+    s = sub.add_parser("collect"); s.add_argument("issue", type=int)
+    s.add_argument("--full", action="store_true",
+                   help="echo the whole artifact instead of a compact digest")
+    s.set_defaults(fn=cmd_collect)
     s = sub.add_parser("merge"); s.add_argument("issue", type=int); s.set_defaults(fn=cmd_merge)
     s = sub.add_parser("migration-ts"); s.add_argument("issue", type=int)
     s.add_argument("--count", type=int, default=1); s.set_defaults(fn=cmd_migration_ts)
@@ -1097,6 +1248,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--timestamps", required=True)
     s.set_defaults(fn=cmd_assign_migrations)
     s = sub.add_parser("block"); s.add_argument("issue", type=int); s.add_argument("--reason", required=True); s.set_defaults(fn=cmd_block)
+    s = sub.add_parser("unblock"); s.add_argument("issue", type=int)
+    s.add_argument("--to", default="pr_open",
+                   choices=("pr_open", "changes_requested", "design_ready"))
+    s.add_argument("--reason", required=True)
+    s.set_defaults(fn=cmd_unblock)
     s = sub.add_parser("escalate")
     s.add_argument("--issue", type=int)
     s.add_argument("--kind", required=True,

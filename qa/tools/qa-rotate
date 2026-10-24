@@ -29,7 +29,9 @@ BOTS = ROOT / ".worktrees" / "qa-discord" / "qa" / "discord"
 STATE = BOTS / "state.json"
 MEM = ROOT / ".qa-memory"
 ROTATE_LOCK = Path("/tmp/studiq-qa-locks/rotation.lock")
-PROMPT_FILE = ENV_ROOT / "qa" / "MANAGER-PROMPT.md"
+PROMPT_FILE = ENV_ROOT / "qa" / "fixing" / "FIX-MANAGER.md"
+# Durable memory for the fix manager (distinct from the retired campaign manager).
+MEMORY_NAME = "fix-manager"
 API_BASE = "http://127.0.0.1:4096"
 API_AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
 MODEL = {"providerID": "opencode-go", "id": "deepseek-v4.1-flash", "variant": "high"}
@@ -85,7 +87,7 @@ def header(name: str) -> str:
 
 def ensure_memory() -> None:
     MEM.mkdir(parents=True, exist_ok=True)
-    targets = ["manager"]
+    targets = [MEMORY_NAME]
     created = []
     for name in targets:
         path = memory_path(name)
@@ -117,7 +119,7 @@ def cmd_status(args) -> None:
                 "manager": sid,
                 "context": ctx,
                 "limit": args.limit,
-                "memory_chars": len(read_memory("manager")),
+                "memory_chars": len(read_memory(MEMORY_NAME)),
                 "active": sid in active_sessions(),
             },
             indent=1,
@@ -154,7 +156,7 @@ def cmd_manager(args) -> None:
     prompt = (
         manager_prompt_base()
         + "\n\n## Durable memory (from the previous session)\n\n"
-        + read_memory("manager")
+        + read_memory(MEMORY_NAME)
         + "\n\nContinue from this memory. Do not ask me to re-explain anything that is written here."
     )
     if args.dry_run:

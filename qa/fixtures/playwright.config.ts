@@ -1,9 +1,6 @@
 import { resolve } from 'node:path';
 
-const baseURL =
-  process.env.PLAYWRIGHT_BASE_URL ??
-  process.env.APP_URL ??
-  'http://localhost:3000';
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? process.env.APP_URL ?? 'http://localhost:3000';
 
 // Plain config object on purpose: the runner lives in the slot's node_modules,
 // while this file lives in the qa-env worktree. Importing @playwright/test here
