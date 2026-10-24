@@ -6,6 +6,7 @@ export const APP_ERRORS = {
   NOT_FOUND: { code: 'ERROR_NOT_FOUND', status: 404 },
   GONE: { code: 'ERROR_GONE', status: 410 },
   CONFLICT: { code: 'ERROR_CONFLICT', status: 409 },
+  PAYLOAD_TOO_LARGE: { code: 'ERROR_PAYLOAD_TOO_LARGE', status: 413 },
   UNPROCESSABLE_ENTITY: { code: 'ERROR_UNPROCESSABLE_ENTITY', status: 422 },
   RATE_LIMITED: { code: 'ERROR_RATE_LIMITED', status: 429 },
   USAGE_LIMIT_EXCEEDED: { code: 'ERROR_USAGE_LIMIT_EXCEEDED', status: 429 },

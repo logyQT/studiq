@@ -1,11 +1,27 @@
-import { toNextResponse } from '@studiq/server/lib/http-utils';
+import { AppError } from '@studiq/server/lib/errors';
+import { handleApiError, toNextResponse } from '@studiq/server/lib/http-utils';
 import { withAuth } from '@studiq/server/lib/with-auth';
-import { storageService } from '@studiq/server/services/storage.service';
+import { MAX_REQUEST_BYTES, storageService } from '@studiq/server/services/storage.service';
 import type { NextRequest } from 'next/server';
 
 export async function POST(req: NextRequest) {
   return withAuth(req, async (ctx) => {
-    const formData = await req.formData();
+    // The proxy buffers the body before this route runs; reject oversize
+    // requests up front instead of letting a truncated multipart body fail
+    // later as a 500 (#185).
+    const contentLength = Number(req.headers.get('content-length'));
+    if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
+      return handleApiError(new AppError('PAYLOAD_TOO_LARGE'));
+    }
+
+    let formData: FormData;
+    try {
+      formData = await req.formData();
+    } catch (error) {
+      // Malformed or truncated multipart body — a client error, not a 500.
+      return handleApiError(error, 'BAD_REQUEST');
+    }
+
     const file = formData.get('file') as File | null;
 
     if (!file) {
