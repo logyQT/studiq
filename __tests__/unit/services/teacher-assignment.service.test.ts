@@ -1135,6 +1135,26 @@ describe('TeacherAssignmentService', () => {
       }
     });
 
+    it('never exposes the answer key in the started attempt payload (#331)', async () => {
+      const fullQuestion = { id: 'q-1', content: 'What?', question_answers: [] };
+      const questionsChain = chain([fullQuestion]);
+      mock.from
+        .mockReturnValueOnce(chain(assignment))
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(questionsChain)
+        .mockReturnValueOnce(chain({ id: 'attempt-1' }))
+        .mockReturnValue(chain(null));
+
+      const result = await service.startAttempt(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      const projection = questionsChain.select.mock.calls[0][0] as string;
+      expect(projection).not.toContain('*');
+      expect(projection).not.toContain('is_correct');
+      expect(projection).not.toContain('explanation');
+      expect(projection).not.toContain('search_vector');
+    });
+
     it('starts an attempt for a student targeted through a group', async () => {
       const fullQuestion = { id: 'q-1', content: 'What?', question_answers: [] };
       mock.from

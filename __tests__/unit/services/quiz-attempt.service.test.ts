@@ -94,6 +94,102 @@ describe('QuizAttemptService', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
     });
+
+    it('projects only take-page columns while the attempt is in progress (#331)', async () => {
+      const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
+      const questionsBuilder = qb([
+        { order_index: 0, question_id: 'q-1', questions: { id: 'q-1' } },
+      ]);
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(questionsBuilder);
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(true);
+      const projection = questionsBuilder.select.mock.calls[0][0] as string;
+      expect(projection).not.toContain('*');
+      expect(projection).not.toContain('is_correct');
+      expect(projection).not.toContain('explanation');
+      expect(projection).not.toContain('search_vector');
+      expect(projection).toContain('question_answers:question_options(id, content)');
+    });
+
+    it('includes the answer key once the attempt is completed (#331)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        completed_at: '2026-10-24T10:00:00.000Z',
+      };
+      const questionsBuilder = qb([
+        { order_index: 0, question_id: 'q-1', questions: { id: 'q-1' } },
+      ]);
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(questionsBuilder);
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(true);
+      const projection = questionsBuilder.select.mock.calls[0][0] as string;
+      expect(projection).toContain('explanation');
+      expect(projection).toContain('is_correct');
+    });
+
+    it('omits is_correct from the answers map while the attempt is in progress (#331)', async () => {
+      const attempt = { id: 'a-1', user_id: ctx.userId, completed_at: null };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          {
+            question_id: 'q-1',
+            selected_option_id: 'ans-1',
+            text_answer: null,
+            is_correct: true,
+          },
+        ]),
+      );
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(true);
+      const answer = (result.data as any).answers['q-1'];
+      expect(answer).toEqual({
+        selected_answer_id: 'ans-1',
+        text_answer: null,
+      });
+      expect(answer).not.toHaveProperty('is_correct');
+    });
+
+    it('keeps is_correct in the answers map for a completed attempt (#331)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        completed_at: '2026-10-24T10:00:00.000Z',
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          {
+            question_id: 'q-1',
+            selected_option_id: 'ans-1',
+            text_answer: null,
+            is_correct: true,
+          },
+        ]),
+      );
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).answers['q-1'].is_correct).toBe(true);
+    });
   });
 
   describe('submit', () => {
