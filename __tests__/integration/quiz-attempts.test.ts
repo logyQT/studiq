@@ -382,6 +382,8 @@ forEachCopy((copyId) => {
         // Go through the same client helper the take pages use, so a regression
         // that puts open text into `selectedAnswerId` fails here too (#320).
         const localAnswers: Record<string, string> = {};
+        // One option per question is exactly the helper's single-value contract;
+        // `multi_select` is outside it and not covered here.
         for (const option of options ?? []) localAnswers[option.question_id] ??= option.id;
         localAnswers[openQuestion.id] = textAnswer;
 
