@@ -35,7 +35,7 @@ export class LimitsResolver {
       }
     }
 
-    // No seat (or no org context): personal plan + org override fallback
+    // No seat (or no org context): personal plan + org plan fallback
     const limits: number[] = [];
 
     const { data: profile } = await supabase
@@ -55,13 +55,21 @@ export class LimitsResolver {
     }
 
     if (ctx.activeOrgId) {
-      const { data: ol } = await supabase
-        .from('org_limits')
-        .select('max_value')
-        .eq('organization_id', ctx.activeOrgId)
-        .eq('limit_key', limitKey)
+      const { data: org } = await supabase
+        .from('organizations')
+        .select('plan')
+        .eq('id', ctx.activeOrgId)
         .maybeSingle();
-      if (ol) limits.push(ol.max_value);
+
+      if (org?.plan) {
+        const { data: pl } = await supabase
+          .from('plan_limits')
+          .select('limit_value')
+          .eq('plan_key', org.plan)
+          .eq('limit_key', limitKey)
+          .maybeSingle();
+        if (pl) limits.push(pl.limit_value);
+      }
     }
 
     if (limits.length === 0) return 0;
@@ -83,13 +91,13 @@ export class LimitsResolver {
 
   /**
    * Org-centric limit check: capacity is governed by the organization's plan
-   * (plan_limits) plus any org_limits override, never by the acting user's
-   * personal plan. Used where the actor is not yet in the org context — e.g.
-   * a student accepting an invitation. Missing limits default to unlimited (-1).
+   * (organizations.plan → plan_limits), never by the acting user's personal
+   * plan. Used where the actor is not yet in the org context — e.g. a student
+   * accepting an invitation. Missing limits default to unlimited (-1).
    *
    * `client` lets the caller pass the service-role client: before the caller is
-   * an org member, RLS hides `organizations`/`org_limits`, which would silently
-   * turn every limit into "unlimited" (#182 regression).
+   * an org member, RLS hides `organizations`, which would silently turn every
+   * limit into "unlimited" (#182 regression).
    */
   async checkOrgLimit(
     organizationId: string,
@@ -116,14 +124,6 @@ export class LimitsResolver {
         .maybeSingle();
       if (pl) limits.push(pl.limit_value);
     }
-
-    const { data: ol } = await supabase
-      .from('org_limits')
-      .select('max_value')
-      .eq('organization_id', organizationId)
-      .eq('limit_key', limitKey)
-      .maybeSingle();
-    if (ol) limits.push(ol.max_value);
 
     const limit = limits.length === 0 ? -1 : Math.max(...limits);
     if (limit !== -1 && currentCount + increment > limit) {

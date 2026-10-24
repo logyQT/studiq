@@ -1,3 +1,5 @@
+import type { RequestContext } from '@studiq/authz';
+import { LimitsResolver } from '@studiq/server/services/limits.resolver';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forEachCopy, registerMock } from '#test/helpers/concurrent';
 import {
@@ -145,28 +147,27 @@ forEachCopy((copyId) => {
       expect(features?.every((f) => f.is_enabled)).toBe(true);
     });
 
-    it('seeds org limits from plan template', async () => {
+    it('derives org limits from plan_limits (no snapshot)', async () => {
       const supabase = createServiceClient();
+      const resolver = new LimitsResolver(async () => supabase);
 
-      const { data: limits } = await supabase
-        .from('org_limits')
-        .select('limit_key, max_value')
-        .eq('organization_id', orgId);
+      // The org defaults to the 'launch' plan. Limits are no longer copied into
+      // an org_limits snapshot (#229) — they resolve live from the plan template.
+      const ctx: RequestContext = {
+        traceId: 'org-features',
+        userId: '00000000-0000-4000-8000-000000000000',
+        accountType: 'STUDENT',
+        activeOrgId: orgId,
+        orgRoleId: null,
+        url: '/api/v1/features/me',
+        method: 'GET',
+        groupIds: [],
+        permissionScopes: {},
+      };
 
-      expect(limits?.length).toBeGreaterThan(0);
-
-      // Org defaults to 'launch' plan — check launch plan limits
-      const launchLimits = [
-        { limit_key: 'max_flashcards', max_value: 100 },
-        { limit_key: 'max_questions', max_value: 50 },
-        { limit_key: 'max_decks', max_value: 10 },
-      ];
-
-      for (const expected of launchLimits) {
-        const match = limits?.find((l) => l.limit_key === expected.limit_key);
-        expect(match).toBeDefined();
-        expect(match?.max_value).toBe(expected.max_value);
-      }
+      await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(100);
+      await expect(resolver.getEffectiveLimit(ctx, 'max_questions')).resolves.toBe(50);
+      await expect(resolver.getEffectiveLimit(ctx, 'max_decks')).resolves.toBe(10);
     });
   });
 });

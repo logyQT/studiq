@@ -13,10 +13,12 @@ Last updated: 2026-09-17
 - Feature-flag keys: flat keys everywhere (drop `FEATURE_FLAG_TO_FEATURE_KEY`)
 - No backward-compat layers (pre-market, delete old paths cleanly)
 - Seat licensing: opt-in per-user upgrades only — NO default/seed pools at org
-  creation; everyone gets org-plan defaults (`org_role_features` + `org_limits`);
-  a seat is bought/assigned per user and upgrades only that user (e.g. extra AI
-  quota for one teacher). Seats can never grant admin-only features
-  (`org.manage`/`member.manage`/`role.builder`) to a non-admin role.
+  creation; everyone gets org-plan defaults (`org_role_features`, with capacity
+  derived live from `organizations.plan → plan_limits` since #229 removed the
+  `org_limits` snapshot); a seat is bought/assigned per user and upgrades only
+  that user (e.g. extra AI quota for one teacher). Seats can never grant
+  admin-only features (`org.manage`/`member.manage`/`role.builder`) to a
+  non-admin role.
 - Admin panel is a standalone app (`apps/admin`), not sub-routes of the main app;
   dev on `:4000` (no clash with main app's `:3000`), production on its own
   subdomain (e.g. `internal.studiq`). Main app contains zero admin routes when
