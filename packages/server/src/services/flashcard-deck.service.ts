@@ -301,7 +301,19 @@ export class FlashcardDeckService {
       await check(ctx, Permission.DECK_READ, existing);
     }
 
-    const requestedGroupIds = data.groupIds !== undefined ? [...new Set(data.groupIds)] : null;
+    // Share links only exist while the deck is group-visible. Deriving the target list from the
+    // RESULTING visibility keeps `visibility` and `deck_groups` consistent for partial bodies:
+    // a `{ visibility: 'personal' }` PUT must clear the links even though it omits `groupIds`.
+    const effectiveVisibility = data.visibility ?? existing.visibility;
+    const linksTouched = data.visibility !== undefined || data.groupIds !== undefined;
+    const requestedGroupIds = !linksTouched
+      ? null
+      : effectiveVisibility !== 'group'
+        ? [] // resulting visibility is personal → never keep links
+        : data.groupIds !== undefined
+          ? [...new Set(data.groupIds)]
+          : null; // visibility stayed 'group' and no list was sent → keep existing links
+
     if (requestedGroupIds !== null && requestedGroupIds.length > 0) {
       // The link must belong to the CONTENT's org, not the caller's current UI org.
       // NULL-org content (legacy personal rows) falls back to the active org.
