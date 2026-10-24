@@ -103,7 +103,7 @@ export function QuestionBankDetailScreen({
       toast.success(tForm('deleted'));
       invalidate();
     } catch {
-      toast.error(t('common_error'));
+      toast.error(tForm('delete_failed'));
     }
     setDeleteId(null);
   }

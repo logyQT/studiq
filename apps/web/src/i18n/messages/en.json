@@ -2303,7 +2303,8 @@
     "created": "Question created",
     "updated": "Question updated",
     "deleted": "Question deleted",
-    "save_failed": "Failed to save question"
+    "save_failed": "Failed to save question",
+    "delete_failed": "Failed to delete question"
   },
   "AccountPage": {
     "title": "Account",
