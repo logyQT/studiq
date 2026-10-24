@@ -14,7 +14,10 @@ import {
   UpdateTeacherAssignmentSchema,
 } from '@studiq/server/models/teacher-assignment.model';
 import type { TeacherAssignmentService } from '@studiq/server/services/teacher-assignment.service';
-import { teacherAssignmentService } from '@studiq/server/services/teacher-assignment.service';
+import {
+  type AnswersExportRow,
+  teacherAssignmentService,
+} from '@studiq/server/services/teacher-assignment.service';
 
 export class TeacherAssignmentController {
   constructor(private service: TeacherAssignmentService) {}
@@ -220,7 +223,7 @@ export class TeacherAssignmentController {
     id: string,
     studentId: string | undefined,
     ctx: RequestContext,
-  ): Promise<ControllerResponse> {
+  ): Promise<ControllerResponse<AnswersExportRow[]>> {
     const result = await this.service.exportAnswers(id, studentId, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);

@@ -42,6 +42,29 @@ interface StudentAttemptSummaryRow {
   started_at: string | null;
 }
 
+export type AnswersExportStatus = 'graded' | 'submitted' | 'in_progress';
+
+/** One row of the results view, as serialised by the answers CSV export. */
+export interface AnswersExportRow {
+  studentName: string | null;
+  email: string | null;
+  /** `3/4`, or `-` when the attempt is not completed. */
+  score: string;
+  status: AnswersExportStatus;
+  /** ISO timestamp; the route formats it for the requested locale. */
+  completedAt: string | null;
+}
+
+/**
+ * PostgREST returns a to-one relation as an object, while the generated types
+ * describe it as an array. Accept both so the mapping matches what the API
+ * actually returns.
+ */
+function joinOne<T>(value: T | T[] | null | undefined): T | null {
+  const related = Array.isArray(value) ? value[0] : value;
+  return related ?? null;
+}
+
 export class TeacherAssignmentService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
@@ -949,31 +972,26 @@ export class TeacherAssignmentService {
     return success({ ...toAttemptPayload(attempt), questions });
   }
 
+  /**
+   * Rows for the answers CSV — the same summary the results view renders
+   * (one row per attempt: student, e-mail, score, status, completion date).
+   * Ownership already proves the assignment exists, so the questions/answer
+   * key payload is not read here.
+   */
   async exportAnswers(
     id: string,
     studentId: string | undefined,
     ctx: RequestContext,
-  ): Promise<ServiceResult<unknown>> {
+  ): Promise<ServiceResult<AnswersExportRow[]>> {
     const supabase = await this.createClient();
 
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
 
-    const { data: assignment, error: assignmentError } = await supabase
-      .from('teacher_assignments')
-      .select(
-        '*, assignment_questions(*, question:question_id(*, question_answers:question_options(*)))',
-      )
-      .eq('id', id)
-      .single();
-
-    if (assignmentError) return toDbFailure(assignmentError);
-    if (!assignment) return failure('NOT_FOUND');
-
     let query = supabase
       .from('quiz_attempts')
       .select(
-        '*, user:user_id(id, email, full_name), quiz_answers:student_answers(*), assignment_answer_images(*)',
+        'id, score, total_questions, total_points, completed_at, graded_at, user:user_id(id, email, full_name)',
       )
       .eq('assignment_id', id)
       .order('started_at', { ascending: true });
@@ -986,10 +1004,24 @@ export class TeacherAssignmentService {
 
     if (attemptsError) return toDbFailure(attemptsError);
 
-    return success({
-      assignment,
-      attempts: attempts ?? [],
+    const rows = (attempts ?? []).map((attempt) => {
+      const user = joinOne(attempt.user);
+      return {
+        studentName: user?.full_name ?? null,
+        email: user?.email ?? null,
+        score: attempt.completed_at
+          ? `${attempt.score ?? 0}/${attempt.total_points || attempt.total_questions || 0}`
+          : '-',
+        status: attempt.graded_at
+          ? ('graded' as const)
+          : attempt.completed_at
+            ? ('submitted' as const)
+            : ('in_progress' as const),
+        completedAt: attempt.completed_at,
+      };
     });
+
+    return success(rows);
   }
 
   async uploadImage(
