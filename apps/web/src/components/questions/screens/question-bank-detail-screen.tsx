@@ -13,6 +13,7 @@ import { CreateFromQuestionDialog } from '@/components/flashcards/dialogs/create
 import { QuestionFormDialog } from '@/components/questions/shared/question-form-dialog';
 import { QuestionTable } from '@/components/questions/shared/question-table';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
+import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { questionKeys } from '@/lib/query-keys';
 
@@ -30,6 +31,7 @@ export function QuestionBankDetailScreen({
   tForm,
 }: QuestionBankDetailScreenProps) {
   const queryClient = useQueryClient();
+  const permission = usePermission();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [sortBy, setSortBy] = useState('created_at');
@@ -81,10 +83,10 @@ export function QuestionBankDetailScreen({
     if (!deleteId) return;
     try {
       await apiDelete(`/api/v1/questions/${deleteId}`);
-      toast.success(tForm('updated'));
+      toast.success(tForm('deleted'));
       invalidate();
     } catch {
-      toast.error(tForm('save_failed'));
+      toast.error(t('common_error'));
     }
     setDeleteId(null);
   }
@@ -134,6 +136,8 @@ export function QuestionBankDetailScreen({
         onEdit={openEdit}
         onDelete={setDeleteId}
         onCreateFlashcard={basePath.startsWith('/edu') ? setFlashcardSourceQuestion : undefined}
+        canUpdate={(q) => permission('question.update', { createdBy: q.created_by })}
+        canDelete={(q) => permission('question.delete', { createdBy: q.created_by })}
         showReportButton={basePath.startsWith('/app')}
         t={t}
       />
@@ -162,8 +166,8 @@ export function QuestionBankDetailScreen({
         open={!!deleteId}
         onOpenChange={() => setDeleteId(null)}
         onConfirm={handleDelete}
-        title={t('common_delete')}
-        description={t('common_confirm')}
+        title={t('delete_title')}
+        description={t('delete_desc')}
         cancelText={t('common_cancel')}
         confirmText={t('common_delete')}
       />
