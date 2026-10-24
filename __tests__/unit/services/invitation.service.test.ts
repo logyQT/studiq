@@ -87,8 +87,29 @@ describe('InvitationService', () => {
   });
 
   describe('createInvitation', () => {
-    it('creates invitation for manager with organizationId', async () => {
-      mock.from.mockReturnValueOnce(qb({ token: 'abc123' }));
+    /**
+     * A successful create runs three reads/writes in order: membership,
+     * role-in-org, insert. Returns the builders so a test can assert the
+     * scoping and payload of each step.
+     */
+    function createBuilders({
+      membership = { organization_id: 'uni-1' } as any,
+      role = { id: 'member' } as any,
+      insert = { token: 'abc123' } as any,
+      insertError = null as any,
+    } = {}) {
+      const membershipQb = qb(membership);
+      const roleQb = qb(role);
+      const insertQb = qb(insert, insertError);
+      mock.from
+        .mockReturnValueOnce(membershipQb)
+        .mockReturnValueOnce(roleQb)
+        .mockReturnValueOnce(insertQb);
+      return { membershipQb, roleQb, insertQb };
+    }
+
+    it('creates an invitation when organizationId matches a membership', async () => {
+      const { membershipQb, roleQb, insertQb } = createBuilders();
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
       vi.stubEnv('NODE_ENV', 'development');
@@ -102,21 +123,113 @@ describe('InvitationService', () => {
       expect(result.success).toBe(true);
       expect((result.data as any).inviteLink).toContain('abc123');
 
+      // The membership probe is scoped to the caller AND the target org.
+      expect(membershipQb.eq).toHaveBeenCalledWith('organization_id', 'uni-1');
+      expect(membershipQb.eq).toHaveBeenCalledWith('user_id', 'test-user-id');
+      // The granted role must belong to that same org.
+      expect(roleQb.eq).toHaveBeenCalledWith('id', 'member');
+      expect(roleQb.eq).toHaveBeenCalledWith('organization_id', 'uni-1');
+      expect(insertQb.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ organization_id: 'uni-1', target_org_role_id: 'member' }),
+      );
+
       vi.unstubAllEnvs();
     });
 
-    it('returns NOT_FOUND when manager has no organizationId', async () => {
+    // #242: body-supplied organizationId must never extend the caller's tenant.
+    it('returns FORBIDDEN for a foreign organizationId and writes nothing', async () => {
+      const membership = qb(null);
+      mock.from.mockReturnValueOnce(membership);
+
+      const result = await service.createInvitation(
+        { ...managerCtx, activeOrgId: 'org-own', orgRoleId: 'role-own' },
+        {
+          email: 'qa-cross-org-ag@example.com',
+          targetOrgRoleId: 'foreign-member-role',
+          organizationId: 'org-foreign',
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(membership.eq).toHaveBeenCalledWith('organization_id', 'org-foreign');
+      // No role lookup, no insert: the request stopped at the tenant boundary.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('invitations');
+    });
+
+    // #242: active_org_id is a client-controlled cookie, so the cookie axis
+    // must be closed too — not just the body field.
+    it('returns FORBIDDEN for a forged active_org_id cookie and writes nothing', async () => {
+      mock.from.mockReturnValueOnce(qb(null));
+
+      const result = await service.createInvitation(
+        { ...managerCtx, activeOrgId: 'org-foreign', orgRoleId: null },
+        { email: 'qa-cookie-spoof@example.com', targetOrgRoleId: 'foreign-member-role' },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('invitations');
+    });
+
+    // #242 control (issue's UE Wrocław case): a member org that is not the
+    // active org is still a valid target.
+    it('creates an invitation in a member org that is not the active org', async () => {
+      const { insertQb } = createBuilders({
+        membership: { organization_id: 'org-ue' },
+      });
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitation(
+        { ...managerCtx, activeOrgId: 'org-wsb', orgRoleId: 'role-wsb' },
+        {
+          email: 'qa-control-ue@example.com',
+          targetOrgRoleId: 'ue-member-role',
+          organizationId: 'org-ue',
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(insertQb.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ organization_id: 'org-ue' }),
+      );
+
+      vi.unstubAllEnvs();
+    });
+
+    // #242: a role from another org would leak that tenant's permission scopes
+    // into the target org on accept.
+    it('returns FORBIDDEN when the target role belongs to another organization', async () => {
+      createBuilders({ role: null });
+
+      const result = await service.createInvitation(managerCtx, {
+        email: 'john@example.com',
+        targetOrgRoleId: 'foreign-role',
+        organizationId: 'uni-1',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).toHaveBeenCalledTimes(2);
+      expect(mock.from).not.toHaveBeenCalledWith('invitations');
+    });
+
+    it('returns FORBIDDEN when manager has no organizationId and no active org', async () => {
       const result = await service.createInvitation(managerCtx, {
         email: 'john@example.com',
         targetOrgRoleId: 'member',
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('NOT_FOUND');
+      expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).not.toHaveBeenCalled();
     });
 
     it('creates invitation for educator with activeOrgId', async () => {
-      mock.from.mockReturnValueOnce(qb({ token: 'abc123' }));
+      const { insertQb } = createBuilders();
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
       vi.stubEnv('NODE_ENV', 'development');
@@ -128,6 +241,9 @@ describe('InvitationService', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).success).toBe(true);
+      expect(insertQb.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ organization_id: 'uni-1' }),
+      );
 
       vi.unstubAllEnvs();
     });
@@ -140,10 +256,11 @@ describe('InvitationService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).not.toHaveBeenCalled();
     });
 
     it('returns INTERNAL_SERVER when SITE_URL is not set', async () => {
-      mock.from.mockReturnValueOnce(qb({ token: 'abc123' }));
+      createBuilders();
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', '');
 
@@ -159,7 +276,7 @@ describe('InvitationService', () => {
     });
 
     it('returns INTERNAL_SERVER when insert fails', async () => {
-      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+      createBuilders({ insert: null, insertError: { message: 'DB error' } });
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
 
@@ -172,6 +289,42 @@ describe('InvitationService', () => {
       expect(result.error).toBe('INTERNAL_SERVER');
 
       vi.unstubAllEnvs();
+    });
+  });
+
+  describe('listInvitations', () => {
+    it('returns FORBIDDEN when the active org is not a membership', async () => {
+      mock.from.mockReturnValueOnce(qb(null));
+
+      const result = await service.listInvitations({
+        ...managerCtx,
+        activeOrgId: 'org-foreign',
+        orgRoleId: null,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('invitations');
+    });
+
+    it('returns FORBIDDEN without querying when there is no active org', async () => {
+      const result = await service.listInvitations(managerCtx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('lists only the verified active organization', async () => {
+      mock.from.mockReturnValueOnce(qb({ organization_id: 'org-a' }));
+      const list = qb([]);
+      mock.from.mockReturnValueOnce(list);
+
+      const result = await service.listInvitations({ ...managerCtx, activeOrgId: 'org-a' });
+
+      expect(result.success).toBe(true);
+      expect(list.eq).toHaveBeenCalledWith('organization_id', 'org-a');
     });
   });
 

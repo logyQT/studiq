@@ -79,6 +79,63 @@ export class InvitationService {
   }
 
   /**
+   * Resolve the organization an invitation is written to and prove the caller
+   * may act in it.
+   *
+   * `organizationId` may name any org the caller belongs to (API contract),
+   * never a foreign one. `ctx.activeOrgId` is a client-controlled cookie, so
+   * membership is always verified against `org_members` — a cookie pointing at
+   * a foreign org must not become a write target (#242).
+   *
+   * Note for future work: `ctx.permissionScopes` is resolved for `activeOrgId`
+   * only. If an invite permission is ever added, scopes must be resolved for
+   * the resolved target org (or `organizationId` must be restricted to
+   * `activeOrgId`).
+   */
+  private async resolveTargetOrganization(
+    supabase: SupabaseClient,
+    ctx: RequestContext,
+    requestedOrganizationId?: string,
+  ): Promise<ServiceResult<string>> {
+    if (ctx.accountType !== AccountType.MANAGER && ctx.accountType !== AccountType.EDUCATOR) {
+      return failure('FORBIDDEN');
+    }
+
+    const organizationId = requestedOrganizationId ?? ctx.activeOrgId ?? undefined;
+    if (!organizationId) return failure('FORBIDDEN');
+
+    const { data: membership, error } = await supabase
+      .from('org_members')
+      .select('organization_id')
+      .eq('organization_id', organizationId)
+      .eq('user_id', ctx.userId)
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!membership) return failure('FORBIDDEN');
+
+    return success(organizationId);
+  }
+
+  /** An invite may only grant a role that belongs to the target organization. */
+  private async assertRoleBelongsToOrganization(
+    supabase: SupabaseClient,
+    organizationId: string,
+    orgRoleId: string,
+  ): Promise<ServiceResult<void>> {
+    const { data, error } = await supabase
+      .from('org_roles')
+      .select('id')
+      .eq('id', orgRoleId)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+
+    if (error) return toDbFailure(error);
+    if (!data) return failure('FORBIDDEN');
+    return success(undefined);
+  }
+
+  /**
    * The inviter must still be allowed to grant the target role. Re-checked at
    * preview and accept: an invitation minted by a manager who was later demoted
    * (or by a member who should never have had the capability) is dead.
@@ -100,18 +157,18 @@ export class InvitationService {
   ): Promise<ServiceResult<{ success: boolean; inviteLink: string | undefined }>> {
     const supabase = await this.createClient();
 
-    let targetOrganizationId: string | undefined;
+    // The body may only *select* one of the caller's memberships, never extend
+    // the tenant: a foreign `organizationId` (or a forged `active_org_id`
+    // cookie) is rejected before any write (#242).
+    const targetOrg = await this.resolveTargetOrganization(supabase, ctx, data.organizationId);
+    if (!targetOrg.success) return targetOrg;
 
-    if (ctx.accountType === AccountType.MANAGER) {
-      targetOrganizationId = data.organizationId ?? ctx.activeOrgId ?? undefined;
-      if (!targetOrganizationId) return failure('NOT_FOUND');
-    } else if (ctx.accountType === AccountType.EDUCATOR) {
-      targetOrganizationId = ctx.activeOrgId ?? undefined;
-    }
-
-    if (!targetOrganizationId) {
-      return failure('FORBIDDEN');
-    }
+    const roleCheck = await this.assertRoleBelongsToOrganization(
+      supabase,
+      targetOrg.data,
+      data.targetOrgRoleId,
+    );
+    if (!roleCheck.success) return roleCheck;
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
@@ -121,7 +178,7 @@ export class InvitationService {
       .insert({
         email: data.email,
         target_org_role_id: data.targetOrgRoleId,
-        organization_id: targetOrganizationId,
+        organization_id: targetOrg.data,
         inviter_id: ctx.userId,
         expires_at: expiresAt.toISOString(),
       })
@@ -297,12 +354,16 @@ export class InvitationService {
     >
   > {
     const supabase = await this.createClient();
-    if (!ctx.activeOrgId) return failure('FORBIDDEN');
+
+    // Same tenant boundary as create: the cookie is client-controlled, so the
+    // list scope is the caller's verified membership, not the raw cookie (#242).
+    const targetOrg = await this.resolveTargetOrganization(supabase, ctx);
+    if (!targetOrg.success) return targetOrg;
 
     let query = supabase
       .from('invitations')
       .select('*, org_roles!inner(name)')
-      .eq('organization_id', ctx.activeOrgId)
+      .eq('organization_id', targetOrg.data)
       .order('created_at', { ascending: false });
 
     if (!isAccepted) query = query.eq('is_accepted', false);
