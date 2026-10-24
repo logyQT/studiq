@@ -297,60 +297,30 @@ describe('FlashcardService', () => {
     });
   });
 
-  describe('link', () => {
-    const teacherCard = {
-      id: 'fc-teacher',
-      created_by: 'teacher-1',
-      organization_id: 'org-1',
-      deck_id: 'deck-teacher',
-    };
-    const studentDeck = { id: 'deck-student', created_by: ctx.userId, organization_id: 'org-1' };
-
-    it('gates the move on flashcard.update of the source card, not read', async () => {
-      mock.from.mockReturnValueOnce(chain(teacherCard));
-      mock.from.mockReturnValueOnce(chain(studentDeck));
-      mock.from.mockReturnValueOnce(chain(null));
-      mock.from.mockReturnValueOnce(chain({ ...teacherCard, deck_id: 'deck-student' }));
-
-      const result = await service.link('fc-teacher', { deckId: 'deck-student' }, ctx);
-
-      expect(result.success).toBe(true);
-      expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.update', teacherCard);
-      expect(vi.mocked(check)).not.toHaveBeenCalledWith(ctx, 'flashcard.read', teacherCard);
-    });
-
-    it('propagates FORBIDDEN and never updates the card', async () => {
-      mock.from.mockReturnValueOnce(chain(teacherCard));
-      vi.mocked(check).mockRejectedValueOnce(new AppError('FORBIDDEN'));
-
-      await expect(
-        service.link('fc-teacher', { deckId: 'deck-student' }, ctx),
-      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
-
-      // Only the card fetch happened: no deck lookup and no update statement.
-      expect(mock.from).toHaveBeenCalledTimes(1);
-      expect(mock.from).toHaveBeenCalledWith('flashcards');
-    });
-  });
-
-  describe('batchLink', () => {
+  describe('batchMove', () => {
     const ownCard = { id: 'fc-own', created_by: ctx.userId, organization_id: 'org-1' };
     const teacherCard = { id: 'fc-teacher', created_by: 'teacher-1', organization_id: 'org-1' };
-    const studentDeck = { id: 'deck-student', created_by: ctx.userId, organization_id: 'org-1' };
+    const targetDeck = { id: 'deck-target', created_by: ctx.userId, organization_id: 'org-1' };
 
-    it('gates every requested card on flashcard.update', async () => {
+    it('moves every card and gates each card plus the target deck', async () => {
       mock.from.mockReturnValueOnce(chain([ownCard, teacherCard]));
-      mock.from.mockReturnValueOnce(chain([studentDeck]));
+      mock.from.mockReturnValueOnce(chain(targetDeck));
       mock.from.mockReturnValueOnce(chain(null));
 
-      const result = await service.batchLink(
-        { ids: ['fc-own', 'fc-teacher'], deckId: 'deck-student' },
+      const result = await service.batchMove(
+        {
+          ids: ['fc-own', 'fc-teacher'],
+          sourceDeckId: 'deck-source',
+          targetDeckId: 'deck-target',
+        },
         ctx,
       );
 
       expect(result.success).toBe(true);
+      expect(result.data).toEqual({ moved: 2 });
       expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.update', ownCard);
       expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'flashcard.update', teacherCard);
+      expect(vi.mocked(check)).toHaveBeenCalledWith(ctx, 'deck.update', targetDeck);
       expect(vi.mocked(check)).not.toHaveBeenCalledWith(ctx, 'flashcard.read', teacherCard);
     });
 
@@ -361,10 +331,33 @@ describe('FlashcardService', () => {
         .mockRejectedValueOnce(new AppError('FORBIDDEN'));
 
       await expect(
-        service.batchLink({ ids: ['fc-own', 'fc-teacher'], deckId: 'deck-student' }, ctx),
+        service.batchMove(
+          {
+            ids: ['fc-own', 'fc-teacher'],
+            sourceDeckId: 'deck-source',
+            targetDeckId: 'deck-target',
+          },
+          ctx,
+        ),
       ).rejects.toMatchObject({ code: 'FORBIDDEN' });
 
+      // Only the card fetch happened: no deck lookup and no update statement.
       expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns NOT_FOUND when the target deck is missing', async () => {
+      mock.from.mockReturnValueOnce(chain([ownCard]));
+      mock.from.mockReturnValueOnce(chain(null));
+
+      const result = await service.batchMove(
+        { ids: ['fc-own'], sourceDeckId: 'deck-source', targetDeckId: 'deck-missing' },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('NOT_FOUND');
+      // Cards fetched + deck lookup only; no update statement.
+      expect(mock.from).toHaveBeenCalledTimes(2);
     });
   });
 

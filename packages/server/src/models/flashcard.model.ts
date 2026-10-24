@@ -71,13 +71,6 @@ export type CreateFlashcardInput = z.infer<typeof CreateFlashcardSchema>;
 export type BulkCreateFlashcardsInput = z.infer<typeof BulkCreateFlashcardsSchema>;
 export type UpdateFlashcardInput = z.infer<typeof UpdateFlashcardSchema>;
 
-export const LinkFlashcardSchema = registry.register(
-  'LinkFlashcardRequest',
-  z.object({
-    deckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
-  }),
-);
-
 export const CopyFlashcardSchema = registry.register(
   'CopyFlashcardRequest',
   z.object({
@@ -91,16 +84,6 @@ export const BatchDeleteSchema = registry.register(
     ids: z
       .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
       .min(1, { error: ValidationErrorCode.TOO_FEW }),
-  }),
-);
-
-export const BatchLinkSchema = registry.register(
-  'BatchLinkRequest',
-  z.object({
-    ids: z
-      .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
-      .min(1, { error: ValidationErrorCode.TOO_FEW }),
-    deckId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }),
   }),
 );
 
@@ -179,10 +162,8 @@ export interface FlashcardWithAssignments {
 
 export type Flashcard = FlashcardWithAssignments;
 
-export type LinkFlashcardInput = z.infer<typeof LinkFlashcardSchema>;
 export type CopyFlashcardInput = z.infer<typeof CopyFlashcardSchema>;
 export type BatchDeleteInput = z.infer<typeof BatchDeleteSchema>;
-export type BatchLinkInput = z.infer<typeof BatchLinkSchema>;
 export type BatchTopicsInput = z.infer<typeof BatchTopicsSchema>;
 export type BatchMoveInput = z.infer<typeof BatchMoveSchema>;
 export type BatchCopyInput = z.infer<typeof BatchCopySchema>;

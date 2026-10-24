@@ -14,7 +14,6 @@ import {
   FileDown,
   FileUp,
   Layers,
-  Link2,
   MoreVertical,
   Pencil,
   Play,
@@ -244,12 +243,6 @@ export function DeckDetailScreen({
     invalidateKeys: [flashcardQueryKey, flashcardKeys.decks.all],
   });
 
-  const batchLinkCards = useApiMutation({
-    mutationFn: (data: { ids: string[]; deckIds: string[] }) =>
-      apiPost('/api/v1/flashcards/batch/link', data),
-    invalidateKeys: [flashcardKeys.decks.all],
-  });
-
   const batchTopicCards = useApiMutation({
     mutationFn: (data: { ids: string[]; topicIds: string[]; operation: string }) =>
       apiPost('/api/v1/flashcards/batch/topics', data),
@@ -277,12 +270,12 @@ export function DeckDetailScreen({
     createCardOpen: false,
     editCard: null,
     deleteId: null,
-    linkOpen: false,
+    moveOpen: false,
     copyOpen: false,
     reportOpen: false,
     copyResult: null,
     activeFlashcardId: null,
-    linkDeckIds: [],
+    moveTargetDeckId: null,
     copyTargetDeckId: null,
     deckEditOpen: false,
     deckDeleteOpen: false,
@@ -293,8 +286,6 @@ export function DeckDetailScreen({
     topicActionIds: [],
     selectedIds: [],
     bulkDeleteOpen: false,
-    bulkLinkOpen: false,
-    bulkLinkDeckIds: [],
     bulkMoveOpen: false,
     bulkMoveTargetDeckId: null,
     bulkCopyOpen: false,
@@ -308,12 +299,12 @@ export function DeckDetailScreen({
     setD((prev) => ({ ...prev, deleteId: id }));
   }, []);
 
-  const handleCardLink = useCallback((fc: Flashcard) => {
+  const handleCardMove = useCallback((fc: Flashcard) => {
     setD((prev) => ({
       ...prev,
       activeFlashcardId: fc.id,
-      linkDeckIds: [],
-      linkOpen: true,
+      moveTargetDeckId: null,
+      moveOpen: true,
     }));
   }, []);
 
@@ -362,19 +353,18 @@ export function DeckDetailScreen({
     setD((prev) => ({ ...prev, deleteId: null }));
   }
 
-  async function handleLink() {
-    if (!d.activeFlashcardId || d.linkDeckIds.length === 0) return;
+  async function handleMove() {
+    if (!d.activeFlashcardId || !d.moveTargetDeckId) return;
     try {
-      const res = await fetch(`${apiBase}/${d.activeFlashcardId}/link`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deckIds: d.linkDeckIds }),
+      await batchMoveCards.mutateAsync({
+        ids: [d.activeFlashcardId],
+        sourceDeckId: deckId,
+        targetDeckId: d.moveTargetDeckId,
       });
-      if (!res.ok) throw new Error();
-      setD((prev) => ({ ...prev, linkOpen: false, linkDeckIds: [] }));
-      toast.success(t('flashcard_linked'));
+      setD((prev) => ({ ...prev, moveOpen: false, moveTargetDeckId: null }));
+      toast.success(t('flashcard_moved'));
     } catch {
-      toast.error(t('link_failed'));
+      toast.error(t('move_failed'));
     }
   }
 
@@ -469,20 +459,6 @@ export function DeckDetailScreen({
     }
   }
 
-  async function handleBulkLink() {
-    const ids = d.selectedIds;
-    const deckIds = d.bulkLinkDeckIds;
-    if (ids.length === 0 || deckIds.length === 0) return;
-    try {
-      await batchLinkCards.mutateAsync({ ids, deckIds });
-      selection.handleClearSelection();
-      setD((prev) => ({ ...prev, bulkLinkOpen: false, bulkLinkDeckIds: [] }));
-      toast.success(t('bulk_linked'));
-    } catch {
-      toast.error(t('link_failed'));
-    }
-  }
-
   async function handleBulkTopics() {
     const ids = d.selectedIds;
     const topicIds = d.bulkTopicIds;
@@ -508,7 +484,7 @@ export function DeckDetailScreen({
       setD((prev) => ({ ...prev, bulkMoveOpen: false, bulkMoveTargetDeckId: null }));
       toast.success(t('bulk_moved'));
     } catch {
-      toast.error(t('save_failed'));
+      toast.error(t('move_failed'));
     }
   }
 
@@ -530,7 +506,7 @@ export function DeckDetailScreen({
     onCreateCardOpenChange: (open) => setD((prev) => ({ ...prev, createCardOpen: open })),
     onEditCardOpenChange: (card) => setD((prev) => ({ ...prev, editCard: card })),
     onDeleteOpenChange: () => setD((prev) => ({ ...prev, deleteId: null })),
-    onLinkOpenChange: (open) => setD((prev) => ({ ...prev, linkOpen: open })),
+    onMoveOpenChange: (open) => setD((prev) => ({ ...prev, moveOpen: open })),
     onCopyOpenChange: (open) => setD((prev) => ({ ...prev, copyOpen: open })),
     onReportOpenChange: (open) => setD((prev) => ({ ...prev, reportOpen: open })),
     onCopyResultClose: () => setD((prev) => ({ ...prev, copyResult: null })),
@@ -539,30 +515,27 @@ export function DeckDetailScreen({
     onViewTopicIdChange: (id) => setD((prev) => ({ ...prev, viewTopicId: id })),
     onAddTopicOpenChange: (open) => setD((prev) => ({ ...prev, addTopicOpen: open })),
     onManageTopicOpenChange: (open) => setD((prev) => ({ ...prev, manageTopicOpen: open })),
-    onLinkDeckIdsChange: (linkDeckIds) => setD((prev) => ({ ...prev, linkDeckIds })),
+    onMoveTargetDeckIdChange: (moveTargetDeckId) => setD((prev) => ({ ...prev, moveTargetDeckId })),
     onCopyTargetDeckIdChange: (copyTargetDeckId) => setD((prev) => ({ ...prev, copyTargetDeckId })),
 
     onTopicActionIdsChange: (topicActionIds) => setD((prev) => ({ ...prev, topicActionIds })),
     onDelete: handleDelete,
-    onLink: handleLink,
+    onMove: handleMove,
     onCopy: handleCopy,
     onDeckUpdate: handleDeckUpdate,
     onDeckDelete: handleDeckDelete,
     onAddTopicConfirm: handleAddTopicConfirm,
     onBulkDelete: handleBulkDelete,
-    onBulkLink: handleBulkLink,
     onBulkTopics: handleBulkTopics,
     onBulkMove: handleBulkMove,
     onBulkCopy: handleBulkCopy,
     onBulkTopicsOperationChange: (op) => setD((prev) => ({ ...prev, bulkTopicsOperation: op })),
-    onBulkLinkDeckIdsChange: (bulkLinkDeckIds) => setD((prev) => ({ ...prev, bulkLinkDeckIds })),
     onBulkMoveTargetDeckIdChange: (bulkMoveTargetDeckId) =>
       setD((prev) => ({ ...prev, bulkMoveTargetDeckId })),
     onBulkCopyTargetDeckIdChange: (bulkCopyTargetDeckId) =>
       setD((prev) => ({ ...prev, bulkCopyTargetDeckId })),
     onBulkTopicIdsChange: (bulkTopicIds) => setD((prev) => ({ ...prev, bulkTopicIds })),
     onBulkDeleteOpenChange: (open) => setD((prev) => ({ ...prev, bulkDeleteOpen: open })),
-    onBulkLinkOpenChange: (open) => setD((prev) => ({ ...prev, bulkLinkOpen: open })),
     onBulkMoveOpenChange: (open) => setD((prev) => ({ ...prev, bulkMoveOpen: open })),
     onBulkCopyOpenChange: (open) => setD((prev) => ({ ...prev, bulkCopyOpen: open })),
     onBulkTopicsOpenChange: (open) => setD((prev) => ({ ...prev, bulkTopicsOpen: open })),
@@ -853,7 +826,7 @@ export function DeckDetailScreen({
             onEnterSelectionMode={handleEnterSelectionMode}
             onEdit={openEdit}
             onDelete={handleCardDelete}
-            onLink={handleCardLink}
+            onMove={handleCardMove}
             onCopy={handleCardCopy}
             onReport={basePath.startsWith('/app') ? handleCardReport : undefined}
             onAddTopic={handleCardAddTopic}
@@ -877,11 +850,6 @@ export function DeckDetailScreen({
           );
         const canBulkMove =
           permission('deck.update', { createdBy: currentDeck?.created_by }) &&
-          selectedFlashcards.every((fc) =>
-            permission('flashcard.update', { createdBy: fc.created_by }),
-          );
-        const canBulkLink =
-          selectedFlashcards.length > 0 &&
           selectedFlashcards.every((fc) =>
             permission('flashcard.update', { createdBy: fc.created_by }),
           );
@@ -945,22 +913,6 @@ export function DeckDetailScreen({
                 }
               >
                 <ArrowRight className="mr-1.5 h-4 w-4" /> {t('move')}
-              </Button>
-            )}
-            {canBulkLink && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setD((prev) => ({
-                    ...prev,
-                    bulkLinkOpen: true,
-                    bulkLinkDeckIds: [],
-                    selectedIds: Array.from(selection.selectedIds),
-                  }))
-                }
-              >
-                <Link2 className="mr-1.5 h-4 w-4" /> {t('link')}
               </Button>
             )}
             {canBulkDelete && (
