@@ -2559,7 +2559,8 @@
     "due": "Termin: {date}",
     "in_progress": "W trakcie",
     "completed": "Ukończone ({count})",
-    "completed_on": "Ukończono: {date}"
+    "completed_on": "Ukończono: {date}",
+    "attempts_left": "Pozostało prób: {left}/{total}"
   },
   "AppAssignmentDetailPage": {
     "not_found": "Nie znaleziono kartkówki",
@@ -2574,7 +2575,11 @@
     "loading": "Ładowanie...",
     "continue": "Kontynuuj",
     "starting": "Rozpoczynanie...",
-    "start": "Rozpocznij kartkówkę"
+    "start": "Rozpocznij kartkówkę",
+    "start_again": "Rozpocznij kolejną próbę",
+    "last_attempt": "Ostatnia próba",
+    "attempts_left": "Pozostało prób: {left}/{total}",
+    "attempts_exhausted": "Wykorzystano wszystkie próby ({total}/{total})"
   },
   "AppAssignmentTakePage": {
     "upload_failed": "Błąd przesyłania",

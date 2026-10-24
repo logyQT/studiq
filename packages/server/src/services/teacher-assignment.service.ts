@@ -25,6 +25,23 @@ function toAttemptPayload(attempt: Record<string, unknown>): Record<string, unkn
   return attemptFields;
 }
 
+/**
+ * Columns shared by the student list and detail attempt payloads. Explicit
+ * columns keep `draft_answers` out of the read path (#349).
+ */
+const STUDENT_ATTEMPT_SELECT =
+  'assignment_id, id, score, total_questions, total_points, completed_at, started_at';
+
+interface StudentAttemptSummaryRow {
+  assignment_id: string;
+  id: string;
+  score: number;
+  total_questions: number;
+  total_points: number | null;
+  completed_at: string | null;
+  started_at: string | null;
+}
+
 export class TeacherAssignmentService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
@@ -659,6 +676,28 @@ export class TeacherAssignmentService {
     return success((memberships ?? []).length > 0);
   }
 
+  /**
+   * Attempt state shared by the student list and detail payloads.
+   * `attempts_used` counts *completed* attempts only — the same rule
+   * `startAttempt` enforces. A running attempt is resumed, not counted.
+   * `attempt` stays the newest attempt (running or completed) so „Kontynuuj”
+   * keeps working; `last_completed_attempt` feeds the result card/review link
+   * even while a retake is running.
+   */
+  private summarizeAttempts(rows: StudentAttemptSummaryRow[]) {
+    const ordered = [...rows].sort((a, b) => {
+      const at = a.started_at ? new Date(a.started_at).getTime() : 0;
+      const bt = b.started_at ? new Date(b.started_at).getTime() : 0;
+      return at - bt || a.id.localeCompare(b.id);
+    });
+    const completed = ordered.filter((row) => row.completed_at !== null);
+    return {
+      attempt: ordered.at(-1) ?? null,
+      last_completed_attempt: completed.at(-1) ?? null,
+      attempts_used: completed.length,
+    };
+  }
+
   async listForStudent(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
@@ -695,17 +734,24 @@ export class TeacherAssignmentService {
     });
 
     const attemptIds = filtered.map((a) => a.id);
-    const { data: attempts } = await supabase
+    const { data: attempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
-      .select('assignment_id, id, score, total_questions, total_points, completed_at, started_at')
+      .select(STUDENT_ATTEMPT_SELECT)
       .in('assignment_id', attemptIds)
       .eq('user_id', ctx.userId);
 
-    const attemptMap = new Map((attempts ?? []).map((a) => [a.assignment_id, a]));
+    if (attemptsError) return toDbFailure(attemptsError);
+
+    const attemptsByAssignment = new Map<string, StudentAttemptSummaryRow[]>();
+    for (const row of (attempts ?? []) as StudentAttemptSummaryRow[]) {
+      const rows = attemptsByAssignment.get(row.assignment_id) ?? [];
+      rows.push(row);
+      attemptsByAssignment.set(row.assignment_id, rows);
+    }
 
     const result = filtered.map((a) => ({
       ...a,
-      attempt: attemptMap.get(a.id) ?? null,
+      ...this.summarizeAttempts(attemptsByAssignment.get(a.id) ?? []),
     }));
 
     return success(result);
@@ -728,18 +774,17 @@ export class TeacherAssignmentService {
     if (isFailure(targeted)) return targeted;
     if (!targeted.data) return failure('NOT_FOUND');
 
-    const { data: attempt } = await supabase
+    const { data: attempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
-      .select('*')
+      .select(STUDENT_ATTEMPT_SELECT)
       .eq('assignment_id', id)
-      .eq('user_id', ctx.userId)
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .eq('user_id', ctx.userId);
+
+    if (attemptsError) return toDbFailure(attemptsError);
 
     return success({
       ...assignment,
-      attempt: attempt ?? null,
+      ...this.summarizeAttempts((attempts ?? []) as StudentAttemptSummaryRow[]),
     });
   }
 

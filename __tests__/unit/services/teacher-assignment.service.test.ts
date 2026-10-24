@@ -883,6 +883,235 @@ describe('TeacherAssignmentService', () => {
       }
     });
 
+    it('exposes the attempt budget for a completed-but-retakeable assignment (#372)', async () => {
+      const attemptRow = {
+        assignment_id: assignmentId,
+        id: 'attempt-1',
+        score: 2,
+        total_questions: 2,
+        total_points: 2,
+        completed_at: '2026-07-13T01:00:00Z',
+        started_at: '2026-07-13T00:00:00Z',
+      };
+
+      mock.from
+        .mockReturnValueOnce(chain([{ group_id: 'g-1' }]))
+        .mockReturnValueOnce(chain([{ organization_id: orgId }]))
+        .mockReturnValueOnce(
+          chain([
+            {
+              id: assignmentId,
+              title: 'Kartkówka max 2 próby',
+              created_by: 'teacher-1',
+              organization_id: orgId,
+              status: 'published',
+              max_attempts: 2,
+              assignment_targets: [{ group_id: 'g-1', student_id: null }],
+            },
+          ]),
+        )
+        .mockReturnValue(chain([attemptRow]));
+
+      const studentCtx = { ...ctx, groupIds: ['g-1'] };
+      const result = await service.listForStudent(studentCtx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        const [row] = result.data as Array<{
+          max_attempts: number;
+          attempts_used: number;
+          attempt: { id: string };
+          last_completed_attempt: { id: string };
+        }>;
+        expect(row.attempts_used).toBe(1);
+        expect(row.attempt.id).toBe('attempt-1');
+        expect(row.last_completed_attempt.id).toBe('attempt-1');
+      }
+    });
+
+    it('does not count a running retake as used and keeps the last completed attempt (#372)', async () => {
+      mock.from
+        .mockReturnValueOnce(chain([{ group_id: 'g-1' }]))
+        .mockReturnValueOnce(chain([{ organization_id: orgId }]))
+        .mockReturnValueOnce(
+          chain([
+            {
+              id: assignmentId,
+              title: 'Kartkówka max 2 próby',
+              created_by: 'teacher-1',
+              organization_id: orgId,
+              status: 'published',
+              max_attempts: 2,
+              assignment_targets: [{ group_id: 'g-1', student_id: null }],
+            },
+          ]),
+        )
+        .mockReturnValue(
+          chain([
+            {
+              assignment_id: assignmentId,
+              id: 'attempt-1',
+              score: 2,
+              total_questions: 2,
+              total_points: 2,
+              completed_at: '2026-07-13T01:00:00Z',
+              started_at: '2026-07-13T00:00:00Z',
+            },
+            {
+              assignment_id: assignmentId,
+              id: 'attempt-2',
+              score: 0,
+              total_questions: 2,
+              total_points: 2,
+              completed_at: null,
+              started_at: '2026-07-13T02:00:00Z',
+            },
+          ]),
+        );
+
+      const studentCtx = { ...ctx, groupIds: ['g-1'] };
+      const result = await service.listForStudent(studentCtx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        const [row] = result.data as Array<{
+          attempts_used: number;
+          attempt: { id: string; completed_at: string | null };
+          last_completed_attempt: { id: string };
+        }>;
+        expect(row.attempts_used).toBe(1);
+        expect(row.attempt.id).toBe('attempt-2');
+        expect(row.attempt.completed_at).toBeNull();
+        expect(row.last_completed_attempt.id).toBe('attempt-1');
+      }
+    });
+
+    it('reports the exhausted budget after the last allowed attempt (#372)', async () => {
+      const completedAttempt = (id: string, at: string) => ({
+        assignment_id: assignmentId,
+        id,
+        score: 2,
+        total_questions: 2,
+        total_points: 2,
+        completed_at: at,
+        started_at: at,
+      });
+
+      mock.from
+        .mockReturnValueOnce(chain([{ group_id: 'g-1' }]))
+        .mockReturnValueOnce(chain([{ organization_id: orgId }]))
+        .mockReturnValueOnce(
+          chain([
+            {
+              id: assignmentId,
+              title: 'Kartkówka max 2 próby',
+              created_by: 'teacher-1',
+              organization_id: orgId,
+              status: 'published',
+              max_attempts: 2,
+              assignment_targets: [{ group_id: 'g-1', student_id: null }],
+            },
+          ]),
+        )
+        .mockReturnValue(
+          chain([
+            completedAttempt('attempt-1', '2026-07-13T00:00:00Z'),
+            completedAttempt('attempt-2', '2026-07-13T02:00:00Z'),
+          ]),
+        );
+
+      const studentCtx = { ...ctx, groupIds: ['g-1'] };
+      const result = await service.listForStudent(studentCtx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        const [row] = result.data as Array<{
+          attempts_used: number;
+          attempt: { id: string };
+          last_completed_attempt: { id: string };
+        }>;
+        expect(row.attempts_used).toBe(2);
+        expect(row.attempt.id).toBe('attempt-2');
+        expect(row.last_completed_attempt.id).toBe('attempt-2');
+      }
+    });
+
+    it('picks the newest attempt by started_at regardless of row order (#372)', async () => {
+      mock.from
+        .mockReturnValueOnce(chain([{ group_id: 'g-1' }]))
+        .mockReturnValueOnce(chain([{ organization_id: orgId }]))
+        .mockReturnValueOnce(
+          chain([
+            {
+              id: assignmentId,
+              title: 'Kartkówka max 2 próby',
+              created_by: 'teacher-1',
+              organization_id: orgId,
+              status: 'published',
+              max_attempts: 2,
+              assignment_targets: [{ group_id: 'g-1', student_id: null }],
+            },
+          ]),
+        )
+        .mockReturnValue(
+          chain([
+            {
+              assignment_id: assignmentId,
+              id: 'attempt-newest',
+              score: 0,
+              total_questions: 2,
+              total_points: 2,
+              completed_at: null,
+              started_at: '2026-07-13T03:00:00Z',
+            },
+            {
+              assignment_id: assignmentId,
+              id: 'attempt-oldest',
+              score: 2,
+              total_questions: 2,
+              total_points: 2,
+              completed_at: '2026-07-13T01:00:00Z',
+              started_at: '2026-07-13T00:00:00Z',
+            },
+          ]),
+        );
+
+      const studentCtx = { ...ctx, groupIds: ['g-1'] };
+      const result = await service.listForStudent(studentCtx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        const [row] = result.data as Array<{ attempt: { id: string } }>;
+        expect(row.attempt.id).toBe('attempt-newest');
+      }
+    });
+
+    it('returns INTERNAL_SERVER when the attempts query fails (#372)', async () => {
+      mock.from
+        .mockReturnValueOnce(chain([{ group_id: 'g-1' }]))
+        .mockReturnValueOnce(chain([{ organization_id: orgId }]))
+        .mockReturnValueOnce(
+          chain([
+            {
+              id: assignmentId,
+              title: 'Kartkówka',
+              created_by: 'teacher-1',
+              organization_id: orgId,
+              status: 'published',
+              max_attempts: 2,
+              assignment_targets: [{ group_id: 'g-1', student_id: null }],
+            },
+          ]),
+        )
+        .mockReturnValue(failingChain({ code: '57014', message: 'attempts query failed' }));
+
+      const studentCtx = { ...ctx, groupIds: ['g-1'] };
+      const result = await service.listForStudent(studentCtx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
     it('returns empty array when no assignments', async () => {
       mock.from
         .mockReturnValueOnce(chain([{ group_id: 'g-1' }]))
@@ -966,7 +1195,9 @@ describe('TeacherAssignmentService', () => {
     it('returns assignment with attempt', async () => {
       mock.from
         .mockReturnValueOnce(chain(assignment))
-        .mockReturnValue(chain({ id: 'attempt-1', score: 5 }));
+        .mockReturnValue(
+          chain([{ id: 'attempt-1', score: 5, completed_at: '2026-07-13T01:00:00Z' }]),
+        );
 
       const result = await service.getForStudent(assignmentId, ctx);
 
@@ -977,18 +1208,71 @@ describe('TeacherAssignmentService', () => {
     });
 
     it('returns the latest attempt instead of failing on multiple rows (#176)', async () => {
-      const attemptChain = chain({ id: 'attempt-2', score: 4 });
+      const attemptChain = chain([
+        {
+          assignment_id: assignmentId,
+          id: 'attempt-1',
+          score: 3,
+          total_questions: 2,
+          total_points: 4,
+          completed_at: '2026-07-13T01:00:00Z',
+          started_at: '2026-07-13T00:00:00Z',
+        },
+        {
+          assignment_id: assignmentId,
+          id: 'attempt-2',
+          score: 4,
+          total_questions: 2,
+          total_points: 4,
+          completed_at: null,
+          started_at: '2026-07-13T02:00:00Z',
+        },
+      ]);
       mock.from.mockReturnValueOnce(chain(assignment)).mockReturnValueOnce(attemptChain);
 
       const result = await service.getForStudent(assignmentId, ctx);
 
       expect(result.success).toBe(true);
-      expect(attemptChain.order).toHaveBeenCalledWith('started_at', { ascending: false });
-      expect(attemptChain.limit).toHaveBeenCalledWith(1);
-      expect(attemptChain.maybeSingle).toHaveBeenCalled();
       if (result.success) {
-        expect((result.data.attempt as { id: string }).id).toBe('attempt-2');
+        const data = result.data as {
+          attempt: { id: string; completed_at: string | null };
+          last_completed_attempt: { id: string };
+          attempts_used: number;
+        };
+        expect(data.attempt.id).toBe('attempt-2');
+        expect(data.attempt.completed_at).toBeNull();
+        expect(data.last_completed_attempt.id).toBe('attempt-1');
+        expect(data.attempts_used).toBe(1);
       }
+    });
+
+    it('reports an empty attempt budget when the student has no attempts yet (#372)', async () => {
+      mock.from.mockReturnValueOnce(chain(assignment)).mockReturnValueOnce(chain([]));
+
+      const result = await service.getForStudent(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        const data = result.data as {
+          attempt: unknown;
+          last_completed_attempt: unknown;
+          attempts_used: number;
+        };
+        expect(data.attempt).toBeNull();
+        expect(data.last_completed_attempt).toBeNull();
+        expect(data.attempts_used).toBe(0);
+      }
+    });
+
+    it('returns INTERNAL_SERVER when the attempts query fails (#372)', async () => {
+      mock.from
+        .mockReturnValueOnce(chain(assignment))
+        .mockReturnValueOnce(failingChain({ code: '57014', message: 'attempts query failed' }));
+
+      const result = await service.getForStudent(assignmentId, ctx);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
     });
 
     it('allows a student targeted through one of their groups', async () => {
