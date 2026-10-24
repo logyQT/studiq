@@ -183,9 +183,25 @@ The dashboard posts `env-N: finished · #issue stage` or `started · ...` to `#m
 - Never edit product code, write to another agent's artifact, hand-edit `state.json`, or touch the main stack/ports.
 - Never resume the old QA campaign or reuse its manager session.
 
-### 7. Close-out
+### 7. External PRs (not ours)
+PRs opened by teammates are reviewed like ours, but you never merge them and never
+send them to a designer or writer - the branch is not ours:
+
+```bash
+$FIX ingest                      # open PRs by other authors (drafts skipped; --drafts to include)
+$FIX review <pr>                 # the number is the PR; normal two-reviewer pair
+$FIX qa <pr>                     # normal QA run, after both approvals
+$FIX verdict <pr> [--approve]    # posts both verdicts + QA on the PR; --approve also submits a GitHub approval when every gate is green
+```
+
+- `collect` routes an external PR to `verdict`, never to design/writer.
+- `merge` refuses external PRs; the author owns the merge.
+- Run `ingest` after every merge batch and every ~30 minutes while the pipeline runs, so teammates' PRs do not pile up.
+
+### 8. Close-out
 `$FIX closeout on` freezes new work: `next` returns nothing and `design` refuses,
 while `implement` / `review` / `qa` keep working for issues already in the
-pipeline. Finish each in-flight issue to its next stable stage (PR opened, both
+pipeline. External PRs are exempt: keep running `ingest` so teammates' PRs are
+still reviewed. Finish each in-flight issue to its next stable stage (PR opened, both
 reviews collected, QA decided), merge only what is already fully gated, park the
 rest, flush memory, then idle. `$FIX closeout off` resumes the backlog.

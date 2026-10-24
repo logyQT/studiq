@@ -228,6 +228,19 @@ def ignored_assignees() -> set[str]:
     return {a.strip().lower() for a in raw.split(",") if a.strip()}
 
 
+def system_login() -> str:
+    """The GitHub account this crew runs as (its own PRs belong to the pipeline)."""
+    try:
+        return (json.loads(gh(["api", "user"])) or {}).get("login", "") or ""
+    except Exception:
+        return ""
+
+
+def linked_issue(body: str) -> int | None:
+    m = re.search(r"(?:fixes|closes|resolves|refs?)\s+#(\d+)", body or "", re.I)
+    return int(m.group(1)) if m else None
+
+
 def fetch_issues() -> list[dict]:
     raw = json.loads(gh(["issue", "list", "--state", "open", "--limit", "400",
                          "--json",
@@ -1054,8 +1067,9 @@ def cmd_collect(args) -> None:
             bump_attempt(rec)
             history(state, n, {"event": "changes_requested", "reviews": [d1, d2],
                                "next_attempt": attempt(rec)})
+            nxt = "verdict" if rec.get("external") else "design"
             ok(action="collect", issue=n, stage="changes_requested",
-               next="design", attempt=attempt(rec), **arts((r1, d1), (r2, d2)))
+               next=nxt, attempt=attempt(rec), **arts((r1, d1), (r2, d2)))
 
     elif stage == "qa_testing":
         p = d / f"qa-r{a}.json"
@@ -1080,10 +1094,118 @@ def cmd_collect(args) -> None:
         fail(f"nothing to collect from stage {stage}")
 
 
+def cmd_ingest(args) -> None:
+    """Bring open PRs authored by someone else into review + QA.
+
+    Our own PRs are pipeline output; drafts are not ready; anything already
+    tracked is left alone. The PR number becomes the work id (GitHub shares the
+    number space between issues and PRs, so it cannot collide with an issue).
+    """
+    state = load_state()
+    tracked = {int(r["pr"]) for r in state["issues"].values() if r.get("pr")}
+    me = system_login().lower()
+    authors = {a.lower() for a in (args.author or [])}
+    raw = json.loads(gh(["pr", "list", "--state", "open", "--limit", "100", "--json",
+                         "number,title,body,author,headRefName,isDraft,url"]))
+    ingested, skipped = [], []
+    for pr in raw:
+        n = int(pr["number"])
+        author = ((pr.get("author") or {}).get("login") or "")
+        if n in tracked:
+            skipped.append({"pr": n, "why": "already tracked"})
+            continue
+        if me and author.lower() == me:
+            skipped.append({"pr": n, "why": "our own PR"})
+            continue
+        if authors and author.lower() not in authors:
+            skipped.append({"pr": n, "why": "author filtered"})
+            continue
+        if pr.get("isDraft") and not args.drafts:
+            skipped.append({"pr": n, "why": "draft"})
+            continue
+        rec = {"number": n, "title": pr["title"], "priority": "none", "areas": [],
+               "stage": "pr_open", "attempt": 1, "external": True, "author": author,
+               "branch": pr["headRefName"], "pr": n, "url": pr["url"],
+               "linked_issue": linked_issue(pr.get("body") or ""),
+               "sessions": {}, "history": [], "created": now()}
+        state["issues"][str(n)] = rec
+        write_issue_snapshot(n, {"number": n, "title": pr["title"], "url": pr["url"],
+                                 "body": pr.get("body") or "", "labels": [],
+                                 "priority": "none", "areas": [], "assignees": []})
+        history(state, n, {"event": "ingested", "pr": n, "author": author,
+                           "linked_issue": rec["linked_issue"]})
+        ingested.append({"pr": n, "author": author, "title": pr["title"][:80],
+                         "linked_issue": rec["linked_issue"]})
+    if not ingested:
+        ok(action="ingest", ingested=[], skipped=skipped,
+           message="no new external PRs")
+        return
+    ok(action="ingest", ingested=ingested, skipped=skipped,
+       next="review each PR number with `review <pr>`")
+
+
+def cmd_verdict(args) -> None:
+    """Post the crew's review + QA result on a PR we do not own."""
+    state = load_state()
+    n = args.issue
+    rec = get_rec(state, n)
+    if not rec.get("external"):
+        fail("verdict is for external PRs; your own issues finish with `merge`")
+    a = attempt(rec)
+    d = issue_dir(n)
+
+    def art(name):
+        p = d / f"{name}-r{a}.json"
+        return read_artifact(p) if p.exists() else None
+
+    r1, r2, q = art("review-1"), art("review-2"), art("qa")
+    if not any((r1, r2, q)):
+        fail("nothing to report yet: run `review` and/or `qa` first")
+    lines = ["## Automated review + QA by the StudiQ crew", ""]
+    for label, data in (("Review 1", r1), ("Review 2", r2), ("QA", q)):
+        if not data:
+            lines.append(f"- **{label}**: not run")
+            continue
+        decision = data.get("decision") or data.get("status") or "unknown"
+        blocking = data.get("blocking") or []
+        lines.append(f"- **{label}**: `{decision}`" +
+                     (f" - {len(blocking)} blocking finding(s)" if blocking else ""))
+        for item in blocking[:5]:
+            problem = " ".join(str(item.get("problem") or "").split())[:300]
+            if problem:
+                lines.append(f"  - `{item.get('file', '?')}`: {problem}")
+    all_green = ((r1 or {}).get("decision") == "approve"
+                 and (r2 or {}).get("decision") == "approve"
+                 and (q or {}).get("decision") == "pass")
+    lines += ["", f"**Verdict: {'ready to merge' if all_green else 'changes needed'}**"
+                  + ("" if all_green else " - see the findings above."),
+              "", "_Automated pass; the author owns the merge._"]
+    body = chr(10).join(lines)
+    gh(["pr", "comment", str(rec["pr"]), "--body", body])
+    approved = False
+    if args.approve:
+        if not all_green:
+            fail("cannot approve: review/QA gates are not all green", body=body[:400])
+        gh(["pr", "review", str(rec["pr"]), "--approve",
+            "--body", "Automated review + QA passed (two approvals + QA pass)."])
+        approved = True
+    prev = rec["stage"]
+    rec["stage"] = "done" if (all_green or args.close) else prev
+    rec["verdict"] = "approve" if all_green else "changes_requested"
+    history(state, n, {"event": "verdict", "pr": rec["pr"],
+                       "verdict": rec["verdict"], "approved_on_github": approved,
+                       "stage_after": rec["stage"]})
+    ok(action="verdict", issue=n, pr=rec["pr"], verdict=rec["verdict"],
+       approved_on_github=approved, stage=rec["stage"])
+
+
 def cmd_merge(args) -> None:
     state = load_state()
     n = args.issue
     rec = get_rec(state, n)
+    if rec.get("external"):
+        fail("refusing to merge an external PR: the author owns the merge",
+             hint="post the result with `verdict <pr> --approve` instead")
     if rec["stage"] != "qa_passed":
         fail(f"cannot merge from stage {rec['stage']}")
     require_fresh(issue_dir(n) / f"qa-r{attempt(rec)}.json", rec, "qa")
@@ -1310,6 +1432,17 @@ def build_parser() -> argparse.ArgumentParser:
                    help="echo the whole artifact instead of a compact digest")
     s.set_defaults(fn=cmd_collect)
     s = sub.add_parser("merge"); s.add_argument("issue", type=int); s.set_defaults(fn=cmd_merge)
+    s = sub.add_parser("ingest")
+    s.add_argument("--drafts", action="store_true", help="include draft PRs")
+    s.add_argument("--author", action="append",
+                   help="limit to these PR authors (repeatable)")
+    s.set_defaults(fn=cmd_ingest)
+    s = sub.add_parser("verdict"); s.add_argument("issue", type=int)
+    s.add_argument("--approve", action="store_true",
+                   help="also submit an approving GitHub review when every gate is green")
+    s.add_argument("--close", action="store_true",
+                   help="mark the record done even when changes are requested")
+    s.set_defaults(fn=cmd_verdict)
     s = sub.add_parser("migration-ts"); s.add_argument("issue", type=int)
     s.add_argument("--count", type=int, default=1); s.set_defaults(fn=cmd_migration_ts)
     s = sub.add_parser("migration-check"); s.add_argument("issue", type=int)
