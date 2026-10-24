@@ -21,6 +21,8 @@ interface AttemptData {
       content: string;
     }>;
   }>;
+  /** Answers the server already holds: the autosaved draft while in progress (#349). */
+  answers?: Record<string, { selected_answer_id: string | null; text_answer: string | null }>;
 }
 
 interface SubmitAnswer {
@@ -60,6 +62,22 @@ export default function TakeAssignmentPage() {
     url: `/api/v1/quiz/${attemptId}`,
     enabled: !!attemptId,
   });
+
+  // „Kontynuuj” reopens the same attempt, so seed the inputs from whatever the
+  // server already holds for it (the autosaved draft, #349) — otherwise the
+  // resumed attempt looks empty (#369).
+  const seededAttemptId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!attempt || seededAttemptId.current === attempt.id) return;
+    seededAttemptId.current = attempt.id;
+
+    const restored: Record<string, string> = {};
+    for (const [questionId, answer] of Object.entries(attempt.answers ?? {})) {
+      const value = answer.selected_answer_id ?? answer.text_answer;
+      if (value) restored[questionId] = value;
+    }
+    setAnswers(restored);
+  }, [attempt]);
 
   const submitMutation = useApiMutation({
     mutationFn: async (body: { attemptId: string; answers: SubmitAnswer[] }) => {
