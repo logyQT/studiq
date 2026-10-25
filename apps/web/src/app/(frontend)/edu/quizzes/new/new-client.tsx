@@ -38,8 +38,10 @@ export function NewQuizClient() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
     const data = await createMutation.mutateAsync({
-      name,
+      name: trimmedName,
       description: description || undefined,
     });
     router.push(`/edu/quizzes/${(data as { id: string }).id}/edit`);
@@ -85,7 +87,7 @@ export function NewQuizClient() {
           <Button type="button" variant="outline" onClick={() => router.push('/edu/quizzes')}>
             {t('cancel')}
           </Button>
-          <Button type="submit" disabled={!name || createMutation.isPending}>
+          <Button type="submit" disabled={!name.trim() || createMutation.isPending}>
             {createMutation.isPending ? t('creating') : t('create')}
           </Button>
         </div>
