@@ -1,7 +1,9 @@
 'use client';
 
 import type { Session, User } from '@supabase/supabase-js';
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { resetUserScopedCache } from '@/lib/query-cache';
 
 type AuthContextType = {
   user: User | null;
@@ -21,6 +23,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  // `undefined` = not resolved yet, so the first `/auth/me` on a normal page
+  // load is not mistaken for an identity change.
+  const userIdRef = useRef<string | null | undefined>(undefined);
 
   const refresh = useCallback(async () => {
     try {
@@ -28,20 +34,31 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       const res = await fetch('/api/v1/auth/me');
       const json = await res.json();
 
-      if (json.success && json.data) {
-        setUser(json.data.user);
+      const nextUser: User | null = json.success && json.data ? json.data.user : null;
+
+      // Drop the previous identity's cache (including any anonymous-phase 401)
+      // before the next render, so consumers never read it under the new user.
+      resetUserScopedCache(queryClient, userIdRef.current, nextUser?.id ?? null);
+      userIdRef.current = nextUser?.id ?? null;
+
+      if (nextUser) {
+        setUser(nextUser);
         setSession(json.data.session);
       } else {
         setUser(null);
         setSession(null);
       }
     } catch {
+      // Fail closed: the catch treats `/auth/me` as unauthenticated, so keeping
+      // the previous identity's cached rows would be the worse outcome.
+      resetUserScopedCache(queryClient, userIdRef.current, null);
+      userIdRef.current = null;
       setUser(null);
       setSession(null);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     refresh();
