@@ -834,6 +834,9 @@ def cmd_design(args) -> None:
         fail(f"cannot start design from stage {rec['stage']}")
     if env in busy_slots():
         fail(f"designer slot {env} is busy")
+    # set before rendering the prompt, same as the writer dispatch
+    rec["manager_note"] = args.note or ""
+    rec["manager_note_attempt"] = attempt(rec)
     title = f"#{n} design r{attempt(rec)}"
     sid = create_session(env, title, dispatch_prompt("DESIGNER", n, "design", env, rec))
     rec["stage"] = "designing"
