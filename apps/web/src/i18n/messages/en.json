@@ -547,7 +547,8 @@
     "table_quiz": "Quiz",
     "table_attempts": "Attempts",
     "table_avg_score": "Avg Score",
-    "table_completion": "Completion"
+    "table_completion": "Completion",
+    "untitled_quiz": "Untitled Quiz"
   },
   "EduQuestionsPage": {
     "title": "Questions",
@@ -2185,7 +2186,13 @@
     "no_problematic": "No problematic questions detected. Great job!",
     "view_quiz_stats": "View all quizzes",
     "view_flashcard_stats": "View flashcard details",
-    "view_question_stats": "View question details"
+    "view_question_stats": "View question details",
+    "quiz_performance_title": "Quiz Performance",
+    "quiz_performance_desc": "Per-quiz attempt and score summary",
+    "th_quiz": "Quiz",
+    "th_attempts": "Attempts",
+    "th_avg_score": "Avg Score",
+    "untitled_quiz": "Untitled Quiz"
   },
   "AppLiveStudyPage": {
     "title": "Live Study",

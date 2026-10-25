@@ -528,7 +528,8 @@
     "table_quiz": "Test",
     "table_attempts": "Podejścia",
     "table_avg_score": "Śr. wynik",
-    "table_completion": "Ukończenie"
+    "table_completion": "Ukończenie",
+    "untitled_quiz": "Quiz bez tytułu"
   },
   "EduQuestionsPage": {
     "title": "Pytania",
@@ -2165,7 +2166,13 @@
     "no_problematic": "Nie wykryto problematycznych pytań. Świetna robota!",
     "view_quiz_stats": "Zobacz wszystkie testy",
     "view_flashcard_stats": "Zobacz szczegóły fiszek",
-    "view_question_stats": "Zobacz szczegóły pytań"
+    "view_question_stats": "Zobacz szczegóły pytań",
+    "quiz_performance_title": "Wyniki quizów",
+    "quiz_performance_desc": "Podsumowanie podejść i wyników dla każdego quizu",
+    "th_quiz": "Quiz",
+    "th_attempts": "Podejścia",
+    "th_avg_score": "Średni wynik",
+    "untitled_quiz": "Quiz bez tytułu"
   },
   "AppLiveStudyPage": {
     "title": "Nauka na żywo",

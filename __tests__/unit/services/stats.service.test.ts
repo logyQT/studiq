@@ -298,8 +298,8 @@ describe('StatsService', () => {
           avgCompletionRate: 20,
         },
         {
-          id: 'Untitled Quiz',
-          title: 'Untitled Quiz',
+          id: '',
+          title: null,
           totalAttempts: 1,
           avgScore: 0,
           avgCompletionRate: 4,

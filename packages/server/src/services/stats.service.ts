@@ -168,22 +168,24 @@ export class StatsService {
 
     for (const row of data ?? []) {
       const config = row.config as { title?: string } | null;
-      const title = config?.title ?? 'Untitled Quiz';
+      // Untitled quizzes stay null here; the UI supplies the localized label.
+      const title = config?.title ?? null;
+      const key = title ?? '';
 
-      if (!quizMap.has(title)) {
-        quizMap.set(title, { totalAttempts: 0, totalScore: 0, totalCompletion: 0 });
+      if (!quizMap.has(key)) {
+        quizMap.set(key, { totalAttempts: 0, totalScore: 0, totalCompletion: 0 });
       }
 
-      const stats = quizMap.get(title)!;
+      const stats = quizMap.get(key)!;
       stats.totalAttempts += 1;
       stats.totalScore += row.score ?? 0;
       stats.totalCompletion += row.total_questions ?? 0;
     }
 
     return success(
-      Array.from(quizMap.entries()).map(([title, stats]) => ({
-        id: title,
-        title,
+      Array.from(quizMap.entries()).map(([key, stats]) => ({
+        id: key,
+        title: key === '' ? null : key,
         totalAttempts: stats.totalAttempts,
         avgScore: stats.totalScore / stats.totalAttempts,
         avgCompletionRate: stats.totalCompletion / stats.totalAttempts,
