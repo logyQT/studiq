@@ -948,6 +948,7 @@
     "assign_failed": "Nie udało się przydzielić miejsca",
     "unassign_success": "Miejsce zwolnione pomyślnie",
     "unassign_failed": "Nie udało się zwolnić miejsca",
+    "release_seat": "Zwolnij miejsce",
     "cancel": "Anuluj",
     "assign": "Przydziel"
   },
