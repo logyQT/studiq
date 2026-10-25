@@ -110,6 +110,52 @@ forEachCopy((copyId) => {
 
         expect(profile?.personal_plan_key).toBe('lite');
       });
+
+      // #300 / AUT-05: a duplicate must not surface as 500 INTERNAL_SERVER.
+      // The public route answers the same neutral 202 as a fresh registration so
+      // it cannot be used to probe for existing accounts.
+      it('returns 202 and creates no duplicate when the e-mail already exists', async () => {
+        const { createServiceClient } = await import('@studiq/server/lib/supabase/service');
+        const serviceClient = createServiceClient();
+        const uniqueEmail = `dup-${copyId}-${Date.now()}@example.com`;
+
+        // A *confirmed* account is the case GoTrue rejects with 422
+        // `user_already_exists`; an unconfirmed one would just resend the
+        // confirmation mail instead.
+        const { error: createError } = await serviceClient.auth.admin.createUser({
+          email: uniqueEmail,
+          password: 'TestPass123',
+          email_confirm: true,
+          user_metadata: { name: 'Existing Account', account_type: 'student' },
+        });
+        expect(createError).toBeNull();
+
+        const response = await registerPost(
+          createNextRequest('http://localhost/api/v1/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: uniqueEmail,
+              password: 'OtherPass456',
+              name: 'Duplicate Two',
+              accountType: 'student',
+            }),
+          }),
+        );
+        const body = await response.json();
+
+        expect(response.status).toBe(202);
+        expect(body).toEqual({ success: true, data: { message: 'SUCCESS_ACTIVATION_LINK_SENT' } });
+        expect(body).not.toHaveProperty('error');
+        expect(response.headers.get('x-error-code')).toBeNull();
+
+        const { count } = await serviceClient
+          .from('profiles')
+          .select('id', { count: 'exact', head: true })
+          .eq('email', uniqueEmail);
+
+        expect(count).toBe(1);
+      });
     });
 
     describe('POST /api/v1/auth/login', () => {

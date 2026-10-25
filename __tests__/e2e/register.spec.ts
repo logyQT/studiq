@@ -51,6 +51,25 @@ test.describe('Registration Flow', () => {
     await expect(page.getByLabel(nameLabel)).not.toBeVisible();
   });
 
+  // #300 / AUT-05: a duplicate address is answered with the same neutral 202 as
+  // a fresh registration — no 500, no account-enumeration signal, no error toast.
+  test('Positive: existing e-mail shows the neutral activation message, not an error', async ({
+    page,
+  }) => {
+    const nameInput = page.getByLabel(nameLabel);
+    await nameInput.click();
+    await nameInput.fill('Jan Testowy');
+    await expect(nameInput).toHaveValue('Jan Testowy');
+    await page.getByLabel(emailLabel).fill('student1@dev.local');
+    await page.getByLabel(passwordLabel).fill('Passw0rd123!');
+
+    await page.getByRole('button', { name: submitButton }).click();
+
+    await expect(page.getByText(successHeading)).toBeVisible();
+    await expect(page.getByText(activationHint)).toBeVisible();
+    await expect(page.getByText(/INTERNAL_SERVER/)).toHaveCount(0);
+  });
+
   // -------------------------------------------------------------------------
   // NEGATIVE – empty submission
   // -------------------------------------------------------------------------

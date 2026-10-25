@@ -10,7 +10,21 @@ import {
   invitationService as defaultInvitationService,
   type InvitationService,
 } from '@studiq/server/services/invitation.service';
-import type { Session, SupabaseClient } from '@supabase/supabase-js';
+import type { AuthError, Session, SupabaseClient } from '@supabase/supabase-js';
+
+/**
+ * GoTrue reports a sign-up for an existing e-mail as `user_already_exists`
+ * (422); older gateways only carry the message. Deliberately *not*
+ * `status === 422`: weak passwords / disabled sign-ups / invalid addresses are
+ * 4xx too and must not be reported to the user as "activation link sent" (#300).
+ */
+function isExistingEmail(error: AuthError): boolean {
+  return (
+    error.code === 'user_already_exists' ||
+    error.code === 'email_exists' ||
+    error.message.toLowerCase().includes('already registered')
+  );
+}
 
 export class AuthService {
   /**
@@ -64,14 +78,11 @@ export class AuthService {
     });
 
     if (error) {
-      if (
-        process.env.NODE_ENV === 'development' &&
-        (error.status === 422 ||
-          error.code === 'user_already_exists' ||
-          error.message.includes('already registered'))
-      ) {
-        return success(undefined);
-      }
+      // Public endpoint: a duplicate must be indistinguishable from a fresh
+      // registration (no account enumeration). GoTrue creates no user and sends
+      // no mail here, so the caller still gets the neutral 202 from the
+      // controller — in every environment.
+      if (isExistingEmail(error)) return success(undefined);
 
       return failure('INTERNAL_SERVER');
     }
