@@ -72,6 +72,17 @@ const DECK_GROUP_REQUIRED_NAMESPACES = [
 ] as const;
 
 /**
+ * #360 (STU-31) — the bank grid picks its copy from these keys, so a missing
+ * translation would show a raw key instead of the empty / no-results state.
+ */
+const QUESTION_BANK_EMPTY_STATE_KEYS = [
+  'no_banks',
+  'no_banks_match',
+  'no_banks_match_filters',
+  'clear_filters',
+] as const;
+
+/**
  * #284 — the public /status page renders every `StatusPage` key directly, so a
  * missing translation would show a raw key on the page visitors reach from the
  * 404 screen. The exact set is asserted (not only en/pl parity) so removing a key
@@ -165,6 +176,17 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
     }
   });
 
+  it('translates every question-bank empty / no-results key', () => {
+    const namespace = messages.QuestionBankManagement as Record<string, string>;
+
+    for (const key of QUESTION_BANK_EMPTY_STATE_KEYS) {
+      const message = namespace[key];
+
+      expect(message, `QuestionBankManagement.${key}`).toBeTypeOf('string');
+      expect(message).not.toHaveLength(0);
+    }
+  });
+
   /**
    * #335 — the /app sidebar entry and the page it opens are labelled by two
    * different keys, so they silently drifted („Talie” vs „Talie fiszek”). Pin
@@ -232,6 +254,16 @@ describe('i18n message parity', () => {
 
   it('has the same AccountPage keys in en and pl', () => {
     expect(Object.keys(en.AccountPage).sort()).toEqual(Object.keys(pl.AccountPage).sort());
+  });
+
+  /**
+   * #360 — the bank grid renders the same namespace on `/app/questions` and
+   * `/edu/questions`; a key present in only one locale would show a raw key.
+   */
+  it('has the same QuestionBankManagement keys in en and pl', () => {
+    expect(Object.keys(en.QuestionBankManagement).sort()).toEqual(
+      Object.keys(pl.QuestionBankManagement).sort(),
+    );
   });
 
   it('has the same AiChatPage keys in en and pl', () => {
