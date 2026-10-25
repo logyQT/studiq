@@ -137,6 +137,14 @@ function ExpandableRow({ item }: { item: CardStatsItem }) {
                 {t('last_practiced')}: {formatDateTime(item.lastPracticedAt, locale)}
               </p>
             )}
+            {item.nextReviewAt && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {t('next_review_line', {
+                  date: formatDateTime(item.nextReviewAt, locale),
+                  interval: intervalLabel,
+                })}
+              </p>
+            )}
           </td>
         </tr>
       )}

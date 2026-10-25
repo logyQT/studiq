@@ -325,6 +325,22 @@ describe('FlashcardPracticeService', () => {
       expect(payload.interval_unit).toBe('days');
       expect(payload.interval_days).toBeGreaterThanOrEqual(6);
     });
+
+    it('writes nothing in cram mode (#617)', async () => {
+      const result = await service.log(
+        'fc-1',
+        true,
+        ctx,
+        undefined,
+        3,
+        '00000000-0000-4000-8000-000000000001',
+        'cram',
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ practice: null, reviewState: null });
+      expect(mock.from).not.toHaveBeenCalled();
+    });
   });
 
   describe('batch', () => {
@@ -376,6 +392,7 @@ describe('FlashcardPracticeService', () => {
 
       const result = await service.batch(
         {
+          mode: 'review',
           items: [
             { flashcardId: 'fc-1', wasCorrect: true, confidenceLevel: 3 },
             { flashcardId: 'fc-2', wasCorrect: true, confidenceLevel: 3 },
@@ -399,6 +416,7 @@ describe('FlashcardPracticeService', () => {
 
       const result = await service.batch(
         {
+          mode: 'review',
           items: [
             { flashcardId: 'fc-1', wasCorrect: true },
             { flashcardId: 'fc-2', wasCorrect: true },
@@ -421,6 +439,7 @@ describe('FlashcardPracticeService', () => {
 
       const result = await service.batch(
         {
+          mode: 'review',
           items: [
             { flashcardId: 'fc-1', wasCorrect: true },
             { flashcardId: 'fc-2', wasCorrect: true },
@@ -430,6 +449,24 @@ describe('FlashcardPracticeService', () => {
       );
 
       expect(result.success).toBe(false);
+    });
+
+    it('writes nothing in cram mode (#617)', async () => {
+      const result = await service.batch(
+        {
+          mode: 'cram',
+          items: [
+            { flashcardId: 'fc-1', wasCorrect: true, confidenceLevel: 3 },
+            { flashcardId: 'fc-2', wasCorrect: false, confidenceLevel: 1 },
+          ],
+        },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ success: true, results: [] });
+      // Zero DB statements: no practice row, no review-state write, no settings bump.
+      expect(mock.from).not.toHaveBeenCalled();
     });
   });
 

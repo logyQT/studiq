@@ -64,7 +64,7 @@ BEGIN
   with_state AS (
     SELECT
       m.id, m.front, m.back, m.created_at,
-      rs.easiness_factor, rs.interval_days, rs.repetitions,
+      rs.easiness_factor, rs.interval_days, rs.interval_unit, rs.repetitions,
       rs.next_review_at, rs.last_reviewed_at, rs.last_quality,
       rs.learning_state, rs.learning_step, rs.lapse_count, rs.is_leech
     FROM matching m
@@ -100,7 +100,8 @@ BEGIN
       'reviewState', CASE WHEN c.easiness_factor IS NOT NULL THEN
         json_build_object(
           'easinessFactor', c.easiness_factor,
-          'intervalDays', c.interval_days,
+          'intervalValue', c.interval_days,
+          'intervalUnit', c.interval_unit,
           'repetitions', c.repetitions,
           'nextReviewAt', c.next_review_at,
           'lastReviewedAt', c.last_reviewed_at,

@@ -12,6 +12,7 @@ import type {
   DueCountResponse,
   DueFlashcardItem,
   FlashcardRow,
+  PracticeMode,
   PracticeSummary,
   StateBreakdown,
 } from '@studiq/server/models/flashcard-practice.model';
@@ -42,7 +43,14 @@ export class FlashcardPracticeService {
     responseTimeMs?: number,
     confidenceLevel?: number,
     sessionId?: string,
+    mode: PracticeMode = 'review',
   ): Promise<ServiceResult<unknown>> {
+    // Cram is side-effect-free (#606/#617): no flashcard_practice row, no
+    // flashcard_review_state write, no new_cards_introduced bump — therefore no
+    // user_daily_activity trigger either. Session history is recorded by
+    // completeSession() (flashcard_study_sessions.mode = 'cram').
+    if (mode === 'cram') return success({ practice: null, reviewState: null });
+
     const supabase = await this.createClient();
 
     const { data: practice, error } = await supabase
@@ -75,6 +83,11 @@ export class FlashcardPracticeService {
   }
 
   async batch(data: BatchPracticeInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    // Cram performs zero DB statements (#606/#617) — stronger than "skip the
+    // schedule write", and it makes the "no practice row / no review-state row /
+    // no daily-budget burn" acceptance true by construction, not by filtering.
+    if (data.mode === 'cram') return success({ success: true, results: [] });
+
     const supabase = await this.createClient();
     const results: Array<{ flashcardId: string; isLeech: boolean }> = [];
 

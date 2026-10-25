@@ -32,6 +32,7 @@ export class FlashcardPracticeController {
       parsed.data.responseTimeMs,
       parsed.data.confidenceLevel,
       parsed.data.sessionId,
+      parsed.data.mode,
     );
 
     if (isFailure(result)) {

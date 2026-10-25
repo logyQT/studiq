@@ -90,6 +90,38 @@ describe('FlashcardPracticeController', () => {
       expect(response.statusCode).toBe(500);
       expect((response as any).error).toBe('INTERNAL_SERVER');
     });
+
+    it('defaults the forwarded mode to "review" when the body omits it (#617)', async () => {
+      mockService.log.mockResolvedValueOnce(success({ practice: null, reviewState: null }));
+
+      await controller.log('fc-1', { wasCorrect: true }, mockCtx);
+
+      expect(mockService.log).toHaveBeenCalledWith(
+        'fc-1',
+        true,
+        mockCtx,
+        undefined,
+        undefined,
+        undefined,
+        'review',
+      );
+    });
+
+    it('forwards mode "cram" as the 7th service argument (#617)', async () => {
+      mockService.log.mockResolvedValueOnce(success({ practice: null, reviewState: null }));
+
+      await controller.log('fc-1', { wasCorrect: true, mode: 'cram' }, mockCtx);
+
+      expect(mockService.log).toHaveBeenCalledWith(
+        'fc-1',
+        true,
+        mockCtx,
+        undefined,
+        undefined,
+        undefined,
+        'cram',
+      );
+    });
   });
 
   describe('getDueCards', () => {
