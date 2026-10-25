@@ -2,14 +2,17 @@ import { createListQuerySchema } from '@studiq/server/lib/query-list';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
+const TopicNameSchema = z
+  .string({ error: ValidationErrorCode.REQUIRED })
+  .trim()
+  .nonempty({ error: ValidationErrorCode.REQUIRED })
+  .min(1, { error: ValidationErrorCode.TOO_SHORT })
+  .max(64, { error: ValidationErrorCode.TOO_LONG });
+
 export const CreateTopicSchema = registry.register(
   'CreateTopicRequest',
   z.object({
-    name: z
-      .string({ error: ValidationErrorCode.REQUIRED })
-      .nonempty({ error: ValidationErrorCode.REQUIRED })
-      .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(64, { error: ValidationErrorCode.TOO_LONG }),
+    name: TopicNameSchema,
     visibility: z.enum(['personal', 'group']).optional(),
     groupIds: z.array(z.string().uuid()).optional(),
   }),
@@ -18,12 +21,7 @@ export const CreateTopicSchema = registry.register(
 export const UpdateTopicSchema = registry.register(
   'UpdateTopicRequest',
   z.object({
-    name: z
-      .string({ error: ValidationErrorCode.REQUIRED })
-      .nonempty({ error: ValidationErrorCode.REQUIRED })
-      .min(1, { error: ValidationErrorCode.TOO_SHORT })
-      .max(64, { error: ValidationErrorCode.TOO_LONG })
-      .optional(),
+    name: TopicNameSchema.optional(),
     visibility: z.enum(['personal', 'group']).optional(),
     groupIds: z.array(z.string().uuid()).optional(),
   }),
@@ -55,11 +53,7 @@ export const BulkCreateTopicSchema = registry.register(
     topics: z
       .array(
         z.object({
-          name: z
-            .string({ error: ValidationErrorCode.REQUIRED })
-            .nonempty({ error: ValidationErrorCode.REQUIRED })
-            .min(1, { error: ValidationErrorCode.TOO_SHORT })
-            .max(64, { error: ValidationErrorCode.TOO_LONG }),
+          name: TopicNameSchema,
           visibility: z.enum(['personal', 'group']).optional(),
         }),
       )

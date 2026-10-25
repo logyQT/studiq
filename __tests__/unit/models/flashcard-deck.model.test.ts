@@ -1,6 +1,77 @@
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
-import { CreateDeckSchema, UpdateDeckSchema } from '@studiq/server/models/flashcard-deck.model';
+import {
+  BulkCreateDeckSchema,
+  CreateDeckSchema,
+  UpdateDeckSchema,
+} from '@studiq/server/models/flashcard-deck.model';
 import { describe, expect, it } from 'vitest';
+
+/** #361 — a whitespace-only name must be treated as empty, not stored blank. */
+const schemas = [
+  ['CreateDeckSchema', CreateDeckSchema, (name: string) => ({ name })],
+  ['UpdateDeckSchema', UpdateDeckSchema, (name: string) => ({ name })],
+  ['BulkCreateDeckSchema', BulkCreateDeckSchema, (name: string) => ({ decks: [{ name }] })],
+] as const;
+
+describe.each(schemas)('%s name', (_label, schema, wrap) => {
+  it('rejects a whitespace-only name', () => {
+    const result = schema.safeParse(wrap('   '));
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].path.slice(-1)).toEqual(['name']);
+      expect(result.error.issues[0].message).toBe(ValidationErrorCode.REQUIRED);
+      expect(result.error.issues.map((issue) => issue.message)).toContain(
+        ValidationErrorCode.TOO_SHORT,
+      );
+    }
+  });
+
+  it('rejects a tab/newline-only name', () => {
+    const result = schema.safeParse(wrap('\t\n'));
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe(ValidationErrorCode.REQUIRED);
+      expect(result.error.issues.map((issue) => issue.message)).toContain(
+        ValidationErrorCode.TOO_SHORT,
+      );
+    }
+  });
+
+  it('trims a padded name', () => {
+    const result = schema.safeParse(wrap('  Deck  '));
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const data = result.data as { name?: string; decks?: { name: string }[] };
+      expect(data.name ?? data.decks?.[0].name).toBe('Deck');
+    }
+  });
+
+  it('measures the length limit after trimming', () => {
+    const result = schema.safeParse(wrap(`   ${'a'.repeat(128)}   `));
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const data = result.data as { name?: string; decks?: { name: string }[] };
+      expect(data.name ?? data.decks?.[0].name).toBe('a'.repeat(128));
+    }
+  });
+
+  it('accepts a 128-character name', () => {
+    expect(schema.safeParse(wrap('a'.repeat(128))).success).toBe(true);
+  });
+
+  it('rejects a 129-character name', () => {
+    const result = schema.safeParse(wrap('a'.repeat(129)));
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe(ValidationErrorCode.TOO_LONG);
+    }
+  });
+});
 
 describe('CreateDeckSchema', () => {
   it('passes with valid input', () => {

@@ -12,8 +12,8 @@ export const CsvImportRowSchema = registry.register(
       .string()
       .min(1, { error: ValidationErrorCode.REQUIRED })
       .max(5000, { error: ValidationErrorCode.TOO_LONG }),
-    topic: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
-    deck: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
+    topic: z.string().trim().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
+    deck: z.string().trim().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
   }),
 );
 
@@ -21,7 +21,12 @@ export const CsvImportSchema = registry.register(
   'CsvImportRequest',
   z.object({
     deckId: z.string().uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
-    defaultDeckName: z.string().min(1).max(64).optional(),
+    defaultDeckName: z
+      .string()
+      .trim()
+      .min(1, { error: ValidationErrorCode.REQUIRED })
+      .max(64, { error: ValidationErrorCode.TOO_LONG })
+      .optional(),
     cards: z
       .array(CsvImportRowSchema)
       .min(1, { error: ValidationErrorCode.TOO_FEW })
