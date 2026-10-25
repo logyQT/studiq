@@ -135,6 +135,32 @@ describe('StatsService', () => {
       ]);
     });
 
+    it('matches an uppercase subject id as Postgres would', async () => {
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'q-1', type: 'mcq', bank_id: 'bank-his' },
+          { id: 'q-2', type: 'mcq', bank_id: 'bank-his' },
+          { id: 'q-3', type: 'true_false', bank_id: 'bank-his' },
+          { id: 'q-4', type: 'mcq', bank_id: 'bank-geo' },
+          { id: 'q-5', type: 'open', bank_id: 'bank-geo' },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'bank-his', name: 'Historia' },
+          { id: 'bank-geo', name: 'Geografia i Nauka' },
+        ]),
+      );
+
+      const result = await service.getTeacherStats(ctx, { subjectId: 'BANK-HIS' });
+
+      expect(result.success).toBe(true);
+      expect(result.data.subject.byType).toEqual({ mcq: 2, true_false: 1 });
+      expect(result.data.totalQuestions).toBe(5);
+      expect(result.data.bySubject).toHaveLength(2);
+    });
+
     it('yields an empty type split for a foreign subject id without widening the query', async () => {
       const questionsBuilder = qb([{ id: 'q-1', type: 'mcq', bank_id: 'bank-his' }]);
       mock.from.mockReturnValueOnce(questionsBuilder);

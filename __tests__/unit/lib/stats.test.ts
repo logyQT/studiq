@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { hasTeacherActivity, summarizeWeeklyActivity, weeklyWindowStart } from '@/lib/stats';
+import {
+  hasTeacherActivity,
+  orderedQuestionTypeEntries,
+  parseTeacherStatsResponse,
+  summarizeWeeklyActivity,
+  weeklyWindowStart,
+} from '@/lib/stats';
 
 // Fixed clock so the window arithmetic is deterministic (2026-10-23 12:00 UTC).
 const NOW = Date.parse('2026-10-23T12:00:00Z');
@@ -83,5 +89,77 @@ describe('hasTeacherActivity (#209)', () => {
     const data = empty();
     mutate(data);
     expect(hasTeacherActivity(data)).toBe(true);
+  });
+});
+
+describe('orderedQuestionTypeEntries (#200)', () => {
+  it('keeps the product order regardless of object key order', () => {
+    expect(orderedQuestionTypeEntries({ open: 3, true_false: 2, mcq: 4 })).toEqual([
+      { key: 'mcq', count: 4 },
+      { key: 'true_false', count: 2 },
+      { key: 'open', count: 3 },
+    ]);
+  });
+
+  it('appends unknown types alphabetically after the known ones', () => {
+    expect(orderedQuestionTypeEntries({ multi_select: 3, mcq: 2, matching: 1 })).toEqual([
+      { key: 'mcq', count: 2 },
+      { key: 'matching', count: 1 },
+      { key: 'multi_select', count: 3 },
+    ]);
+  });
+
+  it('keeps zero counts and returns an empty list for an empty record', () => {
+    expect(orderedQuestionTypeEntries({ open: 0 })).toEqual([{ key: 'open', count: 0 }]);
+    expect(orderedQuestionTypeEntries({})).toEqual([]);
+  });
+});
+
+const validTeacherStats = {
+  totalQuestions: 10,
+  totalFlashcards: 8,
+  subject: { byType: { mcq: 4, true_false: 3, open: 3 } },
+  bySubject: [{ subjectId: 'bank-his', subjectName: 'Historia', questionCount: 4 }],
+};
+
+describe('parseTeacherStatsResponse (#200)', () => {
+  it('unwraps a successful envelope', () => {
+    expect(parseTeacherStatsResponse({ success: true, data: validTeacherStats })).toEqual(
+      validTeacherStats,
+    );
+  });
+
+  it('accepts a raw payload, preserving the pre-envelope behaviour', () => {
+    expect(parseTeacherStatsResponse(validTeacherStats)).toEqual(validTeacherStats);
+  });
+
+  it('rejects an error envelope instead of putting it in state', () => {
+    expect(
+      parseTeacherStatsResponse({
+        success: false,
+        statusCode: 500,
+        error: 'INTERNAL_SERVER',
+      }),
+    ).toBeNull();
+  });
+
+  it('rejects a payload without subject.byType', () => {
+    expect(
+      parseTeacherStatsResponse({
+        success: true,
+        data: { totalQuestions: 10, totalFlashcards: 8 },
+      }),
+    ).toBeNull();
+  });
+
+  it.each([
+    ['null', null],
+    ['an array', []],
+    ['a string', 'oops'],
+    ['an empty object', {}],
+    ['an empty data array', { success: true, data: [] }],
+    ['a null data field', { success: true, data: null }],
+  ])('rejects %s', (_name, body) => {
+    expect(parseTeacherStatsResponse(body)).toBeNull();
   });
 });

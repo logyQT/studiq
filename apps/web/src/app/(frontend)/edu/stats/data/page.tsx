@@ -1,6 +1,10 @@
 'use client';
 
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
   Card,
   CardContent,
   CardHeader,
@@ -18,7 +22,11 @@ import {
   TableHeader,
   TableRow,
 } from '@studiq/ui';
-import { orderedQuestionTypeEntries } from '@/lib/stats';
+import {
+  orderedQuestionTypeEntries,
+  parseTeacherStatsResponse,
+  type TeacherStatsPayload,
+} from '@/lib/stats';
 import { BookOpen, ExternalLink, FileText, Layers, PieChart, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -26,19 +34,6 @@ import { useEffect, useState } from 'react';
 
 /** Radix Select cannot hold an empty value, so "no filter" needs a sentinel. */
 const ALL_SUBJECTS = '__all__';
-
-interface TeacherStats {
-  totalQuestions: number;
-  totalFlashcards: number;
-  subject: {
-    byType: Record<string, number>;
-  };
-  bySubject: Array<{
-    subjectId: string;
-    subjectName: string | null;
-    questionCount: number;
-  }>;
-}
 
 interface FlashcardStats {
   summary: {
@@ -63,7 +58,9 @@ interface FlashcardStats {
 export default function StatsDataPage() {
   const t = useTranslations('StatsDataPage');
   const tc = useTranslations('Common');
-  const [stats, setStats] = useState<TeacherStats | null>(null);
+  const [stats, setStats] = useState<TeacherStatsPayload | null>(null);
+  const [statsError, setStatsError] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
   const [flashStats, setFlashStats] = useState<FlashcardStats | null>(null);
   const [selectedSubject, setSelectedSubject] = useState(ALL_SUBJECTS);
   const [loading, setLoading] = useState(true);
@@ -71,10 +68,17 @@ export default function StatsDataPage() {
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/v1/flashcards/stats/teacher', { signal: controller.signal })
-      .then((r) => r.json())
-      .then((f) => setFlashStats(f.data ?? f))
+      .then((r) => {
+        if (!r.ok) throw new Error(`flashcard stats request failed: ${r.status}`);
+        return r.json();
+      })
+      .then((f) => {
+        // Flashcard tables are supplementary; only a shaped payload is stored.
+        const data = f?.data ?? f;
+        if (data?.summary) setFlashStats(data);
+      })
       .catch(() => {
-        // Flashcard tables are supplementary; a failure leaves them hidden.
+        // A failure leaves the flashcard tables hidden.
       });
     return () => controller.abort();
   }, []);
@@ -87,27 +91,40 @@ export default function StatsDataPage() {
         : `/api/v1/stats/teacher?subjectId=${encodeURIComponent(selectedSubject)}`;
 
     fetch(url, { signal: controller.signal })
-      .then((r) => r.json())
-      .then((s) => {
+      .then((r) => {
+        // Every 4xx/5xx is a JSON envelope; without this check it would land in state.
+        if (!r.ok) throw new Error(`stats request failed: ${r.status}`);
+        return r.json();
+      })
+      .then((body) => {
+        const parsed = parseTeacherStatsResponse(body);
+        if (!parsed) throw new Error('unexpected stats payload');
         // Keep the previous payload mounted while re-filtering; only the first
         // load shows the loading text.
-        setStats(s.data ?? s);
-        setLoading(false);
+        setStats(parsed);
+        setStatsError(false);
       })
       .catch(() => {
+        // Aborted requests are superseded by a newer filter change.
+        if (!controller.signal.aborted) setStatsError(true);
+      })
+      .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
 
     // Aborting the stale request keeps rapid filter changes from applying out of order.
     return () => controller.abort();
-  }, [selectedSubject]);
+  }, [selectedSubject, reloadToken]);
 
   if (loading) {
     return <div className="flex justify-center py-12 text-muted-foreground">Loading...</div>;
   }
 
-  const typeEntries = orderedQuestionTypeEntries(stats?.subject.byType ?? {});
+  const typeEntries = orderedQuestionTypeEntries(stats?.subject?.byType ?? {});
   const bySubject = stats?.bySubject ?? [];
+  const flashSummary = flashStats?.summary;
+  const deckRows = flashStats?.byDeck ?? [];
+  const topicRows = flashStats?.byTopic ?? [];
 
   const typeLabel = (key: string) =>
     key === 'mcq' || key === 'true_false' || key === 'open'
@@ -136,24 +153,32 @@ export default function StatsDataPage() {
         </Select>
       </div>
 
+      {statsError && (
+        <Alert variant="destructive">
+          <AlertTitle>{t('load_error')}</AlertTitle>
+          <AlertDescription className="flex flex-wrap items-center gap-3">
+            {t('load_error_hint')}
+            <Button variant="outline" size="sm" onClick={() => setReloadToken((n) => n + 1)}>
+              {t('retry')}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard title={t('total_questions')} value={stats?.totalQuestions ?? 0} icon={FileText} />
         <StatCard title={t('total_flashcards')} value={stats?.totalFlashcards ?? 0} icon={Layers} />
-        <StatCard
-          title={t('total_decks')}
-          value={flashStats?.summary.totalDecks ?? 0}
-          icon={BookOpen}
-        />
-        {flashStats?.summary.rosterStudents != null && (
+        <StatCard title={t('total_decks')} value={flashSummary?.totalDecks ?? 0} icon={BookOpen} />
+        {flashSummary?.rosterStudents != null && (
           <StatCard
             title={t('students')}
-            value={flashStats.summary.rosterStudents}
+            value={flashSummary.rosterStudents}
             description={t('active_students', {
-              count: flashStats.summary.practicingStudents,
+              count: flashSummary.practicingStudents,
             })}
             progress={
-              flashStats.summary.rosterStudents > 0
-                ? (flashStats.summary.practicingStudents / flashStats.summary.rosterStudents) * 100
+              flashSummary.rosterStudents > 0
+                ? (flashSummary.practicingStudents / flashSummary.rosterStudents) * 100
                 : 0
             }
             icon={Users}
@@ -200,7 +225,7 @@ export default function StatsDataPage() {
         </Card>
       </div>
 
-      {flashStats && flashStats.byDeck.length > 0 && (
+      {deckRows.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -217,7 +242,7 @@ export default function StatsDataPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {flashStats.byDeck.map((deck) => (
+                {deckRows.map((deck) => (
                   <TableRow key={deck.deckId}>
                     <TableCell className="font-medium">
                       <Link href={`/edu/flashcards/${deck.deckId}`} className="hover:underline">
@@ -233,7 +258,7 @@ export default function StatsDataPage() {
         </Card>
       )}
 
-      {flashStats && flashStats.byTopic.length > 0 && (
+      {topicRows.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -250,7 +275,7 @@ export default function StatsDataPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {flashStats.byTopic.map((topic) => (
+                {topicRows.map((topic) => (
                   <TableRow key={topic.topicId}>
                     <TableCell className="font-medium">{topic.topicName}</TableCell>
                     <TableCell className="text-right tabular-nums">

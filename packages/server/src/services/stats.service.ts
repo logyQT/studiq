@@ -71,9 +71,10 @@ export class StatsService {
         return a.subjectName.localeCompare(b.subjectName, 'pl');
       });
 
-    const typeScope = filters?.subjectId
-      ? rows.filter((row) => row.bank_id === filters.subjectId)
-      : rows;
+    // Postgres UUIDs compare case-insensitively; normalize so a hand-written
+    // uppercase ?subjectId= matches the canonical lowercase bank_id.
+    const subjectId = filters?.subjectId?.toLowerCase();
+    const typeScope = subjectId ? rows.filter((row) => row.bank_id === subjectId) : rows;
     const byType: Record<string, number> = {};
     for (const row of typeScope) {
       byType[row.type] = (byType[row.type] ?? 0) + 1;

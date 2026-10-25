@@ -216,6 +216,22 @@ forEachCopy((copyId) => {
         expect(body.data.bySubject).toHaveLength(2);
       });
 
+      it('narrows the same split for an uppercase subject id', async () => {
+        mockUser(teacher.user);
+
+        const req = createNextRequest(
+          `http://localhost/api/v1/stats/teacher?subjectId=${extraBankId.toUpperCase()}`,
+        );
+        const response = await teacherGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.subject.byType).toEqual({ true_false: 1, open: 1 });
+        // Totals and the by-subject overview stay global.
+        expect(body.data.totalQuestions).toBe(5);
+        expect(body.data.bySubject).toHaveLength(2);
+      });
+
       it('returns the seeded bank split for a known subject id', async () => {
         mockUser(teacher.user);
 

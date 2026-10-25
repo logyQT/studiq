@@ -1,4 +1,4 @@
-import type { DailyActivityItem } from '@studiq/server/models/stats.model';
+import type { DailyActivityItem, TeacherStatsResponse } from '@studiq/server/models/stats.model';
 
 /**
  * „Powtórki w tym tygodniu” / „Poprawne” are a fixed last-7-days metric: the
@@ -63,6 +63,40 @@ export function orderedQuestionTypeEntries(byType: Record<string, number>): Arra
   ];
 
   return ordered.map((key) => ({ key, count: byType[key] }));
+}
+
+/** Payload the content-stats page needs; aliases the API contract. */
+export type TeacherStatsPayload = TeacherStatsResponse;
+
+/**
+ * Unwraps `{ success: true, data }` from the stats API and rejects error envelopes
+ * (`{ success: false, error }`) and payloads the page cannot render. Returns null so
+ * callers can keep their last good payload instead of putting an error body in state.
+ */
+export function parseTeacherStatsResponse(body: unknown): TeacherStatsPayload | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+
+  const envelope = body as { success?: unknown; data?: unknown };
+  if (envelope.success === false) return null;
+
+  // Keeps the old `data ?? body` behaviour for an unwrapped payload.
+  const candidate = 'data' in envelope ? envelope.data : body;
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+
+  const payload = candidate as Partial<TeacherStatsPayload>;
+  const byType = payload.subject?.byType;
+  if (
+    typeof payload.totalQuestions !== 'number' ||
+    typeof payload.totalFlashcards !== 'number' ||
+    !byType ||
+    typeof byType !== 'object' ||
+    Array.isArray(byType) ||
+    !Array.isArray(payload.bySubject)
+  ) {
+    return null;
+  }
+
+  return payload as TeacherStatsPayload;
 }
 
 /** Structural subset of the teacher activity payload needed to detect an empty period. */

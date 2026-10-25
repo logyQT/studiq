@@ -69,14 +69,18 @@ export default function EduStatsPage() {
               <CardTitle>{t('by_type_title')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {typeEntries.map(({ key, count }) => (
-                  <div key={key} className="flex items-center justify-between">
-                    <span className="text-sm">{typeLabel(key)}</span>
-                    <span className="font-medium">{count}</span>
-                  </div>
-                ))}
-              </div>
+              {typeEntries.length > 0 ? (
+                <div className="space-y-3">
+                  {typeEntries.map(({ key, count }) => (
+                    <div key={key} className="flex items-center justify-between">
+                      <span className="text-sm">{typeLabel(key)}</span>
+                      <span className="font-medium">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">{t('no_questions')}</p>
+              )}
             </CardContent>
           </Card>
         </div>
