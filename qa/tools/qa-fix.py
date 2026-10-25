@@ -970,8 +970,11 @@ def cmd_qa(args) -> None:
     if is_paused(state):
         fail("paused: no new dispatches", hint="`qa-fix.py pause off` before dispatching again")
     rec = get_rec(state, n)
+    # Small changes run one reviewer and QA at the same time, so QA may start while
+    # the (single) review is still out.
+    parallel = rec["stage"] == "reviewing" and bool(rec.get("single_review"))
     qa_dead = rec["stage"] == "qa_testing" and dead_stage(rec)
-    if rec["stage"] not in ("approved", "qa_failed") and not qa_dead:
+    if rec["stage"] not in ("approved", "qa_failed") and not qa_dead and not parallel:
         fail(f"cannot QA from stage {rec['stage']}")
     busy = busy_slots()
     flex = is_flex(state)
@@ -989,6 +992,15 @@ def cmd_qa(args) -> None:
         env = free[0]
     title = f"#{n} qa r{attempt(rec)}"
     sid = create_session(env, title, dispatch_prompt("QA", n, "qa", env, rec))
+    if parallel:
+        rec["qa_parallel"] = True
+        rec["qa_env"] = env
+        rec["sessions"]["qa"] = sid
+        history(state, n, {"event": "qa_dispatched", "env": env, "session": sid,
+                           "attempt": attempt(rec), "parallel_with_review": True})
+        ok(action="qa", issue=n, env=env, session=sid, title=title, parallel=True,
+           artifact=str(issue_dir(n) / f"qa-r{attempt(rec)}.json"))
+        return
     rec["stage"] = "qa_testing"
     rec["stage_started"] = int(time.time() * 1000)
     rec["qa_env"] = env
@@ -1175,13 +1187,39 @@ def cmd_collect(args) -> None:
             d2 = read_artifact(r2)
         decisions = [d1.get("decision")] + ([d2.get("decision")] if d2 else [])
         collected = [(r1, d1)] + ([(r2, d2)] if d2 else [])
-        if all(x == "approve" for x in decisions):
+        qa_parallel = bool(rec.get("qa_parallel"))
+        qp = d / f"qa-r{a}.json"
+        qa_data = read_artifact(qp) if (qa_parallel and qp.exists()) else None
+        if qa_parallel and not qa_data:
+            ok(action="collect", issue=n, stage="reviewing", pending=[str(qp)],
+               message="reviews are in; waiting for the parallel QA run")
+            return
+        if all(x == "approve" for x in decisions) and (qa_data is None or qa_data.get("decision") == "pass"):
+            if qa_parallel:
+                rec["stage"] = "qa_passed"
+                rec.pop("qa_parallel", None)
+                history(state, n, {"event": "qa_passed", "data": qa_data,
+                                   "reviews": [x for _, x in collected], "single": single})
+                ok(action="collect", issue=n, stage="qa_passed",
+                   next="verdict" if rec.get("external") else "merge",
+                   **arts(*collected), **art(qp, qa_data))
+                return
             rec["stage"] = "approved"
             history(state, n, {"event": "reviews_approved",
                                "reviews": [x for _, x in collected], "single": single})
             ok(action="collect", issue=n, stage="approved", next="qa", **arts(*collected))
+        elif qa_parallel and all(x == "approve" for x in decisions):
+            rec["stage"] = "qa_failed"
+            rec.pop("qa_parallel", None)
+            bump_attempt(rec)
+            history(state, n, {"event": "qa_failed", "data": qa_data,
+                               "next_attempt": attempt(rec)})
+            ok(action="collect", issue=n, stage="qa_failed",
+               next="verdict" if rec.get("external") else "design", attempt=attempt(rec),
+               **arts(*collected), **art(qp, qa_data))
         else:
             rec["stage"] = "changes_requested"
+            rec.pop("qa_parallel", None)
             bump_attempt(rec)
             history(state, n, {"event": "changes_requested",
                                "reviews": [x for _, x in collected],
