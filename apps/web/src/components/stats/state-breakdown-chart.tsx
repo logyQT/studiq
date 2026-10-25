@@ -28,6 +28,16 @@ export function StateBreakdownChart({ states }: StateBreakdownChartProps) {
     { name: t('state_leech'), value: states.leeched, fill: COLORS.leeched },
   ].filter((d) => d.value > 0);
 
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+
+  if (total === 0) {
+    return (
+      <div className="flex h-[260px] items-center justify-center px-6">
+        <p className="text-muted-foreground text-center text-sm">{t('state_breakdown_empty')}</p>
+      </div>
+    );
+  }
+
   return (
     // Slices carry their own `fill` and the tooltip labels come from the translated
     // slice `name`, so no config keys are needed (the chart context still is).

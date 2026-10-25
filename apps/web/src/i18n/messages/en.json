@@ -1871,6 +1871,7 @@
     "state_review": "Review",
     "state_relearning": "Relearning",
     "state_leech": "Leech",
+    "state_breakdown_empty": "No cards to show. Add a flashcard to see the state breakdown.",
     "weak_decks": "Weakest Decks",
     "weak_topics": "Weakest Topics",
     "no_weak_decks": "No deck data yet;keep practicing!",
