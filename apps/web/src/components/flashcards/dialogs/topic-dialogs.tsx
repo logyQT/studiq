@@ -17,6 +17,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { useCallback, useState } from 'react';
+import { toast } from 'sonner';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { apiPost, apiPut } from '@/lib/api';
 import { getGradientHex } from '@/lib/color-utils';
@@ -33,8 +34,6 @@ interface TopicDialogsProps {
   onAddTopicOpenChange: (open: boolean) => void;
   manageTopicOpen: boolean;
   onManageTopicOpenChange: (open: boolean) => void;
-  onTopicActionIdsChange: (ids: string[]) => void;
-  onAddTopicConfirm: () => void;
 }
 
 function getTopicIds(fc: Flashcard | undefined) {
@@ -52,13 +51,11 @@ export function TopicDialogs({
   onAddTopicOpenChange,
   manageTopicOpen,
   onManageTopicOpenChange,
-  onTopicActionIdsChange: _onTopicActionIdsChange,
-  onAddTopicConfirm: _onAddTopicConfirm,
 }: TopicDialogsProps) {
   const queryClient = useQueryClient();
   const [newTopicName, setNewTopicName] = useState('');
   const [creatingTopic, setCreatingTopic] = useState(false);
-  const [topicActionIds, setTopicActionIds] = useState<string[]>([]);
+  const [topicActionIds, setTopicActionIds] = useState<string[] | null>(null);
 
   const handleCreateAndLinkTopic = useCallback(async () => {
     const name = newTopicName.trim();
@@ -82,29 +79,40 @@ export function TopicDialogs({
       queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
       setNewTopicName('');
       onAddTopicOpenChange(false);
+      toast.success(t('topic_added'));
     } catch {
-      // error handled by parent
+      toast.error(t('save_failed'));
     } finally {
       setCreatingTopic(false);
     }
-  }, [newTopicName, activeFlashcardId, flashcards, queryClient, onAddTopicOpenChange]);
+  }, [newTopicName, activeFlashcardId, flashcards, queryClient, onAddTopicOpenChange, t]);
 
   const handleManageTopicsConfirm = useCallback(async () => {
     if (!activeFlashcardId) return;
     const fc = flashcards.find((f) => f.id === activeFlashcardId);
     if (!fc) return;
+    const currentIds = getTopicIds(fc);
+    const nextIds = topicActionIds ?? currentIds;
+    const added = nextIds.some((id) => !currentIds.includes(id));
+    const removed = currentIds.some((id) => !nextIds.includes(id));
+    if (!added && !removed) {
+      onManageTopicOpenChange(false);
+      return;
+    }
     try {
       await apiPut<Flashcard>(`/api/v1/flashcards/${fc.id}`, {
         front: fc.front,
         back: fc.back,
-        topicIds: topicActionIds,
+        topicIds: nextIds,
       });
       queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
       onManageTopicOpenChange(false);
+      if (removed) toast.success(t('topic_removed'));
+      if (added) toast.success(t('topic_added'));
     } catch {
-      // error handled by parent
+      toast.error(t('save_failed'));
     }
-  }, [activeFlashcardId, topicActionIds, flashcards, queryClient, onManageTopicOpenChange]);
+  }, [activeFlashcardId, topicActionIds, flashcards, queryClient, onManageTopicOpenChange, t]);
 
   return (
     <>
@@ -248,8 +256,9 @@ export function TopicDialogs({
                             });
                             queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
                             onAddTopicOpenChange(false);
+                            toast.success(t('topic_added'));
                           } catch {
-                            // error handled by parent
+                            toast.error(t('save_failed'));
                           }
                         }}
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent transition-colors"
@@ -297,7 +306,7 @@ export function TopicDialogs({
         open={manageTopicOpen}
         onOpenChange={(open) => {
           if (!open) {
-            setTopicActionIds([]);
+            setTopicActionIds(null);
             onManageTopicOpenChange(false);
           }
         }}
@@ -315,7 +324,7 @@ export function TopicDialogs({
               return (
                 <MultiSelect
                   options={topicOptions}
-                  selected={topicActionIds.length > 0 ? topicActionIds : currentIds}
+                  selected={topicActionIds ?? currentIds}
                   onChange={(ids) => setTopicActionIds(ids)}
                   placeholder={t('manage_topic_select')}
                 />

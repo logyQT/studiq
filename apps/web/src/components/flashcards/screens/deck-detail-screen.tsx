@@ -283,7 +283,6 @@ export function DeckDetailScreen({
     viewTopicId: null,
     addTopicOpen: false,
     manageTopicOpen: false,
-    topicActionIds: [],
     selectedIds: [],
     bulkDeleteOpen: false,
     bulkMoveOpen: false,
@@ -325,7 +324,6 @@ export function DeckDetailScreen({
     setD((prev) => ({
       ...prev,
       activeFlashcardId: fc.id,
-      topicActionIds: [],
       addTopicOpen: true,
     }));
   }, []);
@@ -425,25 +423,6 @@ export function DeckDetailScreen({
     setD((prev) => ({ ...prev, deckDeleteOpen: false }));
   }
 
-  async function handleAddTopicConfirm() {
-    const fc = flashcards.find((f) => f.id === d.activeFlashcardId);
-    if (!fc || d.topicActionIds.length === 0) return;
-    const currentIds = fc.flashcard_topic_assignments?.map((a) => a.topic_id) ?? [];
-    const newIds = [...new Set([...currentIds, ...d.topicActionIds])];
-    try {
-      await apiPut(`/api/v1/flashcards/${d.activeFlashcardId}`, {
-        front: fc.front,
-        back: fc.back,
-        topicIds: newIds,
-      });
-      queryClient.invalidateQueries({ queryKey: flashcardQueryKey });
-      toast.success(t('topic_added'));
-    } catch {
-      toast.error(t('save_failed'));
-    }
-    setD((prev) => ({ ...prev, addTopicOpen: false, topicActionIds: [] }));
-  }
-
   const handleEnterSelectionMode = selection.handleEnterSelectionMode;
 
   async function handleBulkDelete() {
@@ -518,13 +497,11 @@ export function DeckDetailScreen({
     onMoveTargetDeckIdChange: (moveTargetDeckId) => setD((prev) => ({ ...prev, moveTargetDeckId })),
     onCopyTargetDeckIdChange: (copyTargetDeckId) => setD((prev) => ({ ...prev, copyTargetDeckId })),
 
-    onTopicActionIdsChange: (topicActionIds) => setD((prev) => ({ ...prev, topicActionIds })),
     onDelete: handleDelete,
     onMove: handleMove,
     onCopy: handleCopy,
     onDeckUpdate: handleDeckUpdate,
     onDeckDelete: handleDeckDelete,
-    onAddTopicConfirm: handleAddTopicConfirm,
     onBulkDelete: handleBulkDelete,
     onBulkTopics: handleBulkTopics,
     onBulkMove: handleBulkMove,
