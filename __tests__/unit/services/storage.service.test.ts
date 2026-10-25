@@ -170,6 +170,29 @@ describe('StorageService', () => {
       expect(storage.upload).not.toHaveBeenCalled();
     });
 
+    it('rejects a plain-text file renamed fake.png for org-logos (issue #273 repro)', async () => {
+      const file = makeFile(
+        Array.from(new TextEncoder().encode('this is not an image\n')),
+        PNG_MIME, // browser derives this from the .png extension
+        'fake.png',
+      );
+
+      await expect(
+        service().uploadToBucket('user-1', file, 'org-logos', 'org-1'),
+      ).rejects.toMatchObject({ code: 'UNPROCESSABLE_ENTITY', statusCode: 422 });
+      expect(storage.from).not.toHaveBeenCalled();
+      expect(storage.upload).not.toHaveBeenCalled();
+    });
+
+    it('rejects bytes whose sniffed type differs from the declared type', async () => {
+      const file = makeFile(PNG_BYTES, 'image/gif');
+
+      await expect(
+        service().uploadToBucket('user-1', file, 'org-logos', 'org-1'),
+      ).rejects.toMatchObject({ code: 'UNPROCESSABLE_ENTITY' });
+      expect(storage.upload).not.toHaveBeenCalled();
+    });
+
     it('rejects org-logos files above the bucket 5 MB cap with PAYLOAD_TOO_LARGE', async () => {
       const file = makeFile(PNG_BYTES, PNG_MIME, 'logo.png', 5 * 1024 * 1024 + 1);
 

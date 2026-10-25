@@ -2,17 +2,7 @@
 
 import { AccountType } from '@studiq/authz';
 import { DropdownMenuItem, DropdownMenuSeparator, UserAvatar } from '@studiq/ui';
-import {
-  BadgeCheck,
-  Bell,
-  Check,
-  CreditCard,
-  Globe,
-  LogOut,
-  Moon,
-  Sparkles,
-  Sun,
-} from 'lucide-react';
+import { BadgeCheck, Check, CreditCard, Globe, LogOut, Moon, Sparkles, Sun } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
@@ -161,10 +151,18 @@ export function UserMenuItems({
         <CreditCard className="size-4 text-muted-foreground" />
         <span>{t('billing')}</span>
       </MenuEntry>
-      <MenuEntry variant={variant} onSelect={onItemClick}>
-        <Bell className="size-4 text-muted-foreground" />
-        <span>{t('notifications')}</span>
-      </MenuEntry>
+      {/*
+       * TODO(notifications): hidden in #280 — this entry had no destination and only closed
+       * the menu. Re-add it here (and `DashboardLayout.notifications` in both locale files)
+       * once a notifications surface exists. Intended shape:
+       * - system notifications pushed by platform ops;
+       * - manager notifications to the whole organization or to specific groups;
+       * - notifications when new content is shared — opt-in/out per user, with a teacher
+       *   override to force-notify on share (tick in the content share menu);
+       * - always-on notifications when a new assignment appears, repeated as the deadline
+       *   approaches;
+       * - the model must stay expandable; good candidate for its own service.
+       */}
 
       <MenuDivider variant={variant} />
 

@@ -287,20 +287,83 @@ export class StatsService {
 
     const { data, error } = await supabase
       .from('quiz_attempts')
-      .select('id, score, total_questions, total_points, started_at, completed_at, config')
+      .select(
+        'id, score, total_questions, total_points, started_at, completed_at, config, assignment_id',
+      )
       .in('user_id', studentIds);
 
     if (error) return toDbFailure(error);
+
+    const attempts = data ?? [];
+
+    // Assignment attempts never store `config.title` (`startAttempt` writes
+    // only user/assignment/score columns), so a config-less row with an
+    // `assignment_id` would otherwise render as „Quiz bez tytułu”. Their display
+    // name comes from the assignment and, when it was built from a saved quiz,
+    // from the quiz itself. Both lookups are scoped to the active org: a student
+    // can belong to several orgs, and an attempt on another org's assignment must
+    // not surface that org's names here (#207).
+    const assignmentNames = new Map<string, string>();
+    const assignmentIds = [
+      ...new Set(
+        attempts
+          .map((row) => row.assignment_id)
+          .filter((id): id is string => typeof id === 'string'),
+      ),
+    ];
+
+    if (assignmentIds.length > 0) {
+      const { data: assignments, error: assignmentsError } = await supabase
+        .from('teacher_assignments')
+        .select('id, title, quiz_id')
+        .in('id', assignmentIds)
+        .eq('organization_id', ctx.activeOrgId);
+
+      if (assignmentsError) return toDbFailure(assignmentsError);
+
+      const quizIds = [
+        ...new Set(
+          (assignments ?? [])
+            .map((assignment) => assignment.quiz_id)
+            .filter((id): id is string => typeof id === 'string'),
+        ),
+      ];
+
+      const quizNames = new Map<string, string>();
+      if (quizIds.length > 0) {
+        const { data: quizzes, error: quizzesError } = await supabase
+          .from('quizzes')
+          .select('id, name')
+          .in('id', quizIds)
+          // Defence in depth: the ids already come from active-org assignments,
+          // but the FK does not enforce same-org linkage.
+          .eq('organization_id', ctx.activeOrgId);
+
+        if (quizzesError) return toDbFailure(quizzesError);
+        for (const quiz of quizzes ?? []) quizNames.set(quiz.id, quiz.name);
+      }
+
+      for (const assignment of assignments ?? []) {
+        const name =
+          (assignment.quiz_id ? quizNames.get(assignment.quiz_id) : undefined) ?? assignment.title;
+        if (name) assignmentNames.set(assignment.id, name);
+      }
+    }
 
     const quizMap = new Map<
       string,
       { startedAttempts: number; completedAttempts: number; totalPercent: number }
     >();
 
-    for (const row of data ?? []) {
+    for (const row of attempts) {
       const config = row.config as { title?: string } | null;
-      // Untitled quizzes stay null here; the UI supplies the localized label.
-      const title = config?.title ?? null;
+      // Precedence: an explicit stored title, then the quiz behind the
+      // assignment, then the assignment title. Untitled rows stay null and the
+      // UI supplies the localized label.
+      const title =
+        config?.title ??
+        (row.assignment_id ? assignmentNames.get(row.assignment_id) : undefined) ??
+        null;
       const key = title ?? '';
 
       if (!quizMap.has(key)) {
