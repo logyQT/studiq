@@ -56,6 +56,9 @@ ROLE_SLOTS = collections.defaultdict(list)
 for _n, _r in ROLES.items():
     ROLE_SLOTS[_r].append(_n)
 PRIORITY = {"critical": 0, "high": 1, "medium": 2, "low": 3, "none": 4}
+# Tracking/epic issues are not fixable units: the pipeline must never produce a
+# change for them (e.g. #464, the e2e coverage gate).
+NON_FIXABLE_LABELS = {"tracking", "epic"}
 AREAS = ("frontend", "backend", "database", "i18n", "security", "accessibility",
          "performance", "payments", "visual", "admin", "docs", "email")
 PROMPTS = ROOT / "qa" / "fixing"
@@ -460,16 +463,19 @@ def normalize_map(raw: list[dict]) -> dict:
             "labels": labels, "priority": priority,
             "areas": [a for a in AREAS if a in labels],
             "needs_design": "needs-design" in labels,
+            "tracking": any(l in NON_FIXABLE_LABELS for l in labels),
             "assignees": assignees, "parked": bool(parked), "parked_by": parked,
             "created": i["createdAt"], "updated": i["updatedAt"],
             "body": i.get("body") or "",
         })
-    eligible = sorted((i for i in items if not i["needs_design"] and not i["parked"]),
+    eligible = sorted((i for i in items
+                       if not i["needs_design"] and not i["parked"] and not i["tracking"]),
                       key=lambda i: (PRIORITY.get(i["priority"], 9), i["number"]))
     return {"generated": now(), "total_open": len(items),
             "eligible": len(eligible),
             "needs_design": sum(1 for i in items if i["needs_design"]),
             "parked": sum(1 for i in items if i["parked"] and not i["needs_design"]),
+            "tracking": sum(1 for i in items if i["tracking"]),
             "ignored_assignees": sorted(ignore),
             "issues": items, "queue": [i["number"] for i in eligible]}
 
