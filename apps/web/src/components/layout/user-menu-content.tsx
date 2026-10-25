@@ -1,7 +1,7 @@
 'use client';
 
 import { AccountType } from '@studiq/authz';
-import { UserAvatar } from '@studiq/ui';
+import { DropdownMenuItem, DropdownMenuSeparator, UserAvatar } from '@studiq/ui';
 import {
   BadgeCheck,
   Bell,
@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { cn } from '@/lib/utils';
 
 type Locale = 'pl' | 'en';
 
@@ -47,7 +48,56 @@ export function UserMenuHeader() {
   );
 }
 
-export function UserMenuItems({ onItemClick }: { onItemClick?: () => void }) {
+const PLAIN_ITEM_CLASS =
+  'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors';
+
+interface MenuEntryProps {
+  variant: UserMenuVariant;
+  onSelect?: () => void;
+  destructive?: boolean;
+  children: React.ReactNode;
+}
+
+/**
+ * Renders a real Radix `DropdownMenuItem` inside a dropdown (keyboard reachable via
+ * roving focus), or a plain button when rendered outside a menu context (e.g. a Sheet).
+ */
+function MenuEntry({ variant, onSelect, destructive, children }: MenuEntryProps) {
+  if (variant === 'menu') {
+    return (
+      <DropdownMenuItem variant={destructive ? 'destructive' : 'default'} onSelect={onSelect}>
+        {children}
+      </DropdownMenuItem>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={cn(
+        PLAIN_ITEM_CLASS,
+        destructive && 'text-destructive hover:bg-destructive/10 hover:text-destructive',
+      )}
+      onClick={onSelect}
+    >
+      {children}
+    </button>
+  );
+}
+
+function MenuDivider({ variant }: { variant: UserMenuVariant }) {
+  return variant === 'menu' ? <DropdownMenuSeparator /> : <div className="h-px bg-border my-1" />;
+}
+
+export type UserMenuVariant = 'menu' | 'plain';
+
+export function UserMenuItems({
+  onItemClick,
+  variant = 'menu',
+}: {
+  onItemClick?: () => void;
+  /** 'menu' inside a Radix DropdownMenuContent; 'plain' for non-menu contexts such as a Sheet. */
+  variant?: UserMenuVariant;
+}) {
   const t = useTranslations('DashboardLayout');
   const router = useRouter();
   const { user } = useAuth();
@@ -78,109 +128,99 @@ export function UserMenuItems({ onItemClick }: { onItemClick?: () => void }) {
 
   return (
     <>
-      <button
-        type="button"
-        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors"
-        onClick={() => {
+      <MenuEntry
+        variant={variant}
+        onSelect={() => {
           router.push(`${dashboardPrefix}/upgrade`);
           onItemClick?.();
         }}
       >
         <Sparkles className="size-4" />
         <span>{t('upgrade')}</span>
-      </button>
+      </MenuEntry>
 
-      <div className="h-px bg-border my-1" />
+      <MenuDivider variant={variant} />
 
-      <button
-        type="button"
-        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors"
-        onClick={() => {
+      <MenuEntry
+        variant={variant}
+        onSelect={() => {
           router.push(`${dashboardPrefix}/account`);
           onItemClick?.();
         }}
       >
         <BadgeCheck className="size-4 text-muted-foreground" />
         <span>{t('account')}</span>
-      </button>
-      <button
-        type="button"
-        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors"
-        onClick={() => {
+      </MenuEntry>
+      <MenuEntry
+        variant={variant}
+        onSelect={() => {
           router.push(`${dashboardPrefix}/billing`);
           onItemClick?.();
         }}
       >
         <CreditCard className="size-4 text-muted-foreground" />
         <span>{t('billing')}</span>
-      </button>
-      <button
-        type="button"
-        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors"
-        onClick={onItemClick}
-      >
+      </MenuEntry>
+      <MenuEntry variant={variant} onSelect={onItemClick}>
         <Bell className="size-4 text-muted-foreground" />
         <span>{t('notifications')}</span>
-      </button>
+      </MenuEntry>
 
-      <div className="h-px bg-border my-1" />
+      <MenuDivider variant={variant} />
 
-      <button
-        type="button"
-        onClick={() => {
+      <MenuEntry
+        variant={variant}
+        onSelect={() => {
           changeLanguage('pl');
           onItemClick?.();
         }}
-        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors"
       >
         <Globe className="size-4 text-muted-foreground" />
         <span>Polski</span>
         {locale === 'pl' && <Check className="ml-auto size-4" />}
-      </button>
-      <button
-        type="button"
-        onClick={() => {
+      </MenuEntry>
+      <MenuEntry
+        variant={variant}
+        onSelect={() => {
           changeLanguage('en');
           onItemClick?.();
         }}
-        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors"
       >
         <Globe className="size-4 text-muted-foreground" />
         <span>English</span>
         {locale === 'en' && <Check className="ml-auto size-4" />}
-      </button>
+      </MenuEntry>
 
-      <div className="h-px bg-border my-1" />
+      <MenuDivider variant={variant} />
 
-      <button
-        type="button"
-        onClick={() => {
+      <MenuEntry
+        variant={variant}
+        onSelect={() => {
           const isDark = document.documentElement.classList.contains('dark');
           setTheme(isDark ? 'light' : 'dark');
           onItemClick?.();
         }}
-        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors"
       >
         <div className="relative size-4">
           <Sun className="size-4 absolute rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
           <Moon className="size-4 absolute rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
         </div>
         <span>{t('theme')}</span>
-      </button>
+      </MenuEntry>
 
-      <div className="h-px bg-border my-1" />
+      <MenuDivider variant={variant} />
 
-      <button
-        type="button"
-        onClick={() => {
+      <MenuEntry
+        variant={variant}
+        onSelect={() => {
           handleLogout();
           onItemClick?.();
         }}
-        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none text-destructive hover:bg-destructive/10 hover:text-destructive transition-colors"
+        destructive
       >
         <LogOut className="size-4" />
         <span>{t('logout')}</span>
-      </button>
+      </MenuEntry>
     </>
   );
 }

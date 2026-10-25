@@ -257,7 +257,7 @@ export default function MembersPage() {
           />
         </div>
         <Select value={filterRole} onValueChange={setFilterRole}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-40" aria-label={t('role_filter')}>
             <SelectValue placeholder={t('role_filter')} />
           </SelectTrigger>
           <SelectContent>
