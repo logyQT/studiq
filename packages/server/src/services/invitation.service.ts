@@ -219,6 +219,7 @@ export class InvitationService {
   ): Promise<
     ServiceResult<
       Array<{
+        email: string;
         success: true;
         data: { success: true; invitationId: string; inviteLink: string | undefined };
       }>
@@ -310,7 +311,11 @@ export class InvitationService {
       createdByEmail.set(key, bucket);
     }
 
+    // Each result carries the submitted address: it is the only identifier the
+    // manager sees in „Wyniki”, and the invite table is sorted newest-first, so
+    // position alone cannot attribute a status (MGR-INV-02).
     const results: Array<{
+      email: string;
       success: true;
       data: { success: true; invitationId: string; inviteLink: string | undefined };
     }> = [];
@@ -320,6 +325,7 @@ export class InvitationService {
       if (!row) return failure('INTERNAL_SERVER');
 
       results.push({
+        email: invite.email,
         success: true,
         data: {
           success: true,

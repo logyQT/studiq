@@ -65,6 +65,8 @@ function rowError(row: InviteRow): InviteRowError | null {
 }
 
 interface InvitationResult {
+  /** The address the manager submitted for this row — the only identifier shown. */
+  email: string;
   success: boolean;
   data?: { invitationId?: string; inviteLink?: string };
   error?: string;
@@ -344,9 +346,10 @@ export default function InvitationsPage() {
           <CardContent className="space-y-2">
             {results.map((result, index) => (
               <div
-                key={index}
-                className="flex items-center justify-between p-3 bg-muted rounded-lg"
+                key={`${index}-${result.email}`}
+                className="flex flex-wrap items-center justify-between gap-2 p-3 bg-muted rounded-lg"
               >
+                <span className="text-sm font-medium break-all">{result.email}</span>
                 <div className="flex items-center gap-2">
                   <Badge
                     variant={

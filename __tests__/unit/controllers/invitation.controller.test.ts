@@ -145,8 +145,16 @@ describe('InvitationController', () => {
     it('returns one result per invitation', async () => {
       mockService.createInvitationsBulk.mockResolvedValueOnce(
         success([
-          { success: true, data: { success: true, invitationId: 'inv-1', inviteLink: undefined } },
-          { success: true, data: { success: true, invitationId: 'inv-2', inviteLink: undefined } },
+          {
+            email: 'john@example.com',
+            success: true,
+            data: { success: true, invitationId: 'inv-1', inviteLink: undefined },
+          },
+          {
+            email: 'jane@example.com',
+            success: true,
+            data: { success: true, invitationId: 'inv-2', inviteLink: undefined },
+          },
         ]),
       );
 
@@ -161,6 +169,11 @@ describe('InvitationController', () => {
       expect(response.statusCode).toBe(200);
       expect((response as any).data.results.length).toBe(2);
       expect((response as any).data.results[0].data.invitationId).toBe('inv-1');
+      // MGR-INV-02: every row is attributable to the address that was submitted.
+      expect((response as any).data.results.map((r: any) => r.email)).toEqual([
+        'john@example.com',
+        'jane@example.com',
+      ]);
     });
 
     it('returns UNPROCESSABLE_ENTITY naming the incomplete entry', async () => {

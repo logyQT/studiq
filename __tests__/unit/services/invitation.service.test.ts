@@ -338,6 +338,7 @@ describe('InvitationService', () => {
 
       expect(result.success).toBe(true);
       const results = (result as any).data as Array<{
+        email: string;
         success: boolean;
         data: { invitationId: string; inviteLink?: string };
       }>;
@@ -345,6 +346,8 @@ describe('InvitationService', () => {
       // request order, not the insert response order.
       expect(results.map((r) => r.data.invitationId)).toEqual(['inv-1', 'inv-2']);
       expect(results[0].data.inviteLink).toContain('token-1');
+      // MGR-INV-02: every result names the address it belongs to, in input order.
+      expect(results.map((r) => r.email)).toEqual(['john@example.com', 'jane@example.com']);
 
       // One role pre-flight query, scoped to the resolved org.
       expect(rolesQb.eq).toHaveBeenCalledWith('organization_id', 'uni-1');
@@ -361,6 +364,39 @@ describe('InvitationService', () => {
         inviter_id: 'test-user-id',
       });
       expect(rows[0].expires_at).toBe(rows[1].expires_at);
+
+      vi.unstubAllEnvs();
+    });
+
+    it('labels duplicate addresses individually instead of collapsing them', async () => {
+      bulkBuilders({
+        created: [
+          { id: 'inv-3', token: 'token-3', email: 'john@example.com' },
+          { id: 'inv-1', token: 'token-1', email: 'john@example.com' },
+          { id: 'inv-2', token: 'token-2', email: 'jane@example.com' },
+        ] as any,
+      });
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitationsBulk({ ...managerCtx, activeOrgId: 'uni-1' }, [
+        invitations[0],
+        invitations[1],
+        invitations[0],
+      ]);
+
+      expect(result.success).toBe(true);
+      const results = (result as any).data as Array<{
+        email: string;
+        data: { invitationId: string };
+      }>;
+      expect(results.map((r) => r.email)).toEqual([
+        'john@example.com',
+        'jane@example.com',
+        'john@example.com',
+      ]);
+      // Still one distinct invitation (and link) per submitted row.
+      expect(new Set(results.map((r) => r.data.invitationId)).size).toBe(3);
 
       vi.unstubAllEnvs();
     });

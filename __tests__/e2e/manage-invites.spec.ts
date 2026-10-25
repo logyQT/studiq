@@ -115,7 +115,7 @@ test.describe('Manage invitations — role defaults (#241)', () => {
         body: JSON.stringify({
           success: true,
           statusCode: 200,
-          data: { results: [{ success: true }] },
+          data: { results: [{ email: 'qa-role-reset@example.com', success: true }] },
         }),
       });
     });
@@ -143,5 +143,66 @@ test.describe('Manage invitations — role defaults (#241)', () => {
     // Regression: the reset row used to be re-seeded with the first role (admin).
     await expect(page.locator('#email-0')).toHaveValue('');
     await expect(page.locator('#role-0')).toHaveText(roleLabel);
+  });
+
+  // MGR-INV-02: „Wyniki” used to render unattributed status badges, so a manager
+  // could not tell which entered address a result belonged to.
+  test('every „Wyniki” row names the e-mail it belongs to', async ({ page }) => {
+    const emails = ['qa-results-a@example.com', 'qa-results-b@example.com'];
+
+    await page.route(`**${BULK_INVITES_URL}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          statusCode: 200,
+          data: {
+            results: emails.map((email, index) => ({
+              email,
+              success: true,
+              data: {
+                success: true,
+                invitationId: `inv-${index}`,
+                inviteLink: `http://localhost:3000/join?token=token-${index}`,
+              },
+            })),
+          },
+        }),
+      });
+    });
+
+    for (const [index, email] of emails.entries()) {
+      if (index > 0) {
+        await page.getByRole('button', { name: t('ManageInvitationsPage.add_member') }).click();
+      }
+      await page.locator(`#email-${index}`).fill(email);
+      await page.locator(`#role-${index}`).click();
+      await page.getByRole('option', { name: 'Student', exact: true }).click();
+    }
+
+    await Promise.all([
+      page.waitForResponse(
+        (res) => res.url().includes(BULK_INVITES_URL) && res.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: t('ManageInvitationsPage.send_invitations') }).click(),
+    ]);
+
+    // Each address is rendered once and its own row carries the status/action.
+    for (const email of emails) {
+      const emailCell = page.getByText(email, { exact: true });
+      await expect(emailCell).toHaveCount(1);
+
+      const row = emailCell.locator('..');
+      await expect(row).toContainText(t('ManageInvitationsPage.success'));
+      await expect(
+        row.getByRole('button', { name: t('ManageInvitationsPage.copy_link') }),
+      ).toBeVisible();
+    }
+
+    // Rows keep the submitted order, so address ↔ result is unambiguous.
+    const firstEmail = await page.getByText(emails[0], { exact: true }).boundingBox();
+    const secondEmail = await page.getByText(emails[1], { exact: true }).boundingBox();
+    expect(firstEmail!.y).toBeLessThan(secondEmail!.y);
   });
 });
