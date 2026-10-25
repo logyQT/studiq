@@ -24,6 +24,10 @@ export class FlashcardDeckService {
     const supabase = await this.createClient();
 
     const groupIds = data.visibility === 'group' ? [...new Set(data.groupIds ?? [])] : [];
+    // A group-visible deck without a single share link is visible only to its creator (#139).
+    if (data.visibility === 'group' && groupIds.length === 0) {
+      return failure('UNPROCESSABLE_ENTITY');
+    }
     if (groupIds.length > 0) {
       const shareCheck = await groupService.canShareContentToGroups(ctx, groupIds, ctx.activeOrgId);
       if (isFailure(shareCheck)) return failure(shareCheck.error);
@@ -324,6 +328,18 @@ export class FlashcardDeckService {
           ? [...new Set(data.groupIds)]
           : null; // visibility stayed 'group' and no list was sent → keep existing links
 
+    // The resulting state must never be "group" with zero links (#139):
+    //  - an explicit empty list is always invalid;
+    //  - "no list sent" is only valid when the deck already was group-visible
+    //    (it inherits the links; this also blocks activating stale links on a personal deck).
+    // Unsharing a group deck has to go through `{ visibility: 'personal' }`.
+    const groupWithoutLinks =
+      effectiveVisibility === 'group' &&
+      (requestedGroupIds !== null
+        ? requestedGroupIds.length === 0
+        : existing.visibility !== 'group');
+    if (groupWithoutLinks) return failure('UNPROCESSABLE_ENTITY');
+
     if (requestedGroupIds !== null && requestedGroupIds.length > 0) {
       // The link must belong to the CONTENT's org, not the caller's current UI org.
       // NULL-org content (legacy personal rows) falls back to the active org.
@@ -440,7 +456,8 @@ export class FlashcardDeckService {
       description: d.description ?? null,
       created_by: ctx.userId,
       organization_id: ctx.activeOrgId,
-      visibility: d.visibility ?? 'personal',
+      // Bulk create cannot assign groups, so it can only produce personal decks (#139).
+      visibility: 'personal',
     }));
 
     const { data: created, error } = await supabase

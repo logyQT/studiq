@@ -59,6 +59,32 @@ describe('FlashcardDeckController', () => {
       expect(response.statusCode).toBe(500);
       expect((response as any).error).toBe('INTERNAL_SERVER');
     });
+
+    // #139 — group visibility requires at least one group to share to.
+    it('returns UNPROCESSABLE_ENTITY for a group deck with an empty groupIds list', async () => {
+      const response = await controller.create(
+        { name: 'Study Deck', visibility: 'group', groupIds: [] },
+        mockCtx,
+      );
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).details[0].path).toEqual(['groupIds']);
+      expect(mockService.create).not.toHaveBeenCalled();
+    });
+
+    it('returns UNPROCESSABLE_ENTITY for a group deck with no groupIds field', async () => {
+      const response = await controller.create(
+        { name: 'Study Deck', visibility: 'group' },
+        mockCtx,
+      );
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(mockService.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('list', () => {

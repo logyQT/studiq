@@ -31,6 +31,17 @@ const AI_CHAT_PLAN_GATE_KEYS = [
   'error_dismiss',
 ] as const;
 
+/**
+ * #139 — `DeckFormDialog` renders the group-required hint from these namespaces,
+ * so a missing translation would show the raw key instead of the rule.
+ */
+const DECK_GROUP_REQUIRED_NAMESPACES = [
+  'EduFlashcardDecksPage',
+  'AppFlashcardDecksPage',
+  'EduDeckViewPage',
+  'AppFlashcardDeckViewPage',
+] as const;
+
 describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages) => {
   it('translates every password rule the account page surfaces', () => {
     for (const code of PASSWORD_RULE_CODES) {
@@ -64,6 +75,15 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
   it('shows the password requirements hint', () => {
     expect(messages.AccountPage.password_requirements).toBeTypeOf('string');
     expect(messages.AccountPage.password_requirements).not.toHaveLength(0);
+  });
+
+  it('translates the deck group-required hint in every deck namespace', () => {
+    for (const namespace of DECK_GROUP_REQUIRED_NAMESPACES) {
+      const message = (messages[namespace] as Record<string, string>).groups_required;
+
+      expect(message, `${namespace}.groups_required`).toBeTypeOf('string');
+      expect(message).not.toHaveLength(0);
+    }
   });
 
   it('uses distinct copy for the success and failure paths', () => {

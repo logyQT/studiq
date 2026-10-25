@@ -150,6 +150,31 @@ describe('FlashcardDeckService', () => {
       expect(result.error).toBe('INTERNAL_SERVER');
     });
 
+    // #139 — group visibility without a single share link is only visible to the creator.
+    it('rejects a group deck with no groupIds before touching the database', async () => {
+      const result = await service.create(
+        { name: 'Group Deck', visibility: 'group' },
+        { ...ctx, activeOrgId: 'org-1' },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('rejects a group deck with an empty groupIds list', async () => {
+      const result = await service.create(
+        { name: 'Group Deck', visibility: 'group', groupIds: [] },
+        { ...ctx, activeOrgId: 'org-1' },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
     it('links a group deck when the caller teaches the requested groups', async () => {
       const mockDeck = { id: 'd-1', name: 'Group Deck', created_by: ctx.userId };
       mock.from.mockReturnValueOnce(qb([], null, 0)); // deck count
@@ -538,19 +563,56 @@ describe('FlashcardDeckService', () => {
       );
     });
 
-    it('clears group links for an empty groupIds list without calling the guard', async () => {
+    // #139 — a group deck must be unshared by switching visibility, never by
+    // emptying the link list (that would leave `visibility='group'` with 0 links).
+    it('rejects an empty groupIds list on a group deck', async () => {
       const existing = { id: 'd-1', name: 'Original', created_by: ctx.userId, visibility: 'group' };
-      const cleared = { id: 'd-1', name: 'Original', created_by: ctx.userId, groupIds: [] };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+
+      const result = await service.update('d-1', { groupIds: [] }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      // Only the existence read happened — no deck update, no link delete.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('deck_groups');
+    });
+
+    it('clears stale group links for an empty groupIds list on a personal deck', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        visibility: 'personal',
+      };
       mock.from.mockReturnValueOnce(qb(existing)); // existence read
       mock.from.mockReturnValueOnce(qb(undefined)); // delete links
       mock.from.mockReturnValueOnce(qb([], null)); // suspended decks
-      mock.from.mockReturnValueOnce(qb(cleared)); // getById
+      mock.from.mockReturnValueOnce(qb({ ...existing, groupIds: [] })); // getById
 
       const result = await service.update('d-1', { groupIds: [] }, ctx);
 
       expect(result.success).toBe(true);
       expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
       expect(mock.from).toHaveBeenCalledWith('deck_groups');
+    });
+
+    it('rejects switching a personal deck to group without a groupIds list', async () => {
+      const existing = {
+        id: 'd-1',
+        name: 'Original',
+        created_by: ctx.userId,
+        visibility: 'personal',
+      };
+      mock.from.mockReturnValueOnce(qb(existing)); // existence read
+
+      const result = await service.update('d-1', { visibility: 'group' }, ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(groupService.canShareContentToGroups).not.toHaveBeenCalled();
+      expect(mock.from).toHaveBeenCalledTimes(1);
     });
 
     it('clears group links when a partial PUT switches the deck to personal', async () => {

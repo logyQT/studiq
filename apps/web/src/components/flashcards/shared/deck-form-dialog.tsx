@@ -53,6 +53,7 @@ interface DeckFormDialogProps {
   visibilityGroupLabel?: string;
   groupsPlaceholder?: string;
   groupsEmptyText?: string;
+  groupsRequiredText?: string;
 }
 
 function FormBody({
@@ -72,6 +73,7 @@ function FormBody({
   visibilityGroupLabel,
   groupsPlaceholder,
   groupsEmptyText,
+  groupsRequiredText,
 }: {
   gradient: { from: string; to: string };
   initialValues?: {
@@ -99,12 +101,16 @@ function FormBody({
   visibilityGroupLabel?: string;
   groupsPlaceholder?: string;
   groupsEmptyText?: string;
+  groupsRequiredText?: string;
 }) {
   const [formData, setFormData] = useState(
     initialValues ?? { name: '', description: '', visibility: 'personal' as const, groupIds: [] },
   );
   const [visibility, setVisibility] = useState(formData.visibility ?? 'personal');
   const [groupIds, setGroupIds] = useState<string[]>(formData.groupIds ?? []);
+  // A group-visible deck must share to at least one group, otherwise it is visible only
+  // to its creator (#139). `groups` guard keeps the dialog usable without the group feature.
+  const groupsMissing = !!groups && visibility === 'group' && groupIds.length === 0;
 
   return (
     <>
@@ -176,13 +182,18 @@ function FormBody({
               </RadioGroup>
             </div>
             {visibility === 'group' && (
-              <MultiSelect
-                options={groups.map((g) => ({ label: g.name, value: g.id }))}
-                selected={groupIds}
-                onChange={setGroupIds}
-                placeholder={groupsPlaceholder}
-                emptyText={groupsEmptyText}
-              />
+              <div className="space-y-1.5">
+                <MultiSelect
+                  options={groups.map((g) => ({ label: g.name, value: g.id }))}
+                  selected={groupIds}
+                  onChange={setGroupIds}
+                  placeholder={groupsPlaceholder}
+                  emptyText={groupsEmptyText}
+                />
+                {groupsMissing && groupsRequiredText && (
+                  <p className="text-xs text-destructive">{groupsRequiredText}</p>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -191,7 +202,10 @@ function FormBody({
         <Button variant="outline" onClick={onCancel}>
           {cancelLabel}
         </Button>
-        <Button onClick={() => onSubmit({ ...formData, visibility, groupIds })}>
+        <Button
+          disabled={groupsMissing}
+          onClick={() => onSubmit({ ...formData, visibility, groupIds })}
+        >
           {submitLabel}
         </Button>
       </DialogFooter>
@@ -218,6 +232,7 @@ export function DeckFormDialog({
   visibilityGroupLabel,
   groupsPlaceholder,
   groupsEmptyText,
+  groupsRequiredText,
 }: DeckFormDialogProps) {
   const gradient = DIALOG_GRADIENT_HEX;
 
@@ -245,6 +260,7 @@ export function DeckFormDialog({
           visibilityGroupLabel={visibilityGroupLabel}
           groupsPlaceholder={groupsPlaceholder}
           groupsEmptyText={groupsEmptyText}
+          groupsRequiredText={groupsRequiredText}
         />
       </DialogContent>
     </Dialog>
