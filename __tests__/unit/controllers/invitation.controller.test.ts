@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 function createMockInvitationService() {
   return {
     createInvitation: vi.fn(),
+    createInvitationsBulk: vi.fn(),
     getInvitationByToken: vi.fn(),
   };
 }
@@ -141,9 +142,12 @@ describe('InvitationController', () => {
   });
 
   describe('createBulk', () => {
-    it('returns results for each invitation', async () => {
-      mockService.createInvitation.mockResolvedValue(
-        success({ success: true, invitationId: 'inv-1', inviteLink: undefined }),
+    it('returns one result per invitation', async () => {
+      mockService.createInvitationsBulk.mockResolvedValueOnce(
+        success([
+          { success: true, data: { success: true, invitationId: 'inv-1', inviteLink: undefined } },
+          { success: true, data: { success: true, invitationId: 'inv-2', inviteLink: undefined } },
+        ]),
       );
 
       const response = await controller.createBulk(mockCtx, {
@@ -155,20 +159,56 @@ describe('InvitationController', () => {
 
       expect(response.success).toBe(true);
       expect(response.statusCode).toBe(200);
-      expect((response as any).data).toHaveProperty('results');
       expect((response as any).data.results.length).toBe(2);
       expect((response as any).data.results[0].data.invitationId).toBe('inv-1');
     });
 
-    it('returns UNPROCESSABLE_ENTITY for invalid bulk input', async () => {
-      const response = await controller.createBulk(mockCtx, { invitations: [] });
+    it('returns UNPROCESSABLE_ENTITY naming the incomplete entry', async () => {
+      const response = await controller.createBulk(mockCtx, {
+        invitations: [{ email: 'john@example.com' }],
+      });
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(((response as any).details ?? []).map((issue: any) => issue.path)).toContainEqual([
+        'invitations',
+        0,
+        'targetOrgRoleId',
+      ]);
+      // The schema rejected the batch before the service was called.
+      expect(mockService.createInvitationsBulk).not.toHaveBeenCalled();
     });
 
-    it('handles service failures gracefully during bulk', async () => {
-      mockService.createInvitation.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
+    it('rejects the whole batch instead of answering a partial success', async () => {
+      mockService.createInvitationsBulk.mockResolvedValueOnce(
+        failure('UNPROCESSABLE_ENTITY', [
+          {
+            code: 'custom',
+            message: 'VALIDATION_INVALID_ROLE',
+            path: ['invitations', 1, 'targetOrgRoleId'],
+          },
+        ]),
+      );
+
+      const response = await controller.createBulk(mockCtx, {
+        invitations: [
+          { email: 'john@example.com', targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440001' },
+          { email: 'jane@example.com', targetOrgRoleId: '550e8400-e29b-41d4-a716-446655440002' },
+        ],
+      });
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect((response as any).data).toBeUndefined();
+      expect((response as any).details).toEqual([
+        expect.objectContaining({ path: ['invitations', 1, 'targetOrgRoleId'] }),
+      ]);
+    });
+
+    it('returns a non-200 when the service fails', async () => {
+      mockService.createInvitationsBulk.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
       const response = await controller.createBulk(mockCtx, {
         invitations: [
@@ -176,8 +216,9 @@ describe('InvitationController', () => {
         ],
       });
 
-      expect(response.success).toBe(true);
-      expect((response as any).data.results[0].success).toBe(false);
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(500);
+      expect((response as any).data).toBeUndefined();
     });
   });
 });

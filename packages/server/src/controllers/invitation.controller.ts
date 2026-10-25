@@ -114,19 +114,16 @@ export class InvitationController {
       return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const results = [];
+    // All-or-nothing: the service validates the whole batch before writing, so
+    // a rejected entry is a 4xx for the request instead of a per-item
+    // `{ success: false }` inside a 200 (MGR-INV-02).
+    const result = await this.invitationService.createInvitationsBulk(ctx, parsed.data.invitations);
 
-    for (const invite of parsed.data.invitations) {
-      const result = await this.invitationService.createInvitation(ctx, invite);
-
-      if (isFailure(result)) {
-        results.push({ success: false, error: 'Failed to create invitation' });
-      } else {
-        results.push({ success: true, data: result.data });
-      }
+    if (isFailure(result)) {
+      return controllerResponse.error(result.error, result.details);
     }
 
-    return controllerResponse.success({ results });
+    return controllerResponse.success({ results: result.data });
   }
 }
 export const invitationController = wrapService(

@@ -4,9 +4,11 @@ import { failure, type ServiceResult, success } from '@studiq/server/lib/service
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import type { CreateInviteInput } from '@studiq/server/models/invitation.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { ZodIssue } from 'zod';
 
 /** Internal invitation shape used by preview + accept. Never sent to a caller. */
 interface LoadedInvite {
@@ -200,6 +202,137 @@ export class InvitationService {
       invitationId: invitation.id,
       inviteLink: process.env.NODE_ENV === 'development' ? inviteLink : undefined,
     });
+  }
+
+  /**
+   * Bulk invite is all-or-nothing: every entry is checked before anything is
+   * written, and the rows land in a single multi-row INSERT (atomic in
+   * PostgreSQL), so a rejected entry can never leave a half-sent batch behind
+   * (MGR-INV-02).
+   *
+   * A batch is single-tenant by contract: the organization is resolved once and
+   * every entry with an explicit `organizationId` must name that same org.
+   */
+  async createInvitationsBulk(
+    ctx: RequestContext,
+    invitations: CreateInviteInput[],
+  ): Promise<
+    ServiceResult<
+      Array<{
+        success: true;
+        data: { success: true; invitationId: string; inviteLink: string | undefined };
+      }>
+    >
+  > {
+    if (invitations.length === 0) return failure('BAD_REQUEST');
+
+    const supabase = await this.createClient();
+
+    // Same membership gate as the single create: the body may only select one
+    // of the caller's orgs, never extend the tenant (#242).
+    const targetOrg = await this.resolveTargetOrganization(
+      supabase,
+      ctx,
+      invitations[0].organizationId,
+    );
+    if (!targetOrg.success) return targetOrg;
+
+    const organizationId = targetOrg.data;
+
+    const foreignOrgIssues: ZodIssue[] = [];
+    invitations.forEach((invite, index) => {
+      if (invite.organizationId && invite.organizationId !== organizationId) {
+        foreignOrgIssues.push({
+          code: 'custom',
+          message: ValidationErrorCode.INVALID_INPUT,
+          path: ['invitations', index, 'organizationId'],
+        });
+      }
+    });
+    if (foreignOrgIssues.length > 0) return failure('UNPROCESSABLE_ENTITY', foreignOrgIssues);
+
+    // Checked before any write: an invite that was inserted before this check
+    // could not have produced a usable link anyway, so it would be an orphan.
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    if (!baseUrl) return failure('INTERNAL_SERVER');
+
+    const roleIds = [...new Set(invitations.map((invite) => invite.targetOrgRoleId))];
+    const { data: orgRoles, error: roleError } = await supabase
+      .from('org_roles')
+      .select('id')
+      .eq('organization_id', organizationId)
+      .in('id', roleIds);
+
+    if (roleError) return toDbFailure(roleError);
+
+    const foundRoleIds = new Set((orgRoles ?? []).map((role) => role.id as string));
+    const roleIssues: ZodIssue[] = [];
+    invitations.forEach((invite, index) => {
+      if (!foundRoleIds.has(invite.targetOrgRoleId)) {
+        roleIssues.push({
+          code: 'custom',
+          message: ValidationErrorCode.INVALID_ROLE,
+          path: ['invitations', index, 'targetOrgRoleId'],
+        });
+      }
+    });
+    if (roleIssues.length > 0) return failure('UNPROCESSABLE_ENTITY', roleIssues);
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    // One statement = one transaction: per-row RLS still applies, so a denied
+    // role fails the whole insert and leaves zero rows behind.
+    const { data: created, error: insertError } = await supabase
+      .from('invitations')
+      .insert(
+        invitations.map((invite) => ({
+          email: invite.email,
+          target_org_role_id: invite.targetOrgRoleId,
+          organization_id: organizationId,
+          inviter_id: ctx.userId,
+          expires_at: expiresAt.toISOString(),
+        })),
+      )
+      .select('id, token, email');
+
+    if (insertError) return toDbFailure(insertError);
+    if (created?.length !== invitations.length) return failure('INTERNAL_SERVER');
+
+    // `INSERT ... SELECT` does not promise result order, so map by e-mail back
+    // to the input order the page renders. Duplicate addresses are
+    // interchangeable (each still gets its own row and token).
+    const createdByEmail = new Map<string, Array<{ id: string; token: string }>>();
+    for (const row of created) {
+      const key = row.email as string;
+      const bucket = createdByEmail.get(key) ?? [];
+      bucket.push({ id: row.id, token: row.token });
+      createdByEmail.set(key, bucket);
+    }
+
+    const results: Array<{
+      success: true;
+      data: { success: true; invitationId: string; inviteLink: string | undefined };
+    }> = [];
+
+    for (const invite of invitations) {
+      const row = createdByEmail.get(invite.email)?.shift();
+      if (!row) return failure('INTERNAL_SERVER');
+
+      results.push({
+        success: true,
+        data: {
+          success: true,
+          invitationId: row.id,
+          inviteLink:
+            process.env.NODE_ENV === 'development'
+              ? `${baseUrl}/join?token=${row.token}`
+              : undefined,
+        },
+      });
+    }
+
+    return success(results);
   }
 
   async getInvitationByToken(token: string): Promise<

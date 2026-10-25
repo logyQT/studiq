@@ -535,6 +535,87 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(422);
         expect(body.success).toBe(false);
       });
+
+      // MGR-INV-02: a batch is all-or-nothing. One bad entry must reject the
+      // whole request and leave no invitation behind.
+      it('rejects the whole batch when one role belongs to another organization', async () => {
+        mockUser(fixture.user);
+
+        const stamp = Date.now();
+        const emails = [
+          `bulk-ok-${copyId}-${stamp}@example.com`,
+          `bulk-foreign-${copyId}-${stamp}@example.com`,
+        ];
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites/bulk',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              invitations: [
+                { email: emails[0], targetOrgRoleId: adminRoleId },
+                { email: emails[1], targetOrgRoleId: foreignAdminRoleId },
+              ],
+            }),
+          },
+          { active_org_id: orgId },
+        );
+
+        const response = await bulkPost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+        expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+
+        const supabase = createServiceClient();
+        const { data: leftover } = await supabase
+          .from('invitations')
+          .select('id, email')
+          .in('email', emails);
+        // Not even the valid first entry was written.
+        expect(leftover ?? []).toEqual([]);
+      });
+
+      it('rejects the whole batch when one entry has no role and writes no rows', async () => {
+        mockUser(fixture.user);
+
+        const stamp = Date.now();
+        const emails = [
+          `bulk-missing-ok-${copyId}-${stamp}@example.com`,
+          `bulk-missing-role-${copyId}-${stamp}@example.com`,
+        ];
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites/bulk',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              invitations: [
+                { email: emails[0], targetOrgRoleId: adminRoleId },
+                { email: emails[1] },
+              ],
+            }),
+          },
+          { active_org_id: orgId },
+        );
+
+        const response = await bulkPost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+        expect(body.issues).toBeDefined();
+
+        const supabase = createServiceClient();
+        const { data: leftover } = await supabase
+          .from('invitations')
+          .select('id, email')
+          .in('email', emails);
+        expect(leftover ?? []).toEqual([]);
+      });
     });
 
     // MGR-INV-03: an invitation id must never be enough — the row has to belong
