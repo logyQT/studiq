@@ -54,6 +54,20 @@ test.describe('Flashcard Editor', () => {
     await expect(frontTextarea).toHaveValue('*hello world*');
   });
 
+  test('link button asks for a URL and inserts Markdown link syntax', async ({ page }) => {
+    await createDeckAndNavigateToEditor(page);
+
+    const frontTextarea = page.getByPlaceholder(t('FlashcardEditorComponent.front_placeholder'));
+    await frontTextarea.fill('hello world');
+    await frontTextarea.selectText();
+    await page.getByRole('button', { name: t('FlashcardEditorComponent.toolbar_link') }).click();
+    await page
+      .getByPlaceholder(t('FlashcardEditorComponent.link_url_prompt'))
+      .fill('https://example.com');
+    await page.keyboard.press('Enter');
+    await expect(frontTextarea).toHaveValue('[hello world](https://example.com)');
+  });
+
   test('heading buttons insert prefix', async ({ page }) => {
     await createDeckAndNavigateToEditor(page);
 

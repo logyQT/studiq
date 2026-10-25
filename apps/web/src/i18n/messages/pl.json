@@ -1835,6 +1835,7 @@
     "toolbar_preview": "Podgląd",
     "link_url_prompt": "URL linku",
     "link_default_text": "tekst linku",
+    "link_insert": "Wstaw",
     "bold_default_text": "pogrubienie",
     "italic_default_text": "kursywa",
     "front_label": "Przód (Pytanie)",

@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Popover, PopoverContent, PopoverTrigger } from '@studiq/ui';
+import { Button, Input, Popover, PopoverContent, PopoverTrigger } from '@studiq/ui';
 import {
   Bold,
   Heading1,
@@ -11,6 +11,7 @@ import {
   Heading6,
   Image,
   Italic,
+  Link,
   List,
   ListOrdered,
   Loader2,
@@ -55,6 +56,17 @@ export function MarkdownToolbar({
 }: MarkdownToolbarProps) {
   const [tableSize, setTableSize] = useState({ rows: 1, cols: 1 });
   const [tableOpen, setTableOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+
+  const confirmLink = () => {
+    const url = linkUrl.trim();
+    if (!url) return;
+    // wrap() reads the textarea selection at call time; a blurred textarea keeps it.
+    wrap('[', `](${url})`, t('link_default_text'));
+    setLinkOpen(false);
+    setLinkUrl('');
+  };
 
   return (
     <div className="flex items-center gap-2 shrink-0">
@@ -77,6 +89,44 @@ export function MarkdownToolbar({
         >
           <Italic className="h-4 w-4" />
         </Button>
+        <Popover
+          open={linkOpen}
+          onOpenChange={(open) => {
+            setLinkOpen(open);
+            if (!open) setLinkUrl('');
+          }}
+        >
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={t('toolbar_link')}
+              title={t('toolbar_link')}
+            >
+              <Link className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" sideOffset={8} className="w-72 p-3">
+            <form
+              className="flex items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                confirmLink();
+              }}
+            >
+              <Input
+                autoFocus
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                placeholder={t('link_url_prompt')}
+                aria-label={t('link_url_prompt')}
+              />
+              <Button type="submit" size="sm" disabled={!linkUrl.trim()}>
+                {t('link_insert')}
+              </Button>
+            </form>
+          </PopoverContent>
+        </Popover>
         <Button
           variant="ghost"
           size="sm"
