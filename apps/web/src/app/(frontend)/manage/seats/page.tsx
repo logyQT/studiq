@@ -29,10 +29,11 @@ import {
   TableRow,
 } from '@studiq/ui';
 import { Loader2, Plus, Trash2, UserCheck } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiQuery } from '@/hooks/use-api';
+import { formatDate } from '@/lib/datetime';
 
 interface Pool {
   id: string;
@@ -92,6 +93,7 @@ const PURCHASABLE_PLANS: { key: string; label: string; tier: string }[] = [
 
 export default function ManageSeatsPage() {
   const t = useTranslations('ManageSeatsPage');
+  const locale = useLocale();
   const { data: plans } = useApiQuery<PlanInfo[]>({
     queryKey: ['subscription-plans', 'active'],
     url: '/api/v1/subscription-plans',
@@ -479,7 +481,7 @@ export default function ManageSeatsPage() {
                         </TableCell>
                         <TableCell>{planName(a.planKey)}</TableCell>
                         <TableCell className="text-muted-foreground text-sm">
-                          {new Date(a.assignedAt).toLocaleDateString()}
+                          {formatDate(a.assignedAt, locale)}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button

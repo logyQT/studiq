@@ -3,9 +3,10 @@
 import { Card, UserAvatar } from '@studiq/ui';
 import { MessageSquareWarning } from 'lucide-react';
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
+import { formatDate } from '@/lib/datetime';
 import { questionReportKeys } from '@/lib/query-keys';
 
 interface ReportRow {
@@ -22,6 +23,7 @@ interface ReportRow {
 
 export function ReportsListScreen({ basePath }: { basePath: string }) {
   const t = useTranslations('QuestionReports');
+  const locale = useLocale();
   const { user } = useAuth();
   const { data: reports, isLoading } = useApiQuery<ReportRow[]>({
     queryKey: questionReportKeys.all,
@@ -65,7 +67,7 @@ export function ReportsListScreen({ basePath }: { basePath: string }) {
                 </p>
               </div>
               <span className="text-xs text-muted-foreground shrink-0">
-                {new Date(report.updated_at).toLocaleDateString()}
+                {formatDate(report.updated_at, locale)}
               </span>
             </Card>
           </Link>

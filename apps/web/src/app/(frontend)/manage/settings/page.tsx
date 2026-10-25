@@ -16,7 +16,7 @@ import {
 import { Lock } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -25,6 +25,7 @@ import { useFeature } from '@/hooks/use-feature';
 import { useFeatures } from '@/hooks/use-features';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiPut, apiUploadFile } from '@/lib/api';
+import { formatDate } from '@/lib/datetime';
 
 interface OrganizationDetail {
   id: string;
@@ -59,6 +60,7 @@ function BrandingLockedCard({ onUpgrade }: { onUpgrade: () => void }) {
 
 export default function SettingsPage() {
   const t = useTranslations('ManageSettingsPage');
+  const locale = useLocale();
   const router = useRouter();
   const { user } = useAuth();
   // /me/plan resolves the active organization's plan first (personal plan only as fallback).
@@ -165,9 +167,7 @@ export default function SettingsPage() {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{t('created')}</p>
                 <p className="text-sm">
-                  {organization.created_at
-                    ? new Date(organization.created_at).toLocaleDateString()
-                    : '—'}
+                  {organization.created_at ? formatDate(organization.created_at, locale) : '—'}
                 </p>
               </div>
 

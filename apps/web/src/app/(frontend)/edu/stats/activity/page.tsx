@@ -21,10 +21,11 @@ import {
   TableRow,
 } from '@studiq/ui';
 import { BookOpen, ClipboardList, Target, TrendingDown, TrendingUp, Users } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts';
 
+import { formatDate } from '@/lib/datetime';
 import { hasTeacherActivity } from '@/lib/stats';
 
 type StudentRow = {
@@ -77,8 +78,21 @@ function TrendIndicator({ current, previous }: MetricComp) {
 
 const RANGES = ['7d', '30d', '90d'] as const;
 
+/**
+ * Parses a date-only `YYYY-MM-DD` chart key as a **local** midnight. `new Date('2026-10-22')`
+ * would parse as UTC, shifting the rendered day in negative-offset time zones (#251).
+ */
+const parseDay = (value: string): Date => {
+  const [year, month, day] = value.slice(0, 10).split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
 export default function TeacherActivityPage() {
   const t = useTranslations('TeacherActivityPage');
+  const locale = useLocale();
+  // X axis: day + month only, in the app locale (pl 22.10 / en 10/22).
+  const formatDayTick = (value: string): string =>
+    parseDay(value).toLocaleDateString(locale, { month: 'numeric', day: 'numeric' });
   const formatLastActive = (dateStr: string | null): string => {
     if (!dateStr) return '—';
     const diff = Date.now() - new Date(dateStr).getTime();
@@ -228,10 +242,7 @@ export default function TeacherActivityPage() {
                     tick={{ fontSize: 11 }}
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={(d: string) => {
-                      const date = new Date(d);
-                      return `${date.getMonth() + 1}/${date.getDate()}`;
-                    }}
+                    tickFormatter={formatDayTick}
                   />
                   <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                   <YAxis
@@ -244,7 +255,7 @@ export default function TeacherActivityPage() {
                   <Tooltip
                     content={
                       <ChartTooltipContent
-                        labelFormatter={(value) => new Date(String(value)).toLocaleDateString()}
+                        labelFormatter={(value) => formatDate(parseDay(String(value)), locale)}
                       />
                     }
                   />

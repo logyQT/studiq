@@ -13,16 +13,18 @@ import {
   UserAvatar,
 } from '@studiq/ui';
 import { Loader2, Lock, Mail, PenLine, User } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useOrgs } from '@/hooks/use-orgs';
 import { ApiError, apiPost, apiPut, getFieldErrorCode, getFieldErrorCodes } from '@/lib/api';
+import { formatDate } from '@/lib/datetime';
 
 export function AccountPageContent() {
   const t = useTranslations('AccountPage');
   const tErr = useTranslations('Errors');
+  const locale = useLocale();
   const { user, refresh } = useAuth();
   const { activeOrg } = useOrgs();
 
@@ -38,7 +40,7 @@ export function AccountPageContent() {
 
   const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || '';
   const role = (activeOrg?.orgRoleName ?? user?.app_metadata?.account_type) as string;
-  const createdAt = user?.created_at ? new Date(user.created_at).toLocaleDateString() : '';
+  const createdAt = user?.created_at ? formatDate(user.created_at, locale) : '';
 
   async function handleSaveName() {
     if (!name.trim() || name === user?.user_metadata?.name) return;

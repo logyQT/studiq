@@ -32,9 +32,10 @@ import {
   TableRow,
 } from '@studiq/ui';
 import { Copy, Plus, X } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { formatDate } from '@/lib/datetime';
 
 interface OrgRole {
   id: string;
@@ -86,6 +87,7 @@ interface Invitation {
 
 export default function InvitationsPage() {
   const t = useTranslations('ManageInvitationsPage');
+  const locale = useLocale();
   const [orgRoles, setOrgRoles] = useState<OrgRole[]>([]);
   const [invites, setInvites] = useState<InviteRow[]>([{ email: '', orgRoleId: '' }]);
   const [results, setResults] = useState<InvitationResult[]>([]);
@@ -457,7 +459,7 @@ export default function InvitationsPage() {
                         <Badge variant={status.variant}>{status.label}</Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {new Date(inv.createdAt).toLocaleDateString()}
+                        {formatDate(inv.createdAt, locale)}
                       </TableCell>
                       <TableCell className="text-right">
                         {!inv.isAccepted && (
