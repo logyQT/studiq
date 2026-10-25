@@ -106,7 +106,9 @@ export default function ManageSeatsPage() {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedPoolId, setSelectedPoolId] = useState('');
   const [purchasePlanKey, setPurchasePlanKey] = useState('');
-  const [purchaseQty, setPurchaseQty] = useState(1);
+  const [purchaseQtyInput, setPurchaseQtyInput] = useState('1');
+  const purchaseQty = purchaseQtyInput.trim() === '' ? NaN : Number(purchaseQtyInput);
+  const qtyValid = Number.isInteger(purchaseQty) && purchaseQty >= 1;
   const [assigning, setAssigning] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   const [unassigning, setUnassigning] = useState<string | null>(null);
@@ -184,7 +186,7 @@ export default function ManageSeatsPage() {
   }
 
   async function handlePurchase() {
-    if (!purchasePlanKey || purchaseQty < 1) return;
+    if (!purchasePlanKey || !qtyValid) return;
     setPurchasing(true);
     try {
       const res = await fetch('/api/v1/organization/seats/pools', {
@@ -202,7 +204,7 @@ export default function ManageSeatsPage() {
       toast.success(t('purchase_success'));
       setPurchaseDialogOpen(false);
       setPurchasePlanKey('');
-      setPurchaseQty(1);
+      setPurchaseQtyInput('1');
       loadData();
     } catch {
       toast.error(t('purchase_failed'));
@@ -226,7 +228,7 @@ export default function ManageSeatsPage() {
               // going through onOpenChange, so resetting on close would be skipped.
               if (open) {
                 setPurchasePlanKey('');
-                setPurchaseQty(1);
+                setPurchaseQtyInput('1');
               }
               setPurchaseDialogOpen(open);
             }}
@@ -263,8 +265,9 @@ export default function ManageSeatsPage() {
                   <input
                     type="number"
                     min={1}
-                    value={purchaseQty}
-                    onChange={(e) => setPurchaseQty(Math.max(1, Number(e.target.value)))}
+                    step={1}
+                    value={purchaseQtyInput}
+                    onChange={(e) => setPurchaseQtyInput(e.target.value)}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   />
                 </div>
@@ -275,7 +278,7 @@ export default function ManageSeatsPage() {
                 </Button>
                 <Button
                   onClick={handlePurchase}
-                  disabled={!purchasePlanKey || purchaseQty < 1 || purchasing}
+                  disabled={!purchasePlanKey || !qtyValid || purchasing}
                 >
                   {purchasing && <Loader2 className="size-4 mr-2 animate-spin" />}
                   {t('confirm_purchase')}
