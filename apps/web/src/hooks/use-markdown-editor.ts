@@ -48,7 +48,6 @@ export function useMarkdownEditor(
   onFrontChange: (value: string) => void,
   onBackChange: (value: string) => void,
 ) {
-  const [preview, setPreview] = useState(false);
   const [activeSide, setActiveSide] = useState<'front' | 'back'>('front');
   const [uploading, setUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -151,8 +150,6 @@ export function useMarkdownEditor(
   );
 
   return {
-    preview,
-    setPreview,
     activeSide,
     setActiveSide,
     uploading,
