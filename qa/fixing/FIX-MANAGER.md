@@ -309,3 +309,19 @@ Review + QA it: `$FIX ingest --author damian` then `$FIX review 467` and `$FIX q
 It skips drafts, our own PRs and anything already tracked; it never polls your behalf, so
 never poll GitHub yourself. On a review-only day use `qa/fixing/PR-REVIEW-DAY.md` as the
 prompt: ingest -> two reviews -> QA -> verdict, author merges.
+
+### 12. R&D advisors (briefs, not code)
+`$FIX advise <issue> --domain sec|ux|dx|design|arch` dispatches a read-only advisor. It writes
+`.qa-fix/issues/<n>/advice-<domain>.md|json` and never changes the stage or writes code.
+
+- Domains: `sec` (authz/RLS, secrets, billing abuse), `ux` (flows, copy, accessibility), `dx`
+  (tooling, CI, harness), `design` (information architecture, components, consistency), `arch`
+  (schema, migrations, services, API).
+- When an advisor finishes, read its artifact — the finished event carries `#<n> <domain> advice r1`.
+  Do not poll.
+- A brief with `decision: needs_operator` goes to the Overseer as an escalation with its exact
+  question; anything else you accept, comment the rationale on the issue, and keep moving.
+- A decided topic becomes an implementation issue (or unblocks the existing one) and then follows
+  the normal design -> implement -> two reviews -> QA -> merge loop.
+- Advisors are read-only: never let one edit code, and never run two advisors for the same
+  issue + domain at once.

@@ -59,6 +59,15 @@ PRIORITY = {"critical": 0, "high": 1, "medium": 2, "low": 3, "none": 4}
 # Tracking/epic issues are not fixable units: the pipeline must never produce a
 # change for them (e.g. #464, the e2e coverage gate).
 NON_FIXABLE_LABELS = {"tracking", "epic"}
+
+# R&D advisor domains. The brief is injected into ADVISOR.md.
+DOMAIN_BRIEFS = {
+    "sec": "Security and product risk: authz/RLS, secrets and data exposure, billing abuse, audit trail, blast radius.",
+    "ux": "User flows and states, copy in PL/EN, accessibility, consistency with the existing screens.",
+    "dx": "Developer and agent experience: tooling, CI/hooks, test harness, local environments, automation ergonomics.",
+    "design": "Interaction and system design: information architecture, component reuse, consistency across screens.",
+    "arch": "Architecture and data: schema, migrations, service boundaries, API contracts, failure modes.",
+}
 AREAS = ("frontend", "backend", "database", "i18n", "security", "accessibility",
          "performance", "payments", "visual", "admin", "docs", "email")
 PROMPTS = ROOT / "qa" / "fixing"
@@ -658,7 +667,7 @@ def latest_round(n: int, stem: str, upto: int) -> int | None:
 
 
 def dispatch_prompt(role: str, n: int, stage: str, env: int, rec: dict,
-                    review_no: int = 0) -> str:
+                    review_no: int = 0, domain: str = "") -> str:
     issue = json.load(open(issue_dir(n) / "issue.json"))
     a = attempt(rec)
     # A retry that skips the designer (review/QA finding routed straight to the
@@ -693,6 +702,10 @@ def dispatch_prompt(role: str, n: int, stage: str, env: int, rec: dict,
         "ENV": env,
         "APP_URL": f"http://localhost:{3009 + env}",
         "REVIEW_NO": review_no,
+        "DOMAIN": domain,
+        "DOMAIN_BRIEF": DOMAIN_BRIEFS.get(domain, ""),
+        "ADVICE_PATH": str(issue_dir(n) / f"advice-{domain}.md"),
+        "ADVICE_JSON": str(issue_dir(n) / f"advice-{domain}.json"),
         "BRANCH": rec.get("branch") or f"fix/{n}-{slug(issue['title'])}",
         "PR": rec.get("pr") or "",
         "BASE_BRANCH": "main",
@@ -1440,6 +1453,39 @@ def cmd_verdict(args) -> None:
        approved_on_github=approved, merged=merged, stage=rec["stage"])
 
 
+def cmd_advise(args) -> None:
+    """Dispatch a read-only R&D advisor for one domain; it writes a decision brief."""
+    state = load_state()
+    n = args.issue
+    rec = state["issues"].get(str(n))
+    if rec is None:
+        rec = materialize_issue(state, n)
+        history(state, n, {"event": "materialized", "reason": "advisor brief requested"})
+    domain = args.domain
+    busy = busy_slots()
+    flex = is_flex(state)
+    candidates = list(SLOTS) if flex else ROLE_SLOTS.get("designer", [])
+    if args.env:
+        env = args.env
+        if env in busy:
+            fail(f"slot {env} is busy")
+    else:
+        free = [e for e in candidates if e not in busy]
+        if not free:
+            fail("no free slot for an advisor", busy=sorted(busy))
+        env = free[0]
+    rec["manager_note"] = args.note or ""
+    rec["manager_note_attempt"] = attempt(rec)
+    title = f"#{n} {domain} advice r1"
+    sid = create_session(env, title,
+                         dispatch_prompt("ADVISOR", n, "advise", env, rec, domain=domain))
+    rec.setdefault("advice", {})[domain] = sid
+    history(state, n, {"event": "advice_dispatched", "domain": domain, "env": env,
+                       "session": sid})
+    ok(action="advise", issue=n, domain=domain, env=env, session=sid, title=title,
+       artifact=str(issue_dir(n) / f"advice-{domain}.md"))
+
+
 def cmd_merge(args) -> None:
     state = load_state()
     n = args.issue
@@ -1706,6 +1752,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="echo the whole artifact instead of a compact digest")
     s.set_defaults(fn=cmd_collect)
     s = sub.add_parser("merge"); s.add_argument("issue", type=int); s.set_defaults(fn=cmd_merge)
+    s = sub.add_parser("advise"); s.add_argument("issue", type=int)
+    s.add_argument("--domain", required=True, choices=tuple(DOMAIN_BRIEFS))
+    s.add_argument("--env", type=int)
+    s.add_argument("--note", help="manager note injected into the advisor prompt")
+    s.set_defaults(fn=cmd_advise)
     s = sub.add_parser("ingest")
     s.add_argument("--drafts", action="store_true", help="include draft PRs")
     s.add_argument("--author", action="append",
