@@ -592,6 +592,7 @@ export default function SessionClient(props: SessionClientProps) {
       <div className="mx-auto max-w-2xl py-8">
         <SessionSummaryDialog
           data={summaryData}
+          queueExhausted={allCaughtUp}
           onPracticeAgain={sessionComplete && !allCaughtUp ? handlePracticeAgain : undefined}
           onBackToSetup={handleBackToSetup}
         />

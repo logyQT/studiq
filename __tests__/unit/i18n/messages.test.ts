@@ -188,6 +188,22 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
   });
 
   /**
+   * #319 — the endless session summary explains why „Przeglądaj ponownie” is
+   * absent instead of silently omitting it; a missing key would render the raw
+   * key inside the dialog.
+   */
+  it('translates the exhausted-session summary state', () => {
+    const sessionPage = messages.AppFlashcardSessionPage as Record<string, string>;
+
+    for (const key of ['all_caught_up', 'all_caught_up_desc'] as const) {
+      const message = sessionPage[key];
+
+      expect(message, `AppFlashcardSessionPage.${key}`).toBeTypeOf('string');
+      expect(message).not.toHaveLength(0);
+    }
+  });
+
+  /**
    * #335 — the /app sidebar entry and the page it opens are labelled by two
    * different keys, so they silently drifted („Talie” vs „Talie fiszek”). Pin
    * them together; the /edu sidebar keeps `flashcard_decks` on purpose.
@@ -273,6 +289,17 @@ describe('i18n message parity', () => {
   it('has the same AppAssignmentsPage keys in en and pl', () => {
     expect(Object.keys(en.AppAssignmentsPage).sort()).toEqual(
       Object.keys(pl.AppAssignmentsPage).sort(),
+    );
+  });
+
+  /**
+   * #319 — the session summary dialog resolves its keys dynamically (mode suffix,
+   * exhausted state), so a key present in only one locale would silently show the
+   * raw key to that locale's users.
+   */
+  it('has the same AppFlashcardSessionPage keys in en and pl', () => {
+    expect(Object.keys(en.AppFlashcardSessionPage).sort()).toEqual(
+      Object.keys(pl.AppFlashcardSessionPage).sort(),
     );
   });
 
