@@ -109,7 +109,7 @@ const NAV_ITEMS: Record<string, { label: string; items: NavItem[] }[]> = {
     {
       label: 'sidebar_content',
       items: [
-        { titleKey: 'flashcard_decks', href: '/app/flashcards', icon: Folder },
+        { titleKey: 'app_flashcard_decks', href: '/app/flashcards', icon: Folder },
         { titleKey: 'flashcard_topics', href: '/app/topics', icon: Tag },
         { titleKey: 'question_banks', href: '/app/questions', icon: Database },
         { titleKey: 'app_assignments', href: '/app/assignments', icon: ClipboardCheck },
