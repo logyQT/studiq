@@ -758,6 +758,12 @@ export default function SessionClient(props: SessionClientProps) {
             </motion.div>
           </AnimatePresence>
 
+          {!flipped && (
+            <p className="text-center text-sm text-muted-foreground">
+              {t('click_hint', { action: t('reveal_answer') })}
+            </p>
+          )}
+
           {isLearningState && (
             <div className="text-center text-sm text-muted-foreground">
               {t('step_indicator', { step: (cardState.step ?? 0) + 1 })}
