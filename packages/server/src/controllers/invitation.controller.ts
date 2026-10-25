@@ -6,6 +6,7 @@ import {
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
 import {
+  AcceptInviteSchema,
   BulkInviteSchema,
   CreateInviteSchema,
   InvitationListQuerySchema,
@@ -50,13 +51,13 @@ export class InvitationController {
   }
 
   async accept(ctx: RequestContext, body: unknown): Promise<ControllerResponse> {
-    const { token } = body as { token?: string };
+    const parsed = AcceptInviteSchema.safeParse(body);
 
-    if (!token || typeof token !== 'string') {
-      return controllerResponse.error('BAD_REQUEST');
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
     }
 
-    const result = await this.invitationService.acceptInvitation(ctx, token);
+    const result = await this.invitationService.acceptInvitation(ctx, parsed.data.token);
 
     if (isFailure(result)) {
       return controllerResponse.error(result.error);

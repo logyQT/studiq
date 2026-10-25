@@ -8,6 +8,7 @@ function createMockInvitationService() {
     createInvitation: vi.fn(),
     createInvitationsBulk: vi.fn(),
     getInvitationByToken: vi.fn(),
+    acceptInvitation: vi.fn(),
   };
 }
 
@@ -138,6 +139,44 @@ describe('InvitationController', () => {
         statusCode: 400,
         error: 'BAD_REQUEST',
       });
+    });
+  });
+
+  describe('accept', () => {
+    it('passes the trimmed token through and returns the joined organization', async () => {
+      const data = { id: 'org-1', name: 'Test Org', orgRoleId: 'role-member' };
+      mockService.acceptInvitation.mockResolvedValueOnce(success(data));
+
+      const response = await controller.accept(mockCtx, { token: '  bare-code  ' });
+
+      expect(response).toEqual({ success: true, statusCode: 200, data });
+      expect(mockService.acceptInvitation).toHaveBeenCalledWith(mockCtx, 'bare-code');
+    });
+
+    // #317: the accept body used to be cast, so a non-string reached the service
+    // (and the DB) unchecked. It is validated like every other request body.
+    it.each([
+      ['missing', {}],
+      ['non-string', { token: 42 }],
+      ['blank', { token: '   ' }],
+    ])('returns 422 naming the token for a %s body', async (_label, body) => {
+      const response = await controller.accept(mockCtx, body);
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect((response as any).error).toBe('UNPROCESSABLE_ENTITY');
+      expect(((response as any).details ?? []).map((issue: any) => issue.path)).toContainEqual([
+        'token',
+      ]);
+      expect(mockService.acceptInvitation).not.toHaveBeenCalled();
+    });
+
+    it('returns NOT_FOUND when the invitation is unknown', async () => {
+      mockService.acceptInvitation.mockResolvedValueOnce(failure('NOT_FOUND'));
+
+      const response = await controller.accept(mockCtx, { token: 'nope' });
+
+      expect(response).toEqual({ success: false, statusCode: 404, error: 'NOT_FOUND' });
     });
   });
 

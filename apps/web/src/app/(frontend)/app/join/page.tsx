@@ -24,12 +24,14 @@ export default function AppJoinPage() {
   const queryClient = useQueryClient();
   const [token, setToken] = useState('');
   const [isPending, setIsPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!token.trim()) return;
 
     setIsPending(true);
+    setError(null);
     try {
       const res = await fetch('/api/v1/organization/invites/accept', {
         method: 'POST',
@@ -42,6 +44,7 @@ export default function AppJoinPage() {
         // 429 USAGE_LIMIT_EXCEEDED: the code is valid but the org has no free seat (#240).
         if (err.error === 'USAGE_LIMIT_EXCEEDED' || err.error === 'ERROR_USAGE_LIMIT_EXCEEDED') {
           toast.error(t('org_full'));
+          setError(t('org_full'));
           return;
         }
         throw new Error(err.error || 'Invalid token');
@@ -59,6 +62,8 @@ export default function AppJoinPage() {
       router.refresh();
     } catch {
       toast.error(t('invalid_token'));
+      // The toast is transient; keep the failure visible next to the field.
+      setError(t('invalid_token'));
     } finally {
       setIsPending(false);
     }
@@ -82,9 +87,22 @@ export default function AppJoinPage() {
                 id="token"
                 placeholder={t('token_placeholder')}
                 value={token}
-                onChange={(e) => setToken(e.target.value)}
+                onChange={(e) => {
+                  setToken(e.target.value);
+                  setError(null);
+                }}
                 disabled={isPending}
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? 'token-error' : undefined}
               />
+              {error && (
+                <p id="token-error" role="alert" className="text-xs text-destructive">
+                  {error}
+                </p>
+              )}
             </div>
             <Button type="submit" className="w-full" disabled={isPending || !token.trim()}>
               {isPending && <Loader2 className="size-4 mr-2 animate-spin" />}

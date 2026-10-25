@@ -182,6 +182,8 @@ forEachCopy((copyId) => {
         const link = new URL(body.data.inviteLink);
         expect(link.pathname).toBe('/join');
         expect(link.searchParams.get('token')).toBe(row.token);
+        // #317: the creator gets the bare code too, so „Kopiuj kod” works.
+        expect(body.data.inviteCode).toBe(row.token);
       });
 
       // #242: the body-supplied organizationId must not extend the caller's
@@ -451,6 +453,51 @@ forEachCopy((copyId) => {
         expect(body.data.email).toBe(`valid-${copyId}@example.com`);
       });
 
+      // #317: the preview field accepts the „Kopiuj link” URL too.
+      it('returns the invitation when the pasted value is the full invite link (#317)', async () => {
+        mockUser(fixture.user);
+
+        const supabase = createServiceClient();
+        const token = Array.from({ length: 32 }, () =>
+          Math.floor(Math.random() * 16).toString(16),
+        ).join('');
+        const email = `link-${copyId}-${Date.now()}@example.com`;
+        const { error } = await supabase.from('invitations').insert({
+          email,
+          target_org_role_id: adminRoleId,
+          token,
+          expires_at: new Date(Date.now() + 86400000).toISOString(),
+          inviter_id: fixture.user.id,
+          organization_id: orgId,
+        });
+        if (error) throw new Error(`Failed to insert invitation: ${error.message}`);
+
+        const link = `http://localhost:3012/join?token=${token.toUpperCase()}`;
+        const response = await inviteGet(
+          createNextRequest(
+            `http://localhost/api/v1/organization/invites?token=${encodeURIComponent(link)}`,
+          ),
+        );
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.email).toBe(email);
+      });
+
+      it('returns 404 for a link that carries no token (#317)', async () => {
+        mockUser(fixture.user);
+
+        const response = await inviteGet(
+          createNextRequest(
+            `http://localhost/api/v1/organization/invites?token=${encodeURIComponent(
+              'http://localhost:3012/join',
+            )}`,
+          ),
+        );
+
+        expect(response.status).toBe(404);
+      });
+
       it('returns 404 when token does not exist', async () => {
         // Service-role client for consistent read access; the route is public.
         mockUser(fixture.user);
@@ -628,12 +675,14 @@ forEachCopy((copyId) => {
 
         for (const result of body.data.results as Array<{
           email: string;
-          data: { inviteLink?: string };
+          data: { inviteLink?: string; inviteCode?: string };
         }>) {
           expect(typeof result.data.inviteLink).toBe('string');
           const link = new URL(result.data.inviteLink as string);
           expect(link.pathname).toBe('/join');
           expect(link.searchParams.get('token')).toBe(tokenByEmail.get(result.email));
+          // #317: the bare code is returned per row alongside the link.
+          expect(result.data.inviteCode).toBe(tokenByEmail.get(result.email));
         }
       });
 
