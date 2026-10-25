@@ -128,3 +128,8 @@ export const searchKeys = {
 export const paymentKeys = {
   all: ['me', 'payments'] as const,
 };
+
+export const statusKeys = {
+  all: ['status'] as const,
+  health: ['status', 'health'] as const,
+};

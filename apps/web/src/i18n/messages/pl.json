@@ -2732,5 +2732,14 @@
   "AnswerImageUpload": {
     "uploading": "Przesyłanie...",
     "upload_photo": "Prześlij zdjęcie"
+  },
+  "StatusPage": {
+    "meta_title": "Status systemu",
+    "title": "Status systemu",
+    "loading": "Sprawdzanie statusu…",
+    "operational": "Działa",
+    "problem": "Problem",
+    "unavailable": "Nie można sprawdzić statusu",
+    "last_checked": "Ostatnie sprawdzenie"
   }
 }
