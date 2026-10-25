@@ -21,6 +21,8 @@ export {
   type PermissionScope,
   type ResourceAccess,
 } from './lib/permissions';
+// ── Organization roles ──────────────────────────────────────────────────────
+export { isOrgAdminRole, ORG_ADMIN_ROLE } from './lib/org-roles';
 
 // ── Request context ─────────────────────────────────────────────────────────
 export type { RequestContext } from './lib/request-context';

@@ -1,4 +1,4 @@
-import type { Nullable } from '@studiq/authz';
+import { isOrgAdminRole, type Nullable } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -71,7 +71,7 @@ export class MockStripeService {
 
     const role = membership?.org_roles as { name?: string } | { name?: string }[] | undefined;
     const roleName = Array.isArray(role) ? role[0]?.name : role?.name;
-    if (roleName !== 'admin') return failure('FORBIDDEN');
+    if (!isOrgAdminRole(roleName)) return failure('FORBIDDEN');
     return success(undefined);
   }
 
