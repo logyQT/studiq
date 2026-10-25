@@ -2505,6 +2505,7 @@
   },
   "EduAssignmentNewPage": {
     "title": "New Assignment",
+    "based_on": "Based on: {name}",
     "subtitle": "Create a new assignment for your students",
     "basic_info": "Basic Information",
     "title_field": "Title *",

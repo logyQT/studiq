@@ -99,7 +99,9 @@ export default function NewAssignmentClient() {
                 required
                 placeholder={t('title_placeholder')}
               />
-              {quizName && <p className="text-xs text-muted-foreground">Based on: {quizName}</p>}
+              {quizName && (
+                <p className="text-xs text-muted-foreground">{t('based_on', { name: quizName })}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">{t('description')}</Label>
