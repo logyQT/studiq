@@ -18,8 +18,11 @@ export default function LiveClient() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[50vh] gap-8">
       <div className="flex flex-col items-center gap-3">
-        <Label className="text-lg font-semibold text-foreground">{t('code_label')}</Label>
+        <Label htmlFor="live-session-code" className="text-lg font-semibold text-foreground">
+          {t('code_label')}
+        </Label>
         <InputOTP
+          id="live-session-code"
           maxLength={6}
           value={code}
           onChange={(val) => setCode(val.toUpperCase())}
