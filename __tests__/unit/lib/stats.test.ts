@@ -64,12 +64,18 @@ describe('hasTeacherActivity (#209)', () => {
     expect(hasTeacherActivity(empty())).toBe(false);
   });
 
+  it('ignores activeStudents: AI-token-only rows in user_daily_activity are not learning activity', () => {
+    const data = empty();
+    data.summary.activeStudents.current = 3;
+    data.dailyActivity[0].activeStudents = 3;
+    data.dailyActivity[1].activeStudents = 2;
+    expect(hasTeacherActivity(data)).toBe(false);
+  });
+
   it.each([
-    ['summary.activeStudents', (d: Data) => (d.summary.activeStudents.current = 1)],
     ['summary.totalPractices', (d: Data) => (d.summary.totalPractices.current = 1)],
     ['summary.totalQuizzes', (d: Data) => (d.summary.totalQuizzes.current = 1)],
     ['chart reviews', (d: Data) => (d.dailyActivity[1].reviews = 1)],
-    ['chart activeStudents', (d: Data) => (d.dailyActivity[0].activeStudents = 1)],
     ['student practices', (d: Data) => (d.students[0].practices7d = 1)],
     ['student quizzes', (d: Data) => (d.students[0].quizzes7d = 1)],
     ['quiz attempts', (d: Data) => (d.quizzes[1].attempts = 1)],
