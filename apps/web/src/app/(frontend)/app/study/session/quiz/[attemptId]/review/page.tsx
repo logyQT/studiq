@@ -12,10 +12,12 @@ import {
 import { Eye } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useLocale } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
 import { apiGet } from '@/lib/api';
+import { formatDate } from '@/lib/datetime';
 
 interface Question {
   id: string;
@@ -47,6 +49,7 @@ interface AttemptDetails {
 export default function QuizReviewPage() {
   const params = useParams();
   const attemptId = params.attemptId as string;
+  const locale = useLocale();
 
   const [attempt, setAttempt] = useState<AttemptDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,7 +96,7 @@ export default function QuizReviewPage() {
         <CardContent>
           <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
-              <span>{new Date(attempt.started_at).toLocaleDateString()}</span>
+              <span>{formatDate(attempt.started_at, locale)}</span>
             </span>
           </div>
         </CardContent>

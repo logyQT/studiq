@@ -4,12 +4,13 @@ import { Button, Card, Textarea, UserAvatar } from '@studiq/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Send } from 'lucide-react';
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { apiPost } from '@/lib/api';
+import { formatDateTime } from '@/lib/datetime';
 import { questionReportKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 
@@ -36,6 +37,7 @@ interface ReportDetail {
 
 export function ReportThreadScreen({ reportId, basePath }: { reportId: string; basePath: string }) {
   const t = useTranslations('QuestionReports');
+  const locale = useLocale();
   const { user } = useAuth();
   const [reply, setReply] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -137,7 +139,7 @@ export function ReportThreadScreen({ reportId, basePath }: { reportId: string; b
                 >
                   <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
                   <p className="text-[10px] opacity-70 mt-1">
-                    {new Date(msg.created_at).toLocaleString()}
+                    {formatDateTime(msg.created_at, locale)}
                   </p>
                 </Card>
               </div>

@@ -17,9 +17,10 @@ import {
   RotateCcw,
   Sparkles,
 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
+import { formatDateTime } from '@/lib/datetime';
 import { flashcardKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
 
@@ -43,6 +44,7 @@ function StateBadge({ state }: { state: CardStatsItem['state'] }) {
 
 function ExpandableRow({ item }: { item: CardStatsItem }) {
   const t = useTranslations('AppStatsPage');
+  const locale = useLocale();
   const [expanded, setExpanded] = useState(false);
 
   const intervalLabel =
@@ -132,7 +134,7 @@ function ExpandableRow({ item }: { item: CardStatsItem }) {
             </div>
             {item.lastPracticedAt && (
               <p className="mt-3 text-xs text-muted-foreground">
-                {t('last_practiced')}: {new Date(item.lastPracticedAt).toLocaleString()}
+                {t('last_practiced')}: {formatDateTime(item.lastPracticedAt, locale)}
               </p>
             )}
           </td>
