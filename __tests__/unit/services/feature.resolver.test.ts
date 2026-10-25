@@ -1,5 +1,10 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
-import { FEATURES, FeatureResolver, rolloutBucket } from '@studiq/server/services/feature.resolver';
+import {
+  FEATURES,
+  FeatureResolver,
+  isUserOverrideActive,
+  rolloutBucket,
+} from '@studiq/server/services/feature.resolver';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
@@ -301,6 +306,96 @@ describe('FeatureResolver', () => {
       expect(features).toEqual(['ai.chat']);
     });
 
+    it('ignores an expired user override grant (#382)', async () => {
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'profiles') return chain({ personal_plan_key: 'base' });
+        if (table === 'plan_features')
+          return chain([{ feature_key: 'flashcards' }, { feature_key: 'quiz' }]);
+        if (table === 'user_feature_overrides')
+          return chain([
+            {
+              feature_key: 'ai.chat',
+              is_enabled: true,
+              expires_at: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString(),
+            },
+          ]);
+        if (table === 'feature_flags') return chain(allFlagsOn());
+        return chain(null);
+      });
+
+      const features = await resolver.getEnabledFeatures(baseCtx);
+      expect(features).toEqual(['flashcards', 'quiz']);
+    });
+
+    it('ignores an expired user override revoke (#382)', async () => {
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'profiles') return chain({ personal_plan_key: 'base' });
+        if (table === 'plan_features')
+          return chain([{ feature_key: 'flashcards' }, { feature_key: 'quiz' }]);
+        if (table === 'user_feature_overrides')
+          return chain([
+            {
+              feature_key: 'quiz',
+              is_enabled: false,
+              expires_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+            },
+          ]);
+        if (table === 'feature_flags') return chain(allFlagsOn());
+        return chain(null);
+      });
+
+      const features = await resolver.getEnabledFeatures(baseCtx);
+      expect(features).toEqual(['flashcards', 'quiz']);
+    });
+
+    it('applies a user override whose expiry is still in the future', async () => {
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'profiles') return chain({ personal_plan_key: 'base' });
+        if (table === 'plan_features')
+          return chain([{ feature_key: 'flashcards' }, { feature_key: 'quiz' }]);
+        if (table === 'user_feature_overrides')
+          return chain([
+            {
+              feature_key: 'ai.chat',
+              is_enabled: true,
+              expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            },
+            {
+              feature_key: 'quiz',
+              is_enabled: false,
+              expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            },
+          ]);
+        if (table === 'feature_flags') return chain(allFlagsOn());
+        return chain(null);
+      });
+
+      const features = await resolver.getEnabledFeatures(baseCtx);
+      expect(features).toEqual(['ai.chat', 'flashcards']);
+    });
+
+    it('selects expires_at so expiry can be evaluated', async () => {
+      let selected: string | null = null;
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'profiles') return chain({ personal_plan_key: 'base' });
+        if (table === 'plan_features') return chain([{ feature_key: 'flashcards' }]);
+        if (table === 'user_feature_overrides') {
+          const c = chain([]);
+          const originalSelect = c.select as ReturnType<typeof vi.fn>;
+          c.select = vi.fn((columns: string) => {
+            selected = columns;
+            return originalSelect(columns);
+          });
+          return c;
+        }
+        if (table === 'feature_flags') return chain(allFlagsOn());
+        return chain(null);
+      });
+
+      await resolver.getEnabledFeatures(baseCtx);
+      expect(selected).toContain('expires_at');
+    });
+
     it('returns empty when no entitlement source yields features', async () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'profiles') return chain({ personal_plan_key: 'base' });
@@ -412,6 +507,25 @@ describe('FeatureResolver', () => {
       expect(rolloutBucket('user-1', 'ai.chat')).not.toBe(rolloutBucket('user-2', 'ai.chat'));
       expect(rolloutBucket('x', 'y')).toBeGreaterThanOrEqual(0);
       expect(rolloutBucket('x', 'y')).toBeLessThan(100);
+    });
+  });
+
+  describe('isUserOverrideActive', () => {
+    const now = Date.parse('2026-10-25T12:00:00.000Z');
+
+    it('treats missing expiry as permanent', () => {
+      expect(isUserOverrideActive(null, now)).toBe(true);
+      expect(isUserOverrideActive(undefined, now)).toBe(true);
+    });
+
+    it('applies a future expiry and ignores one at or before now', () => {
+      expect(isUserOverrideActive('2026-10-25T12:00:01.000Z', now)).toBe(true);
+      expect(isUserOverrideActive('2026-10-25T12:00:00.000Z', now)).toBe(false); // <= now
+      expect(isUserOverrideActive('2026-10-14T12:00:00+00:00', now)).toBe(false);
+    });
+
+    it('keeps an unparseable expiry applied (defensive)', () => {
+      expect(isUserOverrideActive('not-a-date', now)).toBe(true);
     });
   });
 
