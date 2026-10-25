@@ -262,9 +262,9 @@ export default function MembersPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t('all_roles')}</SelectItem>
-            {['teacher', 'member'].map((r) => (
-              <SelectItem key={r} value={r}>
-                {t(`role_${r}`)}
+            {roles.map((r) => (
+              <SelectItem key={r.id} value={r.name}>
+                {r.displayName ?? r.name}
               </SelectItem>
             ))}
           </SelectContent>
