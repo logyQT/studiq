@@ -171,4 +171,31 @@ test.describe('Registration Flow', () => {
 
     await expect(page.getByText(errNameInvalid)).toBeVisible();
   });
+
+  // -------------------------------------------------------------------------
+  // NEGATIVE – whitespace-only name (#303 / AUT-04)
+  // -------------------------------------------------------------------------
+
+  // The shared `NameSchema` is the form resolver, so a blank-looking name must
+  // fail client-side and never reach the API.
+  test('Negative: whitespace-only name is blocked and sends no request', async ({ page }) => {
+    let registerCalls = 0;
+    page.on('request', (req) => {
+      if (req.method() === 'POST' && req.url().includes('/api/v1/auth/register'))
+        registerCalls += 1;
+    });
+
+    const nameInput = page.getByLabel(nameLabel);
+    await nameInput.click();
+    await nameInput.fill('   ');
+    await expect(nameInput).toHaveValue('   ');
+    await page.getByLabel(emailLabel).fill('ws@example.com');
+    await page.getByLabel(passwordLabel).fill('StrongPassword1');
+
+    await page.getByRole('button', { name: submitButton }).click();
+
+    await expect(page.getByText(errNameRequired)).toBeVisible();
+    await expect(page).toHaveURL(/\/register/);
+    expect(registerCalls).toBe(0);
+  });
 });
