@@ -92,7 +92,7 @@ export function MobileNav({ items, isActive, isLoggedIn }: MobileNavProps) {
             <div className="space-y-1">
               <UserMenuHeader />
               <div className="h-px bg-border my-2" />
-              <UserMenuItems onItemClick={() => setOpen(false)} />
+              <UserMenuItems variant="plain" onItemClick={() => setOpen(false)} />
             </div>
           ) : (
             <div className="space-y-2">
