@@ -321,6 +321,7 @@
     "search_shortcut": "Szukaj",
     "search_loading": "Szukanie...",
     "flashcard_decks": "Talie",
+    "app_flashcard_decks": "Fiszki",
     "flashcard_study": "Nauka",
     "flashcard_stats": "Statystyki",
     "flashcard_topics": "Tematy",
@@ -2018,7 +2019,7 @@
   },
   "AppFlashcardDecksPage": {
     "decks_count": "{count, plural, one {# talia} few {# talie} many {# talii} other {# talii}}",
-    "title": "Talie fiszek",
+    "title": "Fiszki",
     "new_deck": "Nowa talia",
     "back": "Powrót",
     "flashcards_count": "{count, plural, one {# fiszka} few {# fiszki} many {# fiszek} other {# fiszek}}",

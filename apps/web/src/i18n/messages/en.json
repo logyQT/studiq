@@ -339,6 +339,7 @@
     "search_shortcut": "Search",
     "search_loading": "Searching...",
     "flashcard_decks": "Decks",
+    "app_flashcard_decks": "Flashcards",
     "flashcard_study": "Study",
     "flashcard_stats": "Statistics",
     "flashcard_topics": "Topics",
@@ -2038,7 +2039,7 @@
   },
   "AppFlashcardDecksPage": {
     "decks_count": "{count, plural, one {# deck} other {# decks}}",
-    "title": "Flashcard Decks",
+    "title": "Flashcards",
     "new_deck": "New Deck",
     "back": "Back",
     "flashcards_count": "{count, plural, one {# flashcard} other {# flashcards}}",
