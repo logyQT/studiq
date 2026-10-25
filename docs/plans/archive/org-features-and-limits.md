@@ -1,5 +1,13 @@
 # Org Features & Limits — Architecture PRD
 
+> **Status: ARCHIVED — LIMITS HALF ABANDONED (2026-10-25, #232).**
+> `org_role_features` shipped (Phase 1). The per-org `org_limits` override was
+> abandoned and the table was dropped in #229: org capacity resolves live from
+> `organizations.plan → plan_limits`. The per-org limits endpoint and the
+> org-wide limits editor UI below were **never built and will not be**. See
+> [`docs/limits.md`](../../limits.md) for the final model. Kept as history —
+> do not implement from this doc.
+
 ## Motivation
 
 Currently, plan features are rigidly mapped via `plan_features` table — a Campus org grants all `campus`-tier features to every member. Org admins cannot tailor what each role can access, and limits are per-plan with no org-level pooling or admin override.
@@ -20,15 +28,9 @@ Managers pay for an org plan to empower their users (students get Pro, educators
 | `is_enabled` | `boolean` | Default `true` |
 | *Unique* | `(org_role_id, feature_key)` | |
 
-**`org_limits`** — per-org capacity caps (enforced via live COUNT queries)
-
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | `uuid PK` | |
-| `organization_id` | `uuid FK → organizations(id) ON DELETE CASCADE` | |
-| `limit_key` | `text` | e.g. `flashcard_count`, `ai_tokens`, `storage_mb` |
-| `max_value` | `integer` | `-1` = unlimited |
-| *Unique* | `(organization_id, limit_key)` | |
+**`org_limits` — ABANDONED (#229).** There is no per-org limit table; capacity
+resolves live from `organizations.plan → plan_limits`. See
+[`docs/limits.md`](../../limits.md).
 
 ### What stays unchanged
 
@@ -36,7 +38,7 @@ Managers pay for an org plan to empower their users (students get Pro, educators
 |------------|------|
 | `feature_flags` | Source of truth for available feature keys |
 | `plan_features` | **Template** — seeds `org_role_features` on org creation |
-| `plan_limits` | **Template** — seeds `org_limits` on org creation |
+| `plan_limits` | **Template** — limits resolve live per plan; nothing is copied per org (#229) |
 | `profiles.personal_plan_key` | Used for personal (non-org) context |
 | `user_feature_overrides` | Reserved for future per-user overrides |
 | `FeatureKey` union type | Same values — no new keys needed |
@@ -46,8 +48,8 @@ Managers pay for an org plan to empower their users (students get Pro, educators
 | Area | Before | After |
 |------|--------|-------|
 | Feature resolution | Union of personal + org plan features | Inside org: look up `org_role_features` by role. Outside org: personal plan only. |
-| Limit resolution | Per-plan limits (personal or org max) | `max(org_limits.value, personal_plan_limits.value)` with live COUNT |
-| Org creation | App layer: `seedDefaultOrgRoles()` creates roles + permissions | DB trigger: creates roles + permissions + features + limits atomically |
+| Limit resolution | Per-plan limits (personal or org max) | `Math.max(personal plan, org plan)` from `plan_limits`, live (#229) |
+| Org creation | App layer: `seedDefaultOrgRoles()` creates roles + permissions | DB trigger: creates roles + permissions + **features** atomically (limits are derived) |
 | `seedDefaultOrgRoles` | Exists in `classroom.service.ts` | **Removed** entirely |
 
 ### `handle_new_organization` trigger
@@ -115,11 +117,8 @@ begin
     end if;
   end loop;
 
-  -- 4. Seed org limits from plan template
-  insert into public.org_limits (organization_id, limit_key, max_value)
-  select new.id, limit_key, max_value
-  from public.plan_limits
-  where plan_key = new.plan;
+  -- 4. ABANDONED (#229): limits are NOT copied; resolved live from
+  --    organizations.plan -> plan_limits.
 
   return new;
 end;
@@ -173,39 +172,24 @@ ctx.activeOrgId set?
 
 `requireFeature` is unchanged — it calls `getEnabledFeatures` and throws `FORBIDDEN` if the key is absent.
 
-### Limit resolution (`getEffectiveLimit`) — live COUNT
+### Limit resolution (`getEffectiveLimit`) — live read
+
+The override half was abandoned (#229); the shipped rule lives in
+`LimitsResolver` — see [`docs/limits.md`](../../limits.md) for the canonical
+description. In short:
 
 ```
-ctx.activeOrgId set?
-  ├─ Yes → SELECT max_value FROM org_limits
-  │         WHERE organization_id = ctx.activeOrgId AND limit_key = $key
-  │         If no row → fallback to personal plan limits
-  │         Result → max(org_limit, personal_plan_limit)
-  └─ No  → personal plan limits only
+seated in the active org?
+  ├─ Yes → the seat plan's plan_limits row only (missing → 0)
+  └─ No  → max(personal plan, org plan) read live from plan_limits
+           (org plan only for a verified org_members row)
 ```
 
-`checkLimit(ctx, key)`:
-```
-effectiveLimit = getEffectiveLimit(ctx, key)
-if effectiveLimit = -1 → unlimited, return true
-resourceCount = run resource-specific COUNT(*) query
-  (e.g., SELECT COUNT(*) FROM flashcards WHERE organization_id = ctx.activeOrgId)
-return resourceCount < effectiveLimit
-```
-
-Limit query registry in the resolver:
-```typescript
-const LIMIT_QUERIES: Record<string, { table: string; orgColumn: string }> = {
-  flashcard_count: { table: 'flashcards', orgColumn: 'organization_id' },
-  question_count:  { table: 'questions', orgColumn: 'organization_id' },
-  quiz_count:      { table: 'quizzes', orgColumn: 'organization_id' },
-  deck_count:      { table: 'flashcard_decks', orgColumn: 'organization_id' },
-  student_count:   { table: 'org_members', orgColumn: 'organization_id' },
-  group_count:     { table: 'groups', orgColumn: 'organization_id' },
-} as const;
-```
-
-Since there are no usage counters to track, counts are always live — no state to get out of sync.
+`-1` = unlimited, `0` = no limit row for that plan (any use is blocked).
+`LimitsResolver.checkLimit(ctx, key, currentCount, increment)` throws
+`USAGE_LIMIT_EXCEEDED` (HTTP 429) when `currentCount + increment` exceeds the
+resolved limit. Counts are always live queries — there is no usage counter and
+no per-org snapshot.
 
 ### Seeds
 
@@ -214,14 +198,19 @@ Since there are no usage counters to track, counts are always live — no state 
 
 ### Admin API endpoints
 
-| Method | Path | Purpose |
+| Method | Path | Status |
 |--------|------|---------|
-| `PUT` | `/api/v1/admin/organizations/[id]/roles/[roleId]/features` | Upsert `org_role_features` for a role |
-| `PUT` | `/api/v1/admin/organizations/[id]/limits` | Upsert `org_limits` for an org |
+| `PUT` | `/api/v1/admin/organizations/[id]/roles/[roleId]/features` | **Planned** — not built; role permissions use `PUT /api/v1/organization/roles/[id]/permissions` today |
+
+The per-org limits endpoint was **abandoned (#229)** and will
+not be built. Limit writes go through the admin app's plan-limit routes
+(`PUT /api/v1/plan-limits/[id]`), which apply to every org on that plan.
 
 ### Role editor UI extension
 
-In the existing role editor page (currently shows RBAC permissions), add two sections:
+In the existing role editor page (currently shows RBAC permissions), add a
+features section (the per-org limits editor section was abandoned with
+`org_limits` — #229):
 
 **Features section** — checkbox list of all `feature_flags` entries:
 ```
@@ -237,28 +226,20 @@ Features
   ☐  Advanced Stats
 ```
 
-**Limits section** — number inputs, keyed by `limit_key`:
-```
-Org-wide Limits
-  Max flashcards:  [5000       ]
-  Max AI tokens:   [100000     ]
-  Max storage (MB):[500        ]
-```
-
 ## Implementation order
 
-1. **Migration** — `CREATE TABLE org_role_features` + `org_limits` with RLS policies
+1. **Migration** — `CREATE TABLE org_role_features` with RLS policies
 2. **Migration** — `handle_new_organization` function + trigger
 3. **Remove `seedDefaultOrgRoles()`** — delete from `classroom.service.ts`, fix both call sites
-4. **Rewrite `plan.resolver.ts`** — new feature resolution + limit resolution + limit query registry + `checkLimit`
-5. **Admin API endpoints** — PUT for features and limits
-6. **Role editor UI** — feature toggles + limit inputs
+4. **Rewrite the resolver** — new feature resolution + limit resolution + `checkLimit` (now `feature.resolver.ts` + `limits.resolver.ts`)
+5. **Admin API endpoints** — features only (the limits endpoint was abandoned, #229)
+6. **Role editor UI** — feature toggles only
 7. **Update seeds** — `01_seed.sql` remove manual role/perm seeding (handled by trigger now)
 8. **Tests** — update unit mocks, remove `seedDefaultOrgRoles` test references, add integration test for trigger
 
 ## Future considerations (Phase 2)
 
-- Per-user feature/limit overrides (via `user_feature_overrides` table already exists)
+- Per-user feature overrides (`user_feature_overrides` shipped); per-user **limit** overrides were never built
 - Org-level usage pooling (e.g., "org has 50K AI tokens shared across all members")
 - Partial indexes on `organization_id` columns for fast COUNT queries on large orgs
 - Caching layer for frequent `getEffectiveLimit` lookups
