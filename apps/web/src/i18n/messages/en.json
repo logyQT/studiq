@@ -2755,5 +2755,14 @@
   "AnswerImageUpload": {
     "uploading": "Uploading...",
     "upload_photo": "Upload Photo"
+  },
+  "StatusPage": {
+    "meta_title": "System status",
+    "title": "System status",
+    "loading": "Checking status…",
+    "operational": "Operational",
+    "problem": "Service issue",
+    "unavailable": "Unable to check status",
+    "last_checked": "Last checked"
   }
 }

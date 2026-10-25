@@ -3,6 +3,12 @@ import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
+// A name part is one or more ASCII/Polish letters plus the separators a real
+// name can contain: a hyphen for double-barrelled surnames („Anna-Maria”) and an
+// ASCII or typographic apostrophe for Irish/English names („Jan O'Brien”,
+// „O’Brien”) — #302.
+const NAME_PART = "[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ'’-]+";
+
 // Normalize before validating: `.trim()` is the first check, so every later
 // check (and the parsed output) sees the trimmed value. A whitespace-only name
 // collapses to "" and is reported as required instead of counting its spaces
@@ -14,7 +20,7 @@ export const NameSchema = z
   .trim()
   .nonempty({ error: ValidationErrorCode.NAME_REQUIRED })
   .min(2, { error: ValidationErrorCode.NAME_TOO_SHORT })
-  .regex(/^[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ]+(?: [a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ]+)*$/, {
+  .regex(new RegExp(`^${NAME_PART}(?: ${NAME_PART})*$`), {
     error: ValidationErrorCode.NAME_INVALID_FORMAT,
   });
 

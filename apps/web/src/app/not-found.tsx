@@ -22,7 +22,7 @@ export default function NotFound() {
             {t('back_home')}
           </Link>
           <Link
-            href="/api/v1/health"
+            href="/status"
             className="px-8 py-3 bg-secondary text-secondary-foreground rounded-lg hover:bg-accent transition-colors font-medium border border-border"
           >
             {t('system_status')}

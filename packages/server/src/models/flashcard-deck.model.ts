@@ -2,15 +2,18 @@ import { createListQuerySchema } from '@studiq/server/lib/query-list';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
+const DeckNameSchema = z
+  .string({ error: ValidationErrorCode.REQUIRED })
+  .trim()
+  .nonempty({ error: ValidationErrorCode.REQUIRED })
+  .min(1, { error: ValidationErrorCode.TOO_SHORT })
+  .max(128, { error: ValidationErrorCode.TOO_LONG });
+
 export const CreateDeckSchema = registry.register(
   'CreateFlashcardDeckRequest',
   z
     .object({
-      name: z
-        .string({ error: ValidationErrorCode.REQUIRED })
-        .nonempty({ error: ValidationErrorCode.REQUIRED })
-        .min(1, { error: ValidationErrorCode.TOO_SHORT })
-        .max(128, { error: ValidationErrorCode.TOO_LONG }),
+      name: DeckNameSchema,
       description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
       flashcardIds: z.array(z.uuid()).optional(),
       groupIds: z.array(z.string().uuid()).optional(),
@@ -27,12 +30,7 @@ export const UpdateDeckSchema = registry.register(
   'UpdateFlashcardDeckRequest',
   z
     .object({
-      name: z
-        .string({ error: ValidationErrorCode.REQUIRED })
-        .nonempty({ error: ValidationErrorCode.REQUIRED })
-        .min(1, { error: ValidationErrorCode.TOO_SHORT })
-        .max(128, { error: ValidationErrorCode.TOO_LONG })
-        .optional(),
+      name: DeckNameSchema.optional(),
       description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
       flashcardIds: z.array(z.uuid({ error: ValidationErrorCode.UUID_INVALID })).optional(),
       groupIds: z.array(z.string().uuid()).optional(),
@@ -73,11 +71,7 @@ export const BulkCreateDeckSchema = registry.register(
     decks: z
       .array(
         z.object({
-          name: z
-            .string({ error: ValidationErrorCode.REQUIRED })
-            .nonempty({ error: ValidationErrorCode.REQUIRED })
-            .min(1, { error: ValidationErrorCode.TOO_SHORT })
-            .max(128, { error: ValidationErrorCode.TOO_LONG }),
+          name: DeckNameSchema,
           description: z.string().max(255, { error: ValidationErrorCode.TOO_LONG }).optional(),
         }),
       )

@@ -73,6 +73,27 @@ forEachCopy((copyId) => {
         expect(body.success).toBe(false);
       });
 
+      // #361 — a whitespace-only name is empty, not a valid title.
+      it('returns 422 when name is whitespace-only', async () => {
+        mockUser(teacher.user);
+
+        const req = createNextRequest('http://localhost/api/v1/flashcards/topics', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: '   ' }),
+        });
+
+        const response = await POST(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+        expect(body.issues.properties.name.errors).toEqual([
+          'VALIDATION_REQUIRED',
+          'VALIDATION_TOO_SHORT',
+        ]);
+      });
+
       it('returns 401 when not authenticated', async () => {
         mockUser(null);
 
@@ -167,6 +188,27 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(200);
         expect(body.data.name).toBe('Updated');
+      });
+
+      // #361 — a whitespace-only name is rejected before the service runs.
+      it('returns 422 when updating with a whitespace-only name', async () => {
+        mockUser(teacher.user);
+
+        const topicId = teacher.created.topics[0];
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/flashcards/topics/${topicId}`,
+          { id: topicId },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: '   ' }),
+          },
+        );
+        const response = await update(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
       });
 
       it('returns 403 when updating another user topic', async () => {
