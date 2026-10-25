@@ -1543,7 +1543,12 @@ def cmd_closeout(args) -> None:
 def cmd_block(args) -> None:
     state = load_state()
     n = args.issue
-    rec = get_rec(state, n)
+    rec = state["issues"].get(str(n))
+    if rec is None:
+        # blocking an issue the pipeline has never touched (e.g. a dependency
+        # parked before dispatch) should not require a fake dispatch first
+        rec = materialize_issue(state, n)
+        history(state, n, {"event": "materialized", "reason": "block requested"})
     rec["stage"] = "blocked"
     rec["blocked_reason"] = args.reason
     history(state, n, {"event": "blocked", "reason": args.reason})
