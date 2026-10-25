@@ -1537,6 +1537,7 @@
     "stats_quizzes": "Rozwiązanych testów",
     "how_it_works_title": "Jak to działa",
     "how_it_works_desc": "Trzy proste kroki do efektywnej nauki",
+    "step_label": "Krok {number}",
     "step1_title": "Twórz Treści",
     "step1_desc": "Buduj pytania i fiszki ze swoich materiałów lub pozwól AI wygenerować je automatycznie",
     "step2_title": "Ćwicz Regularnie",
