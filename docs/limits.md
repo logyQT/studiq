@@ -124,6 +124,30 @@ resolves **only** the org's plan and defaults a missing limit to `-1`
 (`max_students`, with the service-role client) — and for org-scoped group
 creation (`max_groups`).
 
+## Plan display (`GET /api/v1/me/plan`)
+
+`SubscriptionPlanService.getMyPlan(ctx)` —
+`packages/server/src/services/subscription-plan.service.ts`
+
+The plan page must show the plan the caller's limits and features are actually
+resolved from, so it follows the same precedence as the resolvers:
+
+1. **Seated student/educator in the active org** → the seat plan
+   (`getSeatPlanKey` → `org_seat_pools.plan_key`). The page then shows that
+   plan's `plan_features` / `plan_limits`, matching seat-only limit resolution
+   and the seat feature upgrade (#270).
+2. **Manager in the active org** → `organizations.plan`, falling back to the
+   manager's personal plan when the org has no plan row. Managers are the org's
+   billing contact, so they keep seeing the org subscription (#181).
+3. **Everyone else (or no active org)** → `profiles.personal_plan_key`. An
+   unseated member's `active_org_id` membership never replaces their personal
+   plan on this page (#181).
+
+Plan display is a single plan, not the effective union/max: an unseated member's
+limits are `max(personal, org)` and a seated member's features are
+`org role features ∪ seat plan features`, so the displayed plan can be narrower
+than enforcement in those mixes.
+
 Value semantics:
 
 | Value | Meaning |
