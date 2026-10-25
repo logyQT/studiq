@@ -250,7 +250,7 @@ export default function RolesPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-center">
-                    {role.permissionCount} {t('col_permissions').toLowerCase()}
+                    {t('permissions_count', { count: role.permissionCount })}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
