@@ -327,4 +327,40 @@ describe('QuestionBankService', () => {
       expect(mock.from).toHaveBeenCalledWith('bank_groups');
     });
   });
+
+  describe('list filters (#595)', () => {
+    it('resolves group ids through bank_groups and narrows the list query', async () => {
+      const pageQb = qb([{ id: 'b-1', name: 'Bank' }]);
+      mock.from.mockReturnValueOnce(pageQb); // question_banks query builder
+      mock.from.mockReturnValueOnce(qb([{ bank_id: 'b-1' }])); // bank_groups
+
+      const result = await service.list(ctx, { groups: ['g-1'] } as any);
+
+      expect(result.success).toBe(true);
+      expect(mock.from).toHaveBeenCalledWith('bank_groups');
+      expect(pageQb.in).toHaveBeenCalledWith('id', ['b-1']);
+    });
+
+    it('returns an empty page without running the bank query when no bank matches the groups', async () => {
+      const pageQb = qb([]);
+      mock.from.mockReturnValueOnce(pageQb); // question_banks query builder
+      mock.from.mockReturnValueOnce(qb([])); // bank_groups → no linked banks
+
+      const result = await service.list(ctx, { groups: ['g-1'] } as any);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false });
+      expect(pageQb.in).not.toHaveBeenCalled();
+    });
+
+    it('composes owner=mine with the RBAC filter and skips the group lookup', async () => {
+      const pageQb = qb([]);
+      mock.from.mockReturnValueOnce(pageQb);
+
+      await service.list(ctx, { owner: 'mine' } as any);
+
+      expect(pageQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(mock.from).not.toHaveBeenCalledWith('bank_groups');
+    });
+  });
 });

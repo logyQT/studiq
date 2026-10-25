@@ -352,11 +352,51 @@ describe('FlashcardDeckService', () => {
       expect(result.error).toBe('INTERNAL_SERVER');
     });
 
-    it('returns empty result for groupFilter=mine when the caller has no groups', async () => {
-      mock.from.mockReturnValueOnce(qb([], null));
-      mock.from.mockReturnValueOnce(qb([], null));
+    it('never queries deck_groups when groups is empty', async () => {
+      const suspendedQb = qb([], null);
+      const pageQb = qb([], null);
+      const countQb = qb(null, null, 0);
+      mock.from.mockReturnValueOnce(suspendedQb);
+      mock.from.mockReturnValueOnce(pageQb);
+      mock.from.mockReturnValueOnce(countQb);
 
-      const result = await service.list(ctx, { groupFilter: 'mine' } as any);
+      await service.list(ctx, { groups: [] } as any);
+
+      expect(mock.from.mock.calls.map((c) => c[0])).toEqual([
+        'suspended_decks',
+        'flashcard_decks',
+        'flashcard_decks',
+      ]);
+      expect(pageQb.in).not.toHaveBeenCalled();
+    });
+
+    it('narrows both the page and the total count to the resolved group deck ids', async () => {
+      const pageQb = qb([{ id: 'd-1', name: 'Group Deck' }]);
+      const countQb = qb(null, null, 1);
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended_decks
+      mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }], null)); // deck_groups
+      mock.from.mockReturnValueOnce(qb([{ id: 'd-1' }], null)); // group-visible decks
+      mock.from.mockReturnValueOnce(pageQb);
+      mock.from.mockReturnValueOnce(countQb);
+
+      const result = await service.list({ ...ctx, groupIds: ['g-1'] }, {
+        groups: ['g-1'],
+      } as any);
+
+      expect(result.success).toBe(true);
+      expect(mock.from).toHaveBeenCalledWith('deck_groups');
+      expect(pageQb.in).toHaveBeenCalledWith('id', ['d-1']);
+      expect(countQb.in).toHaveBeenCalledWith('id', ['d-1']);
+    });
+
+    it('returns an empty page without running the list query when no deck matches the groups', async () => {
+      const pageQb = qb([]);
+      mock.from.mockReturnValueOnce(qb([], null)); // suspended_decks
+      mock.from.mockReturnValueOnce(qb([], null)); // deck_groups → no linked decks
+
+      const result = await service.list({ ...ctx, groupIds: ['g-1'] }, {
+        groups: ['g-1'],
+      } as any);
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({
@@ -365,22 +405,25 @@ describe('FlashcardDeckService', () => {
         hasMore: false,
         total: 0,
       });
+      expect(mock.from).toHaveBeenCalledTimes(2);
+      expect(pageQb.in).not.toHaveBeenCalled();
     });
 
-    it('filters to decks shared with the caller groups when groupFilter=mine', async () => {
-      const groupCtx = { ...ctx, groupIds: ['g-1'] };
-      const decks = [
-        { id: 'd-1', name: 'Group Deck', flashcard_count: 0, groupIds: ['g-1'], suspended: false },
-      ];
+    it('composes the group filter with owner=mine', async () => {
+      const pageQb = qb([]);
+      const countQb = qb(null, null, 0);
       mock.from.mockReturnValueOnce(qb([], null));
       mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }], null));
-      mock.from.mockReturnValueOnce(qb(decks));
-      mock.from.mockReturnValueOnce(qb(null, null, 1));
+      mock.from.mockReturnValueOnce(qb([{ id: 'd-1' }], null));
+      mock.from.mockReturnValueOnce(pageQb);
+      mock.from.mockReturnValueOnce(countQb);
 
-      const result = await service.list(groupCtx, { groupFilter: 'mine' } as any);
+      await service.list({ ...ctx, groupIds: ['g-1'] }, { owner: 'mine', groups: ['g-1'] } as any);
 
-      expect(result.success).toBe(true);
-      expect(mock.from).toHaveBeenCalledWith('deck_groups');
+      expect(pageQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(pageQb.in).toHaveBeenCalledWith('id', ['d-1']);
+      expect(countQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countQb.in).toHaveBeenCalledWith('id', ['d-1']);
     });
   });
 

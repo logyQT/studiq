@@ -1,5 +1,10 @@
 import type { RequestContext } from '@studiq/authz';
-import { accessibleFilter, check, Permission } from '@studiq/server/lib/authz';
+import {
+  accessibleFilter,
+  check,
+  Permission,
+  resolveGroupResourceIds,
+} from '@studiq/server/lib/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { decodeCursor, encodeCursor } from '@studiq/server/lib/query-list';
 import { failure, isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
@@ -150,21 +155,12 @@ export class FlashcardDeckService {
     const includeSuspended = queryParams?.includeSuspended ?? false;
 
     // Owner filter on top of RBAC
-    if (queryParams?.owner === 'group' && !ctx.activeOrgId) {
-      return success({ items: [], nextCursor: null, hasMore: false, total: 0 });
-    }
-
-    // Filter to decks shared with a group the caller belongs to
-    let groupDeckIds: string[] | null = null;
-    if (queryParams?.groupFilter === 'mine') {
-      if (ctx.groupIds.length === 0)
-        return success({ items: [], nextCursor: null, hasMore: false, total: 0 });
-      const { data: groupDecks } = await supabase
-        .from('deck_groups')
-        .select('deck_id')
-        .in('group_id', ctx.groupIds);
-      groupDeckIds = [...new Set((groupDecks ?? []).map((r) => r.deck_id as string))];
-      if (groupDeckIds.length === 0)
+    // Explicit group filter (#595): an extra AND on top of what RBAC already allows, so an
+    // unknown/foreign group id can only narrow the result — never widen it.
+    let groupIds: string[] | null = null;
+    if (queryParams?.groups?.length) {
+      groupIds = await resolveGroupResourceIds('deck', queryParams.groups);
+      if (groupIds.length === 0)
         return success({ items: [], nextCursor: null, hasMore: false, total: 0 });
     }
 
@@ -185,14 +181,9 @@ export class FlashcardDeckService {
 
       if (queryParams?.owner === 'mine') {
         q = q.eq('created_by', ctx.userId);
-      } else if (queryParams?.owner === 'group') {
-        q = q
-          .neq('created_by', ctx.userId)
-          .eq('organization_id', ctx.activeOrgId as string)
-          .eq('visibility', 'group');
       }
 
-      if (groupDeckIds) q = q.in('id', groupDeckIds);
+      if (groupIds) q = q.in('id', groupIds);
 
       if (queryParams?.q) {
         q = q.or(`name.ilike.%${queryParams.q}%,description.ilike.%${queryParams.q}%`);

@@ -4,15 +4,18 @@ import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue }
 import { EyeOff, FileUp, Plus } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { PageToolbar } from '@/components/shared/page-toolbar';
+import { ScopeGroupFilter } from '@/components/shared/scope-group-filter';
+import type { GroupOption } from '@/hooks/use-group-options';
 
 interface DeckFiltersProps {
   searchInput: string;
   onSearchChange: (value: string) => void;
   owner: string;
   onOwnerChange: (value: string) => void;
-  groupFilter?: string;
-  onGroupFilterChange?: (value: string) => void;
-  showGroupFilter?: boolean;
+  groupIds: string[];
+  onGroupIdsChange: (value: string[]) => void;
+  groupOptions: GroupOption[];
+  myGroupIds: string[];
   sortBy: string;
   sortOrder: string;
   onSortChange: (sortBy: string, sortOrder: string) => void;
@@ -28,9 +31,10 @@ export function DeckFilters({
   onSearchChange,
   owner,
   onOwnerChange,
-  groupFilter,
-  onGroupFilterChange,
-  showGroupFilter,
+  groupIds,
+  onGroupIdsChange,
+  groupOptions,
+  myGroupIds,
   sortBy,
   sortOrder,
   onSortChange,
@@ -58,27 +62,15 @@ export function DeckFilters({
         </>
       }
     >
-      <Select value={owner} onValueChange={onOwnerChange}>
-        <SelectTrigger className="w-35 truncate">
-          <SelectValue placeholder={t('owner_all')} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">{t('owner_all')}</SelectItem>
-          <SelectItem value="mine">{t('owner_mine')}</SelectItem>
-          <SelectItem value="group">{t('owner_group')}</SelectItem>
-        </SelectContent>
-      </Select>
-      {showGroupFilter && onGroupFilterChange && (
-        <Select value={groupFilter} onValueChange={onGroupFilterChange}>
-          <SelectTrigger className="w-38 truncate">
-            <SelectValue placeholder={t('group_filter_all')} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('group_filter_all')}</SelectItem>
-            <SelectItem value="mine">{t('group_filter_mine')}</SelectItem>
-          </SelectContent>
-        </Select>
-      )}
+      <ScopeGroupFilter
+        owner={owner}
+        onOwnerChange={onOwnerChange}
+        groupIds={groupIds}
+        onGroupIdsChange={onGroupIdsChange}
+        options={groupOptions}
+        myGroupIds={myGroupIds}
+        t={t}
+      />
       <Select
         value={`${sortBy}:${sortOrder}`}
         onValueChange={(v) => {

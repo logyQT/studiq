@@ -49,8 +49,6 @@ export function MultiSelect({
     onChange(selected.filter((v) => v !== value));
   };
 
-  const selectedLabels = options.filter((o) => selected.includes(o.value)).map((o) => o.label);
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -64,33 +62,37 @@ export function MultiSelect({
             {selected.length === 0 && (
               <span className="text-muted-foreground">{resolvedPlaceholder}</span>
             )}
-            {selectedLabels.slice(0, 3).map((label) => (
-              <Badge key={label} variant="secondary" className="gap-1 whitespace-nowrap">
-                {label}
-                <span
-                  role="button"
-                  tabIndex={0}
-                  className="ml-0.5 rounded-full outline-hidden hover:bg-muted cursor-pointer"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const option = options.find((o) => o.label === label);
-                    if (option) remove(option.value);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
+            {selected.slice(0, 3).map((value) => {
+              // Resolve by value: two groups can share a name, and a label lookup would
+              // remove the wrong selection.
+              const option = options.find((o) => o.value === value);
+              if (!option) return null;
+              return (
+                <Badge key={value} variant="secondary" className="gap-1 whitespace-nowrap">
+                  {option.label}
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="ml-0.5 rounded-full outline-hidden hover:bg-muted cursor-pointer"
+                    onClick={(e) => {
                       e.stopPropagation();
-                      const option = options.find((o) => o.label === label);
-                      if (option) remove(option.value);
-                    }
-                  }}
-                >
-                  <X className="h-3 w-3" />
-                </span>
-              </Badge>
-            ))}
-            {selectedLabels.length > 3 && (
+                      remove(value);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation();
+                        remove(value);
+                      }
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </span>
+                </Badge>
+              );
+            })}
+            {selected.length > 3 && (
               <Badge variant="secondary" className="whitespace-nowrap">
-                +{selectedLabels.length - 3}
+                +{selected.length - 3}
               </Badge>
             )}
           </div>
@@ -109,6 +111,7 @@ export function MultiSelect({
                   <CommandItem
                     key={option.value}
                     value={option.value}
+                    keywords={[option.label]}
                     onSelect={() => toggle(option.value)}
                   >
                     <div
