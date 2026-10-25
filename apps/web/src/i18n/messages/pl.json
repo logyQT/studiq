@@ -518,7 +518,8 @@
     "today": "Dzisiaj",
     "hours_ago": "{hours, plural, one {# godzinę temu} few {# godziny temu} many {# godzin temu} other {# godziny temu}}",
     "days_ago": "{days, plural, one {# dzień temu} other {# dni temu}}",
-    "vs_previous": "w porównaniu do poprzedniego okresu"
+    "vs_previous": "w porównaniu do poprzedniego okresu",
+    "no_previous_data": "brak danych w poprzednim okresie"
   },
   "TeacherQuizStats": {
     "title": "Statystyki testów",

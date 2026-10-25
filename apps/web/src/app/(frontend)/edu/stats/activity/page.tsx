@@ -65,7 +65,10 @@ type ActivityData = {
 };
 
 function TrendIndicator({ current, previous }: MetricComp) {
-  if (previous === 0) return null;
+  const t = useTranslations('TeacherActivityPage');
+  if (previous === 0) {
+    return <span className="text-xs text-muted-foreground ml-1">{t('no_previous_data')}</span>;
+  }
   const diff = current - previous;
   const pct = Math.round((diff / previous) * 100);
   if (pct === 0) return <span className="text-xs text-muted-foreground ml-1">→ 0%</span>;
@@ -196,7 +199,9 @@ export default function TeacherActivityPage() {
                     <p className="text-3xl font-bold">{card.value}</p>
                     <TrendIndicator current={card.metric.current} previous={card.metric.previous} />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">{t('vs_previous')}</p>
+                  {card.metric.previous !== 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">{t('vs_previous')}</p>
+                  )}
                 </CardContent>
               </Card>
             ))}

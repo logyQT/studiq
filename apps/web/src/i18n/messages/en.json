@@ -537,7 +537,8 @@
     "today": "Today",
     "hours_ago": "{hours, plural, one {# hour ago} other {# hours ago}}",
     "days_ago": "{days, plural, one {# day ago} other {# days ago}}",
-    "vs_previous": "vs previous period"
+    "vs_previous": "vs previous period",
+    "no_previous_data": "no data for the previous period"
   },
   "TeacherQuizStats": {
     "title": "Quiz Statistics",
