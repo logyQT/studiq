@@ -33,7 +33,8 @@ export interface ActivityResponse {
 
 export interface TeacherQuizStatsItem {
   id: string;
-  title: string;
+  /** null when the quiz has no title in its config. */
+  title: string | null;
   totalAttempts: number;
   avgScore: number;
   avgCompletionRate: number;

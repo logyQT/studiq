@@ -22,7 +22,7 @@ import { useEffect, useState } from 'react';
 
 interface QuizSummary {
   id: string;
-  title: string;
+  title: string | null;
   totalAttempts: number;
   avgScore: number;
 }
@@ -181,23 +181,23 @@ export default function StatsResultsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Brain className="h-5 w-5" />
-              Quiz Performance
+              {t('quiz_performance_title')}
             </CardTitle>
-            <CardDescription>Per-quiz attempt and score summary</CardDescription>
+            <CardDescription>{t('quiz_performance_desc')}</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Quiz</TableHead>
-                  <TableHead className="text-right">Attempts</TableHead>
-                  <TableHead className="text-right">Avg Score</TableHead>
+                  <TableHead>{t('th_quiz')}</TableHead>
+                  <TableHead className="text-right">{t('th_attempts')}</TableHead>
+                  <TableHead className="text-right">{t('th_avg_score')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {quizzes.map((q) => (
                   <TableRow key={q.id}>
-                    <TableCell className="font-medium">{q.title}</TableCell>
+                    <TableCell className="font-medium">{q.title || t('untitled_quiz')}</TableCell>
                     <TableCell className="text-right tabular-nums">{q.totalAttempts}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       <Badge
