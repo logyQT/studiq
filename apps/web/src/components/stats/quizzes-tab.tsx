@@ -55,7 +55,8 @@ export function QuizzesTab() {
     return (
       <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
         <ClipboardList className="size-10" />
-        <p>{t('quizzes_coming_soon')}</p>
+        <p className="font-medium text-foreground">{t('no_quiz_history')}</p>
+        <p className="text-sm">{t('no_quiz_history_desc')}</p>
       </div>
     );
   }

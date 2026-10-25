@@ -1582,7 +1582,8 @@
     "range_7d": "7 days",
     "range_30d": "30 days",
     "range_1y": "1 year",
-    "quizzes_coming_soon": "No quiz attempts yet",
+    "no_quiz_history": "No quiz history",
+    "no_quiz_history_desc": "Complete a quiz to see your history here",
     "score": "Score",
     "date": "Date"
   },
