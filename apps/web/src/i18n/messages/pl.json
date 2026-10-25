@@ -2681,7 +2681,12 @@
     "completed": "Ukończone ({count})",
     "completed_on": "Ukończono: {date}",
     "attempts_left": "Pozostało prób: {left}/{total}",
-    "results_hidden": "Podsumowanie niedostępne"
+    "results_hidden": "Podsumowanie niedostępne",
+    "scheduled": "Zaplanowane ({count})",
+    "scheduled_badge": "Zaplanowana",
+    "opens": "Dostępna od: {date}",
+    "closed": "Zamknięte ({count})",
+    "closed_on": "Zamknięto: {date}"
   },
   "AppAssignmentDetailPage": {
     "not_found": "Nie znaleziono kartkówki",

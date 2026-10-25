@@ -103,7 +103,7 @@ export default function StudentAssignmentsPage() {
           {scheduled.length > 0 && (
             <section className="space-y-3">
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                Scheduled ({scheduled.length})
+                {t('scheduled', { count: scheduled.length })}
               </h2>
               {scheduled.map((a) => (
                 <Link key={a.id} href={`/app/assignments/${a.id}`}>
@@ -111,11 +111,11 @@ export default function StudentAssignmentsPage() {
                     <div className="flex items-start justify-between">
                       <h3 className="font-semibold">{a.title}</h3>
                       <span className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 px-2 py-0.5 rounded-full">
-                        Scheduled
+                        {t('scheduled_badge')}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Opens: {formatDate(a.start_time, locale)}
+                      {t('opens', { date: formatDate(a.start_time, locale) })}
                     </p>
                   </div>
                 </Link>
@@ -148,14 +148,14 @@ export default function StudentAssignmentsPage() {
           {closed.length > 0 && (
             <section className="space-y-3">
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                Closed ({closed.length})
+                {t('closed', { count: closed.length })}
               </h2>
               {closed.map((a) => (
                 <Link key={a.id} href={`/app/assignments/${a.id}`}>
                   <div className="rounded-lg border p-4 hover:bg-accent/50 transition-colors cursor-pointer space-y-2 opacity-60">
                     <h3 className="font-semibold">{a.title}</h3>
                     <p className="text-xs text-muted-foreground">
-                      Closed: {formatDate(a.deadline, locale)}
+                      {t('closed_on', { date: formatDate(a.deadline, locale) })}
                     </p>
                   </div>
                 </Link>

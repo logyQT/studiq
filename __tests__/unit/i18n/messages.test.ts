@@ -71,6 +71,21 @@ const DECK_GROUP_REQUIRED_NAMESPACES = [
   'AppFlashcardDeckViewPage',
 ] as const;
 
+/**
+ * #367 — the student assignment list used to render its scheduled/closed
+ * sections as raw English literals, so the Polish page mixed „OCZEKUJĄCE (1)”
+ * with `SCHEDULED (1)` / `Opens:` / `Closed:`. Every key now goes through
+ * `next-intl`; the placeholder assertions catch a translation that drops
+ * `{count}` / `{date}` and would render an empty date next to the label.
+ */
+const ASSIGNMENTS_LIST_PLACEHOLDERS = {
+  scheduled: '{count}',
+  scheduled_badge: null,
+  opens: '{date}',
+  closed: '{count}',
+  closed_on: '{date}',
+} as const;
+
 describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages) => {
   it('translates every password rule the account page surfaces', () => {
     for (const code of PASSWORD_RULE_CODES) {
@@ -98,6 +113,25 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
 
       expect(message, `Errors.${code}`).toBeTypeOf('string');
       expect(message).not.toHaveLength(0);
+    }
+  });
+
+  /**
+   * #367 — every scheduled/closed label on /app/assignments is translated, and
+   * the interpolated ones keep their placeholder so the date/count still render.
+   */
+  it('translates the assignment list scheduled and closed labels', () => {
+    const assignmentsPage = messages.AppAssignmentsPage as Record<string, string>;
+
+    for (const [key, placeholder] of Object.entries(ASSIGNMENTS_LIST_PLACEHOLDERS)) {
+      const message = assignmentsPage[key];
+
+      expect(message, `AppAssignmentsPage.${key}`).toBeTypeOf('string');
+      expect(message).not.toHaveLength(0);
+
+      if (placeholder) {
+        expect(message, `AppAssignmentsPage.${key}`).toContain(placeholder);
+      }
     }
   });
 
@@ -173,6 +207,12 @@ describe('i18n message parity', () => {
 
   it('has the same AiChatPage keys in en and pl', () => {
     expect(Object.keys(en.AiChatPage).sort()).toEqual(Object.keys(pl.AiChatPage).sort());
+  });
+
+  it('has the same AppAssignmentsPage keys in en and pl', () => {
+    expect(Object.keys(en.AppAssignmentsPage).sort()).toEqual(
+      Object.keys(pl.AppAssignmentsPage).sort(),
+    );
   });
 
   /**

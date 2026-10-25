@@ -2701,7 +2701,12 @@
     "completed": "Completed ({count})",
     "completed_on": "Completed: {date}",
     "attempts_left": "Attempts left: {left}/{total}",
-    "results_hidden": "Results not available"
+    "results_hidden": "Results not available",
+    "scheduled": "Scheduled ({count})",
+    "scheduled_badge": "Scheduled",
+    "opens": "Opens: {date}",
+    "closed": "Closed ({count})",
+    "closed_on": "Closed: {date}"
   },
   "AppAssignmentDetailPage": {
     "not_found": "Assignment not found",
