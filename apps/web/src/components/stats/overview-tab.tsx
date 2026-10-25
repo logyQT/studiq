@@ -3,7 +3,7 @@
 import type { StateBreakdown } from '@studiq/server/models/flashcard-practice.model';
 import type { ActivityResponse, WeakPointsResponse } from '@studiq/server/models/stats.model';
 import { Card, CardContent, CardHeader, CardTitle, Skeleton, StatCard } from '@studiq/ui';
-import { AlertTriangle, Brain, CalendarDays, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Brain, CalendarDays, CheckCircle2, TrendingUp } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { DailyActivityChart } from '@/components/stats/daily-activity-chart';
@@ -32,15 +32,27 @@ export function OverviewTab() {
   });
 
   const reviewsThisWeek = (activity?.items ?? []).reduce((sum, d) => sum + d.reviews_count, 0);
+  // „Poprawne” pairs with „Powtórki w tym tygodniu”, so it uses the same last-7-days window
+  // even when a wider chart range is selected.
+  const weekStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const correctThisWeek = (activity?.items ?? [])
+    .filter((d) => d.date >= weekStart)
+    .reduce((sum, d) => sum + d.reviews_correct, 0);
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
           title={t('reviews_this_week')}
           value={activityLoading ? '...' : reviewsThisWeek}
           icon={CalendarDays}
           variant="blue"
+        />
+        <StatCard
+          title={t('correct')}
+          value={activityLoading ? '...' : correctThisWeek}
+          icon={CheckCircle2}
+          variant="emerald"
         />
         <StatCard
           title={t('due_today')}
