@@ -65,6 +65,7 @@ export function DeckFilters({
         <SelectContent>
           <SelectItem value="all">{t('owner_all')}</SelectItem>
           <SelectItem value="mine">{t('owner_mine')}</SelectItem>
+          <SelectItem value="group">{t('owner_group')}</SelectItem>
         </SelectContent>
       </Select>
       {showGroupFilter && onGroupFilterChange && (
