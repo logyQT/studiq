@@ -98,6 +98,11 @@ export function AiChatScreen() {
               file={file}
               onFileChange={setFile}
             />
+            {usage && (
+              <div className="mt-2 flex justify-center">
+                <UsageBadge usage={usage} />
+              </div>
+            )}
           </div>
         </div>
       )}

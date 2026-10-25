@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { apiGet, apiPost } from '@/lib/api';
 import { resolveNeedsOnboarding } from '@/lib/onboarding';
-import { featureKeys, permissionKeys, questionReportKeys } from '@/lib/query-keys';
+import { aiKeys, featureKeys, permissionKeys, questionReportKeys } from '@/lib/query-keys';
 
 export type OrgMembership = {
   id: string;
@@ -63,6 +63,11 @@ export function useOrgs() {
       // on the server and both hooks cache for 5 minutes.
       queryClient.invalidateQueries({ queryKey: permissionKeys.all });
       queryClient.invalidateQueries({ queryKey: featureKeys.all });
+
+      // The effective AI token budget is resolved from the seat/personal/org
+      // plan (`limitsResolver.getEffectiveLimit`), so the cached daily counter
+      // belongs to the previous org (#379).
+      queryClient.invalidateQueries({ queryKey: aiKeys.all });
 
       // The current plan (`/api/v1/me/plan`) is resolved from the active org too
       // and is cached with `staleTime: Infinity` (billing / settings pages).
