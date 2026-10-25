@@ -1,6 +1,16 @@
 const BASE_URL = '/api/v1';
 
 /**
+ * Browser helper for the admin API.
+ *
+ * In PEM mode (`ADMIN_PEM_KEYS` non-empty) the browser cannot sign requests, so
+ * these calls are rejected by `apps/admin/src/proxy.ts`. That is a known
+ * limitation of the env keyring; the DB-backed token system
+ * (`docs/decisions/0007-admin-api-auth.md`) is what makes the panel usable in
+ * production. Requests from ops/CI are signed with `scripts/admin-sign.ts`.
+ */
+
+/**
  * Error thrown by the admin API helpers. `message` stays the app error code
  * (e.g. `CONFLICT`, `NOT_FOUND`, `ERROR_UNAUTHORIZED`) so existing
  * `error.message === 'CODE'` checks keep working; `status` carries the HTTP

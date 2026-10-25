@@ -1,45 +1,63 @@
-import { createPublicKey, type KeyObject, verify } from 'node:crypto';
+import {
+  bodyHash,
+  canonicalQuery,
+  hasScope,
+  KEY_ID_HEADER,
+  type Keyring,
+  parseKeyring,
+  requiredScope,
+  SIGNATURE_HEADER,
+  signaturePayload,
+  TIMESTAMP_HEADER,
+  MAX_AGE_MS,
+  verifyAny,
+} from '@admin/lib/admin-pem';
+import { error, log, warn } from '@studiq/server/lib/log';
 import { type NextRequest, NextResponse } from 'next/server';
 
-const SIGNATURE_HEADER = 'x-admin-signature';
-const TIMESTAMP_HEADER = 'x-admin-timestamp';
-const MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
-
 // ---------------------------------------------------------------------------
-// Key loading — called once per cold start, cached in module scope
+// Key loading — called once per cold start, cached in module scope.
+//
+// The ring is parsed lazily (not at import time) so unit tests can set
+// `ADMIN_PEM_KEYS` before the first request, and so a malformed entry is
+// skipped-and-logged instead of throwing during module evaluation.
 // ---------------------------------------------------------------------------
 
-let cachedKeys: KeyObject[] | null = null;
+let cached: { raw: string; keyring: Keyring } | null = null;
 
-function loadPublicKeys(): KeyObject[] {
-  if (cachedKeys) return cachedKeys;
+function loadKeyring(): { raw: string; keyring: Keyring } {
+  if (cached) return cached;
 
   const raw = process.env.ADMIN_PEM_KEYS ?? '';
-  if (!raw.trim()) {
-    // No keys configured — reject everything (fail-closed)
-    cachedKeys = [];
-    return cachedKeys;
+  const keyring = parseKeyring(raw);
+  cached = { raw, keyring };
+
+  for (const rejected of keyring.rejected) {
+    warn('admin_pem_key_rejected', {
+      index: rejected.index,
+      key_id: rejected.id,
+      reason: rejected.reason,
+    });
+  }
+  if (keyring.unknownScopes.length > 0) {
+    warn('admin_pem_unknown_scopes', { scopes: keyring.unknownScopes.join(',') });
+  }
+  if (raw.trim() && keyring.keys.length === 0) {
+    // Non-empty config that parsed to nothing → fail closed in every environment.
+    error('admin_pem_keyring_empty', {
+      rejected: keyring.rejected.length,
+    });
   }
 
-  cachedKeys = raw
-    .split(',')
-    .map((k) => k.trim())
-    .filter(Boolean)
-    .map((b64) => {
-      const der = Buffer.from(b64, 'base64');
-      return createPublicKey({ key: der, format: 'der', type: 'spki' });
-    });
-
-  return cachedKeys;
+  return cached;
 }
 
-// ---------------------------------------------------------------------------
-// Verification
-// ---------------------------------------------------------------------------
+function unauthorized(): NextResponse {
+  return NextResponse.json({ success: false, error: 'ERROR_UNAUTHORIZED' }, { status: 401 });
+}
 
-function verifySignature(keys: KeyObject[], payload: Buffer, signatureB64: string): boolean {
-  const sig = Buffer.from(signatureB64, 'base64url');
-  return keys.some((key) => verify(null, payload, key, sig));
+function forbidden(): NextResponse {
+  return NextResponse.json({ success: false, error: 'ERROR_FORBIDDEN' }, { status: 403 });
 }
 
 // ---------------------------------------------------------------------------
@@ -47,54 +65,112 @@ function verifySignature(keys: KeyObject[], payload: Buffer, signatureB64: strin
 // ---------------------------------------------------------------------------
 
 export async function proxy(request: NextRequest) {
-  const path = request.nextUrl.pathname;
+  const pathname = request.nextUrl.pathname;
 
   // Static assets & _next — always allow
   if (
-    path.startsWith('/_next/') ||
-    path === '/favicon.ico' ||
-    path.match(/\.(svg|png|jpg|jpeg|gif|webp)$/)
+    pathname.startsWith('/_next/') ||
+    pathname === '/favicon.ico' ||
+    pathname.match(/\.(svg|png|jpg|jpeg|gif|webp)$/)
   ) {
     return NextResponse.next();
   }
 
-  // UI pages — pass through (C6 adds i18n; C5 doesn't gate these)
-  if (!path.startsWith('/api/')) {
+  // UI pages — pass through (the panel is client-only; the API is the boundary)
+  if (!pathname.startsWith('/api/')) {
     return NextResponse.next();
   }
 
   // --- API routes: PEM gate --------------------------------------------------
 
-  const keys = loadPublicKeys();
+  const { raw, keyring } = loadKeyring();
 
-  // No keys configured → allow all in development (admin app is trusted)
-  if (keys.length === 0) {
-    if (process.env.NODE_ENV !== 'production') {
-      return NextResponse.next();
-    }
-    return NextResponse.json({ success: false, error: 'ERROR_UNAUTHORIZED' }, { status: 401 });
+  // Not configured → keep the historical dev bypass, fail closed in production.
+  if (!raw.trim()) {
+    return process.env.NODE_ENV === 'production' ? unauthorized() : NextResponse.next();
+  }
+
+  // Configured but nothing valid parsed → fail closed in every environment.
+  if (keyring.keys.length === 0) {
+    return unauthorized();
   }
 
   const signature = request.headers.get(SIGNATURE_HEADER);
   const timestamp = request.headers.get(TIMESTAMP_HEADER);
 
   if (!signature || !timestamp) {
-    return NextResponse.json({ success: false, error: 'ERROR_UNAUTHORIZED' }, { status: 401 });
+    return unauthorized();
   }
 
   const ts = Number(timestamp);
-  if (Number.isNaN(ts) || Math.abs(Date.now() - ts) > MAX_AGE_MS) {
-    return NextResponse.json({ success: false, error: 'ERROR_UNAUTHORIZED' }, { status: 401 });
+  if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > MAX_AGE_MS) {
+    return unauthorized();
   }
 
-  // Sign over: "<method> <path> <timestamp>"
-  const payload = Buffer.from(`${request.method} ${path} ${timestamp}`);
+  // Next buffers the proxy request body, so this does not steal the body from
+  // the route handler (see proxyClientMaxBodySize docs).
+  const body = await request.arrayBuffer();
+  const payload = signaturePayload({
+    method: request.method,
+    pathname,
+    query: canonicalQuery(request.nextUrl.searchParams),
+    timestamp,
+    bodyHash: bodyHash(body),
+  });
 
-  if (!verifySignature(keys, payload, signature)) {
-    return NextResponse.json({ success: false, error: 'ERROR_FORBIDDEN' }, { status: 403 });
+  const matched = verifyAny(keyring.keys, payload, signature);
+  if (!matched) {
+    return forbidden();
   }
 
-  return NextResponse.next();
+  if (matched.expiresAt !== null && matched.expiresAt < Date.now()) {
+    warn('admin_api_denied', {
+      key_id: matched.id,
+      method: request.method,
+      path: pathname,
+      reason: 'expired',
+      status: 401,
+    });
+    return unauthorized();
+  }
+
+  const required = requiredScope(request.method, pathname);
+  if (!required) {
+    warn('admin_api_denied', {
+      key_id: matched.id,
+      method: request.method,
+      path: pathname,
+      reason: 'unknown_path',
+      status: 403,
+    });
+    return forbidden();
+  }
+
+  if (!hasScope(matched.scopes, required)) {
+    warn('admin_api_denied', {
+      key_id: matched.id,
+      method: request.method,
+      path: pathname,
+      reason: 'scope',
+      required_scope: required,
+      status: 403,
+    });
+    return forbidden();
+  }
+
+  log('admin_api_request', {
+    key_id: matched.id,
+    method: request.method,
+    path: pathname,
+    decision: 'allow',
+  });
+
+  // Attribution is server-owned: drop any inbound value before setting ours.
+  const headers = new Headers(request.headers);
+  headers.delete(KEY_ID_HEADER);
+  headers.set(KEY_ID_HEADER, matched.id);
+
+  return NextResponse.next({ request: { headers } });
 }
 
 export const config = {
