@@ -17,13 +17,19 @@ export const passwordSchema = z
   .regex(/[A-Z]/, { error: ValidationErrorCode.PASSWORD_MISSING_UPPERCASE })
   .regex(/[0-9]/, { error: ValidationErrorCode.PASSWORD_MISSING_NUMBER });
 
+// Presence before format: an empty/missing e-mail must report EMAIL_REQUIRED,
+// not EMAIL_INVALID. Chaining `.email().nonempty()` runs both checks on `""` and
+// yields both codes; the pipe stops after the presence failure (#299).
+const requiredEmailSchema = z
+  .string({ error: ValidationErrorCode.EMAIL_REQUIRED })
+  .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED })
+  .pipe(z.email({ error: ValidationErrorCode.EMAIL_INVALID }));
+
 export const RegisterSchema = registry.register(
   'RegisterRequest',
   z.object({
     name: NameSchema,
-    email: z
-      .email({ error: ValidationErrorCode.EMAIL_INVALID })
-      .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED }),
+    email: requiredEmailSchema,
     password: passwordSchema,
     accountType: z.enum(['student', 'educator', 'manager'], {
       error: ValidationErrorCode.INVALID_INPUT,
@@ -42,9 +48,7 @@ export const RegisterSchema = registry.register(
 export const LoginSchema = registry.register(
   'LoginRequest',
   z.object({
-    email: z
-      .email({ error: ValidationErrorCode.EMAIL_INVALID })
-      .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED }),
+    email: requiredEmailSchema,
     password: z
       .string({ error: ValidationErrorCode.PASSWORD_REQUIRED })
       .nonempty({ error: ValidationErrorCode.PASSWORD_REQUIRED }),
@@ -54,9 +58,7 @@ export const LoginSchema = registry.register(
 export const forgotPasswordSchema = registry.register(
   'ForgotPasswordRequest',
   z.object({
-    email: z
-      .email({ error: ValidationErrorCode.EMAIL_INVALID })
-      .nonempty({ error: ValidationErrorCode.EMAIL_REQUIRED }),
+    email: requiredEmailSchema,
   }),
 );
 
