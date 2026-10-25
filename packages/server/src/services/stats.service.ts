@@ -3,16 +3,26 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
-import type { TeacherQuizStatsItem } from '@studiq/server/models/stats.model';
+import type {
+  TeacherQuizStatsItem,
+  TeacherStatsQuery,
+  TeacherStatsResponse,
+} from '@studiq/server/models/stats.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class StatsService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
-  async getTeacherStats(ctx: RequestContext): Promise<ServiceResult<unknown>> {
+  async getTeacherStats(
+    ctx: RequestContext,
+    filters?: TeacherStatsQuery,
+  ): Promise<ServiceResult<TeacherStatsResponse>> {
     const supabase = await this.createClient();
 
-    let questionsQuery = supabase.from('questions').select('id').eq('created_by', ctx.userId);
+    let questionsQuery = supabase
+      .from('questions')
+      .select('id, type, bank_id')
+      .eq('created_by', ctx.userId);
     if (ctx.activeOrgId) questionsQuery = questionsQuery.eq('organization_id', ctx.activeOrgId);
     const { data: questions, error: questionsError } = await questionsQuery;
 
@@ -24,9 +34,56 @@ export class StatsService {
 
     if (flashcardsError) return toDbFailure(flashcardsError);
 
+    const rows: Array<{ type: string; bank_id: string }> = questions ?? [];
+
+    // “Subject” counts are a group-by over the same own-questions row set, so
+    // `subjectId` can only ever narrow the type split — it never widens the
+    // query or leaks another tenant's counts.
+    const countsByBank = new Map<string, number>();
+    for (const row of rows) {
+      countsByBank.set(row.bank_id, (countsByBank.get(row.bank_id) ?? 0) + 1);
+    }
+
+    const bankIds = [...countsByBank.keys()];
+    const bankNames = new Map<string, string>();
+    if (bankIds.length > 0) {
+      const { data: banks, error: banksError } = await supabase
+        .from('question_banks')
+        .select('id, name')
+        .in('id', bankIds);
+
+      if (banksError) return toDbFailure(banksError);
+
+      for (const bank of banks ?? []) bankNames.set(bank.id, bank.name);
+    }
+
+    const bySubject = bankIds
+      .map((bankId) => ({
+        subjectId: bankId,
+        // A question can outlive visibility of its bank (e.g. the teacher left
+        // the bank's org), so a missing name stays null instead of being faked.
+        subjectName: bankNames.get(bankId) ?? null,
+        questionCount: countsByBank.get(bankId) ?? 0,
+      }))
+      .sort((a, b) => {
+        if (a.subjectName === null) return b.subjectName === null ? 0 : 1;
+        if (b.subjectName === null) return -1;
+        return a.subjectName.localeCompare(b.subjectName, 'pl');
+      });
+
+    const typeScope = filters?.subjectId
+      ? rows.filter((row) => row.bank_id === filters.subjectId)
+      : rows;
+    const byType: Record<string, number> = {};
+    for (const row of typeScope) {
+      byType[row.type] = (byType[row.type] ?? 0) + 1;
+    }
+
     return success({
-      totalQuestions: questions?.length ?? 0,
+      totalQuestions: rows.length,
       totalFlashcards: flashcards?.length ?? 0,
+      subject: { byType },
+      bySubject,
     });
   }
 

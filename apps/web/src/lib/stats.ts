@@ -39,6 +39,32 @@ export function summarizeWeeklyActivity(
   return { reviews, correct };
 }
 
+/**
+ * Question types shown first in the content-stats breakdown, in product order.
+ * The enum has more values (`multi_select`, `matching`, …); any type seen in the
+ * data but missing here is appended afterwards.
+ */
+const QUESTION_TYPE_ORDER = ['mcq', 'true_false', 'open'] as const;
+
+/**
+ * Stable `[type, count]` ordering for the „Pytania według typu” card, so the
+ * rows do not reshuffle between the global view and a filtered subject.
+ */
+export function orderedQuestionTypeEntries(byType: Record<string, number>): Array<{
+  key: string;
+  count: number;
+}> {
+  const known: readonly string[] = QUESTION_TYPE_ORDER;
+  const ordered = [
+    ...QUESTION_TYPE_ORDER.filter((key) => byType[key] !== undefined),
+    ...Object.keys(byType)
+      .filter((key) => !known.includes(key))
+      .sort((a, b) => a.localeCompare(b)),
+  ];
+
+  return ordered.map((key) => ({ key, count: byType[key] }));
+}
+
 /** Structural subset of the teacher activity payload needed to detect an empty period. */
 export interface TeacherActivityPayload {
   summary: {

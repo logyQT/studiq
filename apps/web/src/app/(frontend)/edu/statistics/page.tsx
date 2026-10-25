@@ -1,6 +1,7 @@
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, StatCard } from '@studiq/ui';
+import { orderedQuestionTypeEntries } from '@/lib/stats';
 import { FileText, Layers, TrendingDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
@@ -9,10 +10,9 @@ interface TeacherStats {
   totalQuestions: number;
   totalFlashcards: number;
   subject?: {
-    totalQuestions: number;
     byType: Record<string, number>;
-    byDifficulty: Record<string, number>;
-    problematicQuestions: Array<{
+    /** Not served by the API yet; the card only renders when it is present. */
+    problematicQuestions?: Array<{
       id: string;
       content: string;
       type: string;
@@ -23,6 +23,7 @@ interface TeacherStats {
 
 export default function EduStatsPage() {
   const t = useTranslations('EduStatisticsPage');
+  const tc = useTranslations('Common');
   const [stats, setStats] = useState<TeacherStats | null>(null);
   const [selectedSubject, _setSelectedSubject] = useState<string>('__all__');
   const [loading, setLoading] = useState(true);
@@ -42,6 +43,14 @@ export default function EduStatsPage() {
 
   if (loading) return <div className="flex justify-center py-12">{t('common_loading')}</div>;
 
+  const typeEntries = orderedQuestionTypeEntries(stats?.subject?.byType ?? {});
+  const problematicQuestions = stats?.subject?.problematicQuestions;
+
+  const typeLabel = (key: string) =>
+    key === 'mcq' || key === 'true_false' || key === 'open'
+      ? tc(`question_type_${key}`)
+      : key.replaceAll('_', ' ');
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -54,57 +63,57 @@ export default function EduStatsPage() {
       </div>
 
       {stats?.subject && (
-        <>
-          <div className="grid gap-6 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('by_type_title')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {Object.entries(stats.subject.byType || {}).map(([type, count]) => (
-                    <div key={type} className="flex items-center justify-between">
-                      <span className="text-sm capitalize">{type.replace('_', ' ')}</span>
-                      <span className="font-medium">{count}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
+        <div className="grid gap-6 md:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingDown className="h-5 w-5 text-red-500" />
-                {t('problematic_title')}
-              </CardTitle>
-              <CardDescription>{t('problematic_desc')}</CardDescription>
+              <CardTitle>{t('by_type_title')}</CardTitle>
             </CardHeader>
             <CardContent>
-              {stats.subject.problematicQuestions.length > 0 ? (
-                <div className="space-y-3">
-                  {stats.subject.problematicQuestions.map((q) => (
-                    <div
-                      key={q.id}
-                      className="flex items-center justify-between p-3 rounded-lg border"
-                    >
-                      <div>
-                        <p className="font-medium text-sm">{q.content}</p>
-                        <p className="text-xs text-muted-foreground">{q.type}</p>
-                      </div>
-                      <span className="text-sm font-bold text-red-600">
-                        {Math.round(q.correctRate * 100)}% {t('correct_suffix')}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-center py-8 text-muted-foreground">{t('no_problematic')}</p>
-              )}
+              <div className="space-y-3">
+                {typeEntries.map(({ key, count }) => (
+                  <div key={key} className="flex items-center justify-between">
+                    <span className="text-sm">{typeLabel(key)}</span>
+                    <span className="font-medium">{count}</span>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
-        </>
+        </div>
+      )}
+
+      {problematicQuestions && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingDown className="h-5 w-5 text-red-500" />
+              {t('problematic_title')}
+            </CardTitle>
+            <CardDescription>{t('problematic_desc')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {problematicQuestions.length > 0 ? (
+              <div className="space-y-3">
+                {problematicQuestions.map((q) => (
+                  <div
+                    key={q.id}
+                    className="flex items-center justify-between p-3 rounded-lg border"
+                  >
+                    <div>
+                      <p className="font-medium text-sm">{q.content}</p>
+                      <p className="text-xs text-muted-foreground">{q.type}</p>
+                    </div>
+                    <span className="text-sm font-bold text-red-600">
+                      {Math.round(q.correctRate * 100)}% {t('correct_suffix')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center py-8 text-muted-foreground">{t('no_problematic')}</p>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   );

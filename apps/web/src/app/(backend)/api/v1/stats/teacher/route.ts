@@ -5,6 +5,7 @@ import type { NextRequest } from 'next/server';
 
 export async function GET(req: NextRequest) {
   return withAuth(req, async (ctx) => {
-    return toNextResponse(await statsController.getTeacherStats(ctx));
+    const query = Object.fromEntries(new URL(req.url).searchParams);
+    return toNextResponse(await statsController.getTeacherStats(query, ctx));
   });
 }
