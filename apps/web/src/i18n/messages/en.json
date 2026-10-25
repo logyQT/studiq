@@ -2334,6 +2334,7 @@
     "too_many_attempts": "Too many attempts. Please try again later.",
     "update_password": "Update Password",
     "saving": "Saving...",
+    "save_name": "Save",
     "payments_title": "Payment History",
     "no_payments": "No payments yet",
     "manage_billing": "Manage billing"
