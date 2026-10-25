@@ -534,7 +534,8 @@
     "quiz_avg_score": "Avg Score",
     "no_data": "No activity data yet for this period",
     "today": "Today",
-    "days_ago": "{days}d ago",
+    "hours_ago": "{hours, plural, one {# hour ago} other {# hours ago}}",
+    "days_ago": "{days, plural, one {# day ago} other {# days ago}}",
     "vs_previous": "vs previous period"
   },
   "TeacherQuizStats": {
