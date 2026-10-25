@@ -246,6 +246,11 @@ export class InvitationService {
 
     if (insertError) return toDbFailure(insertError);
 
+    // TODO(#604): deliver this link by e-mail instead of relying on the copy
+    // button. Decided future shape: Mailer port + SMTP/log adapters, copy-link
+    // fallback, per-org rate limit, PL/EN templates. The mailer must reuse this
+    // exact `inviteLink` (one source of truth) and a send failure must never
+    // roll back the row or the returned link (#313 fallback).
     return success({
       success: true,
       invitationId: invitation.id,
@@ -391,6 +396,10 @@ export class InvitationService {
           invitationId: row.id,
           // Always returned, in every environment: the copied link is the only
           // delivery path until #604 adds e-mail (#313).
+          // TODO(#604): send one message per created row using the same
+          // decided shape: Mailer port + SMTP/log adapters, copy-link fallback,
+          // per-org rate limit, PL/EN templates. A send failure must not fail
+          // the batch — every row keeps its link above.
           inviteLink: buildInviteLink(baseUrl, row.token),
           // Same value as the token inside `inviteLink`, exposed so the manager
           // can also copy the bare code the join field accepts.

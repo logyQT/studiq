@@ -6,6 +6,10 @@ import {
   type UploadMimeType,
 } from '@studiq/server/lib/file-signature';
 import { error as logError } from '@studiq/server/lib/log';
+import {
+  isStoragePathWithinPrefix,
+  storagePathFromPublicUrl,
+} from '@studiq/server/lib/storage-objects';
 import { createServiceClient } from '@studiq/server/lib/supabase/service';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -68,12 +72,17 @@ async function validateUpload(
   return detected;
 }
 
-/** Never leak provider messages to the client; keep them in the log instead. */
-function throwStorageError(bucket: string, error: unknown): never {
+/** Provider errors carry the HTTP status under two different keys. */
+function storageErrorStatus(error: unknown): number {
   const status = Number(
     (error as { status?: number }).status ?? (error as { statusCode?: string }).statusCode,
   );
-  const statusForLog = Number.isFinite(status) ? status : 0;
+  return Number.isFinite(status) ? status : 0;
+}
+
+/** Never leak provider messages to the client; keep them in the log instead. */
+function throwStorageError(bucket: string, error: unknown): never {
+  const statusForLog = storageErrorStatus(error);
 
   logError('Storage upload failed', { bucket, status: statusForLog });
 
@@ -125,6 +134,53 @@ export class StorageService {
     const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(storagePath);
 
     return { url: urlData.publicUrl };
+  }
+
+  /**
+   * Deletes one object. Best-effort by contract (#281): never throws and never
+   * surfaces a provider error. A failed delete leaves an orphan for
+   * `scripts/storage-orphan-sweep.ts`, which is worse than a broken logo but far
+   * better than turning a successful upload into a user-visible 500.
+   */
+  async deleteObject(bucket: ImageBucket, storagePath: string): Promise<boolean> {
+    try {
+      const supabase = this.createClient();
+      const { error } = await supabase.storage.from(bucket).remove([storagePath]);
+
+      if (error) {
+        logError('Storage delete failed', {
+          bucket,
+          path: storagePath,
+          status: storageErrorStatus(error),
+        });
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      logError('Storage delete failed', {
+        bucket,
+        path: storagePath,
+        status: storageErrorStatus(error),
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Deletes the object a public URL points at, but only when it parses to
+   * `bucket` **and** lives below `pathPrefix/`. `organizations.logo_url` accepts
+   * an arbitrary URL, so this bucket + prefix guard is the authorization
+   * boundary that keeps the cleanup from becoming a cross-tenant delete.
+   */
+  async deleteObjectByPublicUrl(
+    bucket: ImageBucket,
+    url: string,
+    pathPrefix: string,
+  ): Promise<boolean> {
+    const path = storagePathFromPublicUrl(bucket, url);
+    if (!path || !isStoragePathWithinPrefix(path, pathPrefix)) return false;
+    return this.deleteObject(bucket, path);
   }
 }
 

@@ -170,6 +170,7 @@
   },
   "SetupPage": {
     "back": "Back",
+    "back_to_dashboard": "Back to dashboard",
     "title": "Welcome to StudiQ",
     "desc": "Set up your classroom to get started.",
     "join_option": "Join an existing organization",
