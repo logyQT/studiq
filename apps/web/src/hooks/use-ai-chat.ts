@@ -453,7 +453,10 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
     [setMessages],
   );
 
-  const clearChat = useCallback(() => {}, []);
+  const clearChat = useCallback(() => {
+    if (status === 'streaming' || status === 'submitted') stop();
+    setMessages(() => []);
+  }, [status, stop, setMessages]);
 
   const retry = useCallback(() => {
     // `regenerate()` re-sends the last user message when the failed request
