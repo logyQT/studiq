@@ -1,5 +1,6 @@
 'use client';
 
+import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import {
   Badge,
   Button,
@@ -18,6 +19,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
 import { useFeatures } from '@/hooks/use-features';
@@ -58,6 +60,20 @@ function BrandingLockedCard({ onUpgrade }: { onUpgrade: () => void }) {
 export default function SettingsPage() {
   const t = useTranslations('ManageSettingsPage');
   const router = useRouter();
+  const { user } = useAuth();
+  // /me/plan resolves the active organization's plan first (personal plan only as fallback).
+  const { data: myPlan, isLoading: planLoading } = useApiQuery<PlanInfo>({
+    queryKey: ['me', 'plan'],
+    url: '/api/v1/me/plan',
+    enabled: !!user,
+  });
+  const { data: plans, isLoading: plansLoading } = useApiQuery<PlanInfo[]>({
+    queryKey: ['subscription-plans', 'active'],
+    url: '/api/v1/subscription-plans',
+  });
+  const planName = myPlan
+    ? (plans?.find((p) => p.key === myPlan.key)?.name ?? myPlan.name ?? myPlan.key)
+    : null;
   const { activeOrg } = useOrgs();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -231,9 +247,13 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3">
-            <Badge variant="default" className="text-sm px-3 py-1">
-              {t('basic_plan')}
-            </Badge>
+            {planLoading || plansLoading ? (
+              <Skeleton className="h-6 w-24" />
+            ) : planName ? (
+              <Badge variant="default" className="text-sm px-3 py-1">
+                {planName}
+              </Badge>
+            ) : null}
             <span className="text-sm text-muted-foreground">{t('managed_by_admins')}</span>
           </div>
         </CardContent>
