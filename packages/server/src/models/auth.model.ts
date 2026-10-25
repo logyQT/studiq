@@ -3,11 +3,20 @@ import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
+// Normalize before validating: `.trim()` is the first check, so every later
+// check (and the parsed output) sees the trimmed value. A whitespace-only name
+// collapses to "" and is reported as required instead of counting its spaces
+// towards `min(2)` (#303). Only single spaces may separate name parts — the old
+// `\s` class admitted tabs/newlines, making any 2+ whitespace characters a
+// "valid" name and letting padded values reach user metadata untrimmed.
 export const NameSchema = z
   .string({ error: ValidationErrorCode.NAME_REQUIRED })
+  .trim()
   .nonempty({ error: ValidationErrorCode.NAME_REQUIRED })
   .min(2, { error: ValidationErrorCode.NAME_TOO_SHORT })
-  .regex(/^[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ\s]+$/, { error: ValidationErrorCode.NAME_INVALID_FORMAT });
+  .regex(/^[a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ]+(?: [a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ]+)*$/, {
+    error: ValidationErrorCode.NAME_INVALID_FORMAT,
+  });
 
 export const passwordSchema = z
   .string({ error: ValidationErrorCode.PASSWORD_REQUIRED })

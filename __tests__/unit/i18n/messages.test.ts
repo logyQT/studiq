@@ -115,6 +115,19 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
     }
   });
 
+  /**
+   * #335 — the /app sidebar entry and the page it opens are labelled by two
+   * different keys, so they silently drifted („Talie” vs „Talie fiszek”). Pin
+   * them together; the /edu sidebar keeps `flashcard_decks` on purpose.
+   */
+  it('labels the student deck list and its page title consistently', () => {
+    const sidebarLabel = messages.DashboardLayout.app_flashcard_decks;
+
+    expect(sidebarLabel, 'DashboardLayout.app_flashcard_decks').toBeTypeOf('string');
+    expect(sidebarLabel).not.toHaveLength(0);
+    expect(sidebarLabel).toBe(messages.AppFlashcardDecksPage.title);
+  });
+
   it('uses distinct copy for the success and failure paths', () => {
     expect(messages.AccountPage.password_updated).not.toBe(
       messages.AccountPage.password_update_failed,
@@ -142,6 +155,18 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
 });
 
 describe('i18n message parity', () => {
+  /**
+   * #335 — the deck wording is split on purpose: the student area says „Fiszki”
+   * and the educator area keeps „Talie”. Editing the shared `flashcard_decks`
+   * value would rename the /edu sidebar again, so pin both sides here.
+   */
+  it('keeps the student and educator deck labels separate', () => {
+    expect(pl.DashboardLayout.app_flashcard_decks).toBe('Fiszki');
+    expect(en.DashboardLayout.app_flashcard_decks).toBe('Flashcards');
+    expect(pl.DashboardLayout.flashcard_decks).toBe('Talie');
+    expect(en.DashboardLayout.flashcard_decks).toBe('Decks');
+  });
+
   it('has the same AccountPage keys in en and pl', () => {
     expect(Object.keys(en.AccountPage).sort()).toEqual(Object.keys(pl.AccountPage).sort());
   });
