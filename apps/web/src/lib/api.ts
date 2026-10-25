@@ -29,6 +29,15 @@ export function getFieldErrorCode(error: unknown, field: string): string | undef
   return error.issues?.properties?.[field]?.errors?.[0];
 }
 
+/**
+ * All validation codes for a top-level field, e.g. a password can violate several
+ * rules at once. Duplicates are removed so each rule is reported once.
+ */
+export function getFieldErrorCodes(error: unknown, field: string): string[] {
+  if (!(error instanceof ApiError)) return [];
+  return [...new Set(error.issues?.properties?.[field]?.errors ?? [])];
+}
+
 async function throwIfNotOk(res: Response, method: string, url: string): Promise<void> {
   if (res.ok) return;
   const json = (await res.json().catch(() => ({}))) as { error?: string; issues?: ApiIssueTree };

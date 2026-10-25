@@ -1,4 +1,4 @@
-import { ApiError, apiPut, getFieldErrorCode } from '@/lib/api';
+import { ApiError, apiPut, getFieldErrorCode, getFieldErrorCodes } from '@/lib/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const issueBody = {
@@ -82,5 +82,52 @@ describe('getFieldErrorCode', () => {
   it('returns undefined for non-ApiError values', () => {
     expect(getFieldErrorCode(new Error('UNPROCESSABLE_ENTITY'), 'name')).toBeUndefined();
     expect(getFieldErrorCode(undefined, 'name')).toBeUndefined();
+  });
+});
+
+describe('getFieldErrorCodes', () => {
+  const passwordIssues = {
+    errors: [],
+    properties: {
+      password: {
+        errors: [
+          'VALIDATION_PASSWORD_TOO_SHORT',
+          'VALIDATION_PASSWORD_MISSING_UPPERCASE',
+          'VALIDATION_PASSWORD_MISSING_NUMBER',
+        ],
+      },
+    },
+  };
+
+  it('returns every validation code for a field, in payload order', () => {
+    const error = new ApiError('UNPROCESSABLE_ENTITY', 422, passwordIssues);
+
+    expect(getFieldErrorCodes(error, 'password')).toEqual([
+      'VALIDATION_PASSWORD_TOO_SHORT',
+      'VALIDATION_PASSWORD_MISSING_UPPERCASE',
+      'VALIDATION_PASSWORD_MISSING_NUMBER',
+    ]);
+  });
+
+  it('removes duplicate codes', () => {
+    const error = new ApiError('UNPROCESSABLE_ENTITY', 422, {
+      errors: [],
+      properties: {
+        password: {
+          errors: ['VALIDATION_PASSWORD_MISSING_NUMBER', 'VALIDATION_PASSWORD_MISSING_NUMBER'],
+        },
+      },
+    });
+
+    expect(getFieldErrorCodes(error, 'password')).toEqual(['VALIDATION_PASSWORD_MISSING_NUMBER']);
+  });
+
+  it('returns an empty array for an unknown field, missing issues or non-ApiError values', () => {
+    expect(
+      getFieldErrorCodes(new ApiError('UNPROCESSABLE_ENTITY', 422, passwordIssues), 'name'),
+    ).toEqual([]);
+    expect(getFieldErrorCodes(new ApiError('INTERNAL_SERVER', 500), 'password')).toEqual([]);
+    expect(getFieldErrorCodes(new Error('UNPROCESSABLE_ENTITY'), 'password')).toEqual([]);
+    expect(getFieldErrorCodes(undefined, 'password')).toEqual([]);
   });
 });
