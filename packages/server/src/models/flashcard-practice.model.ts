@@ -188,6 +188,12 @@ export interface StateBreakdown {
   review: number;
   relearning: number;
   leeched: number;
+  /** Cards with ≥1 practice attempt — whole accessible collection, never state-filtered. */
+  practicedCards: number;
+  /** Mean of per-card correct rates, 0–100 (0 when nothing practiced). */
+  averageAccuracy: number;
+  /** Mean easiness factor over reviewed cards (0 when none). */
+  averageEasinessFactor: number;
 }
 
 export interface CardStatsResponse {

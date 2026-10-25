@@ -3,6 +3,7 @@ import { forEachCopy, registerMock } from '#test/helpers/concurrent';
 import { type BeforeResult, before } from '#test/helpers/test-user';
 import {
   applyRegisteredMock,
+  cleanupFlashcardDecks,
   cleanupFlashcardPractice,
   cleanupFlashcardReviewState,
   cleanupFlashcards,
@@ -11,9 +12,11 @@ import {
 import { createNextRequest, createNextRequestWithParams } from '#test/integration/test-utils';
 import { POST as logPractice } from '@/app/(backend)/api/v1/flashcards/[id]/practice/route';
 import { GET as getStatsForCard } from '@/app/(backend)/api/v1/flashcards/[id]/practice/stats/route';
+import { GET as getCardsStats } from '@/app/(backend)/api/v1/flashcards/practice/cards-stats/route';
 import { GET as getDueBreakdown } from '@/app/(backend)/api/v1/flashcards/practice/due/breakdown/route';
 import { GET as getDueCount } from '@/app/(backend)/api/v1/flashcards/practice/due/count/route';
 import { GET as getDueCards } from '@/app/(backend)/api/v1/flashcards/practice/new/route';
+import { GET as getStateBreakdown } from '@/app/(backend)/api/v1/flashcards/practice/states/route';
 import { GET as getStatsAll } from '@/app/(backend)/api/v1/flashcards/practice/stats/route';
 
 forEachCopy((copyId) => {
@@ -308,6 +311,82 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(401);
         expect(body.success).toBe(false);
+      });
+    });
+
+    describe('GET /api/v1/flashcards/practice/states (#395)', () => {
+      let kpi!: BeforeResult;
+
+      beforeAll(async () => {
+        // Own deck + 2 cards, so the `created_by` scope is exactly this user.
+        kpi = await before({ role: 'student', decks: 1, flashcards: 2 });
+      });
+
+      afterAll(async () => {
+        await cleanupFlashcardPractice(kpi.user.id);
+        await cleanupFlashcardReviewState(kpi.user.id);
+        await cleanupFlashcards(kpi.user.id);
+        await cleanupFlashcardDecks(kpi.user.id);
+      });
+
+      async function fetchStates() {
+        mockUser(kpi.user);
+        const response = await getStateBreakdown(
+          createNextRequest('http://localhost/api/v1/flashcards/practice/states'),
+        );
+        const body = await response.json();
+        expect(response.status).toBe(200);
+        return body.data;
+      }
+
+      it('reports collection-wide KPIs that a state filter cannot move', async () => {
+        const [cardA, cardB] = kpi.created.flashcards;
+
+        const practice = async (flashcardId: string, wasCorrect: boolean) => {
+          mockUser(kpi.user);
+          const { request, params } = createNextRequestWithParams(
+            `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
+            { id: flashcardId },
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ wasCorrect }),
+            },
+          );
+          const response = await logPractice(request, { params });
+          expect(response.status).toBe(201);
+          const body = await response.json();
+          return body.data.reviewState as { easiness_factor: number };
+        };
+
+        // Card A: correct + wrong -> 50%. Card B: correct -> 100%.
+        await practice(cardA, true);
+        const stateA = await practice(cardA, false);
+        const stateB = await practice(cardB, true);
+
+        const states = await fetchStates();
+
+        expect(states).toMatchObject({
+          totalCards: 2,
+          practicedCards: 2,
+          averageAccuracy: 75,
+        });
+        expect(states.averageEasinessFactor).toBe(
+          Math.round(((stateA.easiness_factor + stateB.easiness_factor) / 2) * 100) / 100,
+        );
+
+        // STU-42: the state filter scopes the table only, never the KPI row.
+        mockUser(kpi.user);
+        const filteredResponse = await getCardsStats(
+          createNextRequest(
+            'http://localhost/api/v1/flashcards/practice/cards-stats?state=new&limit=100',
+          ),
+        );
+        const filtered = await filteredResponse.json();
+
+        expect(filteredResponse.status).toBe(200);
+        expect(filtered.data.items).toHaveLength(0);
+        expect(await fetchStates()).toEqual(states);
       });
     });
 

@@ -18,7 +18,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
@@ -152,27 +152,7 @@ export function FlashcardsTab() {
     url: '/api/v1/flashcards/practice/states',
   });
 
-  const items = useMemo(() => cardsData?.items ?? [], [cardsData]);
-
-  const summaryCards = useMemo(() => {
-    const totalPracticed = items.filter((i) => i.totalAttempts > 0).length;
-    const avgAccuracy =
-      totalPracticed > 0
-        ? Math.round(
-            items.filter((i) => i.totalAttempts > 0).reduce((sum, i) => sum + i.correctRate, 0) /
-              totalPracticed,
-          )
-        : 0;
-    const avgEF =
-      items.filter((i) => i.easinessFactor).length > 0
-        ? items
-            .filter((i) => i.easinessFactor)
-            .reduce((sum, i) => sum + (i.easinessFactor ?? 0), 0) /
-          items.filter((i) => i.easinessFactor).length
-        : 0;
-
-    return { totalPracticed, avgAccuracy, avgEF };
-  }, [items]);
+  const items = cardsData?.items ?? [];
 
   return (
     <div className="space-y-6">
@@ -185,19 +165,31 @@ export function FlashcardsTab() {
         />
         <StatCard
           title={t('practiced_cards')}
-          value={summaryCards.totalPracticed}
+          value={stateBreakdown ? stateBreakdown.practicedCards : '...'}
           icon={Play}
           variant="emerald"
         />
         <StatCard
           title={t('average_accuracy')}
-          value={summaryCards.totalPracticed > 0 ? `${summaryCards.avgAccuracy}%` : '--'}
+          value={
+            stateBreakdown
+              ? stateBreakdown.practicedCards > 0
+                ? `${stateBreakdown.averageAccuracy}%`
+                : '--'
+              : '...'
+          }
           icon={Sparkles}
           variant="violet"
         />
         <StatCard
           title={t('average_easiness')}
-          value={summaryCards.avgEF > 0 ? summaryCards.avgEF.toFixed(2) : '--'}
+          value={
+            stateBreakdown
+              ? stateBreakdown.averageEasinessFactor > 0
+                ? stateBreakdown.averageEasinessFactor.toFixed(2)
+                : '--'
+              : '...'
+          }
           icon={RotateCcw}
           variant="amber"
         />
