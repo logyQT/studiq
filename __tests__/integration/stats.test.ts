@@ -29,6 +29,8 @@ forEachCopy((copyId) => {
     let scopedTeacher!: BeforeResult;
     let member!: TestUserFixture;
     let outsider!: TestUserFixture;
+    let seedBankId!: string;
+    let extraBankId!: string;
 
     const inOrgTitle = `seed-quizstats-in-org-${copyId}`;
     const outsiderTitle = `seed-quizstats-outside-${copyId}`;
@@ -37,6 +39,50 @@ forEachCopy((copyId) => {
       // Fresh educator with exactly 3 API-created questions + fresh student.
       teacher = await before({ role: 'educator', questions: 3 });
       student = await before({ role: 'student' });
+
+      // Subject/type breakdown setup: the API-seeded questions all land in one
+      // mcq bank; add a second bank holding a true_false + an open question so
+      // the type split and the per-subject distribution can be exercised.
+      const service = createServiceClient();
+      const { data: seededQuestions } = await service
+        .from('questions')
+        .select('id, bank_id')
+        .in('id', teacher.created.questions);
+      const seededBankId = seededQuestions?.[0]?.bank_id;
+      if (!seededBankId) throw new Error('[setup] seeded question bank not found');
+      seedBankId = seededBankId;
+
+      const { data: extraBank, error: extraBankError } = await service
+        .from('question_banks')
+        .insert({
+          created_by: teacher.user.id,
+          name: `seed-bank-extra-${copyId}`,
+          visibility: 'personal',
+        })
+        .select('id')
+        .single();
+      if (extraBankError || !extraBank) {
+        throw new Error(`[setup] extra bank insert failed: ${extraBankError?.message}`);
+      }
+      extraBankId = extraBank.id;
+
+      const { error: extraQuestionsError } = await service.from('questions').insert([
+        {
+          bank_id: extraBankId,
+          created_by: teacher.user.id,
+          type: 'true_false',
+          content: `seed-question-extra-${copyId}-0`,
+        },
+        {
+          bank_id: extraBankId,
+          created_by: teacher.user.id,
+          type: 'open',
+          content: `seed-question-extra-${copyId}-1`,
+        },
+      ]);
+      if (extraQuestionsError) {
+        throw new Error(`[setup] extra questions insert failed: ${extraQuestionsError.message}`);
+      }
 
       // Educator with an org holding exactly one student member — mirrors the
       // EDU-ST-02 classroom setup for the teacher-quiz-stats scoping check.
@@ -49,7 +95,6 @@ forEachCopy((copyId) => {
       member = await createTestUser({ role: 'student' });
       outsider = await createTestUser({ role: 'student' });
 
-      const service = createServiceClient();
       const { data: memberRole } = await service
         .from('org_roles')
         .select('id')
@@ -128,7 +173,7 @@ forEachCopy((copyId) => {
         expect(body.data.totalFlashcards).toBeDefined();
       });
 
-      it('returns teacher stats with question details', async () => {
+      it('returns totals plus the type and subject breakdowns', async () => {
         mockUser(teacher.user);
 
         const req = createNextRequest('http://localhost/api/v1/stats/teacher');
@@ -136,7 +181,94 @@ forEachCopy((copyId) => {
         const body = await response.json();
 
         expect(response.status).toBe(200);
-        expect(body.data.totalQuestions).toBe(3);
+        expect(body.data.totalQuestions).toBe(5);
+        expect(body.data.subject.byType).toEqual({ mcq: 3, true_false: 1, open: 1 });
+
+        const bySubject = body.data.bySubject as Array<{
+          subjectId: string;
+          subjectName: string | null;
+          questionCount: number;
+        }>;
+        expect(bySubject).toHaveLength(2);
+        expect(bySubject.find((s) => s.subjectId === seedBankId)).toMatchObject({
+          questionCount: 3,
+          subjectName: expect.stringContaining('seed-bank-'),
+        });
+        expect(bySubject.find((s) => s.subjectId === extraBankId)).toMatchObject({
+          subjectName: `seed-bank-extra-${copyId}`,
+          questionCount: 2,
+        });
+      });
+
+      it('narrows only the type split when ?subjectId= is provided', async () => {
+        mockUser(teacher.user);
+
+        const req = createNextRequest(
+          `http://localhost/api/v1/stats/teacher?subjectId=${extraBankId}`,
+        );
+        const response = await teacherGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.subject.byType).toEqual({ true_false: 1, open: 1 });
+        // Totals and the by-subject overview stay global.
+        expect(body.data.totalQuestions).toBe(5);
+        expect(body.data.bySubject).toHaveLength(2);
+      });
+
+      it('narrows the same split for an uppercase subject id', async () => {
+        mockUser(teacher.user);
+
+        const req = createNextRequest(
+          `http://localhost/api/v1/stats/teacher?subjectId=${extraBankId.toUpperCase()}`,
+        );
+        const response = await teacherGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.subject.byType).toEqual({ true_false: 1, open: 1 });
+        // Totals and the by-subject overview stay global.
+        expect(body.data.totalQuestions).toBe(5);
+        expect(body.data.bySubject).toHaveLength(2);
+      });
+
+      it('returns the seeded bank split for a known subject id', async () => {
+        mockUser(teacher.user);
+
+        const req = createNextRequest(
+          `http://localhost/api/v1/stats/teacher?subjectId=${seedBankId}`,
+        );
+        const response = await teacherGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.subject.byType).toEqual({ mcq: 3 });
+      });
+
+      it('returns an empty type split for an unknown subject id', async () => {
+        mockUser(teacher.user);
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/stats/teacher?subjectId=00000000-0000-4000-8020-000000000099',
+        );
+        const response = await teacherGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.subject.byType).toEqual({});
+        expect(body.data.totalQuestions).toBe(5);
+      });
+
+      it('returns 422 for a non-UUID subject id', async () => {
+        mockUser(teacher.user);
+
+        const req = createNextRequest('http://localhost/api/v1/stats/teacher?subjectId=not-a-uuid');
+        const response = await teacherGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+        expect(body.error).toBe('UNPROCESSABLE_ENTITY');
       });
 
       it('returns 401 when not authenticated', async () => {

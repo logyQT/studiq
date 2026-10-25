@@ -42,37 +42,156 @@ describe('StatsService', () => {
   });
 
   describe('getTeacherStats', () => {
-    it('returns basic stats', async () => {
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: [{ id: 'q-1' }], error: null }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: [{ id: 'fc-1' }], error: null }),
-        }),
-      });
+    it('returns totals, the type split and the subject distribution', async () => {
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq', bank_id: 'bank-1' }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'bank-1', name: 'Historia' }]));
 
       const result = await service.getTeacherStats(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual({ totalQuestions: 1, totalFlashcards: 1 });
+      expect(result.data).toEqual({
+        totalQuestions: 1,
+        totalFlashcards: 1,
+        subject: { byType: { mcq: 1 } },
+        bySubject: [{ subjectId: 'bank-1', subjectName: 'Historia', questionCount: 1 }],
+      });
     });
 
     it('scopes question/flashcard counts to the active organization', async () => {
       const orgCtx: RequestContext = { ...ctx, activeOrgId: 'org-1' };
-      const questionsBuilder = qb([{ id: 'q-1' }]);
+      const questionsBuilder = qb([{ id: 'q-1', type: 'mcq', bank_id: 'bank-1' }]);
       const flashcardsBuilder = qb([{ id: 'fc-1' }]);
+      const banksBuilder = qb([{ id: 'bank-1', name: 'Historia' }]);
       mock.from.mockReturnValueOnce(questionsBuilder);
       mock.from.mockReturnValueOnce(flashcardsBuilder);
+      mock.from.mockReturnValueOnce(banksBuilder);
 
       const result = await service.getTeacherStats(orgCtx);
 
       expect(result.success).toBe(true);
       expect(questionsBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
       expect(flashcardsBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+    });
+
+    it('groups questions by bank and counts types, sorted by Polish name', async () => {
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'q-1', type: 'mcq', bank_id: 'bank-geo' },
+          { id: 'q-2', type: 'true_false', bank_id: 'bank-his' },
+          { id: 'q-3', type: 'open', bank_id: 'bank-his' },
+          { id: 'q-4', type: 'mcq', bank_id: 'bank-his' },
+          { id: 'q-5', type: 'mcq', bank_id: 'bank-gone' },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'bank-his', name: 'Historia' },
+          { id: 'bank-geo', name: 'Geografia i Nauka' },
+        ]),
+      );
+
+      const result = await service.getTeacherStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data.subject.byType).toEqual({ mcq: 3, true_false: 1, open: 1 });
+      // localeCompare('pl'): Geografia before Historia; the bank missing from the
+      // lookup (RLS / left-org edge case) keeps a null name and sorts last.
+      expect(result.data.bySubject).toEqual([
+        { subjectId: 'bank-geo', subjectName: 'Geografia i Nauka', questionCount: 1 },
+        { subjectId: 'bank-his', subjectName: 'Historia', questionCount: 3 },
+        { subjectId: 'bank-gone', subjectName: null, questionCount: 1 },
+      ]);
+    });
+
+    it('narrows only the type split when a subject is selected', async () => {
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'q-1', type: 'mcq', bank_id: 'bank-his' },
+          { id: 'q-2', type: 'mcq', bank_id: 'bank-his' },
+          { id: 'q-3', type: 'true_false', bank_id: 'bank-his' },
+          { id: 'q-4', type: 'mcq', bank_id: 'bank-geo' },
+          { id: 'q-5', type: 'open', bank_id: 'bank-geo' },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'bank-his', name: 'Historia' },
+          { id: 'bank-geo', name: 'Geografia i Nauka' },
+        ]),
+      );
+
+      const result = await service.getTeacherStats(ctx, { subjectId: 'bank-his' });
+
+      expect(result.success).toBe(true);
+      expect(result.data.subject.byType).toEqual({ mcq: 2, true_false: 1 });
+      // Totals and the by-subject overview stay global.
+      expect(result.data.totalQuestions).toBe(5);
+      expect(result.data.bySubject).toEqual([
+        { subjectId: 'bank-geo', subjectName: 'Geografia i Nauka', questionCount: 2 },
+        { subjectId: 'bank-his', subjectName: 'Historia', questionCount: 3 },
+      ]);
+    });
+
+    it('matches an uppercase subject id as Postgres would', async () => {
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'q-1', type: 'mcq', bank_id: 'bank-his' },
+          { id: 'q-2', type: 'mcq', bank_id: 'bank-his' },
+          { id: 'q-3', type: 'true_false', bank_id: 'bank-his' },
+          { id: 'q-4', type: 'mcq', bank_id: 'bank-geo' },
+          { id: 'q-5', type: 'open', bank_id: 'bank-geo' },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'bank-his', name: 'Historia' },
+          { id: 'bank-geo', name: 'Geografia i Nauka' },
+        ]),
+      );
+
+      const result = await service.getTeacherStats(ctx, { subjectId: 'BANK-HIS' });
+
+      expect(result.success).toBe(true);
+      expect(result.data.subject.byType).toEqual({ mcq: 2, true_false: 1 });
+      expect(result.data.totalQuestions).toBe(5);
+      expect(result.data.bySubject).toHaveLength(2);
+    });
+
+    it('yields an empty type split for a foreign subject id without widening the query', async () => {
+      const questionsBuilder = qb([{ id: 'q-1', type: 'mcq', bank_id: 'bank-his' }]);
+      mock.from.mockReturnValueOnce(questionsBuilder);
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'bank-his', name: 'Historia' }]));
+
+      const result = await service.getTeacherStats(ctx, {
+        subjectId: '00000000-0000-4000-8020-000000000099',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.subject.byType).toEqual({});
+      expect(result.data.totalQuestions).toBe(1);
+      expect(questionsBuilder.eq).toHaveBeenCalledWith('created_by', 'test-user-id');
+    });
+
+    it('skips the bank lookup when there are no questions', async () => {
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }]));
+
+      const result = await service.getTeacherStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({
+        totalQuestions: 0,
+        totalFlashcards: 1,
+        subject: { byType: {} },
+        bySubject: [],
+      });
+      expect(mock.from).toHaveBeenCalledTimes(2);
+      expect(mock.from).not.toHaveBeenCalledWith('question_banks');
     });
   });
 

@@ -3,13 +3,20 @@ import type { ControllerResponse } from '@studiq/server/lib/controller-response'
 import { controllerResponse } from '@studiq/server/lib/controller-response';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure } from '@studiq/server/lib/service-result';
+import { TeacherStatsQuerySchema } from '@studiq/server/models/stats.model';
 import { type StatsService, statsService } from '@studiq/server/services/stats.service';
 
 export class StatsController {
   constructor(private statsService: StatsService) {}
 
-  async getTeacherStats(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.statsService.getTeacherStats(ctx);
+  async getTeacherStats(query: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    const parsed = TeacherStatsQuerySchema.safeParse(query);
+
+    if (!parsed.success) {
+      return controllerResponse.error('UNPROCESSABLE_ENTITY', parsed.error.issues);
+    }
+
+    const result = await this.statsService.getTeacherStats(ctx, parsed.data);
 
     if (isFailure(result)) return controllerResponse.error(result.error);
 

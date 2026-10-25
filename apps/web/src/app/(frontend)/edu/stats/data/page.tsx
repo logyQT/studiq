@@ -1,10 +1,19 @@
 'use client';
 
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   StatCard,
   Table,
   TableBody,
@@ -13,19 +22,18 @@ import {
   TableHeader,
   TableRow,
 } from '@studiq/ui';
+import {
+  orderedQuestionTypeEntries,
+  parseTeacherStatsResponse,
+  type TeacherStatsPayload,
+} from '@/lib/stats';
 import { BookOpen, ExternalLink, FileText, Layers, PieChart, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
-interface TeacherStats {
-  totalQuestions: number;
-  totalFlashcards: number;
-  subject?: {
-    byType: Record<string, number>;
-    byDifficulty: Record<string, number>;
-  };
-}
+/** Radix Select cannot hold an empty value, so "no filter" needs a sentinel. */
+const ALL_SUBJECTS = '__all__';
 
 interface FlashcardStats {
   summary: {
@@ -49,48 +57,79 @@ interface FlashcardStats {
 
 export default function StatsDataPage() {
   const t = useTranslations('StatsDataPage');
-  const [stats, setStats] = useState<TeacherStats | null>(null);
+  const tc = useTranslations('Common');
+  const [stats, setStats] = useState<TeacherStatsPayload | null>(null);
+  const [statsError, setStatsError] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
   const [flashStats, setFlashStats] = useState<FlashcardStats | null>(null);
-  const [selectedSubject, _setSelectedSubject] = useState('__all__');
-  const [subjectBreakdown, setSubjectBreakdown] = useState<TeacherStats['subject'] | null>(null);
+  const [selectedSubject, setSelectedSubject] = useState(ALL_SUBJECTS);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      fetch('/api/v1/stats/teacher').then((r) => r.json()),
-      fetch('/api/v1/flashcards/stats/teacher').then((r) => r.json()),
-    ])
-      .then(([s, f]) => {
-        setStats(s.data ?? s);
-        setFlashStats(f.data ?? f);
-        setLoading(false);
+    const controller = new AbortController();
+    fetch('/api/v1/flashcards/stats/teacher', { signal: controller.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error(`flashcard stats request failed: ${r.status}`);
+        return r.json();
       })
-      .catch(() => setLoading(false));
+      .then((f) => {
+        // Flashcard tables are supplementary; only a shaped payload is stored.
+        const data = f?.data ?? f;
+        if (data?.summary) setFlashStats(data);
+      })
+      .catch(() => {
+        // A failure leaves the flashcard tables hidden.
+      });
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
-    if (selectedSubject === '__all__') {
-      setSubjectBreakdown(stats?.subject ?? null);
-      return;
-    }
-    fetch(`/api/v1/stats/teacher?subjectId=${selectedSubject}`)
-      .then((r) => r.json())
-      .then((r) => setSubjectBreakdown((r.data ?? r)?.subject ?? null))
-      .catch(() => setSubjectBreakdown(null));
-  }, [selectedSubject, stats]);
+    const controller = new AbortController();
+    const url =
+      selectedSubject === ALL_SUBJECTS
+        ? '/api/v1/stats/teacher'
+        : `/api/v1/stats/teacher?subjectId=${encodeURIComponent(selectedSubject)}`;
+
+    fetch(url, { signal: controller.signal })
+      .then((r) => {
+        // Every 4xx/5xx is a JSON envelope; without this check it would land in state.
+        if (!r.ok) throw new Error(`stats request failed: ${r.status}`);
+        return r.json();
+      })
+      .then((body) => {
+        const parsed = parseTeacherStatsResponse(body);
+        if (!parsed) throw new Error('unexpected stats payload');
+        // Keep the previous payload mounted while re-filtering; only the first
+        // load shows the loading text.
+        setStats(parsed);
+        setStatsError(false);
+      })
+      .catch(() => {
+        // Aborted requests are superseded by a newer filter change.
+        if (!controller.signal.aborted) setStatsError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    // Aborting the stale request keeps rapid filter changes from applying out of order.
+    return () => controller.abort();
+  }, [selectedSubject, reloadToken]);
 
   if (loading) {
     return <div className="flex justify-center py-12 text-muted-foreground">Loading...</div>;
   }
 
-  const totalByType = Object.entries(subjectBreakdown?.byType ?? {}).map(([key, count]) => ({
-    key,
-    count,
-  }));
+  const typeEntries = orderedQuestionTypeEntries(stats?.subject?.byType ?? {});
+  const bySubject = stats?.bySubject ?? [];
+  const flashSummary = flashStats?.summary;
+  const deckRows = flashStats?.byDeck ?? [];
+  const topicRows = flashStats?.byTopic ?? [];
 
-  const totalByDifficulty = Object.entries(subjectBreakdown?.byDifficulty ?? {}).map(
-    ([key, count]) => ({ key, count }),
-  );
+  const typeLabel = (key: string) =>
+    key === 'mcq' || key === 'true_false' || key === 'open'
+      ? tc(`question_type_${key}`)
+      : key.replaceAll('_', ' ');
 
   return (
     <div className="space-y-8">
@@ -99,26 +138,47 @@ export default function StatsDataPage() {
           <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-muted-foreground mt-1">{t('description')}</p>
         </div>
+        <Select value={selectedSubject} onValueChange={setSelectedSubject}>
+          <SelectTrigger className="w-48 truncate" aria-label={t('filter_subject')}>
+            <SelectValue placeholder={t('all_subjects')} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_SUBJECTS}>{t('all_subjects')}</SelectItem>
+            {bySubject.map((subject) => (
+              <SelectItem key={subject.subjectId} value={subject.subjectId}>
+                {subject.subjectName ?? t('unknown_subject')}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
+
+      {statsError && (
+        <Alert variant="destructive">
+          <AlertTitle>{t('load_error')}</AlertTitle>
+          <AlertDescription className="flex flex-wrap items-center gap-3">
+            {t('load_error_hint')}
+            <Button variant="outline" size="sm" onClick={() => setReloadToken((n) => n + 1)}>
+              {t('retry')}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard title={t('total_questions')} value={stats?.totalQuestions ?? 0} icon={FileText} />
         <StatCard title={t('total_flashcards')} value={stats?.totalFlashcards ?? 0} icon={Layers} />
-        <StatCard
-          title={t('total_decks')}
-          value={flashStats?.summary.totalDecks ?? 0}
-          icon={BookOpen}
-        />
-        {flashStats?.summary.rosterStudents != null && (
+        <StatCard title={t('total_decks')} value={flashSummary?.totalDecks ?? 0} icon={BookOpen} />
+        {flashSummary?.rosterStudents != null && (
           <StatCard
             title={t('students')}
-            value={flashStats.summary.rosterStudents}
+            value={flashSummary.rosterStudents}
             description={t('active_students', {
-              count: flashStats.summary.practicingStudents,
+              count: flashSummary.practicingStudents,
             })}
             progress={
-              flashStats.summary.rosterStudents > 0
-                ? (flashStats.summary.practicingStudents / flashStats.summary.rosterStudents) * 100
+              flashSummary.rosterStudents > 0
+                ? (flashSummary.practicingStudents / flashSummary.rosterStudents) * 100
                 : 0
             }
             icon={Users}
@@ -127,53 +187,45 @@ export default function StatsDataPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        {totalByType.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('by_type_title')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {totalByType.map(({ key, count }) => (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('by_type_title')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {typeEntries.length > 0 ? (
+              typeEntries.map(({ key, count }) => (
                 <div key={key} className="flex items-center justify-between">
-                  <span className="text-sm capitalize">{key.replace('_', ' ')}</span>
+                  <span className="text-sm">{typeLabel(key)}</span>
                   <span className="font-medium tabular-nums">{count}</span>
                 </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">{t('no_questions')}</p>
+            )}
+          </CardContent>
+        </Card>
 
-        {totalByDifficulty.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('by_difficulty')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {totalByDifficulty.map(({ key, count }) => (
-                <div key={key} className="flex items-center justify-between">
-                  <span className="text-sm capitalize">{key}</span>
-                  <span className="font-medium tabular-nums">{count}</span>
+        {/* Deliberately global: it is the overview that explains the filter above. */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('by_subject_title')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {bySubject.length > 0 ? (
+              bySubject.map((subject) => (
+                <div key={subject.subjectId} className="flex items-center justify-between">
+                  <span className="text-sm">{subject.subjectName ?? t('unknown_subject')}</span>
+                  <span className="font-medium tabular-nums">{subject.questionCount}</span>
                 </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
-
-        {selectedSubject === '__all__' && totalByType.length === 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('by_type_title')}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Select a subject to see question type breakdown
-              </p>
-            </CardContent>
-          </Card>
-        )}
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">{t('no_questions')}</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {flashStats && flashStats.byDeck.length > 0 && (
+      {deckRows.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -190,7 +242,7 @@ export default function StatsDataPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {flashStats.byDeck.map((deck) => (
+                {deckRows.map((deck) => (
                   <TableRow key={deck.deckId}>
                     <TableCell className="font-medium">
                       <Link href={`/edu/flashcards/${deck.deckId}`} className="hover:underline">
@@ -206,7 +258,7 @@ export default function StatsDataPage() {
         </Card>
       )}
 
-      {flashStats && flashStats.byTopic.length > 0 && (
+      {topicRows.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -223,7 +275,7 @@ export default function StatsDataPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {flashStats.byTopic.map((topic) => (
+                {topicRows.map((topic) => (
                   <TableRow key={topic.topicId}>
                     <TableCell className="font-medium">{topic.topicName}</TableCell>
                     <TableCell className="text-right tabular-nums">

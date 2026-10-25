@@ -38,15 +38,33 @@ describe('StatsController', () => {
       const stats = { totalQuestions: 10, totalFlashcards: 5 };
       mockService.getTeacherStats.mockResolvedValueOnce(success(stats));
 
-      const response = await controller.getTeacherStats(mockCtx);
+      const response = await controller.getTeacherStats({}, mockCtx);
 
       expect(response).toEqual({ success: true, statusCode: 200, data: stats });
+      expect(mockService.getTeacherStats).toHaveBeenCalledWith(mockCtx, {});
+    });
+
+    it('forwards a valid subjectId', async () => {
+      const subjectId = '00000000-0000-4000-8020-000000000005';
+      mockService.getTeacherStats.mockResolvedValueOnce(success({ totalQuestions: 1 }));
+
+      await controller.getTeacherStats({ subjectId }, mockCtx);
+
+      expect(mockService.getTeacherStats).toHaveBeenCalledWith(mockCtx, { subjectId });
+    });
+
+    it('rejects a non-UUID subjectId without calling the service', async () => {
+      const response = await controller.getTeacherStats({ subjectId: 'not-a-uuid' }, mockCtx);
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect(mockService.getTeacherStats).not.toHaveBeenCalled();
     });
 
     it('returns error when service returns failure', async () => {
       mockService.getTeacherStats.mockResolvedValueOnce(failure('INTERNAL_SERVER'));
 
-      const response = await controller.getTeacherStats(mockCtx);
+      const response = await controller.getTeacherStats({}, mockCtx);
 
       expect(response).toEqual({ success: false, statusCode: 500, error: 'INTERNAL_SERVER' });
     });
