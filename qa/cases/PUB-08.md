@@ -20,6 +20,6 @@ Zalogowany kolejno jako S1, T1, M1.
 ## Expected result
 
 - Student: „No to niezłe combo…” z linkami do Fiszki / Quiz / Statystyki.
-- Nauczyciel: „Nie znaleziono strony” z linkami Przegląd / Pytania / Fiszki / Statystyki / Klasa.
+- Nauczyciel: „Nie znaleziono strony” z linkami Przegląd / Pytania / Fiszki / Statystyki.
 - Manager: „Nie znaleziono strony” z linkami Przegląd / Członkowie / Zaproszenia / Ustawienia.
 - Układ panelu (sidebar) pozostaje widoczny.

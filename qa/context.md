@@ -119,6 +119,10 @@ Po każdej awarii zapisz zrzut ekranu, treść błędów z konsoli (Console) ora
 
 Nigdy nie używaj prawdziwych danych karty płatniczej ani prawdziwych haseł – płatność jest symulowana, a hasła testowe są jawne.
 
+### Odstępstwa od dokumentu (decyzje produktowe)
+
+**PUB-08 — panel nauczyciela bez sekcji „Klasa”** (decyzja #292, 2026-10-25). Strona 404 `/edu/nie-istnieje` pokazuje cztery linki: Przegląd / Pytania / Fiszki / Statystyki. Trasa `/edu/classroom` nie ma strony docelowej (istnieją tylko `/edu/classroom/members`, `/edu/classroom/invite`, `/edu/classroom/new`), a zarządzanie członkami i grupami należy do panelu managera — brak linku „Klasa” jest wynikiem oczekiwanym, nie usterką.
+
 ### Sugerowana kolejność
 
 1) PUB, AUT → 2) ONB → 3) STU → 4) EDU → 5) MGR → 6) BIL, LIM → 7) ADM → 8) SEC → 9) NFR. Pełny przebieg ma sens po bunx supabase db reset.
