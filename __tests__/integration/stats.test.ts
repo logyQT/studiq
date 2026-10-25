@@ -412,5 +412,352 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(403);
       });
     });
+
+    // Regression for #204 (EDU-ST-02): „Problematyczne pytania” read
+    // `subject.problematicQuestions`, which `GET /api/v1/stats/teacher` never
+    // produced — the card always showed its empty state.
+    describe('GET /api/v1/stats/teacher — problematic questions (#204)', () => {
+      let pqTeacher!: BeforeResult;
+      let pqOtherTeacher!: TestUserFixture;
+      let pqMember!: TestUserFixture;
+      let pqOutsider!: TestUserFixture;
+      let pqBankId!: string;
+      let pqForeignBankId!: string;
+      let problematicId!: string;
+      let healthyId!: string;
+      let multiId!: string;
+      let openId!: string;
+      let foreignId!: string;
+
+      beforeAll(async () => {
+        pqTeacher = await before({ role: 'educator', org: `problematic-org-${copyId}` });
+        const orgId = pqTeacher.orgId;
+        if (!orgId) throw new Error('[setup] org not created');
+
+        const service = createServiceClient();
+        pqMember = await createTestUser({ role: 'student' });
+        pqOutsider = await createTestUser({ role: 'student' });
+        pqOtherTeacher = await createTestUser({ role: 'educator' });
+
+        const { data: roles } = await service
+          .from('org_roles')
+          .select('id, name')
+          .eq('organization_id', orgId);
+        const memberRole = roles?.find((r) => r.name === 'member');
+        const teacherRole = roles?.find((r) => r.name === 'teacher');
+        if (!memberRole || !teacherRole) throw new Error('[setup] org roles not found');
+
+        const { error: membershipError } = await service.from('org_members').insert([
+          { organization_id: orgId, user_id: pqMember.id, org_role_id: memberRole.id },
+          { organization_id: orgId, user_id: pqOtherTeacher.id, org_role_id: teacherRole.id },
+        ]);
+        if (membershipError) {
+          throw new Error(`[setup] org membership failed: ${membershipError.message}`);
+        }
+
+        const { data: bank, error: bankError } = await service
+          .from('question_banks')
+          .insert({
+            created_by: pqTeacher.user.id,
+            organization_id: orgId,
+            name: `seed-bank-problematic-${copyId}`,
+            visibility: 'group',
+          })
+          .select('id')
+          .single();
+        if (bankError || !bank)
+          throw new Error(`[setup] bank insert failed: ${bankError?.message}`);
+        pqBankId = bank.id;
+
+        const { data: foreignBank, error: foreignBankError } = await service
+          .from('question_banks')
+          .insert({
+            created_by: pqOtherTeacher.id,
+            organization_id: orgId,
+            name: `seed-bank-foreign-${copyId}`,
+            visibility: 'group',
+          })
+          .select('id')
+          .single();
+        if (foreignBankError || !foreignBank) {
+          throw new Error(`[setup] foreign bank insert failed: ${foreignBankError?.message}`);
+        }
+        pqForeignBankId = foreignBank.id;
+
+        const { data: questions, error: questionsError } = await service
+          .from('questions')
+          .insert([
+            {
+              bank_id: pqBankId,
+              created_by: pqTeacher.user.id,
+              organization_id: orgId,
+              type: 'mcq',
+              content: `seed-problematic-${copyId}`,
+            },
+            {
+              bank_id: pqBankId,
+              created_by: pqTeacher.user.id,
+              organization_id: orgId,
+              type: 'mcq',
+              content: `seed-healthy-${copyId}`,
+            },
+            {
+              bank_id: pqBankId,
+              created_by: pqTeacher.user.id,
+              organization_id: orgId,
+              type: 'multi_select',
+              content: `seed-multi-${copyId}`,
+            },
+            {
+              bank_id: pqBankId,
+              created_by: pqTeacher.user.id,
+              organization_id: orgId,
+              type: 'open',
+              content: `seed-open-${copyId}`,
+            },
+            {
+              bank_id: pqForeignBankId,
+              created_by: pqOtherTeacher.id,
+              organization_id: orgId,
+              type: 'mcq',
+              content: `seed-foreign-${copyId}`,
+            },
+          ])
+          .select('id, content');
+        if (questionsError || !questions) {
+          throw new Error(`[setup] questions insert failed: ${questionsError?.message}`);
+        }
+        const questionId = (content: string) => {
+          const row = questions.find((q) => q.content === content);
+          if (!row) throw new Error(`[setup] question ${content} not found`);
+          return row.id as string;
+        };
+        problematicId = questionId(`seed-problematic-${copyId}`);
+        healthyId = questionId(`seed-healthy-${copyId}`);
+        multiId = questionId(`seed-multi-${copyId}`);
+        openId = questionId(`seed-open-${copyId}`);
+        foreignId = questionId(`seed-foreign-${copyId}`);
+
+        const now = Date.now();
+        const { data: memberAttempts, error: attemptsError } = await service
+          .from('quiz_attempts')
+          .insert(
+            Array.from({ length: 5 }, (_, i) => ({
+              user_id: pqMember.id,
+              total_questions: 4,
+              config: { title: `seed-problematic-attempt-${copyId}` },
+              started_at: new Date(now - (i + 1) * 60_000).toISOString(),
+              completed_at: new Date(now - (i + 1) * 60_000 + 30_000).toISOString(),
+            })),
+          )
+          .select('id, started_at');
+        if (attemptsError || !memberAttempts) {
+          throw new Error(`[setup] attempts insert failed: ${attemptsError?.message}`);
+        }
+        // Worst-first within the fixture: the first two attempts answer correctly.
+        const attemptIds = [...memberAttempts]
+          .sort((a, b) => (a.started_at as string).localeCompare(b.started_at as string))
+          .map((a) => a.id as string);
+
+        const { data: extraAttempts, error: extraAttemptsError } = await service
+          .from('quiz_attempts')
+          .insert([
+            {
+              // Not an org learner — must not enter the denominator.
+              user_id: pqOutsider.id,
+              total_questions: 4,
+              config: { title: `seed-outsider-attempt-${copyId}` },
+              started_at: new Date(now - 60_000).toISOString(),
+              completed_at: new Date(now - 30_000).toISOString(),
+            },
+            {
+              // The teacher's own practice attempt — also excluded.
+              user_id: pqTeacher.user.id,
+              total_questions: 4,
+              config: { title: `seed-teacher-attempt-${copyId}` },
+              started_at: new Date(now - 60_000).toISOString(),
+              completed_at: new Date(now - 30_000).toISOString(),
+            },
+            {
+              // Unfinished — answers must not be counted.
+              user_id: pqMember.id,
+              total_questions: 4,
+              config: { title: `seed-problematic-attempt-${copyId}` },
+              started_at: new Date(now - 60_000).toISOString(),
+              completed_at: null,
+            },
+          ])
+          .select('id, user_id');
+        if (extraAttemptsError || !extraAttempts) {
+          throw new Error(`[setup] extra attempts insert failed: ${extraAttemptsError?.message}`);
+        }
+        const outsiderAttemptId = extraAttempts.find((a) => a.user_id === pqOutsider.id)?.id;
+        const teacherAttemptId = extraAttempts.find((a) => a.user_id === pqTeacher.user.id)?.id;
+        const unfinishedAttemptId = extraAttempts.find((a) => a.user_id === pqMember.id)?.id;
+
+        const answers: Array<{
+          attempt_id: string;
+          question_id: string;
+          is_correct: boolean;
+        }> = [];
+        attemptIds.forEach((attemptId, index) => {
+          answers.push({
+            attempt_id: attemptId,
+            question_id: problematicId,
+            is_correct: index < 2, // 2/5 = 40 %
+          });
+          answers.push({
+            attempt_id: attemptId,
+            question_id: healthyId,
+            is_correct: index < 3, // 3/5 = 60 % → not problematic
+          });
+          // Multi-select stores one row per chosen option: two rows per attempt
+          // must still count as ONE answer (bool_or), not two.
+          answers.push(
+            { attempt_id: attemptId, question_id: multiId, is_correct: index < 2 },
+            { attempt_id: attemptId, question_id: multiId, is_correct: false },
+          );
+          answers.push({
+            attempt_id: attemptId,
+            question_id: openId,
+            is_correct: false, // ungraded free text → excluded
+          });
+        });
+        if (outsiderAttemptId) {
+          answers.push({
+            attempt_id: outsiderAttemptId,
+            question_id: problematicId,
+            is_correct: true,
+          });
+        }
+        if (teacherAttemptId) {
+          answers.push({
+            attempt_id: teacherAttemptId,
+            question_id: problematicId,
+            is_correct: true,
+          });
+        }
+        if (unfinishedAttemptId) {
+          answers.push({
+            attempt_id: unfinishedAttemptId,
+            question_id: problematicId,
+            is_correct: true,
+          });
+        }
+
+        const { error: answersError } = await service.from('student_answers').insert(answers);
+        if (answersError) {
+          throw new Error(`[setup] student answers insert failed: ${answersError.message}`);
+        }
+      });
+
+      afterAll(async () => {
+        await cleanupQuizAttempts(pqMember.id);
+        await cleanupQuizAttempts(pqOutsider.id);
+        await cleanupQuizAttempts(pqTeacher.user.id);
+        await cleanupQuestions(pqTeacher.user.id);
+        await cleanupQuestions(pqOtherTeacher.id);
+        if (pqTeacher.orgId) await cleanupOrganizationDeep(pqTeacher.orgId);
+      });
+
+      it('lists the 40 % question and keeps healthy, open and foreign ones out', async () => {
+        mockUser(pqTeacher.user);
+
+        const req = createNextRequest('http://localhost/api/v1/stats/teacher', undefined, {
+          active_org_id: pqTeacher.orgId!,
+        });
+        const response = await teacherGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.success).toBe(true);
+
+        const problematic = body.data.subject.problematicQuestions as Array<{
+          id: string;
+          correctRate: number;
+          totalAnswers: number;
+        }>;
+        const reported = problematic.find((q) => q.id === problematicId);
+        expect(reported).toBeDefined();
+        expect(reported?.correctRate).toBeCloseTo(0.4, 4);
+        // 5 completed learner attempts; the teacher's own, the outsider's and
+        // the unfinished attempt must not inflate the denominator.
+        expect(reported?.totalAnswers).toBe(5);
+
+        expect(problematic.some((q) => q.id === healthyId)).toBe(false);
+        expect(problematic.some((q) => q.id === openId)).toBe(false);
+        expect(problematic.some((q) => q.id === foreignId)).toBe(false);
+
+        // byType covers the same scoped questions, so the count cards agree.
+        expect(body.data.totalQuestions).toBe(4);
+        expect(body.data.subject.byType).toEqual({ mcq: 2, multi_select: 1, open: 1 });
+      });
+
+      it('counts a multi-row attempt once, not once per answer row', async () => {
+        mockUser(pqTeacher.user);
+
+        const req = createNextRequest('http://localhost/api/v1/stats/teacher', undefined, {
+          active_org_id: pqTeacher.orgId!,
+        });
+        const response = await teacherGet(req);
+        const body = await response.json();
+
+        const multi = (
+          body.data.subject.problematicQuestions as Array<{
+            id: string;
+            correctRate: number;
+            totalAnswers: number;
+          }>
+        ).find((q) => q.id === multiId);
+        expect(multi).toBeDefined();
+        // 10 answer rows → 5 attempts, 2 of them correct.
+        expect(multi?.totalAnswers).toBe(5);
+        expect(multi?.correctRate).toBeCloseTo(0.4, 4);
+      });
+
+      it('sorts worst-first', async () => {
+        mockUser(pqTeacher.user);
+
+        const req = createNextRequest('http://localhost/api/v1/stats/teacher', undefined, {
+          active_org_id: pqTeacher.orgId!,
+        });
+        const response = await teacherGet(req);
+        const body = await response.json();
+
+        const rates = (
+          body.data.subject.problematicQuestions as Array<{ correctRate: number }>
+        ).map((q) => q.correctRate);
+        expect(rates).toEqual([...rates].sort((a, b) => a - b));
+      });
+
+      it('narrows the list to the ?subjectId= bank', async () => {
+        mockUser(pqTeacher.user);
+
+        const req = createNextRequest(
+          `http://localhost/api/v1/stats/teacher?subjectId=${pqForeignBankId}`,
+          undefined,
+          { active_org_id: pqTeacher.orgId! },
+        );
+        const response = await teacherGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.subject.problematicQuestions).toEqual([]);
+      });
+
+      it('stays tenant-scoped without an active organization', async () => {
+        mockUser(pqTeacher.user);
+
+        const req = createNextRequest('http://localhost/api/v1/stats/teacher');
+        const response = await teacherGet(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        const reported = (
+          body.data.subject.problematicQuestions as Array<{ id: string; totalAnswers: number }>
+        ).find((q) => q.id === problematicId);
+        expect(reported?.totalAnswers).toBe(5);
+      });
+    });
   });
 });

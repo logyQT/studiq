@@ -4,6 +4,7 @@ import { type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
+  ProblematicQuestionStats,
   TeacherQuizStatsItem,
   TeacherStatsQuery,
   TeacherStatsResponse,
@@ -106,10 +107,27 @@ export class StatsService {
       byType[row.type] = (byType[row.type] ?? 0) + 1;
     }
 
+    // Per-question accuracy is aggregated in SQL (#204): loading the class's
+    // whole `student_answers` set here would hit PostgREST's 1000-row cap and
+    // silently understate every correct rate.
+    const { data: problematicQuestions, error: problematicQuestionsError } = await supabase.rpc(
+      'get_teacher_problematic_questions',
+      {
+        p_user_id: ctx.userId,
+        p_organization_id: ctx.activeOrgId ?? null,
+        p_bank_id: subjectId ?? null,
+      },
+    );
+
+    if (problematicQuestionsError) return toDbFailure(problematicQuestionsError);
+
     return success({
       totalQuestions: rows.length,
       totalFlashcards: flashcards?.length ?? 0,
-      subject: { byType },
+      subject: {
+        byType,
+        problematicQuestions: (problematicQuestions as ProblematicQuestionStats[] | null) ?? [],
+      },
       bySubject,
     });
   }
