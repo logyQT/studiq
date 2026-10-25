@@ -79,7 +79,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
     load();
   }, [load]);
 
-  async function handleSave(group: { name: string; description?: string }, id?: string) {
+  async function handleSave(group: { name: string; description?: string | null }, id?: string) {
     const url = id ? `/api/v1/organization/groups/${id}` : '/api/v1/organization/groups';
     const method = id ? 'PUT' : 'POST';
 
@@ -438,7 +438,7 @@ function GroupForm({
   t,
 }: {
   initial?: Group;
-  onSave: (group: { name: string; description?: string }) => Promise<void>;
+  onSave: (group: { name: string; description?: string | null }) => Promise<void>;
   onCancel: () => void;
   t: (key: string) => string;
 }) {
@@ -447,9 +447,15 @@ function GroupForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const trimmed = description.trim();
+    // Edit: always send the key (null clears it). Create: omit when empty.
     await onSave({
       name,
-      description: description || undefined,
+      ...(initial
+        ? { description: trimmed === '' ? null : trimmed }
+        : trimmed
+          ? { description: trimmed }
+          : {}),
     });
   }
 

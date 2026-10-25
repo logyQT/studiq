@@ -15,6 +15,12 @@ function canManageAnyGroup(ctx: RequestContext): boolean {
   return ctx.accountType === AccountType.MANAGER;
 }
 
+/** Blank description -> null (clears it); absent key stays absent (no change). */
+function normalizeDescription<T extends { description?: string | null }>(data: T): T {
+  if (data.description === undefined || data.description === null) return data;
+  return { ...data, description: data.description.trim() === '' ? null : data.description.trim() };
+}
+
 export class GroupService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
@@ -92,7 +98,11 @@ export class GroupService {
 
     const { data: group, error } = await supabase
       .from('groups')
-      .insert({ organization_id: ctx.activeOrgId, created_by: ctx.userId, ...data })
+      .insert({
+        organization_id: ctx.activeOrgId,
+        created_by: ctx.userId,
+        ...normalizeDescription(data),
+      })
       .select('id, name, description, created_at')
       .single();
 
@@ -136,7 +146,7 @@ export class GroupService {
 
     const { data: group, error } = await supabase
       .from('groups')
-      .update(data)
+      .update(normalizeDescription(data))
       .eq('id', id)
       .eq('organization_id', ctx.activeOrgId)
       .select('id, name, description, created_at')
