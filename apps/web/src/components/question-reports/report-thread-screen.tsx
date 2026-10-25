@@ -101,19 +101,40 @@ export function ReportThreadScreen({ reportId, basePath }: { reportId: string; b
       <div className="flex-1 overflow-y-auto py-4 space-y-3">
         {messages.map((msg) => {
           const isMine = msg.sender_id === user?.id;
+          const author = msg.sender?.full_name || msg.sender?.email;
           return (
-            <div key={msg.id} className={cn('flex', isMine ? 'justify-end' : 'justify-start')}>
-              <Card
+            <div
+              key={msg.id}
+              className={cn('flex items-start gap-2', isMine ? 'justify-end' : 'justify-start')}
+            >
+              {!isMine && (
+                <UserAvatar
+                  name={msg.sender?.full_name}
+                  email={msg.sender?.email}
+                  size={28}
+                  className="mt-1"
+                />
+              )}
+              <div
                 className={cn(
-                  'max-w-[75%] p-3',
-                  isMine ? 'bg-primary text-primary-foreground' : 'bg-muted',
+                  'flex flex-col gap-1 min-w-0 max-w-[75%]',
+                  isMine ? 'items-end' : 'items-start',
                 )}
               >
-                <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
-                <p className="text-[10px] opacity-70 mt-1">
-                  {new Date(msg.created_at).toLocaleString()}
-                </p>
-              </Card>
+                {author && (
+                  <span className="max-w-full truncate px-1 text-[10px] font-medium text-muted-foreground">
+                    {author}
+                  </span>
+                )}
+                <Card
+                  className={cn('p-3', isMine ? 'bg-primary text-primary-foreground' : 'bg-muted')}
+                >
+                  <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
+                  <p className="text-[10px] opacity-70 mt-1">
+                    {new Date(msg.created_at).toLocaleString()}
+                  </p>
+                </Card>
+              </div>
             </div>
           );
         })}
