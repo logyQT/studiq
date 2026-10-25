@@ -592,6 +592,7 @@
     "stats_desc": "Przeglądaj statystyki i wydajność fiszek"
   },
   "EduFlashcardDecksPage": {
+    "decks_count": "{count, plural, one {# talia} few {# talie} many {# talii} other {# talii}}",
     "title": "Talie fiszek",
     "back": "Powrót",
     "new_deck": "Nowa talia",
@@ -1960,6 +1961,7 @@
     "leech_keep": "Kontynuuj"
   },
   "AppFlashcardDecksPage": {
+    "decks_count": "{count, plural, one {# talia} few {# talie} many {# talii} other {# talii}}",
     "title": "Talie fiszek",
     "new_deck": "Nowa talia",
     "back": "Powrót",

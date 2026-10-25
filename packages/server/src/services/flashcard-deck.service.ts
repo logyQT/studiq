@@ -139,57 +139,65 @@ export class FlashcardDeckService {
     const supabase = await this.createClient();
 
     const filter = await accessibleFilter(ctx, Permission.DECK_READ, 'deck');
-    if (filter._impossible) return success({ items: [], nextCursor: null, hasMore: false });
+    if (filter._impossible)
+      return success({ items: [], nextCursor: null, hasMore: false, total: 0 });
 
     const suspendedIds = await this.getSuspendedDeckIds(ctx);
     const includeSuspended = queryParams?.includeSuspended ?? false;
 
-    let query = supabase
-      .from('flashcard_decks')
-      .select('*, flashcard_count:flashcards(count), deck_groups(group_id)');
-
-    if (filter.or) query = query.or(filter.or);
-    if (filter.created_by) query = query.eq('created_by', filter.created_by);
-    if (filter.organization_id) query = query.eq('organization_id', filter.organization_id);
-
-    // Exclude suspended decks by default
-    if (!includeSuspended && suspendedIds.size > 0) {
-      query = query.not('id', 'in', `(${[...suspendedIds].join(',')})`);
-    }
-
-    // Apply owner filter on top of RBAC
-    if (queryParams?.owner && queryParams.owner !== 'all') {
-      if (queryParams.owner === 'mine') {
-        query = query.eq('created_by', ctx.userId);
-      } else if (queryParams.owner === 'group') {
-        if (ctx.activeOrgId) {
-          query = query
-            .neq('created_by', ctx.userId)
-            .eq('organization_id', ctx.activeOrgId)
-            .eq('visibility', 'group');
-        } else {
-          return success({ items: [], nextCursor: null, hasMore: false });
-        }
-      }
+    // Owner filter on top of RBAC
+    if (queryParams?.owner === 'group' && !ctx.activeOrgId) {
+      return success({ items: [], nextCursor: null, hasMore: false, total: 0 });
     }
 
     // Filter to decks shared with a group the caller belongs to
+    let groupDeckIds: string[] | null = null;
     if (queryParams?.groupFilter === 'mine') {
       if (ctx.groupIds.length === 0)
-        return success({ items: [], nextCursor: null, hasMore: false });
+        return success({ items: [], nextCursor: null, hasMore: false, total: 0 });
       const { data: groupDecks } = await supabase
         .from('deck_groups')
         .select('deck_id')
         .in('group_id', ctx.groupIds);
-      const deckIds = [...new Set((groupDecks ?? []).map((r) => r.deck_id as string))];
-      if (deckIds.length === 0) return success({ items: [], nextCursor: null, hasMore: false });
-      query = query.in('id', deckIds);
+      groupDeckIds = [...new Set((groupDecks ?? []).map((r) => r.deck_id as string))];
+      if (groupDeckIds.length === 0)
+        return success({ items: [], nextCursor: null, hasMore: false, total: 0 });
     }
 
-    // Apply search
-    if (queryParams?.q) {
-      query = query.or(`name.ilike.%${queryParams.q}%,description.ilike.%${queryParams.q}%`);
-    }
+    // Every filter (RBAC, suspended, owner, group, search) lives here and is shared by the page
+    // query and the total-count query, so `total` always matches the visible set. The cursor and
+    // limit are applied to the page query only, which keeps `total` stable while paging.
+    const buildFiltered = (select: string, options?: { count: 'exact'; head: true }) => {
+      let q = supabase.from('flashcard_decks').select(select, options);
+
+      if (filter.or) q = q.or(filter.or);
+      if (filter.created_by) q = q.eq('created_by', filter.created_by);
+      if (filter.organization_id) q = q.eq('organization_id', filter.organization_id);
+
+      // Exclude suspended decks by default
+      if (!includeSuspended && suspendedIds.size > 0) {
+        q = q.not('id', 'in', `(${[...suspendedIds].join(',')})`);
+      }
+
+      if (queryParams?.owner === 'mine') {
+        q = q.eq('created_by', ctx.userId);
+      } else if (queryParams?.owner === 'group') {
+        q = q
+          .neq('created_by', ctx.userId)
+          .eq('organization_id', ctx.activeOrgId as string)
+          .eq('visibility', 'group');
+      }
+
+      if (groupDeckIds) q = q.in('id', groupDeckIds);
+
+      if (queryParams?.q) {
+        q = q.or(`name.ilike.%${queryParams.q}%,description.ilike.%${queryParams.q}%`);
+      }
+      return q;
+    };
+
+    let query = buildFiltered('*, flashcard_count:flashcards(count), deck_groups(group_id)');
+    const countQuery = buildFiltered('id', { count: 'exact', head: true });
 
     // Apply sorting with tie-breaker
     const sortBy = queryParams?.sortBy ?? 'created_at';
@@ -209,10 +217,11 @@ export class FlashcardDeckService {
       );
     }
 
-    const { data, error } = await query;
+    const [{ data, error }, { count, error: countError }] = await Promise.all([query, countQuery]);
     if (error) return toDbFailure(error);
+    if (countError) return toDbFailure(countError);
 
-    const rows = data as Array<Record<string, unknown>> | null;
+    const rows = data as unknown as Array<Record<string, unknown>> | null;
     const hasMore = (rows?.length ?? 0) > pageSize;
     const sliced = hasMore ? rows!.slice(0, pageSize) : (rows ?? []);
     const items = sliced.map((item) => {
@@ -233,7 +242,8 @@ export class FlashcardDeckService {
       items: items as unknown as Deck[],
       nextCursor,
       hasMore,
-    } as { items: Deck[]; nextCursor: string | null; hasMore: boolean });
+      total: count ?? 0,
+    } as { items: Deck[]; nextCursor: string | null; hasMore: boolean; total: number });
   }
 
   async getById(id: string, ctx: RequestContext): Promise<ServiceResult<unknown>> {

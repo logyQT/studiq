@@ -256,6 +256,7 @@ describe('FlashcardDeckService', () => {
       ];
       mock.from.mockReturnValueOnce(qb([], null));
       mock.from.mockReturnValueOnce(qb(decks));
+      mock.from.mockReturnValueOnce(qb(null, null, 1));
 
       const result = await service.list(ctx);
 
@@ -263,9 +264,62 @@ describe('FlashcardDeckService', () => {
       expect(result.data).toBeDefined();
     });
 
+    it('returns the total of all matching decks, independent of page size', async () => {
+      const decks = [
+        { id: 'd-1', name: 'A' },
+        { id: 'd-2', name: 'B' },
+        { id: 'd-3', name: 'C' },
+      ];
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(qb(decks));
+      mock.from.mockReturnValueOnce(qb(null, null, 57));
+
+      const result = await service.list(ctx, { limit: 2 } as any);
+
+      expect(result.success).toBe(true);
+      const data = result.data as { items: unknown[]; hasMore: boolean; total: number };
+      expect(data.items).toHaveLength(2);
+      expect(data.hasMore).toBe(true);
+      expect(data.total).toBe(57);
+    });
+
+    it('counts with a head query that applies the same filters but not cursor or limit', async () => {
+      const pageQb = qb([{ id: 'd-1', name: 'A' }]);
+      const countQb = qb(null, null, 4);
+      mock.from.mockReturnValueOnce(qb([], null));
+      mock.from.mockReturnValueOnce(pageQb);
+      mock.from.mockReturnValueOnce(countQb);
+
+      const cursor = Buffer.from(JSON.stringify({ v: '2025-01-01T00:00:00Z', id: 'd-0' })).toString(
+        'base64url',
+      );
+      const result = await service.list(ctx, {
+        owner: 'mine',
+        q: 'bio',
+        cursor,
+        limit: 10,
+      } as any);
+
+      expect((result.data as { total: number }).total).toBe(4);
+      expect(countQb.select).toHaveBeenCalledWith('id', { count: 'exact', head: true });
+      // owner + search filters are applied to both queries
+      expect(countQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(pageQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      const searchOr = 'name.ilike.%bio%,description.ilike.%bio%';
+      expect(countQb.or).toHaveBeenCalledWith(searchOr);
+      expect(pageQb.or).toHaveBeenCalledWith(searchOr);
+      // cursor + limit only on the page query
+      expect(pageQb.limit).toHaveBeenCalledWith(11);
+      expect(pageQb.or).toHaveBeenCalledTimes(2);
+      expect(countQb.or).toHaveBeenCalledTimes(1);
+      expect(countQb.limit).not.toHaveBeenCalled();
+      expect(countQb.order).not.toHaveBeenCalled();
+    });
+
     it('returns INTERNAL_SERVER when query fails', async () => {
       mock.from.mockReturnValueOnce(qb([], null));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+      mock.from.mockReturnValueOnce(qb(null, null, 0));
 
       const result = await service.list(ctx);
 
@@ -280,7 +334,12 @@ describe('FlashcardDeckService', () => {
       const result = await service.list(ctx, { groupFilter: 'mine' } as any);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false });
+      expect(result.data).toEqual({
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+        total: 0,
+      });
     });
 
     it('filters to decks shared with the caller groups when groupFilter=mine', async () => {
@@ -291,6 +350,7 @@ describe('FlashcardDeckService', () => {
       mock.from.mockReturnValueOnce(qb([], null));
       mock.from.mockReturnValueOnce(qb([{ deck_id: 'd-1' }], null));
       mock.from.mockReturnValueOnce(qb(decks));
+      mock.from.mockReturnValueOnce(qb(null, null, 1));
 
       const result = await service.list(groupCtx, { groupFilter: 'mine' } as any);
 

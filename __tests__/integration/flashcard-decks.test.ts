@@ -355,6 +355,25 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(200);
         expect(Array.isArray(body.data?.items)).toBe(true);
         expect(body.data?.items?.length).toBeGreaterThanOrEqual(5);
+        expect(body.data?.total).toBeGreaterThanOrEqual(body.data?.items?.length);
+      });
+
+      it('keeps total stable across pages (cursor does not shrink it)', async () => {
+        mockUser(teacher.user);
+
+        const first = await (
+          await GET(createNextRequest('http://localhost/api/v1/flashcards/decks?limit=2'))
+        ).json();
+        expect(first.data.hasMore).toBe(true);
+        const second = await (
+          await GET(
+            createNextRequest(
+              `http://localhost/api/v1/flashcards/decks?limit=2&cursor=${first.data.nextCursor}`,
+            ),
+          )
+        ).json();
+
+        expect(second.data.total).toBe(first.data.total);
       });
 
       it('returns 401 when not authenticated', async () => {

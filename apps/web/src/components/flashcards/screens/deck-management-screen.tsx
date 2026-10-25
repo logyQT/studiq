@@ -88,6 +88,7 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
 
   const {
     items: decks,
+    total,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -322,6 +323,10 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
         onCreateNew={openCreate}
         t={t}
       />
+
+      {!isLoading && !orgsPending && total !== undefined && (
+        <p className="text-sm text-muted-foreground">{t('decks_count', { count: total })}</p>
+      )}
 
       <PageGrid
         cols={4}
