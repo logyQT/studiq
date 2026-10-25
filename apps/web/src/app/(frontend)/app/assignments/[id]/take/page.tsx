@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { ApiError } from '@/lib/api';
 import { studentAssignmentKeys } from '@/lib/query-keys';
 
@@ -78,6 +79,14 @@ export default function TakeAssignmentPage() {
       router.replace(`/app/assignments/${id}`);
     }
   }, [error, id, router]);
+
+  // The assignment title is the breadcrumb label; the raw UUID must never render.
+  // Same key as the detail page, so returning to it is a cache hit.
+  const { data: assignment } = useApiQuery<{ title: string }>({
+    queryKey: studentAssignmentKeys.detail(id),
+    url: `/api/v1/assignments/${id}`,
+  });
+  useBreadcrumbLabel(id, assignment?.title);
 
   // „Kontynuuj” reopens the same attempt, so seed the inputs from whatever the
   // server already holds for it (the autosaved draft, #349) — otherwise the

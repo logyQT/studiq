@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { apiPost } from '@/lib/api';
 import { questionReportKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
@@ -43,6 +44,11 @@ export function ReportThreadScreen({ reportId, basePath }: { reportId: string; b
     queryKey: questionReportKeys.detail(reportId),
     url: `/api/v1/question-reports/${reportId}`,
   });
+
+  // Report threads are keyed by id; label the crumb with the reported question
+  // excerpt (or the target group) instead of the raw UUID.
+  const questionExcerpt = data?.report.question?.content?.slice(0, 40);
+  useBreadcrumbLabel(reportId, questionExcerpt ?? data?.report.group?.name);
 
   const send = useApiMutation<Message, string>({
     mutationFn: (body) => apiPost(`/api/v1/question-reports/${reportId}/messages`, { body }),

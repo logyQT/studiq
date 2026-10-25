@@ -1,13 +1,16 @@
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
+const QuizNameSchema = z
+  .string({ error: ValidationErrorCode.REQUIRED })
+  .trim()
+  .nonempty({ error: ValidationErrorCode.REQUIRED })
+  .max(200, { error: ValidationErrorCode.TOO_LONG });
+
 export const CreateQuizSchema = registry.register(
   'CreateQuizRequest',
   z.object({
-    name: z
-      .string({ error: ValidationErrorCode.REQUIRED })
-      .nonempty({ error: ValidationErrorCode.REQUIRED })
-      .max(200, { error: ValidationErrorCode.TOO_LONG }),
+    name: QuizNameSchema,
     description: z.string().max(2000, { error: ValidationErrorCode.TOO_LONG }).optional(),
   }),
 );
@@ -46,10 +49,7 @@ export type BulkSaveQuizQuestion = z.infer<typeof BulkSaveQuizQuestionSchema>;
 export const BulkSaveQuizSchema = registry.register(
   'BulkSaveQuizRequest',
   z.object({
-    name: z
-      .string({ error: ValidationErrorCode.REQUIRED })
-      .nonempty({ error: ValidationErrorCode.REQUIRED })
-      .max(200, { error: ValidationErrorCode.TOO_LONG }),
+    name: QuizNameSchema,
     description: z
       .string()
       .max(2000, { error: ValidationErrorCode.TOO_LONG })

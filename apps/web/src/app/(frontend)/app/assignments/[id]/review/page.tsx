@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { reviewAttemptId, type StudentAssignmentAttemptState } from '@/lib/assignment-attempts';
 import { studentAssignmentKeys } from '@/lib/query-keys';
 
@@ -46,12 +47,15 @@ export default function ReviewAssignmentPage() {
   // always fetched: its `show_results` decides whether there is a review to
   // render at all (#374).
   const { data: assignment, isLoading: isAssignmentLoading } = useApiQuery<
-    StudentAssignmentAttemptState & { id: string; show_results: boolean }
+    StudentAssignmentAttemptState & { id: string; show_results: boolean; title: string }
   >({
     queryKey: studentAssignmentKeys.detail(id),
     url: `/api/v1/assignments/${id}`,
     staleTime: 0,
   });
+
+  // The assignment title is the breadcrumb label; the raw UUID must never render.
+  useBreadcrumbLabel(id, assignment?.title);
 
   const resultsHidden = assignment?.show_results === false;
   const attemptId = resultsHidden ? null : reviewAttemptId(attemptIdParam, assignment);
