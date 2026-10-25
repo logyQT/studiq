@@ -105,6 +105,33 @@ describe('GroupController', () => {
       expect(response.statusCode).toBe(200);
     });
 
+    it('accepts a null description and passes it to the service', async () => {
+      mockService.updateGroup.mockResolvedValueOnce({ success: true, data: {} });
+
+      const response = await controller.updateGroup(
+        mockCtx,
+        '550e8400-e29b-41d4-a716-446655440000',
+        { name: 'Updated', description: null },
+      );
+
+      expect(response.success).toBe(true);
+      expect(mockService.updateGroup).toHaveBeenCalledWith(
+        mockCtx,
+        '550e8400-e29b-41d4-a716-446655440000',
+        { name: 'Updated', description: null },
+      );
+    });
+
+    it('does not add a description key when absent from the body', async () => {
+      mockService.updateGroup.mockResolvedValueOnce({ success: true, data: {} });
+
+      await controller.updateGroup(mockCtx, '550e8400-e29b-41d4-a716-446655440000', {
+        name: 'Updated',
+      });
+
+      expect(mockService.updateGroup.mock.calls.at(-1)?.[2]).not.toHaveProperty('description');
+    });
+
     it('returns 422 on invalid body', async () => {
       const response = await controller.updateGroup(
         mockCtx,
