@@ -364,8 +364,11 @@ describe('QuestionService', () => {
 
       expect(result.success).toBe(true);
       expect(updateChain.eq).toHaveBeenCalledWith('created_by', ctx.userId);
-      // `.eq('organization_id', null)` would serialise to `eq.null` → 22P02 → 500.
-      expect(updateChain.eq).not.toHaveBeenCalledWith('organization_id', null);
+      // `.eq('organization_id', null)` would serialise to `eq.null` → 22P02 → 500, so the
+      // tenant filter must be absent entirely (not merely "not null").
+      expect(
+        updateChain.eq.mock.calls.filter(([column]: [string]) => column === 'organization_id'),
+      ).toEqual([]);
     });
 
     it('filters by organization_id when an org is active (#148)', async () => {
