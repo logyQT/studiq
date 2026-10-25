@@ -6,6 +6,9 @@ import {
   Heading1,
   Heading2,
   Heading3,
+  Heading4,
+  Heading5,
+  Heading6,
   Image,
   Italic,
   List,
@@ -100,6 +103,33 @@ export function MarkdownToolbar({
           title={t('toolbar_heading3')}
         >
           <Heading3 className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => wrap('#### ', '')}
+          aria-label={t('toolbar_heading4')}
+          title={t('toolbar_heading4')}
+        >
+          <Heading4 className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => wrap('##### ', '')}
+          aria-label={t('toolbar_heading5')}
+          title={t('toolbar_heading5')}
+        >
+          <Heading5 className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => wrap('###### ', '')}
+          aria-label={t('toolbar_heading6')}
+          title={t('toolbar_heading6')}
+        >
+          <Heading6 className="h-4 w-4" />
         </Button>
         <Button
           variant="ghost"
