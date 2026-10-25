@@ -134,6 +134,7 @@ describe('StatsService', () => {
       expect(result.success).toBe(true);
       expect(result.data.totalQuizzes).toBe(2);
       expect(result.data.avgScore).toBe(70);
+      expect(result.data.bestScore).toBe(80);
       expect(result.data.totalQuestionsCreated).toBe(1);
       expect(result.data.flashcardsPracticed).toBe(2);
       expect(result.data.flashcardAccuracy).toBe(50);
@@ -163,6 +164,7 @@ describe('StatsService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.avgScore).toBe(60);
+      expect(result.data.bestScore).toBe(60);
       expect(result.data.attemptsOverTime[0]).toEqual({
         date: '2024-01-01',
         score: 3,
@@ -185,6 +187,7 @@ describe('StatsService', () => {
       expect(result.success).toBe(true);
       expect(result.data.totalQuizzes).toBe(0);
       expect(result.data.avgScore).toBe(0);
+      expect(result.data.bestScore).toBe(0);
       expect(result.data.flashcardsPracticed).toBe(0);
       expect(result.data.flashcardAccuracy).toBe(0);
     });
