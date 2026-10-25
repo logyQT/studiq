@@ -3,7 +3,7 @@
 import type { QuestionBank } from '@studiq/server/models/question-bank.model';
 import { Button, Card, Skeleton } from '@studiq/ui';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { CheckSquare, Database, Plus, SquarePen } from 'lucide-react';
+import { CheckSquare, Database, Plus, SearchX, SquarePen } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -20,6 +20,7 @@ import { useFeature } from '@/hooks/use-feature';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { resolveQuestionBankEmptyView } from '@/lib/question-bank-empty-state';
 import { groupKeys, questionKeys } from '@/lib/query-keys';
 
 interface QuestionBankManagementScreenProps {
@@ -84,8 +85,10 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     return () => clearTimeout(timer);
   }, [searchInput]);
 
+  const activeQuery = debouncedSearch.trim();
+
   const filters = {
-    q: debouncedSearch || undefined,
+    q: activeQuery || undefined,
     owner: owner !== 'all' ? owner : undefined,
     groupFilter: groupFilter !== 'all' ? groupFilter : undefined,
     sortBy,
@@ -117,6 +120,9 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
 
   const banks = banksData?.pages.flatMap((page) => page.items) ?? [];
 
+  // #360 — an empty list caused by a filter must not claim the collection is empty.
+  const emptyView = resolveQuestionBankEmptyView({ query: activeQuery, owner, groupFilter });
+
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const handleObserver = useCallback(
     (entries: IntersectionObserverEntry[]) => {
@@ -145,6 +151,19 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     } catch {
       /* ignore */
     }
+  }
+
+  /**
+   * #360 — resets exactly the state the request is built from, including the
+   * debounced search (no 300 ms wait) and the persisted filters (so a reload does
+   * not re-apply them). Sorting is not a filter and is kept.
+   */
+  function clearFilters() {
+    setSearchInput('');
+    setDebouncedSearch('');
+    setOwner('all');
+    setGroupFilter('all');
+    persistFilters('all', 'all', sortBy, sortOrder);
   }
 
   useEffect(() => {
@@ -335,12 +354,30 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
         isFetchingNextPage={isFetchingNextPage}
         loadMoreRef={loadMoreRef}
         isEmpty={banks.length === 0}
-        emptyIcon={<Database className="h-10 w-10 text-muted-foreground" />}
-        emptyTitle={t('no_banks')}
+        emptyIcon={
+          emptyView.kind === 'no-results' ? (
+            <SearchX className="h-10 w-10 text-muted-foreground" />
+          ) : (
+            <Database className="h-10 w-10 text-muted-foreground" />
+          )
+        }
+        emptyTitle={
+          emptyView.kind === 'no-results'
+            ? emptyView.query
+              ? t('no_banks_match', { query: emptyView.query })
+              : t('no_banks_match_filters')
+            : t('no_banks')
+        }
         emptyAction={
-          <Button variant="outline" size="sm" onClick={openCreate}>
-            <Plus className="mr-1.5 h-4 w-4" /> {t('new_bank')}
-          </Button>
+          emptyView.kind === 'no-results' ? (
+            <Button variant="outline" size="sm" onClick={clearFilters}>
+              {t('clear_filters')}
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" onClick={openCreate}>
+              <Plus className="mr-1.5 h-4 w-4" /> {t('new_bank')}
+            </Button>
+          )
         }
       >
         {banks.map((bank) => (

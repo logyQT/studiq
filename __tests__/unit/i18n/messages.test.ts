@@ -71,6 +71,17 @@ const DECK_GROUP_REQUIRED_NAMESPACES = [
   'AppFlashcardDeckViewPage',
 ] as const;
 
+/**
+ * #360 (STU-31) — the bank grid picks its copy from these keys, so a missing
+ * translation would show a raw key instead of the empty / no-results state.
+ */
+const QUESTION_BANK_EMPTY_STATE_KEYS = [
+  'no_banks',
+  'no_banks_match',
+  'no_banks_match_filters',
+  'clear_filters',
+] as const;
+
 describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages) => {
   it('translates every password rule the account page surfaces', () => {
     for (const code of PASSWORD_RULE_CODES) {
@@ -115,6 +126,17 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
     }
   });
 
+  it('translates every question-bank empty / no-results key', () => {
+    const namespace = messages.QuestionBankManagement as Record<string, string>;
+
+    for (const key of QUESTION_BANK_EMPTY_STATE_KEYS) {
+      const message = namespace[key];
+
+      expect(message, `QuestionBankManagement.${key}`).toBeTypeOf('string');
+      expect(message).not.toHaveLength(0);
+    }
+  });
+
   it('uses distinct copy for the success and failure paths', () => {
     expect(messages.AccountPage.password_updated).not.toBe(
       messages.AccountPage.password_update_failed,
@@ -144,6 +166,16 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
 describe('i18n message parity', () => {
   it('has the same AccountPage keys in en and pl', () => {
     expect(Object.keys(en.AccountPage).sort()).toEqual(Object.keys(pl.AccountPage).sort());
+  });
+
+  /**
+   * #360 — the bank grid renders the same namespace on `/app/questions` and
+   * `/edu/questions`; a key present in only one locale would show a raw key.
+   */
+  it('has the same QuestionBankManagement keys in en and pl', () => {
+    expect(Object.keys(en.QuestionBankManagement).sort()).toEqual(
+      Object.keys(pl.QuestionBankManagement).sort(),
+    );
   });
 
   it('has the same AiChatPage keys in en and pl', () => {
