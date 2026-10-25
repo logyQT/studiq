@@ -13,6 +13,8 @@ export function useApiQuery<T>(opts: {
   enabled?: boolean;
   staleTime?: number;
   gcTime?: number;
+  /** Overrides the global `retry: 2` for queries whose errors are terminal. */
+  retry?: boolean | number;
 }): UseQueryResult<T> {
   return useQuery({
     queryKey: opts.queryKey,
@@ -20,6 +22,9 @@ export function useApiQuery<T>(opts: {
     staleTime: opts.staleTime ?? Infinity,
     gcTime: opts.gcTime ?? 30 * 60 * 1000,
     enabled: opts.enabled,
+    // Only forward when set: an explicit `undefined` would clobber the global
+    // `retry: 2` from `QueryProvider` with TanStack's built-in default.
+    ...(opts.retry !== undefined ? { retry: opts.retry } : {}),
   });
 }
 

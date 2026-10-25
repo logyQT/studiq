@@ -69,6 +69,11 @@ describe('attemptPercentage (#321)', () => {
     expect(attemptPercentage({ score: 0, total_questions: 0 })).toBe(0);
   });
 
+  it('withholds the percentage when the server withheld the score (#374)', () => {
+    expect(attemptPercentage({ score: null, total_questions: 4, total_points: 4 })).toBeNull();
+    expect(attemptPercentage({ score: null, total_questions: 4, total_points: null })).toBeNull();
+  });
+
   it('rounds to the nearest integer', () => {
     expect(attemptPercentage({ score: 1, total_questions: 3 })).toBe(33);
     expect(attemptPercentage({ score: 2, total_questions: 3 })).toBe(67);

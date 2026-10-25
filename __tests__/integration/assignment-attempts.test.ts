@@ -22,6 +22,7 @@ import {
   GET as attemptGet,
   POST as attemptPost,
 } from '@/app/(backend)/api/v1/quiz/[attemptId]/route';
+import { GET as attemptsGet } from '@/app/(backend)/api/v1/quiz/attempts/route';
 import { GET as studentStatsGet } from '@/app/(backend)/api/v1/stats/student/route';
 import { POST as publishPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/publish/route';
 import { POST as addQuestionsPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/questions/route';
@@ -142,6 +143,16 @@ forEachCopy((copyId) => {
       mockUser(student.user);
       const response = await studentStatsGet(
         createNextRequest('http://localhost/api/v1/stats/student'),
+      );
+      expect(response.status).toBe(200);
+      return (await response.json()).data;
+    }
+
+    /** The rows behind `/app/stats/results` (`QuizzesTab`). */
+    async function attemptList(): Promise<any[]> {
+      mockUser(student.user);
+      const response = await attemptsGet(
+        createNextRequest('http://localhost/api/v1/quiz/attempts'),
       );
       expect(response.status).toBe(200);
       return (await response.json()).data;
@@ -424,6 +435,9 @@ forEachCopy((copyId) => {
       expect(row.attempts_used).toBe(2);
     });
 
+    // The #374 cases below assert the service rule, not RLS: `mockUser` swaps in
+    // the service-role client, so the `teacher_assignments` read bypasses the
+    // student's row policy (the RLS-gated read was verified live in review 1).
     it('hides the score, review and stats while show_results is off (#374)', async () => {
       await setShowResults(false);
       mockUser(student.user);
@@ -445,6 +459,12 @@ forEachCopy((copyId) => {
       const row = await listRow();
       expect(row.last_completed_attempt.id).toBe(attemptId);
       expect(row.last_completed_attempt.score).toBeNull();
+
+      // `/app/stats/results` keeps the attempt in the history but withholds its result.
+      const historyRow = (await attemptList()).find((attempt) => attempt.id === attemptId);
+      expect(historyRow).toBeDefined();
+      expect(historyRow.completed_at).not.toBeNull();
+      expect(historyRow.score).toBeNull();
 
       const hiddenReview = await review(attemptId);
       expect(hiddenReview.status).toBe(403);
@@ -470,6 +490,11 @@ forEachCopy((copyId) => {
       expect(detailResult.status).toBe(200);
       expect(detailResult.body.data.show_results).toBe(true);
       expect(typeof detailResult.body.data.last_completed_attempt.score).toBe('number');
+
+      // The same history row now carries the real score.
+      const historyRow = (await attemptList()).find((attempt) => attempt.id === attemptId);
+      expect(historyRow).toBeDefined();
+      expect(typeof historyRow.score).toBe('number');
 
       const visibleReview = await review(attemptId);
       expect(visibleReview.status).toBe(200);

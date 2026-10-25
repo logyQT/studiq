@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { ApiError } from '@/lib/api';
 import { studentAssignmentKeys } from '@/lib/query-keys';
 
 interface AttemptData {
@@ -57,11 +58,26 @@ export default function TakeAssignmentPage() {
     return () => clearInterval(interval);
   }, [deadlineParam]);
 
-  const { data: attempt, isLoading } = useApiQuery<AttemptData>({
+  const {
+    data: attempt,
+    isLoading,
+    error,
+  } = useApiQuery<AttemptData>({
     queryKey: ['assignment-attempt', attemptId ?? ''],
     url: `/api/v1/quiz/${attemptId}`,
     enabled: !!attemptId,
+    // A completed attempt whose assignment hides results answers 403; retrying
+    // it only delays the redirect to the assignment page (#374).
+    retry: false,
   });
+
+  useEffect(() => {
+    // 403 = results withheld, 404 = attempt gone. Both are terminal here; the
+    // detail page already renders „Podsumowanie niedostępne”.
+    if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
+      router.replace(`/app/assignments/${id}`);
+    }
+  }, [error, id, router]);
 
   // „Kontynuuj” reopens the same attempt, so seed the inputs from whatever the
   // server already holds for it (the autosaved draft, #349) — otherwise the
