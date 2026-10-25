@@ -1,11 +1,15 @@
-'use client';
-
 import { AiChatScreen } from '@/components/ai/ai-chat-screen';
 
-export default function EduAiChatPage() {
+interface Props {
+  searchParams: Promise<{ deckId?: string | string[] }>;
+}
+
+export default async function EduAiChatPage({ searchParams }: Props) {
+  const { deckId } = await searchParams;
+
   return (
     <div className="flex flex-1 flex-col min-h-0">
-      <AiChatScreen />
+      <AiChatScreen deckId={typeof deckId === 'string' ? deckId : undefined} />
     </div>
   );
 }
