@@ -244,6 +244,9 @@ $FIX verdict <pr> [--approve|--request-changes]   # submits the two verdicts + Q
 - On review days a green external PR is merged with `verdict <pr> --approve` (squash + delete
   branch); a red or conflicting one gets one consolidated `--request-changes` review and waits
   for the author's fix. Never write or push code for an external PR.
+- **Small change** (a few lines in one file, no migration / RLS / API contract): one reviewer is
+  enough - `review <pr> --single` - and `qa <pr>` can run on another slot at the same time.
+  Anything larger keeps the two-review pair.
 - Run `ingest` after every merge batch and every ~30 minutes while the pipeline runs, so teammates' PRs do not pile up.
 
 ### 8. Pause (free the slots)

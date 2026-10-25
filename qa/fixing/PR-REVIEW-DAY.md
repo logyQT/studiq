@@ -23,6 +23,16 @@ Today your job is **review + QA on incoming PRs**. Nothing else.
      result in a single review. Then stop — do not re-dispatch anything until the author pushes
      a fix (a new commit resets the gate).
 
+## Small changes
+
+A change is **small** when it is a few lines in one file, with no migration, no RLS/permission
+change and no API contract change. For those, one reviewer is enough:
+
+- `$FIX review N --single` (one reviewer instead of the pair), and
+- `$FIX qa N` on another slot **at the same time**, so the two run in parallel.
+
+Everything else keeps the two-review pair. When in doubt, treat it as not small.
+
 ## Rules
 
 - Two reviews + QA must be on the **same head**; a new commit resets the gate.

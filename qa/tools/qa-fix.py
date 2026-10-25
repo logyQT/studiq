@@ -921,18 +921,23 @@ def cmd_review(args) -> None:
     busy = busy_slots()
     flex = is_flex(state)
     candidates = POOL_SLOTS + ([3, 4, 5, 6] if flex else [])
+    single = bool(getattr(args, "single", False))
     if getattr(args, "envs", None):
         try:
             pair = [int(x) for x in args.envs.split(",")]
         except ValueError:
-            fail("--envs must be two comma-separated slot numbers")
-        if len(pair) != 2 or len(set(pair)) != 2:
+            fail("--envs must be comma-separated slot numbers")
+        if single:
+            if len(pair) != 1:
+                fail("--single takes exactly one slot")
+        elif len(pair) != 2 or len(set(pair)) != 2:
             fail("--envs must name exactly two distinct slots")
     else:
         free = [e for e in candidates if e not in busy]
-        if len(free) < 2:
-            fail("need two free slots", free=free, busy=sorted(busy))
-        pair = free[:2]
+        need = 1 if single else 2
+        if len(free) < need:
+            fail(f"need {need} free slot(s)", free=free, busy=sorted(busy))
+        pair = free[:need]
     for env in pair:
         if not flex and ROLES.get(env) != "qa_review":
             fail(f"slot {env} is {ROLES.get(env)}, not QA/review")
@@ -947,6 +952,7 @@ def cmd_review(args) -> None:
     rec["stage"] = "reviewing"
     rec["stage_started"] = int(time.time() * 1000)
     rec["reviewers"] = pair
+    rec["single_review"] = single
     rec["sessions"]["review"] = [s["session"] for s in sessions_out]
     history(state, n, {"event": "review_dispatched", "sessions": sessions_out,
                        "attempt": attempt(rec),
@@ -1152,29 +1158,37 @@ def cmd_collect(args) -> None:
             ok(action="collect", issue=n, stage="blocked", next=None, **art(p, data))
 
     elif stage == "reviewing":
+        single = bool(rec.get("single_review"))
         r1 = d / f"review-1-r{a}.json"
         r2 = d / f"review-2-r{a}.json"
-        missing = [str(p) for p in (r1, r2) if not p.exists()]
+        wanted = [r1] if single else [r1, r2]
+        missing = [str(p) for p in wanted if not p.exists()]
         if missing:
             ok(action="collect", issue=n, stage="reviewing", pending=missing,
-               message="waiting for both reviews")
+               message="waiting for the review" if single else "waiting for both reviews")
             return
         require_fresh(r1, rec, "review")
-        require_fresh(r2, rec, "review")
-        d1, d2 = read_artifact(r1), read_artifact(r2)
-        decisions = (d1.get("decision"), d2.get("decision"))
-        if decisions == ("approve", "approve"):
+        d1 = read_artifact(r1)
+        d2 = None
+        if not single:
+            require_fresh(r2, rec, "review")
+            d2 = read_artifact(r2)
+        decisions = [d1.get("decision")] + ([d2.get("decision")] if d2 else [])
+        collected = [(r1, d1)] + ([(r2, d2)] if d2 else [])
+        if all(x == "approve" for x in decisions):
             rec["stage"] = "approved"
-            history(state, n, {"event": "reviews_approved", "reviews": [d1, d2]})
-            ok(action="collect", issue=n, stage="approved", next="qa", **arts((r1, d1), (r2, d2)))
+            history(state, n, {"event": "reviews_approved",
+                               "reviews": [x for _, x in collected], "single": single})
+            ok(action="collect", issue=n, stage="approved", next="qa", **arts(*collected))
         else:
             rec["stage"] = "changes_requested"
             bump_attempt(rec)
-            history(state, n, {"event": "changes_requested", "reviews": [d1, d2],
-                               "next_attempt": attempt(rec)})
+            history(state, n, {"event": "changes_requested",
+                               "reviews": [x for _, x in collected],
+                               "single": single, "next_attempt": attempt(rec)})
             nxt = "verdict" if rec.get("external") else "design"
             ok(action="collect", issue=n, stage="changes_requested",
-               next=nxt, attempt=attempt(rec), **arts((r1, d1), (r2, d2)))
+               next=nxt, attempt=attempt(rec), **arts(*collected))
 
     elif stage == "qa_testing":
         p = d / f"qa-r{a}.json"
@@ -1285,8 +1299,9 @@ def cmd_verdict(args) -> None:
             problem = " ".join(str(item.get("problem") or "").split())[:300]
             if problem:
                 lines.append(f"  - `{item.get('file', '?')}`: {problem}")
+    single = bool(rec.get("single_review"))
     all_green = ((r1 or {}).get("decision") == "approve"
-                 and (r2 or {}).get("decision") == "approve"
+                 and (single or (r2 or {}).get("decision") == "approve")
                  and (q or {}).get("decision") == "pass")
     lines += ["", f"**Verdict: {'ready to merge' if all_green else 'changes needed'}**"
                   + ("" if all_green else " - see the findings above."),
@@ -1580,6 +1595,8 @@ def build_parser() -> argparse.ArgumentParser:
                        "implement": cmd_implement, "qa": cmd_qa}[name])
     s = sub.add_parser("review"); s.add_argument("issue", type=int)
     s.add_argument("--envs", help="two comma-separated QA/review slots, e.g. 7,8")
+    s.add_argument("--single", action="store_true",
+                   help="one reviewer instead of a pair - for genuinely small changes")
     s.set_defaults(fn=cmd_review)
     s = sub.add_parser("rebase"); s.add_argument("issue", type=int)
     s.add_argument("--env", type=int)
