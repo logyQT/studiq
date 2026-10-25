@@ -103,6 +103,20 @@ describe('RegisterSchema', () => {
     }
   });
 
+  it('reports an empty email as required, not invalid (#299)', () => {
+    const result = RegisterSchema.safeParse({
+      name: 'John Doe',
+      email: '',
+      password: 'SecurePass1',
+      accountType: 'student',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const emailIssues = result.error.issues.filter((i) => i.path.includes('email'));
+      expect(emailIssues.map((i) => i.message)).toEqual([ValidationErrorCode.EMAIL_REQUIRED]);
+    }
+  });
+
   it('accepts optional inviteToken', () => {
     const result = RegisterSchema.safeParse({
       name: 'John Doe',
@@ -165,6 +179,24 @@ describe('LoginSchema', () => {
     const result = LoginSchema.safeParse({ password: 'SecurePass1' });
     expect(result.success).toBe(false);
   });
+
+  it('reports an empty email as required, not invalid (#299)', () => {
+    const result = LoginSchema.safeParse({ email: '', password: '' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const emailIssues = result.error.issues.filter((i) => i.path.includes('email'));
+      expect(emailIssues.map((i) => i.message)).toEqual([ValidationErrorCode.EMAIL_REQUIRED]);
+    }
+  });
+
+  it('still reports a malformed non-empty email as invalid', () => {
+    const result = LoginSchema.safeParse({ email: 'not-an-email', password: 'pass' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const emailIssues = result.error.issues.filter((i) => i.path.includes('email'));
+      expect(emailIssues.map((i) => i.message)).toEqual([ValidationErrorCode.EMAIL_INVALID]);
+    }
+  });
 });
 
 describe('forgotPasswordSchema', () => {
@@ -176,6 +208,15 @@ describe('forgotPasswordSchema', () => {
   it('fails with invalid email', () => {
     const result = forgotPasswordSchema.safeParse({ email: 'bad' });
     expect(result.success).toBe(false);
+  });
+
+  it('reports an empty email as required, not invalid (#299)', () => {
+    const result = forgotPasswordSchema.safeParse({ email: '' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const emailIssues = result.error.issues.filter((i) => i.path.includes('email'));
+      expect(emailIssues.map((i) => i.message)).toEqual([ValidationErrorCode.EMAIL_REQUIRED]);
+    }
   });
 });
 

@@ -99,7 +99,7 @@ describe('StatsController', () => {
   describe('getTeacherQuizStats', () => {
     it('returns aggregated quiz stats', async () => {
       const stats = [
-        { id: 'Quiz A', title: 'Quiz A', totalAttempts: 2, avgScore: 7, avgCompletionRate: 10 },
+        { id: 'Quiz A', title: 'Quiz A', totalAttempts: 2, avgScore: 7, avgCompletionRate: 100 },
       ];
       mockService.getTeacherQuizStats.mockResolvedValueOnce(success(stats));
 

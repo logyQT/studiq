@@ -160,7 +160,8 @@ forEachCopy((copyId) => {
           completed_at: new Date(now - 59 * 60 * 1000).toISOString(),
         },
         {
-          // Incomplete attempt: must never be counted.
+          // Started but never finished (#212): counts as an attempt, never as a
+          // completed one, and never contributes to avgScore.
           user_id: member.id,
           score: 3,
           total_questions: 10,
@@ -383,12 +384,13 @@ forEachCopy((copyId) => {
       });
     });
 
-    // Regression for #205: the endpoint used to aggregate every completed
-    // quiz_attempts row in the deployment (quiz_attempts has RLS disabled),
-    // leaking another org's — or an org-less user's — activity into a
-    // teacher's "Próby testów" card.
+    // Regression for #205: the endpoint used to aggregate every quiz_attempts
+    // row in the deployment instead of the active org's students, leaking
+    // another org's — or an org-less user's — activity into a teacher's
+    // "Próby testów" card. RLS ("Own or same-org quiz attempts") is only a
+    // same-org floor, so the service-level `user_id` scope stays required.
     describe('GET /api/v1/stats/teacher/quizzes', () => {
-      it('counts only completed attempts of the active org students', async () => {
+      it('aggregates the active org students with completion = completed / started', async () => {
         mockUser(scopedTeacher.user);
 
         const req = createNextRequest('http://localhost/api/v1/stats/teacher/quizzes', undefined, {
@@ -401,10 +403,16 @@ forEachCopy((copyId) => {
         expect(body.success).toBe(true);
         expect(body.data).toHaveLength(2);
         const titled = body.data.find((row: { title: string | null }) => row.title === inOrgTitle);
-        expect(titled).toMatchObject({ totalAttempts: 1, avgScore: 80, avgCompletionRate: 10 });
+        // One completed (8/10) plus one started-but-unfinished attempt: the
+        // unfinished one only enters the attempts denominator (#212).
+        expect(titled).toMatchObject({ totalAttempts: 2, avgScore: 80, avgCompletionRate: 50 });
         // The assignment attempt is normalised to its own scale: 6/8 = 75 %.
         const assignmentRow = body.data.find((row: { title: string | null }) => row.title === null);
-        expect(assignmentRow).toMatchObject({ totalAttempts: 1, avgScore: 75 });
+        expect(assignmentRow).toMatchObject({
+          totalAttempts: 1,
+          avgScore: 75,
+          avgCompletionRate: 100,
+        });
         expect(body.data.some((row: { title: string }) => row.title === outsiderTitle)).toBe(false);
       });
 

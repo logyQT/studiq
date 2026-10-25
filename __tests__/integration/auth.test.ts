@@ -206,6 +206,20 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(422);
         expect(body.success).toBe(false);
       });
+
+      it('reports an empty email as required, not invalid (#299)', async () => {
+        const req = createNextRequest('http://localhost/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: '', password: 'pass' }),
+        });
+
+        const response = await loginPost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.issues.properties.email.errors).toEqual(['VALIDATION_EMAIL_REQUIRED']);
+      });
     });
 
     describe('POST /api/v1/auth/logout', () => {
@@ -294,6 +308,108 @@ forEachCopy((copyId) => {
           'VALIDATION_PASSWORD_MISSING_UPPERCASE',
           'VALIDATION_PASSWORD_MISSING_NUMBER',
         ]);
+      });
+    });
+
+    // #301: the whole auth surface must satisfy the request observability
+    // contract — every response carries `x-trace-id`, so a failed login or a
+    // register 500 can be correlated with Tempo/Loki. Kept in its own describe
+    // block so the assertions are independent of the per-endpoint cases above.
+    describe('x-trace-id correlation (#301)', () => {
+      const TRACE_ID = /^[0-9a-f]{32}$/;
+
+      it('register 202 and 422 both carry x-trace-id', async () => {
+        const ok = await registerPost(
+          createNextRequest('http://localhost/api/v1/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: `trace-${copyId}-${Date.now()}@example.com`,
+              password: 'TestPass123',
+              name: 'Trace User',
+              accountType: 'student',
+            }),
+          }),
+        );
+        expect(ok.status).toBe(202);
+        expect(ok.headers.get('x-trace-id')).toMatch(TRACE_ID);
+
+        const invalid = await registerPost(
+          createNextRequest('http://localhost/api/v1/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: 'not-an-email',
+              password: 'TestPass123',
+              name: 'Trace User',
+              accountType: 'student',
+            }),
+          }),
+        );
+        expect(invalid.status).toBe(422);
+        expect(invalid.headers.get('x-trace-id')).toMatch(TRACE_ID);
+      });
+
+      it('login 200 and 401 both carry x-trace-id', async () => {
+        const ok = await loginPost(
+          createNextRequest('http://localhost/api/v1/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: TEST_USERS.TEACHER.email,
+              password: TEST_USERS.TEACHER.password,
+            }),
+          }),
+        );
+        expect(ok.status).toBe(200);
+        expect(ok.headers.get('x-trace-id')).toMatch(TRACE_ID);
+
+        const denied = await loginPost(
+          createNextRequest('http://localhost/api/v1/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: TEST_USERS.TEACHER.email,
+              password: 'wrongpassword',
+            }),
+          }),
+        );
+        expect(denied.status).toBe(401);
+        expect(denied.headers.get('x-trace-id')).toMatch(TRACE_ID);
+        expect(denied.headers.get('x-error-code')).toBe('UNAUTHORIZED');
+      });
+
+      it('logout 200 carries x-trace-id', async () => {
+        const response = await logoutPost(
+          createNextRequest('http://localhost/api/v1/auth/logout', { method: 'POST' }),
+        );
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get('x-trace-id')).toMatch(TRACE_ID);
+      });
+
+      it('password reset 200 and 422 both carry x-trace-id', async () => {
+        mockUser(null);
+
+        const ok = await resetPost(
+          createNextRequest('http://localhost/api/v1/auth/password/reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: `trace-reset-${copyId}-${Date.now()}@example.com` }),
+          }),
+        );
+        expect(ok.status).toBe(200);
+        expect(ok.headers.get('x-trace-id')).toMatch(TRACE_ID);
+
+        const invalid = await resetPost(
+          createNextRequest('http://localhost/api/v1/auth/password/reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: 'not-an-email' }),
+          }),
+        );
+        expect(invalid.status).toBe(422);
+        expect(invalid.headers.get('x-trace-id')).toMatch(TRACE_ID);
       });
     });
   });

@@ -1,8 +1,37 @@
 import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
+import adminEn from '@admin/i18n/messages/en.json';
+import adminPl from '@admin/i18n/messages/pl.json';
 import { describe, expect, it } from 'vitest';
 
 const locales = { en, pl } as const;
+
+/**
+ * #294 — a Russian verb shipped inside the Polish terms copy. Message values are
+ * rendered verbatim, so a wrong-script word in legal copy is invisible to every
+ * other check; guard the whole class here. Scoped to Cyrillic on purpose: the
+ * files legitimately contain `—`, `©` and `⚠️`.
+ */
+const CYRILLIC = /\p{Script=Cyrillic}/u;
+
+const MESSAGE_FILES = {
+  'web:en': en,
+  'web:pl': pl,
+  'admin:en': adminEn,
+  'admin:pl': adminPl,
+} as const;
+
+function flattenMessages(value: unknown, prefix = ''): Array<[string, string]> {
+  if (typeof value === 'string') return [[prefix, value]];
+
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) =>
+      flattenMessages(child, prefix ? `${prefix}.${key}` : key),
+    );
+  }
+
+  return [];
+}
 
 /**
  * The account page maps the API's `VALIDATION_PASSWORD_*` codes to `Errors.*`
@@ -91,6 +120,25 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
       messages.AccountPage.password_update_failed,
     );
   });
+
+  /**
+   * #295 — the /terms cookie list prints each `cookies_item*` verbatim inside its own
+   * <li>, so a separator must be a colon + space, never a bare `;` (PUB-06).
+   */
+  it('separates the cookie category from its description', () => {
+    const termsPage = messages.TermsPage as Record<string, string>;
+
+    for (const key of ['cookies_item1', 'cookies_item2', 'cookies_item3'] as const) {
+      const message = termsPage[key];
+
+      expect(message, `TermsPage.${key}`).toBeTypeOf('string');
+      expect(message, `TermsPage.${key}`).toMatch(/^[^;]+: \S/);
+    }
+
+    for (const [key, message] of Object.entries(termsPage)) {
+      expect(message, `TermsPage.${key}`).not.toMatch(/;\S/);
+    }
+  });
 });
 
 describe('i18n message parity', () => {
@@ -120,4 +168,17 @@ describe('i18n message parity', () => {
       }
     }
   });
+});
+
+describe('i18n message script hygiene', () => {
+  it.each(Object.entries(MESSAGE_FILES))(
+    '%s contains no Cyrillic characters',
+    (_name, messages) => {
+      const offenders = flattenMessages(messages)
+        .filter(([, text]) => CYRILLIC.test(text))
+        .map(([key]) => key);
+
+      expect(offenders).toEqual([]);
+    },
+  );
 });

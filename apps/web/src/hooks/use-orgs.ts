@@ -70,8 +70,9 @@ export function useOrgs() {
       queryClient.invalidateQueries({ queryKey: aiKeys.all });
 
       // Managers resolve `/api/v1/me/plan` from the active org; students and
-      // educators get their personal plan (#181). Still invalidate so a manager
-      // switching orgs refreshes the org plan shown on billing/settings.
+      // educators get their seat plan when seated in the org, otherwise their
+      // personal plan (#181, #270). Still invalidate so switching orgs refreshes
+      // the plan shown on billing/settings.
       queryClient.invalidateQueries({ queryKey: ['me', 'plan'] });
 
       // Report rows are scoped to the active org for an org admin, so the

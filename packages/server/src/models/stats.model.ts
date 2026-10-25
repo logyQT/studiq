@@ -79,9 +79,11 @@ export interface TeacherQuizStatsItem {
   id: string;
   /** null when the quiz has no title in its config. */
   title: string | null;
+  /** Attempts started (a row exists as soon as a student opens the quiz). */
   totalAttempts: number;
-  /** Mean of the per-attempt scores normalised to their own max (points or question count), 0–100. */
+  /** Mean of the per-attempt scores normalised to their own max (points or question count) over completed attempts, 0–100. */
   avgScore: number;
+  /** Completed / started attempts as an integer percent, 0–100. */
   avgCompletionRate: number;
 }
 

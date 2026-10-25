@@ -251,19 +251,23 @@ export class StatsService {
    * Aggregated quiz performance for the caller's active organization.
    *
    * `quiz_attempts` has no `organization_id` column, so the scope must be
-   * applied here: resolve the org's student members (`member` role) and only
-   * aggregate completed attempts made by them. Without an active org (or
-   * without a verified membership — `withAuth` only sets
-   * `activeOrgId`/`orgRoleId` when the caller is actually a member) there is no
-   * class to report on, so the list is empty rather than falling back to every
-   * attempt in the deployment. RLS ("Own or same-org quiz attempts") enforces
-   * the same-org floor independently.
+   * applied here: resolve the org's student members (`member` role) and
+   * aggregate their attempts. Without an active org (or without a verified
+   * membership — `withAuth` only sets `activeOrgId`/`orgRoleId` when the caller
+   * is actually a member) there is no class to report on, so the list is empty
+   * rather than falling back to every attempt in the deployment. RLS ("Own or
+   * same-org quiz attempts") enforces the same-org floor independently.
    *
-   * Assignment attempts are included: they are scored in points (max =
-   * `total_points`) while practice attempts are scored in correct answers (max =
-   * `total_questions`), so each attempt is normalised to its own percentage
-   * before averaging. `avgScore` is therefore 0–100 and the clients just append
-   * `%`; `avgCompletionRate` keeps reporting the mean question count.
+   * All attempts are aggregated, not just completed ones — `quiz_attempts` rows
+   * are created when a quiz is started (`completed_at` stays null until submit),
+   * so the row set is the "started" population and the completed/incomplete
+   * split is what makes the completion rate meaningful:
+   *
+   * - `totalAttempts` — attempts started (quizzes the students opened)
+   * - `avgScore` — mean of the per-attempt scores normalised to their own max
+   *   (`total_points` for assignment attempts, `total_questions` for practice),
+   *   over completed attempts only, so an abandoned attempt cannot drag it down
+   * - `avgCompletionRate` — `round(completed / started * 100)`, integer 0–100
    */
   async getTeacherQuizStats(ctx: RequestContext): Promise<ServiceResult<TeacherQuizStatsItem[]>> {
     const supabase = await this.createClient();
@@ -284,14 +288,13 @@ export class StatsService {
     const { data, error } = await supabase
       .from('quiz_attempts')
       .select('id, score, total_questions, total_points, started_at, completed_at, config')
-      .in('user_id', studentIds)
-      .not('completed_at', 'is', null);
+      .in('user_id', studentIds);
 
     if (error) return toDbFailure(error);
 
     const quizMap = new Map<
       string,
-      { totalAttempts: number; totalPercent: number; totalCompletion: number }
+      { startedAttempts: number; completedAttempts: number; totalPercent: number }
     >();
 
     for (const row of data ?? []) {
@@ -301,24 +304,29 @@ export class StatsService {
       const key = title ?? '';
 
       if (!quizMap.has(key)) {
-        quizMap.set(key, { totalAttempts: 0, totalPercent: 0, totalCompletion: 0 });
+        quizMap.set(key, { startedAttempts: 0, completedAttempts: 0, totalPercent: 0 });
       }
 
       const stats = quizMap.get(key)!;
-      stats.totalAttempts += 1;
-      stats.totalPercent += attemptScorePercent(row);
-      stats.totalCompletion += row.total_questions ?? 0;
+      stats.startedAttempts += 1;
+      // Started-but-unfinished attempts count in the denominator only.
+      if (row.completed_at !== null) {
+        stats.completedAttempts += 1;
+        stats.totalPercent += attemptScorePercent(row);
+      }
     }
 
     return success(
       Array.from(quizMap.entries()).map(([key, stats]) => ({
         id: key,
         title: key === '' ? null : key,
-        totalAttempts: stats.totalAttempts,
+        totalAttempts: stats.startedAttempts,
         // Unrounded on purpose: both clients call Math.round, so keeping the
         // exact mean avoids double-rounding.
-        avgScore: stats.totalPercent / stats.totalAttempts,
-        avgCompletionRate: stats.totalCompletion / stats.totalAttempts,
+        avgScore: stats.completedAttempts > 0 ? stats.totalPercent / stats.completedAttempts : 0,
+        // Rounded in the service: every entry has startedAttempts >= 1, so this
+        // is a clean 0–100 integer and the clients' Math.round is a no-op.
+        avgCompletionRate: Math.round((stats.completedAttempts / stats.startedAttempts) * 100),
       })),
     );
   }

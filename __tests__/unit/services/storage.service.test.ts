@@ -193,13 +193,38 @@ describe('StorageService', () => {
       expect(storage.upload).not.toHaveBeenCalled();
     });
 
-    it('rejects images above 10 MB with PAYLOAD_TOO_LARGE', async () => {
-      const file = makeFile(PNG_BYTES, PNG_MIME, 'logo.png', 10 * 1024 * 1024 + 1);
+    it('rejects org-logos files above the bucket 5 MB cap with PAYLOAD_TOO_LARGE', async () => {
+      const file = makeFile(PNG_BYTES, PNG_MIME, 'logo.png', 5 * 1024 * 1024 + 1);
 
       await expect(
         service().uploadToBucket('user-1', file, 'org-logos', 'org-1'),
-      ).rejects.toMatchObject({ code: 'PAYLOAD_TOO_LARGE' });
+      ).rejects.toMatchObject({ code: 'PAYLOAD_TOO_LARGE', statusCode: 413 });
       expect(storage.upload).not.toHaveBeenCalled();
+    });
+
+    it('accepts an org-logos file at exactly the 5 MB cap', async () => {
+      const file = makeFile(PNG_BYTES, PNG_MIME, 'logo.png', 5 * 1024 * 1024);
+
+      await service().uploadToBucket('user-1', file, 'org-logos', 'org-1');
+
+      expect(storage.upload).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects assignment-images files above the bucket 10 MB cap with PAYLOAD_TOO_LARGE', async () => {
+      const file = makeFile(PNG_BYTES, PNG_MIME, 'answer.png', 10 * 1024 * 1024 + 1);
+
+      await expect(
+        service().uploadToBucket('user-1', file, 'assignment-images', 'org-1/a/b'),
+      ).rejects.toMatchObject({ code: 'PAYLOAD_TOO_LARGE', statusCode: 413 });
+      expect(storage.upload).not.toHaveBeenCalled();
+    });
+
+    it('accepts an assignment-images file at exactly the 10 MB cap', async () => {
+      const file = makeFile(PNG_BYTES, PNG_MIME, 'answer.png', 10 * 1024 * 1024);
+
+      await service().uploadToBucket('user-1', file, 'assignment-images', 'org-1/a/b');
+
+      expect(storage.upload).toHaveBeenCalledTimes(1);
     });
 
     it('keeps the provided bucket and path prefix, using the sniffed extension', async () => {
