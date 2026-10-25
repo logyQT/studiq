@@ -155,6 +155,51 @@ describe('QuizService', () => {
       expect(projection).not.toContain('explanation');
       expect(projection).not.toContain('search_vector');
     });
+
+    it('narrows the question query to the selected topics', async () => {
+      const questionsBuilder = qb([
+        { id: 'q-1', type: 'mcq', content: 'Q1', question_answers: [] },
+      ]);
+      const assignmentsBuilder = qb([{ question_id: 'q-1' }, { question_id: 'q-2' }]);
+      mock.from.mockReturnValueOnce(qb(null, null, 0)); // daily attempt count
+      mock.from.mockReturnValueOnce(questionsBuilder);
+      mock.from.mockReturnValueOnce(assignmentsBuilder);
+      mock.from.mockReturnValueOnce(qb({ id: 'attempt-1', user_id: ctx.userId }));
+      mock.from.mockReturnValueOnce(qb(null));
+
+      const result = await service.generateQuiz(
+        { topicIds: ['topic-1'], questionTypes: ['mcq'], questionCount: 1 },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mock.from).toHaveBeenCalledWith('question_topic_assignments');
+      expect(assignmentsBuilder.in).toHaveBeenCalledWith('topic_id', ['topic-1']);
+      expect(questionsBuilder.in).toHaveBeenCalledWith('id', ['q-1', 'q-2']);
+    });
+
+    it('returns NOT_FOUND when the selected topic has no questions', async () => {
+      const questionsBuilder = qb([
+        { id: 'q-1', type: 'mcq', content: 'Q1', question_answers: [] },
+      ]);
+      const questionsAwaited = vi.fn(questionsBuilder.then);
+      questionsBuilder.then = questionsAwaited;
+      mock.from.mockReturnValueOnce(qb(null, null, 0)); // daily attempt count
+      mock.from.mockReturnValueOnce(questionsBuilder);
+      mock.from.mockReturnValueOnce(qb([])); // no question_topic_assignments rows
+
+      const result = await service.generateQuiz(
+        { topicIds: ['topic-without-questions'], questionTypes: ['mcq'], questionCount: 5 },
+        ctx,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      // No attempt / attempt-question insert and no question fetch happened.
+      expect(mock.from).toHaveBeenCalledTimes(3);
+      expect(mock.from).not.toHaveBeenCalledWith('quiz_attempt_questions');
+      expect(questionsAwaited).not.toHaveBeenCalled();
+    });
   });
 
   describe('max_quiz_attempts_per_day limit', () => {

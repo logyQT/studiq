@@ -14,6 +14,11 @@ import {
   FieldLabel,
   Input,
   Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Slider,
 } from '@studiq/ui';
 import { useQueryClient } from '@tanstack/react-query';
@@ -25,8 +30,9 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useApiQuery } from '@/hooks/use-api';
 import { useFeature } from '@/hooks/use-feature';
+import { useOrgs } from '@/hooks/use-orgs';
 import { apiPost } from '@/lib/api';
-import { quizAttemptKeys } from '@/lib/query-keys';
+import { quizAttemptKeys, topicKeys } from '@/lib/query-keys';
 
 interface QuizAttempt {
   id: string;
@@ -38,6 +44,7 @@ interface QuizAttempt {
   config: {
     questionTypes?: string[];
     questionCount?: number;
+    topicIds?: string[];
   } | null;
   started_at: string;
   completed_at: string | null;
@@ -51,6 +58,9 @@ const QUESTION_TYPE_OPTIONS = [
   { value: 'open', label: 'Open' },
 ] as const;
 
+/** Radix `Select` cannot use an empty string, so „Wszystkie przedmioty” needs a sentinel. */
+const ALL_TOPICS = '__all__';
+
 export function QuizContent() {
   const t = useTranslations('AppFlashcardStudyPage');
   const tQuiz = useTranslations('AppQuizPage');
@@ -59,6 +69,7 @@ export function QuizContent() {
   const queryClient = useQueryClient();
   const feature = useFeature();
   const hasAccess = feature('quiz');
+  const { activeOrg, isPending: orgsPending } = useOrgs();
 
   const { data: attemptsData, isLoading: attemptsLoading } = useApiQuery<QuizAttempt[]>({
     queryKey: quizAttemptKeys.all,
@@ -67,8 +78,16 @@ export function QuizContent() {
   });
   const attempts = attemptsData;
 
+  const { data: topicsData } = useApiQuery<{ items: Array<{ id: string; name: string }> }>({
+    queryKey: topicKeys.options(activeOrg?.id),
+    url: '/api/v1/topics?limit=100',
+    enabled: !orgsPending,
+  });
+  const topics = topicsData?.items ?? [];
+
   const [quizTypes, setQuizTypes] = useState<string[]>([]);
   const [quizCount, setQuizCount] = useState(10);
+  const [quizTopicId, setQuizTopicId] = useState<string>(ALL_TOPICS);
   const [quizSubmitting, setQuizSubmitting] = useState(false);
 
   const inProgressAttempt = attempts?.find((a) => !a.completed_at) ?? null;
@@ -91,6 +110,7 @@ export function QuizContent() {
       const data = await apiPost<{ id: string }>('/api/v1/quiz/new', {
         ...(quizTypes.length > 0 ? { questionTypes: quizTypes } : {}),
         questionCount: quizCount,
+        ...(quizTopicId !== ALL_TOPICS ? { topicIds: [quizTopicId] } : {}),
       });
       await queryClient.invalidateQueries({ queryKey: quizAttemptKeys.all });
       router.push(`/app/study/session/quiz/${data.id}`);
@@ -203,6 +223,27 @@ export function QuizContent() {
         </CardHeader>
         <CardContent>
           <FieldGroup>
+            {topics.length > 0 && (
+              <Field orientation="vertical">
+                <FieldLabel>{t('quiz_subject')}</FieldLabel>
+                <FieldContent>
+                  <Select value={quizTopicId} onValueChange={setQuizTopicId}>
+                    <SelectTrigger className="w-full" aria-label={t('quiz_subject')}>
+                      <SelectValue placeholder={t('quiz_subject_placeholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_TOPICS}>{t('quiz_subject_placeholder')}</SelectItem>
+                      {topics.map((topic) => (
+                        <SelectItem key={topic.id} value={topic.id}>
+                          {topic.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FieldContent>
+              </Field>
+            )}
+
             <Field orientation="vertical">
               <FieldLabel>{t('quiz_types')}</FieldLabel>
               <FieldContent>

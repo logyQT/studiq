@@ -3,12 +3,15 @@ import { forEachCopy, registerMock } from '#test/helpers/concurrent';
 import { type BeforeResult, before } from '#test/helpers/test-user';
 import {
   applyRegisteredMock,
+  cleanupFlashcardTopics,
   cleanupQuestions,
   cleanupQuizAttempts,
+  createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
 import { POST } from '@/app/(backend)/api/v1/quiz/new/route';
+import { POST as createTopicPost } from '@/app/(backend)/api/v1/topics/route';
 
 forEachCopy((copyId) => {
   describe(`Quizzes Integration [${copyId}]`, () => {
@@ -30,6 +33,7 @@ forEachCopy((copyId) => {
 
     afterAll(async () => {
       await cleanupQuizAttempts(student.user.id);
+      await cleanupFlashcardTopics(student.user.id, 'seed-quiz-topic-');
       await cleanupQuestions(student.user.id, 'seed-question-');
     });
 
@@ -81,6 +85,50 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(201);
         expect(body.success).toBe(true);
+      });
+
+      it('scopes the generated quiz to the selected topic', async () => {
+        mockUser(student.user);
+
+        const topicName = `seed-quiz-topic-${copyId}`;
+        const topicRes = await createTopicPost(
+          createNextRequest('http://localhost/api/v1/topics', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: topicName }),
+          }),
+        );
+        const topicBody = await topicRes.json();
+        expect(topicRes.status).toBe(201);
+        const topicId = topicBody.data.id as string;
+
+        // Tag exactly one of the five seeded questions with the new topic. The
+        // question PUT route scopes its update to `organization_id = activeOrgId`,
+        // which never matches a personal (org-less) question, so the assignment is
+        // made through the service-role client like the other integration fixtures.
+        const [taggedQuestionId] = student.created.questions;
+        const { error: tagError } = await createServiceClient()
+          .from('question_topic_assignments')
+          .insert({ question_id: taggedQuestionId, topic_id: topicId });
+        expect(tagError).toBeNull();
+
+        const req = createNextRequest('http://localhost/api/v1/quiz/new', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topicIds: [topicId],
+            questionTypes: ['mcq'],
+            questionCount: 5,
+          }),
+        });
+
+        const response = await POST(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(201);
+        expect(body.data.questions.map((question: { id: string }) => question.id)).toEqual([
+          taggedQuestionId,
+        ]);
       });
 
       it('returns 401 when not authenticated', async () => {
