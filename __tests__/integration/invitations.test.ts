@@ -487,6 +487,12 @@ forEachCopy((copyId) => {
       it('bulk creates invitations and returns 200', async () => {
         mockUser(fixture.user);
 
+        const stamp = Date.now();
+        const emails = [
+          `bulk1-${copyId}-${stamp}@example.com`,
+          `bulk2-${copyId}-${stamp}@example.com`,
+        ];
+
         const req = createNextRequest(
           'http://localhost/api/v1/organization/invites/bulk',
           {
@@ -494,14 +500,8 @@ forEachCopy((copyId) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               invitations: [
-                {
-                  email: `bulk1-${copyId}-${Date.now()}@example.com`,
-                  targetOrgRoleId: adminRoleId,
-                },
-                {
-                  email: `bulk2-${copyId}-${Date.now()}@example.com`,
-                  targetOrgRoleId: adminRoleId,
-                },
+                { email: emails[0], targetOrgRoleId: adminRoleId },
+                { email: emails[1], targetOrgRoleId: adminRoleId },
               ],
             }),
           },
@@ -514,6 +514,8 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(200);
         expect(body.success).toBe(true);
         expect(Array.isArray(body.data.results)).toBe(true);
+        // MGR-INV-02: „Wyniki” needs one attributed status per entered address.
+        expect(body.data.results.map((r: { email: string }) => r.email)).toEqual(emails);
       });
 
       it('returns 422 when invitations array is empty', async () => {
