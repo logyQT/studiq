@@ -55,6 +55,27 @@ describe('TopicController', () => {
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
     });
+    // #361 — a whitespace-only name is empty, and never reaches the service.
+    it('returns 422 for a whitespace-only name', async () => {
+      const response = await controller.create({ name: '   ' }, mockCtx);
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      if (!response.success) {
+        expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+        expect(response.details?.[0].path).toEqual(['name']);
+        expect(response.details?.[0].message).toBe('VALIDATION_REQUIRED');
+      }
+      expect(mockService.create).not.toHaveBeenCalled();
+    });
+    it('trims a padded name before calling the service', async () => {
+      mockService.create.mockResolvedValueOnce({
+        success: true,
+        data: { id: 't-1', name: 'Math' },
+      });
+      const response = await controller.create({ name: '  Math  ' }, mockCtx);
+      expect(response.success).toBe(true);
+      expect(mockService.create).toHaveBeenCalledWith({ name: 'Math' }, mockCtx);
+    });
     it('returns error on service failure', async () => {
       mockService.create.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
       const response = await controller.create({ name: 'Math' }, mockCtx);
@@ -102,6 +123,12 @@ describe('TopicController', () => {
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
     });
+    it('returns 422 for a whitespace-only name', async () => {
+      const response = await controller.update('t-1', { name: '   ' }, mockCtx);
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect(mockService.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('delete', () => {
@@ -131,6 +158,12 @@ describe('TopicController', () => {
       const response = await controller.bulkCreate({ topics: [] }, mockCtx);
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
+    });
+    it('returns 422 for a whitespace-only name', async () => {
+      const response = await controller.bulkCreate({ topics: [{ name: '   ' }] }, mockCtx);
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect(mockService.bulkCreate).not.toHaveBeenCalled();
     });
   });
 
