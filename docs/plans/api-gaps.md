@@ -47,13 +47,6 @@ ticket for the fix.
 | Question banks | ~~No `POST /api/v1/question-banks`~~ — route now exists at `api/v1/questions/banks`; helper creates banks via the real API | — |
 | Subjects | No subject create route | Service-role insert (not yet used by helper — add when a subject is needed) |
 
-### Minor API shape gaps (route exists but response is incomplete)
-
-- `POST /api/v1/organization/invites` returns `inviteLink` only when
-  `NODE_ENV === 'development'`. In tests it is `undefined`, so the helper reads the token
-  from the `invitations` table. Suggest: always return the token/link (it is already
-  env-gated for prod; exposing token helps API consumers).
-
 ## Not defects (seeding notes)
 
 - Email confirmation is NOT auto-enabled for registered accounts — the helper confirms via

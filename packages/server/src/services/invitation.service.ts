@@ -187,9 +187,7 @@ export class InvitationService {
   async createInvitation(
     ctx: RequestContext,
     data: CreateInviteInput,
-  ): Promise<
-    ServiceResult<{ success: boolean; invitationId: string; inviteLink: string | undefined }>
-  > {
+  ): Promise<ServiceResult<{ success: boolean; invitationId: string; inviteLink: string }>> {
     const supabase = await this.createClient();
 
     // The body may only *select* one of the caller's memberships, never extend
@@ -214,6 +212,13 @@ export class InvitationService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
+    // The link is the only delivery path for an invitation (#313, e-mail is
+    // #604), so a missing public origin must fail before the row is written —
+    // same position the bulk path uses. Otherwise the manager is left with an
+    // "Oczekujące" row that can never be handed to the invitee.
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    if (!baseUrl) return failure('INTERNAL_SERVER');
+
     const { data: invitation, error: insertError } = await supabase
       .from('invitations')
       .insert({
@@ -228,16 +233,12 @@ export class InvitationService {
 
     if (insertError) return toDbFailure(insertError);
 
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
-    if (!baseUrl) {
-      return failure('INTERNAL_SERVER');
-    }
     const inviteLink = `${baseUrl}/join?token=${invitation.token}`;
 
     return success({
       success: true,
       invitationId: invitation.id,
-      inviteLink: process.env.NODE_ENV === 'development' ? inviteLink : undefined,
+      inviteLink,
     });
   }
 
@@ -258,7 +259,7 @@ export class InvitationService {
       Array<{
         email: string;
         success: true;
-        data: { success: true; invitationId: string; inviteLink: string | undefined };
+        data: { success: true; invitationId: string; inviteLink: string };
       }>
     >
   > {
@@ -360,7 +361,7 @@ export class InvitationService {
     const results: Array<{
       email: string;
       success: true;
-      data: { success: true; invitationId: string; inviteLink: string | undefined };
+      data: { success: true; invitationId: string; inviteLink: string };
     }> = [];
 
     for (const invite of invitations) {
@@ -373,10 +374,9 @@ export class InvitationService {
         data: {
           success: true,
           invitationId: row.id,
-          inviteLink:
-            process.env.NODE_ENV === 'development'
-              ? `${baseUrl}/join?token=${row.token}`
-              : undefined,
+          // Always returned, in every environment: the copied link is the only
+          // delivery path until #604 adds e-mail (#313).
+          inviteLink: `${baseUrl}/join?token=${row.token}`,
         },
       });
     }

@@ -33,8 +33,8 @@ async function getMemberRoleId(page: Page) {
 
 /**
  * Create an invitation through the real API and return its 32-hex token. The
- * bulk response carries `inviteLink` in development only, so its absence is a
- * hard failure: there is no other way to read the token back.
+ * bulk response always carries `inviteLink` (any environment, #313), so its
+ * absence is a hard failure: there is no other way to read the token back.
  */
 async function createInviteToken(page: Page, email: string) {
   const roleId = await getMemberRoleId(page);
@@ -57,7 +57,7 @@ async function createInviteToken(page: Page, email: string) {
   const inviteLink = body.body.data?.results?.[0]?.data?.inviteLink as string | undefined;
   expect(
     inviteLink,
-    'bulk invite did not return inviteLink (requires NODE_ENV=development)',
+    'bulk invite did not return inviteLink (#313: the link must be returned in every environment)',
   ).toBeTruthy();
 
   const token = new URL(inviteLink as string).searchParams.get('token');
