@@ -56,8 +56,12 @@ export default function PasswordUpdatePage() {
 
       toast.success(t('SUCCESS_PASSWORD_UPDATED'));
 
-      router.push('/dashboard');
-      router.refresh();
+      // Client-side navigation (no hard reload) keeps the Sonner toast visible.
+      // `/login` is matched by `redirectIfAuthenticatedByAccountType` in the proxy
+      // (routes.config.ts), which sends the signed-in user to their panel
+      // (STUDENT -> /app, EDUCATOR -> /edu, MANAGER -> /manage). `replace` so the
+      // password form is not a back target.
+      router.replace('/login');
     } catch {
       toast.error(tErr(APP_ERRORS.INTERNAL_SERVER.code));
     }
