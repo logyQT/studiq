@@ -48,9 +48,7 @@ describe('AuthService', () => {
       });
     });
 
-    it('returns early in development when user already exists', async () => {
-      vi.stubEnv('NODE_ENV', 'development');
-
+    it('returns neutral success for an already-registered e-mail', async () => {
       mock.auth.signUp.mockResolvedValueOnce({
         data: {},
         error: { status: 422, code: 'user_already_exists', message: 'User already registered' },
@@ -62,17 +60,48 @@ describe('AuthService', () => {
         password: 'SecurePass1',
       });
 
+      // #300: identical in every environment — the endpoint must not reveal
+      // whether the address is taken.
       expect(result.success).toBe(true);
-
-      vi.unstubAllEnvs();
     });
 
-    it('throws INTERNAL_SERVER when signUp fails in production', async () => {
-      vi.stubEnv('NODE_ENV', 'production');
-
+    it('returns neutral success when only the legacy message is present', async () => {
       mock.auth.signUp.mockResolvedValueOnce({
         data: {},
-        error: { message: 'Server error' },
+        error: { status: 400, message: 'User already registered' },
+      });
+
+      const result = await service.register({
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'SecurePass1',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('does not mask other 422 sign-up errors', async () => {
+      mock.auth.signUp.mockResolvedValueOnce({
+        data: {},
+        error: { status: 422, code: 'weak_password', message: 'Password is too weak' },
+      });
+
+      const result = await service.register({
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'SecurePass1',
+      });
+
+      // A bare `status === 422` check would report "activation link sent" for a
+      // registration that never happened; only the duplicate is neutralised.
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
+    it('throws INTERNAL_SERVER when signUp fails unexpectedly', async () => {
+      mock.auth.signUp.mockResolvedValueOnce({
+        data: {},
+        error: { status: 500, code: 'unexpected_failure', message: 'Server error' },
       });
 
       const result = await service.register({
@@ -83,8 +112,6 @@ describe('AuthService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');
-
-      vi.unstubAllEnvs();
     });
   });
 
