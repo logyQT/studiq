@@ -91,7 +91,7 @@ test.describe('Manage invitations — role defaults (#241)', () => {
 
     await page.locator('#email-0').fill('qa-role-reset@example.com');
     await page.locator('#role-0').click();
-    await page.getByRole('option', { name: 'member', exact: true }).click();
+    await page.getByRole('option', { name: 'Student', exact: true }).click();
 
     // Await the intercepted POST before asserting the reset state, so the
     // assertion can't race the request.

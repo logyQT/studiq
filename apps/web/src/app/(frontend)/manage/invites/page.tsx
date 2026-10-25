@@ -39,6 +39,7 @@ import { toast } from 'sonner';
 interface OrgRole {
   id: string;
   name: string;
+  displayName?: string;
 }
 
 interface InviteRow {
@@ -238,7 +239,7 @@ export default function InvitationsPage() {
                   <SelectContent>
                     {orgRoles.map((role) => (
                       <SelectItem key={role.id} value={role.id}>
-                        {role.name}
+                        {role.displayName ?? role.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -352,7 +353,10 @@ export default function InvitationsPage() {
                       <TableCell className="font-medium">{inv.email}</TableCell>
                       <TableCell>
                         {inv.isAccepted ? (
-                          <span className="text-sm">{inv.orgRoleName}</span>
+                          <span className="text-sm">
+                            {orgRoles.find((r) => r.name === inv.orgRoleName)?.displayName ??
+                              inv.orgRoleName}
+                          </span>
                         ) : (
                           <Select
                             value={inv.targetOrgRoleId}
@@ -364,7 +368,7 @@ export default function InvitationsPage() {
                             <SelectContent>
                               {orgRoles.map((role) => (
                                 <SelectItem key={role.id} value={role.id}>
-                                  {role.name}
+                                  {role.displayName ?? role.name}
                                 </SelectItem>
                               ))}
                             </SelectContent>

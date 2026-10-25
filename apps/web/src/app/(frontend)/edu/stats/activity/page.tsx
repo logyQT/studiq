@@ -25,6 +25,8 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts';
 
+import { hasTeacherActivity } from '@/lib/stats';
+
 type StudentRow = {
   id: string;
   name: string;
@@ -99,7 +101,7 @@ export default function TeacherActivityPage() {
     try {
       const res = await fetch(`/api/v1/stats/teacher/activity?range=${range}`);
       const json = await res.json();
-      setData(json.data || json);
+      setData(res.ok && json.success ? json.data : null);
     } catch {
       setData(null);
     } finally {
@@ -172,7 +174,7 @@ export default function TeacherActivityPage() {
           <Skeleton className="h-72 rounded-xl" />
           <Skeleton className="h-64 rounded-xl" />
         </div>
-      ) : !data ? (
+      ) : !data || !hasTeacherActivity(data) ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             {t('no_data')}
