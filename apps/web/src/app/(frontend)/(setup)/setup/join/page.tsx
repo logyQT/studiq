@@ -67,7 +67,15 @@ export default function JoinPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: inviteData.token }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        // 429 USAGE_LIMIT_EXCEEDED: the code is valid but the org has no free seat (#240).
+        if (err.error === 'USAGE_LIMIT_EXCEEDED' || err.error === 'ERROR_USAGE_LIMIT_EXCEEDED') {
+          toast.error(t('org_full'));
+          return;
+        }
+        throw new Error();
+      }
       router.push('/edu');
     } catch {
       toast.error(t('join_failed'));
