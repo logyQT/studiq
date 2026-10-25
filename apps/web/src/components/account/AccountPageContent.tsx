@@ -155,7 +155,7 @@ export function AccountPageContent() {
                 disabled={isSavingName || !name.trim() || name === user?.user_metadata?.name}
               >
                 {isSavingName && <Loader2 className="size-4 mr-2 animate-spin" />}
-                {isSavingName ? t('saving') : 'Save'}
+                {isSavingName ? t('saving') : t('save_name')}
               </Button>
             </div>
           </div>
