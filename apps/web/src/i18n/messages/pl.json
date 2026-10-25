@@ -199,6 +199,7 @@
   },
   "SetupPage": {
     "back": "Wróć",
+    "back_to_dashboard": "Wróć do panelu",
     "title": "Witaj w StudiQ",
     "desc": "Skonfiguruj swoją klasę, aby rozpocząć.",
     "join_option": "Dołącz do istniejącej organizacji",
@@ -1758,7 +1759,6 @@
     "limit_max_ai_tokens_per_day": "Tokeny AI / dzień",
     "limit_max_students": "Maks. studentów",
     "limit_max_groups": "Maks. grup",
-    "limit_max_storage_mb": "Pamięć (MB)",
     "cta_free": "Zacznij za Darmo",
     "cta_spark": "Przejdź na Spark",
     "cta_ace": "Wybierz Ace",

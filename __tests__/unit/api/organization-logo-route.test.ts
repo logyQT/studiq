@@ -12,8 +12,12 @@ vi.mock('@studiq/server/services/storage.service', () => ({
 }));
 
 const updateMock = vi.fn();
+const getByIdMock = vi.fn();
 vi.mock('@studiq/server/controllers/organization.controller', () => ({
-  organizationController: { update: (...args: unknown[]) => updateMock(...args) },
+  organizationController: {
+    update: (...args: unknown[]) => updateMock(...args),
+    getById: (...args: unknown[]) => getByIdMock(...args),
+  },
 }));
 
 const requireFeatureMock = vi.fn();
@@ -57,6 +61,13 @@ describe('POST /api/v1/organization/[id]/logo (#271)', () => {
     vi.clearAllMocks();
     mockCtx = { userId: USER_ID, activeOrgId: ORG_ID, orgRoleId: 'role-manager' };
     requireFeatureMock.mockResolvedValue(undefined);
+    // #281 reads the current row before uploading; these #271 cases start from
+    // an org without a logo so the cleanup is a no-op.
+    getByIdMock.mockResolvedValue({
+      success: true,
+      statusCode: 200,
+      data: { id: ORG_ID, logo_url: null },
+    });
   });
 
   it.each([

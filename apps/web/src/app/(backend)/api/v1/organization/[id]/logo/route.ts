@@ -2,6 +2,7 @@ import { AccountType } from '@studiq/authz';
 import { organizationController } from '@studiq/server/controllers/organization.controller';
 import { requireFeature } from '@studiq/server/lib/features';
 import { handleApiError, toNextResponse } from '@studiq/server/lib/http-utils';
+import { error as logError } from '@studiq/server/lib/log';
 import { withAuth } from '@studiq/server/lib/with-auth';
 import { storageService } from '@studiq/server/services/storage.service';
 import { type NextRequest, NextResponse } from 'next/server';
@@ -40,8 +41,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
 
       try {
+        // Read the current row *before* writing anything: without its logo_url
+        // the object we are about to replace becomes unreachable while staying
+        // public (#281). If this read fails we fail closed and upload nothing,
+        // so we can never create an orphan we know we cannot clean up.
+        const current = await organizationController.getById(id);
+        if (!current.success) return toNextResponse(current);
+
+        const previous = (current.data as { logo_url?: unknown } | undefined)?.logo_url;
+        const previousLogoUrl =
+          typeof previous === 'string' && previous.length > 0 ? previous : null;
+
         const { url } = await storageService.uploadToBucket(ctx.userId, file, 'org-logos', id);
-        return toNextResponse(await organizationController.update(ctx, id, { logoUrl: url }));
+        const result = await organizationController.update(ctx, id, { logoUrl: url });
+
+        // Only after the row points at the new object is the old one an orphan.
+        // Best-effort: delete never throws, and the route must not turn a
+        // successful logo change into a 500 that makes the manager re-upload.
+        if (result.success && previousLogoUrl && previousLogoUrl !== url) {
+          try {
+            await storageService.deleteObjectByPublicUrl('org-logos', previousLogoUrl, id);
+          } catch (error) {
+            logError('Previous logo cleanup failed', { orgId: id, error });
+          }
+        }
+
+        return toNextResponse(result);
       } catch (error) {
         // Surface validation failures (422) and oversize uploads (413) instead
         // of collapsing every one of them into a 500.

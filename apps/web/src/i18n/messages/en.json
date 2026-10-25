@@ -170,6 +170,7 @@
   },
   "SetupPage": {
     "back": "Back",
+    "back_to_dashboard": "Back to dashboard",
     "title": "Welcome to StudiQ",
     "desc": "Set up your classroom to get started.",
     "join_option": "Join an existing organization",
@@ -1778,7 +1779,6 @@
     "limit_max_ai_tokens_per_day": "AI Tokens / Day",
     "limit_max_students": "Max Students",
     "limit_max_groups": "Max Groups",
-    "limit_max_storage_mb": "Storage (MB)",
     "cta_free": "Get Started Free",
     "cta_spark": "Upgrade to Spark",
     "cta_ace": "Go Ace",
