@@ -16,7 +16,19 @@ export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 /** Upload body cap: the file plus the multipart envelope headroom. */
 export const MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES + 1024 * 1024;
 
-const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
+/**
+ * Hard caps for the image buckets we write to. Must stay in sync with
+ * `storage.buckets.file_size_limit` in the migrations — a file that passes this
+ * check but not the bucket's is rejected by the provider, which turns our
+ * clean 413 into a provider-status-dependent error (#271).
+ */
+const IMAGE_BUCKET_MAX_BYTES = {
+  'org-logos': 5 * 1024 * 1024, // supabase/migrations/20260920000002_org_branding.sql
+  'assignment-images': 10 * 1024 * 1024, // supabase/migrations/20260713000001_teacher_assignments.sql
+} as const;
+
+type ImageBucket = keyof typeof IMAGE_BUCKET_MAX_BYTES;
+
 const IMAGE_MIME_TYPES: readonly UploadMimeType[] = [
   'image/png',
   'image/jpeg',
@@ -95,10 +107,10 @@ export class StorageService {
   async uploadToBucket(
     _userId: string,
     file: File,
-    bucket: string,
+    bucket: ImageBucket,
     pathPrefix: string,
   ): Promise<{ url: string }> {
-    const mimeType = await validateUpload(file, IMAGE_MIME_TYPES, MAX_IMAGE_UPLOAD_BYTES);
+    const mimeType = await validateUpload(file, IMAGE_MIME_TYPES, IMAGE_BUCKET_MAX_BYTES[bucket]);
 
     const supabase = this.createClient();
     const storagePath = `${pathPrefix}/${crypto.randomUUID()}.${extensionForMimeType(mimeType)}`;
