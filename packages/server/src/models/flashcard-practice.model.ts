@@ -1,11 +1,13 @@
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
+import type { IntervalUnit } from './flashcard-spaced-repetition.model';
 
 export const ReviewStateSchema = registry.register(
   'ReviewState',
   z.object({
     easinessFactor: z.number(),
-    intervalDays: z.number(),
+    intervalValue: z.number(),
+    intervalUnit: z.enum(['minutes', 'days']),
     repetitions: z.number(),
     nextReviewAt: z.string(),
     lastReviewedAt: z.string().nullable(),
@@ -150,7 +152,10 @@ export interface CardStatsItem {
   correctRate: number;
   lastPracticedAt: string | null;
   easinessFactor: number | null;
-  intervalDays: number | null;
+  /** Interval magnitude; the unit is recorded in `intervalUnit`. */
+  intervalValue: number | null;
+  /** Minutes for learning/relearning steps, days for review intervals. */
+  intervalUnit: IntervalUnit | null;
   nextReviewAt: string | null;
   repetitions: number | null;
   isLeech: boolean;

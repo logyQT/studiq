@@ -81,4 +81,23 @@ describe('i18n message parity', () => {
   it('has the same AiChatPage keys in en and pl', () => {
     expect(Object.keys(en.AiChatPage).sort()).toEqual(Object.keys(pl.AiChatPage).sort());
   });
+
+  /**
+   * #341 — the stats “Interwał” cell formats the interval magnitude with its unit,
+   * so a missing key would throw at render time and 1 min / 1 day would be unreadable.
+   */
+  it('has the same AppStatsPage keys in en and pl', () => {
+    expect(Object.keys(en.AppStatsPage).sort()).toEqual(Object.keys(pl.AppStatsPage).sort());
+  });
+
+  it('translates the stats interval unit labels', () => {
+    for (const locale of Object.values(locales)) {
+      const statsPage = locale.AppStatsPage as Record<string, string>;
+
+      for (const key of ['interval_minutes', 'interval_days'] as const) {
+        expect(statsPage[key], `AppStatsPage.${key}`).toBeTypeOf('string');
+        expect(statsPage[key]).not.toHaveLength(0);
+      }
+    }
+  });
 });

@@ -15,7 +15,7 @@ import type {
   PracticeSummary,
   StateBreakdown,
 } from '@studiq/server/models/flashcard-practice.model';
-import type { Rating } from '@studiq/server/models/flashcard-spaced-repetition.model';
+import type { IntervalUnit, Rating } from '@studiq/server/models/flashcard-spaced-repetition.model';
 import { flashcardSpacedRepetitionService } from '@studiq/server/services/flashcard-spaced-repetition.service';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -246,6 +246,7 @@ export class FlashcardPracticeService {
           flashcard_id: flashcardId,
           easiness_factor: result.newEasinessFactor,
           interval_days: result.newInterval,
+          interval_unit: result.intervalUnit,
           repetitions: result.newRepetitions,
           next_review_at: nextReviewAt.toISOString(),
           last_reviewed_at: new Date().toISOString(),
@@ -629,7 +630,8 @@ export class FlashcardPracticeService {
             : 0,
         lastPracticedAt: practice?.lastPracticedAt ?? null,
         easinessFactor: state?.easiness_factor ?? null,
-        intervalDays: state?.interval_days ?? null,
+        intervalValue: state?.interval_days ?? null,
+        intervalUnit: (state?.interval_unit as IntervalUnit | null) ?? null,
         nextReviewAt: state?.next_review_at ?? null,
         repetitions: state?.repetitions ?? null,
         isLeech,
@@ -754,7 +756,7 @@ export class FlashcardPracticeService {
     const { data: reviewStates } = await supabase
       .from('flashcard_review_state')
       .select(
-        'flashcard_id, easiness_factor, interval_days, repetitions, next_review_at, last_reviewed_at, last_quality, learning_state, learning_step, lapse_count, is_leech',
+        'flashcard_id, easiness_factor, interval_days, interval_unit, repetitions, next_review_at, last_reviewed_at, last_quality, learning_state, learning_step, lapse_count, is_leech',
       )
       .eq('user_id', ctx.userId)
       .in('flashcard_id', matchingIds);
@@ -786,7 +788,8 @@ export class FlashcardPracticeService {
           reviewState: state
             ? {
                 easinessFactor: state.easiness_factor,
-                intervalDays: state.interval_days,
+                intervalValue: state.interval_days,
+                intervalUnit: state.interval_unit as IntervalUnit,
                 repetitions: state.repetitions,
                 nextReviewAt: state.next_review_at,
                 lastReviewedAt: state.last_reviewed_at,
