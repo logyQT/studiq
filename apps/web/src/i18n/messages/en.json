@@ -2398,7 +2398,10 @@
     "select_source": "Select source",
     "unpublish": "Unpublish",
     "unpublishing": "Unpublishing...",
-    "export_answers": "Export Answers"
+    "export_answers": "Export Answers",
+    "view_source_quiz": "View source quiz",
+    "schedule_release": "Schedule release",
+    "start_time": "Start time"
   },
   "EduAssignmentEditPage": {
     "title": "Edit Assignment",

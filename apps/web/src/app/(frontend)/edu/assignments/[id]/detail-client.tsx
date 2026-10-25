@@ -479,7 +479,7 @@ export default function AssignmentDetailClient() {
                 href={`/edu/quizzes/${assignment.quiz_id}`}
                 className="text-xs text-muted-foreground hover:text-foreground underline"
               >
-                View source quiz
+                {t('view_source_quiz')}
               </Link>
             )}
           </div>
@@ -890,11 +890,11 @@ export default function AssignmentDetailClient() {
                   onChange={(e) => setScheduleRelease(e.target.checked)}
                   className="rounded border-gray-300"
                 />
-                <Label htmlFor="scheduleRelease">Schedule release</Label>
+                <Label htmlFor="scheduleRelease">{t('schedule_release')}</Label>
               </div>
               {scheduleRelease && (
                 <div className="space-y-2">
-                  <Label>Start time</Label>
+                  <Label>{t('start_time')}</Label>
                   <Input
                     type="datetime-local"
                     value={publishStartTime}
