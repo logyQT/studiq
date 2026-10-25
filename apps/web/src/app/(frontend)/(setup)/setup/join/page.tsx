@@ -25,7 +25,8 @@ export default function JoinPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!inviteCode || inviteCode.length < 10) {
+    const code = inviteCode.trim();
+    if (!code) {
       setInviteData(null);
       setVerifyState('idle');
       return;
@@ -34,9 +35,7 @@ export default function JoinPage() {
     const timer = setTimeout(async () => {
       setVerifyState('verifying');
       try {
-        const res = await fetch(
-          `/api/v1/organization/invites?token=${encodeURIComponent(inviteCode)}`,
-        );
+        const res = await fetch(`/api/v1/organization/invites?token=${encodeURIComponent(code)}`);
         const result = await res.json();
         if (!res.ok || !result.success) {
           setVerifyState('invalid');
@@ -47,7 +46,7 @@ export default function JoinPage() {
             organizationName: result.data.organizationName,
             organizationId: result.data.organizationId,
             orgRoleName: result.data.orgRoleName,
-            token: inviteCode,
+            token: code,
           });
         }
       } catch {
