@@ -23,6 +23,7 @@ interface UiMessageRaw {
 interface UseChatResultRaw {
   messages: UiMessageRaw[];
   sendMessage: (data: { text: string }) => Promise<void>;
+  setMessages: (updater: (prev: UiMessageRaw[]) => UiMessageRaw[]) => void;
   stop: () => void;
   status: string;
 }
@@ -127,7 +128,13 @@ export function useAiChat(): UseAiChatReturn {
   const chatResult = useChat({
     transport: new DefaultChatTransport({ api: '/api/v1/ai/chat' }),
   }) as unknown as UseChatResultRaw;
-  const { messages: uiMessages = [], sendMessage: sendChatMessage, stop, status } = chatResult;
+  const {
+    messages: uiMessages = [],
+    sendMessage: sendChatMessage,
+    setMessages,
+    stop,
+    status,
+  } = chatResult;
 
   const messages: ChatMessage[] = useMemo(() => {
     const mapped: ChatMessage[] = [];
@@ -389,7 +396,21 @@ export function useAiChat(): UseAiChatReturn {
     [sendChatMessage],
   );
 
-  const sendLocalResponse = useCallback((_userText: string, _assistantText: string) => {}, []);
+  const sendLocalResponse = useCallback(
+    (userText: string, assistantText: string) => {
+      const stamp = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setMessages((prev) => [
+        ...prev,
+        { id: `${stamp}-user`, role: 'user', parts: [{ type: 'text', text: userText }] },
+        {
+          id: `${stamp}-assistant`,
+          role: 'assistant',
+          parts: [{ type: 'text', text: assistantText }],
+        },
+      ]);
+    },
+    [setMessages],
+  );
 
   const clearChat = useCallback(() => {}, []);
 
