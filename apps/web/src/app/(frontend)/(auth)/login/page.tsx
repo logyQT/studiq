@@ -28,6 +28,7 @@ import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { DevQuickLogin } from '@/components/dev/dev-quick-login';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { toSafeInternalPath } from '@/lib/safe-redirect';
 import { cn } from '@/lib/utils';
 
 export default function LoginPage() {
@@ -39,16 +40,10 @@ export default function LoginPage() {
 
   const errorParam = searchParams.get('error');
 
-  const rawNext = searchParams.get('next');
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-
-  let nextParam: string | null = null;
-  if (rawNext && URL.canParse(rawNext, origin)) {
-    const parsed = new URL(rawNext, origin);
-    if (parsed.origin === origin) {
-      nextParam = parsed.pathname + parsed.search + parsed.hash;
-    }
-  }
+  // Same validation the proxy applies to `?next=` (single implementation, so a
+  // deep link can never be handled differently by the two callers).
+  const nextParam = toSafeInternalPath(searchParams.get('next'), origin);
 
   const form = useForm<LoginInput>({
     resolver: zodResolver(LoginSchema),
@@ -77,7 +72,9 @@ export default function LoginPage() {
       await refresh();
 
       if (nextParam) {
-        router.push(nextParam);
+        // `replace`, not `push`: after a successful login the form must not be
+        // a back target (back would re-enter the pre-auth state).
+        router.replace(nextParam);
       } else {
         router.refresh();
       }
