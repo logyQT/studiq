@@ -1,11 +1,13 @@
 'use client';
 
 import { Badge, Button, Card, Input, Label, OrgAvatar, Separator } from '@studiq/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Loader2, ShieldAlert } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { featureKeys, permissionKeys, questionReportKeys } from '@/lib/query-keys';
 
 type VerifyState = 'idle' | 'verifying' | 'valid' | 'invalid';
 
@@ -19,6 +21,7 @@ interface InviteData {
 export default function JoinPage() {
   const t = useTranslations('SetupPage');
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [inviteCode, setInviteCode] = useState('');
   const [inviteData, setInviteData] = useState<InviteData | null>(null);
   const [verifyState, setVerifyState] = useState<VerifyState>('idle');
@@ -76,6 +79,17 @@ export default function JoinPage() {
         }
         throw new Error();
       }
+      // #310: the accept route made this org active (the `active_org_id` cookie is
+      // set), but `['orgs']` still holds the empty list cached at login. Without
+      // this, `/edu` sees zero orgs and bounces back to `/setup`.
+      // `refetchType: 'all'` is required: under `/setup` no `useOrgs()` observer
+      // is mounted, so the default `active`-only refetch would fetch nothing.
+      await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
+      // Permission scopes, plan features and question reports are resolved from the
+      // active org and cached. They are only marked stale here and refetch on mount.
+      queryClient.invalidateQueries({ queryKey: permissionKeys.all });
+      queryClient.invalidateQueries({ queryKey: featureKeys.all });
+      queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
       router.push('/edu');
     } catch {
       toast.error(t('join_failed'));
