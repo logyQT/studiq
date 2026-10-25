@@ -28,6 +28,7 @@ import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { DevQuickLogin } from '@/components/dev/dev-quick-login';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { translateErrorCode } from '@/lib/error-messages';
 import { toSafeInternalPath } from '@/lib/safe-redirect';
 import { cn } from '@/lib/utils';
 
@@ -65,7 +66,7 @@ export default function LoginPage() {
       const result = await response.json();
 
       if (!result.success) {
-        toast.error(tErr(result.error || APP_ERRORS.INTERNAL_SERVER.code));
+        toast.error(translateErrorCode(tErr, result.error || APP_ERRORS.INTERNAL_SERVER.code));
         return;
       }
 
@@ -79,7 +80,7 @@ export default function LoginPage() {
         router.refresh();
       }
     } catch {
-      toast.error(tErr(APP_ERRORS.INTERNAL_SERVER.code));
+      toast.error(translateErrorCode(tErr, APP_ERRORS.INTERNAL_SERVER.code));
     }
   }
 
@@ -98,7 +99,7 @@ export default function LoginPage() {
             >
               <AlertCircle className="h-4 w-4" />
               <AlertDescription className="font-medium">
-                {tErr(errorParam || APP_ERRORS.INTERNAL_SERVER.code)}
+                {translateErrorCode(tErr, errorParam || APP_ERRORS.INTERNAL_SERVER.code)}
               </AlertDescription>
             </Alert>
           )}
