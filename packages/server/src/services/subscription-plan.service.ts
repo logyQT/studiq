@@ -7,6 +7,7 @@ import type {
   CreateSubscriptionPlanInput,
   UpdateSubscriptionPlanInput,
 } from '@studiq/server/models/subscription-plan.model';
+import { getSeatPlanKey } from '@studiq/server/services/seat.plan';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface PlanInfo {
@@ -109,17 +110,30 @@ export class SubscriptionPlanService {
   /**
    * The caller's current plan.
    *
-   * Organization plans (`subscription_plans.for_account_type = 'manager'`) belong to
-   * managers; a student's/educator's `active_org_id` membership must not replace their
-   * own plan with the organization's (#181). Managers resolve the active org's plan and
-   * fall back to their personal plan when no org plan is available.
+   * A student's/educator's seat assignment in the active org is the entitlement
+   * they actually hold: `LimitsResolver` resolves limits from the seat plan only
+   * and `FeatureResolver` adds the seat plan's features, so the plan page shows
+   * that same seat plan (#270). Without a seat, a student's/educator's
+   * `active_org_id` membership must not replace their own plan with the
+   * organization's (#181).
+   *
+   * Organization plans (`subscription_plans.for_account_type = 'manager'`) belong
+   * to managers; they resolve the active org's plan and fall back to their
+   * personal plan when no org plan is available.
    */
   async getMyPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
     const supabase = await this.createClient();
 
     let planKey: string | null = null;
 
-    if (ctx.activeOrgId && ctx.accountType === AccountType.MANAGER) {
+    // Seated member (student/educator): the seat plan is the effective plan.
+    // Managers keep resolving the org plan because they are the org's billing
+    // contact (#181).
+    if (ctx.activeOrgId && ctx.accountType !== AccountType.MANAGER) {
+      planKey = await getSeatPlanKey(ctx, supabase);
+    }
+
+    if (!planKey && ctx.activeOrgId && ctx.accountType === AccountType.MANAGER) {
       const { data: org, error: orgError } = await supabase
         .from('organizations')
         .select('plan')
@@ -131,7 +145,8 @@ export class SubscriptionPlanService {
     }
 
     if (!planKey) {
-      // Non-managers (and managers without an org plan) use their personal plan.
+      // Unseated non-managers (and managers without an org plan) use their
+      // personal plan.
       const { data: profile } = await supabase
         .from('profiles')
         .select('personal_plan_key')

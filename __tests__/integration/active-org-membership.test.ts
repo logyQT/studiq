@@ -62,6 +62,7 @@ describe('active_org_id membership gate (#186)', () => {
 
   let orgId: string;
   let member: Session;
+  let seated: Session;
   let outsider: Session;
   let orgManager: Session;
   let outsiderManager: Session;
@@ -104,16 +105,44 @@ describe('active_org_id membership gate (#186)', () => {
       orgRoleId: memberRole.id,
     });
 
+    // Seated member (#270): a StudiQ Ace seat makes the seat plan the member's
+    // effective plan for features and limits, so `/me/plan` must serve it too.
+    const seatedUser = await createTestUser({ role: 'student', password: PASSWORD });
+    await seedOrgMembership({
+      organizationId: orgId,
+      userId: seatedUser.id,
+      orgRoleId: memberRole.id,
+    });
+
+    const { data: seatPool, error: poolError } = await service
+      .from('org_seat_pools')
+      .insert({ organization_id: orgId, plan_key: 'ace', total: 1 })
+      .select('id')
+      .single();
+    if (poolError || !seatPool) {
+      throw new Error(`[setup] failed to create seat pool: ${poolError?.message}`);
+    }
+
+    const { error: assignmentError } = await service.from('org_seat_assignments').insert({
+      organization_id: orgId,
+      pool_id: seatPool.id,
+      user_id: seatedUser.id,
+    });
+    if (assignmentError) {
+      throw new Error(`[setup] failed to assign seat: ${assignmentError.message}`);
+    }
+
     const outsiderUser = await createTestUser({ role: 'student', password: PASSWORD });
     // Managers have a personal `launch` plan, same as the default org plan, so an
     // outsider manager is the one that proves the forged cookie is rejected.
     const outsiderManagerUser = await createTestUser({ role: 'manager', password: PASSWORD });
 
     member = await signIn(memberUser.email, memberUser);
+    seated = await signIn(seatedUser.email, seatedUser);
     outsider = await signIn(outsiderUser.email, outsiderUser);
     orgManager = await signIn(managerUser.email, managerUser);
     outsiderManager = await signIn(outsiderManagerUser.email, outsiderManagerUser);
-    testUsers = [managerUser, memberUser, outsiderUser, outsiderManagerUser];
+    testUsers = [managerUser, memberUser, seatedUser, outsiderUser, outsiderManagerUser];
   });
 
   afterAll(async () => {
@@ -132,6 +161,20 @@ describe('active_org_id membership gate (#186)', () => {
 
     expect(res.status).toBe(200);
     expect(body.data.key).toBe('base');
+  });
+
+  it('serves the seat plan to a seated student member (#270)', async () => {
+    actAs(seated);
+    const res = await getMyPlan(
+      createNextRequest(`${BASE_URL}/api/v1/me/plan`, { method: 'GET' }, { active_org_id: orgId }),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.key).toBe('ace');
+    expect(body.data.limits.max_ai_tokens_per_day).toBe(200000);
+    expect(body.data.limits.max_decks).toBe(200);
+    expect(body.data.features).toContain('ai.chat');
   });
 
   it('serves the org plan to the org manager', async () => {
