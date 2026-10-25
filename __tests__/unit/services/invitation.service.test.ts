@@ -293,6 +293,193 @@ describe('InvitationService', () => {
     });
   });
 
+  // MGR-INV-02: bulk is all-or-nothing. Every entry is checked before any write
+  // and the rows land in a single INSERT, so a rejected entry cannot leave a
+  // half-sent batch behind.
+  describe('createInvitationsBulk', () => {
+    const memberRole = '550e8400-e29b-41d4-a716-446655440001';
+    const adminRole = '550e8400-e29b-41d4-a716-446655440002';
+
+    function bulkBuilders({
+      membership = { organization_id: 'uni-1' } as any,
+      roles = [{ id: memberRole }, { id: adminRole }] as any,
+      rolesError = null as any,
+      created = [
+        { id: 'inv-2', token: 'token-2', email: 'jane@example.com' },
+        { id: 'inv-1', token: 'token-1', email: 'john@example.com' },
+      ] as any,
+      insertError = null as any,
+    } = {}) {
+      const membershipQb = qb(membership);
+      const rolesQb = qb(roles, rolesError);
+      const insertQb = qb(created, insertError);
+      mock.from
+        .mockReturnValueOnce(membershipQb)
+        .mockReturnValueOnce(rolesQb)
+        .mockReturnValueOnce(insertQb);
+      return { membershipQb, rolesQb, insertQb };
+    }
+
+    const invitations = [
+      { email: 'john@example.com', targetOrgRoleId: memberRole },
+      { email: 'jane@example.com', targetOrgRoleId: adminRole },
+    ];
+
+    it('inserts every row in one statement and returns the results in input order', async () => {
+      const { rolesQb, insertQb } = bulkBuilders();
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+      vi.stubEnv('NODE_ENV', 'development');
+
+      const result = await service.createInvitationsBulk(
+        { ...managerCtx, activeOrgId: 'uni-1' },
+        invitations,
+      );
+
+      expect(result.success).toBe(true);
+      const results = (result as any).data as Array<{
+        success: boolean;
+        data: { invitationId: string; inviteLink?: string };
+      }>;
+      // The DB returned the rows in a different order: mapping must follow the
+      // request order, not the insert response order.
+      expect(results.map((r) => r.data.invitationId)).toEqual(['inv-1', 'inv-2']);
+      expect(results[0].data.inviteLink).toContain('token-1');
+
+      // One role pre-flight query, scoped to the resolved org.
+      expect(rolesQb.eq).toHaveBeenCalledWith('organization_id', 'uni-1');
+      expect(rolesQb.in).toHaveBeenCalledWith('id', [memberRole, adminRole]);
+
+      // One multi-row INSERT: same expires_at for all rows.
+      expect(insertQb.insert).toHaveBeenCalledTimes(1);
+      const rows = insertQb.insert.mock.calls[0][0] as Array<Record<string, unknown>>;
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toMatchObject({
+        email: 'john@example.com',
+        target_org_role_id: memberRole,
+        organization_id: 'uni-1',
+        inviter_id: 'test-user-id',
+      });
+      expect(rows[0].expires_at).toBe(rows[1].expires_at);
+
+      vi.unstubAllEnvs();
+    });
+
+    it('returns UNPROCESSABLE_ENTITY naming an unknown/foreign role and writes nothing', async () => {
+      const { insertQb } = bulkBuilders({ roles: [{ id: memberRole }] });
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitationsBulk(
+        { ...managerCtx, activeOrgId: 'uni-1' },
+        invitations,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect((result as any).details).toEqual([
+        expect.objectContaining({
+          message: 'VALIDATION_INVALID_ROLE',
+          path: ['invitations', 1, 'targetOrgRoleId'],
+        }),
+      ]);
+      expect(insertQb.insert).not.toHaveBeenCalled();
+      expect(mock.from).not.toHaveBeenCalledWith('invitations');
+
+      vi.unstubAllEnvs();
+    });
+
+    it('returns UNPROCESSABLE_ENTITY when entries point at different organizations', async () => {
+      mock.from.mockReturnValueOnce(qb({ organization_id: 'uni-1' }));
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitationsBulk({ ...managerCtx, activeOrgId: 'uni-1' }, [
+        { ...invitations[0], organizationId: 'uni-1' },
+        { ...invitations[1], organizationId: 'uni-2' },
+      ]);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNPROCESSABLE_ENTITY');
+      expect((result as any).details).toEqual([
+        expect.objectContaining({
+          message: 'VALIDATION_INVALID_INPUT',
+          path: ['invitations', 1, 'organizationId'],
+        }),
+      ]);
+      // Stopped at the tenant boundary: no role lookup, no insert.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('org_roles');
+      expect(mock.from).not.toHaveBeenCalledWith('invitations');
+
+      vi.unstubAllEnvs();
+    });
+
+    it('returns FORBIDDEN when the caller is not a member of the target org', async () => {
+      mock.from.mockReturnValueOnce(qb(null));
+
+      const result = await service.createInvitationsBulk(
+        { ...managerCtx, activeOrgId: 'org-foreign' },
+        invitations,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).not.toHaveBeenCalledWith('invitations');
+    });
+
+    it('returns INTERNAL_SERVER when SITE_URL is missing and writes nothing', async () => {
+      bulkBuilders();
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', '');
+
+      const result = await service.createInvitationsBulk(
+        { ...managerCtx, activeOrgId: 'uni-1' },
+        invitations,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+      expect(mock.from).not.toHaveBeenCalledWith('invitations');
+
+      vi.unstubAllEnvs();
+    });
+
+    it('returns INTERNAL_SERVER when the single insert fails', async () => {
+      bulkBuilders({ created: null, insertError: { message: 'DB error' } });
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitationsBulk(
+        { ...managerCtx, activeOrgId: 'uni-1' },
+        invitations,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+
+      vi.unstubAllEnvs();
+    });
+
+    // A role policy denial fails the whole statement, so nothing is written.
+    it('returns FORBIDDEN when RLS denies the batch insert', async () => {
+      bulkBuilders({ created: null, insertError: { message: 'denied', code: '42501' } });
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitationsBulk(
+        { ...managerCtx, activeOrgId: 'uni-1' },
+        invitations,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+
+      vi.unstubAllEnvs();
+    });
+  });
+
   describe('listInvitations', () => {
     it('returns FORBIDDEN when the active org is not a membership', async () => {
       mock.from.mockReturnValueOnce(qb(null));

@@ -1024,7 +1024,10 @@
     "revoke_success": "Zaproszenie anulowane",
     "update_success": "Zaproszenie zaktualizowane",
     "show_accepted": "Pokaż zaakceptowane",
-    "no_invitations": "Brak wysłanych zaproszeń"
+    "no_invitations": "Brak wysłanych zaproszeń",
+    "row_error_missing_email": "Wiersz {row}: wpisz adres e-mail.",
+    "row_error_missing_role": "Wiersz {row}: wybierz rolę.",
+    "incomplete_rows": "Uzupełnij wiersze: {rows}."
   },
   "ManageGroupsPage": {
     "title": "Grupy",

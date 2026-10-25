@@ -65,7 +65,38 @@ test.describe('Manage invitations — role defaults (#241)', () => {
     await expect(page.locator('#role-1')).toHaveText(roleLabel);
 
     await page.locator('#email-1').fill('qa-admin-default@example.com');
-    await page.getByRole('button', { name: t('ManageInvitationsPage.send_invitations') }).click();
+
+    // MGR-INV-02: an e-mail without a role used to be dropped silently and the
+    // remaining rows were reported as a clean success. Now the row is named
+    // inline and the send is blocked.
+    await expect(page.locator('#row-error-1')).toHaveText(
+      /Wiersz 2: wybierz rolę\.|Row 2: choose a role\./i,
+    );
+    await expect(page.locator('#role-1')).toHaveAttribute('aria-invalid', 'true');
+
+    const sendButton = page.getByRole('button', {
+      name: t('ManageInvitationsPage.send_invitations'),
+    });
+    await expect(sendButton).toBeDisabled();
+
+    // Even a forced click must not reach the API while the batch is incomplete.
+    await sendButton.click({ force: true });
+    expect(bulkRequests).toBe(0);
+  });
+
+  test('an all-blank form still reports no_invites instead of a row error', async ({ page }) => {
+    let bulkRequests = 0;
+    page.on('request', (req) => {
+      if (req.url().includes(BULK_INVITES_URL)) bulkRequests += 1;
+    });
+
+    await expect(page.locator('#row-error-0')).toHaveCount(0);
+
+    const sendButton = page.getByRole('button', {
+      name: t('ManageInvitationsPage.send_invitations'),
+    });
+    await expect(sendButton).toBeEnabled();
+    await sendButton.click();
 
     await expect(page.getByText(t('ManageInvitationsPage.no_invites'))).toBeVisible();
     expect(bulkRequests).toBe(0);
