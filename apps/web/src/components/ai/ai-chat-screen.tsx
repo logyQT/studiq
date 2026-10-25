@@ -1,5 +1,7 @@
 'use client';
 
+import { Button } from '@studiq/ui';
+import { SquarePen, Trash2 } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import { useTranslations } from 'next-intl';
 import { useCallback, useState } from 'react';
@@ -14,7 +16,8 @@ import { useAiChat } from '@/hooks/use-ai-chat';
 import { useScrollToBottom } from '@/hooks/use-scroll-to-bottom';
 
 export function AiChatScreen() {
-  const { messages, usage, isStreaming, sendMessage, sendLocalResponse, abort } = useAiChat();
+  const { messages, usage, isStreaming, sendMessage, sendLocalResponse, clearChat, abort } =
+    useAiChat();
   const { user } = useAuth();
   const t = useTranslations('AiChatPage');
   const [file, setFile] = useState<File | null>(null);
@@ -39,6 +42,12 @@ export function AiChatScreen() {
     setActiveContext(contextMap[text] || null);
   };
 
+  const handleReset = useCallback(() => {
+    clearChat();
+    setActiveContext(null);
+    setFile(null);
+  }, [clearChat]);
+
   const handleAnswer = useCallback(
     (text: string) => {
       sendMessage(text);
@@ -57,6 +66,16 @@ export function AiChatScreen() {
         <div className="relative flex-1 min-h-0">
           <div ref={scrollRef} className="absolute inset-0 overflow-y-auto" onScroll={handleScroll}>
             <div className="mx-auto max-w-3xl px-4 py-6">
+              <div className="mb-4 flex items-center justify-end gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={handleReset}>
+                  <SquarePen className="h-4 w-4" />
+                  {t('new_chat')}
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={handleReset}>
+                  <Trash2 className="h-4 w-4" />
+                  {t('clear_chat')}
+                </Button>
+              </div>
               <ChatHistory messages={messages} onAnswer={handleAnswer} />
               <div className="pt-4">
                 <AiChatInput
