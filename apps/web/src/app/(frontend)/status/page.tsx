@@ -4,12 +4,10 @@ import type { HealthStatusResponse } from '@studiq/server/models/health.model';
 import { Card, CardContent } from '@studiq/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useApiQuery } from '@/hooks/use-api';
-import { ApiError } from '@/lib/api';
+import { deriveHealthStatusView, type HealthStatusState } from '@/lib/health-status';
 import { statusKeys } from '@/lib/query-keys';
 
-type StatusState = 'loading' | 'operational' | 'problem' | 'unavailable';
-
-const DOT_CLASS_NAME: Record<StatusState, string> = {
+const DOT_CLASS_NAME: Record<HealthStatusState, string> = {
   loading: 'bg-muted-foreground/50 animate-pulse',
   operational: 'bg-green-500',
   problem: 'bg-amber-500',
@@ -33,20 +31,9 @@ export default function StatusPage() {
     retry: false,
   });
 
-  const state: StatusState = isPending
-    ? 'loading'
-    : data
-      ? data.status === 'healthy'
-        ? 'operational'
-        : 'problem'
-      : // `unhealthy` comes back as HTTP 503, so `apiGet` throws instead of
-        // returning data; that is a real service issue, not a broken check.
-        error instanceof ApiError && error.status === 503
-        ? 'problem'
-        : 'unavailable';
-
-  const checkedAt =
-    state === 'loading' ? null : data ? new Date(data.timestamp) : new Date(errorUpdatedAt);
+  // Error-first: a failed refetch keeps the previous `data`, and showing that
+  // stale state would hide an outage (#284 review 1).
+  const { state, checkedAt } = deriveHealthStatusView({ isPending, error, errorUpdatedAt, data });
 
   return (
     <div className="mx-auto max-w-xl py-12">
