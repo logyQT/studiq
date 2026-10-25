@@ -99,7 +99,9 @@ export function LearnContent() {
                 <Brain className="size-8 text-primary" />
                 <div>
                   <p className="text-2xl font-bold">{totalDue}</p>
-                  <p className="text-sm text-muted-foreground">{t('cards_due')}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {t('cards_due', { count: totalDue })}
+                  </p>
                 </div>
               </div>
             )}
@@ -110,7 +112,9 @@ export function LearnContent() {
                   <Sparkles className="size-8 text-emerald-500" />
                   <div>
                     <p className="text-2xl font-bold">{remainingNew}</p>
-                    <p className="text-sm text-muted-foreground">{t('new_cards_available')}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {t('new_cards_available', { count: remainingNew })}
+                    </p>
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
