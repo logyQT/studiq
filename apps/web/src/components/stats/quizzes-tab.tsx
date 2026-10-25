@@ -1,5 +1,6 @@
 'use client';
 
+import type { StudentStatsResponse } from '@studiq/server/models/stats.model';
 import {
   Badge,
   Card,
@@ -15,41 +16,43 @@ import {
   TableRow,
 } from '@studiq/ui';
 import { ClipboardList } from 'lucide-react';
-import { useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
+import { useApiQuery } from '@/hooks/use-api';
+import { quizAttemptKeys, studentStatsKeys } from '@/lib/query-keys';
+import { attemptPercentage } from '@/lib/stats';
 
-type Attempt = {
+/** Same shape as the `/api/v1/quiz/attempts` rows (see `quiz-content.tsx`). */
+interface QuizAttempt {
   id: string;
   score: number;
-  totalQuestions: number;
-  startedAt: string;
-  completedAt: string | null;
-};
+  total_questions: number;
+  total_points: number | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
+type CompletedQuizAttempt = QuizAttempt & { completed_at: string };
 
 export function QuizzesTab() {
   const t = useTranslations('AppStatsPage');
-  const [attempts, setAttempts] = useState<Attempt[]>([]);
-  const [summary, setSummary] = useState({ avgScore: 0, bestScore: 0 });
-  const [loading, setLoading] = useState(true);
+  const locale = useLocale();
 
-  useEffect(() => {
-    fetch('/api/v1/stats/student')
-      .then((r) => r.json())
-      .then((data) => {
-        const stats = data.data || data;
-        setAttempts(stats.recentAttempts || []);
-        // Both summary metrics come from the server so they share one basis
-        // (assignments are scored against total_points, not the question count).
-        setSummary({
-          avgScore: Math.round(stats.avgScore ?? 0),
-          bestScore: Math.round(stats.bestScore ?? 0),
-        });
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
+  // `staleTime: 0` keeps the history fresh after a submission (the quiz session
+  // invalidates `quizAttemptKeys.all`) and after a full page reload. The list is
+  // the source of the rows; the stats endpoint only supplies the two summary cards.
+  const { data: attempts, isLoading: attemptsLoading } = useApiQuery<QuizAttempt[]>({
+    queryKey: quizAttemptKeys.all,
+    url: '/api/v1/quiz/attempts',
+    staleTime: 0,
+  });
 
-  if (loading) {
+  const { data: stats, isLoading: statsLoading } = useApiQuery<StudentStatsResponse>({
+    queryKey: studentStatsKeys.all,
+    url: '/api/v1/stats/student',
+    staleTime: 0,
+  });
+
+  if (attemptsLoading || statsLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-48" />
@@ -58,7 +61,13 @@ export function QuizzesTab() {
     );
   }
 
-  if (attempts.length === 0) {
+  // History is completed attempts only, newest completion first — the endpoint
+  // orders by `started_at`, which can differ from the completion order.
+  const completedAttempts = (attempts ?? [])
+    .filter((attempt): attempt is CompletedQuizAttempt => attempt.completed_at !== null)
+    .sort((a, b) => Date.parse(b.completed_at) - Date.parse(a.completed_at));
+
+  if (completedAttempts.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
         <ClipboardList className="size-10" />
@@ -76,7 +85,7 @@ export function QuizzesTab() {
             <CardTitle className="text-sm text-muted-foreground">{t('quizzes_taken')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{attempts.length}</p>
+            <p className="text-3xl font-bold">{completedAttempts.length}</p>
           </CardContent>
         </Card>
         <Card>
@@ -84,7 +93,9 @@ export function QuizzesTab() {
             <CardTitle className="text-sm text-muted-foreground">{t('avg_score')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{summary.avgScore}%</p>
+            {/* Both summary metrics come from the server so they share one basis
+                (assignments are scored against total_points, not the question count). */}
+            <p className="text-3xl font-bold">{Math.round(stats?.avgScore ?? 0)}%</p>
           </CardContent>
         </Card>
         <Card>
@@ -92,7 +103,7 @@ export function QuizzesTab() {
             <CardTitle className="text-sm text-muted-foreground">{t('best_score')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{summary.bestScore}%</p>
+            <p className="text-3xl font-bold">{Math.round(stats?.bestScore ?? 0)}%</p>
           </CardContent>
         </Card>
       </div>
@@ -111,31 +122,32 @@ export function QuizzesTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {attempts.map((attempt, i) => (
-                <TableRow key={attempt.id}>
-                  <TableCell className="font-medium">
-                    {t('quiz_attempt')} #{i + 1}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Badge
-                      variant={
-                        attempt.score >= 70
-                          ? 'default'
-                          : attempt.score >= 40
-                            ? 'secondary'
-                            : 'destructive'
-                      }
-                    >
-                      {attempt.score}%
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {attempt.completedAt
-                      ? new Date(attempt.completedAt).toLocaleDateString()
-                      : new Date(attempt.startedAt).toLocaleDateString()}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {completedAttempts.map((attempt, i) => {
+                const percentage = attemptPercentage(attempt);
+                return (
+                  <TableRow key={attempt.id}>
+                    <TableCell className="font-medium">
+                      {t('quiz_attempt')} #{i + 1}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Badge
+                        variant={
+                          percentage >= 70
+                            ? 'default'
+                            : percentage >= 40
+                              ? 'secondary'
+                              : 'destructive'
+                        }
+                      >
+                        {percentage}%
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">
+                      {new Date(attempt.completed_at).toLocaleDateString(locale)}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
