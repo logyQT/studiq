@@ -773,15 +773,39 @@ def cmd_next(args) -> None:
     ok(action="next", issue=None, message="queue exhausted")
 
 
+def materialize_issue(state: dict, n: int) -> dict:
+    """Create a pipeline record for an issue that was never started.
+
+    A needs-design issue can be parked on GitHub for months before anyone opens a
+    pipeline record; unblocking it must not require a fake dispatch first.
+    """
+    m = load_map()
+    issue = issue_from_map(m, n)
+    rec = {
+        "number": n, "title": issue["title"], "priority": issue["priority"],
+        "areas": issue["areas"],
+        "stage": "needs_design" if issue.get("needs_design") else "blocked",
+        "attempt": 1, "designer": None, "writer": None, "reviewers": [],
+        "branch": f"fix/{n}-{slug(issue['title'])}", "pr": None,
+        "sessions": {}, "history": [], "created": now(),
+    }
+    state["issues"][str(n)] = rec
+    write_issue_snapshot(n, issue)
+    return rec
+
+
 def start_issue(state: dict, n: int, role: str, env: int) -> dict:
     m = load_map()
     issue = issue_from_map(m, n)
-    if issue["needs_design"]:
+    rec = state["issues"].get(str(n))
+    # an explicit `unblock --to design_ready` already answered the design question;
+    # the map is only refreshed on the next sync, so trust the record here
+    unblocked = bool(rec and rec.get("stage") == "design_ready")
+    if issue["needs_design"] and not unblocked:
         fail(f"issue #{n} is excluded (needs-design)")
     if role == "designer" and issue.get("parked"):
         fail(f"issue #{n} is assigned to {', '.join(issue.get('assignees') or ['someone'])}",
              hint="assigned issues belong to a teammate; pick an unassigned issue from the queue")
-    rec = state["issues"].get(str(n))
     if not rec:
         rec = {
             "number": n, "title": issue["title"], "priority": issue["priority"],
@@ -1483,7 +1507,11 @@ def cmd_unblock(args) -> None:
     """
     state = load_state()
     n = args.issue
-    rec = get_rec(state, n)
+    rec = state["issues"].get(str(n))
+    if rec is None:
+        rec = materialize_issue(state, n)
+        history(state, n, {"event": "materialized",
+                           "reason": "unblock of an issue with no pipeline record"})
     previous_stage = rec["stage"]
     if previous_stage not in ("blocked", "needs_design"):
         fail(f"cannot unblock from stage {previous_stage}")
