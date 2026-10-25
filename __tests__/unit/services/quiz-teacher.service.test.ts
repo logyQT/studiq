@@ -89,6 +89,14 @@ describe('QuizTeacherService', () => {
 
       expect(result.success).toBe(true);
     });
+
+    it('returns FORBIDDEN without an active org and never queries (#148)', async () => {
+      const result = await service.create({ name: 'My Quiz' }, { ...ctx, activeOrgId: null });
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error).toBe('FORBIDDEN');
+      expect(mock.from).not.toHaveBeenCalled();
+    });
   });
 
   describe('list', () => {

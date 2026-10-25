@@ -16,6 +16,11 @@ export class QuizTeacherService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
   async create(data: CreateQuizInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
+    // quizzes.organization_id is NOT NULL: without a verified active org there is no tenant to
+    // create the quiz in. Guard before inserting — a null org would fail with 23502 → 400,
+    // the wrong contract for an authenticated caller that simply has no active org (#148).
+    if (!ctx.activeOrgId) return failure('FORBIDDEN');
+
     const supabase = await this.createClient();
 
     const { data: quiz, error } = await supabase

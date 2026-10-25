@@ -555,6 +555,50 @@ describe('TeacherAssignmentService', () => {
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('NOT_FOUND');
     });
+
+    it('draws from the caller own questions when there is no active org (#148)', async () => {
+      const questionsChain = chain([{ id: 'q-1' }]);
+
+      mock.from
+        .mockReturnValueOnce(chain({ id: assignmentId, created_by: userId, organization_id: null }))
+        .mockReturnValueOnce(questionsChain)
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValue(chain(null));
+
+      const result = await service.randomize(
+        assignmentId,
+        { source: 'all', count: 1 },
+        { ...ctx, activeOrgId: null },
+      );
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).toEqual({ added: 1 });
+      expect(questionsChain.eq).toHaveBeenCalledWith('created_by', userId);
+      // `.or('organization_id.eq.null,…')` would be rejected by Postgres (22P02 → 500).
+      expect(questionsChain.or).not.toHaveBeenCalled();
+    });
+
+    it('scopes the pool to the active org and the caller own questions (#148)', async () => {
+      const questionsChain = chain([{ id: 'q-1' }]);
+
+      mock.from
+        .mockReturnValueOnce(
+          chain({ id: assignmentId, created_by: userId, organization_id: orgId }),
+        )
+        .mockReturnValueOnce(questionsChain)
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([{ order_index: 0 }]))
+        .mockReturnValue(chain(null));
+
+      const result = await service.randomize(assignmentId, { source: 'all', count: 1 }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(questionsChain.or).toHaveBeenCalledWith(
+        `organization_id.eq.${orgId},created_by.eq.${userId}`,
+      );
+      expect(questionsChain.eq).not.toHaveBeenCalledWith('created_by', userId);
+    });
   });
 
   describe('setTargets', () => {

@@ -383,10 +383,17 @@ export class TeacherAssignmentService {
     const check = await this.verifyOwnership(id, ctx);
     if (!check) return failure('NOT_FOUND');
 
-    let query = supabase
-      .from('questions')
-      .select('id')
-      .or(`organization_id.eq.${ctx.activeOrgId},created_by.eq.${ctx.userId}`);
+    let query = supabase.from('questions').select('id');
+
+    // Pool = the active org's questions ∪ my own. Without an active org there is no tenant half,
+    // and interpolating null yields `organization_id.eq.null` → 22P02 → 500 (#148). Personal
+    // teacher assignments (organization_id NULL) are a supported scope, so the caller's own
+    // questions remain a valid source.
+    if (ctx.activeOrgId) {
+      query = query.or(`organization_id.eq.${ctx.activeOrgId},created_by.eq.${ctx.userId}`);
+    } else {
+      query = query.eq('created_by', ctx.userId);
+    }
 
     if (data.source === 'bank' && data.sourceId) {
       query = query.eq('bank_id', data.sourceId);
