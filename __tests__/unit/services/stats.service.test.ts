@@ -519,13 +519,51 @@ describe('StatsService', () => {
       expect(mock.from).toHaveBeenCalledWith('org_members');
     });
 
-    it('aggregates only completed attempts of the org students', async () => {
+    it('computes completion as completed / started per quiz and scopes to org students', async () => {
       const membersBuilder = qb([{ user_id: 's-1' }]);
       const attemptsBuilder = qb([
-        { id: 'a-1', score: 8, total_questions: 10, config: { title: 'Quiz A' } },
-        { id: 'a-2', score: 6, total_questions: 10, config: { title: 'Quiz A' } },
-        { id: 'a-3', score: 5, total_questions: 20, config: { title: 'Quiz B' } },
-        { id: 'a-4', score: 0, total_questions: 4, config: null },
+        {
+          id: 'a-1',
+          score: 8,
+          total_questions: 10,
+          completed_at: '2024-01-01T10:00:00Z',
+          config: { title: 'Quiz A' },
+        },
+        {
+          id: 'a-2',
+          score: 6,
+          total_questions: 10,
+          completed_at: '2024-01-01T11:00:00Z',
+          config: { title: 'Quiz A' },
+        },
+        {
+          id: 'a-3',
+          score: 0,
+          total_questions: 10,
+          completed_at: null,
+          config: { title: 'Quiz A' },
+        },
+        {
+          id: 'a-4',
+          score: 5,
+          total_questions: 20,
+          completed_at: '2024-01-01T12:00:00Z',
+          config: { title: 'Quiz B' },
+        },
+        {
+          id: 'a-5',
+          score: 0,
+          total_questions: 4,
+          completed_at: '2024-01-01T13:00:00Z',
+          config: null,
+        },
+        {
+          id: 'a-6',
+          score: 0,
+          total_questions: 4,
+          completed_at: null,
+          config: { title: 'Quiz C' },
+        },
       ]);
       mock.from.mockReturnValueOnce(membersBuilder);
       mock.from.mockReturnValueOnce(attemptsBuilder);
@@ -535,33 +573,42 @@ describe('StatsService', () => {
       expect(membersBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
       expect(membersBuilder.eq).toHaveBeenCalledWith('org_roles.name', 'member');
       expect(attemptsBuilder.in).toHaveBeenCalledWith('user_id', ['s-1']);
-      // Assignment attempts are included: each attempt is normalised to its own
-      // percentage, so points and correct-answer counts are comparable (#203).
+      // #212: completion is completed / started, so unfinished attempts must be
+      // fetched (they feed the denominator only). Assignment attempts are
+      // included: each attempt is normalised to its own percentage, so points
+      // and correct-answer counts are comparable (#203).
+      expect(attemptsBuilder.not).not.toHaveBeenCalledWith('completed_at', 'is', null);
       expect(attemptsBuilder.is).not.toHaveBeenCalled();
-      expect(attemptsBuilder.not).toHaveBeenCalledWith('completed_at', 'is', null);
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual([
         {
           id: 'Quiz A',
           title: 'Quiz A',
-          totalAttempts: 2,
-          avgScore: 70, // (80 + 60) / 2
-          avgCompletionRate: 10,
+          totalAttempts: 3, // 2 completed + 1 abandoned
+          avgScore: 70, // (80 + 60) / 2 — the abandoned attempt never scores
+          avgCompletionRate: 67, // 2 / 3
         },
         {
           id: 'Quiz B',
           title: 'Quiz B',
           totalAttempts: 1,
           avgScore: 25, // 5/20
-          avgCompletionRate: 20,
+          avgCompletionRate: 100,
         },
         {
           id: '',
           title: null,
           totalAttempts: 1,
           avgScore: 0, // 0/4
-          avgCompletionRate: 4,
+          avgCompletionRate: 100,
+        },
+        {
+          id: 'Quiz C',
+          title: 'Quiz C',
+          totalAttempts: 1,
+          avgScore: 0, // nothing completed, so the mean stays 0
+          avgCompletionRate: 0, // 0 / 1
         },
       ]);
     });
@@ -576,6 +623,7 @@ describe('StatsService', () => {
           score,
           total_questions: 4,
           total_points: 4,
+          completed_at: '2024-01-01T10:00:00Z',
           config: null,
         })),
       );
@@ -591,7 +639,7 @@ describe('StatsService', () => {
           title: null,
           totalAttempts: 5,
           avgScore: 75,
-          avgCompletionRate: 4,
+          avgCompletionRate: 100,
         },
       ]);
     });
@@ -599,7 +647,14 @@ describe('StatsService', () => {
     it('guards a zero denominator', async () => {
       const membersBuilder = qb([{ user_id: 's-1' }]);
       const attemptsBuilder = qb([
-        { id: 'a-1', score: 0, total_questions: 0, total_points: 0, config: null },
+        {
+          id: 'a-1',
+          score: 0,
+          total_questions: 0,
+          total_points: 0,
+          completed_at: null,
+          config: null,
+        },
       ]);
       mock.from.mockReturnValueOnce(membersBuilder);
       mock.from.mockReturnValueOnce(attemptsBuilder);
