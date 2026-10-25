@@ -295,7 +295,7 @@ export default function MembersPage() {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <span className="text-sm text-muted-foreground">
+                  <span data-testid="member-role" className="text-sm text-muted-foreground">
                     {roles.find((r) => r.name === m.orgRoleName)?.displayName ?? m.orgRoleName}
                   </span>
                 </TableCell>
