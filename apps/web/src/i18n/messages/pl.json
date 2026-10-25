@@ -2380,7 +2380,10 @@
     "select_source": "Wybierz źródło",
     "unpublish": "Cofnij publikację",
     "unpublishing": "Cofanie publikacji...",
-    "export_answers": "Eksportuj odpowiedzi"
+    "export_answers": "Eksportuj odpowiedzi",
+    "view_source_quiz": "Zobacz quiz źródłowy",
+    "schedule_release": "Zaplanuj publikację",
+    "start_time": "Godzina rozpoczęcia"
   },
   "EduAssignmentEditPage": {
     "title": "Edytuj kartkówkę",
