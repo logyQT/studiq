@@ -50,7 +50,7 @@ export function ReportsListScreen({ basePath }: { basePath: string }) {
 
         return (
           <Link key={report.id} href={`${basePath}/reports/${report.id}`}>
-            <Card className="p-4 flex items-center gap-3 hover:bg-accent/50 transition-colors">
+            <Card className="p-4 flex flex-row items-center gap-3 hover:bg-accent/50 transition-colors">
               <UserAvatar name={counterpart?.full_name} email={counterpart?.email} size={36} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
