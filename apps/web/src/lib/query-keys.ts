@@ -111,6 +111,10 @@ export const quizAttemptKeys = {
   all: ['quiz', 'attempts'] as const,
 };
 
+export const studentStatsKeys = {
+  all: ['stats', 'student'] as const,
+};
+
 export const searchKeys = {
   all: ['search'] as const,
   query: (q: string) => ['search', q] as const,
