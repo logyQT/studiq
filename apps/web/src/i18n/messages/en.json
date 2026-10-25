@@ -1766,6 +1766,7 @@
     "subtitle": "Choose the plan that fits your needs"
   },
   "FeaturesPage": {
+    "meta_title": "Features",
     "title": "Everything You Need to Succeed",
     "subtitle": "From basic flashcards to AI-powered exam prep",
     "manual_questions": "Manual Question Creation",
