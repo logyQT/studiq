@@ -226,6 +226,29 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(422);
         expect(body.success).toBe(false);
       });
+
+      it('lists every violated password rule in the issues tree', async () => {
+        mockUser(TEST_USERS.TEACHER);
+
+        const req = createNextRequest('http://localhost/api/v1/auth/password/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            password: 'abcdefgh',
+            confirmPassword: 'abcdefgh',
+          }),
+        });
+
+        const response = await updatePasswordPost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+        expect(body.issues.properties.password.errors).toEqual([
+          'VALIDATION_PASSWORD_MISSING_UPPERCASE',
+          'VALIDATION_PASSWORD_MISSING_NUMBER',
+        ]);
+      });
     });
   });
 });

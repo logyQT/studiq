@@ -2322,6 +2322,7 @@
     "new_password": "New password",
     "confirm_password": "Confirm password",
     "password_mismatch": "Passwords do not match",
+    "password_requirements": "Password must be at least 8 characters long and contain an uppercase letter and a number.",
     "password_updated": "Password updated successfully",
     "invalid_current_password": "Current password is incorrect.",
     "password_update_failed": "Failed to update password. Please try again.",
