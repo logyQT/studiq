@@ -124,3 +124,7 @@ export const searchKeys = {
   all: ['search'] as const,
   query: (q: string) => ['search', q] as const,
 };
+
+export const paymentKeys = {
+  all: ['me', 'payments'] as const,
+};

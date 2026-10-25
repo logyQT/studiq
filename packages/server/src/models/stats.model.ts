@@ -6,6 +6,7 @@ export type TeacherStatsResponse = {
 export type StudentStatsResponse = {
   totalQuizzes: number;
   avgScore: number;
+  bestScore: number;
   totalQuestionsCreated: number;
   flashcardsPracticed: number;
   flashcardAccuracy: number;

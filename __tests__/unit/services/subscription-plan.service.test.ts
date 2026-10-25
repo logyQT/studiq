@@ -116,8 +116,39 @@ describe('SubscriptionPlanService', () => {
   });
 
   describe('getMyPlan', () => {
-    it('returns org plan when activeOrgId set', async () => {
-      const org = { plan: 'base' };
+    it('returns the org plan for a manager in an active org', async () => {
+      const org = { plan: 'hub' };
+      const plan = {
+        id: 'p-3',
+        key: 'hub',
+        name: 'Hub',
+        description: null,
+        price_monthly: 1999,
+        currency: 'PLN',
+        sort_order: 9,
+        is_active: true,
+        for_account_type: 'manager',
+      };
+      const features = [{ feature_key: 'documents' }];
+      const limits = [{ plan_key: 'hub', limit_key: 'max_groups', limit_value: 3 }];
+      mock.from.mockReturnValueOnce(qb(org));
+      mock.from.mockReturnValueOnce(qb(plan));
+      mock.from.mockReturnValueOnce(qb(features));
+      mock.from.mockReturnValueOnce(qb(limits));
+
+      const result = await service.getMyPlan({
+        ...ctx,
+        accountType: 'manager' as any,
+        activeOrgId: 'org-1',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.key).toBe('hub');
+      expect(result.data.limits.max_groups).toBe(3);
+    });
+
+    it('returns the personal plan for a student in an active org (#181)', async () => {
+      const profile = { personal_plan_key: 'base' };
       const plan = {
         id: 'p-1',
         key: 'base',
@@ -125,20 +156,76 @@ describe('SubscriptionPlanService', () => {
         description: null,
         price_monthly: 0,
         currency: 'PLN',
-        sort_order: 0,
+        sort_order: 1,
         is_active: true,
+        for_account_type: 'student',
       };
-      const features = [{ feature_key: 'quiz' }];
-      const limits = [{ plan_key: 'base', limit_key: 'max_groups', limit_value: 3 }];
-      mock.from.mockReturnValueOnce(qb(org));
-      mock.from.mockReturnValueOnce(qb(plan));
-      mock.from.mockReturnValueOnce(qb(features));
-      mock.from.mockReturnValueOnce(qb(limits));
+      mock.from.mockReturnValueOnce(qb(profile)); // profile (org must not be queried)
+      mock.from.mockReturnValueOnce(qb(plan)); // plan
+      mock.from.mockReturnValueOnce(qb([])); // features
+      mock.from.mockReturnValueOnce(qb([])); // limits
 
       const result = await service.getMyPlan({ ...ctx, activeOrgId: 'org-1' });
 
       expect(result.success).toBe(true);
       expect(result.data.key).toBe('base');
+    });
+
+    it('returns the personal plan for an educator in an active org (#181)', async () => {
+      const profile = { personal_plan_key: 'lite' };
+      const plan = {
+        id: 'p-2',
+        key: 'lite',
+        name: 'Lite',
+        description: null,
+        price_monthly: 0,
+        currency: 'PLN',
+        sort_order: 2,
+        is_active: true,
+        for_account_type: 'educator',
+      };
+      mock.from.mockReturnValueOnce(qb(profile)); // profile (org must not be queried)
+      mock.from.mockReturnValueOnce(qb(plan)); // plan
+      mock.from.mockReturnValueOnce(qb([])); // features
+      mock.from.mockReturnValueOnce(qb([])); // limits
+
+      const result = await service.getMyPlan({
+        ...ctx,
+        accountType: 'educator' as any,
+        activeOrgId: 'org-1',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.key).toBe('lite');
+    });
+
+    it('falls back to the personal plan when a manager has no org plan', async () => {
+      const profile = { personal_plan_key: 'launch' };
+      const plan = {
+        id: 'p-3',
+        key: 'launch',
+        name: 'Launch',
+        description: null,
+        price_monthly: 0,
+        currency: 'PLN',
+        sort_order: 3,
+        is_active: true,
+        for_account_type: 'manager',
+      };
+      mock.from.mockReturnValueOnce(qb(null)); // org not found
+      mock.from.mockReturnValueOnce(qb(profile)); // profile
+      mock.from.mockReturnValueOnce(qb(plan)); // plan
+      mock.from.mockReturnValueOnce(qb([])); // features
+      mock.from.mockReturnValueOnce(qb([])); // limits
+
+      const result = await service.getMyPlan({
+        ...ctx,
+        accountType: 'manager' as any,
+        activeOrgId: 'org-1',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.key).toBe('launch');
     });
 
     it('returns personal plan when no org', async () => {

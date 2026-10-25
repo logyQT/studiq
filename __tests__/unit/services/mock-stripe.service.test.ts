@@ -7,6 +7,7 @@ function qb(data: any, error: any = null) {
   const b: any = {};
   b.select = vi.fn(() => b);
   b.update = vi.fn(() => b);
+  b.upsert = vi.fn(() => b);
   b.eq = vi.fn(() => b);
   b.maybeSingle = vi.fn().mockResolvedValue({ data: data ?? null, error });
   b.then = promise.then.bind(promise);
@@ -15,10 +16,38 @@ function qb(data: any, error: any = null) {
   return b;
 }
 
-const studentPlan = { key: 'spark', is_active: true, for_account_type: 'student' };
-const orgPlan = { key: 'campus', is_active: true, for_account_type: 'manager' };
-const anyPlan = { key: 'free', is_active: true, for_account_type: null };
-const inactivePlan = { key: 'old', is_active: false, for_account_type: 'student' };
+const studentPlan = {
+  key: 'spark',
+  name: 'StudiQ Spark',
+  is_active: true,
+  for_account_type: 'student',
+  price_monthly: 999,
+  currency: 'PLN',
+};
+const orgPlan = {
+  key: 'campus',
+  name: 'StudiQ Campus',
+  is_active: true,
+  for_account_type: 'manager',
+  price_monthly: 4999,
+  currency: 'PLN',
+};
+const anyPlan = {
+  key: 'free',
+  name: 'StudiQ Free',
+  is_active: true,
+  for_account_type: null,
+  price_monthly: 0,
+  currency: 'PLN',
+};
+const inactivePlan = {
+  key: 'old',
+  name: 'StudiQ Old',
+  is_active: false,
+  for_account_type: 'student',
+  price_monthly: 999,
+  currency: 'PLN',
+};
 
 const adminMembership = { org_roles: { name: 'admin' } };
 const teacherMembership = { org_roles: { name: 'teacher' } };
@@ -108,8 +137,9 @@ describe('MockStripeService', () => {
 
     it('moves the org to the plan (re-syncing features and limits) and the buyer personal plan', async () => {
       const profiles = qb(null);
+      const payments = qb(null);
       mock.from.mockReturnValueOnce(qb(orgPlan)).mockReturnValueOnce(qb(adminMembership));
-      admin.from.mockReturnValueOnce(profiles);
+      admin.from.mockReturnValueOnce(profiles).mockReturnValueOnce(payments);
       const result = await service.handleWebhook(orgEvent, 'manager');
       expect(result.success).toBe(true);
       expect(admin.rpc).toHaveBeenCalledWith('apply_org_plan', {
@@ -117,6 +147,27 @@ describe('MockStripeService', () => {
         p_plan: 'campus',
       });
       expect(profiles.update).toHaveBeenCalledWith({ personal_plan_key: 'campus' });
+    });
+
+    it('records the purchase with the buying organization (#392)', async () => {
+      const profiles = qb(null);
+      const payments = qb(null);
+      mock.from.mockReturnValueOnce(qb(orgPlan)).mockReturnValueOnce(qb(adminMembership));
+      admin.from.mockReturnValueOnce(profiles).mockReturnValueOnce(payments);
+      const result = await service.handleWebhook(orgEvent, 'manager');
+      expect(result.success).toBe(true);
+      expect(payments.upsert).toHaveBeenCalledWith(
+        {
+          user_id: 'u-1',
+          organization_id: 'org-1',
+          plan_key: 'campus',
+          plan_name: 'StudiQ Campus',
+          amount: 4999,
+          currency: 'PLN',
+          session_id: 's-1',
+        },
+        { onConflict: 'session_id', ignoreDuplicates: true },
+      );
     });
 
     it('does not change anything without an org id', async () => {
@@ -153,12 +204,53 @@ describe('MockStripeService', () => {
 
     it('updates the personal plan when the plan matches the account type', async () => {
       const profiles = qb(null);
+      const payments = qb(null);
       mock.from.mockReturnValueOnce(qb(studentPlan));
-      admin.from.mockReturnValueOnce(profiles);
+      admin.from.mockReturnValueOnce(profiles).mockReturnValueOnce(payments);
       const result = await service.handleWebhook(event, 'student');
       expect(result.success).toBe(true);
       expect(profiles.update).toHaveBeenCalledWith({ personal_plan_key: 'spark' });
       expect(profiles.eq).toHaveBeenCalledWith('id', 'u-1');
+      expect(payments.upsert).toHaveBeenCalledWith(
+        {
+          user_id: 'u-1',
+          organization_id: null,
+          plan_key: 'spark',
+          plan_name: 'StudiQ Spark',
+          amount: 999,
+          currency: 'PLN',
+          session_id: 's-1',
+        },
+        { onConflict: 'session_id', ignoreDuplicates: true },
+      );
+    });
+
+    it('records a purchase snapshot for a plan without a catalog price (#392)', async () => {
+      const profiles = qb(null);
+      const payments = qb(null);
+      mock.from.mockReturnValueOnce(qb(anyPlan));
+      admin.from.mockReturnValueOnce(profiles).mockReturnValueOnce(payments);
+      const result = await service.handleWebhook({ ...event, plan_id: 'free' }, 'student');
+      expect(result.success).toBe(true);
+      expect(payments.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          plan_key: 'free',
+          plan_name: 'StudiQ Free',
+          amount: 0,
+          currency: 'PLN',
+        }),
+        { onConflict: 'session_id', ignoreDuplicates: true },
+      );
+    });
+
+    it('fails the webhook when the purchase cannot be recorded (#392)', async () => {
+      const profiles = qb(null);
+      const payments = qb(null, { code: '23503', message: 'fk violation' });
+      mock.from.mockReturnValueOnce(qb(studentPlan));
+      admin.from.mockReturnValueOnce(profiles).mockReturnValueOnce(payments);
+      const result = await service.handleWebhook(event, 'student');
+      expect(result.success).toBe(false);
+      expect(payments.upsert).toHaveBeenCalledTimes(1);
     });
 
     it('does not touch the profile for a plan meant for another account type (#192)', async () => {
@@ -166,6 +258,7 @@ describe('MockStripeService', () => {
       const result = await service.handleWebhook({ ...event, plan_id: 'campus' }, 'student');
       expect(result).toEqual({ success: false, error: 'FORBIDDEN' });
       expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(admin.from).not.toHaveBeenCalled();
     });
 
     it('does not touch the profile for an unknown plan', async () => {
@@ -173,6 +266,7 @@ describe('MockStripeService', () => {
       const result = await service.handleWebhook({ ...event, plan_id: 'nope' }, 'student');
       expect(result).toEqual({ success: false, error: 'BAD_REQUEST' });
       expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(admin.from).not.toHaveBeenCalled();
     });
   });
 });

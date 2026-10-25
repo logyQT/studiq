@@ -91,6 +91,14 @@ export class StatsService {
     // practice quizzes only have a question count.
     const attemptTotal = (a: { total_questions: number; total_points?: number | null }) =>
       Math.max(a.total_points ?? a.total_questions, 1);
+    // Single rounding rule for per-attempt percentages. avgScore below keeps its
+    // own expression on purpose — reusing the helper there would change its
+    // rounding and shift existing values by ±1.
+    const percentageOf = (a: {
+      score: number;
+      total_questions: number;
+      total_points?: number | null;
+    }) => Math.round((a.score / attemptTotal(a)) * 100);
     const avgScore =
       attempts && attempts.length > 0
         ? Math.round(
@@ -98,6 +106,10 @@ export class StatsService {
               100,
           )
         : 0;
+    // Highest per-attempt percentage. Unfinished attempts score 0, so they can
+    // never raise the maximum; assignment attempts use total_points via
+    // attemptTotal(), same basis as avgScore and attemptsOverTime.
+    const bestScore = (attempts ?? []).reduce((best, a) => Math.max(best, percentageOf(a)), 0);
 
     const flashcardCorrect = practice?.filter((p) => p.was_correct).length ?? 0;
     const flashcardTotal = practice?.length ?? 0;
@@ -105,6 +117,7 @@ export class StatsService {
     return success({
       totalQuizzes,
       avgScore,
+      bestScore,
       totalQuestionsCreated: questions?.length ?? 0,
       flashcardsPracticed: flashcardTotal,
       flashcardAccuracy:
@@ -117,7 +130,7 @@ export class StatsService {
           date: a.started_at,
           score: a.score,
           total: attemptTotal(a),
-          percentage: Math.round((a.score / attemptTotal(a)) * 100),
+          percentage: percentageOf(a),
         })) ?? [],
     });
   }

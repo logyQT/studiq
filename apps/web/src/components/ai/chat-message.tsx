@@ -2,7 +2,7 @@
 
 import { AlertCircle, FileText, Loader2, Sparkles } from 'lucide-react';
 import { memo, useState } from 'react';
-import { FlashcardBlock } from '@/components/ai/flashcard-block';
+import { type DeckTarget, FlashcardBlock } from '@/components/ai/flashcard-block';
 import { PlanBlock } from '@/components/ai/plan-block';
 import { QuestionBlock } from '@/components/ai/question-block';
 import { ThinkingBlock } from '@/components/ai/thinking-block';
@@ -15,10 +15,11 @@ import { cn } from '@/lib/utils';
 interface ChatMessageProps {
   message: ChatMessageType;
   onAnswer?: (text: string) => void;
+  deckTarget?: DeckTarget | null;
 }
 
 export const ChatMessage = memo(
-  function ChatMessage({ message, onAnswer }: ChatMessageProps) {
+  function ChatMessage({ message, onAnswer, deckTarget }: ChatMessageProps) {
     const isUser = message.role === 'user';
     const isThought = message.role === 'thought';
     const isToolCall = message.role === 'tool_call';
@@ -127,6 +128,7 @@ export const ChatMessage = memo(
                     : undefined
                 }
                 readOnly={message.result!.readOnly}
+                targetDeck={deckTarget}
               />
             ) : (
               <FlashcardBlock
@@ -139,6 +141,7 @@ export const ChatMessage = memo(
                     : undefined
                 }
                 readOnly={message.result!.readOnly}
+                targetDeck={deckTarget}
               />
             ))}
 
@@ -166,6 +169,7 @@ export const ChatMessage = memo(
   },
   (prevProps, nextProps) => {
     if (prevProps.onAnswer !== nextProps.onAnswer) return false;
+    if (prevProps.deckTarget?.id !== nextProps.deckTarget?.id) return false;
     const a = prevProps.message;
     const b = nextProps.message;
     return (

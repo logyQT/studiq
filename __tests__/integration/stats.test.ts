@@ -163,6 +163,7 @@ forEachCopy((copyId) => {
         expect(body.success).toBe(true);
         expect(body.data.totalQuizzes).toBeDefined();
         expect(body.data.avgScore).toBeDefined();
+        expect(body.data.bestScore).toBeDefined();
         expect(body.data.flashcardsPracticed).toBeDefined();
       });
 
@@ -176,6 +177,7 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(200);
         expect(body.data.totalQuizzes).toBe(0);
         expect(body.data.avgScore).toBe(0);
+        expect(body.data.bestScore).toBe(0);
         expect(body.data.flashcardsPracticed).toBe(0);
       });
 
