@@ -183,6 +183,7 @@
     "join_title": "Dołącz do organizacji",
     "join_desc": "Uzupełnij swoje dane i ustaw hasło, aby aktywować konto.",
     "activate_account": "Aktywuj konto",
+    "invite_invalid": "Nieprawidłowy lub wygasły kod zaproszenia",
     "account_type_label": "Jestem",
     "account_type_placeholder": "Powiedz nam, kim jesteś",
     "account_type_student": "Uczniem",

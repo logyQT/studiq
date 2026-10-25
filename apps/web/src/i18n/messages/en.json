@@ -144,6 +144,7 @@
     "join_title": "Join an organization",
     "join_desc": "Complete your details and set a password to activate your account.",
     "activate_account": "Activate account",
+    "invite_invalid": "Invalid or expired invitation code",
     "ERROR_EMAIL_REQUIRED": "Email address is required.",
     "ERROR_EMAIL_INVALID": "Please enter a valid email address.",
     "ERROR_PASSWORD_REQUIRED": "Password is required.",
