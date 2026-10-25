@@ -142,6 +142,6 @@ test.describe('Manage members — role change confirmation (#246)', () => {
 
     // Both the dropdown and the `Rola` column must agree after a confirmed change.
     await expect(roleTrigger(page)).toHaveText('Teacher');
-    await expect(memberRow(page)).toContainText('teacher');
+    await expect(memberRow(page).getByTestId('member-role')).toHaveText('Teacher');
   });
 });
