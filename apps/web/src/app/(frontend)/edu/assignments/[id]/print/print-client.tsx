@@ -112,17 +112,17 @@ export default function PrintAssignmentClient() {
       <div className="flex gap-8 mb-8">
         {settings.showNameField && (
           <div>
-            <span className="font-medium">{t('name')}:</span> _______________________________
+            <span className="font-medium">{t('name')}</span> _______________________________
           </div>
         )}
         {settings.showClassField && (
           <div>
-            <span className="font-medium">{t('class')}:</span> _______________________________
+            <span className="font-medium">{t('class')}</span> _______________________________
           </div>
         )}
         {settings.showDateField && (
           <div>
-            <span className="font-medium">{t('date')}:</span> _______________________________
+            <span className="font-medium">{t('date')}</span> _______________________________
           </div>
         )}
       </div>
