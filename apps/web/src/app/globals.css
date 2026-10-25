@@ -251,3 +251,41 @@
 [data-sonner-toaster] [data-sonner-toast][data-type='info'] [data-icon] {
   color: var(--info);
 }
+
+/**
+ * =============================================================================
+ * PRINT STYLES
+ * Strip the dashboard chrome and let content flow across pages (e.g. the
+ * assignment print view). Screen layout is untouched.
+ * =============================================================================
+ */
+@media print {
+  [data-slot='sidebar'],
+  [data-slot='sidebar-gap'],
+  [data-slot='sidebar-rail'],
+  [data-slot='sidebar-inset'] > header,
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+
+  html,
+  body,
+  [data-slot='sidebar-wrapper'],
+  [data-slot='sidebar-inset'],
+  [data-slot='sidebar-inset'] > div,
+  [data-slot='sidebar-inset'] main {
+    display: block !important;
+    position: static !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+}
