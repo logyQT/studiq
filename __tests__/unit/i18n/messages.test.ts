@@ -158,6 +158,24 @@ describe('i18n message parity', () => {
     expect(Object.keys(en.AppStatsPage).sort()).toEqual(Object.keys(pl.AppStatsPage).sort());
   });
 
+  /**
+   * #284 — the public /status page renders every `StatusPage` key directly, so a
+   * missing translation would show a raw key on the page visitors reach from the
+   * 404 screen.
+   */
+  it('has the same StatusPage keys in en and pl', () => {
+    expect(Object.keys(en.StatusPage).sort()).toEqual(Object.keys(pl.StatusPage).sort());
+  });
+
+  it('translates every StatusPage key', () => {
+    for (const locale of Object.values(locales)) {
+      for (const [key, message] of Object.entries(locale.StatusPage)) {
+        expect(message, `StatusPage.${key}`).toBeTypeOf('string');
+        expect(message, `StatusPage.${key}`).not.toHaveLength(0);
+      }
+    }
+  });
+
   it('translates the stats interval unit labels', () => {
     for (const locale of Object.values(locales)) {
       const statsPage = locale.AppStatsPage as Record<string, string>;
