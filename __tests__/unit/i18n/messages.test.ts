@@ -110,6 +110,36 @@ const STATUS_PAGE_KEYS = [
 ] as const;
 
 /**
+ * #329 — the practice quiz review page used to render hard-coded English. Every
+ * string now comes from this namespace, so a missing key would show the raw key
+ * to a student mid-review; the exact set is asserted so a dropped key fails.
+ */
+const APP_QUIZ_REVIEW_KEYS = [
+  'title',
+  'back',
+  'loading',
+  'load_failed',
+  'score_percent',
+  'points_out_of',
+  'correct_of',
+  'correct_closed',
+  'open_questions_line',
+  'open_only_title',
+  'open_only_desc',
+  'badge_correct',
+  'badge_incorrect',
+  'badge_pending_review',
+  'badge_self_check',
+  'question_short',
+  'type_mcq',
+  'type_true_false',
+  'type_open',
+  'your_answer',
+  'no_answer',
+  'explanation',
+] as const;
+
+/**
  * #367 — the student assignment list used to render its scheduled/closed
  * sections as raw English literals, so the Polish page mixed „OCZEKUJĄCE (1)”
  * with `SCHEDULED (1)` / `Opens:` / `Closed:`. Every key now goes through
@@ -233,6 +263,19 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
     );
   });
 
+  it('translates exactly the quiz review page keys', () => {
+    const quizReviewPage = messages.AppQuizReviewPage as Record<string, string>;
+
+    expect(Object.keys(quizReviewPage).sort()).toEqual([...APP_QUIZ_REVIEW_KEYS].sort());
+
+    for (const key of APP_QUIZ_REVIEW_KEYS) {
+      const message = quizReviewPage[key];
+
+      expect(message, `AppQuizReviewPage.${key}`).toBeTypeOf('string');
+      expect(message, `AppQuizReviewPage.${key}`).not.toHaveLength(0);
+    }
+  });
+
   it('translates exactly the public status page keys', () => {
     const statusPage = messages.StatusPage as Record<string, string>;
 
@@ -322,6 +365,69 @@ describe('deck view bulk action copy (#364)', () => {
   });
 });
 
+describe('quiz review copy (#329)', () => {
+  const quizReview = (locale: 'en' | 'pl') =>
+    createTranslator({ locale, messages: locales[locale], namespace: 'AppQuizReviewPage' });
+
+  it('pluralises the open-question lines in Polish', () => {
+    const t = quizReview('pl');
+
+    expect(t('open_questions_line', { count: 1 })).toBe(
+      'Pytanie otwarte: 1 — sprawdź samodzielnie',
+    );
+    expect(t('open_questions_line', { count: 2 })).toBe(
+      'Pytania otwarte: 2 — sprawdź samodzielnie',
+    );
+    expect(t('open_questions_line', { count: 5 })).toBe(
+      'Pytań otwartych: 5 — sprawdź samodzielnie',
+    );
+    expect(t('open_only_desc', { count: 1 })).toBe(
+      'Masz 1 pytanie otwarte do samodzielnego sprawdzenia.',
+    );
+    expect(t('open_only_desc', { count: 2 })).toBe(
+      'Masz 2 pytania otwarte do samodzielnego sprawdzenia.',
+    );
+    expect(t('open_only_desc', { count: 5 })).toBe(
+      'Masz 5 pytań otwartych do samodzielnego sprawdzenia.',
+    );
+  });
+
+  it('pluralises the open-question lines in English', () => {
+    const t = quizReview('en');
+
+    expect(t('open_questions_line', { count: 1 })).toBe('1 open question — check it yourself');
+    expect(t('open_questions_line', { count: 2 })).toBe('2 open questions — check them yourself');
+    expect(t('open_only_desc', { count: 1 })).toBe('You have 1 open answer to check yourself.');
+    expect(t('open_only_desc', { count: 2 })).toBe('You have 2 open answers to check yourself.');
+  });
+
+  /**
+   * The mixed practice state must never print a percentage, so it leads with the
+   * closed-question fraction; the all-closed state keeps the legacy percentage.
+   */
+  it('renders the closed-question fraction in both locales', () => {
+    expect(quizReview('pl')('correct_closed', { score: 2, total: 9 })).toBe(
+      'Poprawnie: 2 z 9 pytań zamkniętych',
+    );
+    expect(quizReview('en')('correct_closed', { score: 2, total: 9 })).toBe(
+      'Correct: 2 of 9 graded questions',
+    );
+    expect(quizReview('en')('correct_closed', { score: 1, total: 1 })).toBe(
+      'Correct: 1 of 1 graded question',
+    );
+  });
+
+  it('interpolates the score, points and question-number placeholders', () => {
+    const t = quizReview('pl');
+
+    expect(t('score_percent', { percentage: 66 })).toBe('Wynik: 66%');
+    expect(t('points_out_of', { score: 2, total: 10 })).toBe('2 z 10 punktów');
+    expect(t('correct_of', { score: 7, total: 9 })).toBe('7 z 9 poprawnych');
+    expect(t('question_short', { number: 3 })).toBe('P3');
+    expect(quizReview('en')('question_short', { number: 3 })).toBe('Q3');
+  });
+});
+
 describe('i18n message parity', () => {
   /**
    * #335 — the deck wording is split on purpose: the student area says „Fiszki”
@@ -376,6 +482,16 @@ describe('i18n message parity', () => {
    */
   it('has the same AppStatsPage keys in en and pl', () => {
     expect(Object.keys(en.AppStatsPage).sort()).toEqual(Object.keys(pl.AppStatsPage).sort());
+  });
+
+  /**
+   * #329 — the practice review page renders from `AppQuizReviewPage` in both
+   * locales; a key present in only one would show the raw key mid-review.
+   */
+  it('has the same AppQuizReviewPage keys in en and pl', () => {
+    expect(Object.keys(en.AppQuizReviewPage).sort()).toEqual(
+      Object.keys(pl.AppQuizReviewPage).sort(),
+    );
   });
 
   it('translates the stats interval unit labels', () => {

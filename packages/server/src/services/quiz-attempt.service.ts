@@ -57,20 +57,49 @@ export class QuizAttemptService {
       .order('started_at', { ascending: false });
 
     if (error) return toDbFailure(error);
+
     const attempts = data ?? [];
+    if (attempts.length === 0) return success([]);
+
+    // `total_questions` includes `open` questions, which are never auto-graded
+    // (#329). The history badge needs its own denominator; derived from the
+    // attempt snapshot join so no counter is rewritten and no migration is needed.
+    const { data: questionRows, error: questionsError } = await supabase
+      .from('quiz_attempt_questions')
+      .select('attempt_id, questions(type)')
+      .in(
+        'attempt_id',
+        attempts.map((attempt) => attempt.id),
+      );
+
+    if (questionsError) return toDbFailure(questionsError);
+
+    const gradableByAttempt = new Map<string, number>();
+    for (const row of questionRows ?? []) {
+      // PostgREST returns a to-one embed as an object; a missing/RLS-hidden
+      // question is null and must not count as gradable.
+      const type = (row.questions as { type?: string } | null)?.type;
+      if (!type || type === 'open') continue;
+      gradableByAttempt.set(row.attempt_id, (gradableByAttempt.get(row.attempt_id) ?? 0) + 1);
+    }
+
+    const withGradable = attempts.map((attempt) => ({
+      ...attempt,
+      gradable_questions: gradableByAttempt.get(attempt.id) ?? 0,
+    }));
 
     // A direct API call must not bypass the teacher's „Pokaż wyniki” switch, even
     // though the web UI filters assignment attempts out of this list (#374).
-    if (!attempts.some((attempt) => attempt.assignment_id)) return success(attempts);
+    if (!withGradable.some((attempt) => attempt.assignment_id)) return success(withGradable);
 
     const hidden = await hiddenResultAssignmentIds(
       supabase,
-      attempts.map((attempt) => attempt.assignment_id),
+      withGradable.map((attempt) => attempt.assignment_id),
     );
     if (isFailure(hidden)) return hidden;
 
     return success(
-      attempts.map((attempt) =>
+      withGradable.map((attempt) =>
         attempt.assignment_id && hidden.data.has(attempt.assignment_id)
           ? { ...attempt, score: null }
           : attempt,

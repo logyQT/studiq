@@ -40,6 +40,8 @@ interface QuizAttempt {
   score: number | null;
   total_questions: number;
   total_points: number | null;
+  /** Questions that can be auto-graded (`type !== 'open'`) — the score denominator (#329). */
+  gradable_questions: number;
   assignment_id: string | null;
   config: {
     questionTypes?: string[];
@@ -177,7 +179,9 @@ export function QuizContent() {
             ) : (
               <ul className="flex flex-col divide-y">
                 {completedAttempts.map((attempt) => {
-                  const total = attempt.total_points ?? attempt.total_questions;
+                  // Open answers are never auto-graded, so they must not sit in
+                  // the denominator (an all-open attempt shows `-` instead of `0/0`).
+                  const total = attempt.gradable_questions;
                   return (
                     <li
                       key={attempt.id}
