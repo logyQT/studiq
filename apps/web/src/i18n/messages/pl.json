@@ -445,7 +445,9 @@
     "pay": "Zapłać {amount}",
     "processing": "Przetwarzanie...",
     "success": "Płatność udana! Przekierowywanie...",
-    "payment_failed": "Przetwarzanie płatności nie powiodło się. Spróbuj ponownie."
+    "payment_failed": "Przetwarzanie płatności nie powiodło się. Spróbuj ponownie.",
+    "plan_not_found": "Nie znaleziono planu",
+    "back_to_plans": "Wróć do planów"
   },
   "BillingSuccessPage": {
     "title": "Zakup udany!",
@@ -1745,7 +1747,10 @@
     "tile_org_title": "Organizacja",
     "tile_org_desc": "Platforma edukacyjna klasy enterprise z zarządzaniem zespołem i niestandardowym brandowaniem.",
     "tile_cta": "Zobacz {count} plany",
-    "back_to_pricing": "Powrót do planów"
+    "back_to_pricing": "Powrót do planów",
+    "feature_ai_chat": "Asystent AI",
+    "limit_per_day": "{value} / dzień",
+    "cta_generic": "Wybierz plan"
   },
   "UpgradePage": {
     "title": "Rozwiń swój plan",

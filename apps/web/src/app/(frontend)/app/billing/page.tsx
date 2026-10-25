@@ -13,6 +13,7 @@ import {
 } from '@studiq/ui';
 import { Loader2, Minus } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
+import { getFeatureLabel as getFeatureLabelShared } from '@/lib/pricing-features';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 
@@ -54,8 +55,7 @@ export default function AppBillingPage() {
   });
 
   function getFeatureLabel(key: string): string {
-    const label = pt(`feature_${key}`);
-    return label.startsWith('feature_') ? key : label;
+    return getFeatureLabelShared(key, pt);
   }
 
   function getLimitLabel(key: string): string {

@@ -15,6 +15,7 @@ import {
 import { Check, CreditCard, Loader2, Lock, Minus } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
+import { getFeatureLabel as getFeatureLabelShared } from '@/lib/pricing-features';
 import { Suspense, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -115,8 +116,8 @@ function CheckoutContent() {
   if (planNotFound || !plan) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <p className="text-muted-foreground">Plan not found</p>
-        <Button onClick={() => router.push('/pricing')}>Back to plans</Button>
+        <p className="text-muted-foreground">{ct('plan_not_found')}</p>
+        <Button onClick={() => router.push('/pricing')}>{ct('back_to_plans')}</Button>
       </div>
     );
   }
@@ -128,8 +129,7 @@ function CheckoutContent() {
   const displayPrice = formatter.format(plan.priceMonthly / 100);
 
   function getFeatureLabel(key: string): string {
-    const label = pt(`feature_${key}`);
-    return label.startsWith('feature_') ? key : label;
+    return getFeatureLabelShared(key, pt);
   }
 
   function getLimitLabel(key: string): string {
