@@ -55,11 +55,11 @@ export class QuizService {
         .in('topic_id', config.topicIds);
 
       const ids = topicQuestionIds?.map((t) => t.question_id) ?? [];
-      if (ids.length > 0) {
-        query = query.in('id', ids);
-      } else {
-        return success({ questions: [], attemptId: '' });
-      }
+      // A topic can exist without any matching questions (topics are shared with
+      // flashcards). Fail like every other empty result so the client shows its
+      // „no questions found” toast instead of navigating to an empty attempt.
+      if (ids.length === 0) return failure('NOT_FOUND');
+      query = query.in('id', ids);
     }
 
     const { data: allQuestions, error: fetchError } = await query;
