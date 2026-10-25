@@ -29,6 +29,7 @@ type Attempt = {
 export function QuizzesTab() {
   const t = useTranslations('AppStatsPage');
   const [attempts, setAttempts] = useState<Attempt[]>([]);
+  const [summary, setSummary] = useState({ avgScore: 0, bestScore: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -37,6 +38,12 @@ export function QuizzesTab() {
       .then((data) => {
         const stats = data.data || data;
         setAttempts(stats.recentAttempts || []);
+        // Both summary metrics come from the server so they share one basis
+        // (assignments are scored against total_points, not the question count).
+        setSummary({
+          avgScore: Math.round(stats.avgScore ?? 0),
+          bestScore: Math.round(stats.bestScore ?? 0),
+        });
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -61,8 +68,6 @@ export function QuizzesTab() {
     );
   }
 
-  const avgScore = Math.round(attempts.reduce((s, a) => s + a.score, 0) / attempts.length);
-
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
@@ -79,15 +84,15 @@ export function QuizzesTab() {
             <CardTitle className="text-sm text-muted-foreground">{t('avg_score')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{avgScore}%</p>
+            <p className="text-3xl font-bold">{summary.avgScore}%</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">{t('quiz_history')}</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">{t('best_score')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{t('quiz_history_desc')}</p>
+            <p className="text-3xl font-bold">{summary.bestScore}%</p>
           </CardContent>
         </Card>
       </div>
