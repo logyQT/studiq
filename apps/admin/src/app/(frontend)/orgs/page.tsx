@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { FolderOpen, Shield, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { QueryError } from '@/app/(frontend)/components/query-error';
 import { apiGet } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
@@ -31,7 +32,12 @@ type Org = {
 export default function OrgsPage() {
   const t = useTranslations('Orgs');
 
-  const { data: orgs = [], isLoading } = useQuery({
+  const {
+    data: orgs = [],
+    error,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: queryKeys.organizations.all,
     queryFn: () => apiGet<Org[]>('/organizations'),
   });
@@ -50,6 +56,8 @@ export default function OrgsPage() {
         <CardContent>
           {isLoading ? (
             <p className="text-muted-foreground">{t('loading')}</p>
+          ) : isError ? (
+            <QueryError error={error} />
           ) : (
             <Table>
               <TableHeader>

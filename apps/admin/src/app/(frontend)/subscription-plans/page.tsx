@@ -30,7 +30,8 @@ import { ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/app/(frontend)/components/confirm-dialog';
-import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { QueryError } from '@/app/(frontend)/components/query-error';
+import { ApiError, apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
 const ACCOUNT_TYPES = ['student', 'educator', 'manager'] as const;
@@ -83,7 +84,12 @@ export default function SubscriptionPlansPage() {
   const tc = useTranslations('Common');
   const queryClient = useQueryClient();
 
-  const { data: plans = [], isLoading } = useQuery({
+  const {
+    data: plans = [],
+    error,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: queryKeys.subscriptionPlans.all,
     queryFn: () => apiGet<SubscriptionPlan[]>('/subscription-plans'),
   });
@@ -94,6 +100,12 @@ export default function SubscriptionPlansPage() {
   const [deleteTarget, setDeleteTarget] = useState<SubscriptionPlan | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  function mapDeleteError(error: Error): string {
+    if (error instanceof ApiError && error.code === 'CONFLICT') return t('delete_failed_in_use');
+    return t('delete_failed', { code: error.message });
+  }
 
   const createMutation = useMutation({
     mutationFn: (data: FormData) => apiPost('/subscription-plans', buildPayload(data)),
@@ -124,13 +136,16 @@ export default function SubscriptionPlansPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.subscriptionPlans.all });
       setDeleteTarget(null);
+      setDeleteError(null);
     },
+    onError: (error: Error) => setDeleteError(mapDeleteError(error)),
   });
 
   function openCreate() {
     setEditing(null);
     setForm(EMPTY_FORM);
     setFormError(null);
+    setDeleteError(null);
     setDialogOpen(true);
   }
 
@@ -146,6 +161,7 @@ export default function SubscriptionPlansPage() {
       forAccountType: plan.forAccountType ?? '',
     });
     setFormError(null);
+    setDeleteError(null);
     setDialogOpen(true);
   }
 
@@ -178,8 +194,15 @@ export default function SubscriptionPlansPage() {
           <CardTitle>{t('list_title')}</CardTitle>
         </CardHeader>
         <CardContent>
+          {deleteError && (
+            <p className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {deleteError}
+            </p>
+          )}
           {isLoading ? (
             <p className="text-muted-foreground">{tc('loading')}</p>
+          ) : isError ? (
+            <QueryError error={error} />
           ) : (
             <Table>
               <TableHeader>
@@ -369,7 +392,7 @@ export default function SubscriptionPlansPage() {
 function PlanDetails({ planKey }: { planKey: string }) {
   const t = useTranslations('SubscriptionPlans');
 
-  const { data: limits = [] } = useQuery({
+  const { data: limits = [], error: limitsError } = useQuery({
     queryKey: queryKeys.planLimits.byPlan(planKey),
     queryFn: () =>
       apiGet<Array<{ id: string; limit_key: string; limit_value: number }>>(
@@ -377,12 +400,16 @@ function PlanDetails({ planKey }: { planKey: string }) {
       ),
   });
 
-  const { data: features = [] } = useQuery({
+  const { data: features = [], error: featuresError } = useQuery({
     queryKey: [...queryKeys.planFeatures.all, planKey],
     queryFn: () => apiGet<Array<{ id: string; feature_key: string }>>('/plan-features'),
   });
 
   const planFeatures = features.filter((f) => (f as Record<string, unknown>).plan_key === planKey);
+
+  if (limitsError || featuresError) {
+    return <QueryError error={limitsError ?? featuresError} />;
+  }
 
   if (limits.length === 0 && planFeatures.length === 0) {
     return <p className="text-sm text-muted-foreground">{t('no_features')}</p>;

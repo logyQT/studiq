@@ -441,5 +441,17 @@ describe('SubscriptionPlanService', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('NOT_FOUND');
     });
+
+    it('returns CONFLICT when a plan is still referenced by organizations or users', async () => {
+      mock.from.mockReturnValueOnce(qb({ id: 'p-1' }));
+      mock.from.mockReturnValueOnce(
+        qb(undefined, { code: '23503', message: 'violates foreign key constraint' }),
+      );
+
+      const result = await service.delete('p-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('CONFLICT');
+    });
   });
 });

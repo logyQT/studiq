@@ -16,7 +16,7 @@ export const queryKeys = {
   },
   subscriptionPlans: {
     all: ['subscription-plans'] as const,
-    detail: (key: string) => ['subscription-plans', key] as const,
+    detail: (id: string) => ['subscription-plans', id] as const,
   },
   organizations: {
     all: ['organizations'] as const,
