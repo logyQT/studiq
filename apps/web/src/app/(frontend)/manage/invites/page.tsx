@@ -49,10 +49,8 @@ interface InviteRow {
 
 interface InvitationResult {
   success: boolean;
-  data?: { inviteLink?: string };
+  data?: { invitationId?: string; inviteLink?: string };
   error?: string;
-  /** Email the invite was sent to; the bulk response itself carries no identifier. */
-  email?: string;
   /** Set once the invitation is revoked, so the dead link is no longer offered. */
   cancelled?: boolean;
 }
@@ -140,13 +138,7 @@ export default function InvitationsPage() {
       const resJson = await res.json();
       const bulkResults = resJson?.data?.results ?? [];
       if (bulkResults.length) {
-        // The bulk endpoint answers in request order, so each result can be
-        // tagged with the email it belongs to (needed to mark it on revoke, #258).
-        const tagged: InvitationResult[] = bulkResults.map((r: InvitationResult, idx: number) => ({
-          ...r,
-          email: validInvites[idx]?.email,
-        }));
-        setResults([...tagged, ...results]);
+        setResults([...bulkResults, ...results]);
         toast.success(
           t('invitations_sent', {
             count: bulkResults.filter((r: InvitationResult) => r.success).length,
@@ -188,18 +180,10 @@ export default function InvitationsPage() {
       const json = await res.json();
       if (json.success) {
         toast.success(t('revoke_success'));
-        const revokedEmail = invitations.find((inv) => inv.id === invitationId)?.email;
-        if (revokedEmail) {
-          // Results are newest-first; one revoke kills exactly one invitation.
-          setResults((prev) => {
-            const idx = prev.findIndex(
-              (r) => r.success && !r.cancelled && r.email === revokedEmail,
-            );
-            return idx === -1
-              ? prev
-              : prev.map((r, i) => (i === idx ? { ...r, cancelled: true } : r));
-          });
-        }
+        // Mark the send result of exactly this invitation as cancelled (#258).
+        setResults((prev) =>
+          prev.map((r) => (r.data?.invitationId === invitationId ? { ...r, cancelled: true } : r)),
+        );
         fetchInvitations();
       }
     } catch {
