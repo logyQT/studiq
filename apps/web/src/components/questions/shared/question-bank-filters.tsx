@@ -58,7 +58,7 @@ export function QuestionBankFilters({
       </Select>
       {showGroupFilter && onGroupFilterChange && (
         <Select value={groupFilter} onValueChange={onGroupFilterChange}>
-          <SelectTrigger className="w-38 truncate">
+          <SelectTrigger className="w-auto min-w-38 truncate">
             <SelectValue placeholder={t('group_filter_all')} />
           </SelectTrigger>
           <SelectContent>
