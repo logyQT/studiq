@@ -72,6 +72,22 @@ const DECK_GROUP_REQUIRED_NAMESPACES = [
 ] as const;
 
 /**
+ * #284 — the public /status page renders every `StatusPage` key directly, so a
+ * missing translation would show a raw key on the page visitors reach from the
+ * 404 screen. The exact set is asserted (not only en/pl parity) so removing a key
+ * from both files fails.
+ */
+const STATUS_PAGE_KEYS = [
+  'meta_title',
+  'title',
+  'loading',
+  'operational',
+  'problem',
+  'unavailable',
+  'last_checked',
+] as const;
+
+/**
  * #367 — the student assignment list used to render its scheduled/closed
  * sections as raw English literals, so the Polish page mixed „OCZEKUJĄCE (1)”
  * with `SCHEDULED (1)` / `Opens:` / `Closed:`. Every key now goes through
@@ -166,6 +182,19 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
     expect(messages.AccountPage.password_updated).not.toBe(
       messages.AccountPage.password_update_failed,
     );
+  });
+
+  it('translates exactly the public status page keys', () => {
+    const statusPage = messages.StatusPage as Record<string, string>;
+
+    expect(Object.keys(statusPage).sort()).toEqual([...STATUS_PAGE_KEYS].sort());
+
+    for (const key of STATUS_PAGE_KEYS) {
+      const message = statusPage[key];
+
+      expect(message, `StatusPage.${key}`).toBeTypeOf('string');
+      expect(message, `StatusPage.${key}`).not.toHaveLength(0);
+    }
   });
 
   /**
