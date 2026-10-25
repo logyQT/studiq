@@ -14,7 +14,7 @@ ticket for the fix.
 
 - Cause: `getEffectiveLimit(ctx, 'max_students')` resolved limits from the *accepting
   student's* personal plan (`base` has no `max_students` row) → `[]` → `0` → blocked.
-- Fix: new `PlanResolver.checkOrgLimit(orgId, key, count)` — capacity resolved against the
+- Fix: new `LimitsResolver.checkOrgLimit(orgId, key, count)` — capacity resolved against the
   invitation's **organization** (org `plan` → `plan_limits`, derived live; the per-org
   override table was removed in #229, default `-1`). `acceptInvitation` now uses it.
   `regression: invite-accept.test.ts`, members suite exercises the real accept route

@@ -57,6 +57,7 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 | [Architecture](docs/architecture.md)           | High-level design, layers, data flow |
 | [Authentication](docs/authentication.md)       | Auth flow, RBAC, route rules         |
 | [Database](docs/database.md)                   | Schema, migrations, seeds            |
+| [Plans, Features & Limits](docs/limits.md)     | Plan templates, feature/limit resolution, seats |
 | [API](docs/api.md)                             | API routes, controllers, services    |
 | [Project Structure](docs/project-structure.md) | Folder layout, conventions           |
 | [Testing](docs/testing.md)                     | Test strategy, running tests         |
