@@ -29,10 +29,12 @@ import { OnboardingChecklist } from '@/components/app/onboarding-checklist';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { studentStatsKeys } from '@/lib/query-keys';
+import { formatScorePercent } from '@/lib/stats';
 
 interface StudentStats {
   totalQuizzes: number;
-  avgScore: number;
+  /** `null` = no attempt had a gradable denominator yet (nothing to score, #619). */
+  avgScore: number | null;
   totalQuestionsCreated: number;
   flashcardsPracticed: number;
   flashcardAccuracy: number;
@@ -111,7 +113,7 @@ export default function AppOverviewPage() {
         />
         <StatCard
           title={t('avg_score')}
-          value={isLoading ? '...' : `${stats?.avgScore ?? 0}%`}
+          value={isLoading ? '...' : formatScorePercent(stats?.avgScore)}
           icon={Target}
           variant="emerald"
         />

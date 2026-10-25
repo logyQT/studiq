@@ -12,7 +12,8 @@ const DISMISS_KEY = 'app_onboarding_dismissed';
 
 interface StudentStats {
   totalQuizzes: number;
-  avgScore: number;
+  /** `null` = no attempt had a gradable denominator yet (#619); not read here. */
+  avgScore: number | null;
   totalQuestionsCreated: number;
   flashcardsPracticed: number;
   flashcardAccuracy: number;

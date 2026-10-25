@@ -48,11 +48,20 @@ export type TeacherStatsResponse = {
 
 export type StudentStatsResponse = {
   totalQuizzes: number;
-  avgScore: number;
-  bestScore: number;
+  /**
+   * Mean of the per-attempt scores over attempts that have a gradable
+   * denominator: assignment attempts against `total_points` (teacher-graded),
+   * practice quizzes against their closed-question count (#329/#619).
+   * `null` = nothing was gradable yet, so the UI shows `—` instead of a
+   * fabricated 0 %.
+   */
+  avgScore: number | null;
+  /** Highest per-attempt percentage on the same basis as `avgScore`; `null` when none is gradable. */
+  bestScore: number | null;
   totalQuestionsCreated: number;
   flashcardsPracticed: number;
   flashcardAccuracy: number;
+  /** Only attempts with a gradable denominator; `total` is that denominator. */
   attemptsOverTime: {
     date: string;
     score: number;

@@ -1,5 +1,6 @@
 import type { RequestContext } from '@studiq/authz';
 import { hiddenResultAssignmentIds, resultsHidden } from '@studiq/server/lib/assignment-visibility';
+import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
 import {
   IN_PROGRESS_QUESTION_SELECT,
@@ -62,30 +63,19 @@ export class QuizAttemptService {
     if (attempts.length === 0) return success([]);
 
     // `total_questions` includes `open` questions, which are never auto-graded
-    // (#329). The history badge needs its own denominator; derived from the
-    // attempt snapshot join so no counter is rewritten and no migration is needed.
-    const { data: questionRows, error: questionsError } = await supabase
-      .from('quiz_attempt_questions')
-      .select('attempt_id, questions(type)')
-      .in(
-        'attempt_id',
-        attempts.map((attempt) => attempt.id),
-      );
-
-    if (questionsError) return toDbFailure(questionsError);
-
-    const gradableByAttempt = new Map<string, number>();
-    for (const row of questionRows ?? []) {
-      // PostgREST returns a to-one embed as an object; a missing/RLS-hidden
-      // question is null and must not count as gradable.
-      const type = (row.questions as { type?: string } | null)?.type;
-      if (!type || type === 'open') continue;
-      gradableByAttempt.set(row.attempt_id, (gradableByAttempt.get(row.attempt_id) ?? 0) + 1);
-    }
+    // (#329). The history badge needs its own denominator; the shared helper
+    // derives it from the attempt snapshot join so no counter is rewritten and
+    // no migration is needed — and so the stats aggregates use the same rule
+    // (#619).
+    const gradable = await gradableQuestionCounts(
+      supabase,
+      attempts.map((attempt) => attempt.id),
+    );
+    if (isFailure(gradable)) return gradable;
 
     const withGradable = attempts.map((attempt) => ({
       ...attempt,
-      gradable_questions: gradableByAttempt.get(attempt.id) ?? 0,
+      gradable_questions: gradable.data.get(attempt.id) ?? 0,
     }));
 
     // A direct API call must not bypass the teacher's „Pokaż wyniki” switch, even

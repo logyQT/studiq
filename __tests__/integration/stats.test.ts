@@ -385,8 +385,10 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(200);
         expect(body.data.totalQuizzes).toBe(0);
-        expect(body.data.avgScore).toBe(0);
-        expect(body.data.bestScore).toBe(0);
+        // Nothing gradable yet → no fabricated 0 % (#619).
+        expect(body.data.avgScore).toBeNull();
+        expect(body.data.bestScore).toBeNull();
+        expect(body.data.attemptsOverTime).toEqual([]);
         expect(body.data.flashcardsPracticed).toBe(0);
       });
 
@@ -399,6 +401,134 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(401);
         expect(body.success).toBe(false);
+      });
+    });
+
+    // #619: a practice score is correct answers over the *closed* questions, so
+    // `/app/stats` must agree with the review headline for the same attempt.
+    // Rows are seeded directly (quiz-attempts seed style) to pin the denominator.
+    describe('GET /api/v1/stats/student practice denominators (#619)', () => {
+      let mixedStudent!: TestUserFixture;
+      let openOnlyStudent!: TestUserFixture;
+      let service!: ReturnType<typeof createServiceClient>;
+
+      /** One practice attempt whose linked questions are exactly `types`. */
+      async function seedPracticeAttempt(
+        user: TestUserFixture,
+        types: Array<'mcq' | 'open'>,
+        score: number,
+        suffix: string,
+      ) {
+        const { data: bank, error: bankError } = await service
+          .from('question_banks')
+          .insert({
+            created_by: user.id,
+            name: `seed-bank-619-${suffix}`,
+            visibility: 'personal',
+          })
+          .select('id')
+          .single();
+        if (bankError || !bank) throw new Error(`[setup] bank: ${bankError?.message}`);
+
+        const { data: questions, error: questionsError } = await service
+          .from('questions')
+          .insert(
+            types.map((type, index) => ({
+              bank_id: bank.id,
+              created_by: user.id,
+              type,
+              content: `seed-question-619-${suffix}-${index}`,
+            })),
+          )
+          .select('id');
+        if (questionsError || !questions) {
+          throw new Error(`[setup] questions: ${questionsError?.message}`);
+        }
+
+        const now = Date.now();
+        const { data: attempt, error: attemptError } = await service
+          .from('quiz_attempts')
+          .insert({
+            user_id: user.id,
+            score,
+            total_questions: types.length,
+            config: { title: `seed-quiz-619-${suffix}` },
+            started_at: new Date(now - 60 * 60 * 1000).toISOString(),
+            completed_at: new Date(now - 59 * 60 * 1000).toISOString(),
+          })
+          .select('id')
+          .single();
+        if (attemptError || !attempt) throw new Error(`[setup] attempt: ${attemptError?.message}`);
+
+        const { error: linkError } = await service.from('quiz_attempt_questions').insert(
+          questions.map((question, index) => ({
+            attempt_id: attempt.id,
+            question_id: question.id,
+            order_index: index,
+          })),
+        );
+        if (linkError) throw new Error(`[setup] attempt questions: ${linkError.message}`);
+
+        return attempt.id as string;
+      }
+
+      beforeAll(async () => {
+        service = createServiceClient();
+        mixedStudent = await createTestUser({ role: 'student' });
+        openOnlyStudent = await createTestUser({ role: 'student' });
+
+        // 2 closed + 1 open, both closed answered correctly: the review headline
+        // is „Poprawnie: 2 z 2 pytań zamkniętych”, so stats must not say 67 %.
+        await seedPracticeAttempt(mixedStudent, ['mcq', 'mcq', 'open'], 2, `mixed-${copyId}`);
+        // All-open: nothing can ever be auto-graded.
+        await seedPracticeAttempt(openOnlyStudent, ['open'], 0, `open-${copyId}`);
+      });
+
+      afterAll(async () => {
+        for (const user of [mixedStudent, openOnlyStudent]) {
+          await cleanupQuizAttempts(user.id);
+          await cleanupQuestions(user.id, 'seed-question-619-');
+          await service
+            .from('question_banks')
+            .delete()
+            .eq('created_by', user.id)
+            .ilike('name', 'seed-bank-619-%');
+        }
+      });
+
+      it('scores a mixed practice attempt over its closed questions only', async () => {
+        mockUser(mixedStudent);
+
+        const response = await studentGet(
+          createNextRequest('http://localhost/api/v1/stats/student'),
+        );
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.totalQuizzes).toBe(1);
+        expect(body.data.avgScore).toBe(100);
+        expect(body.data.bestScore).toBe(100);
+        expect(body.data.attemptsOverTime).toHaveLength(1);
+        expect(body.data.attemptsOverTime[0]).toMatchObject({
+          score: 2,
+          total: 2,
+          percentage: 100,
+        });
+      });
+
+      it('reports no score at all for an all-open practice attempt', async () => {
+        mockUser(openOnlyStudent);
+
+        const response = await studentGet(
+          createNextRequest('http://localhost/api/v1/stats/student'),
+        );
+        const body = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(body.data.totalQuizzes).toBe(1);
+        expect(body.data.avgScore).toBeNull();
+        expect(body.data.bestScore).toBeNull();
+        expect(body.data.attemptsOverTime).toEqual([]);
       });
     });
 

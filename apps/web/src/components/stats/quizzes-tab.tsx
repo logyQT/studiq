@@ -19,7 +19,7 @@ import { ClipboardList } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useApiQuery } from '@/hooks/use-api';
 import { quizAttemptKeys, studentStatsKeys } from '@/lib/query-keys';
-import { attemptPercentage } from '@/lib/stats';
+import { attemptScoreDisplay, formatScorePercent } from '@/lib/stats';
 
 /** Same shape as the `/api/v1/quiz/attempts` rows (see `quiz-content.tsx`). */
 interface QuizAttempt {
@@ -28,6 +28,9 @@ interface QuizAttempt {
   score: number | null;
   total_questions: number;
   total_points: number | null;
+  /** Questions that can be auto-graded (`type !== 'open'`) — the practice denominator (#329). */
+  gradable_questions: number;
+  assignment_id: string | null;
   started_at: string;
   completed_at: string | null;
 }
@@ -95,8 +98,10 @@ export function QuizzesTab() {
           </CardHeader>
           <CardContent>
             {/* Both summary metrics come from the server so they share one basis
-                (assignments are scored against total_points, not the question count). */}
-            <p className="text-3xl font-bold">{Math.round(stats?.avgScore ?? 0)}%</p>
+                (assignments are scored against total_points, practice quizzes
+                against their closed questions). `null` = nothing gradable yet,
+                rendered as `—` rather than a fabricated 0 % (#619). */}
+            <p className="text-3xl font-bold">{formatScorePercent(stats?.avgScore)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -104,10 +109,14 @@ export function QuizzesTab() {
             <CardTitle className="text-sm text-muted-foreground">{t('best_score')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{Math.round(stats?.bestScore ?? 0)}%</p>
+            <p className="text-3xl font-bold">{formatScorePercent(stats?.bestScore)}</p>
           </CardContent>
         </Card>
       </div>
+
+      {stats?.avgScore === null && (
+        <p className="text-sm text-muted-foreground">{t('no_graded_attempts')}</p>
+      )}
 
       <Card>
         <CardHeader>
@@ -124,28 +133,32 @@ export function QuizzesTab() {
             </TableHeader>
             <TableBody>
               {completedAttempts.map((attempt, i) => {
-                const percentage = attemptPercentage(attempt);
+                const display = attemptScoreDisplay(attempt);
                 return (
                   <TableRow key={attempt.id}>
                     <TableCell className="font-medium">
                       {t('quiz_attempt')} #{i + 1}
                     </TableCell>
                     <TableCell className="text-right">
-                      {percentage === null ? (
+                      {display.kind === 'hidden' ? (
                         // A withheld result keeps the row (the attempt happened)
                         // but must never render a fabricated percentage (#374).
                         <span className="text-muted-foreground">{t('results_hidden')}</span>
+                      ) : display.kind === 'self_check' ? (
+                        // A practice attempt with no closed question has nothing
+                        // auto-graded; the review page calls it the same thing (#329).
+                        <Badge variant="outline">{t('self_check')}</Badge>
                       ) : (
                         <Badge
                           variant={
-                            percentage >= 70
+                            display.percentage >= 70
                               ? 'default'
-                              : percentage >= 40
+                              : display.percentage >= 40
                                 ? 'secondary'
                                 : 'destructive'
                           }
                         >
-                          {percentage}%
+                          {display.percentage}%
                         </Badge>
                       )}
                     </TableCell>

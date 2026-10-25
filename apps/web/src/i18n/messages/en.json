@@ -1648,6 +1648,8 @@
     "no_quiz_history": "No quiz history",
     "no_quiz_history_desc": "Complete a quiz to see your history here",
     "results_hidden": "Results not available",
+    "self_check": "Self-check",
+    "no_graded_attempts": "No scored quizzes yet",
     "score": "Score",
     "date": "Date"
   },
