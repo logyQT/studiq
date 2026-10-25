@@ -57,15 +57,20 @@ export function useMarkdownEditor(
   const backRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const activeTextarea = activeSide === 'front' ? frontRef.current : backRef.current;
+  // Read the ref at call time: during render the refs are still null on the first
+  // mount, so a value captured in render would stay null until something re-renders.
+  const getActiveTextarea = useCallback(
+    () => (activeSide === 'front' ? frontRef.current : backRef.current),
+    [activeSide],
+  );
   const activeValue = activeSide === 'front' ? front : back;
   const activeOnChange = activeSide === 'front' ? onFrontChange : onBackChange;
 
   const wrap = useCallback(
     (before: string, after: string, defaultText?: string) => {
-      wrapSelection(activeTextarea, activeValue, activeOnChange, before, after, defaultText);
+      wrapSelection(getActiveTextarea(), activeValue, activeOnChange, before, after, defaultText);
     },
-    [activeTextarea, activeValue, activeOnChange],
+    [getActiveTextarea, activeValue, activeOnChange],
   );
 
   const handleUpload = useCallback(
@@ -76,23 +81,25 @@ export function useMarkdownEditor(
           '/api/v1/flashcards/media/upload',
           file,
         );
+        // Resolve the textarea only after the upload round-trip has completed.
+        const textarea = getActiveTextarea();
         const isAudio = file.type.startsWith('audio/');
         if (isAudio) {
           insertAtCursor(
-            activeTextarea,
+            textarea,
             activeValue,
             activeOnChange,
             `<audio controls src="${result.url}"></audio>`,
           );
         } else {
           const name = file.name.replace(/\.[^.]+$/, '');
-          insertAtCursor(activeTextarea, activeValue, activeOnChange, `![${name}](${result.url})`);
+          insertAtCursor(textarea, activeValue, activeOnChange, `![${name}](${result.url})`);
         }
       } finally {
         setUploading(false);
       }
     },
-    [activeTextarea, activeValue, activeOnChange],
+    [getActiveTextarea, activeValue, activeOnChange],
   );
 
   const handlePickFile = useCallback(
@@ -106,9 +113,9 @@ export function useMarkdownEditor(
 
   const insertText = useCallback(
     (text: string) => {
-      insertAtCursor(activeTextarea, activeValue, activeOnChange, text);
+      insertAtCursor(getActiveTextarea(), activeValue, activeOnChange, text);
     },
-    [activeTextarea, activeValue, activeOnChange],
+    [getActiveTextarea, activeValue, activeOnChange],
   );
 
   const formatBothSides = useCallback(() => {
