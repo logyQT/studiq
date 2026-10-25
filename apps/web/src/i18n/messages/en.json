@@ -1120,6 +1120,9 @@
   "ManageRolesPage": {
     "title": "Roles",
     "new_role": "New Role",
+    "locked_title": "Role builder is not available in your plan",
+    "locked_desc": "Your current plan does not include the role builder. Upgrade to create custom roles and permissions.",
+    "locked_cta": "View plans",
     "col_name": "Name",
     "col_type": "Type",
     "col_members": "Members",

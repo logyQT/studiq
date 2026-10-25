@@ -1101,6 +1101,9 @@
   "ManageRolesPage": {
     "title": "Role",
     "new_role": "Nowa rola",
+    "locked_title": "Kreator ról nie jest dostępny w Twoim planie",
+    "locked_desc": "Twój obecny plan nie obejmuje kreatora ról. Ulepsz plan, aby tworzyć własne role i uprawnienia.",
+    "locked_cta": "Zobacz plany",
     "col_name": "Nazwa",
     "col_type": "Typ",
     "col_members": "Członkowie",

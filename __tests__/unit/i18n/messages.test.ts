@@ -72,6 +72,12 @@ const AI_CHAT_PLAN_GATE_KEYS = [
 ] as const;
 
 /**
+ * #259 — the roles page plan gate renders these `ManageRolesPage` keys directly,
+ * so a missing translation would show the raw key on a locked page.
+ */
+const MANAGE_ROLES_PLAN_GATE_KEYS = ['locked_title', 'locked_desc', 'locked_cta'] as const;
+
+/**
  * #139 — `DeckFormDialog` renders the group-required hint from these namespaces,
  * so a missing translation would show the raw key instead of the rule.
  */
@@ -141,6 +147,17 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
       const message = aiChatPage[key];
 
       expect(message, `AiChatPage.${key}`).toBeTypeOf('string');
+      expect(message).not.toHaveLength(0);
+    }
+  });
+
+  it('translates every manage-roles plan-gate key', () => {
+    const manageRolesPage = messages.ManageRolesPage as Record<string, string>;
+
+    for (const key of MANAGE_ROLES_PLAN_GATE_KEYS) {
+      const message = manageRolesPage[key];
+
+      expect(message, `ManageRolesPage.${key}`).toBeTypeOf('string');
       expect(message).not.toHaveLength(0);
     }
   });
