@@ -77,7 +77,11 @@ export interface ActivityResponse {
 
 export interface TeacherQuizStatsItem {
   id: string;
-  /** null when the quiz has no title in its config. */
+  /**
+   * Display name: the attempt's stored `config.title`, else the quiz the
+   * assignment was built from, else the assignment title. `null` when none of
+   * those exist — the clients render a localized „untitled quiz” label.
+   */
   title: string | null;
   /** Attempts started (a row exists as soon as a student opens the quiz). */
   totalAttempts: number;
