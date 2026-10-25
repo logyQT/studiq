@@ -34,6 +34,7 @@ import type { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ReportQuestionDialog } from '@/components/question-reports/report-question-dialog';
+import { useFeature } from '@/hooks/use-feature';
 import {
   type AddableOrgMember,
   ensureMemberRoles,
@@ -57,6 +58,11 @@ interface GroupManagementScreenProps {
 }
 
 export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
+  // Write actions need the `group.manage` feature (the API enforces it with
+  // `requireFeature`). While `/features/me` is in flight the checker returns a
+  // provisional `false`, so the controls stay hidden until it resolves and
+  // entitled users never see a flash of actions that would fail with 403.
+  const canWrite = useFeature()('group.manage');
   const [data, setData] = useState<Group[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Group | null>(null);
@@ -132,20 +138,22 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
-        <Dialog open={creating} onOpenChange={setCreating}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              {t('new_group')}
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t('create_title')}</DialogTitle>
-            </DialogHeader>
-            <GroupForm onSave={(g) => handleSave(g)} onCancel={() => setCreating(false)} t={t} />
-          </DialogContent>
-        </Dialog>
+        {canWrite && (
+          <Dialog open={creating} onOpenChange={setCreating}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                {t('new_group')}
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{t('create_title')}</DialogTitle>
+              </DialogHeader>
+              <GroupForm onSave={(g) => handleSave(g)} onCancel={() => setCreating(false)} t={t} />
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <Card>
@@ -182,7 +190,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                   <TableCell className="text-center">{group.teacherCount}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      {group.canManage ? (
+                      {group.canManage && canWrite ? (
                         <>
                           <Button
                             variant="ghost"
@@ -240,12 +248,14 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                         </>
                       ) : (
                         <>
-                          <span
-                            title={t('not_owned')}
-                            className="inline-flex h-9 w-9 items-center justify-center text-muted-foreground/50"
-                          >
-                            <Lock className="w-4 h-4" />
-                          </span>
+                          {!group.canManage && (
+                            <span
+                              title={t('not_owned')}
+                              className="inline-flex h-9 w-9 items-center justify-center text-muted-foreground/50"
+                            >
+                              <Lock className="w-4 h-4" />
+                            </span>
+                          )}
                           <ReportQuestionDialog groupId={group.id} />
                         </>
                       )}
@@ -265,7 +275,10 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
         </CardContent>
       </Card>
 
-      <Dialog open={!!managingMembers} onOpenChange={(o) => !o && setManagingMembers(null)}>
+      <Dialog
+        open={canWrite && !!managingMembers}
+        onOpenChange={(o) => !o && setManagingMembers(null)}
+      >
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('manage_members')}</DialogTitle>
