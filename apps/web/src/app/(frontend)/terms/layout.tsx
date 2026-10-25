@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { getLocale, getTranslations } from 'next-intl/server';
+import { MainLayout } from '@/components/layout/MainLayout';
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
@@ -10,5 +11,5 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default function TermsLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return <MainLayout>{children}</MainLayout>;
 }
