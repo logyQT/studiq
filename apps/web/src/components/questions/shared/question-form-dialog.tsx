@@ -22,8 +22,12 @@ import {
 } from '@studiq/ui';
 import { Plus, X } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
-import { type QuestionFormError, validateQuestionForm } from '@/lib/question-form';
+import { useEffect, useRef, useState } from 'react';
+import {
+  normalizeTrueFalseAnswers,
+  type QuestionFormError,
+  validateQuestionForm,
+} from '@/lib/question-form';
 
 interface AnswerForm {
   content: string;
@@ -67,19 +71,33 @@ export function QuestionFormDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<QuestionFormError | 'save_failed' | null>(null);
 
+  // The teacher's T/F wording, remembered while the type is switched away so
+  // `true_false → mcq → true_false` restores it. Reset whenever the dialog opens.
+  const tfDraftRef = useRef<AnswerForm[] | null>(null);
+  // `t` is a fresh function on every render (next-intl wraps `useTranslations`),
+  // so it must never be an effect dependency: the open effect would re-run while
+  // typing. Keep the current-locale labels in a ref the effect can read instead.
+  const tfLabelsRef = useRef({ trueLabel: '', falseLabel: '' });
+  tfLabelsRef.current = { trueLabel: t('tf_true'), falseLabel: t('tf_false') };
+
   useEffect(() => {
     if (open) {
       setError(null);
+      tfDraftRef.current = null;
       if (initialValues) {
+        const storedAnswers = (initialValues.question_answers ?? []).map((a) => ({
+          content: a.content,
+          isCorrect: a.is_correct,
+        }));
         setContent(initialValues.content);
         setType(initialValues.type);
         setExplanation(initialValues.explanation ?? '');
         setTopicIds(initialValues.topics?.map((topic) => topic.id) ?? []);
+        // Never re-translate stored wording: only pad missing legacy rows.
         setAnswers(
-          (initialValues.question_answers ?? []).map((a) => ({
-            content: a.content,
-            isCorrect: a.is_correct,
-          })),
+          initialValues.type === 'true_false'
+            ? normalizeTrueFalseAnswers(storedAnswers, tfLabelsRef.current)
+            : storedAnswers,
         );
       } else {
         setContent('');
@@ -115,11 +133,16 @@ export function QuestionFormDialog({
     );
   }
 
-  function generateTrueFalse() {
-    setAnswers([
-      { content: t('tf_true'), isCorrect: true },
-      { content: t('tf_false'), isCorrect: false },
-    ]);
+  function handleTypeChange(nextType: string) {
+    if (type === 'true_false' && nextType !== 'true_false') {
+      // Preserve the teacher's wording so returning to T/F restores it.
+      tfDraftRef.current = answers;
+    }
+    if (nextType === 'true_false' && type !== 'true_false') {
+      // Seed immediately: no extra "generate" click, and both rows stay editable.
+      setAnswers(normalizeTrueFalseAnswers(tfDraftRef.current ?? [], tfLabelsRef.current));
+    }
+    setType(nextType);
   }
 
   async function handleSubmit() {
@@ -179,7 +202,7 @@ export function QuestionFormDialog({
         <div className="space-y-4 py-4">
           <div>
             <Label>{t('question_type')}</Label>
-            <Select value={type} onValueChange={setType}>
+            <Select value={type} onValueChange={handleTypeChange}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -220,7 +243,7 @@ export function QuestionFormDialog({
                       placeholder={t('answer_placeholder', { index: i + 1 })}
                       className="flex-1"
                     />
-                    {answers.length > 1 && (
+                    {type !== 'true_false' && answers.length > 1 && (
                       <Button variant="ghost" size="icon" onClick={() => removeAnswer(i)}>
                         <X className="h-4 w-4" />
                       </Button>
@@ -231,11 +254,6 @@ export function QuestionFormDialog({
               {type === 'mcq' && (
                 <Button variant="outline" size="sm" className="mt-2" onClick={addAnswer}>
                   <Plus className="mr-1 h-3 w-3" /> {t('add_answer')}
-                </Button>
-              )}
-              {type === 'true_false' && answers.length < 2 && (
-                <Button variant="outline" size="sm" className="mt-2" onClick={generateTrueFalse}>
-                  {t('generate_tf')}
                 </Button>
               )}
               <p className="text-xs text-muted-foreground mt-1">{t('correct_answer_hint')}</p>
