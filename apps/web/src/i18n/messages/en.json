@@ -461,7 +461,9 @@
     "pay": "Pay {amount}",
     "processing": "Processing...",
     "success": "Payment successful! Redirecting...",
-    "payment_failed": "Payment processing failed. Please try again."
+    "payment_failed": "Payment processing failed. Please try again.",
+    "plan_not_found": "Plan not found",
+    "back_to_plans": "Back to plans"
   },
   "BillingSuccessPage": {
     "title": "Purchase Successful!",
@@ -1764,7 +1766,10 @@
     "tile_org_title": "Organization",
     "tile_org_desc": "Enterprise-grade learning platform with team management and custom branding.",
     "tile_cta": "View {count} Plans",
-    "back_to_pricing": "Back to plans"
+    "back_to_pricing": "Back to plans",
+    "feature_ai_chat": "AI Assistant",
+    "limit_per_day": "{value} / day",
+    "cta_generic": "Choose plan"
   },
   "UpgradePage": {
     "title": "Upgrade Your Plan",
