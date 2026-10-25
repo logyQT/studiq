@@ -2003,6 +2003,7 @@
     "rating_good": "Good",
     "rating_easy": "Easy",
     "all_caught_up": "All Caught Up!",
+    "all_caught_up_desc": "You reviewed every card in the queue in this session.",
     "no_due_cards_message": "No cards are due for review right now. Check back later!",
     "mode_practice": "Cram",
     "mode_study": "Review",

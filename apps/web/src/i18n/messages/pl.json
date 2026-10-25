@@ -1983,6 +1983,7 @@
     "rating_good": "Dobrze",
     "rating_easy": "Łatwe",
     "all_caught_up": "Wszystko powtórzone!",
+    "all_caught_up_desc": "W tej sesji powtórzyłeś wszystkie fiszki z kolejki.",
     "no_due_cards_message": "Żadne fiszki nie wymagają teraz powtórki. Wróć później!",
     "mode_practice": "Wkuwanie",
     "mode_study": "Przegląd",
