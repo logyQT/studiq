@@ -1,7 +1,13 @@
 'use client';
 
 import type { DailyActivityItem } from '@studiq/server/models/stats.model';
-import { Button, ChartContainer, ChartTooltipContent } from '@studiq/ui';
+import {
+  Button,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltipContent,
+} from '@studiq/ui';
 import { useTranslations } from 'next-intl';
 import {
   Bar,
@@ -64,6 +70,7 @@ export function DailyActivityChart({ data, goal, range, onRangeChange }: DailyAc
             <XAxis dataKey="date" fontSize={12} tickLine={false} axisLine={false} />
             <YAxis fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
             <Tooltip content={<ChartTooltipContent />} />
+            <ChartLegend content={<ChartLegendContent />} />
             {goal > 0 && (
               <ReferenceLine
                 y={goal}
@@ -79,6 +86,7 @@ export function DailyActivityChart({ data, goal, range, onRangeChange }: DailyAc
             )}
             <Brush dataKey="date" height={30} stroke="oklch(0.546 0.245 265)" />
             <Bar dataKey="reviews" fill="var(--color-reviews)" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="correct" fill="var(--color-correct)" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </ChartContainer>
