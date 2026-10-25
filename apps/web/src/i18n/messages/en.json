@@ -2151,6 +2151,10 @@
     "by_subject_title": "Questions by Subject",
     "deck_title": "Deck Counts",
     "topic_title": "Topic Counts",
+    "by_difficulty": "By Difficulty",
+    "th_deck": "Deck",
+    "th_flashcards": "Flashcards",
+    "th_topic": "Topic",
     "view_question_stats": "View detailed question stats",
     "view_flashcard_stats": "View detailed flashcard stats"
   },

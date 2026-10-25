@@ -2131,6 +2131,10 @@
     "by_subject_title": "Pytania według przedmiotu",
     "deck_title": "Liczby talii",
     "topic_title": "Liczby tematów",
+    "by_difficulty": "Według trudności",
+    "th_deck": "Talia",
+    "th_flashcards": "Fiszki",
+    "th_topic": "Temat",
     "view_question_stats": "Zobacz szczegółowe statystyki pytań",
     "view_flashcard_stats": "Zobacz szczegółowe statystyki fiszek"
   },
