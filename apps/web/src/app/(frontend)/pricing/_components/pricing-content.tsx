@@ -10,6 +10,7 @@ import { CheckoutButton } from '@/components/pricing/checkout-button';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
 import { useOrgs } from '@/hooks/use-orgs';
+import { getVisibleLimitKeys } from '@/lib/pricing-limits';
 
 const PLAN_ID_MAP: Record<string, string | null> = {
   base: null,
@@ -40,18 +41,6 @@ const CTA_KEY_MAP: Record<string, string> = {
   hub: 'cta_hub',
   campus: 'cta_campus',
 };
-
-const SORTED_LIMIT_KEYS = [
-  'max_flashcards',
-  'max_decks',
-  'max_questions',
-  'max_question_banks',
-  'max_quiz_attempts_per_day',
-  'max_ai_tokens_per_day',
-  'max_students',
-  'max_groups',
-  'max_storage_mb',
-];
 
 function getFeatureLabel(key: string, t: (k: string) => string): string {
   const labels: Record<string, string> = {
@@ -198,7 +187,7 @@ export function PricingContent({ accountType }: { accountType: string }) {
 
   const allFeatures = plans ? [...new Set(plans.flatMap((p) => p.features))].sort() : [];
 
-  const visibleLimitKeys = SORTED_LIMIT_KEYS.filter((lk) => plans?.some((p) => lk in p.limits));
+  const visibleLimitKeys = getVisibleLimitKeys(plans, accountType);
 
   return (
     <MainLayout>
