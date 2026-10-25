@@ -132,6 +132,8 @@
     "col_user": "User ID",
     "col_feature": "Feature Key",
     "col_enabled": "Enabled",
+    "enabled_yes": "Yes",
+    "enabled_no": "No",
     "col_reason": "Reason",
     "col_expires": "Expires",
     "empty": "No user overrides found.",

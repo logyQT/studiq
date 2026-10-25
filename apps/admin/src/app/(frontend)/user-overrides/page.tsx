@@ -172,7 +172,7 @@ export default function UserOverridesPage() {
                     <TableCell className="font-mono text-sm">{o.feature_key}</TableCell>
                     <TableCell>
                       <span className={o.is_enabled ? 'text-green-600' : 'text-muted-foreground'}>
-                        {o.is_enabled ? tc('confirm') : tc('cancel')}
+                        {o.is_enabled ? t('enabled_yes') : t('enabled_no')}
                       </span>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-48 truncate">

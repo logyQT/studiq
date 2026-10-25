@@ -132,6 +132,8 @@
     "col_user": "ID użytkownika",
     "col_feature": "Klucz funkcji",
     "col_enabled": "Włączone",
+    "enabled_yes": "Tak",
+    "enabled_no": "Nie",
     "col_reason": "Powód",
     "col_expires": "Wygasa",
     "empty": "Brak nadpisania użytkowników.",
