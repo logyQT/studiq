@@ -160,9 +160,13 @@ export function PricingContent({ accountType }: { accountType: string }) {
     url: `/api/v1/subscription-plans?for=${accountType}`,
   });
 
+  // Managers are the org's billing contact: their current plan is the active
+  // organization's plan, the same `/me/plan` query `/manage/billing` uses (#228).
+  // Students/educators keep reading their own personal plan (#181).
+  const isManager = accountType === 'manager';
   const { data: currentPlan } = useApiQuery<PlanInfo>({
-    queryKey: ['me', 'personal-plan'],
-    url: '/api/v1/me/personal-plan',
+    queryKey: ['me', isManager ? 'plan' : 'personal-plan'],
+    url: isManager ? '/api/v1/me/plan' : '/api/v1/me/personal-plan',
     enabled: !!user,
   });
 

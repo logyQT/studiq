@@ -192,7 +192,7 @@ __tests__/                    # All tests (root-level, shared by both apps)
   e2e/                        # Playwright E2E specs
   helpers/  mocks/  setup.ts  # Test utilities
 docs/                         # Documentation (onboarding, architecture, API, AI...)
-  decisions/                  # Architecture Decision Records (0001-0006)
+  decisions/                  # Architecture Decision Records (0001-0007)
   plans/                      # Implementation plans (+ archive/)
 scripts/                      # Repo tooling: spin, pr, switch-branch, lint guards
 ```

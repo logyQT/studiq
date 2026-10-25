@@ -221,14 +221,14 @@ Click "Assign" → drawer opens:
 | `org_role_features` | Still the fallback for unseated users |
 | `plan_limits` | Template for every plan; org capacity resolves live from `organizations.plan → plan_limits` |
 | `handle_new_organization` trigger | Roles/permissions/features only — pools are created on demand (no default pools since Phase B.5) |
-| `personal_plan_key` | Unchanged — used outside org context |
+| `personal_plan_key` | Unchanged — used outside org context (for a manager it is the free `launch` tier; an org purchase never writes it, #228) |
 | RBAC permissions | Unchanged — role determines actions, seat determines features |
 
 ## What changes from Phase 1
 
 | Area | Phase 1 | Phase 2 adds |
 |------|---------|-------------|
-| Resolution chain | `activeOrgId → org_role_features → personal` | Features: `activeOrgId → org_role_features (base) + seat plan (additive) → personal`. Limits: `seat plan → else max(personal, org plan)` |
+| Resolution chain | `activeOrgId → org_role_features → personal` | Features: `activeOrgId → org_role_features (base) + seat plan (additive) → personal`. Limits: `seat plan → else max(personal, org plan)` (superseded by #233: the org plan alone governs in a verified org, and a manager never contributes a personal plan — #228) |
 | Org creation | Seeds roles + permissions + features + limits | Seat pools/assignments created on demand (no default pools since B.5) |
 | `feature.resolver.ts` / `limits.resolver.ts` | Checks `org_role_features` | Check the seat assignment first, then fall back |
 | Admin UI | Feature toggles per role | Seat pools dashboard + assignment drawer |

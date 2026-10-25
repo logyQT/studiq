@@ -265,6 +265,70 @@ describe('LimitsResolver', () => {
       expect(mock.from).not.toHaveBeenCalledWith('profiles');
     });
 
+    it('does not let a manager personal org plan widen limits in a different org (#228)', async () => {
+      // A manager bought Campus for another org; the stale personal `campus`
+      // (unlimited) must not raise the `launch` org's capacity.
+      const ctx = {
+        ...baseCtx,
+        accountType: AccountType.MANAGER,
+        activeOrgId: 'org-1',
+        orgRoleId: 'role-member',
+      };
+
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_members') return chain({ organization_id: 'org-1' });
+        if (table === 'profiles') return chain({ personal_plan_key: 'campus' });
+        if (table === 'organizations') return chain({ plan: 'launch' });
+        if (table === 'plan_limits') {
+          return filteredChain((f) =>
+            f.plan_key === 'campus' ? { limit_value: -1 } : { limit_value: 100 },
+          );
+        }
+        return chain(null);
+      });
+
+      await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(100);
+      expect(mock.from).not.toHaveBeenCalledWith('profiles');
+    });
+
+    it('uses the manager free personal plan outside any org (#228)', async () => {
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'profiles') return chain({ personal_plan_key: 'launch' });
+        if (table === 'plan_limits') return chain({ limit_value: 100 });
+        return chain(null);
+      });
+
+      await expect(
+        resolver.getEffectiveLimit(
+          { ...baseCtx, accountType: AccountType.MANAGER, activeOrgId: null },
+          'max_flashcards',
+        ),
+      ).resolves.toBe(100);
+      expect(mock.from).not.toHaveBeenCalledWith('org_members');
+    });
+
+    it('ignores a spoofed active-org cookie for a manager (#228)', async () => {
+      const ctx = {
+        ...baseCtx,
+        accountType: AccountType.MANAGER,
+        activeOrgId: 'org-foreign',
+        orgRoleId: null,
+      };
+
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'org_seat_assignments') return chain(null);
+        if (table === 'org_members') return chain(null);
+        if (table === 'profiles') return chain({ personal_plan_key: 'launch' });
+        if (table === 'plan_limits') return chain({ limit_value: 100 });
+        return chain(null);
+      });
+
+      await expect(resolver.getEffectiveLimit(ctx, 'max_flashcards')).resolves.toBe(100);
+      expect(mock.from).toHaveBeenCalledWith('org_members');
+      expect(mock.from).not.toHaveBeenCalledWith('organizations');
+    });
+
     it('resolves the personal plan outside the org, so "pro" is unlimited there', async () => {
       mock.from.mockImplementation((table: string) => {
         if (table === 'profiles') return chain({ personal_plan_key: 'pro' });

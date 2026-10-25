@@ -137,25 +137,26 @@ describe('MockStripeService', () => {
       expect(result).toEqual({ success: false, error: 'FORBIDDEN' });
     });
 
-    it('moves the org to the plan (re-syncing features and limits) and the buyer personal plan', async () => {
-      const profiles = qb(null);
+    it('moves the org to the plan (re-syncing features and limits) without touching the buyer personal plan (#228)', async () => {
       const payments = qb(null);
       mock.from.mockReturnValueOnce(qb(orgPlan)).mockReturnValueOnce(qb(adminMembership));
-      admin.from.mockReturnValueOnce(profiles).mockReturnValueOnce(payments);
+      admin.from.mockReturnValueOnce(payments);
       const result = await service.handleWebhook(orgEvent, 'manager', 'u-1');
       expect(result.success).toBe(true);
       expect(admin.rpc).toHaveBeenCalledWith('apply_org_plan', {
         p_org_id: 'org-1',
         p_plan: 'campus',
       });
-      expect(profiles.update).toHaveBeenCalledWith({ personal_plan_key: 'campus' });
+      // An org purchase changes only the org: the manager's personal plan stays
+      // the free `launch` tier.
+      expect(admin.from).not.toHaveBeenCalledWith('profiles');
+      expect(admin.from).toHaveBeenCalledTimes(1);
     });
 
     it('records the purchase with the buying organization (#392)', async () => {
-      const profiles = qb(null);
       const payments = qb(null);
       mock.from.mockReturnValueOnce(qb(orgPlan)).mockReturnValueOnce(qb(adminMembership));
-      admin.from.mockReturnValueOnce(profiles).mockReturnValueOnce(payments);
+      admin.from.mockReturnValueOnce(payments);
       const result = await service.handleWebhook(orgEvent, 'manager', 'u-1');
       expect(result.success).toBe(true);
       expect(payments.upsert).toHaveBeenCalledWith(
@@ -198,6 +199,7 @@ describe('MockStripeService', () => {
       const result = await service.handleWebhook(orgEvent, 'manager', 'u-1');
       expect(result.success).toBe(false);
       expect(mock.from).toHaveBeenCalledTimes(2);
+      expect(admin.from).not.toHaveBeenCalled();
     });
   });
 
@@ -233,10 +235,9 @@ describe('MockStripeService', () => {
 
     it('ignores a user_id in the payload and writes to the authenticated user (#227)', async () => {
       const membership = qb(adminMembership);
-      const profiles = qb(null);
       const payments = qb(null);
       mock.from.mockReturnValueOnce(qb(orgPlan)).mockReturnValueOnce(membership);
-      admin.from.mockReturnValueOnce(profiles).mockReturnValueOnce(payments);
+      admin.from.mockReturnValueOnce(payments);
 
       // A forged id can still arrive from JS or an untyped future caller; the
       // service must not have a code path that reads it.
@@ -250,7 +251,9 @@ describe('MockStripeService', () => {
 
       expect(result.success).toBe(true);
       expect(membership.eq).toHaveBeenCalledWith('user_id', 'u-1');
-      expect(profiles.eq).toHaveBeenCalledWith('id', 'u-1');
+      // An org purchase records the purchase against the authenticated buyer
+      // and leaves the (possibly forged) user's personal plan alone.
+      expect(admin.from).not.toHaveBeenCalledWith('profiles');
       expect(payments.upsert).toHaveBeenCalledWith(
         expect.objectContaining({ user_id: 'u-1' }),
         expect.anything(),
