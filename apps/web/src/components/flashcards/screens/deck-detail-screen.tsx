@@ -439,7 +439,7 @@ export function DeckDetailScreen({
       await batchDeleteCards.mutateAsync({ ids });
       selection.handleClearSelection();
       setD((prev) => ({ ...prev, bulkDeleteOpen: false }));
-      toast.success(t('flashcard_deleted'));
+      toast.success(t('bulk_deleted', { count: ids.length }));
     } catch {
       toast.error(t('delete_failed'));
     }
@@ -468,7 +468,7 @@ export function DeckDetailScreen({
       await batchMoveCards.mutateAsync({ ids, sourceDeckId: deckId, targetDeckId });
       selection.handleClearSelection();
       setD((prev) => ({ ...prev, bulkMoveOpen: false, bulkMoveTargetDeckId: null }));
-      toast.success(t('bulk_moved'));
+      toast.success(t('bulk_moved', { count: ids.length }));
     } catch {
       toast.error(t('move_failed'));
     }
@@ -482,7 +482,7 @@ export function DeckDetailScreen({
       await batchCopyCards.mutateAsync({ ids, targetDeckId });
       selection.handleClearSelection();
       setD((prev) => ({ ...prev, bulkCopyOpen: false, bulkCopyTargetDeckId: null }));
-      toast.success(t('flashcard_copied'));
+      toast.success(t('bulk_copied', { count: ids.length }));
     } catch {
       toast.error(t('copy_failed'));
     }
