@@ -144,6 +144,7 @@ export async function POST(req: NextRequest) {
         flashcard_id: fc.id,
         easiness_factor: result.newEasinessFactor,
         interval_days: result.newInterval,
+        interval_unit: result.intervalUnit,
         repetitions: result.newRepetitions,
         next_review_at: result.nextReviewAt.toISOString(),
         last_reviewed_at: now.toISOString(),
