@@ -228,6 +228,7 @@ The dashboard posts `env-N: finished · #issue stage` or `started · ...` to `#m
 - Never merge without the tool's merge gate.
 - Never edit product code, write to another agent's artifact, hand-edit `state.json`, or touch the main stack/ports.
 - Never resume the old QA campaign or reuse its manager session.
+- **Never take a tooling change through the loop.** Anything that changes the harness itself — `lefthook.yml` / CI gating, `scripts/`, the toolchain, the QA tooling, package-manager config — is not a product fix. `block` the issue with the reason `changes tooling …` and surface it to the operator; those land deliberately, outside the pipeline.
 
 ### 7. External PRs (not ours)
 PRs opened by teammates are reviewed like ours, but you never merge them and never
