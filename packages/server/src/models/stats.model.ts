@@ -63,6 +63,7 @@ export interface TeacherQuizStatsItem {
   /** null when the quiz has no title in its config. */
   title: string | null;
   totalAttempts: number;
+  /** Mean of the per-attempt scores normalised to their own max (points or question count), 0–100. */
   avgScore: number;
   avgCompletionRate: number;
 }

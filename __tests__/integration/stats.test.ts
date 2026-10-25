@@ -12,6 +12,7 @@ import {
   cleanupOrganizationDeep,
   cleanupQuestions,
   cleanupQuizAttempts,
+  cleanupTeacherAssignments,
   createServiceClient,
   mockUser,
 } from '#test/integration/helpers';
@@ -113,6 +114,20 @@ forEachCopy((copyId) => {
       }
 
       const now = Date.now();
+      const { data: assignment, error: assignmentError } = await service
+        .from('teacher_assignments')
+        .insert({
+          organization_id: orgId,
+          created_by: scopedTeacher.user.id,
+          title: `seed-quizstats-assignment-${copyId}`,
+          status: 'published',
+        })
+        .select('id')
+        .single();
+      if (assignmentError || !assignment) {
+        throw new Error(`[setup] assignment insert failed: ${assignmentError?.message}`);
+      }
+
       const { error } = await service.from('quiz_attempts').insert([
         {
           user_id: member.id,
@@ -121,6 +136,18 @@ forEachCopy((copyId) => {
           config: { title: inOrgTitle },
           started_at: new Date(now - 60 * 60 * 1000).toISOString(),
           completed_at: new Date(now - 59 * 60 * 1000).toISOString(),
+        },
+        {
+          // Assignment attempt: scored in points (max = total_points) and
+          // config-less, so it lands in the untitled bucket (#203).
+          user_id: member.id,
+          assignment_id: assignment.id,
+          score: 6,
+          total_points: 8,
+          total_questions: 8,
+          config: null,
+          started_at: new Date(now - 50 * 60 * 1000).toISOString(),
+          completed_at: new Date(now - 49 * 60 * 1000).toISOString(),
         },
         {
           user_id: outsider.id,
@@ -156,6 +183,7 @@ forEachCopy((copyId) => {
       }
       await cleanupQuizAttempts(member.id);
       await cleanupQuizAttempts(outsider.id);
+      await cleanupTeacherAssignments(scopedTeacher.user.id);
       if (scopedTeacher.orgId) await cleanupOrganizationDeep(scopedTeacher.orgId);
     });
 
@@ -341,11 +369,12 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(200);
         expect(body.success).toBe(true);
-        expect(body.data).toHaveLength(1);
-        expect(body.data[0].title).toBe(inOrgTitle);
-        expect(body.data[0].totalAttempts).toBe(1);
-        expect(body.data[0].avgScore).toBe(8);
-        expect(body.data[0].avgCompletionRate).toBe(10);
+        expect(body.data).toHaveLength(2);
+        const titled = body.data.find((row: { title: string | null }) => row.title === inOrgTitle);
+        expect(titled).toMatchObject({ totalAttempts: 1, avgScore: 80, avgCompletionRate: 10 });
+        // The assignment attempt is normalised to its own scale: 6/8 = 75 %.
+        const assignmentRow = body.data.find((row: { title: string | null }) => row.title === null);
+        expect(assignmentRow).toMatchObject({ totalAttempts: 1, avgScore: 75 });
         expect(body.data.some((row: { title: string }) => row.title === outsiderTitle)).toBe(false);
       });
 
