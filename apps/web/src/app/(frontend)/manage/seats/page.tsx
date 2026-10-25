@@ -222,11 +222,13 @@ export default function ManageSeatsPage() {
           <Dialog
             open={purchaseDialogOpen}
             onOpenChange={(open) => {
-              setPurchaseDialogOpen(open);
-              if (!open) {
+              // Reset on open: Anuluj and the success path close the dialog without
+              // going through onOpenChange, so resetting on close would be skipped.
+              if (open) {
                 setPurchasePlanKey('');
                 setPurchaseQty(1);
               }
+              setPurchaseDialogOpen(open);
             }}
           >
             <DialogTrigger asChild>
@@ -284,11 +286,13 @@ export default function ManageSeatsPage() {
           <Dialog
             open={assignDialogOpen}
             onOpenChange={(open) => {
-              setAssignDialogOpen(open);
-              if (!open) {
+              // Reset on open: Anuluj and the success path close the dialog without
+              // going through onOpenChange, so resetting on close would be skipped.
+              if (open) {
                 setSelectedUserId('');
                 setSelectedPoolId('');
               }
+              setAssignDialogOpen(open);
             }}
           >
             <DialogTrigger asChild>
