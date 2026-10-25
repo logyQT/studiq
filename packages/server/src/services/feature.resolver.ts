@@ -68,7 +68,25 @@ export function rolloutBucket(userId: string, key: FeatureKey): number {
   return hash % 100;
 }
 
-type FeatureRow = { feature_key: string; is_enabled?: boolean };
+/**
+ * A user override only applies while it has no expiry or its expiry is still in
+ * the future. `expires_at <= now` is expired (#382); such rows are kept in
+ * `user_feature_overrides` as an audit trail and simply ignored when resolving.
+ */
+export function isUserOverrideActive(
+  expiresAt: string | null | undefined,
+  now: number = Date.now(),
+): boolean {
+  if (!expiresAt) return true; // no expiry → permanent override
+  const expiresAtMs = Date.parse(expiresAt);
+  // A `timestamptz` column can never produce an unparseable value; if one ever
+  // appeared, keep applying the row rather than silently dropping an admin's
+  // explicit grant/revoke.
+  if (Number.isNaN(expiresAtMs)) return true;
+  return expiresAtMs > now;
+}
+
+type FeatureRow = { feature_key: string; is_enabled?: boolean; expires_at?: string | null };
 
 export class FeatureResolver {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -83,7 +101,8 @@ export class FeatureResolver {
    *   2. Org role override — `org_role_features` rows for the user's role
    *      win over the underlying plan for that key.
    *   3. User override    — `user_feature_overrides` rows are the strongest
-   *      layer: add/remove anything.
+   *      layer: add/remove anything. Rows whose `expires_at` is in the past are
+   *      ignored (they stay in the table for audit only).
    *   4. Rollout %        — `feature_flags.rollout_percentage < 100` gates
    *      deterministically per (key, user_id).
    *   5. Global flag      — `feature_flags.is_enabled = false` is a hard
@@ -168,10 +187,18 @@ export class FeatureResolver {
     // ── 2 + 3. User overrides (strongest layer) ─────────────────────────
     const { data: overrides } = await supabase
       .from('user_feature_overrides')
-      .select('feature_key, is_enabled')
+      .select('feature_key, is_enabled, expires_at')
       .eq('user_id', ctx.userId);
 
-    this.applyRows(enabled, overrides ?? []);
+    // Expired rows (`expires_at <= now`) are kept as an audit trail but must not
+    // grant or revoke anything (#382). One `now` for the whole batch keeps the
+    // decision consistent across rows.
+    const nowMs = Date.now();
+    const activeOverrides = ((overrides ?? []) as FeatureRow[]).filter((row) =>
+      isUserOverrideActive(row.expires_at, nowMs),
+    );
+
+    this.applyRows(enabled, activeOverrides);
 
     // ── 4 + 5. Rollout % + global flag gate ──────────────────────────────
     const { data: flags } = await supabase
