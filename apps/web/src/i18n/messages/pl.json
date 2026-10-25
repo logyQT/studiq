@@ -1053,6 +1053,8 @@
     "delete_title": "Usunąć grupę?",
     "delete_desc": "Spowoduje to usunięcie wszystkich członków z tej grupy. Tej operacji nie można cofnąć.",
     "name_label": "Nazwa",
+    "name_required": "Nazwa grupy jest wymagana",
+    "name_too_short": "Nazwa grupy musi mieć co najmniej 3 znaki",
     "description_label": "Opis",
     "cancel": "Anuluj",
     "create": "Utwórz",

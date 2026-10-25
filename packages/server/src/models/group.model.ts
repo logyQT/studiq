@@ -1,14 +1,17 @@
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
+const GroupNameSchema = z
+  .string({ error: ValidationErrorCode.REQUIRED })
+  .trim()
+  .nonempty({ error: ValidationErrorCode.REQUIRED })
+  .min(3, { error: ValidationErrorCode.TOO_SHORT })
+  .max(64, { error: ValidationErrorCode.TOO_LONG });
+
 export const CreateGroupSchema = registry.register(
   'CreateGroupRequest',
   z.object({
-    name: z
-      .string({ error: ValidationErrorCode.REQUIRED })
-      .nonempty({ error: ValidationErrorCode.REQUIRED })
-      .min(3, { error: ValidationErrorCode.TOO_SHORT })
-      .max(64, { error: ValidationErrorCode.TOO_LONG }),
+    name: GroupNameSchema,
     description: z.string().nullable().optional(),
   }),
 );
@@ -16,12 +19,7 @@ export const CreateGroupSchema = registry.register(
 export const UpdateGroupSchema = registry.register(
   'UpdateGroupRequest',
   z.object({
-    name: z
-      .string({ error: ValidationErrorCode.REQUIRED })
-      .nonempty({ error: ValidationErrorCode.REQUIRED })
-      .min(3, { error: ValidationErrorCode.TOO_SHORT })
-      .max(64, { error: ValidationErrorCode.TOO_LONG })
-      .optional(),
+    name: GroupNameSchema.optional(),
     description: z.string().nullable().optional(),
   }),
 );

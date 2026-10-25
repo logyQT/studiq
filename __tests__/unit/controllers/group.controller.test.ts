@@ -1,5 +1,6 @@
 import type { RequestContext } from '@studiq/authz';
 import { GroupController } from '@studiq/server/controllers/group.controller';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@studiq/server/lib/features', () => ({
@@ -80,6 +81,27 @@ describe('GroupController', () => {
       expect(response.statusCode).toBe(422);
     });
 
+    it('rejects a whitespace-only name without calling the service', async () => {
+      const response = await controller.createGroup(mockCtx, { name: '   ' });
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      if (!response.success) {
+        expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+        expect(response.details?.[0].path).toEqual(['name']);
+        expect(response.details?.[0].message).toBe(ValidationErrorCode.REQUIRED);
+      }
+      expect(mockService.createGroup).not.toHaveBeenCalled();
+    });
+
+    it('passes the trimmed name to the service', async () => {
+      mockService.createGroup.mockResolvedValueOnce({ success: true, data: {} });
+
+      await controller.createGroup(mockCtx, { name: '  My Group  ' });
+
+      expect(mockService.createGroup).toHaveBeenCalledWith(mockCtx, { name: 'My Group' });
+    });
+
     it('returns error on service failure', async () => {
       mockService.createGroup.mockResolvedValueOnce({ success: false, error: 'FORBIDDEN' });
 
@@ -141,6 +163,35 @@ describe('GroupController', () => {
 
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
+    });
+
+    it('rejects a whitespace-only name without calling the service', async () => {
+      const response = await controller.updateGroup(
+        mockCtx,
+        '550e8400-e29b-41d4-a716-446655440000',
+        { name: '   ', description: 'Opis do usunięcia' },
+      );
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      if (!response.success) {
+        expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+        expect(response.details?.[0].path).toEqual(['name']);
+        expect(response.details?.[0].message).toBe(ValidationErrorCode.REQUIRED);
+      }
+      expect(mockService.updateGroup).not.toHaveBeenCalled();
+    });
+
+    it('passes the trimmed name to the service and keeps description absent', async () => {
+      mockService.updateGroup.mockResolvedValueOnce({ success: true, data: {} });
+
+      await controller.updateGroup(mockCtx, '550e8400-e29b-41d4-a716-446655440000', {
+        name: '  Updated  ',
+      });
+
+      const payload = mockService.updateGroup.mock.calls.at(-1)?.[2];
+      expect(payload).toEqual({ name: 'Updated' });
+      expect(payload).not.toHaveProperty('description');
     });
 
     it('returns 400 on invalid params', async () => {
