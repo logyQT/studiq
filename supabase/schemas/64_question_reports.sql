@@ -6,7 +6,9 @@
 -- manage (teacher → group's owner, or the org admin when the group
 -- has none). Exactly one of question_id/group_id is set. Each report
 -- is a private 1:1 thread between the reporter and the recipient —
--- never visible to anyone else.
+-- never visible to anyone else. A thread has a status (open/resolved)
+-- that only its participants and the active-org admin can see; the
+-- recipient resolves it and either participant reopens it by replying.
 -- Depends on: 04_profiles.sql, 24_questions.sql, 03_organizations.sql, 60_groups.sql
 -- ==========================================
 
@@ -19,16 +21,25 @@ CREATE TABLE public.question_reports (
   teacher_id              uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   reporter_last_read_at   timestamptz NOT NULL DEFAULT now(),
   teacher_last_read_at    timestamptz,
+  status                  public.report_status NOT NULL DEFAULT 'open',
+  resolved_at             timestamptz,
+  resolved_by             uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
   created_at              timestamptz NOT NULL DEFAULT now(),
   updated_at              timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT question_reports_one_target CHECK (
     (question_id IS NOT NULL AND group_id IS NULL) OR
     (question_id IS NULL AND group_id IS NOT NULL)
+  ),
+  CONSTRAINT question_reports_resolution_consistent CHECK (
+    (status = 'open'  AND resolved_at IS NULL) OR
+    (status = 'resolved' AND resolved_at IS NOT NULL)
   )
 );
 
 CREATE INDEX idx_question_reports_reporter ON public.question_reports(reported_by, updated_at DESC);
 CREATE INDEX idx_question_reports_teacher ON public.question_reports(teacher_id, updated_at DESC);
+CREATE INDEX idx_question_reports_teacher_status ON public.question_reports(teacher_id, status, updated_at DESC);
+CREATE INDEX idx_question_reports_reporter_status ON public.question_reports(reported_by, status, updated_at DESC);
 CREATE INDEX idx_question_reports_question ON public.question_reports(question_id);
 CREATE INDEX idx_question_reports_group ON public.question_reports(group_id);
 

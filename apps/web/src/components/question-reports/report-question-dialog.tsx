@@ -12,7 +12,7 @@ import {
 } from '@studiq/ui';
 import { Flag } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiMutation } from '@/hooks/use-api';
 import { apiPost } from '@/lib/api';
@@ -31,6 +31,7 @@ export function ReportQuestionDialog({
   onOpenChange,
 }: ReportQuestionDialogProps) {
   const t = useTranslations('QuestionReports');
+  const messageId = useId();
   const isControlled = controlledOpen !== undefined;
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = isControlled ? controlledOpen : uncontrolledOpen;
@@ -65,6 +66,7 @@ export function ReportQuestionDialog({
           variant="ghost"
           size="icon"
           title={t('report_button_title')}
+          aria-label={t('report_button_title')}
           onClick={(e) => {
             e.stopPropagation();
             setOpen(true);
@@ -82,12 +84,18 @@ export function ReportQuestionDialog({
             {t(questionId ? 'report_dialog_description' : 'report_dialog_description_group')}
           </DialogDescription>
         </DialogHeader>
-        <Textarea
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder={t('report_message_placeholder')}
-          rows={5}
-        />
+        <div className="space-y-2">
+          <label htmlFor={messageId} className="text-sm font-medium">
+            {t('report_message_label')}
+          </label>
+          <Textarea
+            id={messageId}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder={t('report_message_placeholder')}
+            rows={5}
+          />
+        </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
             {t('cancel')}

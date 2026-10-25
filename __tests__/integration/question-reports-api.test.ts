@@ -12,7 +12,10 @@ import { createNextRequest } from '#test/integration/test-utils';
 import { POST as createGroupReport } from '@/app/(backend)/api/v1/organization/groups/[id]/reports/route';
 import { POST as postMessage } from '@/app/(backend)/api/v1/question-reports/[id]/messages/route';
 import { POST as markReportRead } from '@/app/(backend)/api/v1/question-reports/[id]/read/route';
-import { GET as getReport } from '@/app/(backend)/api/v1/question-reports/[id]/route';
+import {
+  GET as getReport,
+  PUT as updateReport,
+} from '@/app/(backend)/api/v1/question-reports/[id]/route';
 import { GET as listReports } from '@/app/(backend)/api/v1/question-reports/route';
 import { GET as unreadCount } from '@/app/(backend)/api/v1/question-reports/unread-count/route';
 import { POST as createQuestionReport } from '@/app/(backend)/api/v1/questions/[id]/reports/route';
@@ -257,20 +260,22 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      data: Array<{
-        id: string;
-        reported_by: string;
-        teacher_id: string;
-        group: { name: string } | null;
-      }>;
+      data: {
+        items: Array<{
+          id: string;
+          reported_by: string;
+          teacher_id: string;
+          group: { name: string } | null;
+        }>;
+      };
     };
-    const ids = body.data.map((r) => r.id);
+    const ids = body.data.items.map((r) => r.id);
     expect(ids).toEqual(expect.arrayContaining([questionReportId, groupReportId]));
     expect(ids).not.toContain(foreignReportId);
     // No org-wide leak of the other organisation, and the manager's own
     // group thread still carries its group label data.
-    expect(body.data).toHaveLength(2);
-    const groupRow = body.data.find((r) => r.id === groupReportId);
+    expect(body.data.items).toHaveLength(2);
+    const groupRow = body.data.items.find((r) => r.id === groupReportId);
     expect(groupRow?.group?.name).toBeTruthy();
   });
 
@@ -391,7 +396,153 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
     );
     expect(res.status).toBe(200);
 
-    const body = (await res.json()) as { data: Array<{ id: string }> };
-    expect(body.data.map((r) => r.id)).toEqual([groupReportId]);
+    const body = (await res.json()) as { data: { items: Array<{ id: string }> } };
+    expect(body.data.items.map((r) => r.id)).toEqual([groupReportId]);
+  });
+
+  it('forbids the reporter from resolving their own report', async () => {
+    actAs(student);
+    const res = await updateReport(
+      jsonRequest(`/api/v1/question-reports/${questionReportId}`, 'PUT', {
+        status: 'resolved',
+      }),
+      withId(questionReportId),
+    );
+
+    expect(res.status).toBe(403);
+  });
+
+  it('lets the recipient resolve the report', async () => {
+    actAs(teacher);
+    const res = await updateReport(
+      jsonRequest(`/api/v1/question-reports/${questionReportId}`, 'PUT', {
+        status: 'resolved',
+      }),
+      withId(questionReportId),
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { status: string; resolved_at: string | null; resolved_by: string | null };
+    };
+    expect(body.data).toMatchObject({
+      status: 'resolved',
+      resolved_by: teacher.user.id,
+    });
+    expect(body.data.resolved_at).toBeTruthy();
+  });
+
+  it('filters the inbox by status', async () => {
+    actAs(manager);
+
+    const resolvedRes = await listReports(
+      jsonRequest('/api/v1/question-reports?status=resolved', 'GET'),
+    );
+    expect(resolvedRes.status).toBe(200);
+    const resolvedBody = (await resolvedRes.json()) as {
+      data: { items: Array<{ id: string; status: string }> };
+    };
+    expect(resolvedBody.data.items.map((r) => r.id)).toEqual([questionReportId]);
+    expect(resolvedBody.data.items.every((r) => r.status === 'resolved')).toBe(true);
+
+    const openRes = await listReports(jsonRequest('/api/v1/question-reports?status=open', 'GET'));
+    expect(openRes.status).toBe(200);
+    const openBody = (await openRes.json()) as {
+      data: { items: Array<{ id: string; status: string }> };
+    };
+    expect(openBody.data.items.map((r) => r.id)).toEqual([groupReportId]);
+    expect(openBody.data.items.every((r) => r.status === 'open')).toBe(true);
+  });
+
+  it('paginates with an opaque cursor without duplicates', async () => {
+    actAs(manager);
+
+    const firstRes = await listReports(jsonRequest('/api/v1/question-reports?limit=1', 'GET'));
+    expect(firstRes.status).toBe(200);
+    const firstBody = (await firstRes.json()) as {
+      data: { items: Array<{ id: string }>; nextCursor: string | null; hasMore: boolean };
+    };
+    expect(firstBody.data.items).toHaveLength(1);
+    expect(firstBody.data.hasMore).toBe(true);
+    expect(firstBody.data.nextCursor).toBeTruthy();
+
+    const secondRes = await listReports(
+      jsonRequest(
+        `/api/v1/question-reports?limit=1&cursor=${encodeURIComponent(firstBody.data.nextCursor!)}`,
+        'GET',
+      ),
+    );
+    expect(secondRes.status).toBe(200);
+    const secondBody = (await secondRes.json()) as {
+      data: { items: Array<{ id: string }> };
+    };
+    expect(secondBody.data.items).toHaveLength(1);
+
+    const firstId = firstBody.data.items[0].id;
+    const secondId = secondBody.data.items[0].id;
+    expect(secondId).not.toBe(firstId);
+    expect(new Set([firstId, secondId])).toEqual(new Set([questionReportId, groupReportId]));
+  });
+
+  it('lets the active-org admin reopen and resolve a thread they do not participate in', async () => {
+    actAs(manager);
+
+    const reopenRes = await updateReport(
+      jsonRequest(`/api/v1/question-reports/${questionReportId}`, 'PUT', {
+        status: 'open',
+      }),
+      withId(questionReportId),
+    );
+    expect(reopenRes.status).toBe(200);
+
+    const resolveRes = await updateReport(
+      jsonRequest(`/api/v1/question-reports/${questionReportId}`, 'PUT', {
+        status: 'resolved',
+      }),
+      withId(questionReportId),
+    );
+    expect(resolveRes.status).toBe(200);
+    const body = (await resolveRes.json()) as {
+      data: { status: string; resolved_by: string | null };
+    };
+    expect(body.data).toMatchObject({
+      status: 'resolved',
+      resolved_by: manager.user.id,
+    });
+  });
+
+  it('reopens a resolved thread when a participant replies', async () => {
+    actAs(student);
+    const reply = await postMessage(
+      jsonRequest(`/api/v1/question-reports/${questionReportId}/messages`, 'POST', {
+        body: 'student reopens #104',
+      }),
+      withId(questionReportId),
+    );
+    expect(reply.status).toBe(201);
+
+    const thread = await getReport(
+      jsonRequest(`/api/v1/question-reports/${questionReportId}`, 'GET'),
+      withId(questionReportId),
+    );
+    expect(thread.status).toBe(200);
+    const body = (await thread.json()) as {
+      data: {
+        report: {
+          status: string;
+          resolved_at: string | null;
+          resolved_by: string | null;
+          canResolve: boolean;
+          canReopen: boolean;
+        };
+      };
+    };
+    expect(body.data.report).toMatchObject({
+      status: 'open',
+      resolved_at: null,
+      resolved_by: null,
+      canResolve: false,
+      canReopen: true,
+    });
   });
 });

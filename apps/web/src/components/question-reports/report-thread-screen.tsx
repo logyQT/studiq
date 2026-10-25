@@ -1,15 +1,16 @@
 'use client';
 
-import { Button, Card, Textarea, UserAvatar } from '@studiq/ui';
+import { Badge, Button, Card, Textarea, UserAvatar } from '@studiq/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Send } from 'lucide-react';
+import { ArrowLeft, Check, RotateCcw, Send } from 'lucide-react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
-import { apiPost } from '@/lib/api';
+import { apiPost, apiPut } from '@/lib/api';
 import { formatDateTime } from '@/lib/datetime';
 import { questionReportKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
@@ -27,10 +28,16 @@ interface ReportDetail {
     id: string;
     reported_by: string;
     teacher_id: string;
+    status: 'open' | 'resolved';
+    resolved_at: string | null;
+    resolved_by: string | null;
+    canResolve: boolean;
+    canReopen: boolean;
     question: { id: string; content: string } | null;
     group: { id: string; name: string } | null;
     reporter: { id: string; full_name: string | null; email: string } | null;
     teacher: { id: string; full_name: string | null; email: string } | null;
+    resolver: { id: string; full_name: string | null; email: string } | null;
   };
   messages: Message[];
 }
@@ -61,6 +68,16 @@ export function ReportThreadScreen({ reportId, basePath }: { reportId: string; b
     ],
   });
 
+  const setStatus = useApiMutation<unknown, 'open' | 'resolved'>({
+    mutationFn: (status) => apiPut(`/api/v1/question-reports/${reportId}`, { status }),
+    invalidateKeys: [
+      questionReportKeys.detail(reportId),
+      questionReportKeys.all,
+      questionReportKeys.unreadCount,
+    ],
+    onError: () => toast.error(t('status_update_failed')),
+  });
+
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -82,29 +99,73 @@ export function ReportThreadScreen({ reportId, basePath }: { reportId: string; b
 
   const { report, messages } = data;
   const counterpart = report.reported_by === user?.id ? report.teacher : report.reporter;
+  const resolverName = report.resolver?.full_name || report.resolver?.email;
+  const resolvedDate = report.resolved_at ? formatDateTime(report.resolved_at, locale) : '';
 
   function handleSend() {
     if (!reply.trim()) return;
     send.mutate(reply, { onSuccess: () => setReply('') });
   }
 
+  function handleStatusChange(status: 'open' | 'resolved') {
+    setStatus.mutate(status, { onSuccess: () => toast.success(t('status_updated')) });
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] max-w-2xl">
       <div className="flex items-center gap-3 pb-4 border-b">
         <Button variant="ghost" size="icon" asChild>
-          <Link href={`${basePath}/reports`}>
+          <Link href={`${basePath}/reports`} aria-label={t('back_to_reports')}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
         <UserAvatar name={counterpart?.full_name} email={counterpart?.email} size={36} />
         <div className="min-w-0">
-          <p className="font-medium text-sm">{counterpart?.full_name || counterpart?.email}</p>
+          <p className="font-medium text-sm truncate">
+            {counterpart?.full_name || counterpart?.email}
+          </p>
           <p className="text-xs text-muted-foreground truncate">
             {report.question?.content ??
               (report.group ? t('report_target_group', { name: report.group.name }) : '')}
           </p>
         </div>
+        <Badge
+          variant={report.status === 'open' ? 'secondary' : 'outline'}
+          className="ml-auto shrink-0"
+        >
+          {t(report.status === 'open' ? 'status_open' : 'status_resolved')}
+        </Badge>
+        {report.status === 'open' && report.canResolve && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={() => handleStatusChange('resolved')}
+            disabled={setStatus.isPending}
+          >
+            <Check className="h-4 w-4" /> {t('resolve')}
+          </Button>
+        )}
+        {report.status === 'resolved' && report.canReopen && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={() => handleStatusChange('open')}
+            disabled={setStatus.isPending}
+          >
+            <RotateCcw className="h-4 w-4" /> {t('reopen')}
+          </Button>
+        )}
       </div>
+
+      {report.status === 'resolved' && (
+        <div className="mt-3 rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+          {resolverName
+            ? t('resolved_banner', { name: resolverName, date: resolvedDate })
+            : t('resolved_banner_anonymous', { date: resolvedDate })}
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto py-4 space-y-3">
         {messages.map((msg) => {
@@ -149,22 +210,32 @@ export function ReportThreadScreen({ reportId, basePath }: { reportId: string; b
         <div ref={bottomRef} />
       </div>
 
-      <div className="flex items-end gap-2 pt-3 border-t">
-        <Textarea
-          value={reply}
-          onChange={(e) => setReply(e.target.value)}
-          placeholder={t('reply_placeholder')}
-          rows={2}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
-        />
-        <Button size="icon" onClick={handleSend} disabled={!reply.trim() || send.isPending}>
-          <Send className="h-4 w-4" />
-        </Button>
+      <div className="pt-3 border-t space-y-2">
+        {report.status === 'resolved' && (
+          <p className="text-xs text-muted-foreground">{t('reopen_hint')}</p>
+        )}
+        <div className="flex items-end gap-2">
+          <Textarea
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            placeholder={t('reply_placeholder')}
+            rows={2}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+          />
+          <Button
+            size="icon"
+            onClick={handleSend}
+            disabled={!reply.trim() || send.isPending}
+            aria-label={t('send_reply')}
+          >
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );

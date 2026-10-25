@@ -6,6 +6,7 @@ function createMockService() {
   return {
     createReport: vi.fn(),
     list: vi.fn(),
+    setStatus: vi.fn(),
     getById: vi.fn(),
     addMessage: vi.fn(),
     markRead: vi.fn(),
@@ -62,20 +63,82 @@ describe('QuestionReportController', () => {
   });
 
   describe('list', () => {
-    it('returns reports', async () => {
-      mockService.list.mockResolvedValueOnce({ success: true, data: [] });
+    it('passes the parsed query to the service', async () => {
+      mockService.list.mockResolvedValueOnce({
+        success: true,
+        data: { items: [], nextCursor: null, hasMore: false },
+      });
 
-      const response = await controller.list(mockCtx);
+      const response = await controller.list({ status: 'open', limit: 10 }, mockCtx);
 
       expect(response.success).toBe(true);
+      expect(mockService.list).toHaveBeenCalledWith(
+        mockCtx,
+        expect.objectContaining({ status: 'open', limit: 10 }),
+      );
+    });
+
+    it('defaults the query when nothing is provided', async () => {
+      mockService.list.mockResolvedValueOnce({ success: true, data: {} });
+
+      const response = await controller.list({}, mockCtx);
+
+      expect(response.success).toBe(true);
+      expect(mockService.list).toHaveBeenCalledWith(
+        mockCtx,
+        expect.objectContaining({
+          status: 'all',
+          sortBy: 'updated_at',
+          sortOrder: 'desc',
+          limit: 24,
+        }),
+      );
+    });
+
+    it('returns 422 on an invalid status', async () => {
+      const response = await controller.list({ status: 'bogus' }, mockCtx);
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect(mockService.list).not.toHaveBeenCalled();
+    });
+
+    it('returns 422 on an out-of-range limit', async () => {
+      const response = await controller.list({ limit: 999 }, mockCtx);
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
     });
 
     it('returns error on failure', async () => {
       mockService.list.mockResolvedValueOnce({ success: false, error: 'INTERNAL_SERVER' });
 
-      const response = await controller.list(mockCtx);
+      const response = await controller.list({}, mockCtx);
 
       expect(response.success).toBe(false);
+    });
+  });
+
+  describe('setStatus', () => {
+    it('returns the updated report', async () => {
+      mockService.setStatus.mockResolvedValueOnce({
+        success: true,
+        data: { id: 'r-1', status: 'resolved' },
+      });
+
+      const response = await controller.setStatus('r-1', { status: 'resolved' }, mockCtx);
+
+      expect(response.success).toBe(true);
+      expect(response.statusCode).toBe(200);
+      expect(mockService.setStatus).toHaveBeenCalledWith('r-1', { status: 'resolved' }, mockCtx);
+    });
+
+    it('returns 422 for an unknown status', async () => {
+      const response = await controller.setStatus('r-1', { status: 'closed' }, mockCtx);
+
+      expect(response.success).toBe(false);
+      expect(response.statusCode).toBe(422);
+      expect(mockService.setStatus).not.toHaveBeenCalled();
     });
   });
 
