@@ -36,7 +36,9 @@ export function HowItWorks() {
                 <Icon className="size-6" />
               </div>
               <div className="flex items-center justify-center gap-2 mb-3">
-                <span className="text-sm font-bold text-muted-foreground/50">Step {i + 1}</span>
+                <span className="text-sm font-bold text-muted-foreground/50">
+                  {t('step_label', { number: i + 1 })}
+                </span>
               </div>
               <h3 className="text-xl font-semibold mb-2">{t(titleKey)}</h3>
               <p className="text-sm text-muted-foreground leading-relaxed max-w-xs mx-auto">

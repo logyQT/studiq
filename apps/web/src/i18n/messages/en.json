@@ -1556,6 +1556,7 @@
     "stats_quizzes": "Quizzes Taken",
     "how_it_works_title": "How It Works",
     "how_it_works_desc": "Three simple steps to supercharge your learning",
+    "step_label": "Step {number}",
     "step1_title": "Create Content",
     "step1_desc": "Build questions and flashcards from your study materials, or let AI generate them instantly",
     "step2_title": "Practice Regularly",
