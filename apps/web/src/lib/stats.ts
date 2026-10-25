@@ -47,13 +47,12 @@ export interface TeacherActivityPayload {
   };
   dailyActivity: { reviews: number }[];
   students: { practices7d: number; quizzes7d: number }[];
-  quizzes: { attempts: number }[];
 }
 
 /**
- * The activity API always returns every org member and four fixed quiz buckets,
- * so array lengths say nothing. True only when some raw learning counter is
- * non-zero (derived fields such as accuracy or status are ignored) (#209).
+ * The activity API always returns every org member, so array lengths say
+ * nothing. True only when some raw learning counter is non-zero (derived fields
+ * such as accuracy or status are ignored) (#209).
  *
  * `activeStudents` (summary and daily) is deliberately excluded: the server
  * derives it from any `user_daily_activity` row, and that table also holds
@@ -65,7 +64,6 @@ export function hasTeacherActivity(data: TeacherActivityPayload): boolean {
     summary.totalPractices.current > 0 ||
     summary.totalQuizzes.current > 0 ||
     data.dailyActivity.some((d) => d.reviews > 0) ||
-    data.students.some((s) => s.practices7d > 0 || s.quizzes7d > 0) ||
-    data.quizzes.some((q) => q.attempts > 0)
+    data.students.some((s) => s.practices7d > 0 || s.quizzes7d > 0)
   );
 }

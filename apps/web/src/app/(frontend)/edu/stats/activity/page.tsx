@@ -44,12 +44,6 @@ type DailyPoint = {
   activeStudents: number;
 };
 
-type QuizItem = {
-  difficulty: string;
-  attempts: number;
-  avgScore: number;
-};
-
 type MetricComp = { current: number; previous: number };
 
 type ActivityData = {
@@ -61,7 +55,6 @@ type ActivityData = {
   };
   dailyActivity: DailyPoint[];
   students: StudentRow[];
-  quizzes: QuizItem[];
 };
 
 function TrendIndicator({ current, previous }: MetricComp) {
@@ -322,53 +315,6 @@ export default function TeacherActivityPage() {
                           >
                             {s.status === 'active' ? '🟢 ' : s.status === 'recent' ? '🟡 ' : '🔴 '}
                             {t(`status_${s.status}`)}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('quiz_activity')}</CardTitle>
-              <CardDescription>{t(`range_${range}`)}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('quiz_difficulty')}</TableHead>
-                    <TableHead className="text-right">{t('quiz_attempts')}</TableHead>
-                    <TableHead className="text-right">{t('quiz_avg_score')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.quizzes.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
-                        {t('no_data')}
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    data.quizzes.map((q) => (
-                      <TableRow key={q.difficulty}>
-                        <TableCell className="capitalize">{q.difficulty}</TableCell>
-                        <TableCell className="text-right">{q.attempts}</TableCell>
-                        <TableCell className="text-right">
-                          <Badge
-                            variant={
-                              q.avgScore >= 70
-                                ? 'default'
-                                : q.avgScore >= 40
-                                  ? 'secondary'
-                                  : 'destructive'
-                            }
-                          >
-                            {q.avgScore}%
                           </Badge>
                         </TableCell>
                       </TableRow>

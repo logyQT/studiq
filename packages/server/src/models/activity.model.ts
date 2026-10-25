@@ -27,12 +27,6 @@ export type DailyActivityPoint = {
   activeStudents: number;
 };
 
-export type QuizActivityItem = {
-  difficulty: string;
-  attempts: number;
-  avgScore: number;
-};
-
 export type MetricComparison = {
   current: number;
   previous: number;
@@ -49,5 +43,4 @@ export type ClassActivityResponse = {
   summary: ActivitySummary;
   dailyActivity: DailyActivityPoint[];
   students: StudentActivityRow[];
-  quizzes: QuizActivityItem[];
 };
