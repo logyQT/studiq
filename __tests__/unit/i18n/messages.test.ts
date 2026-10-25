@@ -2,9 +2,20 @@ import en from '@/i18n/messages/en.json';
 import pl from '@/i18n/messages/pl.json';
 import adminEn from '@admin/i18n/messages/en.json';
 import adminPl from '@admin/i18n/messages/pl.json';
+import { createTranslator } from 'next-intl';
 import { describe, expect, it } from 'vitest';
 
 const locales = { en, pl } as const;
+
+/**
+ * #364 — `DeckDetailScreen` is rendered under two namespaces (`/app` and
+ * `/edu`), so both carry the same bulk-action copy and both must pluralise.
+ */
+const DECK_VIEW_NAMESPACES = ['AppFlashcardDeckViewPage', 'EduDeckViewPage'] as const;
+
+function deckViewTranslator(locale: 'en' | 'pl', namespace: (typeof DECK_VIEW_NAMESPACES)[number]) {
+  return createTranslator({ locale, messages: locales[locale], namespace });
+}
 
 /**
  * #294 — a Russian verb shipped inside the Polish terms copy. Message values are
@@ -179,6 +190,62 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
 
     for (const [key, message] of Object.entries(termsPage)) {
       expect(message, `TermsPage.${key}`).not.toMatch(/;\S/);
+    }
+  });
+});
+
+describe('deck view bulk action copy (#364)', () => {
+  it.each(DECK_VIEW_NAMESPACES)('%s pluralises the Polish bulk copy', (namespace) => {
+    const t = deckViewTranslator('pl', namespace);
+
+    expect(t('bulk_delete_title', { count: 1 })).toBe('Usunąć 1 fiszkę?');
+    expect(t('bulk_delete_title', { count: 3 })).toBe('Usunąć 3 fiszki?');
+    expect(t('bulk_delete_title', { count: 5 })).toBe('Usunąć 5 fiszek?');
+    expect(t('bulk_delete_desc', { count: 1 })).toMatch(/^Ta fiszka /);
+    expect(t('bulk_delete_desc', { count: 2 })).toMatch(/^Te fiszki /);
+    expect(t('bulk_copied', { count: 2 })).toBe('Skopiowano 2 fiszki');
+    expect(t('bulk_copied', { count: 5 })).toBe('Skopiowano 5 fiszek');
+    expect(t('bulk_deleted', { count: 2 })).toBe('Usunięto 2 fiszki');
+    expect(t('bulk_moved', { count: 1 })).toBe('Fiszkę przeniesiono do nowej talii');
+    expect(t('bulk_moved', { count: 2 })).toBe('Fiszki przeniesiono do nowej talii');
+    expect(t('bulk_topics_updated', { count: 2 })).toBe('Zaktualizowano tematy dla 2 fiszek');
+  });
+
+  it.each(DECK_VIEW_NAMESPACES)('%s pluralises the English bulk copy', (namespace) => {
+    const t = deckViewTranslator('en', namespace);
+
+    expect(t('bulk_delete_title', { count: 1 })).toBe('Delete 1 flashcard?');
+    expect(t('bulk_delete_title', { count: 2 })).toBe('Delete 2 flashcards?');
+    expect(t('bulk_delete_desc', { count: 2 })).toBe(
+      'This will permanently delete 2 flashcards. This action cannot be undone.',
+    );
+    expect(t('bulk_copied', { count: 2 })).toBe('2 flashcards copied');
+    expect(t('bulk_deleted', { count: 2 })).toBe('2 flashcards deleted');
+    expect(t('bulk_moved', { count: 2 })).toBe('Flashcards moved to new deck');
+    expect(t('bulk_topics_updated', { count: 2 })).toBe('Topics updated for 2 flashcards');
+  });
+
+  /**
+   * A new key added to only one locale would render the raw key or a
+   * MISSING_MESSAGE, so pin the bulk keys in both locales.
+   */
+  it.each(DECK_VIEW_NAMESPACES)('%s has every bulk key in en and pl', (namespace) => {
+    const BULK_KEYS = [
+      'bulk_delete_title',
+      'bulk_delete_desc',
+      'bulk_copied',
+      'bulk_deleted',
+      'bulk_moved',
+      'bulk_topics_updated',
+    ] as const;
+
+    for (const key of BULK_KEYS) {
+      for (const [locale, messages] of Object.entries(locales)) {
+        const message = messages[namespace][key];
+
+        expect(message, `${locale}:${namespace}.${key}`).toBeTypeOf('string');
+        expect(message, `${locale}:${namespace}.${key}`).not.toHaveLength(0);
+      }
     }
   });
 });
