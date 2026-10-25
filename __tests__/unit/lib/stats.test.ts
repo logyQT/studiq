@@ -62,7 +62,6 @@ describe('hasTeacherActivity (#209)', () => {
       { reviews: 0, activeStudents: 0 },
     ],
     students: [{ practices7d: 0, quizzes7d: 0 }],
-    quizzes: [{ attempts: 0 }, { attempts: 0 }],
   });
   type Data = ReturnType<typeof empty>;
 
@@ -84,7 +83,6 @@ describe('hasTeacherActivity (#209)', () => {
     ['chart reviews', (d: Data) => (d.dailyActivity[1].reviews = 1)],
     ['student practices', (d: Data) => (d.students[0].practices7d = 1)],
     ['student quizzes', (d: Data) => (d.students[0].quizzes7d = 1)],
-    ['quiz attempts', (d: Data) => (d.quizzes[1].attempts = 1)],
   ])('is true when only %s is non-zero', (_name, mutate) => {
     const data = empty();
     mutate(data);

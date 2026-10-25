@@ -61,3 +61,78 @@ test.describe('AI assistant routes (#134)', () => {
     await expect(page.locator('a[href="/manage/ai"]')).toHaveCount(0);
   });
 });
+
+/**
+ * #386: the deck toolbar linked to `/app/ai?deckId=…`, but nothing read the
+ * parameter, so the chat could only save generated cards into a brand-new deck.
+ * The chat now shows the target deck and saves into it.
+ */
+test.describe('AI assistant deck context (#386)', () => {
+  const STUDENT_DECK_ID = '00000000-0000-4000-8006-000000000003';
+  const STUDENT_DECK_NAME = 'O1S1';
+  const TEACHER_DECK_ID = '00000000-0000-4000-8006-000000000001';
+  const TEACHER_DECK_NAME = 'O1G1T1';
+
+  test('student opening the chat with ?deckId shows the target deck', async ({ page }) => {
+    await login(page, 'student1@dev.local', /\/app/);
+
+    await page.goto(`/app/ai?deckId=${STUDENT_DECK_ID}`);
+
+    await expect(page.getByPlaceholder(t('AiChatPage.input_placeholder'))).toBeVisible();
+    await expect(page.getByText(t('AiChatPage.deck_context_target'))).toBeVisible();
+    await expect(page.getByText(STUDENT_DECK_NAME, { exact: true })).toBeVisible();
+  });
+
+  test('student can drop the deck target and fall back to a new deck', async ({ page }) => {
+    await login(page, 'student1@dev.local', /\/app/);
+
+    await page.goto(`/app/ai?deckId=${STUDENT_DECK_ID}`);
+    await page.getByRole('button', { name: t('AiChatPage.deck_context_new') }).click();
+
+    await page.waitForURL(/\/app\/ai$/);
+    await expect(page.getByText(t('AiChatPage.deck_context_target'))).toHaveCount(0);
+    await expect(page.getByText(STUDENT_DECK_NAME, { exact: true })).toHaveCount(0);
+  });
+
+  test('educator opening /edu/ai with ?deckId is not bounced and shows the deck', async ({
+    page,
+  }) => {
+    await login(page, TEACHER_EMAIL, /\/edu/);
+
+    await page.goto(`/edu/ai?deckId=${TEACHER_DECK_ID}`);
+
+    await expect(page.getByPlaceholder(t('AiChatPage.input_placeholder'))).toBeVisible();
+    await expect(page.getByText(t('AiChatPage.deck_context_target'))).toBeVisible();
+    await expect(page.getByText(TEACHER_DECK_NAME, { exact: true })).toBeVisible();
+  });
+
+  test('deck toolbar keeps the dashboard and forwards deckId', async ({ page }) => {
+    await login(page, 'student1@dev.local', /\/app/);
+
+    const featuresResponse = await page.request.get('/api/v1/features/me');
+    expect(featuresResponse.status()).toBe(200);
+    const { features } = (await featuresResponse.json()).data as { features: string[] };
+    test.skip(!features.includes('ai.chat'), 'ai.chat is not entitled for this fixture account');
+
+    await page.goto(`/app/flashcards/${STUDENT_DECK_ID}`);
+    await page.getByRole('button', { name: t('AppFlashcardDeckViewPage.generate') }).click();
+
+    await page.waitForURL(new RegExp(`/app/ai\\?deckId=${STUDENT_DECK_ID}$`));
+    await expect(page.getByText(t('AiChatPage.deck_context_target'))).toBeVisible();
+  });
+
+  test('educator deck toolbar links to /edu/ai instead of /app/ai', async ({ page }) => {
+    await login(page, TEACHER_EMAIL, /\/edu/);
+
+    const featuresResponse = await page.request.get('/api/v1/features/me');
+    expect(featuresResponse.status()).toBe(200);
+    const { features } = (await featuresResponse.json()).data as { features: string[] };
+    test.skip(!features.includes('ai.chat'), 'ai.chat is not entitled for this fixture account');
+
+    await page.goto(`/edu/flashcards/${TEACHER_DECK_ID}`);
+    await page.getByRole('button', { name: t('EduDeckViewPage.generate') }).click();
+
+    await page.waitForURL(new RegExp(`/edu/ai\\?deckId=${TEACHER_DECK_ID}$`));
+    await expect(page.getByText(t('AiChatPage.deck_context_target'))).toBeVisible();
+  });
+});

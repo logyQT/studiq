@@ -248,6 +248,38 @@ forEachCopy((copyId) => {
         expect(body.data.length).toBe(2);
       });
 
+      // Regression for #386: the AI chat sent `deckIds`, which Zod stripped, so
+      // the cards were inserted without a deck and the request failed with 400.
+      it('links bulk-created cards to the given deck', async () => {
+        mockUser(teacher.user);
+        const front = `fc-${copyId}-linked-to-deck`;
+
+        const { request, params } = createNextRequestWithParams(
+          'http://localhost/api/v1/flashcards/batch/create',
+          { action: 'create' },
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              deckId,
+              cards: [{ front, back: 'A1' }],
+            }),
+          },
+        );
+        const response = await batchAction(request, { params });
+        expect(response.status).toBe(201);
+
+        const listRequest = createNextRequest(
+          `http://localhost/api/v1/flashcards?deckIds=${deckId}`,
+        );
+        const listResponse = await GET(listRequest);
+        const listBody = await listResponse.json();
+        const fronts = (listBody.data?.items as Array<{ front: string }>).map((fc) => fc.front);
+
+        expect(listResponse.status).toBe(200);
+        expect(fronts).toContain(front);
+      });
+
       it('returns 422 when cards array is empty', async () => {
         mockUser(teacher.user);
 

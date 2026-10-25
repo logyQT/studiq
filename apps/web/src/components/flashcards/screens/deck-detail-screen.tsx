@@ -96,6 +96,9 @@ export function DeckDetailScreen({
   const { activeOrg, isPending: orgsPending } = useOrgs();
   const { user } = useAuth();
   const headerGrad = getGradientHex(deckId);
+  // `/app/ai` is student-only (the proxy bounces educators to `/edu`), so the
+  // generator entry point has to stay inside the current dashboard.
+  const aiHref = `${basePath.startsWith('/edu') ? '/edu/ai' : '/app/ai'}?deckId=${deckId}`;
 
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebounce(searchInput, 300);
@@ -726,7 +729,7 @@ export function DeckDetailScreen({
           permission('deck.update', { createdBy: currentDeck?.created_by }) &&
           permission('flashcard.create', { createdBy: user?.id })
         }
-        onGenerate={() => router.push(`/app/ai?deckId=${deckId}`)}
+        onGenerate={() => router.push(aiHref)}
         onCreateNew={() => setD((prev) => ({ ...prev, createCardOpen: true }))}
         t={t}
       />
@@ -947,7 +950,7 @@ export function DeckDetailScreen({
                     {
                       icon: Sparkles,
                       label: t('generate'),
-                      onClick: () => router.push(`/app/ai?deckId=${deckId}`),
+                      onClick: () => router.push(aiHref),
                     },
                   ]
                 : []),

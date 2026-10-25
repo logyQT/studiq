@@ -8,7 +8,6 @@ import type {
   ClassActivityResponse,
   DailyActivityPoint,
   MetricComparison,
-  QuizActivityItem,
   StudentActivityRow,
 } from '@studiq/server/models/activity.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -43,7 +42,6 @@ export class ActivityService {
         summary: this.emptySummary(),
         dailyActivity: [],
         students: [],
-        quizzes: [],
       });
     }
 
@@ -97,9 +95,7 @@ export class ActivityService {
       rangeStart,
     );
 
-    const quizzes = await this.computeQuizActivity(supabase, studentIds, rangeStart);
-
-    return success({ summary, dailyActivity, students, quizzes });
+    return success({ summary, dailyActivity, students });
   }
 
   private emptySummary() {
@@ -248,45 +244,6 @@ export class ActivityService {
         accuracy7d: accuracy,
         quizzes7d: activity.quizzes,
         status,
-      };
-    });
-  }
-
-  private async computeQuizActivity(
-    supabase: SupabaseClient,
-    studentIds: string[],
-    rangeStart: Date,
-  ): Promise<QuizActivityItem[]> {
-    const { data: attempts } = await supabase
-      .from('quiz_attempts')
-      .select('score, total_questions, config, completed_at')
-      .in('user_id', studentIds)
-      .is('assignment_id', null)
-      .gte('completed_at', rangeStart.toISOString())
-      .not('completed_at', 'is', null);
-
-    const quizMap = new Map<string, { totalScore: number; count: number }>();
-
-    for (const row of (attempts || []) as Array<{
-      score: number;
-      config: Record<string, unknown> | null;
-    }>) {
-      const config = row.config as Record<string, unknown> | null;
-      const difficulty = (config?.difficulty as string) || 'mixed';
-      const key = difficulty;
-      const entry = quizMap.get(key) || { totalScore: 0, count: 0 };
-      entry.totalScore += row.score;
-      entry.count += 1;
-      quizMap.set(key, entry);
-    }
-
-    const difficulties = ['easy', 'medium', 'hard', 'mixed'];
-    return difficulties.map((difficulty) => {
-      const entry = quizMap.get(difficulty);
-      return {
-        difficulty,
-        attempts: entry?.count ?? 0,
-        avgScore: entry && entry.count > 0 ? Math.round(entry.totalScore / entry.count) : 0,
       };
     });
   }

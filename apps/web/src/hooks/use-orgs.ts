@@ -69,8 +69,9 @@ export function useOrgs() {
       // belongs to the previous org (#379).
       queryClient.invalidateQueries({ queryKey: aiKeys.all });
 
-      // The current plan (`/api/v1/me/plan`) is resolved from the active org too
-      // and is cached with `staleTime: Infinity` (billing / settings pages).
+      // Managers resolve `/api/v1/me/plan` from the active org; students and
+      // educators get their personal plan (#181). Still invalidate so a manager
+      // switching orgs refreshes the org plan shown on billing/settings.
       queryClient.invalidateQueries({ queryKey: ['me', 'plan'] });
 
       // Report rows are scoped to the active org for an org admin, so the
