@@ -2325,6 +2325,7 @@
     "password_updated": "Password updated successfully",
     "invalid_current_password": "Current password is incorrect.",
     "password_update_failed": "Failed to update password. Please try again.",
+    "name_update_failed": "Failed to update the name. Please try again.",
     "too_many_attempts": "Too many attempts. Please try again later.",
     "update_password": "Update Password",
     "saving": "Saving...",
