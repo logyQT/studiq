@@ -6,6 +6,8 @@ import { isFailure } from '@studiq/server/lib/service-result';
 import {
   CreateQuestionReportSchema,
   CreateReportMessageSchema,
+  QuestionReportListQuerySchema,
+  UpdateQuestionReportSchema,
 } from '@studiq/server/models/question-report.model';
 import type {
   QuestionReportService,
@@ -35,8 +37,32 @@ export class QuestionReportController {
     return controllerResponse.created(result.data);
   }
 
-  async list(ctx: RequestContext): Promise<ControllerResponse> {
-    const result = await this.service.list(ctx);
+  async list(query: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    const parsed = QuestionReportListQuerySchema.safeParse(query ?? {});
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
+    const result = await this.service.list(ctx, parsed.data);
+    if (isFailure(result)) return controllerResponse.error(result.error);
+    return controllerResponse.success(result.data);
+  }
+
+  async setStatus(id: string, body: unknown, ctx: RequestContext): Promise<ControllerResponse> {
+    const parsed = UpdateQuestionReportSchema.safeParse(body);
+    if (!parsed.success) {
+      return {
+        success: false,
+        statusCode: 422,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: parsed.error.issues,
+      };
+    }
+    const result = await this.service.setStatus(id, parsed.data, ctx);
     if (isFailure(result)) return controllerResponse.error(result.error);
     return controllerResponse.success(result.data);
   }

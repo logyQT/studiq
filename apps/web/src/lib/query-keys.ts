@@ -81,6 +81,8 @@ export const organizationKeys = {
 
 export const questionReportKeys = {
   all: ['question-reports'] as const,
+  list: (filters?: Record<string, string | undefined>) =>
+    ['question-reports', 'list', filters] as const,
   detail: (id: string) => ['question-reports', id] as const,
   unreadCount: ['question-reports', 'unread-count'] as const,
 };

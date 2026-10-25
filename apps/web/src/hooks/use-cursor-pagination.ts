@@ -21,6 +21,8 @@ interface UseCursorPaginationResult<T> {
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   isLoading: boolean;
+  isError: boolean;
+  refetch: () => void;
 }
 
 export function useCursorPagination<T>({
@@ -62,5 +64,7 @@ export function useCursorPagination<T>({
     hasNextPage: result.hasNextPage,
     isFetchingNextPage: result.isFetchingNextPage,
     isLoading: result.isLoading,
+    isError: result.isError,
+    refetch: result.refetch,
   };
 }

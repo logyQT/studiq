@@ -9,3 +9,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return toNextResponse(await questionReportController.getById(id, ctx));
   });
 }
+
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return withAuth(req, async (ctx) => {
+    const { id } = await params;
+    return toNextResponse(await questionReportController.setStatus(id, await req.json(), ctx));
+  });
+}

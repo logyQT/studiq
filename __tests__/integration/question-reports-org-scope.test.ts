@@ -197,7 +197,7 @@ describe('Question reports org-wide manager scope (#276)', () => {
 
     expect(result.success).toBe(true);
     if (!result.success) return;
-    const ids = (result.data as Array<{ id: string }>).map((r) => r.id);
+    const ids = (result.data as { items: Array<{ id: string }> }).items.map((r) => r.id);
     expect(ids).toEqual(expect.arrayContaining([questionReportId, groupReportId, legacyReportId]));
     expect(ids).not.toContain(otherOrgReportId);
     // Org rows are added on top of the admin's own participant threads.
@@ -221,7 +221,7 @@ describe('Question reports org-wide manager scope (#276)', () => {
     );
     expect(teacherResult.success).toBe(true);
     if (teacherResult.success) {
-      const ids = (teacherResult.data as Array<{ id: string }>).map((r) => r.id);
+      const ids = (teacherResult.data as { items: Array<{ id: string }> }).items.map((r) => r.id);
       // The teacher reported the group thread, received the question thread and
       // reported the legacy NULL-org thread.
       expect(ids).toEqual(
@@ -239,7 +239,7 @@ describe('Question reports org-wide manager scope (#276)', () => {
     );
     expect(studentResult.success).toBe(true);
     if (studentResult.success) {
-      const ids = (studentResult.data as Array<{ id: string }>).map((r) => r.id);
+      const ids = (studentResult.data as { items: Array<{ id: string }> }).items.map((r) => r.id);
       expect(ids).toEqual([questionReportId]);
     }
   });
@@ -304,7 +304,7 @@ describe('Question reports org-wide manager scope (#276)', () => {
     const listed = await questionReportService.list(teacherRoleCtx);
     expect(listed.success).toBe(true);
     if (listed.success) {
-      const ids = (listed.data as Array<{ id: string }>).map((r) => r.id);
+      const ids = (listed.data as { items: Array<{ id: string }> }).items.map((r) => r.id);
       expect(ids).not.toContain(questionReportId);
     }
 
