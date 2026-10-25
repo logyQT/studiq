@@ -1,7 +1,7 @@
 'use client';
 
 import { Button, Card, CardContent, CardHeader, CardTitle } from '@studiq/ui';
-import { ArrowLeft, Clock, FileQuestion, Lock, Timer } from 'lucide-react';
+import { ArrowLeft, Award, Clock, FileQuestion, Lock, Timer } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
@@ -24,6 +24,7 @@ interface AssignmentDetail extends StudentAssignmentAttemptState {
   start_time: string | null;
   time_limit_min: number | null;
   question_count: number;
+  total_points: number;
   shuffle_questions: boolean;
 }
 
@@ -132,6 +133,16 @@ export default function StudentAssignmentDetailPage() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">{assignment.question_count}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+              <Award className="w-3 h-3" /> {t('points')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{assignment.total_points}</p>
           </CardContent>
         </Card>
         {assignment.time_limit_min && (

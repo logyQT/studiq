@@ -20,6 +20,7 @@ interface StudentAssignment extends StudentAssignmentAttemptState {
   start_time: string | null;
   time_limit_min: number | null;
   question_count: number;
+  total_points: number;
 }
 
 export default function StudentAssignmentsPage() {
@@ -106,7 +107,8 @@ export default function StudentAssignmentsPage() {
                     <div className="flex items-start justify-between">
                       <h3 className="font-semibold">{a.title}</h3>
                       <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 px-2 py-0.5 rounded-full">
-                        {t('questions', { count: a.question_count })}
+                        {t('questions', { count: a.question_count })} ·{' '}
+                        {t('points', { count: a.total_points })}
                       </span>
                     </div>
                     {a.description && (
