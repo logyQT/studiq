@@ -185,6 +185,7 @@ export function DeckDetailDialogs({
       />
 
       <TopicDialogs
+        deckId={deckId}
         t={t}
         topics={topics}
         flashcards={flashcards}
