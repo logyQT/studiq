@@ -142,25 +142,41 @@ export function OrgSwitcher() {
             <DropdownMenuLabel className="text-xs text-muted-foreground">
               {t('orgs_label')}
             </DropdownMenuLabel>
-            {orgs.map((org) => (
-              <DropdownMenuItem
-                key={org.id}
-                onClick={() => switchOrg(org.id)}
-                disabled={isSwitching}
-                className="gap-2 p-2"
-              >
-                <div className="flex size-6 items-center justify-center">
-                  <OrgAvatar orgId={org.id} name={org.name} size={24} />
-                </div>
-                <div className="flex flex-col flex-1 min-w-0">
-                  <span className="truncate text-sm font-medium">{org.name}</span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {displayRole(org.orgRoleName, t('role_student'))}
-                  </span>
-                </div>
-                {org.isActive && <Check className="ml-auto size-4 text-primary" />}
-              </DropdownMenuItem>
-            ))}
+            {orgs.map((org) => {
+              // Active org uses the plan-gated branding logo (same as the trigger);
+              // other orgs fall back to the raw logo_url the orgs list carries.
+              const itemLogoUrl = org.id === activeOrg.id ? logoUrl : (org.logo_url ?? null);
+              return (
+                <DropdownMenuItem
+                  key={org.id}
+                  onClick={() => switchOrg(org.id)}
+                  disabled={isSwitching}
+                  className="gap-2 p-2"
+                >
+                  <div className="flex size-6 items-center justify-center">
+                    {itemLogoUrl ? (
+                      <Image
+                        src={itemLogoUrl}
+                        alt=""
+                        width={24}
+                        height={24}
+                        className="size-6 rounded-md border object-contain"
+                        unoptimized
+                      />
+                    ) : (
+                      <OrgAvatar orgId={org.id} name={org.name} size={24} />
+                    )}
+                  </div>
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <span className="truncate text-sm font-medium">{org.name}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {displayRole(org.orgRoleName, t('role_student'))}
+                    </span>
+                  </div>
+                  {org.isActive && <Check className="ml-auto size-4 text-primary" />}
+                </DropdownMenuItem>
+              );
+            })}
             <DropdownMenuSeparator />
             {/* UI_HIDDEN: classroom section — stale for org-managed flow */}
             <DropdownMenuItem
