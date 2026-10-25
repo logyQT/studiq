@@ -44,9 +44,14 @@ Feature keys: `FEATURES` in
 `quiz`, `quiz.builder`, `documents`, `org.manage`, `group.manage`,
 `member.manage`, `role.builder`, `advanced.stats`, `branding`).
 
-Limit keys (seed-managed, `supabase/seeds/00_plans.sql`): `max_flashcards`,
-`max_questions`, `max_decks`, `max_question_banks`, `max_quiz_attempts_per_day`,
-`max_ai_tokens_per_day`, `max_students`, `max_groups`.
+Limit keys: `LIMITS` in
+`packages/server/src/services/limit.catalog.ts` — the single source of truth
+for both the resolver and the DB rows:
+
+| Scope | Keys |
+| --- | --- |
+| `user` (per-member) | `max_flashcards`, `max_decks`, `max_questions`, `max_question_banks`, `max_quiz_attempts_per_day`, `max_ai_tokens_per_day` |
+| `org` (organization-wide) | `max_students`, `max_groups` |
 
 ## Plan-template propagation
 
@@ -107,22 +112,35 @@ the template on every request.
 `LimitsResolver.getEffectiveLimit(ctx, limitKey)` —
 `packages/server/src/services/limits.resolver.ts`
 
-1. **Seated in the active org** → the seat plan's `plan_limits` row only
-   (missing row → `0`). No mixing with the personal or org plan.
-2. **Otherwise** collect every applicable value:
-   - `profiles.personal_plan_key` → `plan_limits` (if a row exists);
-   - if `ctx.activeOrgId` belongs to a real `org_members` row:
-     `organizations.plan` → `plan_limits`.
-3. Combine: no values → `0`; any `-1` → `-1`; otherwise the maximum.
+**Rule (#233):** in a verified org context the organization's plan governs
+every limit; a seat may raise only per-member (`scope: 'user'`) keys, never
+org-scope capacity; the personal plan applies only outside a verified org
+context; a missing `plan_limits` row is `0` (blocked) in every path.
 
-`ctx.activeOrgId` comes from a client cookie, so step 2 verifies membership: a
-spoofed org id has no `org_members` row and falls back to the personal plan.
+| Context | `scope: 'user'` keys | `scope: 'org'` keys |
+| --- | --- | --- |
+| No active org | personal plan | `0` (no org capacity to grant) |
+| Active org, seated | seat plan | org plan |
+| Active org, unseated verified member | org plan | org plan |
+| Active org id without membership (forged cookie) | personal plan | `0` |
+| Plan lacks the key | `0` + `warn()` | `0` + `warn()` |
+
+`ctx.activeOrgId` comes from a client cookie, so the resolver verifies the
+`org_members` row before treating it as a tenant scope: a spoofed org id has no
+row and falls back to the personal plan (user keys) or `0` (org keys).
 
 `LimitsResolver.checkOrgLimit(orgId, limitKey, count, increment, client?)`
-resolves **only** the org's plan and defaults a missing limit to `-1`
-(unlimited). It is used before the caller is a member — invite accept
-(`max_students`, with the service-role client) — and for org-scoped group
-creation (`max_groups`).
+resolves **only** the org's plan and treats a missing `plan_limits` row as `0`
+(blocked). An unknown organization throws `NOT_FOUND` (404). It is used before
+the caller is a member — invite accept (`max_students`, with the service-role
+client) — and for org-scoped group creation (`max_groups`).
+
+Content counts follow the same scope rule: for `max_flashcards`, `max_decks`,
+`max_questions` and `max_question_banks` the count inside an org is
+`created_by = caller AND organization_id = active org`, so personal-space
+content never consumes org capacity. Outside an org it is the caller's content
+(`created_by` only). `max_quiz_attempts_per_day` and `max_ai_tokens_per_day`
+already count per user.
 
 ## Plan display (`GET /api/v1/me/plan`)
 
@@ -134,8 +152,8 @@ resolved from, so it follows the same precedence as the resolvers:
 
 1. **Seated student/educator in the active org** → the seat plan
    (`getSeatPlanKey` → `org_seat_pools.plan_key`). The page then shows that
-   plan's `plan_features` / `plan_limits`, matching seat-only limit resolution
-   and the seat feature upgrade (#270).
+   plan's `plan_features` / `plan_limits`, matching the seat's per-member limit
+   resolution (#233) and the seat feature upgrade (#270).
 2. **Manager in the active org** → `organizations.plan`, falling back to the
    manager's personal plan when the org has no plan row. Managers are the org's
    billing contact, so they keep seeing the org subscription (#181).
@@ -143,17 +161,18 @@ resolved from, so it follows the same precedence as the resolvers:
    unseated member's `active_org_id` membership never replaces their personal
    plan on this page (#181).
 
-Plan display is a single plan, not the effective union/max: an unseated member's
-limits are `max(personal, org)` and a seated member's features are
-`org role features ∪ seat plan features`, so the displayed plan can be narrower
-than enforcement in those mixes.
+Plan display is a single plan, not the effective union/max: an unseated
+member's limits come from the org plan while this page shows their personal
+plan, and a seated member's features are `org role features ∪ seat plan
+features`, so the displayed plan can be narrower than enforcement in those
+mixes (#181/#270).
 
 Value semantics:
 
 | Value | Meaning |
 | --- | --- |
 | `-1` | Unlimited. |
-| `0` | No limit row defined for that plan (personal/org path) — any use is blocked. |
+| `0` | No limit row defined for that plan — blocked in **both** paths (`getEffectiveLimit` and `checkOrgLimit`). |
 | `> 0` | Hard cap; `current + increment > value` throws `USAGE_LIMIT_EXCEEDED` (HTTP 429). |
 
 Enforcement points:
@@ -193,8 +212,13 @@ refetches. Resolution itself is immediate.
 ## Tests
 
 - `__tests__/integration/limits-resolution.test.ts` — limits follow
-  `organizations.plan` changes made **without** `apply_org_plan()`, and a
-  spoofed `active_org_id` cookie does not grant org capacity.
+  `organizations.plan` changes made **without** `apply_org_plan()`, a spoofed
+  `active_org_id` cookie does not grant org capacity, and the #233 precedence
+  matrix (personal plan never raises org capacity).
+- `__tests__/integration/plan-limit-catalog.test.ts` — every active plan
+  defines every required limit key (#233 fail-closed catalog guard).
+- `__tests__/integration/limit-count-scope.test.ts` — org-context content
+  counts exclude personal-space content (#233).
 - `__tests__/integration/plan-limit-enforcement.test.ts` /
   `plan-limits.test.ts` — HTTP enforcement paths.
 - `__tests__/integration/org-features.test.ts` — seat/role feature resolution.

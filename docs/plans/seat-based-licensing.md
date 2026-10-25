@@ -144,9 +144,15 @@ Default allocations per plan are defined in a new `plan_seat_allocations` table 
 
 ## Limits
 
-A seated user's limits come **entirely from their seat's plan** (`plan_limits`). No mixing with the personal or org plan and no per-org snapshot (#229).
+A seat only raises the per-member keys (`max_flashcards`, `max_questions`,
+`max_decks`, `max_question_banks`, `max_quiz_attempts_per_day`,
+`max_ai_tokens_per_day`): a seated user resolves those from the seat's plan
+(`plan_limits`). Org-scope capacity (`max_students`, `max_groups`) always comes
+from the organization's plan, so a seat never raises it.
 
-An unseated user uses `max(personal plan, organization plan)` from `plan_limits`; there is no per-org limit table (#229).
+An unseated member in an org uses the organization's plan for every key; the
+personal plan applies only outside an org context. There is no per-org limit
+table (#229) and no `max(personal, org)` mixing (#233).
 
 ## Assignment flow
 

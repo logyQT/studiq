@@ -150,6 +150,32 @@ describe('FlashcardDeckService', () => {
       expect(result.error).toBe('INTERNAL_SERVER');
     });
 
+    it('counts only the caller content in the active org (#233)', async () => {
+      const countBuilder = qb([], null, 0);
+      mock.from.mockReturnValueOnce(countBuilder);
+      mock.from.mockReturnValueOnce(qb({ id: 'd-1' }));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb({ id: 'd-1', name: 'Study Deck' }));
+
+      await service.create({ name: 'Study Deck' }, { ...ctx, activeOrgId: 'org-1' });
+
+      expect(countBuilder.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+    });
+
+    it('does not filter the count by org outside an org context (#233)', async () => {
+      const countBuilder = qb([], null, 0);
+      mock.from.mockReturnValueOnce(countBuilder);
+      mock.from.mockReturnValueOnce(qb({ id: 'd-1' }));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb({ id: 'd-1', name: 'Study Deck' }));
+
+      await service.create({ name: 'Study Deck' }, ctx);
+
+      expect(countBuilder.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countBuilder.eq).not.toHaveBeenCalledWith('organization_id', expect.anything());
+    });
+
     // #139 — group visibility without a single share link is only visible to the creator.
     it('rejects a group deck with no groupIds before touching the database', async () => {
       const result = await service.create(

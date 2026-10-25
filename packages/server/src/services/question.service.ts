@@ -56,11 +56,8 @@ export class QuestionService {
   ): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const { count: questionCount } = await supabase
-      .from('questions')
-      .select('*', { count: 'exact', head: true })
-      .eq('created_by', ctx.userId);
-    await limitsResolver.checkLimit(ctx, 'max_questions', questionCount ?? 0);
+    const questionCount = await this.countOwned(supabase, ctx);
+    await limitsResolver.checkLimit(ctx, 'max_questions', questionCount);
 
     const visibility = bankVisibility ?? 'personal';
 
@@ -236,6 +233,23 @@ export class QuestionService {
     if (!data || (Array.isArray(data) && data.length === 0)) return failure('FORBIDDEN');
 
     return success(undefined);
+  }
+
+  /**
+   * Count the caller's questions for the limit check (#233): inside an org the
+   * count is scoped to content owned by the caller **in that org**, so
+   * personal-space questions never consume the org plan's capacity.
+   */
+  private async countOwned(supabase: SupabaseClient, ctx: RequestContext): Promise<number> {
+    let query = supabase
+      .from('questions')
+      .select('*', { count: 'exact', head: true })
+      .eq('created_by', ctx.userId);
+
+    if (ctx.activeOrgId) query = query.eq('organization_id', ctx.activeOrgId);
+
+    const { count } = await query;
+    return count ?? 0;
   }
 }
 export const questionService = wrapService(new QuestionService(createClient), 'question.service');
