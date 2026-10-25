@@ -1063,6 +1063,8 @@
     "delete_title": "Delete group?",
     "delete_desc": "This will remove all members from this group. This action cannot be undone.",
     "name_label": "Name",
+    "name_required": "Group name is required",
+    "name_too_short": "Group name must be at least 3 characters",
     "description_label": "Description",
     "cancel": "Cancel",
     "create": "Create",

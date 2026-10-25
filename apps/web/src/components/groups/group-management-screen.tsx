@@ -460,10 +460,21 @@ function GroupForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // `required` accepts spaces, so guard the whitespace-only case here; the API
+    // rejects it too, but a toast explains it instead of a generic failure.
+    const trimmedName = name.trim();
+    if (trimmedName.length === 0) {
+      toast.error(t('name_required'));
+      return;
+    }
+    if (trimmedName.length < 3) {
+      toast.error(t('name_too_short'));
+      return;
+    }
     const trimmed = description.trim();
     // Edit: always send the key (null clears it). Create: omit when empty.
     await onSave({
-      name,
+      name: trimmedName,
       ...(initial
         ? { description: trimmed === '' ? null : trimmed }
         : trimmed
@@ -476,7 +487,7 @@ function GroupForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
         <Label>{t('name_label')}</Label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} required />
+        <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={64} required />
       </div>
       <div className="space-y-2">
         <Label>{t('description_label')}</Label>
