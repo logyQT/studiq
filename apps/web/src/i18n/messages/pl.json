@@ -275,6 +275,15 @@
     "submit_button": "Zapisz hasło",
     "SUCCESS_PASSWORD_UPDATED": "Hasło zostało zmienione. Witaj z powrotem!"
   },
+  "Breadcrumbs": {
+    "difficulty": "Poziom trudności",
+    "print_assignment": "Drukuj kartkówkę",
+    "take_assignment": "Rozwiązywanie kartkówki",
+    "assignment_review": "Podsumowanie kartkówki",
+    "live_faq": "FAQ",
+    "session_review": "Powtórka",
+    "session_new": "Nowe fiszki"
+  },
   "DashboardLayout": {
     "ai_chat": "Asystent Q",
     "edu_overview": "Przegląd",

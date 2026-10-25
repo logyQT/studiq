@@ -293,6 +293,15 @@
     "submit_button": "Save password",
     "SUCCESS_PASSWORD_UPDATED": "Password has been updated. Welcome back!"
   },
+  "Breadcrumbs": {
+    "difficulty": "Difficulty",
+    "print_assignment": "Print assignment",
+    "take_assignment": "Taking the assignment",
+    "assignment_review": "Assignment summary",
+    "live_faq": "FAQ",
+    "session_review": "Review",
+    "session_new": "New cards"
+  },
   "DashboardLayout": {
     "ai_chat": "Q Assistant",
     "edu_overview": "Overview",

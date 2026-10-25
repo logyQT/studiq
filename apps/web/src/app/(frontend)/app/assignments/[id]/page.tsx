@@ -7,6 +7,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import {
   type AttemptSummary,
   attemptsLeft,
@@ -40,6 +41,9 @@ export default function StudentAssignmentDetailPage() {
     queryKey: studentAssignmentKeys.detail(id),
     url: `/api/v1/assignments/${id}`,
   });
+
+  // The assignment title is the breadcrumb label; the raw UUID must never render.
+  useBreadcrumbLabel(id, assignment?.title);
 
   const startMutation = useApiMutation<unknown, void>({
     mutationFn: async () => {
