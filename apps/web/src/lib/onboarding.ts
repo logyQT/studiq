@@ -29,3 +29,35 @@ export function resolveNeedsOnboarding({
   const settled = !isPending && !isFetching;
   return settled && orgsCount === 0 && !!accountType && STAFF_ACCOUNT_TYPES.has(accountType);
 }
+
+export interface SetupGateInput {
+  /** Number of organizations the caller is a member of (cached or fresh). */
+  orgsCount: number;
+  /** React Query `isPending` — no data has resolved for the `['orgs']` query yet. */
+  isPending: boolean;
+  /** React Query `isFetching` — a request is in flight, possibly a refetch over cached data. */
+  isFetching: boolean;
+}
+
+export type SetupGate = 'loading' | 'onboarding' | 'dashboard';
+
+/**
+ * Inverse of `resolveNeedsOnboarding`, for the `/setup` chooser.
+ *
+ * Both guards read the same `['orgs']` cache entry and apply the same settled
+ * rule (`!isPending && !isFetching`), so they can never act on different data:
+ * `/edu -> /setup` only when settled && 0 orgs, `/setup -> dashboard` only when
+ * settled && >0 orgs. The conditions are mutually exclusive, so no redirect
+ * loop is possible. While the list is settling neither side decides.
+ */
+export function resolveSetupGate({ orgsCount, isPending, isFetching }: SetupGateInput): SetupGate {
+  if (isPending || isFetching) return 'loading';
+  return orgsCount === 0 ? 'onboarding' : 'dashboard';
+}
+
+/** Dashboard to return to, matching the account types the proxy allows. */
+export function resolveDashboardPath(accountType?: string | null): '/manage' | '/edu' | '/app' {
+  if (accountType === 'manager') return '/manage';
+  if (accountType === 'student') return '/app';
+  return '/edu';
+}

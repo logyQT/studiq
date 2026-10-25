@@ -199,6 +199,7 @@
   },
   "SetupPage": {
     "back": "Wróć",
+    "back_to_dashboard": "Wróć do panelu",
     "title": "Witaj w StudiQ",
     "desc": "Skonfiguruj swoją klasę, aby rozpocząć.",
     "join_option": "Dołącz do istniejącej organizacji",

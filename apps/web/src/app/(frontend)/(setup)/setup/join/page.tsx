@@ -82,8 +82,10 @@ export default function JoinPage() {
       // #310: the accept route made this org active (the `active_org_id` cookie is
       // set), but `['orgs']` still holds the empty list cached at login. Without
       // this, `/edu` sees zero orgs and bounces back to `/setup`.
-      // `refetchType: 'all'` is required: under `/setup` no `useOrgs()` observer
-      // is mounted, so the default `active`-only refetch would fetch nothing.
+      // `refetchType: 'all'` is still required: the inactive cache entry must be
+      // refetched, and the caller may leave this screen before a default
+      // `active`-only refetch runs. A `useOrgs()` observer (setup header/chooser)
+      // may or may not be mounted here.
       await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
       // Permission scopes, plan features and question reports are resolved from the
       // active org and cached. They are only marked stale here and refetch on mount.

@@ -132,6 +132,10 @@ export function useOrgs() {
     // they do not fetch under a `null` org and then refetch under the real one
     // (content → skeleton → content flicker on a cold load).
     isPending,
+    // `true` whenever a request is in flight, including a background refetch
+    // over cached data. The onboarding guards need the settled rule
+    // (`!isPending && !isFetching`) so they never decide on stale data (#305).
+    isFetching,
     needsOnboarding,
     switchOrg: (orgId: string) => switchOrgMutation.mutate({ orgId, navigate: true }),
     isSwitching: switchOrgMutation.isPending,
