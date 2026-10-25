@@ -1,65 +1,56 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const getUsageMock = vi.fn();
-vi.mock('@studiq/server/services/limits.resolver', () => ({
-  limitsResolver: {
-    getUsage: (...args: unknown[]) => getUsageMock(...args),
+const myUsageMock = vi.fn();
+
+vi.mock('@studiq/server/controllers/ai-usage.controller', () => ({
+  aiUsageController: {
+    myUsage: (...args: unknown[]) => myUsageMock(...args),
   },
 }));
 
-let mockCtx: Record<string, unknown>;
-const withAuthOptions: unknown[] = [];
+type WithAuthOptions = { allowedAccountTypes?: string[] };
+let capturedOptions: WithAuthOptions | undefined;
+
 vi.mock('@studiq/server/lib/with-auth', () => ({
   withAuth: async (
     _req: unknown,
     handler: (ctx: unknown) => Promise<Response>,
-    options?: unknown,
+    options?: WithAuthOptions,
   ) => {
-    withAuthOptions.push(options);
-    return handler(mockCtx);
+    capturedOptions = options;
+    return handler({ userId: 'u-1', accountType: 'student', activeOrgId: null });
   },
 }));
 
 import { GET } from '@/app/(backend)/api/v1/ai/usage/route';
 
-function getRequest() {
-  return new Request('http://localhost/api/v1/ai/usage', {
-    method: 'GET',
-  }) as unknown as Parameters<typeof GET>[0];
-}
-
 const usage = {
   current: 0,
-  limit: 0,
-  plan: 'base',
+  limit: 200000,
+  plan: 'ace',
   resetsAt: '2026-10-26T00:00:00.000Z',
 };
 
 describe('GET /api/v1/ai/usage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    withAuthOptions.length = 0;
-    mockCtx = { userId: 'user-1', accountType: 'student', activeOrgId: 'org-1' };
-    getUsageMock.mockResolvedValue(usage);
+    capturedOptions = undefined;
+    myUsageMock.mockResolvedValue({ success: true, statusCode: 200, data: usage });
   });
 
-  it('returns the caller’s usage position', async () => {
-    const res = await GET(getRequest());
+  it('returns the usage envelope from the controller', async () => {
+    const res = await GET(new Request('http://localhost/api/v1/ai/usage') as never);
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ success: true, data: usage });
+    await expect(res.json()).resolves.toEqual({ success: true, data: usage });
+    expect(myUsageMock).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'u-1', accountType: 'student' }),
+    );
   });
 
-  it('resolves the shared daily AI token limit key for the request context', async () => {
-    await GET(getRequest());
+  it('allows students and educators only (same audience as /api/v1/ai/chat)', async () => {
+    await GET(new Request('http://localhost/api/v1/ai/usage') as never);
 
-    expect(getUsageMock).toHaveBeenCalledTimes(1);
-    expect(getUsageMock).toHaveBeenCalledWith(mockCtx, 'max_ai_tokens_per_day');
-  });
-
-  it('is limited to students and educators, like the chat route', async () => {
-    await GET(getRequest());
-
-    expect(withAuthOptions).toEqual([{ allowedAccountTypes: ['student', 'educator'] }]);
+    expect(capturedOptions?.allowedAccountTypes).toEqual(['student', 'educator']);
   });
 });

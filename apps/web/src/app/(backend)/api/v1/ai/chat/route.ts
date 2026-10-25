@@ -9,14 +9,13 @@ import { finishTool } from '@studiq/server/agents/tools/generic/finish.tool';
 import { generateFlashcardsTool } from '@studiq/server/agents/tools/generic/generate-flashcards.tool';
 import { webfetchTool } from '@studiq/server/agents/tools/generic/webfetch.tool';
 import { chatModel, providerName, reasoningEffort } from '@studiq/server/ai/model';
-import { AI_TOKENS_LIMIT_KEY } from '@studiq/server/config/limits.config';
 import { conversationStorage } from '@studiq/server/lib/conversation-context';
 import { AppError } from '@studiq/server/lib/errors';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
 import { createRateLimiter } from '@studiq/server/lib/rate-limiter';
 import { enqueueTrace } from '@studiq/server/lib/trace-queue';
 import { withAuth } from '@studiq/server/lib/with-auth';
-import { limitsResolver } from '@studiq/server/services/limits.resolver';
+import { limitsResolver, AI_TOKENS_LIMIT_KEY } from '@studiq/server/services/limits.resolver';
 import type { UIMessage } from 'ai';
 import { convertToModelMessages, hasToolCall, stepCountIs, streamText } from 'ai';
 import { type NextRequest, NextResponse } from 'next/server';
@@ -149,7 +148,7 @@ async function runAgentChat(
         }
       },
 
-      onFinish: (result) => {
+      onFinish: async (result) => {
         enqueueTrace({
           conversationId,
           agentName: 'general',
@@ -164,21 +163,25 @@ async function runAgentChat(
             finalTextLength: result.text?.length ?? 0,
           },
         });
-        limitsResolver
-          .trackTokenUsage(
+        // Awaited: `streamText` awaits `onFinish` before the stream closes, so
+        // the write lands before the client's `useChat` `onFinish` refetches
+        // the daily counter (#379). Errors stay swallowed so a failed write
+        // cannot break an otherwise finished response.
+        try {
+          await limitsResolver.trackTokenUsage(
             ctx,
             result.totalUsage?.inputTokens ?? 0,
             result.totalUsage?.outputTokens ?? 0,
-          )
-          .catch((error) => {
-            enqueueTrace({
-              conversationId,
-              agentName: 'general',
-              eventType: 'step',
-              label: 'trackTokenUsage failed',
-              data: { error: error instanceof Error ? error.message : String(error) },
-            });
+          );
+        } catch (error) {
+          enqueueTrace({
+            conversationId,
+            agentName: 'general',
+            eventType: 'step',
+            label: 'trackTokenUsage failed',
+            data: { error: error instanceof Error ? error.message : String(error) },
           });
+        }
       },
     });
 

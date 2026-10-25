@@ -6,7 +6,6 @@ import { DefaultChatTransport } from 'ai';
 import { useCallback, useMemo } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
-import { useOrgs } from '@/hooks/use-orgs';
 import { parseAiChatErrorCode } from '@/lib/ai-chat-error';
 import { aiKeys } from '@/lib/query-keys';
 
@@ -141,16 +140,30 @@ function toolStateToStatus(state: string): 'thinking' | 'running' | 'complete' {
 }
 
 export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAiChatReturn {
-  const queryClient = useQueryClient();
   const { user } = useAuth();
-  const { activeOrg, isPending: orgsPending } = useOrgs();
+  const queryClient = useQueryClient();
+
+  // Daily AI token budget (#379) — the server enforces this on
+  // `POST /api/v1/ai/chat`; fetch it so `UsageBadge` can render it.
+  // `staleTime: 0` + the global `refetchOnWindowFocus` keeps the number fresh
+  // after a plan change or a tab focus; streaming completion invalidates it.
+  const { data: usageData } = useApiQuery<UsageInfo>({
+    queryKey: aiKeys.usage,
+    url: '/api/v1/ai/usage',
+    staleTime: 0,
+    // Usage is resolved per user (and active org); fetching before
+    // `/api/v1/auth/me` resolves would cache a 401 as the anonymous entry (#458).
+    // A locked page (#375) never chats, so it must not spend a request either.
+    enabled: enabled && !!user,
+  });
 
   const chatResult = useChat({
     transport: new DefaultChatTransport({ api: '/api/v1/ai/chat' }),
-    // Runs on failures too (the SDK calls it from a `finally`), so the usage
-    // badge refetches after a rejected send instead of keeping a stale count.
     onFinish: () => {
-      void queryClient.invalidateQueries({ queryKey: aiKeys.all });
+      // The chat route awaits `trackTokenUsage` before the stream closes, so
+      // refetching here reads the post-message totals (#379). The SDK calls
+      // `onFinish` from a `finally`, so a rejected send refetches too.
+      queryClient.invalidateQueries({ queryKey: aiKeys.usage });
     },
   }) as unknown as UseChatResultRaw;
   const {
@@ -163,16 +176,6 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
     clearError,
     regenerate,
   } = chatResult;
-
-  const usageQuery = useApiQuery<UsageInfo>({
-    queryKey: aiKeys.usage(activeOrg?.id),
-    url: '/api/v1/ai/usage',
-    staleTime: 60_000,
-    // A locked page never chats, so it must not spend a request on the budget.
-    // Gate on `['orgs']` too: the key carries the org id, and fetching under the
-    // cold `null` org then refetching under the real one is a double request.
-    enabled: enabled && !!user && !orgsPending,
-  });
 
   const messages: ChatMessage[] = useMemo(() => {
     const mapped: ChatMessage[] = [];
@@ -461,7 +464,7 @@ export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAi
 
   return {
     messages,
-    usage: usageQuery.data ?? null,
+    usage: usageData ?? null,
     isStreaming: status === 'streaming',
     sendMessage: handleSend,
     sendLocalResponse,

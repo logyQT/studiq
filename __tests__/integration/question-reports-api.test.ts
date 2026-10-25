@@ -320,11 +320,23 @@ describe('Question reports API — org-wide manager inbox (#276)', () => {
     );
     expect(thread.status).toBe(200);
     const body = (await thread.json()) as {
-      data: { messages: Array<{ body: string; sender_id: string }> };
+      data: {
+        messages: Array<{
+          body: string;
+          sender_id: string;
+          sender: { id: string; full_name: string | null; email: string } | null;
+        }>;
+      };
     };
+    // The thread UI attributes every bubble by `sender` (#373) — keep that embed
+    // in the contract, including for a manager who is not a thread participant.
     expect(body.data.messages).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ body: 'manager reply #276', sender_id: manager.user.id }),
+        expect.objectContaining({
+          body: 'manager reply #276',
+          sender_id: manager.user.id,
+          sender: expect.objectContaining({ id: manager.user.id, email: manager.user.email }),
+        }),
       ]),
     );
   });

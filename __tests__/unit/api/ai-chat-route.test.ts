@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const getUsageMock = vi.fn();
 const trackTokenUsageMock = vi.fn().mockResolvedValue(undefined);
 vi.mock('@studiq/server/services/limits.resolver', () => ({
+  AI_TOKENS_LIMIT_KEY: 'max_ai_tokens_per_day',
   limitsResolver: {
     getUsage: (...args: unknown[]) => getUsageMock(...args),
     trackTokenUsage: (...args: unknown[]) => trackTokenUsageMock(...args),
@@ -14,9 +15,9 @@ vi.mock('@studiq/server/lib/rate-limiter', () => ({
   createRateLimiter: () => ({ check: (...args: unknown[]) => rateLimitCheckMock(...args) }),
 }));
 
-let capturedOnFinish: ((result: unknown) => void) | undefined;
+let capturedOnFinish: ((result: unknown) => Promise<void> | void) | undefined;
 let capturedStoreAtCallTime: unknown;
-const streamTextMock = vi.fn((config: { onFinish?: (result: unknown) => void }) => {
+const streamTextMock = vi.fn((config: { onFinish?: (result: unknown) => Promise<void> | void }) => {
   capturedOnFinish = config.onFinish;
   capturedStoreAtCallTime = conversationStorage.getStore();
   return { toUIMessageStreamResponse: () => new Response('stream', { status: 200 }) };
@@ -25,7 +26,8 @@ vi.mock('ai', async (importOriginal) => {
   const actual = await importOriginal<typeof import('ai')>();
   return {
     ...actual,
-    streamText: (config: { onFinish?: (result: unknown) => void }) => streamTextMock(config),
+    streamText: (config: { onFinish?: (result: unknown) => Promise<void> | void }) =>
+      streamTextMock(config),
     convertToModelMessages: vi.fn().mockResolvedValue([]),
   };
 });
@@ -152,16 +154,16 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
     );
 
     expect(capturedOnFinish).toBeDefined();
-    capturedOnFinish!({
+    await capturedOnFinish!({
       steps: [],
       totalUsage: { inputTokens: 42, outputTokens: 17, totalTokens: 59 },
       finishReason: 'stop',
       text: 'ok',
     });
 
-    await vi.waitFor(() => {
-      expect(trackTokenUsageMock).toHaveBeenCalledWith(mockCtx, 42, 17);
-    });
+    // `onFinish` is awaited by the SDK before the stream closes, so the write
+    // must already be committed when it settles (#379).
+    expect(trackTokenUsageMock).toHaveBeenCalledWith(mockCtx, 42, 17);
   });
 
   it('does not throw when totalUsage is missing from the finish result', async () => {
@@ -171,9 +173,27 @@ describe('POST /api/v1/ai/chat — token budget enforcement', () => {
       jsonRequest({ messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
     );
 
-    expect(() => capturedOnFinish!({ steps: [], finishReason: 'stop', text: 'ok' })).not.toThrow();
-    await vi.waitFor(() => {
-      expect(trackTokenUsageMock).toHaveBeenCalledWith(mockCtx, 0, 0);
-    });
+    await expect(
+      capturedOnFinish!({ steps: [], finishReason: 'stop', text: 'ok' }),
+    ).resolves.toBeUndefined();
+    expect(trackTokenUsageMock).toHaveBeenCalledWith(mockCtx, 0, 0);
+  });
+
+  it('swallows a failing token write so the finished stream is not broken', async () => {
+    getUsageMock.mockResolvedValue({ current: 0, limit: 200000, plan: 'ace', resetsAt: '' });
+    trackTokenUsageMock.mockRejectedValueOnce(new Error('db down'));
+
+    await POST(
+      jsonRequest({ messages: [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
+    );
+
+    await expect(
+      capturedOnFinish!({
+        steps: [],
+        totalUsage: { inputTokens: 1, outputTokens: 2 },
+        finishReason: 'stop',
+      }),
+    ).resolves.toBeUndefined();
+    expect(trackTokenUsageMock).toHaveBeenCalledWith(mockCtx, 1, 2);
   });
 });

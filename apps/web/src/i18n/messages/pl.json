@@ -2079,7 +2079,6 @@
     "empty_state": "Rozpocznij rozmowę",
     "empty_state_hint": "Poproś AI o pomoc w nauce, tworzeniu fiszek, streszczaniu tekstu lub wyjaśnianiu pojęć",
     "usage_label": "{current}/{limit} tokenów AI wykorzystanych dzisiaj",
-    "usage_unlimited": "Bez limitu",
     "clear_chat": "Wyczyść czat",
     "new_chat": "Nowa rozmowa",
     "flashcard_count": "Wygenerowano {count} fiszek",

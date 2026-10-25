@@ -29,7 +29,6 @@ const AI_CHAT_PLAN_GATE_KEYS = [
   'error_generic',
   'error_retry',
   'error_dismiss',
-  'usage_unlimited',
 ] as const;
 
 describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages) => {

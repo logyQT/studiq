@@ -2099,7 +2099,6 @@
     "empty_state": "Start a conversation",
     "empty_state_hint": "Ask AI to help you study, create flashcards, summarize text, or explain concepts",
     "usage_label": "{current}/{limit} AI tokens used today",
-    "usage_unlimited": "Unlimited",
     "clear_chat": "Clear chat",
     "new_chat": "New chat",
     "flashcard_count": "{count} flashcards generated",
