@@ -534,7 +534,8 @@
     "quiz_avg_score": "Avg Score",
     "no_data": "No activity data yet for this period",
     "today": "Today",
-    "days_ago": "{days}d ago",
+    "hours_ago": "{hours, plural, one {# hour ago} other {# hours ago}}",
+    "days_ago": "{days, plural, one {# day ago} other {# days ago}}",
     "vs_previous": "vs previous period"
   },
   "TeacherQuizStats": {
@@ -817,7 +818,8 @@
     "deck_suspended": "Deck suspended",
     "deck_unsuspended": "Deck unsuspended",
     "suspended": "Suspended",
-    "deck_suspended_notice": "This deck is suspended. Cards in this deck won't appear in your practice sessions or stats."
+    "deck_suspended_notice": "This deck is suspended. Cards in this deck won't appear in your practice sessions or stats.",
+    "optional": "(optional)"
   },
   "EduFlashcardStatsPage": {
     "title": "Flashcard Statistics",
@@ -1392,7 +1394,10 @@
     "deck_suspended": "Deck suspended",
     "deck_unsuspended": "Deck unsuspended",
     "suspended": "Suspended",
-    "deck_suspended_notice": "This deck is suspended. Cards in this deck won't appear in your practice sessions or stats."
+    "deck_suspended_notice": "This deck is suspended. Cards in this deck won't appear in your practice sessions or stats.",
+    "back_label": "Back Side (Answer)",
+    "front_label": "Front Side (Question)",
+    "optional": "(optional)"
   },
   "AppFlashcardTopicsPage": {
     "title": "Topics Manager",
@@ -1762,6 +1767,7 @@
     "subtitle": "Choose the plan that fits your needs"
   },
   "FeaturesPage": {
+    "meta_title": "Features",
     "title": "Everything You Need to Succeed",
     "subtitle": "From basic flashcards to AI-powered exam prep",
     "manual_questions": "Manual Question Creation",
@@ -2061,7 +2067,9 @@
     "visibility_personal": "Only me",
     "visibility_group": "Groups",
     "groups_placeholder": "Select groups...",
-    "groups_empty": "No groups found"
+    "groups_empty": "No groups found",
+    "csv_parse_error": "Could not parse CSV file",
+    "csv_map_required": "Please map both Front and Back columns"
   },
   "AiChatPage": {
     "title": "AI Assistant",
@@ -2151,6 +2159,10 @@
     "by_subject_title": "Questions by Subject",
     "deck_title": "Deck Counts",
     "topic_title": "Topic Counts",
+    "by_difficulty": "By Difficulty",
+    "th_deck": "Deck",
+    "th_flashcards": "Flashcards",
+    "th_topic": "Topic",
     "view_question_stats": "View detailed question stats",
     "view_flashcard_stats": "View detailed flashcard stats"
   },

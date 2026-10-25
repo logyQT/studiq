@@ -515,7 +515,8 @@
     "quiz_avg_score": "Śr. wynik",
     "no_data": "Brak danych o aktywności w tym okresie",
     "today": "Dzisiaj",
-    "days_ago": "{days} dni temu",
+    "hours_ago": "{hours, plural, one {# godzinę temu} few {# godziny temu} many {# godzin temu} other {# godziny temu}}",
+    "days_ago": "{days, plural, one {# dzień temu} other {# dni temu}}",
     "vs_previous": "w porównaniu do poprzedniego okresu"
   },
   "TeacherQuizStats": {
@@ -798,7 +799,8 @@
     "deck_suspended": "Talia zawieszona",
     "deck_unsuspended": "Talia przywrócona",
     "suspended": "Zawieszona",
-    "deck_suspended_notice": "Ta talia jest zawieszona. Fiszki z tej talii nie będą wyświetlane w sesjach nauki ani statystykach."
+    "deck_suspended_notice": "Ta talia jest zawieszona. Fiszki z tej talii nie będą wyświetlane w sesjach nauki ani statystykach.",
+    "optional": "(opcjonalnie)"
   },
   "EduFlashcardStatsPage": {
     "title": "Statystyki fiszek",
@@ -1373,7 +1375,10 @@
     "deck_suspended": "Talia zawieszona",
     "deck_unsuspended": "Talia przywrócona",
     "suspended": "Zawieszona",
-    "deck_suspended_notice": "Ta talia jest zawieszona. Fiszki z tej talii nie będą wyświetlane w sesjach nauki ani statystykach."
+    "deck_suspended_notice": "Ta talia jest zawieszona. Fiszki z tej talii nie będą wyświetlane w sesjach nauki ani statystykach.",
+    "back_label": "Tył (Odpowiedź)",
+    "front_label": "Przód (Pytanie)",
+    "optional": "(opcjonalnie)"
   },
   "AppFlashcardTopicsPage": {
     "title": "Menedżer Tematów",
@@ -1742,6 +1747,7 @@
     "subtitle": "Wybierz plan odpowiedni dla Twoich potrzeb"
   },
   "FeaturesPage": {
+    "meta_title": "Funkcje",
     "title": "Wszystko Czego Potrzebujesz, Aby Odnieść Sukces",
     "subtitle": "Od podstawowych fiszek po egzaminy oparte na AI",
     "manual_questions": "Ręczne Tworzenie Pytań",
@@ -2041,7 +2047,9 @@
     "visibility_personal": "Tylko ja",
     "visibility_group": "Grupy",
     "groups_placeholder": "Wybierz grupy...",
-    "groups_empty": "Nie znaleziono grup"
+    "groups_empty": "Nie znaleziono grup",
+    "csv_parse_error": "Nie udało się sparsować pliku CSV",
+    "csv_map_required": "Proszę przypisać kolumny Przód i Tył"
   },
   "AiChatPage": {
     "title": "Asystent AI",
@@ -2131,6 +2139,10 @@
     "by_subject_title": "Pytania według przedmiotu",
     "deck_title": "Liczby talii",
     "topic_title": "Liczby tematów",
+    "by_difficulty": "Według trudności",
+    "th_deck": "Talia",
+    "th_flashcards": "Fiszki",
+    "th_topic": "Temat",
     "view_question_stats": "Zobacz szczegółowe statystyki pytań",
     "view_flashcard_stats": "Zobacz szczegółowe statystyki fiszek"
   },

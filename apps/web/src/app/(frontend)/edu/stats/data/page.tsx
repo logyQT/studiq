@@ -146,7 +146,7 @@ export default function StatsDataPage() {
         {totalByDifficulty.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle>By Difficulty</CardTitle>
+              <CardTitle>{t('by_difficulty')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {totalByDifficulty.map(({ key, count }) => (
@@ -185,8 +185,8 @@ export default function StatsDataPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Deck</TableHead>
-                  <TableHead className="text-right">Flashcards</TableHead>
+                  <TableHead>{t('th_deck')}</TableHead>
+                  <TableHead className="text-right">{t('th_flashcards')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -218,8 +218,8 @@ export default function StatsDataPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Topic</TableHead>
-                  <TableHead className="text-right">Flashcards</TableHead>
+                  <TableHead>{t('th_topic')}</TableHead>
+                  <TableHead className="text-right">{t('th_flashcards')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

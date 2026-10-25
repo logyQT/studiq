@@ -77,20 +77,19 @@ function TrendIndicator({ current, previous }: MetricComp) {
   );
 }
 
-function formatLastActive(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  if (hours < 1) return 'Today';
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
 const RANGES = ['7d', '30d', '90d'] as const;
 
 export default function TeacherActivityPage() {
   const t = useTranslations('TeacherActivityPage');
+  const formatLastActive = (dateStr: string | null): string => {
+    if (!dateStr) return '—';
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    if (hours < 1) return t('today');
+    if (hours < 24) return t('hours_ago', { hours });
+    const days = Math.floor(hours / 24);
+    return t('days_ago', { days });
+  };
   const [range, setRange] = useState<'7d' | '30d' | '90d'>('7d');
   const [data, setData] = useState<ActivityData | null>(null);
   const [loading, setLoading] = useState(true);
