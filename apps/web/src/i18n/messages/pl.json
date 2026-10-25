@@ -1613,6 +1613,7 @@
     "range_1y": "1 rok",
     "no_quiz_history": "Brak historii quizów",
     "no_quiz_history_desc": "Rozwiąż quiz, aby zobaczyć swoją historię",
+    "results_hidden": "Podsumowanie niedostępne",
     "score": "Wynik",
     "date": "Data"
   },
@@ -2677,7 +2678,8 @@
     "in_progress": "W trakcie",
     "completed": "Ukończone ({count})",
     "completed_on": "Ukończono: {date}",
-    "attempts_left": "Pozostało prób: {left}/{total}"
+    "attempts_left": "Pozostało prób: {left}/{total}",
+    "results_hidden": "Podsumowanie niedostępne"
   },
   "AppAssignmentDetailPage": {
     "not_found": "Nie znaleziono kartkówki",
@@ -2697,7 +2699,8 @@
     "start_again": "Rozpocznij kolejną próbę",
     "last_attempt": "Ostatnia próba",
     "attempts_left": "Pozostało prób: {left}/{total}",
-    "attempts_exhausted": "Wykorzystano wszystkie próby ({total}/{total})"
+    "attempts_exhausted": "Wykorzystano wszystkie próby ({total}/{total})",
+    "results_hidden": "Podsumowanie niedostępne"
   },
   "AppAssignmentTakePage": {
     "upload_failed": "Błąd przesyłania",

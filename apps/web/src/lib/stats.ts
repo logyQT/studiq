@@ -100,7 +100,8 @@ export function parseTeacherStatsResponse(body: unknown): TeacherStatsPayload | 
 }
 
 export interface AttemptScore {
-  score: number;
+  /** `null` = the server withheld the score (#374: assignment with „Pokaż wyniki” off). */
+  score: number | null;
   total_questions: number;
   total_points?: number | null;
 }
@@ -110,8 +111,12 @@ export interface AttemptScore {
  * assignment attempts are scored against `total_points`, practice quizzes
  * against the question count. `Math.max(..., 1)` keeps a 0-question attempt
  * from producing `NaN`/`Infinity`.
+ *
+ * Returns `null` when the server withheld the score: a hidden result must never
+ * render as a fabricated 0% (#374). A genuine zero still returns `0`.
  */
-export function attemptPercentage(attempt: AttemptScore): number {
+export function attemptPercentage(attempt: AttemptScore): number | null {
+  if (attempt.score === null) return null;
   const total = Math.max(attempt.total_points ?? attempt.total_questions, 1);
   return Math.round((attempt.score / total) * 100);
 }

@@ -361,6 +361,72 @@ describe('StatsService', () => {
       });
     });
 
+    it('excludes hidden assignment attempts from the score aggregates (#374)', async () => {
+      const attemptsBuilder = qb([
+        {
+          score: 8,
+          total_questions: 10,
+          started_at: '2024-01-01',
+          config: {},
+          assignment_id: null,
+        },
+        {
+          score: 3,
+          total_questions: 4,
+          total_points: 4,
+          started_at: '2024-01-02',
+          config: {},
+          assignment_id: 'assignment-visible',
+        },
+        {
+          score: 4,
+          total_questions: 4,
+          total_points: 4,
+          started_at: '2024-01-03',
+          config: {},
+          assignment_id: 'assignment-hidden',
+        },
+      ]);
+      const assignmentsBuilder = qb([
+        { id: 'assignment-visible', show_results: true },
+        { id: 'assignment-hidden', show_results: false },
+      ]);
+
+      mock.from
+        .mockReturnValueOnce(attemptsBuilder) // quiz_attempts
+        .mockReturnValueOnce(assignmentsBuilder) // teacher_assignments
+        .mockReturnValueOnce(qb([])) // flashcard_practice
+        .mockReturnValueOnce(qb([])) // questions
+        .mockReturnValueOnce(qb([], null, 0)) // flashcard_decks
+        .mockReturnValueOnce(qb([], null, 0)) // flashcards
+        .mockReturnValueOnce(qb([], null, 0)); // flashcard_review_state
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(assignmentsBuilder.in).toHaveBeenCalledWith('id', [
+        'assignment-visible',
+        'assignment-hidden',
+      ]);
+      // Practice (80 %) + visible assignment (75 %) — the hidden attempt is gone.
+      expect(result.data.avgScore).toBe(78);
+      expect(result.data.bestScore).toBe(80);
+      expect(result.data.attemptsOverTime.map((a: { score: number }) => a.score)).toEqual([8, 3]);
+      // A count is not a result, so the hidden attempt still counts as taken.
+      expect(result.data.totalQuizzes).toBe(3);
+    });
+
+    it('fails closed when the hidden-assignment lookup fails (#374)', async () => {
+      mock.from
+        .mockReturnValueOnce(qb([{ score: 3, total_questions: 4, assignment_id: 'assignment-1' }]))
+        .mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
     it('returns zero stats when no data exists', async () => {
       const c: any = {};
       c.select = vi.fn(() => c);

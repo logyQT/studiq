@@ -1,6 +1,7 @@
 import type { RequestContext } from '@studiq/authz';
+import { hiddenResultAssignmentIds } from '@studiq/server/lib/assignment-visibility';
 import { wrapService } from '@studiq/server/lib/observability';
-import { type ServiceResult, success } from '@studiq/server/lib/service-result';
+import { isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
@@ -141,11 +142,24 @@ export class StatsService {
     // multiple orgs will see their activity from all of them combined here.
     const { data: attempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
-      .select('score, total_questions, total_points, started_at, config')
+      .select('score, total_questions, total_points, started_at, config, assignment_id')
       .eq('user_id', ctx.userId)
       .order('started_at', { ascending: false });
 
     if (attemptsError) return toDbFailure(attemptsError);
+
+    // A hidden assignment result must not leak through an aggregate either — a
+    // single attempt would surface as avgScore = 100%. Hidden attempts stay in
+    // `totalQuizzes` below: a count is not a result (#374).
+    const hidden = await hiddenResultAssignmentIds(
+      supabase,
+      (attempts ?? []).map((attempt) => attempt.assignment_id),
+    );
+    if (isFailure(hidden)) return hidden;
+
+    const scoredAttempts = (attempts ?? []).filter(
+      (attempt) => !attempt.assignment_id || !hidden.data.has(attempt.assignment_id),
+    );
 
     const { data: practice, error: practiceError } = await supabase
       .from('flashcard_practice')
@@ -198,16 +212,17 @@ export class StatsService {
       total_points?: number | null;
     }) => Math.round((a.score / attemptTotal(a)) * 100);
     const avgScore =
-      attempts && attempts.length > 0
+      scoredAttempts.length > 0
         ? Math.round(
-            (attempts.reduce((sum, a) => sum + a.score / attemptTotal(a), 0) / attempts.length) *
+            (scoredAttempts.reduce((sum, a) => sum + a.score / attemptTotal(a), 0) /
+              scoredAttempts.length) *
               100,
           )
         : 0;
     // Highest per-attempt percentage. Unfinished attempts score 0, so they can
     // never raise the maximum; assignment attempts use total_points via
     // attemptTotal(), same basis as avgScore and attemptsOverTime.
-    const bestScore = (attempts ?? []).reduce((best, a) => Math.max(best, percentageOf(a)), 0);
+    const bestScore = scoredAttempts.reduce((best, a) => Math.max(best, percentageOf(a)), 0);
 
     const flashcardCorrect = practice?.filter((p) => p.was_correct).length ?? 0;
     const flashcardTotal = practice?.length ?? 0;
@@ -223,13 +238,12 @@ export class StatsService {
       totalDecks: decksCount ?? 0,
       totalFlashcards: flashcardsCount ?? 0,
       dueToday: dueCount ?? 0,
-      attemptsOverTime:
-        attempts?.map((a) => ({
-          date: a.started_at,
-          score: a.score,
-          total: attemptTotal(a),
-          percentage: percentageOf(a),
-        })) ?? [],
+      attemptsOverTime: scoredAttempts.map((a) => ({
+        date: a.started_at,
+        score: a.score,
+        total: attemptTotal(a),
+        percentage: percentageOf(a),
+      })),
     });
   }
 

@@ -30,7 +30,8 @@ import { quizAttemptKeys } from '@/lib/query-keys';
 
 interface QuizAttempt {
   id: string;
-  score: number;
+  /** `null` = results withheld by the assignment's „Pokaż wyniki” switch (#374). */
+  score: number | null;
   total_questions: number;
   total_points: number | null;
   assignment_id: string | null;
@@ -167,7 +168,7 @@ export function QuizContent() {
                       </span>
                       <div className="flex shrink-0 items-center gap-3">
                         <Badge variant="secondary">
-                          {total > 0 ? `${attempt.score}/${total}` : '-'}
+                          {attempt.score !== null && total > 0 ? `${attempt.score}/${total}` : '-'}
                         </Badge>
                         <Button variant="outline" size="sm" asChild>
                           <Link href={`/app/study/session/quiz/${attempt.id}/review`}>

@@ -24,7 +24,8 @@ import { attemptPercentage } from '@/lib/stats';
 /** Same shape as the `/api/v1/quiz/attempts` rows (see `quiz-content.tsx`). */
 interface QuizAttempt {
   id: string;
-  score: number;
+  /** `null` = results withheld by the assignment's „Pokaż wyniki” switch (#374). */
+  score: number | null;
   total_questions: number;
   total_points: number | null;
   started_at: string;
@@ -130,17 +131,23 @@ export function QuizzesTab() {
                       {t('quiz_attempt')} #{i + 1}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Badge
-                        variant={
-                          percentage >= 70
-                            ? 'default'
-                            : percentage >= 40
-                              ? 'secondary'
-                              : 'destructive'
-                        }
-                      >
-                        {percentage}%
-                      </Badge>
+                      {percentage === null ? (
+                        // A withheld result keeps the row (the attempt happened)
+                        // but must never render a fabricated percentage (#374).
+                        <span className="text-muted-foreground">{t('results_hidden')}</span>
+                      ) : (
+                        <Badge
+                          variant={
+                            percentage >= 70
+                              ? 'default'
+                              : percentage >= 40
+                                ? 'secondary'
+                                : 'destructive'
+                          }
+                        >
+                          {percentage}%
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">
                       {new Date(attempt.completed_at).toLocaleDateString(locale)}

@@ -6,7 +6,8 @@
 
 export interface AttemptSummary {
   id: string;
-  score: number;
+  /** `null` = results withheld by the assignment's „Pokaż wyniki” switch. */
+  score: number | null;
   total_questions: number;
   total_points: number | null;
   completed_at: string | null;

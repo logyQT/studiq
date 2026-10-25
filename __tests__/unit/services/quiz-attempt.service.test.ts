@@ -68,6 +68,51 @@ describe('QuizAttemptService', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');
     });
+
+    it('does not look up assignments when the caller has only practice attempts (#374)', async () => {
+      mock.from.mockReturnValueOnce(qb([{ id: 'a-1', user_id: ctx.userId, score: 5 }]));
+
+      const result = await service.list(ctx);
+
+      expect(result.success).toBe(true);
+      // Fail closed would be pointless here: there is no assignment flag to read.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+    });
+
+    it('withholds the score of a hidden assignment attempt (#374)', async () => {
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'a-1', user_id: ctx.userId, score: 3, assignment_id: 'assignment-hidden' },
+          { id: 'a-2', user_id: ctx.userId, score: 2, assignment_id: 'assignment-visible' },
+          { id: 'a-3', user_id: ctx.userId, score: 1, assignment_id: null },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'assignment-hidden', show_results: false },
+          { id: 'assignment-visible', show_results: true },
+        ]),
+      );
+
+      const result = await service.list(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        expect.objectContaining({ id: 'a-1', score: null }),
+        expect.objectContaining({ id: 'a-2', score: 2 }),
+        expect.objectContaining({ id: 'a-3', score: 1 }),
+      ]);
+    });
+
+    it('fails closed when the assignment lookup fails (#374)', async () => {
+      mock.from.mockReturnValueOnce(qb([{ id: 'a-1', score: 3, assignment_id: 'assignment-1' }]));
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.list(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+    });
   });
 
   describe('getById', () => {
@@ -289,6 +334,7 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([{ id: 'assignment-1', show_results: true }]));
       mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(
         qb([
@@ -313,6 +359,67 @@ describe('QuizAttemptService', () => {
         teacher_points: 2,
         teacher_feedback: 'Dobrze, ale brakuje liberum veto.',
       });
+    });
+
+    it('refuses the review of a completed attempt when show_results is off (#374)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        assignment_id: 'assignment-1',
+        completed_at: '2026-10-24T10:00:00.000Z',
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([{ id: 'assignment-1', show_results: false }]));
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      // No answer key / graded rows may even be loaded.
+      expect(mock.from.mock.calls.map((call) => call[0])).toEqual([
+        'quiz_attempts',
+        'teacher_assignments',
+      ]);
+    });
+
+    it('fails closed when the assignment row is missing (#374)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        assignment_id: 'assignment-1',
+        completed_at: '2026-10-24T10:00:00.000Z',
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+    });
+
+    it('keeps resuming a running assignment attempt without reading show_results (#374)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        assignment_id: 'assignment-1',
+        completed_at: null,
+        draft_answers: { 'q-1': { selected_answer_id: 'ans-1', text_answer: null } },
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.getById('a-1', ctx);
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).answers).toEqual({
+        'q-1': { selected_answer_id: 'ans-1', text_answer: null },
+      });
+      expect(mock.from).not.toHaveBeenCalledWith('teacher_assignments');
     });
   });
 
@@ -425,7 +532,7 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
-      mock.from.mockReturnValueOnce(qb({ deadline: null })); // teacher_assignments
+      mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true })); // teacher_assignments
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
       mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
       mock.from.mockReturnValueOnce(qb({ is_correct: true })); // question_options
@@ -444,6 +551,58 @@ describe('QuizAttemptService', () => {
       expect((result.data as any).score).toBe(2);
     });
 
+    it('withholds the score of a hidden assignment after submission (#374)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        completed_at: null,
+        assignment_id: 'assignment-1',
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: false }));
+      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
+      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      mock.from.mockReturnValueOnce(qb(null));
+      mock.from.mockReturnValueOnce(qb(null));
+
+      const result = await service.submit(
+        { attemptId: 'a-1', answers: [{ questionId: 'q-1', selectedAnswerId: 'ans-1' }] },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).score).toBeNull();
+      // The attempt itself is still scored and stored.
+      expect((result.data as any).totalQuestions).toBe(1);
+    });
+
+    it('withholds the score when the assignment row is missing (#374)', async () => {
+      const attempt = {
+        id: 'a-1',
+        user_id: ctx.userId,
+        completed_at: null,
+        assignment_id: 'assignment-1',
+      };
+
+      mock.from.mockReturnValueOnce(qb(attempt));
+      mock.from.mockReturnValueOnce(qb(null));
+      mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
+      mock.from.mockReturnValueOnce(qb({ is_correct: true }));
+      mock.from.mockReturnValueOnce(qb(null));
+      mock.from.mockReturnValueOnce(qb(null));
+
+      const result = await service.submit(
+        { attemptId: 'a-1', answers: [{ questionId: 'q-1', selectedAnswerId: 'ans-1' }] },
+        ctx,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as any).score).toBeNull();
+    });
+
     it('awards a question once even when it produced several answer rows', async () => {
       const attempt = {
         id: 'a-1',
@@ -453,7 +612,7 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
-      mock.from.mockReturnValueOnce(qb({ deadline: null }));
+      mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true }));
       mock.from.mockReturnValueOnce(qb([{ question_id: 'q-1', points: 2 }]));
       mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq' }]));
       mock.from.mockReturnValueOnce(qb({ is_correct: true }));
@@ -485,7 +644,7 @@ describe('QuizAttemptService', () => {
       };
 
       mock.from.mockReturnValueOnce(qb(attempt));
-      mock.from.mockReturnValueOnce(qb({ deadline: null }));
+      mock.from.mockReturnValueOnce(qb({ deadline: null, show_results: true }));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
       const result = await service.submit(

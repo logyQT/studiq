@@ -22,6 +22,8 @@ import {
   GET as attemptGet,
   POST as attemptPost,
 } from '@/app/(backend)/api/v1/quiz/[attemptId]/route';
+import { GET as attemptsGet } from '@/app/(backend)/api/v1/quiz/attempts/route';
+import { GET as studentStatsGet } from '@/app/(backend)/api/v1/stats/student/route';
 import { POST as publishPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/publish/route';
 import { POST as addQuestionsPost } from '@/app/(backend)/api/v1/teacher/assignments/[id]/questions/route';
 import { PUT as targetsPut } from '@/app/(backend)/api/v1/teacher/assignments/[id]/targets/route';
@@ -69,7 +71,16 @@ forEachCopy((copyId) => {
       if (error) throw new Error(`Failed to update max_attempts: ${error.message}`);
     }
 
-    async function submitAttempt(attemptBody: any): Promise<void> {
+    async function setShowResults(showResults: boolean): Promise<void> {
+      const supabase = createServiceClient();
+      const { error } = await supabase
+        .from('teacher_assignments')
+        .update({ show_results: showResults })
+        .eq('id', assignmentId);
+      if (error) throw new Error(`Failed to update show_results: ${error.message}`);
+    }
+
+    async function submitAttempt(attemptBody: any): Promise<any> {
       const attemptId = attemptBody.data.id as string;
       const [firstQuestion] = attemptBody.data.questions as Array<{
         id: string;
@@ -96,6 +107,7 @@ forEachCopy((copyId) => {
       );
       const submitRes = await attemptPost(request, { params });
       expect(submitRes.status).toBe(200);
+      return submitRes.json();
     }
 
     async function detail(): Promise<{ status: number; body: any }> {
@@ -115,6 +127,35 @@ forEachCopy((copyId) => {
       const body = await response.json();
       expect(response.status).toBe(200);
       return (body.data as any[]).find((row) => row.id === assignmentId);
+    }
+
+    async function review(attemptId: string): Promise<{ status: number; body: any }> {
+      mockUser(student.user);
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/quiz/${attemptId}`,
+        { attemptId },
+      );
+      const response = await attemptGet(request, { params });
+      return { status: response.status, body: await response.json() };
+    }
+
+    async function studentStats(): Promise<any> {
+      mockUser(student.user);
+      const response = await studentStatsGet(
+        createNextRequest('http://localhost/api/v1/stats/student'),
+      );
+      expect(response.status).toBe(200);
+      return (await response.json()).data;
+    }
+
+    /** The rows behind `/app/stats/results` (`QuizzesTab`). */
+    async function attemptList(): Promise<any[]> {
+      mockUser(student.user);
+      const response = await attemptsGet(
+        createNextRequest('http://localhost/api/v1/quiz/attempts'),
+      );
+      expect(response.status).toBe(200);
+      return (await response.json()).data;
     }
 
     beforeAll(async () => {
@@ -177,6 +218,8 @@ forEachCopy((copyId) => {
       // Keep the #369 cases (max_attempts = 1) independent of the retake cases
       // below, which raise the budget on the shared seeded assignment.
       await setMaxAttempts(1);
+      // The seed default is `false`; pin it so the #374 cases stay isolated.
+      await setShowResults(false);
       await cleanupQuizAttempts(student.user.id);
       await cleanupQuizAttempts(other.id);
     });
@@ -311,6 +354,8 @@ forEachCopy((copyId) => {
 
     it('the detail last completed attempt resolves to the review payload (#175)', async () => {
       await setMaxAttempts(2);
+      // The review payload is only served when the teacher shares results.
+      await setShowResults(true);
       mockUser(student.user);
 
       const started = await startAs(student.user);
@@ -388,6 +433,77 @@ forEachCopy((copyId) => {
 
       const row = await listRow();
       expect(row.attempts_used).toBe(2);
+    });
+
+    // The #374 cases below assert the service rule, not RLS: `mockUser` swaps in
+    // the service-role client, so the `teacher_assignments` read bypasses the
+    // student's row policy (the RLS-gated read was verified live in review 1).
+    it('hides the score, review and stats while show_results is off (#374)', async () => {
+      await setShowResults(false);
+      mockUser(student.user);
+
+      const started = await startAs(student.user);
+      expect(started.status).toBe(200);
+      const attemptId = started.body.data.id as string;
+
+      const submitted = await submitAttempt(started.body);
+      expect(submitted.data.score).toBeNull();
+
+      const detailResult = await detail();
+      expect(detailResult.status).toBe(200);
+      expect(detailResult.body.data.show_results).toBe(false);
+      // Completion metadata stays, only the result is withheld.
+      expect(detailResult.body.data.last_completed_attempt.id).toBe(attemptId);
+      expect(detailResult.body.data.last_completed_attempt.score).toBeNull();
+
+      const row = await listRow();
+      expect(row.last_completed_attempt.id).toBe(attemptId);
+      expect(row.last_completed_attempt.score).toBeNull();
+
+      // `/app/stats/results` keeps the attempt in the history but withholds its result.
+      const historyRow = (await attemptList()).find((attempt) => attempt.id === attemptId);
+      expect(historyRow).toBeDefined();
+      expect(historyRow.completed_at).not.toBeNull();
+      expect(historyRow.score).toBeNull();
+
+      const hiddenReview = await review(attemptId);
+      expect(hiddenReview.status).toBe(403);
+
+      const stats = await studentStats();
+      expect(stats.totalQuizzes).toBe(1);
+      expect(stats.avgScore).toBe(0);
+      expect(stats.bestScore).toBe(0);
+      expect(stats.attemptsOverTime).toEqual([]);
+    });
+
+    it('reveals the score and review once show_results is on (#374)', async () => {
+      await setShowResults(false);
+      mockUser(student.user);
+
+      const started = await startAs(student.user);
+      const attemptId = started.body.data.id as string;
+      await submitAttempt(started.body);
+
+      await setShowResults(true);
+
+      const detailResult = await detail();
+      expect(detailResult.status).toBe(200);
+      expect(detailResult.body.data.show_results).toBe(true);
+      expect(typeof detailResult.body.data.last_completed_attempt.score).toBe('number');
+
+      // The same history row now carries the real score.
+      const historyRow = (await attemptList()).find((attempt) => attempt.id === attemptId);
+      expect(historyRow).toBeDefined();
+      expect(typeof historyRow.score).toBe('number');
+
+      const visibleReview = await review(attemptId);
+      expect(visibleReview.status).toBe(200);
+      expect(visibleReview.body.data.assignment_id).toBe(assignmentId);
+      expect(visibleReview.body.data.completed_at).not.toBeNull();
+
+      const stats = await studentStats();
+      expect(stats.totalQuizzes).toBe(1);
+      expect(stats.attemptsOverTime).toHaveLength(1);
     });
   });
 });
