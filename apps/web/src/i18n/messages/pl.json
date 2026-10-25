@@ -35,6 +35,7 @@
     "ERROR_FORBIDDEN": "Nie masz uprawnień do wykonania tej akcji.",
     "ERROR_NOT_FOUND": "Żądany zasób nie został znaleziony.",
     "ERROR_GONE": "Ten zasób nie jest już dostępny.",
+    "ERROR_USAGE_LIMIT_EXCEEDED": "Osiągnięto limit Twojego planu.",
     "ERROR_CONFLICT": "Wystąpił konflikt. Zasób może już istnieć.",
     "ERROR_PAYLOAD_TOO_LARGE": "Plik jest za duży.",
     "ERROR_UNPROCESSABLE_ENTITY": "Żądanie nie mogło zostać przetworzone z powodu błędów walidacji.",
@@ -214,6 +215,7 @@
     "join_hint_detail": "Po dołączeniu uzyskasz dostęp do treści i narzędzi organizacji.",
     "join_button": "Dołącz do organizacji",
     "join_failed": "Nie udało się dołączyć. Spróbuj ponownie.",
+    "org_full": "Ta organizacja osiągnęła limit członków. Kod zaproszenia jest prawidłowy — poproś administratora o zwiększenie limitu lub zwolnienie miejsca.",
     "create_title": "Skonfiguruj swoją klasę",
     "create_desc": "Nadaj swojej klasie nazwę.",
     "name_label": "Nazwa klasy",
@@ -403,7 +405,8 @@
     "token_placeholder": "Wklej kod zaproszenia",
     "submit": "Dołącz",
     "success": "Dołączyłeś do klasy!",
-    "invalid_token": "Nieprawidłowy lub wygasły kod zaproszenia"
+    "invalid_token": "Nieprawidłowy lub wygasły kod zaproszenia",
+    "org_full": "Ta organizacja osiągnęła limit członków. Kod zaproszenia jest prawidłowy — poproś administratora o zwiększenie limitu lub zwolnienie miejsca."
   },
   "OnboardingChecklist": {
     "title": "Pierwsze kroki",
