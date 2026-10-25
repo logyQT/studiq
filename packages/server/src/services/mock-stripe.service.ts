@@ -120,34 +120,40 @@ export class MockStripeService {
     const purchasable = await this.assertPlanPurchasable(event.plan_id, accountType);
     if (isFailure(purchasable)) return purchasable;
 
+    // `profiles` is write-locked for `authenticated` (see migration
+    // 20261022000001_profiles_write_lockdown.sql) and `apply_org_plan` is
+    // service-role only, so entitlement writes use the admin client, never the
+    // caller's session.
+    const admin = this.createAdminClient();
+
     if (purchasable.data.isOrgPlan) {
-      const admin = await this.assertOrgAdmin(event.org_id, userId);
-      if (isFailure(admin)) return admin;
+      const adminMembership = await this.assertOrgAdmin(event.org_id, userId);
+      if (isFailure(adminMembership)) return adminMembership;
 
       // organizations.plan alone changes nothing: features and limits are
       // snapshots, so the DB function moves the plan and re-syncs them.
-      const { error: planError } = await this.createAdminClient().rpc('apply_org_plan', {
+      const { error: planError } = await admin.rpc('apply_org_plan', {
         p_org_id: event.org_id,
         p_plan: event.plan_id,
       });
       if (planError) return toDbFailure(planError);
+    } else {
+      // An organization purchase changes the organization, never the buyer's
+      // personal plan: a manager's personal plan is the free `launch` tier and
+      // applies only outside an organization (#228). Only a plan bought for the
+      // buyer themselves updates `profiles.personal_plan_key`.
+      const { error } = await admin
+        .from('profiles')
+        .update({ personal_plan_key: event.plan_id })
+        .eq('id', userId);
+
+      if (error) return toDbFailure(error);
     }
 
-    // profiles is write-locked for `authenticated` (see migration
-    // 20261022000001_profiles_write_lockdown.sql) so a plan upgrade must go
-    // through the service-role client, not the caller's session.
-    const admin = this.createAdminClient();
-
-    const { error } = await admin
-      .from('profiles')
-      .update({ personal_plan_key: event.plan_id })
-      .eq('id', userId);
-
-    if (error) return toDbFailure(error);
-
-    // Append-only purchase log for "Historia płatności" (#392). The plan
-    // update above stays the source of truth for entitlements; this row only
-    // records what was bought, at the catalog price read during this request.
+    // Append-only purchase log for "Historia płatności" (#392). The entitlement
+    // write above (`organizations.plan` or `profiles.personal_plan_key`) stays
+    // the source of truth; this row only records what was bought, at the
+    // catalog price read during this request.
     // `session_id` is unique, so a replayed webhook collapses onto the same row
     // (`ignoreDuplicates` → ON CONFLICT DO NOTHING).
     const { error: paymentError } = await admin.from('payments').upsert(

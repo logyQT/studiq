@@ -14,6 +14,7 @@ function qb(data: any, error: any = null) {
   b.neq = vi.fn(() => b);
   b.in = vi.fn(() => b);
   b.order = vi.fn(() => b);
+  b.limit = vi.fn(() => b);
   b.single = vi.fn().mockResolvedValue({ data: data ?? null, error });
   b.maybeSingle = vi.fn().mockResolvedValue({ data: data ?? null, error });
   b.then = promise.then.bind(promise);
@@ -250,6 +251,19 @@ describe('SubscriptionPlanService', () => {
       expect(result.data.key).toBe('launch');
     });
 
+    it('returns the manager free personal plan with no active org (#228)', async () => {
+      mockTables({
+        profiles: { personal_plan_key: 'launch' },
+        subscription_plans: planRow('launch', 'manager'),
+      });
+
+      const result = await service.getMyPlan({ ...ctx, accountType: 'manager' as any });
+
+      expect(result.success).toBe(true);
+      expect(result.data.key).toBe('launch');
+      expect(mock.from).not.toHaveBeenCalledWith('organizations');
+    });
+
     it('returns personal plan when no org', async () => {
       mockTables({
         profiles: { personal_plan_key: 'free' },
@@ -327,6 +341,73 @@ describe('SubscriptionPlanService', () => {
       const result = await service.getPersonalPlan(ctx);
 
       expect(result.success).toBe(true);
+    });
+
+    it('reports the free manager plan for a manager carrying a purchased org plan (#228)', async () => {
+      // Legacy checkout rows copied the bought org plan into the personal plan.
+      // Managers have no paid personal plan, so the row is inert: report the
+      // free manager tier instead of the org plan.
+      const paidOrgPlan = {
+        id: 'p-hub',
+        key: 'hub',
+        name: 'StudiQ Hub',
+        description: null,
+        price_monthly: 1999,
+        price_yearly: 0,
+        currency: 'PLN',
+        sort_order: 9,
+        is_active: true,
+        for_account_type: 'manager',
+      };
+      const freeManagerPlan = {
+        id: 'p-launch',
+        key: 'launch',
+        name: 'StudiQ Launch',
+        description: null,
+        price_monthly: 0,
+        price_yearly: 0,
+        currency: 'PLN',
+        sort_order: 3,
+        is_active: true,
+        for_account_type: 'manager',
+      };
+      mock.from
+        .mockReturnValueOnce(qb({ personal_plan_key: 'hub' }))
+        .mockReturnValueOnce(qb(paidOrgPlan))
+        .mockReturnValueOnce(qb(freeManagerPlan))
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([]));
+
+      const result = await service.getPersonalPlan({ ...ctx, accountType: 'manager' as any });
+
+      expect(result.success).toBe(true);
+      expect(result.data?.key).toBe('launch');
+    });
+
+    it('keeps a manager on the free personal plan without an extra catalog lookup (#228)', async () => {
+      const freeManagerPlan = {
+        id: 'p-launch',
+        key: 'launch',
+        name: 'StudiQ Launch',
+        description: null,
+        price_monthly: 0,
+        price_yearly: 0,
+        currency: 'PLN',
+        sort_order: 3,
+        is_active: true,
+        for_account_type: 'manager',
+      };
+      mock.from
+        .mockReturnValueOnce(qb({ personal_plan_key: 'launch' }))
+        .mockReturnValueOnce(qb(freeManagerPlan))
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([]));
+
+      const result = await service.getPersonalPlan({ ...ctx, accountType: 'manager' as any });
+
+      expect(result.success).toBe(true);
+      expect(result.data?.key).toBe('launch');
+      expect(mock.from).toHaveBeenCalledTimes(4);
     });
 
     it('returns NOT_FOUND when no plan key', async () => {

@@ -28,7 +28,7 @@ A plan is a **template**: `plan_features` and `plan_limits` rows keyed by
 | `subscription_plans` | Plan catalog (`key`, name, price, `for_account_type`). |
 | `plan_features (plan_key, feature_key)` | Feature template for a plan. |
 | `plan_limits (plan_key, limit_key, limit_value)` | Limit template for a plan. `-1` = unlimited. |
-| `profiles.personal_plan_key` | Personal plan (seed default `base`). |
+| `profiles.personal_plan_key` | Personal plan (seed default `base`; managers default to the free `launch` tier). An organization purchase never writes it (#228). |
 | `organizations.plan` | Organization plan (seed default `launch`). |
 | `org_role_features (org_role_id, feature_key, is_enabled)` | Per-org-role feature snapshot. |
 | `org_seat_pools` / `org_seat_assignments` | Opt-in per-user seat; the pool's `plan_key` is the seat plan. |
@@ -129,6 +129,13 @@ context; a missing `plan_limits` row is `0` (blocked) in every path.
 `org_members` row before treating it as a tenant scope: a spoofed org id has no
 row and falls back to the personal plan (user keys) or `0` (org keys).
 
+**Managers (#228):** a manager has no paid personal plan — their
+`profiles.personal_plan_key` is the free `launch` tier. In a verified org a
+manager therefore resolves limits from the org plan only (a seat still wins for
+per-member keys); the free personal tier applies only when there is no active
+org. A manager carrying a paid org plan in `personal_plan_key` from an old
+purchase cannot widen any org's limits.
+
 `LimitsResolver.checkOrgLimit(orgId, limitKey, count, increment, client?)`
 resolves **only** the org's plan and treats a missing `plan_limits` row as `0`
 (blocked). An unknown organization throws `NOT_FOUND` (404). It is used before
@@ -156,7 +163,10 @@ resolved from, so it follows the same precedence as the resolvers:
    resolution (#233) and the seat feature upgrade (#270).
 2. **Manager in the active org** → `organizations.plan`, falling back to the
    manager's personal plan when the org has no plan row. Managers are the org's
-   billing contact, so they keep seeing the org subscription (#181).
+   billing contact, so they keep seeing the org subscription (#181). An
+   organization purchase changes only `organizations.plan`: it never writes the
+   buyer's `personal_plan_key` (#228), so the fallback is the manager's own free
+   `launch` tier, not the org plan they just bought.
 3. **Everyone else (or no active org)** → `profiles.personal_plan_key`. An
    unseated member's `active_org_id` membership never replaces their personal
    plan on this page (#181).
@@ -166,6 +176,10 @@ member's limits come from the org plan while this page shows their personal
 plan, and a seated member's features are `org role features ∪ seat plan
 features`, so the displayed plan can be narrower than enforcement in those
 mixes (#181/#270).
+
+`/pricing/org` badges its "current plan" from the same precedence (#228): a
+manager reads `/api/v1/me/plan` (the active org's plan), while
+students/educators keep reading `/api/v1/me/personal-plan`.
 
 Value semantics:
 
@@ -190,7 +204,9 @@ Enforcement points:
 
 `getUsage(ctx, key)` returns `{ current, limit, plan, resetsAt }`; `current` is
 today's `user_daily_activity.ai_input_tokens + ai_output_tokens`, `plan` is the
-caller's `profiles.personal_plan_key`, and `resetsAt` is the next UTC midnight.
+caller's `profiles.personal_plan_key` (for a manager the free `launch` tier
+unless a legacy purchase row is still present), and `resetsAt` is the next UTC
+midnight.
 
 Client caches can lag server enforcement: `useApiQuery` defaults to
 `staleTime: Infinity`, so the UI may keep showing an old count/quota until it
