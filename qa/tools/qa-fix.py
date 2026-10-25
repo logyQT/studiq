@@ -225,7 +225,11 @@ def session_alive(sid: str | None) -> bool:
     rec = data.get("data", data) if isinstance(data, dict) else data
     if not isinstance(rec, dict) or not rec.get("id"):
         return False
-    return rec.get("outcome") not in ("failed", "aborted")
+    # `outcome` is null while a session is still running, and one of
+    # succeeded/failed/aborted/interrupted once it ends. Any terminal outcome
+    # that is not `succeeded` (notably `interrupted`) must count as dead:
+    # otherwise a killed review keeps its stage locked forever.
+    return rec.get("outcome") in (None, "succeeded")
 
 
 def dead_stage(rec: dict) -> bool:
