@@ -11,6 +11,14 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Badge,
   Button,
   Card,
@@ -43,6 +51,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiPost } from '@/lib/api';
@@ -231,6 +240,8 @@ export default function AssignmentDetailClient() {
     }
   }, [assignment?.deadline, assignment?.start_time]);
 
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
   const deleteMutation = useApiMutation<void, void>({
     mutationFn: async () => {
       const res = await fetch(`/api/v1/teacher/assignments/${id}`, { method: 'DELETE' });
@@ -301,8 +312,14 @@ export default function AssignmentDetailClient() {
   }, [targetGroupIds, targetStudentIds, saveTargets]);
 
   const handleDelete = async () => {
-    if (!window.confirm(t('delete_confirm'))) return;
-    await deleteMutation.mutateAsync(undefined);
+    try {
+      await deleteMutation.mutateAsync(undefined);
+    } catch {
+      toast.error(t('delete_failed'));
+      setDeleteOpen(false);
+      return;
+    }
+    setDeleteOpen(false);
     router.push('/edu/assignments');
   };
 
@@ -495,7 +512,7 @@ export default function AssignmentDetailClient() {
                   <Edit className="w-4 h-4 mr-1" /> {t('edit')}
                 </Button>
               </Link>
-              <Button variant="destructive" size="sm" onClick={handleDelete}>
+              <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>
                 <Trash2 className="w-4 h-4 mr-1" /> {t('delete')}
               </Button>
             </>
@@ -951,6 +968,29 @@ export default function AssignmentDetailClient() {
           </CardContent>
         </Card>
       )}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('delete_confirm_title')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('delete_confirm_desc')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>
+              {t('common_cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteMutation.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                handleDelete();
+              }}
+              className="bg-destructive text-destructive-foreground"
+            >
+              {t('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
