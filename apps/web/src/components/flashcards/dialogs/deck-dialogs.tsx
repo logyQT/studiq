@@ -63,6 +63,7 @@ export function DeckDialogs({
         visibilityGroupLabel={t('visibility_group')}
         groupsPlaceholder={t('groups_placeholder')}
         groupsEmptyText={t('groups_empty')}
+        groupsRequiredText={t('groups_required')}
       />
 
       <DeleteConfirmDialog
