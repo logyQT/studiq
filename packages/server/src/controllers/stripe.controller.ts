@@ -45,18 +45,14 @@ export class StripeController {
     }
 
     // The mock webhook is called by the checkout page itself, so it may only
-    // ever act on the caller's own account.
+    // ever act on the caller's own account. This is the only place that reads
+    // the body `user_id`; the service gets the authenticated id instead.
     if (user_id !== ctx.userId) return controllerResponse.error('FORBIDDEN');
 
     const result = await this.mockStripeService.handleWebhook(
-      {
-        type,
-        session_id,
-        plan_id,
-        user_id,
-        org_id,
-      },
+      { type, session_id, plan_id, org_id },
       ctx.accountType,
+      ctx.userId,
     );
 
     if (isFailure(result)) return controllerResponse.error(result.error);

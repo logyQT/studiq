@@ -15,6 +15,18 @@ export type MockCheckoutSession = {
   url: string;
 };
 
+/**
+ * The (mock) Stripe event fields the service may trust. The caller identity is
+ * deliberately absent: it comes from the authenticated RequestContext
+ * (`ctx.userId`), never from the request body.
+ */
+export type MockWebhookEvent = {
+  type: string;
+  session_id: string;
+  plan_id: string;
+  org_id?: string;
+};
+
 export class MockStripeService {
   constructor(
     private createClient: () => Promise<SupabaseClient>,
@@ -98,14 +110,10 @@ export class MockStripeService {
   }
 
   async handleWebhook(
-    event: {
-      type: string;
-      session_id: string;
-      plan_id: string;
-      user_id: string;
-      org_id?: string;
-    },
+    event: MockWebhookEvent,
     accountType: string,
+    // The authenticated caller (ctx.userId), never the request body.
+    userId: string,
   ): Promise<ServiceResult<void>> {
     if (event.type !== 'checkout.session.completed') return success(undefined);
 
@@ -113,7 +121,7 @@ export class MockStripeService {
     if (isFailure(purchasable)) return purchasable;
 
     if (purchasable.data.isOrgPlan) {
-      const admin = await this.assertOrgAdmin(event.org_id, event.user_id);
+      const admin = await this.assertOrgAdmin(event.org_id, userId);
       if (isFailure(admin)) return admin;
 
       // organizations.plan alone changes nothing: features and limits are
@@ -133,7 +141,7 @@ export class MockStripeService {
     const { error } = await admin
       .from('profiles')
       .update({ personal_plan_key: event.plan_id })
-      .eq('id', event.user_id);
+      .eq('id', userId);
 
     if (error) return toDbFailure(error);
 
@@ -144,7 +152,7 @@ export class MockStripeService {
     // (`ignoreDuplicates` → ON CONFLICT DO NOTHING).
     const { error: paymentError } = await admin.from('payments').upsert(
       {
-        user_id: event.user_id,
+        user_id: userId,
         organization_id: purchasable.data.isOrgPlan ? (event.org_id ?? null) : null,
         plan_key: event.plan_id,
         plan_name: purchasable.data.planName,
