@@ -12,6 +12,13 @@ export interface UsageInfo {
   resetsAt: string;
 }
 
+/**
+ * Daily AI token budget (#379). Enforcement (`/api/v1/ai/chat`) and the
+ * read-only usage endpoint share this key so the counter always reports the
+ * same limit the chat rejects on.
+ */
+export const AI_TOKENS_LIMIT_KEY = 'max_ai_tokens_per_day';
+
 export class LimitsResolver {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 

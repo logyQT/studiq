@@ -1,8 +1,12 @@
 'use client';
 
 import { useChat } from '@ai-sdk/react';
+import { useQueryClient } from '@tanstack/react-query';
 import { DefaultChatTransport } from 'ai';
 import { useCallback, useMemo } from 'react';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { useApiQuery } from '@/hooks/use-api';
+import { aiKeys } from '@/lib/query-keys';
 
 interface ChatPart {
   type: string;
@@ -125,8 +129,29 @@ function toolStateToStatus(state: string): 'thinking' | 'running' | 'complete' {
 }
 
 export function useAiChat(): UseAiChatReturn {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // Daily AI token budget (#379) — the server enforces this on
+  // `POST /api/v1/ai/chat`; fetch it so `UsageBadge` can render it.
+  // `staleTime: 0` + the global `refetchOnWindowFocus` keeps the number fresh
+  // after a plan change or a tab focus; streaming completion invalidates it.
+  const { data: usageData } = useApiQuery<UsageInfo>({
+    queryKey: aiKeys.usage,
+    url: '/api/v1/ai/usage',
+    staleTime: 0,
+    // Usage is resolved per user (and active org); fetching before
+    // `/api/v1/auth/me` resolves would cache a 401 as the anonymous entry (#458).
+    enabled: !!user,
+  });
+
   const chatResult = useChat({
     transport: new DefaultChatTransport({ api: '/api/v1/ai/chat' }),
+    onFinish: () => {
+      // The chat route awaits `trackTokenUsage` before the stream closes, so
+      // refetching here reads the post-message totals (#379).
+      queryClient.invalidateQueries({ queryKey: aiKeys.usage });
+    },
   }) as unknown as UseChatResultRaw;
   const {
     messages: uiMessages = [],
@@ -416,7 +441,7 @@ export function useAiChat(): UseAiChatReturn {
 
   return {
     messages,
-    usage: null,
+    usage: usageData ?? null,
     isStreaming: status === 'streaming',
     sendMessage: handleSend,
     sendLocalResponse,

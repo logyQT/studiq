@@ -61,6 +61,11 @@ export const featureKeys = {
   me: ['features', 'me'] as const,
 };
 
+export const aiKeys = {
+  all: ['ai'] as const,
+  usage: ['ai', 'usage'] as const,
+};
+
 export const groupKeys = {
   all: ['groups'] as const,
   list: (orgId?: string) => ['groups', 'list', orgId] as const,
