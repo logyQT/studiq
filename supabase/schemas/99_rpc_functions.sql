@@ -377,7 +377,8 @@ $$;
 CREATE OR REPLACE FUNCTION public.get_teacher_stats(
   p_flashcard_ids uuid[],
   p_user_id uuid,
-  p_deck_id uuid DEFAULT NULL
+  p_deck_id uuid DEFAULT NULL,
+  p_organization_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -386,6 +387,8 @@ SET search_path = ''
 AS $$
 DECLARE
   v_flashcard_ids uuid[];
+  v_organization_id uuid;
+  v_roster_students int;              -- NULL stays NULL: "no org" is not "0 students"
   result jsonb;
 BEGIN
   IF p_deck_id IS NOT NULL THEN
@@ -398,11 +401,66 @@ BEGIN
     v_flashcard_ids := p_flashcard_ids;
   END IF;
 
+  -- Authorization: only the caller's own dashboard, or the service role
+  -- (backend/tests), may aggregate. Anything else fails with 42501 instead of
+  -- returning another user's practice data.
+  IF auth.role() IS DISTINCT FROM 'service_role' THEN
+    IF p_user_id IS DISTINCT FROM auth.uid() THEN
+      RAISE EXCEPTION 'get_teacher_stats may only be called for the authenticated user'
+        USING ERRCODE = '42501';
+    END IF;
+
+    -- SECURITY DEFINER bypasses RLS, so a crafted p_flashcard_ids could still
+    -- aggregate practice rows of another tenant's cards. Narrow the request to
+    -- cards the caller can read (own, or in one of their organizations) — the
+    -- same floor as the public.flashcards policy.
+    SELECT ARRAY_AGG(DISTINCT f.id)
+    INTO v_flashcard_ids
+    FROM public.flashcards f
+    WHERE f.id = ANY(v_flashcard_ids)
+      AND (
+        f.created_by = auth.uid()
+        OR f.organization_id IN (
+          SELECT c.organization_id FROM public.rls_caller_org_ids() c
+        )
+      );
+
+    -- #460: SECURITY DEFINER must not trust the org parameter on its own — a
+    -- crafted call would otherwise become a cross-tenant roster oracle.
+    IF p_organization_id IS NOT NULL
+       AND p_organization_id IN (
+         SELECT c.organization_id FROM public.rls_caller_org_ids() c
+       ) THEN
+      v_organization_id := p_organization_id;
+    END IF;
+  ELSE
+    v_organization_id := p_organization_id;   -- service role: backend + integration tests
+  END IF;
+
+  -- Roster: distinct learners in the caller's groups of the active
+  -- organization. `ctx.groupIds` spans every org, so the groups are re-filtered
+  -- by organization, and the group must also contain the caller.
+  IF v_organization_id IS NOT NULL THEN
+    SELECT COUNT(DISTINCT learner.user_id)::int
+    INTO v_roster_students
+    FROM public.groups g
+    JOIN public.group_members learner ON learner.group_id = g.id
+    WHERE g.organization_id = v_organization_id
+      AND learner.role = 'member'
+      AND learner.user_id <> p_user_id
+      AND EXISTS (
+        SELECT 1 FROM public.group_members caller
+        WHERE caller.group_id = g.id AND caller.user_id = p_user_id
+      );
+  END IF;
+
   IF v_flashcard_ids IS NULL OR array_length(v_flashcard_ids, 1) IS NULL OR array_length(v_flashcard_ids, 1) = 0 THEN
     RETURN jsonb_build_object(
       'summary', jsonb_build_object(
         'totalDecks', 0, 'totalFlashcards', 0, 'totalPractices', 0,
-        'totalStudents', 0, 'overallAccuracy', 0, 'averageEasinessFactor', 0,
+        'practicingStudents', 0,
+        'rosterStudents', v_roster_students,
+        'overallAccuracy', 0, 'averageEasinessFactor', 0,
         'difficultyBreakdown', jsonb_build_object('easy', 0, 'medium', 0, 'hard', 0, 'new', 0)
       ),
       'byDeck', '[]'::jsonb,
@@ -449,7 +507,9 @@ BEGIN
         (SELECT COUNT(*) FROM decks)::int AS total_decks,
         array_length(v_flashcard_ids, 1) AS total_flashcards,
         (SELECT COUNT(*) FROM practices)::int AS total_practices,
-        (SELECT COUNT(DISTINCT user_id) FROM practices)::int AS total_students,
+        -- #460: the caller is not a student of their own deck.
+        (SELECT COUNT(DISTINCT user_id) FROM practices WHERE user_id <> p_user_id)::int
+          AS practicing_students,
         CASE
           WHEN (SELECT COUNT(*) FROM practices) > 0
           THEN ROUND(
@@ -589,7 +649,8 @@ BEGIN
       'totalDecks', (SELECT total_decks FROM summary),
       'totalFlashcards', (SELECT total_flashcards FROM summary),
       'totalPractices', (SELECT total_practices FROM summary),
-      'totalStudents', (SELECT total_students FROM summary),
+      'practicingStudents', (SELECT practicing_students FROM summary),
+      'rosterStudents', v_roster_students,
       'overallAccuracy', (SELECT overall_accuracy FROM summary),
       'averageEasinessFactor', (SELECT avg_ef FROM summary),
       'difficultyBreakdown', jsonb_build_object(

@@ -43,14 +43,14 @@ export class FlashcardStatsService {
     if (fcError) return toDbFailure(fcError);
 
     const flashcardIds = (flashcards ?? []).map((f) => f.id);
-    if (flashcardIds.length === 0) {
-      return success(emptyResponse);
-    }
 
+    // #460: always call the RPC — a brand-new organization has no flashcards
+    // yet, but the class roster (`rosterStudents`) must still be returned.
     const { data: rpcResult, error: rpcError } = await supabase.rpc('get_teacher_stats', {
       p_flashcard_ids: flashcardIds,
       p_user_id: ctx.userId,
       p_deck_id: filters?.deckId ?? null,
+      p_organization_id: ctx.activeOrgId ?? null,
     });
 
     if (rpcError) return toDbFailure(rpcError);
@@ -227,7 +227,8 @@ const emptyResponse: TeacherFlashcardStatsResponse = {
     totalDecks: 0,
     totalFlashcards: 0,
     totalPractices: 0,
-    totalStudents: 0,
+    practicingStudents: 0,
+    rosterStudents: null,
     overallAccuracy: 0,
     averageEasinessFactor: 0,
     difficultyBreakdown: { easy: 0, medium: 0, hard: 0, new: 0 },

@@ -34,7 +34,8 @@ const emptyRpcResult = {
     totalDecks: 0,
     totalFlashcards: 0,
     totalPractices: 0,
-    totalStudents: 0,
+    practicingStudents: 0,
+    rosterStudents: null,
     overallAccuracy: 0,
     averageEasinessFactor: 0,
     difficultyBreakdown: { easy: 0, medium: 0, hard: 0, new: 0 },
@@ -65,17 +66,20 @@ describe('FlashcardStatsService', () => {
   });
 
   describe('getTeacherStats', () => {
-    it('returns empty when filter is impossible', async () => {
+    it('returns empty without calling the RPC when filter is impossible', async () => {
       const { accessibleFilter } = await import('@studiq/server/lib/authz');
       vi.mocked(accessibleFilter).mockResolvedValueOnce({ _impossible: true } as any);
 
       const result = await service.getTeacherStats(ctx);
 
       expect(result.success).toBe(true);
+      expect(mock.rpc).not.toHaveBeenCalled();
       expect(result.data.summary.totalFlashcards).toBe(0);
+      expect(result.data.summary.practicingStudents).toBe(0);
+      expect(result.data.summary.rosterStudents).toBeNull();
     });
 
-    it('applies the resolved group filter before querying cards', async () => {
+    it('applies the resolved filter and passes the active org to the RPC', async () => {
       const { accessibleFilter } = await import('@studiq/server/lib/authz');
       vi.mocked(accessibleFilter).mockResolvedValueOnce({
         organization_id: 'org-1',
@@ -93,15 +97,53 @@ describe('FlashcardStatsService', () => {
       expect(result.success).toBe(true);
       expect(flashcardQuery.or).toHaveBeenCalledWith('created_by.eq.teacher-1,id.in.(fc-1)');
       expect(flashcardQuery.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(mock.rpc).toHaveBeenCalledWith('get_teacher_stats', {
+        p_flashcard_ids: ['fc-1'],
+        p_user_id: 'teacher-1',
+        p_deck_id: null,
+        p_organization_id: 'org-1',
+      });
     });
 
-    it('returns empty when no flashcards', async () => {
+    it('passes a null organization id outside an org scope', async () => {
+      const ownCtx: RequestContext = { ...ctx, activeOrgId: null };
+      mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }]));
+      mock.rpc.mockResolvedValueOnce({ data: emptyRpcResult, error: null });
+
+      const result = await service.getTeacherStats(ownCtx);
+
+      expect(result.success).toBe(true);
+      expect(mock.rpc).toHaveBeenCalledWith('get_teacher_stats', {
+        p_flashcard_ids: ['fc-1'],
+        p_user_id: 'teacher-1',
+        p_deck_id: null,
+        p_organization_id: null,
+      });
+    });
+
+    it('still calls the RPC with no flashcards so the roster survives', async () => {
+      // A brand-new organization has no cards yet — the roster must still be
+      // returned instead of short-circuiting to the empty response (#460).
       mock.from.mockReturnValueOnce(qb([]));
+      mock.rpc.mockResolvedValueOnce({
+        data: {
+          ...emptyRpcResult,
+          summary: { ...emptyRpcResult.summary, rosterStudents: 2 },
+        },
+        error: null,
+      });
 
       const result = await service.getTeacherStats(ctx);
 
       expect(result.success).toBe(true);
+      expect(mock.rpc).toHaveBeenCalledWith('get_teacher_stats', {
+        p_flashcard_ids: [],
+        p_user_id: 'teacher-1',
+        p_deck_id: null,
+        p_organization_id: 'org-1',
+      });
       expect(result.data.summary.totalFlashcards).toBe(0);
+      expect(result.data.summary.rosterStudents).toBe(2);
     });
 
     it('returns stats when flashcards exist', async () => {
@@ -111,7 +153,8 @@ describe('FlashcardStatsService', () => {
           totalDecks: 1,
           totalFlashcards: 2,
           totalPractices: 10,
-          totalStudents: 5,
+          practicingStudents: 5,
+          rosterStudents: 6,
           overallAccuracy: 80,
           averageEasinessFactor: 2.5,
           difficultyBreakdown: { easy: 1, medium: 0, hard: 1, new: 0 },
@@ -126,10 +169,21 @@ describe('FlashcardStatsService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.summary.totalFlashcards).toBe(2);
+      expect(result.data.summary.practicingStudents).toBe(5);
+      expect(result.data.summary.rosterStudents).toBe(6);
     });
 
     it('returns error on flashcard query failure', async () => {
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.getTeacherStats(ctx);
+
+      expect(result.success).toBe(false);
+    });
+
+    it('returns error on RPC failure', async () => {
+      mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }]));
+      mock.rpc.mockResolvedValueOnce({ data: null, error: { message: 'DB error' } });
 
       const result = await service.getTeacherStats(ctx);
 

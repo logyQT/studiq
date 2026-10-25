@@ -31,7 +31,7 @@ interface FlashcardSummary {
   totalDecks: number;
   totalFlashcards: number;
   totalPractices: number;
-  totalStudents: number;
+  practicingStudents: number;
   overallAccuracy: number;
   averageEasinessFactor: number;
   difficultyBreakdown: {

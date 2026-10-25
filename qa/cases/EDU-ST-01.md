@@ -18,6 +18,10 @@ Zalogowany TC.
 
 ## Expected result
 
-- Karty: Wszystkie pytania, fiszki, talie, uczniowie; podział „Pytania według typu” (WW/PF/Otwarte) i „według przedmiotu”; tabele liczb talii i tematów.
+- Karty: Wszystkie pytania, fiszki, talie, studenci; karta „Studenci” pokazuje liczbę uczniów w grupach TC w aktywnej organizacji (seed Classroom: 1), a pod wartością podpis „Aktywnych: N” — liczbę studentów, którzy ćwiczyli (TC nie jest liczony).
+- Po jednej powtórce studenta „Aktywnych” rośnie o 1, a pasek postępu karty jest wypełniony; powtórka samego TC nie zmienia „Aktywnych”.
+- Przełączenie organizacji zmienia liczbę studentów na właściwą dla aktywnej organizacji; TC bez aktywnej organizacji nie widzi karty „Studenci” (zamiast gołego 0).
+- Podział „Pytania według typu” (WW/PF/Otwarte) i „według przedmiotu”; tabele liczby talii i tematów.
 - Linki „Zobacz szczegółowe statystyki pytań / fiszek” działają.
+- Na /edu/flashcards/stats karta studentów ma etykietę „Studenci, którzy ćwiczyli” (bez nowej karty i bez zmiany siatki).
 - TC: 10 pytań – 4 wielokrotnego wyboru, 3 prawda/fałsz, 3 otwarte (zgodnie z seedem).
