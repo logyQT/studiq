@@ -1121,6 +1121,8 @@
   "AppOnboarding": {
     "title": "Pierwsze kroki",
     "description": "Wykonaj te kroki, aby rozpocząć naukę",
+    "all_done_title": "Gotowe!",
+    "all_done_desc": "Wykonałeś wszystkie kroki. Możesz ukryć tę kartę.",
     "create_deck": "Utwórz swoją pierwszą talię",
     "add_flashcards": "Dodaj fiszki do talii",
     "take_quiz": "Rozwiąż swój pierwszy quiz",

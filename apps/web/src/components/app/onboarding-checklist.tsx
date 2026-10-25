@@ -52,7 +52,7 @@ export function OnboardingChecklist() {
     },
   ];
 
-  if (items.every((i) => i.done)) return null;
+  const allDone = items.every((i) => i.done);
 
   function handleDismiss() {
     setDismissed(true);
@@ -69,13 +69,13 @@ export function OnboardingChecklist() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Rocket className="size-5 text-primary" />
-            <CardTitle className="text-lg">{t('title')}</CardTitle>
+            <CardTitle className="text-lg">{allDone ? t('all_done_title') : t('title')}</CardTitle>
           </div>
           <Button variant="ghost" size="icon-xs" onClick={handleDismiss}>
             <X className="size-4" />
           </Button>
         </div>
-        <CardDescription>{t('description')}</CardDescription>
+        <CardDescription>{allDone ? t('all_done_desc') : t('description')}</CardDescription>
       </CardHeader>
       <CardContent>
         <ul className="space-y-2">
