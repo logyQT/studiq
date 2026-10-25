@@ -32,7 +32,8 @@ interface FlashcardStats {
     totalDecks: number;
     totalFlashcards: number;
     totalPractices: number;
-    totalStudents: number;
+    practicingStudents: number;
+    rosterStudents: number | null;
   };
   byDeck: Array<{
     deckId: string;
@@ -108,11 +109,21 @@ export default function StatsDataPage() {
           value={flashStats?.summary.totalDecks ?? 0}
           icon={BookOpen}
         />
-        <StatCard
-          title={t('total_students')}
-          value={flashStats?.summary.totalStudents ?? 0}
-          icon={Users}
-        />
+        {flashStats?.summary.rosterStudents != null && (
+          <StatCard
+            title={t('students')}
+            value={flashStats.summary.rosterStudents}
+            description={t('active_students', {
+              count: flashStats.summary.practicingStudents,
+            })}
+            progress={
+              flashStats.summary.rosterStudents > 0
+                ? (flashStats.summary.practicingStudents / flashStats.summary.rosterStudents) * 100
+                : 0
+            }
+            icon={Users}
+          />
+        )}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">

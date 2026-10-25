@@ -93,7 +93,7 @@ export default function EduFlashcardStatsClient() {
         <StatCard title={t('summary_decks')} value={summary.totalDecks} icon={Layers} />
         <StatCard title={t('summary_flashcards')} value={summary.totalFlashcards} icon={FileText} />
         <StatCard title={t('summary_practices')} value={summary.totalPractices} icon={BookOpen} />
-        <StatCard title={t('summary_students')} value={summary.totalStudents} icon={Users} />
+        <StatCard title={t('summary_students')} value={summary.practicingStudents} icon={Users} />
         <StatCard
           title={t('summary_accuracy')}
           value={`${summary.overallAccuracy}%`}

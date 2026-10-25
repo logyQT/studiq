@@ -68,7 +68,8 @@ export type TeacherFlashcardStatsResponse = {
     totalDecks: number;
     totalFlashcards: number;
     totalPractices: number;
-    totalStudents: number;
+    practicingStudents: number;
+    rosterStudents: number | null;
     overallAccuracy: number;
     averageEasinessFactor: number;
     difficultyBreakdown: DifficultyBreakdown;
