@@ -1,4 +1,7 @@
-import { MockStripeService } from '@studiq/server/services/mock-stripe.service';
+import {
+  MockStripeService,
+  type MockWebhookEvent,
+} from '@studiq/server/services/mock-stripe.service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockSupabaseClient } from '#test/helpers/supabase-mock';
 
@@ -56,7 +59,6 @@ const event = {
   type: 'checkout.session.completed',
   session_id: 's-1',
   plan_id: 'spark',
-  user_id: 'u-1',
 };
 
 describe('MockStripeService', () => {
@@ -140,7 +142,7 @@ describe('MockStripeService', () => {
       const payments = qb(null);
       mock.from.mockReturnValueOnce(qb(orgPlan)).mockReturnValueOnce(qb(adminMembership));
       admin.from.mockReturnValueOnce(profiles).mockReturnValueOnce(payments);
-      const result = await service.handleWebhook(orgEvent, 'manager');
+      const result = await service.handleWebhook(orgEvent, 'manager', 'u-1');
       expect(result.success).toBe(true);
       expect(admin.rpc).toHaveBeenCalledWith('apply_org_plan', {
         p_org_id: 'org-1',
@@ -154,7 +156,7 @@ describe('MockStripeService', () => {
       const payments = qb(null);
       mock.from.mockReturnValueOnce(qb(orgPlan)).mockReturnValueOnce(qb(adminMembership));
       admin.from.mockReturnValueOnce(profiles).mockReturnValueOnce(payments);
-      const result = await service.handleWebhook(orgEvent, 'manager');
+      const result = await service.handleWebhook(orgEvent, 'manager', 'u-1');
       expect(result.success).toBe(true);
       expect(payments.upsert).toHaveBeenCalledWith(
         {
@@ -172,7 +174,11 @@ describe('MockStripeService', () => {
 
     it('does not change anything without an org id', async () => {
       mock.from.mockReturnValueOnce(qb(orgPlan));
-      const result = await service.handleWebhook({ ...orgEvent, org_id: undefined }, 'manager');
+      const result = await service.handleWebhook(
+        { ...orgEvent, org_id: undefined },
+        'manager',
+        'u-1',
+      );
       expect(result).toEqual({ success: false, error: 'BAD_REQUEST' });
       expect(admin.rpc).not.toHaveBeenCalled();
       expect(mock.from).toHaveBeenCalledTimes(1);
@@ -180,7 +186,7 @@ describe('MockStripeService', () => {
 
     it('does not change an org the caller does not administer', async () => {
       mock.from.mockReturnValueOnce(qb(orgPlan)).mockReturnValueOnce(qb(teacherMembership));
-      const result = await service.handleWebhook(orgEvent, 'manager');
+      const result = await service.handleWebhook(orgEvent, 'manager', 'u-1');
       expect(result).toEqual({ success: false, error: 'FORBIDDEN' });
       expect(admin.rpc).not.toHaveBeenCalled();
       expect(mock.from).toHaveBeenCalledTimes(2);
@@ -189,7 +195,7 @@ describe('MockStripeService', () => {
     it('does not touch the personal plan when applying the org plan fails', async () => {
       admin.rpc.mockResolvedValueOnce({ data: null, error: { code: 'XX000', message: 'boom' } });
       mock.from.mockReturnValueOnce(qb(orgPlan)).mockReturnValueOnce(qb(adminMembership));
-      const result = await service.handleWebhook(orgEvent, 'manager');
+      const result = await service.handleWebhook(orgEvent, 'manager', 'u-1');
       expect(result.success).toBe(false);
       expect(mock.from).toHaveBeenCalledTimes(2);
     });
@@ -197,7 +203,7 @@ describe('MockStripeService', () => {
 
   describe('handleWebhook', () => {
     it('ignores events other than checkout.session.completed', async () => {
-      const result = await service.handleWebhook({ ...event, type: 'other' }, 'student');
+      const result = await service.handleWebhook({ ...event, type: 'other' }, 'student', 'u-1');
       expect(result.success).toBe(true);
       expect(mock.from).not.toHaveBeenCalled();
     });
@@ -207,7 +213,7 @@ describe('MockStripeService', () => {
       const payments = qb(null);
       mock.from.mockReturnValueOnce(qb(studentPlan));
       admin.from.mockReturnValueOnce(profiles).mockReturnValueOnce(payments);
-      const result = await service.handleWebhook(event, 'student');
+      const result = await service.handleWebhook(event, 'student', 'u-1');
       expect(result.success).toBe(true);
       expect(profiles.update).toHaveBeenCalledWith({ personal_plan_key: 'spark' });
       expect(profiles.eq).toHaveBeenCalledWith('id', 'u-1');
@@ -225,12 +231,42 @@ describe('MockStripeService', () => {
       );
     });
 
+    it('ignores a user_id in the payload and writes to the authenticated user (#227)', async () => {
+      const membership = qb(adminMembership);
+      const profiles = qb(null);
+      const payments = qb(null);
+      mock.from.mockReturnValueOnce(qb(orgPlan)).mockReturnValueOnce(membership);
+      admin.from.mockReturnValueOnce(profiles).mockReturnValueOnce(payments);
+
+      // A forged id can still arrive from JS or an untyped future caller; the
+      // service must not have a code path that reads it.
+      const forged = {
+        ...event,
+        plan_id: 'campus',
+        org_id: 'org-1',
+        user_id: 'victim-9',
+      } as unknown as MockWebhookEvent;
+      const result = await service.handleWebhook(forged, 'manager', 'u-1');
+
+      expect(result.success).toBe(true);
+      expect(membership.eq).toHaveBeenCalledWith('user_id', 'u-1');
+      expect(profiles.eq).toHaveBeenCalledWith('id', 'u-1');
+      expect(payments.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ user_id: 'u-1' }),
+        expect.anything(),
+      );
+      expect(admin.rpc).toHaveBeenCalledWith('apply_org_plan', {
+        p_org_id: 'org-1',
+        p_plan: 'campus',
+      });
+    });
+
     it('records a purchase snapshot for a plan without a catalog price (#392)', async () => {
       const profiles = qb(null);
       const payments = qb(null);
       mock.from.mockReturnValueOnce(qb(anyPlan));
       admin.from.mockReturnValueOnce(profiles).mockReturnValueOnce(payments);
-      const result = await service.handleWebhook({ ...event, plan_id: 'free' }, 'student');
+      const result = await service.handleWebhook({ ...event, plan_id: 'free' }, 'student', 'u-1');
       expect(result.success).toBe(true);
       expect(payments.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -248,14 +284,14 @@ describe('MockStripeService', () => {
       const payments = qb(null, { code: '23503', message: 'fk violation' });
       mock.from.mockReturnValueOnce(qb(studentPlan));
       admin.from.mockReturnValueOnce(profiles).mockReturnValueOnce(payments);
-      const result = await service.handleWebhook(event, 'student');
+      const result = await service.handleWebhook(event, 'student', 'u-1');
       expect(result.success).toBe(false);
       expect(payments.upsert).toHaveBeenCalledTimes(1);
     });
 
     it('does not touch the profile for a plan meant for another account type (#192)', async () => {
       mock.from.mockReturnValueOnce(qb(orgPlan));
-      const result = await service.handleWebhook({ ...event, plan_id: 'campus' }, 'student');
+      const result = await service.handleWebhook({ ...event, plan_id: 'campus' }, 'student', 'u-1');
       expect(result).toEqual({ success: false, error: 'FORBIDDEN' });
       expect(mock.from).toHaveBeenCalledTimes(1);
       expect(admin.from).not.toHaveBeenCalled();
@@ -263,7 +299,7 @@ describe('MockStripeService', () => {
 
     it('does not touch the profile for an unknown plan', async () => {
       mock.from.mockReturnValueOnce(qb(null));
-      const result = await service.handleWebhook({ ...event, plan_id: 'nope' }, 'student');
+      const result = await service.handleWebhook({ ...event, plan_id: 'nope' }, 'student', 'u-1');
       expect(result).toEqual({ success: false, error: 'BAD_REQUEST' });
       expect(mock.from).toHaveBeenCalledTimes(1);
       expect(admin.from).not.toHaveBeenCalled();

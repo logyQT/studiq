@@ -115,6 +115,41 @@ describe('payment history (#392)', () => {
     expect(body.data).toEqual([]);
   });
 
+  it('rejects a webhook that targets another user and writes nothing (#227)', async () => {
+    const sid = `sec227-${Date.now()}`;
+    const { data: before } = await service
+      .from('profiles')
+      .select('personal_plan_key')
+      .eq('id', other.id)
+      .single();
+
+    mockUser(buyer);
+    const res = await webhookPost(
+      createNextRequest(`${BASE_URL}/api/v1/stripe/webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'checkout.session.completed',
+          session_id: sid,
+          plan_id: 'spark',
+          user_id: other.id,
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(403);
+
+    const { data: payments } = await service.from('payments').select('id').eq('session_id', sid);
+    expect(payments).toEqual([]);
+
+    const { data: after } = await service
+      .from('profiles')
+      .select('personal_plan_key')
+      .eq('id', other.id)
+      .single();
+    expect(after?.personal_plan_key).toBe(before?.personal_plan_key);
+  });
+
   it('lets the owner read their rows through RLS but never write them', async () => {
     const { data: own, error: readError } = await buyerSession
       .from('payments')
