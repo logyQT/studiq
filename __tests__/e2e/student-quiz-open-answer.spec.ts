@@ -146,5 +146,15 @@ test.describe('Standalone quiz with an open answer (#320)', () => {
     await expect(page.getByText(t('AppQuizReviewPage.no_answer'))).toHaveCount(0);
     await expect(page.getByText(/Oczekuje na ocenę|Pending review/)).toHaveCount(0);
     await expect(page.getByText(/Wynik: \d+%|Score: \d+%/)).toHaveCount(0);
+
+    // #619 — `/app/stats` must use the same closed-question denominator as the
+    // review, so an all-open attempt shows the self-check state there too
+    // (never a fabricated „0%”). The history is newest-first, so the attempt
+    // just submitted is the first row. The summary cards are not asserted: the
+    // seeded `student-classroom` account can have attempts from other specs.
+    await page.goto('/app/stats/results');
+    const historyRow = page.locator('tbody tr').first();
+    await expect(historyRow.getByText(t('AppStatsPage.self_check'))).toBeVisible();
+    await expect(historyRow.getByText('0%')).toHaveCount(0);
   });
 });

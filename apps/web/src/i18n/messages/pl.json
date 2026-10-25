@@ -1626,6 +1626,8 @@
     "no_quiz_history": "Brak historii quizów",
     "no_quiz_history_desc": "Rozwiąż quiz, aby zobaczyć swoją historię",
     "results_hidden": "Podsumowanie niedostępne",
+    "self_check": "Do samodzielnej oceny",
+    "no_graded_attempts": "Brak ocenionych testów",
     "score": "Wynik",
     "date": "Data"
   },

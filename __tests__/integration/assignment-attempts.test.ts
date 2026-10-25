@@ -471,8 +471,9 @@ forEachCopy((copyId) => {
 
       const stats = await studentStats();
       expect(stats.totalQuizzes).toBe(1);
-      expect(stats.avgScore).toBe(0);
-      expect(stats.bestScore).toBe(0);
+      // Nothing gradable is visible, so there is no result to report (#374/#619).
+      expect(stats.avgScore).toBeNull();
+      expect(stats.bestScore).toBeNull();
       expect(stats.attemptsOverTime).toEqual([]);
     });
 

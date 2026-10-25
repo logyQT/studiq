@@ -15,10 +15,17 @@ function qb(data: any, error: any = null, count?: number) {
   b.not = vi.fn(() => b);
   b.order = vi.fn(() => b);
   b.lte = vi.fn(() => b);
+  // The gradable-question helper pages its query (PostgREST caps at 1000 rows).
+  b.range = vi.fn(() => b);
   b.then = promise.then.bind(promise);
   b.catch = promise.catch.bind(promise);
   b.finally = promise.finally.bind(promise);
   return b;
+}
+
+/** Gradable (`questions.type`) rows for the `quiz_attempt_questions` join. */
+function gradableRows(attemptId: string, count: number, type = 'mcq') {
+  return Array.from({ length: count }, () => ({ attempt_id: attemptId, questions: { type } }));
 }
 
 describe('StatsService', () => {
@@ -267,55 +274,37 @@ describe('StatsService', () => {
   describe('getStudentStats', () => {
     it('returns student stats with attempts and practice', async () => {
       const attempts = [
-        { score: 8, total_questions: 10, started_at: '2024-01-01', config: {} },
-        { score: 6, total_questions: 10, started_at: '2024-01-02', config: {} },
+        {
+          id: 'a-1',
+          score: 8,
+          total_questions: 10,
+          started_at: '2024-01-01',
+          config: {},
+          assignment_id: null,
+        },
+        {
+          id: 'a-2',
+          score: 6,
+          total_questions: 10,
+          started_at: '2024-01-02',
+          config: {},
+          assignment_id: null,
+        },
       ];
       const practice = [
         { was_correct: true, practiced_at: '2024-01-01' },
         { was_correct: false, practiced_at: '2024-01-02' },
       ];
 
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({ data: attempts, error: null }),
-          }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({ data: practice, error: null }),
-          }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: [{ id: 'q-1' }], error: null }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: [], count: 0, error: null }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: [], count: 0, error: null }),
-        }),
-      });
-
-      mock.from.mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            lte: vi.fn().mockResolvedValue({ data: [], count: 0, error: null }),
-          }),
-        }),
-      });
+      mock.from
+        .mockReturnValueOnce(qb(attempts)) // quiz_attempts
+        // Closed-only practice: the denominator is unchanged (#619).
+        .mockReturnValueOnce(qb([...gradableRows('a-1', 10), ...gradableRows('a-2', 10)]))
+        .mockReturnValueOnce(qb(practice)) // flashcard_practice
+        .mockReturnValueOnce(qb([{ id: 'q-1' }])) // questions
+        .mockReturnValueOnce(qb([], null, 0)) // flashcard_decks
+        .mockReturnValueOnce(qb([], null, 0)) // flashcards
+        .mockReturnValueOnce(qb([], null, 0)); // flashcard_review_state
 
       const result = await service.getStudentStats(ctx);
 
@@ -326,22 +315,158 @@ describe('StatsService', () => {
       expect(result.data.totalQuestionsCreated).toBe(1);
       expect(result.data.flashcardsPracticed).toBe(2);
       expect(result.data.flashcardAccuracy).toBe(50);
-      expect(result.data.attemptsOverTime.length).toBe(2);
+      expect(result.data.attemptsOverTime).toEqual([
+        { date: '2024-01-01', score: 8, total: 10, percentage: 80 },
+        { date: '2024-01-02', score: 6, total: 10, percentage: 60 },
+      ]);
+    });
+
+    it('divides a mixed practice attempt by its closed questions, not total_questions (#619)', async () => {
+      const attempts = [
+        {
+          id: 'a-1',
+          score: 2,
+          total_questions: 3,
+          started_at: '2024-01-01',
+          config: {},
+          assignment_id: null,
+        },
+      ];
+      // Two closed questions + one open answer: the review headline says 2 of 2
+      // closed, so stats must not report 67 %.
+      const gradable = qb([...gradableRows('a-1', 2), ...gradableRows('a-1', 1, 'open')]);
+
+      mock.from
+        .mockReturnValueOnce(qb(attempts)) // quiz_attempts
+        .mockReturnValueOnce(gradable) // quiz_attempt_questions
+        .mockReturnValueOnce(qb([])) // flashcard_practice
+        .mockReturnValueOnce(qb([])) // questions
+        .mockReturnValueOnce(qb([], null, 0)) // flashcard_decks
+        .mockReturnValueOnce(qb([], null, 0)) // flashcards
+        .mockReturnValueOnce(qb([], null, 0)); // flashcard_review_state
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(gradable.in).toHaveBeenCalledWith('attempt_id', ['a-1']);
+      expect(result.data.avgScore).toBe(100);
+      expect(result.data.bestScore).toBe(100);
+      expect(result.data.attemptsOverTime).toEqual([
+        { date: '2024-01-01', score: 2, total: 2, percentage: 100 },
+      ]);
+    });
+
+    it('leaves an all-open practice attempt out of the score aggregates (#619)', async () => {
+      const attempts = [
+        {
+          id: 'a-open',
+          score: 0,
+          total_questions: 1,
+          started_at: '2024-01-01',
+          config: {},
+          assignment_id: null,
+        },
+        {
+          id: 'a-closed',
+          score: 2,
+          total_questions: 2,
+          started_at: '2024-01-02',
+          config: {},
+          assignment_id: null,
+        },
+      ];
+      const gradable = qb([...gradableRows('a-open', 1, 'open'), ...gradableRows('a-closed', 2)]);
+
+      mock.from
+        .mockReturnValueOnce(qb(attempts))
+        .mockReturnValueOnce(gradable)
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([], null, 0))
+        .mockReturnValueOnce(qb([], null, 0))
+        .mockReturnValueOnce(qb([], null, 0));
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(true);
+      // The open attempt is still a taken quiz (a count is not a result), but it
+      // has no denominator, so it never contributes a fabricated 0 %.
+      expect(result.data.totalQuizzes).toBe(2);
+      expect(result.data.avgScore).toBe(100);
+      expect(result.data.bestScore).toBe(100);
+      expect(result.data.attemptsOverTime).toEqual([
+        { date: '2024-01-02', score: 2, total: 2, percentage: 100 },
+      ]);
+    });
+
+    it('reports null averages when every practice attempt is all-open (#619)', async () => {
+      const attempts = [
+        {
+          id: 'a-open',
+          score: 0,
+          total_questions: 1,
+          started_at: '2024-01-01',
+          config: {},
+          assignment_id: null,
+        },
+      ];
+
+      mock.from
+        .mockReturnValueOnce(qb(attempts))
+        .mockReturnValueOnce(qb(gradableRows('a-open', 1, 'open')))
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([]))
+        .mockReturnValueOnce(qb([], null, 0))
+        .mockReturnValueOnce(qb([], null, 0))
+        .mockReturnValueOnce(qb([], null, 0));
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data.totalQuizzes).toBe(1);
+      expect(result.data.avgScore).toBeNull();
+      expect(result.data.bestScore).toBeNull();
+      expect(result.data.attemptsOverTime).toEqual([]);
+    });
+
+    it('fails closed when the gradable-question lookup fails (#619)', async () => {
+      mock.from
+        .mockReturnValueOnce(
+          qb([
+            {
+              id: 'a-1',
+              score: 2,
+              total_questions: 3,
+              started_at: '2024-01-01',
+              config: {},
+              assignment_id: null,
+            },
+          ]),
+        )
+        .mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.getStudentStats(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
     });
 
     it('uses total_points as the denominator for assignment attempts (#167)', async () => {
       const attemptsBuilder = qb([
         {
+          id: 'a-1',
           score: 3,
           total_questions: 4,
           total_points: 5,
           started_at: '2024-01-01',
           config: {},
+          assignment_id: 'assignment-1',
         },
       ]);
 
       mock.from
         .mockReturnValueOnce(attemptsBuilder) // quiz_attempts
+        .mockReturnValueOnce(qb([{ id: 'assignment-1', show_results: true }])) // teacher_assignments
         .mockReturnValueOnce(qb([])) // flashcard_practice
         .mockReturnValueOnce(qb([])) // questions
         .mockReturnValueOnce(qb([], null, 0)) // flashcard_decks
@@ -359,11 +484,14 @@ describe('StatsService', () => {
         total: 5,
         percentage: 60,
       });
+      // Assignment attempts stay teacher-graded: no closed-question lookup.
+      expect(mock.from).not.toHaveBeenCalledWith('quiz_attempt_questions');
     });
 
     it('excludes hidden assignment attempts from the score aggregates (#374)', async () => {
       const attemptsBuilder = qb([
         {
+          id: 'a-practice',
           score: 8,
           total_questions: 10,
           started_at: '2024-01-01',
@@ -395,6 +523,7 @@ describe('StatsService', () => {
       mock.from
         .mockReturnValueOnce(attemptsBuilder) // quiz_attempts
         .mockReturnValueOnce(assignmentsBuilder) // teacher_assignments
+        .mockReturnValueOnce(qb(gradableRows('a-practice', 10))) // quiz_attempt_questions
         .mockReturnValueOnce(qb([])) // flashcard_practice
         .mockReturnValueOnce(qb([])) // questions
         .mockReturnValueOnce(qb([], null, 0)) // flashcard_decks
@@ -427,23 +556,22 @@ describe('StatsService', () => {
       expect(result.error).toBe('INTERNAL_SERVER');
     });
 
-    it('returns zero stats when no data exists', async () => {
-      const c: any = {};
-      c.select = vi.fn(() => c);
-      c.eq = vi.fn(() => c);
-      c.order = vi.fn(() => c);
-      c.lte = vi.fn(() => c);
-      c.then = (onfulfilled: any) => Promise.resolve({ data: [], error: null }).then(onfulfilled);
-      mock.from.mockReturnValue(c);
+    it('reports no averages when no data exists', async () => {
+      mock.from.mockReturnValue(qb([]));
 
       const result = await service.getStudentStats(ctx);
 
       expect(result.success).toBe(true);
       expect(result.data.totalQuizzes).toBe(0);
-      expect(result.data.avgScore).toBe(0);
-      expect(result.data.bestScore).toBe(0);
+      // No attempt has a gradable denominator, so there is no result to show
+      // (#619) — `—` in the UI, never a fabricated 0 %.
+      expect(result.data.avgScore).toBeNull();
+      expect(result.data.bestScore).toBeNull();
+      expect(result.data.attemptsOverTime).toEqual([]);
       expect(result.data.flashcardsPracticed).toBe(0);
       expect(result.data.flashcardAccuracy).toBe(0);
+      // Nothing to look up: the gradable query only runs for practice attempts.
+      expect(mock.from).not.toHaveBeenCalledWith('quiz_attempt_questions');
     });
 
     it('scopes content counts to the active organization, but not activity logs', async () => {

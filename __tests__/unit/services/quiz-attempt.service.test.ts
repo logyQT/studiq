@@ -15,6 +15,7 @@ function qb(data: any, error: any = null) {
   b.in = vi.fn(() => b);
   b.order = vi.fn(() => b);
   b.limit = vi.fn(() => b);
+  b.range = vi.fn(() => b);
   b.or = vi.fn(() => b);
   b.not = vi.fn(() => b);
   b.neq = vi.fn(() => b);
@@ -146,6 +147,30 @@ describe('QuizAttemptService', () => {
         expect.objectContaining({ id: 'a-1', gradable_questions: 2 }),
         expect.objectContaining({ id: 'a-2', gradable_questions: 0 }),
       ]);
+    });
+
+    it('splits a long attempt history into one request per 100 ids (#619)', async () => {
+      const attempts = Array.from({ length: 101 }, (_, index) => ({
+        id: `a-${index}`,
+        user_id: ctx.userId,
+        score: 1,
+        assignment_id: null,
+      }));
+
+      mock.from.mockReturnValueOnce(qb(attempts));
+      // The helper chunks the `attempt_id` filter so a long history cannot blow
+      // the gateway URL limit.
+      mock.from.mockReturnValueOnce(qb([{ attempt_id: 'a-0', questions: { type: 'mcq' } }]));
+      mock.from.mockReturnValueOnce(qb([{ attempt_id: 'a-100', questions: { type: 'mcq' } }]));
+
+      const result = await service.list(ctx);
+
+      expect(result.success).toBe(true);
+      expect(mock.from).toHaveBeenCalledTimes(3);
+      expect(result.data).toHaveLength(101);
+      expect(result.data[0].gradable_questions).toBe(1);
+      expect(result.data[100].gradable_questions).toBe(1);
+      expect(result.data[1].gradable_questions).toBe(0);
     });
 
     it('returns INTERNAL_SERVER when the gradable lookup fails', async () => {

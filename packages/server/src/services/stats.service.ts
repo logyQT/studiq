@@ -1,11 +1,13 @@
 import type { RequestContext } from '@studiq/authz';
 import { hiddenResultAssignmentIds } from '@studiq/server/lib/assignment-visibility';
+import { gradableQuestionCounts } from '@studiq/server/lib/gradable-questions';
 import { wrapService } from '@studiq/server/lib/observability';
 import { isFailure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
 import type {
   ProblematicQuestionStats,
+  StudentStatsResponse,
   TeacherQuizStatsItem,
   TeacherStatsQuery,
   TeacherStatsResponse,
@@ -133,7 +135,7 @@ export class StatsService {
     });
   }
 
-  async getStudentStats(ctx: RequestContext): Promise<ServiceResult<unknown>> {
+  async getStudentStats(ctx: RequestContext): Promise<ServiceResult<StudentStatsResponse>> {
     const supabase = await this.createClient();
 
     // quiz_attempts, flashcard_practice and flashcard_review_state carry no
@@ -142,7 +144,7 @@ export class StatsService {
     // multiple orgs will see their activity from all of them combined here.
     const { data: attempts, error: attemptsError } = await supabase
       .from('quiz_attempts')
-      .select('score, total_questions, total_points, started_at, config, assignment_id')
+      .select('id, score, total_questions, total_points, started_at, config, assignment_id')
       .eq('user_id', ctx.userId)
       .order('started_at', { ascending: false });
 
@@ -160,6 +162,27 @@ export class StatsService {
     const scoredAttempts = (attempts ?? []).filter(
       (attempt) => !attempt.assignment_id || !hidden.data.has(attempt.assignment_id),
     );
+
+    // A practice score is correct answers over the *closed* questions only
+    // (#329): `total_questions` counts open answers that can never be graded, so
+    // dividing by it makes this page disagree with the review headline for the
+    // same attempt (#619). Assignment attempts stay teacher-graded in points and
+    // never enter this lookup.
+    const gradable = await gradableQuestionCounts(
+      supabase,
+      scoredAttempts.filter((attempt) => !attempt.assignment_id).map((attempt) => attempt.id),
+    );
+    if (isFailure(gradable)) return gradable;
+
+    // Each attempt is normalised to its own max before averaging. A practice
+    // attempt with no closed question has no denominator at all, so it is left
+    // out of the score aggregates instead of being faked as 0 %.
+    const gradedAttempts = scoredAttempts.flatMap((attempt) => {
+      const total = attempt.assignment_id
+        ? attemptTotal(attempt)
+        : (gradable.data.get(attempt.id) ?? 0);
+      return total > 0 ? [{ attempt, total }] : [];
+    });
 
     const { data: practice, error: practiceError } = await supabase
       .from('flashcard_practice')
@@ -206,23 +229,31 @@ export class StatsService {
     // Single rounding rule for per-attempt percentages. avgScore below keeps its
     // own expression on purpose — reusing the helper there would change its
     // rounding and shift existing values by ±1.
-    const percentageOf = (a: {
-      score: number;
-      total_questions: number;
-      total_points?: number | null;
-    }) => Math.round((a.score / attemptTotal(a)) * 100);
+    const percentageOf = (attempt: { score: number | null }, total: number) =>
+      Math.round(((attempt.score ?? 0) / total) * 100);
+    // `null` = no attempt had a gradable denominator, so there is no result to
+    // report. The UI renders `—` instead of a fabricated 0 % (#619).
     const avgScore =
-      scoredAttempts.length > 0
+      gradedAttempts.length > 0
         ? Math.round(
-            (scoredAttempts.reduce((sum, a) => sum + a.score / attemptTotal(a), 0) /
-              scoredAttempts.length) *
+            (gradedAttempts.reduce(
+              (sum, { attempt, total }) => sum + (attempt.score ?? 0) / total,
+              0,
+            ) /
+              gradedAttempts.length) *
               100,
           )
-        : 0;
+        : null;
     // Highest per-attempt percentage. Unfinished attempts score 0, so they can
     // never raise the maximum; assignment attempts use total_points via
     // attemptTotal(), same basis as avgScore and attemptsOverTime.
-    const bestScore = scoredAttempts.reduce((best, a) => Math.max(best, percentageOf(a)), 0);
+    const bestScore =
+      gradedAttempts.length > 0
+        ? gradedAttempts.reduce(
+            (best, { attempt, total }) => Math.max(best, percentageOf(attempt, total)),
+            0,
+          )
+        : null;
 
     const flashcardCorrect = practice?.filter((p) => p.was_correct).length ?? 0;
     const flashcardTotal = practice?.length ?? 0;
@@ -238,11 +269,11 @@ export class StatsService {
       totalDecks: decksCount ?? 0,
       totalFlashcards: flashcardsCount ?? 0,
       dueToday: dueCount ?? 0,
-      attemptsOverTime: scoredAttempts.map((a) => ({
-        date: a.started_at,
-        score: a.score,
-        total: attemptTotal(a),
-        percentage: percentageOf(a),
+      attemptsOverTime: gradedAttempts.map(({ attempt, total }) => ({
+        date: attempt.started_at,
+        score: attempt.score,
+        total,
+        percentage: percentageOf(attempt, total),
       })),
     });
   }

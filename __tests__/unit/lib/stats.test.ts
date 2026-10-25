@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  attemptPercentage,
+  attemptScoreDisplay,
+  formatScorePercent,
   hasTeacherActivity,
   orderedQuestionTypeEntries,
   parseTeacherStatsResponse,
@@ -51,32 +52,105 @@ describe('weeklyWindowStart (#383)', () => {
   });
 });
 
-describe('attemptPercentage (#321)', () => {
-  it('scores a practice attempt against the question count', () => {
-    expect(attemptPercentage({ score: 3, total_questions: 4, total_points: null })).toBe(75);
+describe('attemptScoreDisplay (#321/#329/#619)', () => {
+  const attempt = (overrides: Partial<Parameters<typeof attemptScoreDisplay>[0]>) => ({
+    score: 0,
+    total_questions: 0,
+    total_points: null,
+    gradable_questions: 0,
+    assignment_id: null,
+    ...overrides,
   });
 
-  it('scores an assignment attempt against total_points', () => {
-    expect(attemptPercentage({ score: 3, total_questions: 4, total_points: 5 })).toBe(60);
+  it('scores a practice attempt against its closed questions, not total_questions', () => {
+    // The issue's headline case: 2 of 2 closed questions is 100 %, even though
+    // the attempt contained a third, open question (pre-#619 it said 67 %).
+    expect(
+      attemptScoreDisplay(attempt({ score: 2, total_questions: 3, gradable_questions: 2 })),
+    ).toEqual({ kind: 'percent', percentage: 100 });
+    expect(
+      attemptScoreDisplay(attempt({ score: 2, total_questions: 4, gradable_questions: 3 })),
+    ).toEqual({ kind: 'percent', percentage: 67 });
+  });
+
+  it('scores an assignment attempt against total_points and ignores gradable_questions', () => {
+    expect(
+      attemptScoreDisplay(
+        attempt({
+          score: 3,
+          total_questions: 4,
+          total_points: 5,
+          gradable_questions: 2,
+          assignment_id: 'assignment-1',
+        }),
+      ),
+    ).toEqual({ kind: 'percent', percentage: 60 });
   });
 
   it('falls back to the question count when total_points is missing', () => {
-    expect(attemptPercentage({ score: 2, total_questions: 3 })).toBe(67);
+    expect(
+      attemptScoreDisplay(
+        attempt({
+          score: 2,
+          total_questions: 3,
+          total_points: null,
+          gradable_questions: 1,
+          assignment_id: 'assignment-1',
+        }),
+      ),
+    ).toEqual({ kind: 'percent', percentage: 67 });
   });
 
-  it('never divides by zero', () => {
-    expect(attemptPercentage({ score: 0, total_questions: 0, total_points: null })).toBe(0);
-    expect(attemptPercentage({ score: 0, total_questions: 0 })).toBe(0);
+  it('renders a self-check state when a practice attempt has no closed question', () => {
+    // Never 0 % and never a division by zero (#329).
+    expect(
+      attemptScoreDisplay(attempt({ score: 0, total_questions: 1, gradable_questions: 0 })),
+    ).toEqual({ kind: 'self_check' });
   });
 
   it('withholds the percentage when the server withheld the score (#374)', () => {
-    expect(attemptPercentage({ score: null, total_questions: 4, total_points: 4 })).toBeNull();
-    expect(attemptPercentage({ score: null, total_questions: 4, total_points: null })).toBeNull();
+    expect(
+      attemptScoreDisplay(
+        attempt({
+          score: null,
+          total_questions: 4,
+          total_points: 4,
+          gradable_questions: 2,
+          assignment_id: 'assignment-1',
+        }),
+      ),
+    ).toEqual({ kind: 'hidden' });
+    expect(
+      attemptScoreDisplay(attempt({ score: null, total_questions: 4, gradable_questions: 2 })),
+    ).toEqual({ kind: 'hidden' });
+  });
+
+  it('keeps a genuine zero as 0 %', () => {
+    expect(
+      attemptScoreDisplay(attempt({ score: 0, total_questions: 2, gradable_questions: 2 })),
+    ).toEqual({ kind: 'percent', percentage: 0 });
   });
 
   it('rounds to the nearest integer', () => {
-    expect(attemptPercentage({ score: 1, total_questions: 3 })).toBe(33);
-    expect(attemptPercentage({ score: 2, total_questions: 3 })).toBe(67);
+    expect(
+      attemptScoreDisplay(attempt({ score: 1, total_questions: 3, gradable_questions: 3 })),
+    ).toEqual({ kind: 'percent', percentage: 33 });
+    expect(
+      attemptScoreDisplay(attempt({ score: 2, total_questions: 3, gradable_questions: 3 })),
+    ).toEqual({ kind: 'percent', percentage: 67 });
+  });
+});
+
+describe('formatScorePercent (#619)', () => {
+  it('renders a dash when there is no result to show', () => {
+    expect(formatScorePercent(null)).toBe('—');
+    expect(formatScorePercent(undefined)).toBe('—');
+  });
+
+  it('renders a rounded percentage otherwise', () => {
+    expect(formatScorePercent(0)).toBe('0%');
+    expect(formatScorePercent(66.6)).toBe('67%');
+    expect(formatScorePercent(100)).toBe('100%');
   });
 });
 
