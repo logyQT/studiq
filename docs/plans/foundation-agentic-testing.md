@@ -239,7 +239,7 @@ Route handlers needed:
 | `/api/v1/user-overrides` | `userOverrideController` | GET, POST |
 | `/api/v1/user-overrides/[id]` | `userOverrideController` | GET, PUT, DELETE |
 | `/api/v1/subscription-plans` | `subscriptionPlanAdminController` | GET, POST |
-| `/api/v1/subscription-plans/[key]` | `subscriptionPlanAdminController` | GET, PUT, DELETE |
+| `/api/v1/subscription-plans/[id]` | `subscriptionPlanAdminController` | GET, PUT, DELETE |
 
 **Auth for admin API routes**: No `withAuth` wrapper — the PEM proxy
 gates all `/api/*` requests. Controllers run with full service-role

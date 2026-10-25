@@ -9,7 +9,9 @@
     "edit": "Edytuj",
     "back": "Wstecz",
     "none": "Brak",
-    "dismiss": "Zamknij"
+    "dismiss": "Zamknij",
+    "unauthorized": "Brak autoryzacji — API administracyjne odrzuciło żądanie. W trybie PEM przeglądarka nie może podpisywać żądań, więc danych nie można wczytać.",
+    "load_failed": "Nie udało się wczytać danych ({code})."
   },
   "DashboardLayout": {
     "admin_overview": "Przegląd",
@@ -76,6 +78,8 @@
     "empty": "Brak planów subskrypcji.",
     "delete_title": "Usuń plan",
     "delete_desc": "Czy na pewno chcesz usunąć plan \"{name}\"? Tej operacji nie można cofnąć.",
+    "delete_failed_in_use": "Nie można usunąć planu, ponieważ są do niego przypisane organizacje lub użytkownicy.",
+    "delete_failed": "Nie udało się usunąć planu ({code}).",
     "no_features": "Brak skonfigurowanych funkcji i limitów dla tego planu.",
     "features_label": "Funkcje",
     "limits_label": "Limity",
@@ -113,7 +117,6 @@
     "toggle_details": "Pokaż szczegóły",
     "empty_active": "Brak użytkowników.",
     "empty_deleted": "Brak usuniętych użytkowników.",
-    "load_failed": "Nie udało się wczytać użytkowników ({code}).",
     "action_failed": "Nie udało się wykonać akcji ({code})",
     "page_of_total": "Strona {page} z {totalPages} ({total} łącznie)",
     "previous_page": "Poprzednia strona",

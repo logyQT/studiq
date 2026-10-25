@@ -23,7 +23,8 @@ import { ArrowLeft, FolderOpen, Shield, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { use } from 'react';
-import { apiGet } from '@/lib/api';
+import { QueryError } from '@/app/(frontend)/components/query-error';
+import { ApiError, apiGet } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
 type OrgDetail = {
@@ -56,7 +57,12 @@ export default function OrgDetailPage({ params }: { params: Promise<{ id: string
   const { id } = use(params);
   const t = useTranslations('OrgDetail');
 
-  const { data: org, isLoading } = useQuery({
+  const {
+    data: org,
+    error,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: queryKeys.organizations.detail(id),
     queryFn: () => apiGet<OrgDetail>(`/organizations/${id}`),
   });
@@ -65,6 +71,14 @@ export default function OrgDetailPage({ params }: { params: Promise<{ id: string
     return (
       <div className="p-8">
         <p className="text-muted-foreground">{t('loading')}</p>
+      </div>
+    );
+  }
+
+  if (isError && !(error instanceof ApiError && error.status === 404)) {
+    return (
+      <div className="p-8">
+        <QueryError error={error} />
       </div>
     );
   }

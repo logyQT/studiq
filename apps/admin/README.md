@@ -41,7 +41,7 @@ All under `/api/v1/`. Controllers live in `src/server/controllers/`, services in
 | `user-overrides` | GET, POST |
 | `user-overrides/[id]` | GET, PUT, DELETE |
 | `subscription-plans` | GET, POST |
-| `subscription-plans/[key]` | GET, PUT, DELETE |
+| `subscription-plans/[id]` | GET, PUT, DELETE |
 | `organizations` | GET |
 | `organizations/[id]` | GET (with details) |
 | `users` | GET (list, `?status=&page=&perPage=&search=`), POST |
