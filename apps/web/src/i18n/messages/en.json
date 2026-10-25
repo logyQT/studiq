@@ -1096,7 +1096,7 @@
     "delete_failed": "Failed to delete role",
     "cant_delete_system": "System roles cannot be deleted",
     "cant_delete_has_members": "Remove all members from this role before deleting",
-    "perms_title": "Edit Permissions;{name}",
+    "perms_title": "Edit Permissions: {name}",
     "perms_save": "Save Permissions",
     "perms_saved": "Permissions updated",
     "perms_save_failed": "Failed to update permissions",
