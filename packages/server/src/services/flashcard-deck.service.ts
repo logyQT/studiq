@@ -39,11 +39,8 @@ export class FlashcardDeckService {
       if (!shareCheck.data) return failure('FORBIDDEN');
     }
 
-    const { count: deckCount } = await supabase
-      .from('flashcard_decks')
-      .select('*', { count: 'exact', head: true })
-      .eq('created_by', ctx.userId);
-    await limitsResolver.checkLimit(ctx, 'max_decks', deckCount ?? 0);
+    const deckCount = await this.countOwned(supabase, ctx);
+    await limitsResolver.checkLimit(ctx, 'max_decks', deckCount);
 
     if (data.flashcardIds && data.flashcardIds.length > 0) {
       const denied = await this.assertFlashcardsUpdatable(supabase, data.flashcardIds, ctx);
@@ -515,6 +512,23 @@ export class FlashcardDeckService {
     }
 
     return success({ updated: deckIds.length });
+  }
+
+  /**
+   * Count the caller's decks for the limit check (#233): inside an org the count
+   * is scoped to content owned by the caller **in that org**, so personal-space
+   * decks never consume the org plan's capacity.
+   */
+  private async countOwned(supabase: SupabaseClient, ctx: RequestContext): Promise<number> {
+    let query = supabase
+      .from('flashcard_decks')
+      .select('*', { count: 'exact', head: true })
+      .eq('created_by', ctx.userId);
+
+    if (ctx.activeOrgId) query = query.eq('organization_id', ctx.activeOrgId);
+
+    const { count } = await query;
+    return count ?? 0;
   }
 }
 export const flashcardDeckService = wrapService(

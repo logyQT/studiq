@@ -93,6 +93,28 @@ describe('FlashcardService', () => {
       expect(result.data).toEqual(mockFlashcard);
     });
 
+    it('counts only the caller content in the active org (#233)', async () => {
+      const countChain = chain([], 0);
+      mock.from.mockReturnValueOnce(countChain);
+      mock.from.mockReturnValue(chain({ id: 'fc-1' }));
+
+      await service.create({ front: 'Q', back: 'A' }, { ...ctx, activeOrgId: 'uni-1' });
+
+      expect(countChain.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countChain.eq).toHaveBeenCalledWith('organization_id', 'uni-1');
+    });
+
+    it('does not filter the count by org outside an org context (#233)', async () => {
+      const countChain = chain([], 0);
+      mock.from.mockReturnValueOnce(countChain);
+      mock.from.mockReturnValue(chain({ id: 'fc-1' }));
+
+      await service.create({ front: 'Q', back: 'A' }, ctx);
+
+      expect(countChain.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countChain.eq).not.toHaveBeenCalledWith('organization_id', expect.anything());
+    });
+
     it('returns INTERNAL_SERVER when insert fails', async () => {
       mock.from.mockReturnValueOnce(chain([], 0));
       mock.from.mockReturnValue({
@@ -132,6 +154,21 @@ describe('FlashcardService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(flashcards);
+    });
+
+    it('counts only the caller content in the active org on the bulk path (#233)', async () => {
+      const flashcards = [{ id: 'fc-1', front: 'Q1', back: 'A1' }];
+      const countChain = chain([], 0);
+      mock.from.mockReturnValueOnce(countChain);
+      mock.rpc.mockResolvedValue({ data: flashcards, error: null });
+
+      await service.bulkCreate(
+        { cards: [{ front: 'Q1', back: 'A1' }] },
+        { ...ctx, activeOrgId: 'uni-1' },
+      );
+
+      expect(countChain.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countChain.eq).toHaveBeenCalledWith('organization_id', 'uni-1');
     });
 
     it('returns INTERNAL_SERVER when insert fails', async () => {

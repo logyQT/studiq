@@ -37,7 +37,6 @@ const SORTED_LIMIT_KEYS = [
   'max_ai_tokens_per_day',
   'max_students',
   'max_groups',
-  'max_storage_mb',
 ];
 
 const HIGHLIGHTED_FEATURES = 5;

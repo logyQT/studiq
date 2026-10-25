@@ -140,7 +140,23 @@ describe('QuestionBankService', () => {
       expect(mock.from).toHaveBeenCalledWith('question_banks');
       expect(countBuilder.select).toHaveBeenCalledWith('*', { count: 'exact', head: true });
       expect(countBuilder.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      // #233: inside an org only the caller's content in that org counts.
+      expect(countBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
       expect(limitsResolver.checkLimit).toHaveBeenCalledWith(ctx, 'max_question_banks', 3);
+    });
+
+    it('does not filter the count by org outside an org context (#233)', async () => {
+      const personalCtx = { ...ctx, activeOrgId: null };
+      const countBuilder = qb(null, null, 0);
+      mock.from.mockReturnValueOnce(countBuilder);
+      mock.from.mockReturnValueOnce(qb({ id: 'b-1' }));
+      mock.from.mockReturnValueOnce(qb({ id: 'b-1' }));
+
+      const result = await service.create({ name: 'Bank' }, personalCtx);
+
+      expect(result.success).toBe(true);
+      expect(countBuilder.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countBuilder.eq).not.toHaveBeenCalledWith('organization_id', expect.anything());
     });
 
     it('rejects with USAGE_LIMIT_EXCEEDED and does not insert when over the limit', async () => {
@@ -158,12 +174,15 @@ describe('QuestionBankService', () => {
     });
 
     it('bulkCreate checks the batch size against max_question_banks', async () => {
-      mock.from.mockReturnValueOnce(qb(null, null, 1));
+      const countBuilder = qb(null, null, 1);
+      mock.from.mockReturnValueOnce(countBuilder);
       mock.from.mockReturnValueOnce(qb([{ id: 'b-1' }, { id: 'b-2' }]));
 
       const result = await service.bulkCreate({ banks: [{ name: 'A' }, { name: 'B' }] }, ctx);
 
       expect(result.success).toBe(true);
+      expect(countBuilder.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
       expect(limitsResolver.checkLimit).toHaveBeenCalledWith(ctx, 'max_question_banks', 1, 2);
     });
 
