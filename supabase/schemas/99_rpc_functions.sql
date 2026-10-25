@@ -248,7 +248,8 @@ $$;
 -- get_practice_state_breakdown
 -- Counts flashcards by practice state
 -- (never_practiced, learning, review,
---  relearning, leeched) for a user.
+--  relearning, leeched) and the collection-wide
+-- summary (practiced, accuracy, easiness) for a user.
 -- ==========================================
 
 CREATE OR REPLACE FUNCTION public.get_practice_state_breakdown(
@@ -257,49 +258,21 @@ CREATE OR REPLACE FUNCTION public.get_practice_state_breakdown(
   p_organization_id uuid DEFAULT NULL
 )
 RETURNS json
-LANGUAGE plpgsql
+LANGUAGE sql
+STABLE
 AS $$
-DECLARE
-  total int;
-  never_practiced int;
-  learning_count int;
-  review_count int;
-  relearning_count int;
-  leeched_count int;
-BEGIN
-  IF p_created_by IS NOT NULL AND p_organization_id IS NOT NULL THEN
-    SELECT COUNT(*) INTO total
+  WITH scoped AS (
+    SELECT f.id
     FROM public.flashcards f
-    WHERE f.created_by = p_created_by AND f.organization_id = p_organization_id
-      AND NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-
-    SELECT
-      COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'learning' AND NOT rs.is_leech) AS learning,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'review' AND NOT rs.is_leech) AS review,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'relearning' AND NOT rs.is_leech) AS relearning,
-      COUNT(*) FILTER (WHERE rs.is_leech) AS leeched
-    INTO never_practiced, learning_count, review_count, relearning_count, leeched_count
-    FROM public.flashcards f
-    LEFT JOIN public.flashcard_review_state rs
-      ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
-    WHERE f.created_by = p_created_by AND f.organization_id = p_organization_id
-      AND NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-
-  ELSIF p_organization_id IS NOT NULL THEN
-    SELECT COUNT(*) INTO total
-    FROM public.flashcards f
-    WHERE f.organization_id = p_organization_id
+    WHERE (p_created_by IS NULL OR f.created_by = p_created_by)
+      AND (p_organization_id IS NULL OR f.organization_id = p_organization_id)
       AND (
-        f.created_by = p_user_id
-        OR EXISTS (
-          SELECT 1 FROM public.deck_groups dg
+        p_organization_id IS NULL           -- created_by-only scope: no org restriction
+        OR p_created_by IS NOT NULL         -- own cards inside the org
+        OR f.created_by = p_user_id         -- group scope: own
+        OR EXISTS (                          -- group scope: deck shared with one of my groups
+          SELECT 1
+          FROM public.deck_groups dg
           JOIN public.group_members gm ON gm.group_id = dg.group_id
           WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
         )
@@ -307,90 +280,41 @@ BEGIN
       AND NOT EXISTS (
         SELECT 1 FROM public.suspended_decks sd
         WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-
-    SELECT
-      COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'learning' AND NOT rs.is_leech) AS learning,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'review' AND NOT rs.is_leech) AS review,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'relearning' AND NOT rs.is_leech) AS relearning,
-      COUNT(*) FILTER (WHERE rs.is_leech) AS leeched
-    INTO never_practiced, learning_count, review_count, relearning_count, leeched_count
-    FROM public.flashcards f
-    LEFT JOIN public.flashcard_review_state rs
-      ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
-    WHERE f.organization_id = p_organization_id
-      AND (
-        f.created_by = p_user_id
-        OR EXISTS (
-          SELECT 1 FROM public.deck_groups dg
-          JOIN public.group_members gm ON gm.group_id = dg.group_id
-          WHERE dg.deck_id = f.deck_id AND gm.user_id = p_user_id
-        )
       )
-      AND NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-
-  ELSIF p_created_by IS NOT NULL THEN
-    SELECT COUNT(*) INTO total
-    FROM public.flashcards f
-    WHERE f.created_by = p_created_by
-      AND NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-
-    SELECT
-      COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'learning' AND NOT rs.is_leech) AS learning,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'review' AND NOT rs.is_leech) AS review,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'relearning' AND NOT rs.is_leech) AS relearning,
-      COUNT(*) FILTER (WHERE rs.is_leech) AS leeched
-    INTO never_practiced, learning_count, review_count, relearning_count, leeched_count
-    FROM public.flashcards f
+  ),
+  card_state AS (
+    SELECT s.id, rs.flashcard_id, rs.learning_state, rs.is_leech, rs.easiness_factor
+    FROM scoped s
     LEFT JOIN public.flashcard_review_state rs
-      ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
-    WHERE f.created_by = p_created_by
-      AND NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-
-  ELSE
-    SELECT COUNT(*) INTO total
-    FROM public.flashcards f
-    WHERE NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-
-    SELECT
-      COUNT(*) FILTER (WHERE rs.flashcard_id IS NULL) AS never_practiced,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'learning' AND NOT rs.is_leech) AS learning,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'review' AND NOT rs.is_leech) AS review,
-      COUNT(*) FILTER (WHERE rs.learning_state = 'relearning' AND NOT rs.is_leech) AS relearning,
-      COUNT(*) FILTER (WHERE rs.is_leech) AS leeched
-    INTO never_practiced, learning_count, review_count, relearning_count, leeched_count
-    FROM public.flashcards f
-    LEFT JOIN public.flashcard_review_state rs
-      ON rs.flashcard_id = f.id AND rs.user_id = p_user_id
-    WHERE NOT EXISTS (
-        SELECT 1 FROM public.suspended_decks sd
-        WHERE sd.deck_id = f.deck_id AND sd.user_id = p_user_id
-      );
-  END IF;
-
-  RETURN json_build_object(
-    'totalCards', total,
-    'neverPracticed', never_practiced,
-    'learning', learning_count,
-    'review', review_count,
-    'relearning', relearning_count,
-    'leeched', leeched_count
-  );
-END;
+      ON rs.flashcard_id = s.id AND rs.user_id = p_user_id
+  ),
+  card_practice AS (
+    SELECT p.flashcard_id,
+           COUNT(*) AS attempts,
+           COUNT(*) FILTER (WHERE p.was_correct) AS correct
+    FROM public.flashcard_practice p
+    JOIN scoped s ON s.id = p.flashcard_id
+    WHERE p.user_id = p_user_id
+    GROUP BY p.flashcard_id
+  )
+  SELECT json_build_object(
+    'totalCards', (SELECT COUNT(*) FROM scoped)::int,
+    'neverPracticed', COUNT(*) FILTER (WHERE cs.flashcard_id IS NULL)::int,
+    'learning', COUNT(*) FILTER (WHERE cs.learning_state = 'learning' AND NOT cs.is_leech)::int,
+    'review', COUNT(*) FILTER (WHERE cs.learning_state = 'review' AND NOT cs.is_leech)::int,
+    'relearning', COUNT(*) FILTER (WHERE cs.learning_state = 'relearning' AND NOT cs.is_leech)::int,
+    'leeched', COUNT(*) FILTER (WHERE cs.is_leech)::int,
+    'practicedCards', COUNT(*) FILTER (WHERE cp.attempts > 0)::int,
+    'averageAccuracy', COALESCE(
+      ROUND(AVG(CASE WHEN cp.attempts > 0
+        THEN ROUND(cp.correct * 100.0 / cp.attempts)   -- per-card %, matches the UI's correctRate
+      END)), 0
+    )::int,
+    'averageEasinessFactor', COALESCE(ROUND(AVG(cs.easiness_factor)::numeric, 2), 0)
+  )
+  FROM scoped s
+  LEFT JOIN card_state cs ON cs.id = s.id
+  LEFT JOIN card_practice cp ON cp.flashcard_id = s.id;
 $$;
 
 -- ==========================================

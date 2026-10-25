@@ -555,6 +555,75 @@ describe('FlashcardPracticeService', () => {
     });
   });
 
+  describe('getStateBreakdown (#395)', () => {
+    it('forwards the resolved filter and passes the RPC payload through', async () => {
+      const { buildQueryFilter } = await import('@studiq/server/lib/authz');
+      vi.mocked(buildQueryFilter).mockReturnValueOnce({
+        created_by: 'test-user-id',
+        organization_id: 'org-1',
+      } as any);
+
+      const breakdown = {
+        totalCards: 8,
+        neverPracticed: 0,
+        learning: 7,
+        review: 1,
+        relearning: 0,
+        leeched: 0,
+        practicedCards: 8,
+        averageAccuracy: 75,
+        averageEasinessFactor: 2.5,
+      };
+      mock.rpc.mockResolvedValue({ data: breakdown, error: null });
+
+      const orgCtx: RequestContext = { ...ctx, activeOrgId: 'org-1' };
+      const result = await service.getStateBreakdown(orgCtx);
+
+      expect(mock.rpc).toHaveBeenCalledWith('get_practice_state_breakdown', {
+        p_user_id: ctx.userId,
+        p_created_by: 'test-user-id',
+        p_organization_id: 'org-1',
+      });
+      expect(result.success).toBe(true);
+      expect(result.data as any).toEqual(breakdown);
+    });
+
+    it('returns the full zero envelope when the RPC fails', async () => {
+      mock.rpc.mockResolvedValue({ data: null, error: { message: 'boom', code: 'XX000' } });
+
+      const result = await service.getStateBreakdown(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data as any).toEqual({
+        totalCards: 0,
+        neverPracticed: 0,
+        learning: 0,
+        review: 0,
+        relearning: 0,
+        leeched: 0,
+        practicedCards: 0,
+        averageAccuracy: 0,
+        averageEasinessFactor: 0,
+      });
+    });
+
+    it('returns the zero envelope without querying when the filter is impossible', async () => {
+      const { buildQueryFilter } = await import('@studiq/server/lib/authz');
+      vi.mocked(buildQueryFilter).mockReturnValueOnce({ _impossible: true } as any);
+
+      const result = await service.getStateBreakdown(ctx);
+
+      expect(mock.rpc).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(result.data as any).toMatchObject({
+        totalCards: 0,
+        practicedCards: 0,
+        averageAccuracy: 0,
+        averageEasinessFactor: 0,
+      });
+    });
+  });
+
   describe('getAllCardStats (#343)', () => {
     async function mockAccessibleFilter(filter: Record<string, unknown>) {
       const { accessibleFilter } = await import('@studiq/server/lib/authz');

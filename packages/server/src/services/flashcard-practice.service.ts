@@ -13,10 +13,24 @@ import type {
   DueFlashcardItem,
   FlashcardRow,
   PracticeSummary,
+  StateBreakdown,
 } from '@studiq/server/models/flashcard-practice.model';
 import type { Rating } from '@studiq/server/models/flashcard-spaced-repetition.model';
 import { flashcardSpacedRepetitionService } from '@studiq/server/services/flashcard-spaced-repetition.service';
 import type { SupabaseClient } from '@supabase/supabase-js';
+
+/** Zero envelope for `getStateBreakdown` when the call is impossible or the RPC fails. */
+const EMPTY_STATE_BREAKDOWN: StateBreakdown = {
+  totalCards: 0,
+  neverPracticed: 0,
+  learning: 0,
+  review: 0,
+  relearning: 0,
+  leeched: 0,
+  practicedCards: 0,
+  averageAccuracy: 0,
+  averageEasinessFactor: 0,
+};
 
 export class FlashcardPracticeService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
@@ -450,20 +464,13 @@ export class FlashcardPracticeService {
     });
   }
 
-  async getStateBreakdown(ctx: RequestContext): Promise<ServiceResult<unknown>> {
+  async getStateBreakdown(ctx: RequestContext): Promise<ServiceResult<StateBreakdown>> {
     const supabase = await this.createClient();
 
     const filter = buildQueryFilter(ctx, Permission.FLASHCARD_READ, 'flashcard');
 
     if (filter._impossible) {
-      return success({
-        totalCards: 0,
-        neverPracticed: 0,
-        learning: 0,
-        review: 0,
-        relearning: 0,
-        leeched: 0,
-      });
+      return success({ ...EMPTY_STATE_BREAKDOWN });
     }
 
     const { data, error } = await supabase.rpc('get_practice_state_breakdown', {
@@ -473,26 +480,10 @@ export class FlashcardPracticeService {
     });
 
     if (error) {
-      return success({
-        totalCards: 0,
-        neverPracticed: 0,
-        learning: 0,
-        review: 0,
-        relearning: 0,
-        leeched: 0,
-      });
+      return success({ ...EMPTY_STATE_BREAKDOWN });
     }
 
-    return success(
-      data as {
-        totalCards: number;
-        neverPracticed: number;
-        learning: number;
-        review: number;
-        relearning: number;
-        leeched: number;
-      },
-    );
+    return success(data as StateBreakdown);
   }
 
   async getStatsForFlashcard(
