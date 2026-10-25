@@ -1855,6 +1855,7 @@
     "toolbar_preview": "Preview",
     "link_url_prompt": "Link URL",
     "link_default_text": "link text",
+    "link_insert": "Insert",
     "bold_default_text": "bold",
     "italic_default_text": "italic",
     "front_label": "Front Side (Question)",
