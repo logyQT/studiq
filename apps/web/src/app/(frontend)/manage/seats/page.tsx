@@ -392,8 +392,12 @@ export default function ManageSeatsPage() {
                   <TableBody>
                     {pools.map((pool) => {
                       const available = pool.total - pool.assigned;
+                      // Only flag a pool once seats have actually been assigned; a fresh
+                      // single-seat pool (1/0/1) is not "low", it is simply untouched.
                       const nearFull =
-                        pool.total > 0 && available <= Math.max(1, Math.floor(pool.total * 0.2));
+                        pool.total > 0 &&
+                        pool.assigned > 0 &&
+                        available <= Math.max(1, Math.floor(pool.total * 0.2));
 
                       return (
                         <TableRow key={pool.id}>
