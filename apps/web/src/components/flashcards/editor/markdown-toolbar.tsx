@@ -59,7 +59,7 @@ export function MarkdownToolbar({
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => wrap('**', '**', 'bold')}
+          onClick={() => wrap('**', '**', t('bold_default_text'))}
           aria-label={t('toolbar_bold')}
           title={t('toolbar_bold')}
         >
@@ -68,7 +68,7 @@ export function MarkdownToolbar({
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => wrap('*', '*', 'italic')}
+          onClick={() => wrap('*', '*', t('italic_default_text'))}
           aria-label={t('toolbar_italic')}
           title={t('toolbar_italic')}
         >
