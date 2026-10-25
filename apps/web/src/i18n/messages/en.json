@@ -1078,6 +1078,7 @@
     "col_type": "Type",
     "col_members": "Members",
     "col_permissions": "Permissions",
+    "permissions_count": "{count, plural, one {# permission} other {# permissions}}",
     "col_actions": "Actions",
     "no_roles": "No roles found",
     "create_title": "Create Role",

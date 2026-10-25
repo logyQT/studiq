@@ -1059,6 +1059,7 @@
     "col_type": "Typ",
     "col_members": "Członkowie",
     "col_permissions": "Uprawnienia",
+    "permissions_count": "{count, plural, one {# uprawnienie} few {# uprawnienia} many {# uprawnień} other {# uprawnienia}}",
     "col_actions": "Akcje",
     "no_roles": "Brak ról",
     "create_title": "Utwórz rolę",
