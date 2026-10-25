@@ -148,7 +148,21 @@ def components() -> dict:
     checks.update(browsers)
     pid = read_pid(BOTS / ".pid")
     checks["bots"] = {"up": pid is not None, "pid": pid}
+    # Cheap polling loops that must not die silently: the usage watcher and the PR watcher.
+    for name, pidfile in (("usage-watch", ROOT / ".qa-fix" / "usage.pid"),
+                          ("pr-watch", ROOT / ".qa-fix" / "pr-watch.pid")):
+        wpid = read_pid(pidfile)
+        checks[name] = {"up": wpid is not None, "pid": wpid}
     return checks
+
+
+def spawn(cmd: list[str], cwd: Path, out_path: Path) -> int | None:
+    """Start a detached loop (run() would block until it exits)."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("a", encoding="utf-8") as fh:
+        proc = subprocess.Popen(cmd, cwd=str(cwd), stdout=fh, stderr=subprocess.STDOUT,
+                                start_new_session=True)
+    return proc.pid
 
 
 def enforce_session_timeouts(actions: list[dict]) -> None:
@@ -257,6 +271,18 @@ def ensure() -> dict:
         mark("bots")
         log(f"bots: exit {code} {out[-160:]}")
         actions.append({"component": "bots", "action": "start", "exit": code})
+
+    # Watchers: usage allowance + incoming PRs. They are plain loops with pidfiles.
+    for name, script, extra in (
+        ("usage-watch", ENV_ROOT / "qa" / "tools" / "qa-usage", ["loop"]),
+        ("pr-watch", ENV_ROOT / "qa" / "tools" / "qa-pr-watch", ["loop"]),
+    ):
+        if checks[name]["up"] or cooled(name):
+            continue
+        pid = spawn([str(script), *extra], ENV_ROOT, ROOT / ".qa-fix" / f"{name}.out")
+        mark(name)
+        log(f"{name}: started pid {pid}")
+        actions.append({"component": name, "action": "start", "pid": pid})
 
     # Context rotation: rare, only when the manager session exceeds the limit.
     rotate = ENV_ROOT / "qa" / "tools" / "qa-rotate"
