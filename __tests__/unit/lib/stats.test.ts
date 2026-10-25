@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { summarizeWeeklyActivity, weeklyWindowStart } from '@/lib/stats';
+import { hasTeacherActivity, summarizeWeeklyActivity, weeklyWindowStart } from '@/lib/stats';
 
 // Fixed clock so the window arithmetic is deterministic (2026-10-23 12:00 UTC).
 const NOW = Date.parse('2026-10-23T12:00:00Z');
@@ -41,5 +41,41 @@ describe('summarizeWeeklyActivity (#383)', () => {
 describe('weeklyWindowStart (#383)', () => {
   it('matches the server rolling range=7d boundary (UTC date)', () => {
     expect(weeklyWindowStart(NOW)).toBe('2026-10-16');
+  });
+});
+
+describe('hasTeacherActivity (#209)', () => {
+  const empty = () => ({
+    summary: {
+      activeStudents: { current: 0 },
+      totalPractices: { current: 0 },
+      totalQuizzes: { current: 0 },
+    },
+    dailyActivity: [
+      { reviews: 0, activeStudents: 0 },
+      { reviews: 0, activeStudents: 0 },
+    ],
+    students: [{ practices7d: 0, quizzes7d: 0 }],
+    quizzes: [{ attempts: 0 }, { attempts: 0 }],
+  });
+  type Data = ReturnType<typeof empty>;
+
+  it('is false when every counter is zero', () => {
+    expect(hasTeacherActivity(empty())).toBe(false);
+  });
+
+  it.each([
+    ['summary.activeStudents', (d: Data) => (d.summary.activeStudents.current = 1)],
+    ['summary.totalPractices', (d: Data) => (d.summary.totalPractices.current = 1)],
+    ['summary.totalQuizzes', (d: Data) => (d.summary.totalQuizzes.current = 1)],
+    ['chart reviews', (d: Data) => (d.dailyActivity[1].reviews = 1)],
+    ['chart activeStudents', (d: Data) => (d.dailyActivity[0].activeStudents = 1)],
+    ['student practices', (d: Data) => (d.students[0].practices7d = 1)],
+    ['student quizzes', (d: Data) => (d.students[0].quizzes7d = 1)],
+    ['quiz attempts', (d: Data) => (d.quizzes[1].attempts = 1)],
+  ])('is true when only %s is non-zero', (_name, mutate) => {
+    const data = empty();
+    mutate(data);
+    expect(hasTeacherActivity(data)).toBe(true);
   });
 });

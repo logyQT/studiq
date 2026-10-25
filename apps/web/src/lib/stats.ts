@@ -38,3 +38,32 @@ export function summarizeWeeklyActivity(
 
   return { reviews, correct };
 }
+
+/** Structural subset of the teacher activity payload needed to detect an empty period. */
+export interface TeacherActivityPayload {
+  summary: {
+    activeStudents: { current: number };
+    totalPractices: { current: number };
+    totalQuizzes: { current: number };
+  };
+  dailyActivity: { reviews: number; activeStudents: number }[];
+  students: { practices7d: number; quizzes7d: number }[];
+  quizzes: { attempts: number }[];
+}
+
+/**
+ * The activity API always returns every org member and four fixed quiz buckets,
+ * so array lengths say nothing. True only when some raw activity counter is
+ * non-zero (derived fields such as accuracy or status are ignored) (#209).
+ */
+export function hasTeacherActivity(data: TeacherActivityPayload): boolean {
+  const { summary } = data;
+  return (
+    summary.activeStudents.current > 0 ||
+    summary.totalPractices.current > 0 ||
+    summary.totalQuizzes.current > 0 ||
+    data.dailyActivity.some((d) => d.reviews > 0 || d.activeStudents > 0) ||
+    data.students.some((s) => s.practices7d > 0 || s.quizzes7d > 0) ||
+    data.quizzes.some((q) => q.attempts > 0)
+  );
+}
