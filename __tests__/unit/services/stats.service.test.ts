@@ -613,9 +613,11 @@ describe('StatsService', () => {
       ]);
     });
 
-    it('normalises assignment attempts by total_points and includes them (#203)', async () => {
+    it('normalises assignment attempts by total_points and names them after the quiz (#203, #207)', async () => {
       // The issue's EDU-ST-02 fixture: five completed assignment attempts scored
-      // 3/4, 2/4, 4/4, 3/4, 3/4 → 75 %, not the raw mean of 3 points.
+      // 3/4, 2/4, 4/4, 3/4, 3/4 → 75 %, not the raw mean of 3 points. They carry
+      // no `config` (the assignment flow never writes one), so the label has to
+      // come from the assignment → quiz relation instead of „Untitled Quiz”.
       const membersBuilder = qb([{ user_id: 's-1' }]);
       const attemptsBuilder = qb(
         [3, 2, 4, 3, 3].map((score, index) => ({
@@ -625,10 +627,89 @@ describe('StatsService', () => {
           total_points: 4,
           completed_at: '2024-01-01T10:00:00Z',
           config: null,
+          assignment_id: 'as-1',
         })),
       );
+      const assignmentsBuilder = qb([{ id: 'as-1', title: 'Assignment title', quiz_id: 'quiz-1' }]);
+      const quizzesBuilder = qb([{ id: 'quiz-1', name: 'Historia — Średniowiecze' }]);
       mock.from.mockReturnValueOnce(membersBuilder);
       mock.from.mockReturnValueOnce(attemptsBuilder);
+      mock.from.mockReturnValueOnce(assignmentsBuilder);
+      mock.from.mockReturnValueOnce(quizzesBuilder);
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(attemptsBuilder.select).toHaveBeenCalledWith(expect.stringContaining('assignment_id'));
+      expect(assignmentsBuilder.in).toHaveBeenCalledWith('id', ['as-1']);
+      expect(assignmentsBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+      expect(quizzesBuilder.in).toHaveBeenCalledWith('id', ['quiz-1']);
+      expect(quizzesBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        {
+          id: 'Historia — Średniowiecze',
+          title: 'Historia — Średniowiecze',
+          totalAttempts: 5,
+          avgScore: 75,
+          avgCompletionRate: 100,
+        },
+      ]);
+    });
+
+    it('falls back to the assignment title when the assignment has no quiz (#207)', async () => {
+      const membersBuilder = qb([{ user_id: 's-1' }]);
+      const attemptsBuilder = qb([
+        {
+          id: 'a-1',
+          score: 3,
+          total_questions: 4,
+          total_points: 4,
+          completed_at: '2024-01-01T10:00:00Z',
+          config: null,
+          assignment_id: 'as-1',
+        },
+      ]);
+      const assignmentsBuilder = qb([{ id: 'as-1', title: 'Ad-hoc assignment', quiz_id: null }]);
+      mock.from.mockReturnValueOnce(membersBuilder);
+      mock.from.mockReturnValueOnce(attemptsBuilder);
+      mock.from.mockReturnValueOnce(assignmentsBuilder);
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      // No quiz id to resolve, so the quizzes lookup is skipped entirely.
+      expect(mock.from).toHaveBeenCalledTimes(3);
+      expect(mock.from).not.toHaveBeenCalledWith('quizzes');
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        {
+          id: 'Ad-hoc assignment',
+          title: 'Ad-hoc assignment',
+          totalAttempts: 1,
+          avgScore: 75,
+          avgCompletionRate: 100,
+        },
+      ]);
+    });
+
+    it('keeps a deleted or other-org assignment untitled instead of crashing (#207)', async () => {
+      const membersBuilder = qb([{ user_id: 's-1' }]);
+      const attemptsBuilder = qb([
+        {
+          id: 'a-1',
+          score: 2,
+          total_questions: 4,
+          total_points: 4,
+          completed_at: '2024-01-01T10:00:00Z',
+          config: null,
+          assignment_id: 'as-gone',
+        },
+      ]);
+      // RLS / org filter hides the assignment: the lookup returns no rows.
+      const assignmentsBuilder = qb([]);
+      mock.from.mockReturnValueOnce(membersBuilder);
+      mock.from.mockReturnValueOnce(attemptsBuilder);
+      mock.from.mockReturnValueOnce(assignmentsBuilder);
 
       const result = await service.getTeacherQuizStats(orgCtx);
 
@@ -637,11 +718,111 @@ describe('StatsService', () => {
         {
           id: '',
           title: null,
-          totalAttempts: 5,
-          avgScore: 75,
+          totalAttempts: 1,
+          avgScore: 50,
           avgCompletionRate: 100,
         },
       ]);
+    });
+
+    it('prefers a stored config.title over the assignment and quiz names (#207)', async () => {
+      const membersBuilder = qb([{ user_id: 's-1' }]);
+      const attemptsBuilder = qb([
+        {
+          id: 'a-1',
+          score: 8,
+          total_questions: 10,
+          completed_at: '2024-01-01T10:00:00Z',
+          config: { title: 'Practice title' },
+          assignment_id: 'as-1',
+        },
+      ]);
+      const assignmentsBuilder = qb([{ id: 'as-1', title: 'Assignment title', quiz_id: 'quiz-1' }]);
+      const quizzesBuilder = qb([{ id: 'quiz-1', name: 'Historia — Średniowiecze' }]);
+      mock.from.mockReturnValueOnce(membersBuilder);
+      mock.from.mockReturnValueOnce(attemptsBuilder);
+      mock.from.mockReturnValueOnce(assignmentsBuilder);
+      mock.from.mockReturnValueOnce(quizzesBuilder);
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        {
+          id: 'Practice title',
+          title: 'Practice title',
+          totalAttempts: 1,
+          avgScore: 80,
+          avgCompletionRate: 100,
+        },
+      ]);
+    });
+
+    it('skips both assignment lookups for a practice-only page (#207)', async () => {
+      const membersBuilder = qb([{ user_id: 's-1' }]);
+      const attemptsBuilder = qb([
+        {
+          id: 'a-1',
+          score: 8,
+          total_questions: 10,
+          completed_at: '2024-01-01T10:00:00Z',
+          config: { title: 'Quiz A' },
+          assignment_id: null,
+        },
+      ]);
+      mock.from.mockReturnValueOnce(membersBuilder);
+      mock.from.mockReturnValueOnce(attemptsBuilder);
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(mock.from).toHaveBeenCalledTimes(2);
+      expect(mock.from).not.toHaveBeenCalledWith('teacher_assignments');
+      expect(mock.from).not.toHaveBeenCalledWith('quizzes');
+      expect(result.success).toBe(true);
+      expect(result.data).toHaveLength(1);
+    });
+
+    it('returns a failure when the assignment lookup fails (#207)', async () => {
+      mock.from.mockReturnValueOnce(qb([{ user_id: 's-1' }]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          {
+            id: 'a-1',
+            score: 0,
+            total_questions: 4,
+            completed_at: null,
+            config: null,
+            assignment_id: 'as-1',
+          },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(qb(null, { message: 'boom', code: 'XX000' }));
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(result.success).toBe(false);
+    });
+
+    it('returns a failure when the quiz lookup fails (#207)', async () => {
+      mock.from.mockReturnValueOnce(qb([{ user_id: 's-1' }]));
+      mock.from.mockReturnValueOnce(
+        qb([
+          {
+            id: 'a-1',
+            score: 0,
+            total_questions: 4,
+            completed_at: null,
+            config: null,
+            assignment_id: 'as-1',
+          },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(qb([{ id: 'as-1', title: 'Assignment', quiz_id: 'q-1' }]));
+      mock.from.mockReturnValueOnce(qb(null, { message: 'boom', code: 'XX000' }));
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(result.success).toBe(false);
     });
 
     it('guards a zero denominator', async () => {
