@@ -211,6 +211,41 @@ forEachCopy((copyId) => {
 
         expect(profile?.full_name).toBe('Jan Kowalski');
       });
+
+      // #302 / AUT-04: the shared rule must accept a hyphen and an apostrophe
+      // end-to-end (API → GoTrue → handle_new_user → profiles.full_name), not
+      // only in the register form's client-side resolver.
+      it('accepts and stores hyphenated/apostrophised names (#302)', async () => {
+        const { createServiceClient } = await import('@studiq/server/lib/supabase/service');
+        const serviceClient = createServiceClient();
+        const names = ['Anna-Maria Nowak', "Jan O'Brien"];
+
+        for (const [index, name] of names.entries()) {
+          const uniqueEmail = `name-${copyId}-${index}-${Date.now()}@example.com`;
+
+          const response = await registerPost(
+            createNextRequest('http://localhost/api/v1/auth/register', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                email: uniqueEmail,
+                password: 'TestPass123',
+                name,
+                accountType: 'educator',
+              }),
+            }),
+          );
+          expect(response.status, name).toBe(202);
+
+          const { data: profile } = await serviceClient
+            .from('profiles')
+            .select('full_name')
+            .eq('email', uniqueEmail)
+            .single();
+
+          expect(profile?.full_name, name).toBe(name);
+        }
+      });
     });
 
     describe('POST /api/v1/auth/login', () => {

@@ -16,6 +16,29 @@ describe('NameSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  // #302 / AUT-04: a hyphen (double-barrelled surname) and both apostrophe forms
+  // are legitimate name characters and must not be rejected as invalid format.
+  it('accepts hyphenated and apostrophised names (#302)', () => {
+    for (const name of ['Anna-Maria Nowak', "Jan O'Brien", 'O’Brien', 'Łukasz Żółć']) {
+      expect(NameSchema.parse(name), name).toBe(name);
+    }
+  });
+
+  it('trims a padded hyphenated name without losing the hyphen (#302)', () => {
+    expect(NameSchema.parse('  Anna-Maria Nowak  ')).toBe('Anna-Maria Nowak');
+  });
+
+  // The widened charset must not readmit the characters rejected before #302.
+  it('still rejects other punctuation in a name (#302)', () => {
+    for (const name of ['Jan_Doe', 'Jan@Doe', 'Jan123']) {
+      const result = NameSchema.safeParse(name);
+      expect(result.success, name).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0].message).toBe(ValidationErrorCode.NAME_INVALID_FORMAT);
+      }
+    }
+  });
+
   it('fails with empty string', () => {
     const result = NameSchema.safeParse('');
     expect(result.success).toBe(false);
@@ -165,6 +188,21 @@ describe('RegisterSchema', () => {
     expect(RegisterSchema.parse({ ...base, name: '  Jan Kowalski  ' }).name).toBe('Jan Kowalski');
   });
 
+  // The register form (and `/join`) use this schema as their `zodResolver`, so
+  // accepting these names here means the client sends the request instead of
+  // showing the format error (#302 / AUT-04).
+  it('accepts hyphenated and apostrophised names (#302)', () => {
+    const base = {
+      email: 'john@example.com',
+      password: 'SecurePass1',
+      accountType: 'student' as const,
+    };
+
+    for (const name of ['Anna-Maria Nowak', "Jan O'Brien", 'O’Brien']) {
+      expect(RegisterSchema.parse({ ...base, name }).name, name).toBe(name);
+    }
+  });
+
   it('reports an empty email as required, not invalid (#299)', () => {
     const result = RegisterSchema.safeParse({
       name: 'John Doe',
@@ -241,6 +279,12 @@ describe('UpdateProfileSchema', () => {
 
   it('trims a padded name', () => {
     expect(UpdateProfileSchema.parse({ name: '  Jan  ' })).toEqual({ name: 'Jan' });
+  });
+
+  it('accepts a hyphenated name when re-saving the profile (#302)', () => {
+    expect(UpdateProfileSchema.parse({ name: 'Anna-Maria Nowak' })).toEqual({
+      name: 'Anna-Maria Nowak',
+    });
   });
 });
 
