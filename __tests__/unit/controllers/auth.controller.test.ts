@@ -1,5 +1,6 @@
 import { AuthController } from '@studiq/server/controllers/auth.controller';
 import { failure, success } from '@studiq/server/lib/service-result';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockAuthService() {
@@ -78,6 +79,67 @@ describe('AuthController', () => {
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(410);
       expect((response as any).error).toBe('GONE');
+    });
+
+    // #303 / AUT-04: a whitespace-only name is not a name — the shared schema
+    // must reject it before the service (and GoTrue) ever sees it.
+    it('returns UNPROCESSABLE_ENTITY for a whitespace-only name (#303)', async () => {
+      const response = await controller.register({
+        name: '  ',
+        email: 'john@example.com',
+        password: 'SecurePass1',
+        accountType: 'student',
+      });
+
+      expect(response.success).toBe(false);
+      if (!response.success) {
+        expect(response.statusCode).toBe(422);
+        expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+        expect(response.details?.[0].path).toEqual(['name']);
+        expect(response.details?.[0].message).toBe(ValidationErrorCode.NAME_REQUIRED);
+      }
+      expect(mockService.register).not.toHaveBeenCalled();
+    });
+
+    it('forwards the trimmed name to the service (#303)', async () => {
+      mockService.register.mockResolvedValueOnce(success(undefined));
+
+      await controller.register({
+        name: '  Jan Kowalski  ',
+        email: 'john@example.com',
+        password: 'SecurePass1',
+        accountType: 'student',
+      });
+
+      expect(mockService.register).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Jan Kowalski' }),
+      );
+    });
+  });
+
+  // `PUT /api/v1/auth/profile` reuses `NameSchema`, so it gets the same
+  // guarantee as the register form (#303).
+  describe('updateProfile', () => {
+    it('returns UNPROCESSABLE_ENTITY for a whitespace-only name (#303)', async () => {
+      const response = await controller.updateProfile({ name: '   ' });
+
+      expect(response.success).toBe(false);
+      if (!response.success) {
+        expect(response.statusCode).toBe(422);
+        expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+        expect(response.details?.[0].path).toEqual(['name']);
+        expect(response.details?.[0].message).toBe(ValidationErrorCode.NAME_REQUIRED);
+      }
+      expect(mockService.updateProfile).not.toHaveBeenCalled();
+    });
+
+    it('forwards the trimmed name to the service (#303)', async () => {
+      mockService.updateProfile.mockResolvedValueOnce(success({ id: 'user-1' }));
+
+      const response = await controller.updateProfile({ name: '  Jan Kowalski  ' });
+
+      expect(response.success).toBe(true);
+      expect(mockService.updateProfile).toHaveBeenCalledWith({ name: 'Jan Kowalski' });
     });
   });
 

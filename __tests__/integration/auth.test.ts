@@ -158,6 +158,61 @@ forEachCopy((copyId) => {
       });
     });
 
+    // #303 / AUT-04: name is validated by the shared `NameSchema` for the form
+    // and the API alike. Kept in its own describe so the #299 e-mail cases stay
+    // untouched. A rejected name never reaches GoTrue, so no user is created.
+    describe('name validation (#303)', () => {
+      it('returns 422 when the register name is whitespace-only', async () => {
+        const req = createNextRequest('http://localhost/api/v1/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: `ws-${copyId}-${Date.now()}@example.com`,
+            password: 'TestPass123',
+            name: '  ',
+            accountType: 'educator',
+          }),
+        });
+
+        const response = await registerPost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+        expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+        // `toNextResponse` treeifies the issues (see seats.test.ts).
+        expect(body.issues.properties.name.errors).toContain('VALIDATION_NAME_REQUIRED');
+      });
+
+      it('stores the trimmed name in the created profile', async () => {
+        const { createServiceClient } = await import('@studiq/server/lib/supabase/service');
+        const serviceClient = createServiceClient();
+        const uniqueEmail = `trim-${copyId}-${Date.now()}@example.com`;
+
+        const response = await registerPost(
+          createNextRequest('http://localhost/api/v1/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: uniqueEmail,
+              password: 'TestPass123',
+              name: '  Jan Kowalski  ',
+              accountType: 'educator',
+            }),
+          }),
+        );
+        expect(response.status).toBe(202);
+
+        const { data: profile } = await serviceClient
+          .from('profiles')
+          .select('full_name')
+          .eq('email', uniqueEmail)
+          .single();
+
+        expect(profile?.full_name).toBe('Jan Kowalski');
+      });
+    });
+
     describe('POST /api/v1/auth/login', () => {
       it('logs in with valid credentials and returns 200', async () => {
         const req = createNextRequest('http://localhost/api/v1/auth/login', {
