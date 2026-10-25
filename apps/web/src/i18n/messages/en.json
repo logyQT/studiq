@@ -2793,6 +2793,30 @@
     "correct": "Correct",
     "incorrect": "Incorrect"
   },
+  "AppQuizReviewPage": {
+    "title": "Quiz Review",
+    "back": "Back to Study",
+    "loading": "Loading…",
+    "load_failed": "Failed to load quiz",
+    "score_percent": "Score: {percentage}%",
+    "points_out_of": "{score} out of {total} points",
+    "correct_of": "{score} out of {total} correct",
+    "correct_closed": "Correct: {score} of {total, plural, one {# graded question} other {# graded questions}}",
+    "open_questions_line": "{count, plural, one {# open question — check it yourself} other {# open questions — check them yourself}}",
+    "open_only_title": "Open questions only",
+    "open_only_desc": "{count, plural, one {You have # open answer to check yourself.} other {You have # open answers to check yourself.}}",
+    "badge_correct": "Correct",
+    "badge_incorrect": "Incorrect",
+    "badge_pending_review": "Pending review",
+    "badge_self_check": "Self-check",
+    "question_short": "Q{number}",
+    "type_mcq": "Multiple choice",
+    "type_true_false": "True / False",
+    "type_open": "Open answer",
+    "your_answer": "Your answer",
+    "no_answer": "No answer",
+    "explanation": "Explanation"
+  },
   "AnswerImageUpload": {
     "uploading": "Uploading...",
     "upload_photo": "Upload Photo"

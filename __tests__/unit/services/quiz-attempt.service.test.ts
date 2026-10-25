@@ -53,11 +53,12 @@ describe('QuizAttemptService', () => {
     it('returns attempts for user', async () => {
       const attempts = [{ id: 'a-1', user_id: ctx.userId, score: 5 }];
       mock.from.mockReturnValueOnce(qb(attempts));
+      mock.from.mockReturnValueOnce(qb([{ attempt_id: 'a-1', questions: { type: 'mcq' } }]));
 
       const result = await service.list(ctx);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(attempts);
+      expect(result.data).toEqual([{ ...attempts[0], gradable_questions: 1 }]);
     });
 
     it('returns INTERNAL_SERVER when query fails', async () => {
@@ -71,12 +72,13 @@ describe('QuizAttemptService', () => {
 
     it('does not look up assignments when the caller has only practice attempts (#374)', async () => {
       mock.from.mockReturnValueOnce(qb([{ id: 'a-1', user_id: ctx.userId, score: 5 }]));
+      mock.from.mockReturnValueOnce(qb([{ attempt_id: 'a-1', questions: { type: 'mcq' } }]));
 
       const result = await service.list(ctx);
 
       expect(result.success).toBe(true);
       // Fail closed would be pointless here: there is no assignment flag to read.
-      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from.mock.calls.map((call) => call[0])).not.toContain('teacher_assignments');
     });
 
     it('withholds the score of a hidden assignment attempt (#374)', async () => {
@@ -87,6 +89,7 @@ describe('QuizAttemptService', () => {
           { id: 'a-3', user_id: ctx.userId, score: 1, assignment_id: null },
         ]),
       );
+      mock.from.mockReturnValueOnce(qb([{ attempt_id: 'a-1', questions: { type: 'mcq' } }]));
       mock.from.mockReturnValueOnce(
         qb([
           { id: 'assignment-hidden', show_results: false },
@@ -106,12 +109,63 @@ describe('QuizAttemptService', () => {
 
     it('fails closed when the assignment lookup fails (#374)', async () => {
       mock.from.mockReturnValueOnce(qb([{ id: 'a-1', score: 3, assignment_id: 'assignment-1' }]));
+      mock.from.mockReturnValueOnce(qb([]));
       mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
 
       const result = await service.list(ctx);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
+    /**
+     * #329 — `total_questions` includes `open` questions, which are never
+     * auto-graded, so the practice score needs its own denominator.
+     */
+    it('excludes open questions and treats an attempt with no rows as 0', async () => {
+      mock.from.mockReturnValueOnce(
+        qb([
+          { id: 'a-1', user_id: ctx.userId, score: 2, assignment_id: null },
+          { id: 'a-2', user_id: ctx.userId, score: 0, assignment_id: null },
+        ]),
+      );
+      mock.from.mockReturnValueOnce(
+        qb([
+          { attempt_id: 'a-1', questions: { type: 'mcq' } },
+          { attempt_id: 'a-1', questions: { type: 'true_false' } },
+          { attempt_id: 'a-1', questions: { type: 'open' } },
+          // A missing / RLS-hidden question embed must not count as gradable.
+          { attempt_id: 'a-1', questions: null },
+        ]),
+      );
+
+      const result = await service.list(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        expect.objectContaining({ id: 'a-1', gradable_questions: 2 }),
+        expect.objectContaining({ id: 'a-2', gradable_questions: 0 }),
+      ]);
+    });
+
+    it('returns INTERNAL_SERVER when the gradable lookup fails', async () => {
+      mock.from.mockReturnValueOnce(qb([{ id: 'a-1', user_id: ctx.userId, score: 2 }]));
+      mock.from.mockReturnValueOnce(qb(null, { message: 'DB error' }));
+
+      const result = await service.list(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
+    it('does not query questions when the caller has no attempts', async () => {
+      mock.from.mockReturnValueOnce(qb([]));
+
+      const result = await service.list(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([]);
+      expect(mock.from).toHaveBeenCalledTimes(1);
     });
   });
 

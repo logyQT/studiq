@@ -134,11 +134,17 @@ test.describe('Standalone quiz with an open answer (#320)', () => {
 
     await expect(page).toHaveURL(/\/review$/, { timeout: 30_000 });
     // `exact` matches the answer span only; the explanation block renders
-    // "Explanation: …" and is therefore not an exact match.
+    // "Wyjaśnienie: …" and is therefore not an exact match.
     await expect(page.getByText(openAnswer, { exact: true })).toBeVisible();
-    // The review page hardcodes this English badge (same i18n gap). `exact` plus
-    // strict mode is intentional: the spec generates exactly one open question,
-    // so a second badge is a real regression, not ambiguity.
-    await expect(page.getByText('Pending review', { exact: true })).toBeVisible();
+
+    // #329 — a practice quiz with only open questions has no reviewer and nothing
+    // auto-graded, so the review must show the self-check badge and the dedicated
+    // all-open state instead of „Pending review” / „Score: 0%”.
+    // `t()` returns a RegExp, so these are substring matches by design.
+    await expect(page.getByText(t('AppQuizReviewPage.badge_self_check'))).toBeVisible();
+    await expect(page.getByText(t('AppQuizReviewPage.open_only_title'))).toBeVisible();
+    await expect(page.getByText(t('AppQuizReviewPage.no_answer'))).toHaveCount(0);
+    await expect(page.getByText(/Oczekuje na ocenę|Pending review/)).toHaveCount(0);
+    await expect(page.getByText(/Wynik: \d+%|Score: \d+%/)).toHaveCount(0);
   });
 });

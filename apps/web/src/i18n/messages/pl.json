@@ -2773,6 +2773,30 @@
     "correct": "Poprawnie",
     "incorrect": "Niepoprawnie"
   },
+  "AppQuizReviewPage": {
+    "title": "Wyniki testu",
+    "back": "Wróć do nauki",
+    "loading": "Ładowanie…",
+    "load_failed": "Nie udało się wczytać testu",
+    "score_percent": "Wynik: {percentage}%",
+    "points_out_of": "{score} z {total} punktów",
+    "correct_of": "{score} z {total} poprawnych",
+    "correct_closed": "Poprawnie: {score} z {total} pytań zamkniętych",
+    "open_questions_line": "{count, plural, one {Pytanie otwarte: # — sprawdź samodzielnie} few {Pytania otwarte: # — sprawdź samodzielnie} many {Pytań otwartych: # — sprawdź samodzielnie} other {Pytania otwarte: # — sprawdź samodzielnie}}",
+    "open_only_title": "Tylko pytania otwarte",
+    "open_only_desc": "{count, plural, one {Masz # pytanie otwarte do samodzielnego sprawdzenia.} few {Masz # pytania otwarte do samodzielnego sprawdzenia.} many {Masz # pytań otwartych do samodzielnego sprawdzenia.} other {Masz # pytań otwartych do samodzielnego sprawdzenia.}}",
+    "badge_correct": "Poprawnie",
+    "badge_incorrect": "Niepoprawnie",
+    "badge_pending_review": "Oczekuje na ocenę",
+    "badge_self_check": "Do samodzielnej oceny",
+    "question_short": "P{number}",
+    "type_mcq": "Wielokrotny wybór",
+    "type_true_false": "Prawda / Fałsz",
+    "type_open": "Otwarta odpowiedź",
+    "your_answer": "Twoja odpowiedź",
+    "no_answer": "Brak odpowiedzi",
+    "explanation": "Wyjaśnienie"
+  },
   "AnswerImageUpload": {
     "uploading": "Przesyłanie...",
     "upload_photo": "Prześlij zdjęcie"
