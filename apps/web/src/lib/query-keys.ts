@@ -61,6 +61,14 @@ export const featureKeys = {
   me: ['features', 'me'] as const,
 };
 
+export const aiKeys = {
+  all: ['ai'] as const,
+  // `limitsResolver.getUsage` resolves the effective limit from the active org
+  // cookie, so the entry must be keyed by org — switching orgs would otherwise
+  // keep serving the previous org's limit for the 60s stale window.
+  usage: (orgId?: string | null) => ['ai', 'usage', orgId ?? null] as const,
+};
+
 export const groupKeys = {
   all: ['groups'] as const,
   list: (orgId?: string) => ['groups', 'list', orgId] as const,

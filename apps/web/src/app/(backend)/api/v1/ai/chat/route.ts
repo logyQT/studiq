@@ -9,6 +9,7 @@ import { finishTool } from '@studiq/server/agents/tools/generic/finish.tool';
 import { generateFlashcardsTool } from '@studiq/server/agents/tools/generic/generate-flashcards.tool';
 import { webfetchTool } from '@studiq/server/agents/tools/generic/webfetch.tool';
 import { chatModel, providerName, reasoningEffort } from '@studiq/server/ai/model';
+import { AI_TOKENS_LIMIT_KEY } from '@studiq/server/config/limits.config';
 import { conversationStorage } from '@studiq/server/lib/conversation-context';
 import { AppError } from '@studiq/server/lib/errors';
 import { toNextResponse } from '@studiq/server/lib/http-utils';
@@ -19,8 +20,6 @@ import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { UIMessage } from 'ai';
 import { convertToModelMessages, hasToolCall, stepCountIs, streamText } from 'ai';
 import { type NextRequest, NextResponse } from 'next/server';
-
-const AI_TOKENS_LIMIT_KEY = 'max_ai_tokens_per_day';
 
 const rateLimiter = createRateLimiter(60_000, 20);
 
