@@ -798,7 +798,8 @@
     "deck_suspended": "Talia zawieszona",
     "deck_unsuspended": "Talia przywrócona",
     "suspended": "Zawieszona",
-    "deck_suspended_notice": "Ta talia jest zawieszona. Fiszki z tej talii nie będą wyświetlane w sesjach nauki ani statystykach."
+    "deck_suspended_notice": "Ta talia jest zawieszona. Fiszki z tej talii nie będą wyświetlane w sesjach nauki ani statystykach.",
+    "optional": "(opcjonalnie)"
   },
   "EduFlashcardStatsPage": {
     "title": "Statystyki fiszek",
@@ -1371,7 +1372,10 @@
     "deck_suspended": "Talia zawieszona",
     "deck_unsuspended": "Talia przywrócona",
     "suspended": "Zawieszona",
-    "deck_suspended_notice": "Ta talia jest zawieszona. Fiszki z tej talii nie będą wyświetlane w sesjach nauki ani statystykach."
+    "deck_suspended_notice": "Ta talia jest zawieszona. Fiszki z tej talii nie będą wyświetlane w sesjach nauki ani statystykach.",
+    "back_label": "Tył (Odpowiedź)",
+    "front_label": "Przód (Pytanie)",
+    "optional": "(opcjonalnie)"
   },
   "AppFlashcardTopicsPage": {
     "title": "Menedżer Tematów",
@@ -2039,7 +2043,9 @@
     "visibility_personal": "Tylko ja",
     "visibility_group": "Grupy",
     "groups_placeholder": "Wybierz grupy...",
-    "groups_empty": "Nie znaleziono grup"
+    "groups_empty": "Nie znaleziono grup",
+    "csv_parse_error": "Nie udało się sparsować pliku CSV",
+    "csv_map_required": "Proszę przypisać kolumny Przód i Tył"
   },
   "AiChatPage": {
     "title": "Asystent AI",
