@@ -2437,6 +2437,7 @@
   },
   "EduAssignmentNewPage": {
     "title": "Nowa kartkówka",
+    "based_on": "Na podstawie: {name}",
     "subtitle": "Utwórz nową kartkówkę dla uczniów",
     "basic_info": "Podstawowe informacje",
     "title_field": "Tytuł *",
