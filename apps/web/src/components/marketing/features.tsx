@@ -38,7 +38,7 @@ export function Features() {
       <div className="mx-auto max-w-5xl">
         <div className="text-center mb-12">
           <Badge variant="secondary" className="mb-4">
-            Free Forever
+            {t('free_badge')}
           </Badge>
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">{t('free_title')}</h2>
           <p className="mt-4 text-lg text-muted-foreground">{t('free_desc')}</p>
@@ -67,7 +67,7 @@ export function Features() {
 
       <div className="mt-20 mx-auto max-w-5xl">
         <div className="text-center mb-12">
-          <Badge className="mb-4">Premium & University</Badge>
+          <Badge className="mb-4">{t('ai_badge')}</Badge>
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">{t('ai_title')}</h2>
           <p className="mt-4 text-lg text-muted-foreground">{t('ai_desc')}</p>
         </div>
