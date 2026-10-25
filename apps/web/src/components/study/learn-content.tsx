@@ -189,6 +189,13 @@ export function LearnContent() {
             <p className="text-sm text-muted-foreground text-center max-w-sm">
               {t('all_caught_up_desc')}
             </p>
+            {/* Cram is always available, so an empty due/new queue must not dead-end (#617). */}
+            <p className="text-sm text-muted-foreground text-center max-w-sm">
+              {t('cram_available')}
+            </p>
+            <Button variant="outline" onClick={() => router.push('/app/study/cram')}>
+              <Play data-icon="inline-start" /> {t('start_cram')}
+            </Button>
           </CardContent>
         </Card>
       )}

@@ -40,6 +40,15 @@ export const PreparePracticeSchema = registry.register(
   }),
 );
 
+/**
+ * Request-level study mode (#617). Cram is side-effect-free, so the service has
+ * to be told the mode instead of inferring it from the client's UI state.
+ * Omitted → `'review'`, which keeps every pre-#617 caller byte-compatible.
+ */
+const PracticeModeSchema = z
+  .enum(['review', 'cram'], { error: ValidationErrorCode.INVALID_INPUT })
+  .default('review');
+
 export const LogPracticeSchema = registry.register(
   'LogFlashcardPracticeRequest',
   z.object({
@@ -56,6 +65,7 @@ export const LogPracticeSchema = registry.register(
       .max(5, { error: ValidationErrorCode.TOO_BIG })
       .optional(),
     sessionId: z.uuid({ error: ValidationErrorCode.UUID_INVALID }).optional(),
+    mode: PracticeModeSchema,
   }),
 );
 
@@ -78,6 +88,7 @@ export const BatchPracticeSchema = registry.register(
   'BatchFlashcardPracticeRequest',
   z.object({
     items: z.array(BatchPracticeItemSchema).min(1, { error: ValidationErrorCode.TOO_FEW }),
+    mode: PracticeModeSchema,
   }),
 );
 
@@ -109,6 +120,7 @@ export const CompleteSessionSchema = registry.register(
 );
 
 export type LogPracticeInput = z.infer<typeof LogPracticeSchema>;
+export type PracticeMode = z.infer<typeof PracticeModeSchema>;
 export type BatchPracticeItemInput = z.infer<typeof BatchPracticeItemSchema>;
 export type BatchPracticeInput = z.infer<typeof BatchPracticeSchema>;
 export type CompleteSessionInput = z.infer<typeof CompleteSessionSchema>;
