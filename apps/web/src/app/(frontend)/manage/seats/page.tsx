@@ -1,5 +1,6 @@
 'use client';
 
+import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import {
   Badge,
   Button,
@@ -31,6 +32,7 @@ import { Loader2, Plus, Trash2, UserCheck } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { useApiQuery } from '@/hooks/use-api';
 
 interface Pool {
   id: string;
@@ -55,15 +57,6 @@ interface Assignment {
   userFullName: string | null;
   assignedAt: string;
 }
-
-const PLAN_LABELS: Record<string, string> = {
-  launch: 'StudiQ Launch',
-  team: 'StudiQ Team',
-  hub: 'StudiQ Hub',
-  pro: 'StudiQ Pro',
-  master: 'StudiQ Master',
-  campus: 'StudiQ Campus',
-};
 
 /** Maps plan_key → compatible account tier (matches seat.service.ts PLAN_TIER_MAP). */
 const PLAN_TIER_MAP: Record<string, string> = {
@@ -99,6 +92,11 @@ const PURCHASABLE_PLANS: { key: string; label: string; tier: string }[] = [
 
 export default function ManageSeatsPage() {
   const t = useTranslations('ManageSeatsPage');
+  const { data: plans } = useApiQuery<PlanInfo[]>({
+    queryKey: ['subscription-plans', 'active'],
+    url: '/api/v1/subscription-plans',
+  });
+  const planName = (key: string) => plans?.find((p) => p.key === key)?.name ?? key;
   const [pools, setPools] = useState<Pool[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -339,7 +337,7 @@ export default function ManageSeatsPage() {
                           : pools;
                         return compatible.map((p) => (
                           <SelectItem key={p.id} value={p.id}>
-                            {PLAN_LABELS[p.planKey] || p.planKey}
+                            {planName(p.planKey)}
                             <span className="text-muted-foreground ml-2">
                               ({p.assigned}/{p.total})
                             </span>
@@ -399,9 +397,7 @@ export default function ManageSeatsPage() {
 
                       return (
                         <TableRow key={pool.id}>
-                          <TableCell className="font-medium">
-                            {PLAN_LABELS[pool.planKey] || pool.planKey}
-                          </TableCell>
+                          <TableCell className="font-medium">{planName(pool.planKey)}</TableCell>
                           <TableCell className="text-right">{pool.total}</TableCell>
                           <TableCell className="text-right">{pool.assigned}</TableCell>
                           <TableCell className="text-right">
@@ -452,7 +448,7 @@ export default function ManageSeatsPage() {
                             <span>{a.userFullName || a.userEmail || a.userId}</span>
                           </div>
                         </TableCell>
-                        <TableCell>{PLAN_LABELS[a.planKey] || a.planKey}</TableCell>
+                        <TableCell>{planName(a.planKey)}</TableCell>
                         <TableCell className="text-muted-foreground text-sm">
                           {new Date(a.assignedAt).toLocaleDateString()}
                         </TableCell>
