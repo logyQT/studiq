@@ -103,7 +103,7 @@ export function OverviewTab() {
             {!states ? (
               <Skeleton className="h-48 w-full" />
             ) : (
-              <div className="min-h-[260px] flex items-center justify-center">
+              <div className="min-h-[260px]">
                 <StateBreakdownChart states={states} />
               </div>
             )}

@@ -1851,6 +1851,7 @@
     "state_review": "Powtórka",
     "state_relearning": "Poprawa",
     "state_leech": "Oporne",
+    "state_breakdown_empty": "Brak fiszek do wyświetlenia. Dodaj fiszkę, aby zobaczyć podział stanów.",
     "weak_decks": "Najsłabsze talie",
     "weak_topics": "Najsłabsze tematy",
     "no_weak_decks": "Brak danych o taliach;ćwicz dalej!",
