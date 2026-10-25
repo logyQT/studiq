@@ -38,7 +38,7 @@ DISCORD_STATE = ROOT.parent / "qa-discord" / "qa" / "discord" / "state.json"
 BASE = "http://127.0.0.1:4096"
 AUTH = "Basic " + base64.b64encode(b"opencode:studiq-local-dev").decode()
 
-FIELDS = "number,title,author,isDraft,createdAt,url,headRefName,baseRefName,additions,deletions,changedFiles"
+FIELDS = ("number,title,author,isDraft,createdAt,url,headRefName,baseRefName,additions,deletions,changedFiles,headRefOid")
 
 
 def now_ms() -> int:
@@ -104,12 +104,14 @@ def notify(text: str, session: str | None = None) -> bool:
         return False
 
 
-def message(pr: dict, ready: bool) -> str:
+def message(pr: dict, ready: bool, commit: bool = False) -> str:
     author = ((pr.get("author") or {}).get("login") or "?")
     draft = " (draft)" if pr.get("isDraft") else ""
     head = f"`{pr.get('headRefName')}` -> `{pr.get('baseRefName')}`"
     size = f"+{pr.get('additions', 0)}/-{pr.get('deletions', 0)} in {pr.get('changedFiles', 0)} files"
-    if ready:
+    if commit:
+        lead = f"[pr-watch] PR #{pr['number']} has a new commit by {author} - re-review it."
+    elif ready:
         lead = f"[pr-watch] PR #{pr['number']} is ready for review (was draft)."
     else:
         lead = f"[pr-watch] New PR #{pr['number']} by {author}{draft}."
@@ -117,7 +119,7 @@ def message(pr: dict, ready: bool) -> str:
         f"{lead}\n"
         f"\"{pr['title']}\" - {size} - {head}\n"
         f"{pr.get('url', '')}\n\n"
-        f"Review + QA it: `$FIX ingest --author {author}` then `$FIX review {pr['number']}` "
+        f"{'Re-review' if commit else 'Review + QA'} it: `$FIX ingest --author {author}` then `$FIX review {pr['number']}` "
         f"and `$FIX qa {pr['number']}`. Two independent reviews and one QA on the same head: "
         f"merge when every gate is green (`verdict {pr['number']} --approve`), otherwise post one "
         f"consolidated `--request-changes` review and wait for the author's fix. Never push code."
@@ -136,13 +138,24 @@ def poll(args, state: dict) -> list[dict]:
         was = seen.get(n)
         is_draft = bool(pr.get("isDraft"))
         if was is None:
-            entry = {"title": pr["title"], "author": author, "draft": is_draft, "at": now_ms()}
+            entry = {"title": pr["title"], "author": author, "draft": is_draft,
+                     "head": pr.get("headRefOid"), "at": now_ms()}
             seen[n] = entry
             if not args.all and me and author == me:
                 continue
             if is_draft and not args.drafts:
                 continue
             found.append({"pr": pr, "ready": False})
+        elif not was.get("head"):
+            # entry written before head tracking existed: adopt the current head silently
+            was["head"] = pr.get("headRefOid")
+        elif was.get("head") and pr.get("headRefOid") and was["head"] != pr["headRefOid"]:
+            # the author pushed a fix (or a new commit): the gates are stale
+            was["head"] = pr["headRefOid"]
+            was["at"] = now_ms()
+            if not args.all and me and author == me:
+                continue
+            found.append({"pr": pr, "ready": False, "commit": True})
         elif was.get("draft") and not is_draft:
             was["draft"] = False
             was["at"] = now_ms()
@@ -160,7 +173,7 @@ def tick(args, state: dict) -> list[dict]:
     save(state)
     for item in found:
         pr = item["pr"]
-        text = message(pr, item["ready"])
+        text = message(pr, item["ready"], item.get("commit", False))
         if args.dry_run:
             print("[dry-run] would notify:", text.splitlines()[0])
             continue
@@ -213,6 +226,7 @@ def baseline(args) -> dict:
             "title": pr["title"],
             "author": ((pr.get("author") or {}).get("login") or "").lower(),
             "draft": bool(pr.get("isDraft")),
+            "head": pr.get("headRefOid"),
             "at": now_ms(),
         }
         for pr in prs
@@ -267,7 +281,7 @@ def main() -> None:
 
     found = tick(args, state)
     for item in found:
-        print(message(item["pr"], item["ready"]))
+        print(message(item["pr"], item["ready"], item.get("commit", False)))
     if not found:
         print(f"no new PRs ({state.get('open', 0)} open)")
 
