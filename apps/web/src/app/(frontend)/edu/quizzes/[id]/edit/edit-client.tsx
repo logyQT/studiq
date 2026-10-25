@@ -159,7 +159,7 @@ function SortableQuestion({
           onChange={(points) => onPointsChange(question.question_id, points)}
         />
         <span className="text-sm text-muted-foreground">
-          {t('points_short', { points: question.points })}
+          {t('points_unit', { points: question.points })}
         </span>
       </div>
       <button

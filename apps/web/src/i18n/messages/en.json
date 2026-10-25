@@ -2494,6 +2494,7 @@
     "name_label": "Name",
     "description_label": "Description",
     "points_short": "{points, plural, one {# pt} other {# pts}}",
+    "points_unit": "{points, plural, one {pt} other {pts}}",
     "questions_count": "{count, plural, one {# question} other {# questions}}",
     "all_banks": "All banks",
     "search_questions_placeholder": "Search questions...",

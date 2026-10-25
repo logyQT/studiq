@@ -2500,6 +2500,7 @@
     "name_label": "Nazwa",
     "description_label": "Opis",
     "points_short": "{points} pkt",
+    "points_unit": "pkt",
     "questions_count": "{count, plural, one {# pytanie} few {# pytania} many {# pytań} other {# pytania}}",
     "all_banks": "Wszystkie banki",
     "search_questions_placeholder": "Szukaj pytań...",
