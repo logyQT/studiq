@@ -1325,6 +1325,96 @@ describe('TeacherAssignmentService', () => {
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
     });
+
+    it('withholds the score while show_results is off, keeping the completion metadata (#374)', async () => {
+      mock.from
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(
+          chain([
+            {
+              id: assignmentId,
+              title: 'Hidden quiz',
+              created_by: 'teacher-1',
+              organization_id: null,
+              status: 'published',
+              show_results: false,
+              assignment_targets: [{ group_id: null, student_id: userId }],
+            },
+          ]),
+        )
+        .mockReturnValue(
+          chain([
+            {
+              assignment_id: assignmentId,
+              id: 'attempt-1',
+              score: 3,
+              total_questions: 4,
+              total_points: 4,
+              completed_at: '2026-07-13T01:00:00Z',
+              started_at: '2026-07-13T00:00:00Z',
+            },
+          ]),
+        );
+
+      const result = await service.listForStudent(ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        const [row] = result.data as Array<{
+          attempts_used: number;
+          attempt: { id: string; score: number | null };
+          last_completed_attempt: { id: string; score: number | null; completed_at: string };
+        }>;
+        expect(row.attempt.score).toBeNull();
+        expect(row.last_completed_attempt.score).toBeNull();
+        expect(row.last_completed_attempt.id).toBe('attempt-1');
+        expect(row.last_completed_attempt.completed_at).toBe('2026-07-13T01:00:00Z');
+        expect(row.attempts_used).toBe(1);
+      }
+    });
+
+    it('reports the score when show_results is on (#374)', async () => {
+      mock.from
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(chain([]))
+        .mockReturnValueOnce(
+          chain([
+            {
+              id: assignmentId,
+              title: 'Visible quiz',
+              created_by: 'teacher-1',
+              organization_id: null,
+              status: 'published',
+              show_results: true,
+              assignment_targets: [{ group_id: null, student_id: userId }],
+            },
+          ]),
+        )
+        .mockReturnValue(
+          chain([
+            {
+              assignment_id: assignmentId,
+              id: 'attempt-1',
+              score: 3,
+              total_questions: 4,
+              total_points: 4,
+              completed_at: '2026-07-13T01:00:00Z',
+              started_at: '2026-07-13T00:00:00Z',
+            },
+          ]),
+        );
+
+      const result = await service.listForStudent(ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        const [row] = result.data as Array<{
+          last_completed_attempt: { score: number | null };
+        }>;
+        expect(row.last_completed_attempt.score).toBe(3);
+      }
+    });
   });
 
   describe('getForStudent', () => {
@@ -1542,6 +1632,62 @@ describe('TeacherAssignmentService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
+    it('withholds the score while show_results is off (#374)', async () => {
+      mock.from.mockReturnValueOnce(chain({ ...assignment, show_results: false })).mockReturnValue(
+        chain([
+          {
+            assignment_id: assignmentId,
+            id: 'attempt-1',
+            score: 3,
+            total_questions: 4,
+            total_points: 4,
+            completed_at: '2026-07-13T01:00:00Z',
+            started_at: '2026-07-13T00:00:00Z',
+          },
+        ]),
+      );
+
+      const result = await service.getForStudent(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        const data = result.data as {
+          last_completed_attempt: {
+            id: string;
+            score: number | null;
+          };
+        };
+        expect(data.last_completed_attempt.id).toBe('attempt-1');
+        expect(data.last_completed_attempt.score).toBeNull();
+      }
+    });
+
+    it('reports the score when show_results is on (#374)', async () => {
+      mock.from.mockReturnValueOnce(chain({ ...assignment, show_results: true })).mockReturnValue(
+        chain([
+          {
+            assignment_id: assignmentId,
+            id: 'attempt-1',
+            score: 3,
+            total_questions: 4,
+            total_points: 4,
+            completed_at: '2026-07-13T01:00:00Z',
+            started_at: '2026-07-13T00:00:00Z',
+          },
+        ]),
+      );
+
+      const result = await service.getForStudent(assignmentId, ctx);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        const data = result.data as {
+          last_completed_attempt: { score: number | null };
+        };
+        expect(data.last_completed_attempt.score).toBe(3);
+      }
     });
   });
 

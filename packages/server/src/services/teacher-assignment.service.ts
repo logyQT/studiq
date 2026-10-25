@@ -744,17 +744,23 @@ export class TeacherAssignmentService {
    * `attempt` stays the newest attempt (running or completed) so „Kontynuuj”
    * keeps working; `last_completed_attempt` feeds the result card/review link
    * even while a retake is running.
+   *
+   * `score === null` means the result is withheld by `show_results` (#374).
+   * Completion metadata (`id`, `completed_at`, `attempts_used`, totals) stays so
+   * the pages can still render „Ukończono” without revealing the result.
    */
-  private summarizeAttempts(rows: StudentAttemptSummaryRow[]) {
+  private summarizeAttempts(rows: StudentAttemptSummaryRow[], showResults: boolean) {
     const ordered = [...rows].sort((a, b) => {
       const at = a.started_at ? new Date(a.started_at).getTime() : 0;
       const bt = b.started_at ? new Date(b.started_at).getTime() : 0;
       return at - bt || a.id.localeCompare(b.id);
     });
     const completed = ordered.filter((row) => row.completed_at !== null);
+    const withScore = (row: StudentAttemptSummaryRow | undefined) =>
+      row ? { ...row, score: showResults ? row.score : null } : null;
     return {
-      attempt: ordered.at(-1) ?? null,
-      last_completed_attempt: completed.at(-1) ?? null,
+      attempt: withScore(ordered.at(-1)),
+      last_completed_attempt: withScore(completed.at(-1)),
       attempts_used: completed.length,
     };
   }
@@ -812,7 +818,7 @@ export class TeacherAssignmentService {
 
     const result = filtered.map((a) => ({
       ...a,
-      ...this.summarizeAttempts(attemptsByAssignment.get(a.id) ?? []),
+      ...this.summarizeAttempts(attemptsByAssignment.get(a.id) ?? [], a.show_results === true),
     }));
 
     return success(result);
@@ -845,7 +851,10 @@ export class TeacherAssignmentService {
 
     return success({
       ...assignment,
-      ...this.summarizeAttempts((attempts ?? []) as StudentAttemptSummaryRow[]),
+      ...this.summarizeAttempts(
+        (attempts ?? []) as StudentAttemptSummaryRow[],
+        assignment.show_results === true,
+      ),
     });
   }
 

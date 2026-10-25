@@ -26,6 +26,7 @@ interface AssignmentDetail extends StudentAssignmentAttemptState {
   question_count: number;
   total_points: number;
   shuffle_questions: boolean;
+  show_results: boolean;
 }
 
 export default function StudentAssignmentDetailPage() {
@@ -210,15 +211,21 @@ export default function StudentAssignmentDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-lg font-bold">
-              {t('score', {
-                earned: lastCompleted.score,
-                total: lastCompleted.total_points || lastCompleted.total_questions,
-              })}
-            </p>
-            <Link href={`/app/assignments/${id}/review?attemptId=${lastCompleted.id}`}>
-              <Button variant="outline">{t('view_review')}</Button>
-            </Link>
+            {assignment.show_results ? (
+              <>
+                <p className="text-lg font-bold">
+                  {t('score', {
+                    earned: lastCompleted.score ?? 0,
+                    total: lastCompleted.total_points || lastCompleted.total_questions,
+                  })}
+                </p>
+                <Link href={`/app/assignments/${id}/review?attemptId=${lastCompleted.id}`}>
+                  <Button variant="outline">{t('view_review')}</Button>
+                </Link>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t('results_hidden')}</p>
+            )}
           </CardContent>
         </Card>
       )}

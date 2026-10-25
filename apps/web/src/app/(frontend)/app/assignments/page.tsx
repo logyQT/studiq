@@ -20,6 +20,7 @@ interface StudentAssignment extends StudentAssignmentAttemptState {
   time_limit_min: number | null;
   question_count: number;
   total_points: number;
+  show_results: boolean;
 }
 
 function formatDate(dateStr: string | null, locale: string) {
@@ -175,8 +176,14 @@ export default function StudentAssignmentsPage() {
                       <div className="flex items-start justify-between">
                         <h3 className="font-semibold">{a.title}</h3>
                         <span className="text-xs text-muted-foreground">
-                          {lastCompleted?.score}/
-                          {lastCompleted?.total_points || lastCompleted?.total_questions}
+                          {a.show_results && lastCompleted ? (
+                            <>
+                              {lastCompleted.score}/
+                              {lastCompleted.total_points || lastCompleted.total_questions}
+                            </>
+                          ) : (
+                            t('results_hidden')
+                          )}
                         </span>
                       </div>
                       <div className="flex items-center gap-4 text-xs text-muted-foreground">
