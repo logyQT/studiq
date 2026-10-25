@@ -11,8 +11,10 @@ import {
 //
 // O1/D2: new orgs got max_groups = 1 (launch plan default) → org owners could not
 //        create a second group (429 USAGE_LIMIT_EXCEEDED). Raised to 3.
-// D1 hardening: 'base' (default student plan) now carries max_students/max_groups
-//        = -1 so personal-plan paths never resolve org-management limits to 0.
+// D1 hardening: 'base' (default student plan) still carries
+//        max_students/max_groups = -1, but since #233 org-scope keys are never
+//        read from a personal plan, those rows no longer widen anything. The
+//        rows are kept (and asserted) only as historical seed data.
 //        (Primary D1 fix is LimitsResolver.checkOrgLimit + invite-accept.test.ts.)
 forEachCopy((copyId) => {
   describe(`Plan limit fixes [${copyId}]`, () => {
@@ -46,7 +48,7 @@ forEachCopy((copyId) => {
       expect(fixture.defaultGroupId).toBe(fixture.groups[0]);
     });
 
-    it('D1 hardening — base plan resolves org-management limits to -1 (unlimited)', async () => {
+    it('D1 hardening — base plan still carries the legacy org-management rows (#233: never read)', async () => {
       const supabase = createServiceClient();
       for (const key of ['max_students', 'max_groups']) {
         const { data: limit } = await supabase

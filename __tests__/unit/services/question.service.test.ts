@@ -81,6 +81,33 @@ describe('QuestionService', () => {
       expect(mock.from).toHaveBeenCalledWith('questions');
     });
 
+    it('counts only the caller content in the active org (#233)', async () => {
+      const mockQuestion = { id: 'q-1', type: 'open', content: 'Q1' };
+      const countChain = chain([], 0);
+      mock.from.mockReturnValueOnce(countChain);
+      mock.from.mockReturnValue(chain(mockQuestion));
+
+      await service.create(
+        { type: 'open', content: 'Q1', answers: [] },
+        { ...ctx, activeOrgId: 'org-1' },
+      );
+
+      expect(countChain.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countChain.eq).toHaveBeenCalledWith('organization_id', 'org-1');
+    });
+
+    it('does not filter the count by org outside an org context (#233)', async () => {
+      const mockQuestion = { id: 'q-1', type: 'open', content: 'Q1' };
+      const countChain = chain([], 0);
+      mock.from.mockReturnValueOnce(countChain);
+      mock.from.mockReturnValue(chain(mockQuestion));
+
+      await service.create({ type: 'open', content: 'Q1', answers: [] }, ctx);
+
+      expect(countChain.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(countChain.eq).not.toHaveBeenCalledWith('organization_id', expect.anything());
+    });
+
     it('creates an open question without inserting any options', async () => {
       const mockQuestion = { id: 'q-open', type: 'open', content: 'Explain' };
 

@@ -25,11 +25,8 @@ export class FlashcardService {
   async create(data: CreateFlashcardInput, ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
-    const { count: flashcardCount } = await supabase
-      .from('flashcards')
-      .select('*', { count: 'exact', head: true })
-      .eq('created_by', ctx.userId);
-    await limitsResolver.checkLimit(ctx, 'max_flashcards', flashcardCount ?? 0);
+    const flashcardCount = await this.countOwned(supabase, ctx);
+    await limitsResolver.checkLimit(ctx, 'max_flashcards', flashcardCount);
 
     let deckVisibility: string | undefined;
     if (data.deckId) {
@@ -80,11 +77,8 @@ export class FlashcardService {
     const supabase = await this.createClient();
     const cardCount = data.cards.length;
 
-    const { count: bulkFlashcardCount } = await supabase
-      .from('flashcards')
-      .select('*', { count: 'exact', head: true })
-      .eq('created_by', ctx.userId);
-    await limitsResolver.checkLimit(ctx, 'max_flashcards', bulkFlashcardCount ?? 0, cardCount);
+    const bulkFlashcardCount = await this.countOwned(supabase, ctx);
+    await limitsResolver.checkLimit(ctx, 'max_flashcards', bulkFlashcardCount, cardCount);
 
     let bulkDeckVisibilities: string[] = [];
     if (data.deckId) {
@@ -574,6 +568,23 @@ export class FlashcardService {
     // deck_id is already set on each new flashcard in the insert above
 
     return success({ copied: data.ids.length, flashcards: newFlashcards });
+  }
+
+  /**
+   * Count the caller's cards for the limit check (#233): inside an org the count
+   * is scoped to content owned by the caller **in that org**, so personal-space
+   * cards (and cards from other orgs) never consume the org plan's capacity.
+   */
+  private async countOwned(supabase: SupabaseClient, ctx: RequestContext): Promise<number> {
+    let query = supabase
+      .from('flashcards')
+      .select('*', { count: 'exact', head: true })
+      .eq('created_by', ctx.userId);
+
+    if (ctx.activeOrgId) query = query.eq('organization_id', ctx.activeOrgId);
+
+    const { count } = await query;
+    return count ?? 0;
   }
 }
 export const flashcardService = wrapService(

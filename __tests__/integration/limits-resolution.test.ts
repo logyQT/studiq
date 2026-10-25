@@ -114,8 +114,9 @@ forEachCopy((copyId) => {
       expect(error).toBeNull();
       expect(await orgPlan()).toBe('hub');
 
-      // hub max_flashcards = 2000 beats the manager's personal plan (100), which
-      // can only come from the live org plan (#230).
+      // hub max_flashcards = 2000. The org plan alone governs org-context
+      // capacity (#233): the manager's personal plan (launch, 100) never widens
+      // it, and the value can only come from the live org plan (#230).
       await expect(resolver.getEffectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(2000);
     });
 
@@ -179,6 +180,77 @@ forEachCopy((copyId) => {
       await expect(resolver.getEffectiveLimit(memberWithoutRole, 'max_flashcards')).resolves.toBe(
         2000,
       );
+    });
+
+    it('lets the org plan govern a member with an unlimited personal plan (#233 Q1)', async () => {
+      const { data: profile } = await service
+        .from('profiles')
+        .select('personal_plan_key')
+        .eq('id', fixture.user.id)
+        .single();
+      const originalPlan = profile!.personal_plan_key!;
+
+      await service.from('profiles').update({ personal_plan_key: 'pro' }).eq('id', fixture.user.id);
+
+      try {
+        // launch: max_flashcards 100, max_ai_tokens_per_day 0. The personal
+        // `pro` plan used to short-circuit both to -1 (unlimited).
+        await expect(resolver.getEffectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(100);
+        await expect(
+          resolver.getEffectiveLimit(memberCtx(), 'max_ai_tokens_per_day'),
+        ).resolves.toBe(0);
+
+        // The personal plan still applies outside the org.
+        await expect(
+          resolver.getEffectiveLimit(memberCtx({ activeOrgId: null }), 'max_flashcards'),
+        ).resolves.toBe(-1);
+      } finally {
+        await service
+          .from('profiles')
+          .update({ personal_plan_key: originalPlan })
+          .eq('id', fixture.user.id);
+      }
+    });
+
+    it('fails closed when the active plan omits a key (#233 Q2)', async () => {
+      const planKey = `test-233-missing-${copyId}-${Date.now()}`;
+
+      try {
+        const { error: planError } = await service.from('subscription_plans').insert({
+          key: planKey,
+          name: `Test #233 missing key ${copyId}`,
+          price_monthly: 0,
+          currency: 'PLN',
+          sort_order: 999,
+          for_account_type: 'manager',
+          is_active: false,
+        });
+        if (planError) throw new Error(`[limits] plan create failed: ${planError.message}`);
+
+        // Deliberately omits `max_decks` (user scope) and `max_groups` (org scope).
+        const { error: limitsError } = await service.from('plan_limits').insert([
+          { plan_key: planKey, limit_key: 'max_flashcards', limit_value: 100 },
+          { plan_key: planKey, limit_key: 'max_students', limit_value: 5 },
+        ]);
+        if (limitsError) {
+          throw new Error(`[limits] plan limits create failed: ${limitsError.message}`);
+        }
+
+        await service.from('organizations').update({ plan: planKey }).eq('id', fixture.orgId!);
+
+        // Missing user key in org context → 0, with no personal fallback.
+        await expect(resolver.getEffectiveLimit(memberCtx(), 'max_decks')).resolves.toBe(0);
+        // Present key still resolves from the org plan.
+        await expect(resolver.getEffectiveLimit(memberCtx(), 'max_flashcards')).resolves.toBe(100);
+        // Missing org key in checkOrgLimit → blocked (was unlimited before #233).
+        await expect(resolver.checkOrgLimit(fixture.orgId!, 'max_groups', 0)).rejects.toThrow(
+          'USAGE_LIMIT_EXCEEDED',
+        );
+      } finally {
+        await service.from('organizations').update({ plan: 'launch' }).eq('id', fixture.orgId!);
+        await service.from('plan_limits').delete().eq('plan_key', planKey);
+        await service.from('subscription_plans').delete().eq('key', planKey);
+      }
     });
 
     it('does not trust active_org_id without a verified membership', async () => {
