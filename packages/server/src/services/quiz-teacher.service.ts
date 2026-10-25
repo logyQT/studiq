@@ -41,6 +41,14 @@ export class QuizTeacherService {
   async list(ctx: RequestContext): Promise<ServiceResult<unknown>> {
     const supabase = await this.createClient();
 
+    // Quizzes are strictly org-scoped, and postgrest serialises a null value as
+    // `eq.null`, which Postgres rejects for a uuid column (22P02 → 500). A caller
+    // without a membership-verified active org is authenticated but has no tenant
+    // scope, so reject the request before it reaches the database (#147).
+    if (!ctx.activeOrgId) {
+      return failure('FORBIDDEN');
+    }
+
     const { data, error } = await supabase
       .from('quizzes')
       .select('*, quiz_questions(count)')

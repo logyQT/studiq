@@ -103,6 +103,14 @@ describe('QuizTeacherController', () => {
 
       expect(response).toEqual({ success: true, statusCode: 200, data: quizzes });
     });
+
+    it('returns 403 when the service reports FORBIDDEN', async () => {
+      mockService.list.mockResolvedValueOnce(failure('FORBIDDEN'));
+
+      const response = await controller.list({ ...mockCtx, activeOrgId: null });
+
+      expect(response).toEqual({ success: false, statusCode: 403, error: 'FORBIDDEN' });
+    });
   });
 
   describe('getById', () => {
