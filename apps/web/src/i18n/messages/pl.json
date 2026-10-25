@@ -2496,7 +2496,15 @@
     "auto_save_failed": "Autozapis nieudany",
     "save_failed": "Zapis nieudany",
     "unsaved": "Niezapisane zmiany",
-    "points_label": "Punkty za pytanie {index}"
+    "points_label": "Punkty za pytanie {index}",
+    "name_label": "Nazwa",
+    "description_label": "Opis",
+    "points_short": "{points} pkt",
+    "questions_count": "{count, plural, one {# pytanie} few {# pytania} many {# pytań} other {# pytania}}",
+    "all_banks": "Wszystkie banki",
+    "search_questions_placeholder": "Szukaj pytań...",
+    "no_questions_found": "Nie znaleziono pytań",
+    "add_to_quiz": "Dodaj do quizu"
   },
   "EduQuizDetailPage": {
     "not_found": "Nie znaleziono quizu",

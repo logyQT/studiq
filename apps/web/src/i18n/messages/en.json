@@ -2490,7 +2490,15 @@
     "auto_save_failed": "Auto-save failed",
     "save_failed": "Save failed",
     "unsaved": "Unsaved changes",
-    "points_label": "Points for question {index}"
+    "points_label": "Points for question {index}",
+    "name_label": "Name",
+    "description_label": "Description",
+    "points_short": "{points, plural, one {# pt} other {# pts}}",
+    "questions_count": "{count, plural, one {# question} other {# questions}}",
+    "all_banks": "All banks",
+    "search_questions_placeholder": "Search questions...",
+    "no_questions_found": "No questions found",
+    "add_to_quiz": "Add to quiz"
   },
   "EduQuizDetailPage": {
     "not_found": "Quiz not found",
