@@ -101,6 +101,12 @@ describe('buildBreadcrumbs', () => {
       'Sesja testowa',
       'Wyniki testu',
     ]);
+
+    // `/app/study/session/quiz` has no page of its own (the `[type]` page only
+    // accepts review|new|cram), so the intermediate crumb must not be a link.
+    const trail = crumbs(`/app/study/session/quiz/${ATTEMPT_ID}/review`);
+    expect(trail[1]).toMatchObject({ label: 'Sesja testowa', href: null, isCurrent: false });
+    expect(trail[2]).toMatchObject({ label: 'Wyniki testu', isCurrent: true });
   });
 
   it('labels study modes and difficulty buckets', () => {
@@ -166,6 +172,46 @@ describe('route coverage', () => {
 
   const registered = new Set(Object.keys(PATH_LABELS));
   const omitted = new Set<string>(OMITTED_PREFIXES);
+  const dashboardRoutes = ['edu', 'app', 'manage'].flatMap(pageRoutes);
+
+  /**
+   * Literal URLs that are legitimately served by a *dynamic* page instead of a
+   * literal page.tsx. Only add a route here after confirming the dynamic page
+   * renders it; `link: false` prefixes must never be listed.
+   *   - session/[type]: VALID_TYPES = review | new | cram   (NOT quiz)
+   *   - difficulty/[bucket]: no validation, any bucket renders
+   */
+  const VIRTUAL_ROUTES = new Set([
+    '/app/study/session/review',
+    '/app/study/session/new',
+    '/app/study/session/cram',
+    '/edu/flashcards/stats/difficulty/easy',
+    '/edu/flashcards/stats/difficulty/medium',
+    '/edu/flashcards/stats/difficulty/hard',
+    '/edu/flashcards/stats/difficulty/new',
+  ]);
+
+  /**
+   * A literal segment must match a literal directory — a dynamic directory does
+   * not count (that is why `/app/study/session/quiz` is caught). `*` must match
+   * a single dynamic directory `[param]`; a catch-all `[...slug]` renders 404
+   * for arbitrary ids and never counts.
+   */
+  function routeExists(pattern: string): boolean {
+    const segments = pattern.split('/').filter(Boolean);
+
+    return dashboardRoutes.some((route) => {
+      const routeSegments = route.split('/').filter(Boolean);
+      if (routeSegments.length !== segments.length) return false;
+
+      return segments.every((segment, index) => {
+        const routeSegment = routeSegments[index];
+        if (segment === '*') return /^\[[^.[\]]+\]$/.test(routeSegment);
+
+        return routeSegment === segment;
+      });
+    });
+  }
 
   it('registers every static dashboard route prefix', () => {
     for (const area of ['edu', 'app', 'manage']) {
@@ -177,6 +223,28 @@ describe('route coverage', () => {
           ).toBe(true);
         }
       }
+    }
+  });
+
+  it('marks entries without a page of their own as non-links', () => {
+    for (const [route, entry] of Object.entries(PATH_LABELS)) {
+      const hasPage = routeExists(route) || VIRTUAL_ROUTES.has(route);
+
+      if (entry.link === false) {
+        expect(hasPage, `${route} is link:false but has a page`).toBe(false);
+      } else {
+        expect(hasPage, `${route} is linkable but has no page`).toBe(true);
+      }
+    }
+
+    for (const route of VIRTUAL_ROUTES) expect(PATH_LABELS[route]).toBeDefined();
+  });
+
+  it('resolves every registered route from a concrete pathname', () => {
+    for (const [route, entry] of Object.entries(PATH_LABELS)) {
+      const pathname = route.replace(/\*/g, DECK_ID);
+
+      expect(labels(pathname), `${route} -> ${entry.labelKey}`).toContain(t(entry.labelKey));
     }
   });
 });

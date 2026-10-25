@@ -58,7 +58,8 @@ export const PATH_LABELS: Record<string, BreadcrumbEntry> = {
   '/edu/assignments/*/edit': { labelKey: 'EduAssignmentEditPage.title' },
   '/edu/assignments/*/print': { labelKey: 'Breadcrumbs.print_assignment' },
   '/edu/assignments/*/results': { labelKey: 'EduAssignmentResultsPage.title' },
-  '/edu/assignments/*/results/*': { labelKey: 'EduGradingPage.title' },
+  // `[studentId]` / `[qId]` are UUIDs, dropped before the route lookup — there is
+  // deliberately no `/…/results/*` entry (keep the trail free of raw ids).
   '/edu/assignments/*/results/question': {
     labelKey: 'EduPerQuestionGradingPage.title',
     link: false,
@@ -119,7 +120,12 @@ export const PATH_LABELS: Record<string, BreadcrumbEntry> = {
   '/app/study/session/review': { labelKey: 'Breadcrumbs.session_review' },
   '/app/study/session/new': { labelKey: 'Breadcrumbs.session_new' },
   '/app/study/session/cram': { labelKey: 'DashboardLayout.app_cram' },
-  '/app/study/session/quiz': { labelKey: 'DashboardLayout.breadcrumb_quiz_session' },
+  '/app/study/session/quiz': {
+    labelKey: 'DashboardLayout.breadcrumb_quiz_session',
+    // Intermediate crumb only. `/app/study/session/[type]/page.tsx` accepts
+    // review|new|cram, so this exact prefix has no page and 404s.
+    link: false,
+  },
   '/app/study/session/quiz/*/review': { labelKey: 'DashboardLayout.breadcrumb_quiz_review' },
   '/app/join': { labelKey: 'AppJoinPage.title' },
 
