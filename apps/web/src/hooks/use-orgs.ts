@@ -64,6 +64,10 @@ export function useOrgs() {
       queryClient.invalidateQueries({ queryKey: permissionKeys.all });
       queryClient.invalidateQueries({ queryKey: featureKeys.all });
 
+      // The current plan (`/api/v1/me/plan`) is resolved from the active org too
+      // and is cached with `staleTime: Infinity` (billing / settings pages).
+      queryClient.invalidateQueries({ queryKey: ['me', 'plan'] });
+
       // Report rows are scoped to the active org for an org admin, so the
       // previous org's inbox (`staleTime: Infinity`) must not survive a switch.
       queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
