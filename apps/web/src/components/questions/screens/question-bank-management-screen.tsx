@@ -15,13 +15,13 @@ import { BulkActionBar } from '@/components/shared/bulk-action-bar';
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog';
 import { PageGrid } from '@/components/shared/page-grid';
 import { SpeedDial } from '@/components/shared/speed-dial';
-import { useApiMutation, useApiQuery } from '@/hooks/use-api';
-import { useFeature } from '@/hooks/use-feature';
+import { useApiMutation } from '@/hooks/use-api';
+import { useGroupOptions } from '@/hooks/use-group-options';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { resolveQuestionBankEmptyView } from '@/lib/question-bank-empty-state';
-import { groupKeys, questionKeys } from '@/lib/query-keys';
+import { questionKeys } from '@/lib/query-keys';
 
 interface QuestionBankManagementScreenProps {
   apiBase: string;
@@ -31,12 +31,39 @@ interface QuestionBankManagementScreenProps {
 
 const STORAGE_KEY = 'question_banks_filters';
 
-function loadPersistedFilters() {
-  const defaults = { owner: 'all', groupFilter: 'all', sortBy: 'created_at', sortOrder: 'desc' };
+interface PersistedBankFilters {
+  owner: string;
+  groupIds: string[];
+  sortBy: string;
+  sortOrder: string;
+  /** One-shot migration flag from the retired `groupFilter` blob (#595). */
+  legacyMine: boolean;
+}
+
+function loadPersistedFilters(): PersistedBankFilters {
+  const defaults: PersistedBankFilters = {
+    owner: 'all',
+    groupIds: [],
+    sortBy: 'created_at',
+    sortOrder: 'desc',
+    legacyMine: false,
+  };
   if (typeof window === 'undefined') return defaults;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...defaults, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const groupIds = Array.isArray(parsed.groupIds)
+        ? parsed.groupIds.filter((value): value is string => typeof value === 'string')
+        : [];
+      return {
+        owner: parsed.owner === 'mine' ? 'mine' : 'all',
+        groupIds,
+        sortBy: typeof parsed.sortBy === 'string' ? parsed.sortBy : defaults.sortBy,
+        sortOrder: typeof parsed.sortOrder === 'string' ? parsed.sortOrder : defaults.sortOrder,
+        legacyMine: parsed.groupFilter === 'mine' && groupIds.length === 0,
+      };
+    }
   } catch {
     /* ignore */
   }
@@ -46,32 +73,20 @@ function loadPersistedFilters() {
 export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManagementScreenProps) {
   const _router = useRouter();
   const { activeOrg, isPending: orgsPending } = useOrgs();
-  const feature = useFeature();
   const permission = usePermission();
-
-  const { data: groupsData } = useApiQuery<Array<{ id: string; name: string }>>({
-    queryKey: groupKeys.list(activeOrg?.id),
-    url: '/api/v1/organization/groups',
-    enabled: !!activeOrg?.id && feature('group.manage'),
-  });
-  const { data: myGroupsData } = useApiQuery<
-    Array<{ id: string; name: string; organizationId: string }>
-  >({
-    queryKey: groupKeys.my,
-    url: '/api/v1/me/groups',
-  });
-  const myGroupsInOrg = (myGroupsData ?? []).filter((g) => g.organizationId === activeOrg?.id);
-  const groupNameMap = new Map<string, string>([
-    ...myGroupsInOrg.map((g) => [g.id, g.name] as const),
-    ...(groupsData ?? []).map((g) => [g.id, g.name] as const),
-  ]);
-  const showGroupFilter = myGroupsInOrg.length > 0 || (groupsData?.length ?? 0) > 0;
+  const {
+    groupsData,
+    options: groupOptions,
+    myGroupIds,
+    groupNameMap,
+    ready: groupsReady,
+  } = useGroupOptions();
   const persisted = loadPersistedFilters();
 
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [owner, setOwner] = useState(persisted.owner);
-  const [groupFilter, setGroupFilter] = useState(persisted.groupFilter);
+  const [groupIds, setGroupIds] = useState<string[]>(persisted.groupIds);
   const [sortBy, setSortBy] = useState(persisted.sortBy);
   const [sortOrder, setSortOrder] = useState(persisted.sortOrder);
   const [isSelecting, setIsSelecting] = useState(false);
@@ -80,23 +95,40 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
   const [editing, setEditing] = useState<QuestionBank | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  const optionIds = new Set(groupOptions.map((group) => group.id));
+  // Org switch / lost membership must never leave stale ids in the request.
+  const effectiveGroupIds = groupIds.filter((id) => optionIds.has(id));
+  const groupsParam = effectiveGroupIds.join(',') || undefined;
+
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchInput), 300);
     return () => clearTimeout(timer);
   }, [searchInput]);
+
+  // One-shot migration from the retired `all|mine` group toggle (#595).
+  const legacyMineRef = useRef(persisted.legacyMine);
+  useEffect(() => {
+    if (!groupsReady || !legacyMineRef.current) return;
+    legacyMineRef.current = false;
+    const migratedGroupIds = myGroupIds;
+    setGroupIds(migratedGroupIds);
+    persistFilters(owner, migratedGroupIds, sortBy, sortOrder);
+  }, [groupsReady, myGroupIds, owner, sortBy, sortOrder]);
 
   const activeQuery = debouncedSearch.trim();
 
   const filters = {
     q: activeQuery || undefined,
     owner: owner !== 'all' ? owner : undefined,
-    groupFilter: groupFilter !== 'all' ? groupFilter : undefined,
+    groups: groupsParam,
     sortBy,
     sortOrder,
   };
 
   const queryString = new URLSearchParams(
-    Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined)),
+    Object.fromEntries(
+      Object.entries(filters).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    ),
   ).toString();
 
   const {
@@ -115,13 +147,18 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     initialPageParam: '',
     staleTime: Infinity,
     refetchOnMount: false,
-    enabled: !orgsPending,
+    // Hold the first paint while a persisted selection waits for its options.
+    enabled: !orgsPending && !(groupIds.length > 0 && !groupsReady),
   });
 
   const banks = banksData?.pages.flatMap((page) => page.items) ?? [];
 
   // #360 — an empty list caused by a filter must not claim the collection is empty.
-  const emptyView = resolveQuestionBankEmptyView({ query: activeQuery, owner, groupFilter });
+  const emptyView = resolveQuestionBankEmptyView({
+    query: activeQuery,
+    owner,
+    groupIds: effectiveGroupIds,
+  });
 
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const handleObserver = useCallback(
@@ -142,11 +179,11 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     return () => observer.disconnect();
   }, [handleObserver]);
 
-  function persistFilters(o: string, gf: string, sb: string, so: string) {
+  function persistFilters(o: string, gids: string[], sb: string, so: string) {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ owner: o, groupFilter: gf, sortBy: sb, sortOrder: so }),
+        JSON.stringify({ owner: o, groupIds: gids, sortBy: sb, sortOrder: so }),
       );
     } catch {
       /* ignore */
@@ -162,8 +199,8 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
     setSearchInput('');
     setDebouncedSearch('');
     setOwner('all');
-    setGroupFilter('all');
-    persistFilters('all', 'all', sortBy, sortOrder);
+    setGroupIds([]);
+    persistFilters('all', [], sortBy, sortOrder);
   }
 
   useEffect(() => {
@@ -300,21 +337,23 @@ export function QuestionBankManagementScreen({ basePath, t }: QuestionBankManage
         onSearchChange={setSearchInput}
         owner={owner}
         onOwnerChange={(v) => {
-          setOwner(v);
-          persistFilters(v, groupFilter, sortBy, sortOrder);
+          const nextOwner = v === 'mine' ? 'mine' : 'all';
+          setOwner(nextOwner);
+          persistFilters(nextOwner, groupIds, sortBy, sortOrder);
         }}
-        groupFilter={groupFilter}
-        onGroupFilterChange={(v) => {
-          setGroupFilter(v);
-          persistFilters(owner, v, sortBy, sortOrder);
+        groupIds={effectiveGroupIds}
+        onGroupIdsChange={(next) => {
+          setGroupIds(next);
+          persistFilters(owner, next, sortBy, sortOrder);
         }}
-        showGroupFilter={showGroupFilter}
+        groupOptions={groupOptions}
+        myGroupIds={myGroupIds}
         sortBy={sortBy}
         sortOrder={sortOrder}
         onSortChange={(sb, so) => {
           setSortBy(sb);
           setSortOrder(so);
-          persistFilters(owner, groupFilter, sb, so);
+          persistFilters(owner, groupIds, sb, so);
         }}
         onCreateNew={openCreate}
         t={t}

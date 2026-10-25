@@ -1,4 +1,4 @@
-import { createListQuerySchema } from '@studiq/server/lib/query-list';
+import { createListQuerySchema, groupsParamSchema } from '@studiq/server/lib/query-list';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
@@ -43,7 +43,10 @@ export const TopicListQuerySchema = registry.register(
     maxLimit: 500,
     defaultLimit: 50,
   }).extend({
-    owner: z.enum(['all', 'mine', 'shared', 'group']).optional().default('all'),
+    owner: z.enum(['all', 'mine']).optional().default('all'),
+    groups: groupsParamSchema,
+    // Removed by #595 — topics never had it, but the retired spelling must 422 here too.
+    groupFilter: z.never({ error: ValidationErrorCode.INVALID_INPUT }).optional(),
   }),
 );
 

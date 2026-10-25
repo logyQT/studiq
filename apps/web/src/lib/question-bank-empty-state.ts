@@ -2,7 +2,7 @@
 export interface QuestionBankFilterInput {
   query: string;
   owner: string;
-  groupFilter: string;
+  groupIds: string[];
 }
 
 /**
@@ -26,7 +26,7 @@ export function resolveQuestionBankEmptyView(
   input: QuestionBankFilterInput,
 ): QuestionBankEmptyView {
   const query = input.query.trim();
-  const hasActiveFilter = query.length > 0 || input.owner !== 'all' || input.groupFilter !== 'all';
+  const hasActiveFilter = query.length > 0 || input.owner !== 'all' || input.groupIds.length > 0;
 
   if (!hasActiveFilter) return { kind: 'collection-empty' };
 

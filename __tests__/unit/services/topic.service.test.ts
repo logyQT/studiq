@@ -254,4 +254,40 @@ describe('TopicService', () => {
       expect(mock.from).toHaveBeenCalledWith('topic_groups');
     });
   });
+
+  describe('list filters (#595)', () => {
+    it('resolves group ids through topic_groups and narrows the list query', async () => {
+      const pageQb = qb([{ id: 't-1', name: 'Topic' }]);
+      mock.from.mockReturnValueOnce(pageQb); // topics query builder
+      mock.from.mockReturnValueOnce(qb([{ topic_id: 't-1' }])); // topic_groups
+
+      const result = await service.list(ctx, { groups: ['g-1'] } as any);
+
+      expect(result.success).toBe(true);
+      expect(mock.from).toHaveBeenCalledWith('topic_groups');
+      expect(pageQb.in).toHaveBeenCalledWith('id', ['t-1']);
+    });
+
+    it('returns an empty page without running the topic query when no topic matches the groups', async () => {
+      const pageQb = qb([]);
+      mock.from.mockReturnValueOnce(pageQb); // topics query builder
+      mock.from.mockReturnValueOnce(qb([])); // topic_groups → no linked topics
+
+      const result = await service.list(ctx, { groups: ['g-1'] } as any);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ items: [], nextCursor: null, hasMore: false });
+      expect(pageQb.in).not.toHaveBeenCalled();
+    });
+
+    it('composes owner=mine with the RBAC filter and skips the group lookup', async () => {
+      const pageQb = qb([]);
+      mock.from.mockReturnValueOnce(pageQb);
+
+      await service.list(ctx, { owner: 'mine' } as any);
+
+      expect(pageQb.eq).toHaveBeenCalledWith('created_by', ctx.userId);
+      expect(mock.from).not.toHaveBeenCalledWith('topic_groups');
+    });
+  });
 });

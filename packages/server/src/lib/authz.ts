@@ -221,7 +221,7 @@ interface AccessibleFilterResult {
   created_by?: string;
 }
 
-async function resolveGroupResourceIds(
+export async function resolveGroupResourceIds(
   resourceType: ResourceType,
   groupIds: string[],
 ): Promise<string[]> {

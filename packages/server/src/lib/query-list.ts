@@ -1,3 +1,4 @@
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { z } from '@studiq/server/lib/zod';
 
 export interface PaginatedResult<T> {
@@ -13,6 +14,27 @@ export function encodeCursor(value: unknown, id: unknown): string {
 export function decodeCursor(cursor: string): { v: string | number; id: string } {
   return JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8'));
 }
+
+/**
+ * `groups=g1,g2` (#595/#137): comma-joined, trimmed, deduped, max 50.
+ * Empty/blank means "no restriction" — the only state that also includes ungrouped rows.
+ */
+export const groupsParamSchema = z
+  .string()
+  .optional()
+  .default('')
+  .transform((raw) =>
+    raw
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean),
+  )
+  .pipe(
+    z
+      .array(z.uuid({ error: ValidationErrorCode.UUID_INVALID }))
+      .max(50, { error: ValidationErrorCode.TOO_MANY }),
+  )
+  .transform((ids) => [...new Set(ids)]);
 
 export function createListQuerySchema(opts?: {
   sortColumns?: readonly [string, ...string[]];

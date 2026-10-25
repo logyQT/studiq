@@ -1,4 +1,4 @@
-import { createListQuerySchema } from '@studiq/server/lib/query-list';
+import { createListQuerySchema, groupsParamSchema } from '@studiq/server/lib/query-list';
 import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
 
@@ -59,8 +59,10 @@ export const DeckListQuerySchema = registry.register(
     sortColumns: ['created_at', 'updated_at', 'name'] as const,
     maxLimit: 500,
   }).extend({
-    owner: z.enum(['all', 'mine', 'group', 'shared']).optional().default('all'),
-    groupFilter: z.enum(['all', 'mine']).optional().default('all'),
+    owner: z.enum(['all', 'mine']).optional().default('all'),
+    groups: groupsParamSchema,
+    // Removed by #595 — the route still forwards it so it 422s instead of being silently stripped.
+    groupFilter: z.never({ error: ValidationErrorCode.INVALID_INPUT }).optional(),
     includeSuspended: z.coerce.boolean().optional().default(false),
   }),
 );
