@@ -128,7 +128,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318  # OTLP collector (SDK default
 # OTEL_SDK_DISABLED=true
 
 # ── Admin app only (apps/admin/.env) ──────────────────────────────────
-ADMIN_PEM_KEYS=                                  # comma-separated base64 Ed25519 SPKI public keys
+ADMIN_PEM_KEYS=                                  # JSON keyring: [{ id, key, scopes, expiresAt? }] — see apps/admin/.env.example
 
 # ── Local Supabase Studio only (optional) ─────────────────────────────
 # Referenced by supabase/config.toml [studio] — not read by the app itself

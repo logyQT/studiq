@@ -318,7 +318,7 @@ Use the right client for the context — there is **no browser-side Supabase cli
 Next.js 16 uses `proxy.ts` — **do NOT rename it to `middleware.ts`**:
 
 - `apps/web/src/proxy.ts` — main app: refreshes the Supabase session, then applies `routeRules`. It **skips `/api/*` entirely** — API auth is enforced per route by `withAuth()`.
-- `apps/admin/src/proxy.ts` — admin app: Ed25519 PEM signature gate (`x-admin-signature` / `x-admin-timestamp` headers) for `/api/*`; UI pages pass through. Empty `ADMIN_PEM_KEYS` = allow-all in dev, deny-all in production.
+- `apps/admin/src/proxy.ts` — admin app: Ed25519 PEM signature gate (`x-admin-signature` / `x-admin-timestamp` headers) for `/api/*`. `ADMIN_PEM_KEYS` is a JSON keyring (`[{ id, key, scopes, expiresAt? }]`) with per-key scopes and attribution; the signature covers method + path + canonical query + timestamp + `sha256(body)`. Empty `ADMIN_PEM_KEYS` = allow-all in dev, deny-all in production; a non-empty ring with no valid entries fails closed everywhere. The verified key id is forwarded as `x-admin-key-id`. See `docs/decisions/0007-admin-api-auth.md`.
 
 Rules live in `packages/server/src/config/routes.config.ts` (`routeRules`) — evaluated in order:
 1. If the user is logged in and `redirectIfAuthenticatedByAccountType` / `redirectIfAuthenticated` matches → redirect by account type
