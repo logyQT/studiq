@@ -51,6 +51,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiPost } from '@/lib/api';
@@ -314,6 +315,7 @@ export default function AssignmentDetailClient() {
     try {
       await deleteMutation.mutateAsync(undefined);
     } catch {
+      toast.error(t('delete_failed'));
       setDeleteOpen(false);
       return;
     }
