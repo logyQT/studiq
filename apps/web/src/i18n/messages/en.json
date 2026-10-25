@@ -611,6 +611,7 @@
     "stats_desc": "View flashcard usage and performance stats"
   },
   "EduFlashcardDecksPage": {
+    "decks_count": "{count, plural, one {# deck} other {# decks}}",
     "title": "Flashcard Decks",
     "back": "Back",
     "new_deck": "New Deck",
@@ -1981,6 +1982,7 @@
     "leech_keep": "Keep Going"
   },
   "AppFlashcardDecksPage": {
+    "decks_count": "{count, plural, one {# deck} other {# decks}}",
     "title": "Flashcard Decks",
     "new_deck": "New Deck",
     "back": "Back",
