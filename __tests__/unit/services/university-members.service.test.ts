@@ -212,7 +212,9 @@ describe('OrganizationMemberService', () => {
       mock.from.mockReturnValue({
         delete: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockResolvedValue({ data: [{ user_id: 'user-123' }], error: null }),
+            }),
           }),
         }),
       });
@@ -221,6 +223,29 @@ describe('OrganizationMemberService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({ success: true });
+    });
+
+    // #189: a 0-row delete used to return {"success":true}. Same contract as
+    // changeRole — an unknown/foreign target is NOT_FOUND, and seats are not
+    // touched by a no-op.
+    it('returns NOT_FOUND when the delete affects no rows', async () => {
+      mock.from.mockReturnValueOnce({
+        delete: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockResolvedValue({ data: [], error: null }),
+            }),
+          }),
+        }),
+      });
+
+      const result = await service.removeMember(ctx, 'user-404');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      // The seat cleanup never runs for a no-op: only the org_members delete ran.
+      expect(mock.from).toHaveBeenCalledTimes(1);
+      expect(mock.from).toHaveBeenCalledWith('org_members');
     });
 
     it('returns FORBIDDEN when user tries to remove self', async () => {

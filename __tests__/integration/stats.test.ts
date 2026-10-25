@@ -17,7 +17,9 @@ import {
   mockUser,
 } from '#test/integration/helpers';
 import { createNextRequest } from '#test/integration/test-utils';
+import { GET as flashcardTeacherStatsGet } from '@/app/(backend)/api/v1/flashcards/stats/teacher/route';
 import { GET as studentGet } from '@/app/(backend)/api/v1/stats/student/route';
+import { GET as activityGet } from '@/app/(backend)/api/v1/stats/teacher/activity/route';
 import { GET as quizzesGet } from '@/app/(backend)/api/v1/stats/teacher/quizzes/route';
 import { GET as teacherGet } from '@/app/(backend)/api/v1/stats/teacher/route';
 
@@ -308,6 +310,34 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(401);
         expect(body.success).toBe(false);
+      });
+
+      // #189: the proxy skips /api/*, so withAuth's allowedAccountTypes is the
+      // only gate. A student used to get a 200 here (own data), and the
+      // activity sibling leaked the org roster to any member of that org.
+      it('returns 403 for a student caller on the teacher-stats family (#189)', async () => {
+        mockUser(member);
+        const orgCookie = { active_org_id: scopedTeacher.orgId! };
+
+        const plain = await teacherGet(createNextRequest('http://localhost/api/v1/stats/teacher'));
+        const activity = await activityGet(
+          createNextRequest(
+            'http://localhost/api/v1/stats/teacher/activity?range=30d',
+            undefined,
+            orgCookie,
+          ),
+        );
+        const flashcards = await flashcardTeacherStatsGet(
+          createNextRequest(
+            'http://localhost/api/v1/flashcards/stats/teacher',
+            undefined,
+            orgCookie,
+          ),
+        );
+
+        expect(plain.status).toBe(403);
+        expect(activity.status).toBe(403);
+        expect(flashcards.status).toBe(403);
       });
     });
 

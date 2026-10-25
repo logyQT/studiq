@@ -138,6 +138,40 @@ export class InvitationService {
   }
 
   /**
+   * Single source of truth for "may `userId` grant `orgRoleId`?" — the same
+   * function the invitations INSERT policy calls. Runs on the service-role
+   * client with an explicit actor, so it also works under the integration
+   * harness (whose user client is a service client) and cannot be spoofed:
+   * `p_actor` is always `ctx.userId` from the verified JWT.
+   */
+  private async canAssignRole(userId: string, orgRoleId: string): Promise<ServiceResult<boolean>> {
+    const { data, error } = await this.createAdminClient().rpc('can_assign_org_role', {
+      p_actor: userId,
+      p_role_id: orgRoleId,
+    });
+
+    if (error) return toDbFailure(error);
+    return success(data === true);
+  }
+
+  /**
+   * App-layer mirror of the invitations INSERT policy: rejects before any write.
+   * All-or-nothing, so one un-grantable role rejects the whole batch and nothing
+   * is inserted (same contract as the 422 role check above it).
+   */
+  private async assertCanAssignRoles(
+    ctx: RequestContext,
+    orgRoleIds: string[],
+  ): Promise<ServiceResult<void>> {
+    for (const orgRoleId of new Set(orgRoleIds)) {
+      const authority = await this.canAssignRole(ctx.userId, orgRoleId);
+      if (!authority.success) return authority;
+      if (authority.data !== true) return failure('FORBIDDEN');
+    }
+    return success(undefined);
+  }
+
+  /**
    * The inviter must still be allowed to grant the target role. Re-checked at
    * preview and accept: an invitation minted by a manager who was later demoted
    * (or by a member who should never have had the capability) is dead.
@@ -145,12 +179,9 @@ export class InvitationService {
   private async isInviteAuthorized(invite: LoadedInvite): Promise<boolean> {
     if (!invite.inviterId) return false;
 
-    const { data, error } = await this.createAdminClient().rpc('can_assign_org_role', {
-      p_actor: invite.inviterId,
-      p_role_id: invite.targetOrgRoleId,
-    });
-
-    return !error && data === true;
+    const authority = await this.canAssignRole(invite.inviterId, invite.targetOrgRoleId);
+    // An RPC error means the invitation cannot be proven valid, as before.
+    return authority.success && authority.data === true;
   }
 
   async createInvitation(
@@ -173,6 +204,12 @@ export class InvitationService {
       data.targetOrgRoleId,
     );
     if (!roleCheck.success) return roleCheck;
+
+    // May this caller grant that role at all? The INSERT policy asks the same
+    // question, but RLS is bypassed by the service-role client (integration
+    // harness, admin flows), so the endpoint must not rely on it (#189).
+    const authority = await this.assertCanAssignRoles(ctx, [data.targetOrgRoleId]);
+    if (!authority.success) return authority;
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
@@ -278,6 +315,12 @@ export class InvitationService {
       }
     });
     if (roleIssues.length > 0) return failure('UNPROCESSABLE_ENTITY', roleIssues);
+
+    // Grant authority for every distinct target role, before any write. RLS
+    // enforces the same predicate on INSERT, but the endpoint must not depend on
+    // RLS being in the path (#189).
+    const authority = await this.assertCanAssignRoles(ctx, roleIds);
+    if (!authority.success) return authority;
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);

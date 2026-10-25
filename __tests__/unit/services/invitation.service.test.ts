@@ -80,6 +80,9 @@ describe('InvitationService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mock = mockSupabaseClient();
+    // The grant-authority RPC (#189) sits between the role lookup and the
+    // insert; happy-path tests are allowed to grant by default.
+    mock.rpc.mockResolvedValue({ data: true, error: null });
     service = new InvitationService(
       async () => mock as any,
       () => mock as any,
@@ -216,6 +219,43 @@ describe('InvitationService', () => {
       expect(result.error).toBe('FORBIDDEN');
       expect(mock.from).toHaveBeenCalledTimes(2);
       expect(mock.from).not.toHaveBeenCalledWith('invitations');
+    });
+
+    // #189: grant authority is evaluated by the endpoint itself, before the
+    // write — not just inferred from the INSERT policy.
+    it('returns FORBIDDEN when the caller may not grant the target role (#189)', async () => {
+      const { insertQb } = createBuilders();
+      mock.rpc.mockResolvedValue({ data: false, error: null });
+
+      const result = await service.createInvitation(managerCtx, {
+        email: 'john@example.com',
+        targetOrgRoleId: 'member',
+        organizationId: 'uni-1',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(mock.rpc).toHaveBeenCalledWith('can_assign_org_role', {
+        p_actor: 'test-user-id',
+        p_role_id: 'member',
+      });
+      expect(insertQb.insert).not.toHaveBeenCalled();
+    });
+
+    // A failed authority RPC must fail closed, never fall through to the insert.
+    it('returns INTERNAL_SERVER when the authority RPC errors (#189)', async () => {
+      const { insertQb } = createBuilders();
+      mock.rpc.mockResolvedValue({ data: null, error: { message: 'boom', code: 'XX000' } });
+
+      const result = await service.createInvitation(managerCtx, {
+        email: 'john@example.com',
+        targetOrgRoleId: 'member',
+        organizationId: 'uni-1',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+      expect(insertQb.insert).not.toHaveBeenCalled();
     });
 
     it('returns FORBIDDEN when manager has no organizationId and no active org', async () => {
@@ -421,6 +461,61 @@ describe('InvitationService', () => {
       ]);
       expect(insertQb.insert).not.toHaveBeenCalled();
       expect(mock.from).not.toHaveBeenCalledWith('invitations');
+
+      vi.unstubAllEnvs();
+    });
+
+    // #189: every distinct granted role is checked before the write; one
+    // un-grantable role rejects the whole batch (all-or-nothing, like the 422).
+    it('returns FORBIDDEN and writes nothing when the caller may not grant a target role (#189)', async () => {
+      const { insertQb } = bulkBuilders();
+      mock.rpc.mockImplementation(async (_fn: string, args: { p_role_id: string }) => ({
+        data: args.p_role_id === memberRole,
+        error: null,
+      }));
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitationsBulk(
+        { ...managerCtx, activeOrgId: 'uni-1' },
+        invitations,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(insertQb.insert).not.toHaveBeenCalled();
+      expect(mock.rpc).toHaveBeenCalledTimes(2);
+      expect(mock.rpc).toHaveBeenNthCalledWith(1, 'can_assign_org_role', {
+        p_actor: 'test-user-id',
+        p_role_id: memberRole,
+      });
+      expect(mock.rpc).toHaveBeenNthCalledWith(2, 'can_assign_org_role', {
+        p_actor: 'test-user-id',
+        p_role_id: adminRole,
+      });
+
+      vi.unstubAllEnvs();
+    });
+
+    it('checks each distinct target role only once (#189)', async () => {
+      bulkBuilders({
+        created: [
+          { id: 'inv-1', token: 'token-1', email: 'john@example.com' },
+          { id: 'inv-2', token: 'token-2', email: 'jane@example.com' },
+          { id: 'inv-3', token: 'token-3', email: 'john@example.com' },
+        ] as any,
+      });
+
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
+
+      const result = await service.createInvitationsBulk({ ...managerCtx, activeOrgId: 'uni-1' }, [
+        invitations[0],
+        invitations[1],
+        invitations[0],
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(mock.rpc).toHaveBeenCalledTimes(2);
 
       vi.unstubAllEnvs();
     });
