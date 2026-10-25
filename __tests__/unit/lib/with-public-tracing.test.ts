@@ -35,6 +35,10 @@ vi.mock('@opentelemetry/api', async (importOriginal) => {
   };
 });
 
+const { logWarn, logError } = vi.hoisted(() => ({ logWarn: vi.fn(), logError: vi.fn() }));
+
+vi.mock('@studiq/server/lib/log', () => ({ log: vi.fn(), warn: logWarn, error: logError }));
+
 import { createClient } from '@studiq/server/lib/supabase/server';
 import {
   ERROR_CODE_HEADER,
@@ -69,6 +73,23 @@ describe('withPublicTracing — public request observability (#301)', () => {
     expect(handler).toHaveBeenCalledTimes(1);
     expect(res.status).toBe(401);
     expect(res.headers.get(TRACE_ID_HEADER)).toBeTruthy();
+  });
+
+  it('logs 4xx as WARN with method, url and status', async () => {
+    await withPublicTracing(request(), async () =>
+      toNextResponse({ success: false, statusCode: 401, error: 'UNAUTHORIZED' }),
+    );
+
+    expect(logWarn).toHaveBeenCalledWith(
+      'API error 401 UNAUTHORIZED',
+      expect.objectContaining({
+        'http.method': 'POST',
+        'http.url': 'http://localhost/api/v1/auth/login',
+        'http.status_code': 401,
+        'error.code': 'UNAUTHORIZED',
+      }),
+    );
+    expect(logError).not.toHaveBeenCalled();
   });
 
   it('never calls createClient / getUser', async () => {
@@ -114,12 +135,16 @@ describe('withPublicTracing — public request observability (#301)', () => {
     expect(res.headers.get(ERROR_CODE_HEADER)).toBe('INTERNAL_SERVER');
     expect(res.headers.get(TRACE_ID_HEADER)).toBeTruthy();
     expect(spanSpy.recordException).toHaveBeenCalledTimes(1);
+    expect(logError).toHaveBeenCalledWith(
+      'API error 500 INTERNAL_SERVER',
+      expect.objectContaining({ 'http.status_code': 500 }),
+    );
   });
 
-  it('redacts one-time credentials from the span url and records the outcome', async () => {
+  it('redacts one-time credentials from the span url and the error log', async () => {
     await withPublicTracing(
       request('http://localhost/api/v1/auth/callback?token_hash=SUPERSECRET&type=recovery'),
-      async () => new Response(null, { status: 307 }),
+      async () => new Response(null, { status: 401 }),
     );
 
     expect(spanSpy.setAttribute).toHaveBeenCalledWith(
@@ -133,7 +158,12 @@ describe('withPublicTracing — public request observability (#301)', () => {
     for (const call of spanSpy.setAttribute.mock.calls) {
       expect(JSON.stringify(call)).not.toContain('SUPERSECRET');
     }
-    expect(spanSpy.setAttribute).toHaveBeenCalledWith('http.status_code', 307);
+
+    const [, loggedAttributes] = logWarn.mock.calls[0] as [string, Record<string, unknown>];
+    expect(loggedAttributes['http.url']).toContain('token_hash=%5BREDACTED%5D');
+    expect(JSON.stringify(logWarn.mock.calls)).not.toContain('SUPERSECRET');
+
+    expect(spanSpy.setAttribute).toHaveBeenCalledWith('http.status_code', 401);
     expect(spanSpy.setAttribute).toHaveBeenCalledWith('duration.ms', expect.any(Number));
     expect(spanSpy.end).toHaveBeenCalledTimes(1);
   });
