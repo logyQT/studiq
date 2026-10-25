@@ -23,10 +23,13 @@ import { ApiError, apiPost, apiPut, getFieldErrorCode, getFieldErrorCodes } from
 export function AccountPageContent() {
   const t = useTranslations('AccountPage');
   const tErr = useTranslations('Errors');
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
   const { activeOrg } = useOrgs();
 
-  const [name, setName] = useState(user?.user_metadata?.name || '');
+  // `null` until the user edits, so the field follows the stored name as it loads (hard reload)
+  // without overwriting what has been typed.
+  const [draftName, setDraftName] = useState<string | null>(null);
+  const name = draftName ?? user?.user_metadata?.name ?? '';
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -43,6 +46,8 @@ export function AccountPageContent() {
     try {
       await apiPut('/api/v1/auth/profile', { name: name.trim() });
       toast.success(t('name_saved'));
+      await refresh();
+      setDraftName(null);
     } catch (err) {
       const validationCode = getFieldErrorCode(err, 'name');
       toast.error(
@@ -141,7 +146,7 @@ export function AccountPageContent() {
                 <Input
                   id="name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => setDraftName(e.target.value)}
                   className="pl-9"
                 />
               </div>
