@@ -28,7 +28,6 @@ export interface DialogsState {
   viewTopicId: string | null;
   addTopicOpen: boolean;
   manageTopicOpen: boolean;
-  topicActionIds: string[];
   selectedIds: string[];
   bulkDeleteOpen: boolean;
   bulkMoveOpen: boolean;
@@ -55,7 +54,6 @@ export interface DialogsHandlers {
   onManageTopicOpenChange: (open: boolean) => void;
   onMoveTargetDeckIdChange: (id: string | null) => void;
   onCopyTargetDeckIdChange: (id: string | null) => void;
-  onTopicActionIdsChange: (ids: string[]) => void;
   onDelete: () => void;
   onMove: () => void;
   onCopy: () => void;
@@ -66,7 +64,6 @@ export interface DialogsHandlers {
     groupIds?: string[];
   }) => void;
   onDeckDelete: () => void;
-  onAddTopicConfirm: () => void;
   onBulkDelete: () => void;
   onBulkTopics: () => void;
   onBulkMove: () => void;
@@ -188,6 +185,7 @@ export function DeckDetailDialogs({
       />
 
       <TopicDialogs
+        deckId={deckId}
         t={t}
         topics={topics}
         flashcards={flashcards}
@@ -198,8 +196,6 @@ export function DeckDetailDialogs({
         onAddTopicOpenChange={handlers.onAddTopicOpenChange}
         manageTopicOpen={state.manageTopicOpen}
         onManageTopicOpenChange={handlers.onManageTopicOpenChange}
-        onTopicActionIdsChange={handlers.onTopicActionIdsChange}
-        onAddTopicConfirm={handlers.onAddTopicConfirm}
       />
 
       <BulkDialogs
