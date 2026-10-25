@@ -1,4 +1,5 @@
 import { AccountType, type RequestContext } from '@studiq/authz';
+import { normalizeInviteToken } from '@studiq/server/lib/invite-token';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -9,6 +10,11 @@ import type { CreateInviteInput } from '@studiq/server/models/invitation.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ZodIssue } from 'zod';
+
+/** The one place the copyable registration link is built, so link and code cannot drift. */
+function buildInviteLink(baseUrl: string, token: string): string {
+  return `${baseUrl}/join?token=${token}`;
+}
 
 /** Internal invitation shape used by preview + accept. Never sent to a caller. */
 interface LoadedInvite {
@@ -187,7 +193,14 @@ export class InvitationService {
   async createInvitation(
     ctx: RequestContext,
     data: CreateInviteInput,
-  ): Promise<ServiceResult<{ success: boolean; invitationId: string; inviteLink: string }>> {
+  ): Promise<
+    ServiceResult<{
+      success: boolean;
+      invitationId: string;
+      inviteLink: string;
+      inviteCode: string;
+    }>
+  > {
     const supabase = await this.createClient();
 
     // The body may only *select* one of the caller's memberships, never extend
@@ -233,8 +246,6 @@ export class InvitationService {
 
     if (insertError) return toDbFailure(insertError);
 
-    const inviteLink = `${baseUrl}/join?token=${invitation.token}`;
-
     // TODO(#604): deliver this link by e-mail instead of relying on the copy
     // button. Decided future shape: Mailer port + SMTP/log adapters, copy-link
     // fallback, per-org rate limit, PL/EN templates. The mailer must reuse this
@@ -243,7 +254,11 @@ export class InvitationService {
     return success({
       success: true,
       invitationId: invitation.id,
-      inviteLink,
+      inviteLink: buildInviteLink(baseUrl, invitation.token),
+      // The creator already holds the token inside `inviteLink`; returning it
+      // separately lets the UI show/copy the bare code without widening the
+      // sensitive list endpoint.
+      inviteCode: invitation.token,
     });
   }
 
@@ -264,7 +279,7 @@ export class InvitationService {
       Array<{
         email: string;
         success: true;
-        data: { success: true; invitationId: string; inviteLink: string };
+        data: { success: true; invitationId: string; inviteLink: string; inviteCode: string };
       }>
     >
   > {
@@ -366,7 +381,7 @@ export class InvitationService {
     const results: Array<{
       email: string;
       success: true;
-      data: { success: true; invitationId: string; inviteLink: string };
+      data: { success: true; invitationId: string; inviteLink: string; inviteCode: string };
     }> = [];
 
     for (const invite of invitations) {
@@ -385,7 +400,10 @@ export class InvitationService {
           // decided shape: Mailer port + SMTP/log adapters, copy-link fallback,
           // per-org rate limit, PL/EN templates. A send failure must not fail
           // the batch — every row keeps its link above.
-          inviteLink: `${baseUrl}/join?token=${row.token}`,
+          inviteLink: buildInviteLink(baseUrl, row.token),
+          // Same value as the token inside `inviteLink`, exposed so the manager
+          // can also copy the bare code the join field accepts.
+          inviteCode: row.token,
         },
       });
     }
@@ -405,7 +423,12 @@ export class InvitationService {
       'NOT_FOUND' | 'GONE'
     >
   > {
-    const invite = await this.loadInvite(token);
+    // The join screens ask for a „kod”, but „Kopiuj link” copies a URL. Accept
+    // either: both surfaces converge here, and a link is never sent to the DB.
+    const inviteToken = normalizeInviteToken(token);
+    if (!inviteToken) return failure('NOT_FOUND');
+
+    const invite = await this.loadInvite(inviteToken);
     if (!invite) return failure('NOT_FOUND');
     if (!this.isInviteUsable(invite)) return failure('GONE');
     if (!(await this.isInviteAuthorized(invite))) return failure('GONE');
@@ -446,7 +469,12 @@ export class InvitationService {
     // (#182) is still enforced below, in the same order as before.
     const supabase = this.createAdminClient();
 
-    const invite = await this.loadInvite(token);
+    // Preview and claim must normalise identically, or a pasted link would
+    // preview and then match zero rows on the single-use claim.
+    const inviteToken = normalizeInviteToken(token);
+    if (!inviteToken) return failure('NOT_FOUND');
+
+    const invite = await this.loadInvite(inviteToken);
     if (!invite) return failure('NOT_FOUND');
     if (!this.isInviteUsable(invite)) return failure('GONE');
 
@@ -497,7 +525,7 @@ export class InvitationService {
     const { data: claimed, error: claimError } = await supabase
       .from('invitations')
       .update({ is_accepted: true })
-      .eq('token', token)
+      .eq('token', inviteToken)
       .not('is_accepted', 'is', true)
       .select('id')
       .maybeSingle();

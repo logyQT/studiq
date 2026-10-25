@@ -130,6 +130,7 @@ describe('InvitationService', () => {
         success: true,
         invitationId: 'inv-1',
         inviteLink: 'http://localhost:3000/join?token=abc123',
+        inviteCode: 'abc123',
       });
       expect((result.data as any).invitationId).toBe('inv-1');
 
@@ -389,7 +390,7 @@ describe('InvitationService', () => {
       const results = (result as any).data as Array<{
         email: string;
         success: boolean;
-        data: { invitationId: string; inviteLink: string };
+        data: { invitationId: string; inviteLink: string; inviteCode: string };
       }>;
       // The DB returned the rows in a different order: mapping must follow the
       // request order, not the insert response order.
@@ -397,6 +398,9 @@ describe('InvitationService', () => {
       // Per-row attribution: each address gets the link for its own token.
       expect(results[0].data.inviteLink).toBe('http://localhost:3000/join?token=token-1');
       expect(results[1].data.inviteLink).toBe('http://localhost:3000/join?token=token-2');
+      // The bare code is returned alongside the link, so it can be copied too.
+      expect(results[0].data.inviteCode).toBe('token-1');
+      expect(results[1].data.inviteCode).toBe('token-2');
       // MGR-INV-02: every result names the address it belongs to, in input order.
       expect(results.map((r) => r.email)).toEqual(['john@example.com', 'jane@example.com']);
 
@@ -691,6 +695,39 @@ describe('InvitationService', () => {
         p_actor: 'manager-1',
         p_role_id: 'role-member',
       });
+    });
+
+    // #317: „Kopiuj link” copies a URL, but this field asks for the 32-hex code.
+    // The preview must look up the code inside the link, never the URL itself.
+    it('extracts the bare code from the pasted „Kopiuj link” URL', async () => {
+      const code = 'c8a0b04e7082116c09a28ce717f83d5f';
+      const query = qb(inviteRow());
+      mock.from.mockReturnValueOnce(query);
+
+      const result = await service.getInvitationByToken(
+        `  http://localhost:3012/join?token=${code.toUpperCase()}  `,
+      );
+
+      expect(result.success).toBe(true);
+      // Uppercase hex is folded to the lowercase column value.
+      expect(query.eq).toHaveBeenCalledWith('token', code);
+      expect(query.eq).not.toHaveBeenCalledWith('token', expect.stringContaining('http'));
+    });
+
+    it('returns NOT_FOUND without querying for a link that carries no token', async () => {
+      const result = await service.getInvitationByToken('http://localhost:3012/join');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      expect(mock.from).not.toHaveBeenCalled();
+    });
+
+    it('returns NOT_FOUND without querying for an empty token', async () => {
+      const result = await service.getInvitationByToken('   ');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      expect(mock.from).not.toHaveBeenCalled();
     });
 
     // #236: the public preview is unauthenticated, so the request-scoped client
@@ -1060,6 +1097,50 @@ describe('InvitationService', () => {
         'group_members',
       ]);
       expect(memberQb.update).not.toHaveBeenCalled();
+    });
+
+    // #317: the pasted link must normalise identically for the lookup and the
+    // single-use claim, otherwise a valid link previews but fails to join (410).
+    it('normalises a pasted invite link for the lookup and the claim', async () => {
+      const code = 'c8a0b04e7082116c09a28ce717f83d5f';
+      const admin = adminClient();
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+      );
+      const lookupQb = qb(invitation);
+      const claimQb = qb({ id: 'inv-1' });
+      admin.from
+        .mockReturnValueOnce(lookupQb)
+        .mockReturnValueOnce(countQb(2))
+        .mockReturnValueOnce(qb({ id: 'org-1', name: 'Test Org' }))
+        .mockReturnValueOnce(claimQb)
+        .mockReturnValueOnce(qb(null))
+        .mockReturnValueOnce(qb({ id: 'group-1' }))
+        .mockReturnValue(qb(null));
+
+      const result = await service.acceptInvitation(
+        joiningCtx,
+        `http://localhost:3012/join?token=${code.toUpperCase()}`,
+      );
+
+      expect(result.success).toBe(true);
+      expect(lookupQb.eq).toHaveBeenCalledWith('token', code);
+      expect(claimQb.eq).toHaveBeenCalledWith('token', code);
+    });
+
+    it('returns NOT_FOUND without touching the DB for a link with no token', async () => {
+      const admin = adminClient();
+      service = new InvitationService(
+        async () => mock as any,
+        () => admin.client,
+      );
+
+      const result = await service.acceptInvitation(joiningCtx, 'https://example.com/x');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      expect(admin.from).not.toHaveBeenCalled();
     });
 
     it('rejects the accept when the token was already claimed concurrently (GONE)', async () => {

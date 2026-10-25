@@ -36,7 +36,21 @@ export const UpdateInviteSchema = registry.register(
   }),
 );
 
+export const AcceptInviteSchema = registry.register(
+  'AcceptInviteRequest',
+  z.object({
+    // A bare 32-hex code or the `…/join?token=…` link „Kopiuj link” copies.
+    // Normalisation happens in InvitationService, so every caller benefits.
+    token: z
+      .string({ error: ValidationErrorCode.INVALID_INPUT })
+      .trim()
+      .nonempty({ error: ValidationErrorCode.REQUIRED })
+      .max(2048, { error: ValidationErrorCode.TOO_LONG }),
+  }),
+);
+
 export type CreateInviteInput = z.infer<typeof CreateInviteSchema>;
 export type BulkInviteInput = z.infer<typeof BulkInviteSchema>;
 export type InvitationListQuery = z.infer<typeof InvitationListQuerySchema>;
 export type UpdateInviteInput = z.infer<typeof UpdateInviteSchema>;
+export type AcceptInviteInput = z.infer<typeof AcceptInviteSchema>;

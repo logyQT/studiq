@@ -69,7 +69,7 @@ interface InvitationResult {
   /** The address the manager submitted for this row — the only identifier shown. */
   email: string;
   success: boolean;
-  data?: { invitationId?: string; inviteLink?: string };
+  data?: { invitationId?: string; inviteLink?: string; inviteCode?: string };
   error?: string;
   /** Set once the invitation is revoked, so the dead link is no longer offered. */
   cancelled?: boolean;
@@ -349,9 +349,17 @@ export default function InvitationsPage() {
             {results.map((result, index) => (
               <div
                 key={`${index}-${result.email}`}
+                data-testid="invite-result-row"
                 className="flex flex-wrap items-center justify-between gap-2 p-3 bg-muted rounded-lg"
               >
-                <span className="text-sm font-medium break-all">{result.email}</span>
+                <div className="space-y-1">
+                  <span className="text-sm font-medium break-all">{result.email}</span>
+                  {!result.cancelled && result.data?.inviteCode && (
+                    <p className="font-mono text-xs break-all text-muted-foreground">
+                      {t('code_label')}: {result.data.inviteCode}
+                    </p>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <Badge
                     variant={
@@ -364,6 +372,19 @@ export default function InvitationsPage() {
                         ? t('success')
                         : t('failed')}
                   </Badge>
+                  {!result.cancelled && result.data?.inviteCode && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(result.data!.inviteCode!);
+                        toast.success(t('link_copied'));
+                      }}
+                    >
+                      <Copy className="h-3 w-3 mr-1" />
+                      {t('copy_code')}
+                    </Button>
+                  )}
                   {!result.cancelled && result.data?.inviteLink && (
                     // TODO(#604): keep this copy button as the fallback once
                     // e-mail delivery lands. Decided future shape: Mailer port +
