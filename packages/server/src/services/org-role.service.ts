@@ -18,6 +18,7 @@ export class OrgRoleService {
       {
         id: string;
         name: string;
+        displayName: string;
         description: string | null;
         isSystem: boolean;
         memberCount: number;
@@ -70,6 +71,7 @@ export class OrgRoleService {
     ServiceResult<{
       id: string;
       name: string;
+      displayName: string;
       description: string | null;
       isSystem: boolean;
       permissions: { permissionName: string; scope: string }[];
@@ -171,7 +173,14 @@ export class OrgRoleService {
 
     const update: Record<string, string | null> = {};
     if (data.name !== undefined) update.name = data.name;
-    if (data.display_name !== undefined) update.display_name = data.display_name;
+    if (data.display_name !== undefined) {
+      update.display_name = data.display_name;
+    } else if (data.name !== undefined) {
+      // `name` is the only label the role dialog edits; `display_name` is the
+      // label served to member/invite pickers. Keep them in sync on rename the
+      // same way createRole() seeds display_name = name (issue #260).
+      update.display_name = data.name;
+    }
     if (data.description !== undefined) update.description = data.description;
 
     if (Object.keys(update).length === 0) {

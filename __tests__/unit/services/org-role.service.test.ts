@@ -165,7 +165,7 @@ describe('OrgRoleService', () => {
       expect(result.error).toBe('FORBIDDEN');
     });
 
-    it('updates a role', async () => {
+    it('updates a role with an explicit display_name', async () => {
       const existing = { is_system: false };
       const dbUpdated = {
         id: 'r-1',
@@ -175,14 +175,19 @@ describe('OrgRoleService', () => {
         is_system: false,
       };
       mock.from.mockReturnValueOnce(qb(existing));
-      mock.from.mockReturnValueOnce(qb(dbUpdated));
+      const updateQb = qb(dbUpdated);
+      mock.from.mockReturnValueOnce(updateQb);
 
       const result = await service.updateRole(ctx, 'r-1', {
         name: 'editor',
-        displayName: 'Editor',
+        display_name: 'Editor',
       });
 
       expect(result.success).toBe(true);
+      expect(updateQb.update).toHaveBeenCalledWith({
+        name: 'editor',
+        display_name: 'Editor',
+      });
       expect(result.data).toEqual({
         id: 'r-1',
         name: 'editor',
@@ -190,6 +195,50 @@ describe('OrgRoleService', () => {
         description: null,
         isSystem: false,
       });
+    });
+
+    // Issue #260: the roles dialog only sends `name`, so a rename used to leave
+    // display_name (what member/invite pickers render) pointing at the old label.
+    it('derives display_name from name when renaming without an explicit display_name', async () => {
+      const dbUpdated = {
+        id: 'r-1',
+        name: 'Asystent Lektora',
+        display_name: 'Asystent Lektora',
+        description: null,
+        is_system: false,
+      };
+      mock.from.mockReturnValueOnce(qb({ is_system: false }));
+      const updateQb = qb(dbUpdated);
+      mock.from.mockReturnValueOnce(updateQb);
+
+      const result = await service.updateRole(ctx, 'r-1', { name: 'Asystent Lektora' });
+
+      expect(result.success).toBe(true);
+      expect(updateQb.update).toHaveBeenCalledWith({
+        name: 'Asystent Lektora',
+        display_name: 'Asystent Lektora',
+      });
+      expect(result.data.displayName).toBe('Asystent Lektora');
+    });
+
+    it('does not touch display_name on a description-only update', async () => {
+      const dbUpdated = {
+        id: 'r-1',
+        name: 'Asystent Lektora',
+        display_name: 'Asystent Lektora',
+        description: 'Opis po drugiej edycji',
+        is_system: false,
+      };
+      mock.from.mockReturnValueOnce(qb({ is_system: false }));
+      const updateQb = qb(dbUpdated);
+      mock.from.mockReturnValueOnce(updateQb);
+
+      const result = await service.updateRole(ctx, 'r-1', {
+        description: 'Opis po drugiej edycji',
+      });
+
+      expect(result.success).toBe(true);
+      expect(updateQb.update).toHaveBeenCalledWith({ description: 'Opis po drugiej edycji' });
     });
 
     it('returns FORBIDDEN when trying to rename system role', async () => {
