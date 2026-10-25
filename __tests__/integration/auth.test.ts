@@ -206,6 +206,20 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(422);
         expect(body.success).toBe(false);
       });
+
+      it('reports an empty email as required, not invalid (#299)', async () => {
+        const req = createNextRequest('http://localhost/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: '', password: 'pass' }),
+        });
+
+        const response = await loginPost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.issues.properties.email.errors).toEqual(['VALIDATION_EMAIL_REQUIRED']);
+      });
     });
 
     describe('POST /api/v1/auth/logout', () => {
