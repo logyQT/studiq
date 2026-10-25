@@ -51,6 +51,10 @@ interface InvitationResult {
   success: boolean;
   data?: { inviteLink?: string };
   error?: string;
+  /** Email the invite was sent to; the bulk response itself carries no identifier. */
+  email?: string;
+  /** Set once the invitation is revoked, so the dead link is no longer offered. */
+  cancelled?: boolean;
 }
 
 interface Invitation {
@@ -136,7 +140,13 @@ export default function InvitationsPage() {
       const resJson = await res.json();
       const bulkResults = resJson?.data?.results ?? [];
       if (bulkResults.length) {
-        setResults([...bulkResults, ...results]);
+        // The bulk endpoint answers in request order, so each result can be
+        // tagged with the email it belongs to (needed to mark it on revoke, #258).
+        const tagged: InvitationResult[] = bulkResults.map((r: InvitationResult, idx: number) => ({
+          ...r,
+          email: validInvites[idx]?.email,
+        }));
+        setResults([...tagged, ...results]);
         toast.success(
           t('invitations_sent', {
             count: bulkResults.filter((r: InvitationResult) => r.success).length,
@@ -178,6 +188,18 @@ export default function InvitationsPage() {
       const json = await res.json();
       if (json.success) {
         toast.success(t('revoke_success'));
+        const revokedEmail = invitations.find((inv) => inv.id === invitationId)?.email;
+        if (revokedEmail) {
+          // Results are newest-first; one revoke kills exactly one invitation.
+          setResults((prev) => {
+            const idx = prev.findIndex(
+              (r) => r.success && !r.cancelled && r.email === revokedEmail,
+            );
+            return idx === -1
+              ? prev
+              : prev.map((r, i) => (i === idx ? { ...r, cancelled: true } : r));
+          });
+        }
         fetchInvitations();
       }
     } catch {
@@ -281,10 +303,18 @@ export default function InvitationsPage() {
                 className="flex items-center justify-between p-3 bg-muted rounded-lg"
               >
                 <div className="flex items-center gap-2">
-                  <Badge variant={result.success ? 'default' : 'destructive'}>
-                    {result.success ? t('success') : t('failed')}
+                  <Badge
+                    variant={
+                      result.cancelled ? 'outline' : result.success ? 'default' : 'destructive'
+                    }
+                  >
+                    {result.cancelled
+                      ? t('result_cancelled')
+                      : result.success
+                        ? t('success')
+                        : t('failed')}
                   </Badge>
-                  {result.data?.inviteLink && (
+                  {!result.cancelled && result.data?.inviteLink && (
                     <Button
                       variant="ghost"
                       size="sm"
