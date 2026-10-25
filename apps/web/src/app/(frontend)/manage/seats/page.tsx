@@ -219,7 +219,16 @@ export default function ManageSeatsPage() {
           <p className="text-muted-foreground">{t('description')}</p>
         </div>
         <div className="flex gap-2">
-          <Dialog open={purchaseDialogOpen} onOpenChange={setPurchaseDialogOpen}>
+          <Dialog
+            open={purchaseDialogOpen}
+            onOpenChange={(open) => {
+              setPurchaseDialogOpen(open);
+              if (!open) {
+                setPurchasePlanKey('');
+                setPurchaseQty(1);
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button variant="outline">
                 <Plus className="size-4 mr-2" />
@@ -272,7 +281,16 @@ export default function ManageSeatsPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+          <Dialog
+            open={assignDialogOpen}
+            onOpenChange={(open) => {
+              setAssignDialogOpen(open);
+              if (!open) {
+                setSelectedUserId('');
+                setSelectedPoolId('');
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button>
                 <Plus className="size-4 mr-2" />
