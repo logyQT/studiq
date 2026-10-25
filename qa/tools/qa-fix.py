@@ -963,6 +963,7 @@ def cmd_review(args) -> None:
     rec["stage"] = "reviewing"
     rec["stage_started"] = int(time.time() * 1000)
     rec["reviewers"] = pair
+    rec.pop("decision_attempt", None)
     rec["single_review"] = single
     rec["sessions"]["review"] = [s["session"] for s in sessions_out]
     history(state, n, {"event": "review_dispatched", "sessions": sessions_out,
@@ -981,6 +982,7 @@ def cmd_qa(args) -> None:
     if is_paused(state):
         fail("paused: no new dispatches", hint="`qa-fix.py pause off` before dispatching again")
     rec = get_rec(state, n)
+    rec.pop("decision_attempt", None)
     # Small changes run one reviewer and QA at the same time, so QA may start while
     # the (single) review is still out.
     parallel = rec["stage"] == "reviewing" and bool(rec.get("single_review"))
@@ -1222,6 +1224,7 @@ def cmd_collect(args) -> None:
         elif qa_parallel and all(x == "approve" for x in decisions):
             rec["stage"] = "qa_failed"
             rec.pop("qa_parallel", None)
+            rec["decision_attempt"] = a
             bump_attempt(rec)
             history(state, n, {"event": "qa_failed", "data": qa_data,
                                "next_attempt": attempt(rec)})
@@ -1231,6 +1234,7 @@ def cmd_collect(args) -> None:
         else:
             rec["stage"] = "changes_requested"
             rec.pop("qa_parallel", None)
+            rec["decision_attempt"] = a
             bump_attempt(rec)
             history(state, n, {"event": "changes_requested",
                                "reviews": [x for _, x in collected],
@@ -1253,6 +1257,7 @@ def cmd_collect(args) -> None:
             ok(action="collect", issue=n, stage="qa_passed", next="merge", **art(p, data))
         elif data.get("decision") == "fail":
             rec["stage"] = "qa_failed"
+            rec["decision_attempt"] = a
             bump_attempt(rec)
             history(state, n, {"event": "qa_failed", "data": data,
                                "next_attempt": attempt(rec)})
@@ -1325,8 +1330,16 @@ def cmd_verdict(args) -> None:
     rec = get_rec(state, n)
     if not rec.get("external"):
         fail("verdict is for external PRs; your own issues finish with `merge`")
-    a = attempt(rec)
+    # A red collect bumps `attempt` for the next round, so the artifacts that
+    # produced the decision belong to the previous attempt. Read that one, and
+    # fall back to the newest round that actually exists.
+    a = rec.get("decision_attempt") or attempt(rec)
     d = issue_dir(n)
+    if not any((d / f"{name}-r{a}.json").exists() for name in ("review-1", "review-2", "qa")):
+        fallback = max((latest_round(n, stem, attempt(rec)) or 0)
+                       for stem in ("review-1", "review-2", "qa"))
+        if fallback:
+            a = fallback
 
     def art(name):
         p = d / f"{name}-r{a}.json"
