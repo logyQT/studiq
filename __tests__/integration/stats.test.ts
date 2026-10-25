@@ -37,6 +37,9 @@ forEachCopy((copyId) => {
 
     const inOrgTitle = `seed-quizstats-in-org-${copyId}`;
     const outsiderTitle = `seed-quizstats-outside-${copyId}`;
+    // Deliberately different from the assignment title so the row proves the
+    // quiz name wins over the assignment title (#207).
+    const quizName = `seed-quizstats-quiz-${copyId}`;
 
     beforeAll(async () => {
       // Fresh educator with exactly 3 API-created questions + fresh student.
@@ -116,11 +119,26 @@ forEachCopy((copyId) => {
       }
 
       const now = Date.now();
+      // The assignment is built from a saved quiz, like the seeded EDU-ST-02
+      // classroom assignment: `quiz_attempts.config` stays NULL for the attempts
+      // started through it, so the name must come from this relation (#207).
+      const { data: quiz, error: quizError } = await service
+        .from('quizzes')
+        .insert({
+          organization_id: orgId,
+          created_by: scopedTeacher.user.id,
+          name: quizName,
+        })
+        .select('id')
+        .single();
+      if (quizError || !quiz) throw new Error(`[setup] quiz insert failed: ${quizError?.message}`);
+
       const { data: assignment, error: assignmentError } = await service
         .from('teacher_assignments')
         .insert({
           organization_id: orgId,
           created_by: scopedTeacher.user.id,
+          quiz_id: quiz.id,
           title: `seed-quizstats-assignment-${copyId}`,
           status: 'published',
         })
@@ -141,7 +159,7 @@ forEachCopy((copyId) => {
         },
         {
           // Assignment attempt: scored in points (max = total_points) and
-          // config-less, so it lands in the untitled bucket (#203).
+          // config-less — the label comes from the assignment's quiz (#207).
           user_id: member.id,
           assignment_id: assignment.id,
           score: 6,
@@ -406,13 +424,22 @@ forEachCopy((copyId) => {
         // One completed (8/10) plus one started-but-unfinished attempt: the
         // unfinished one only enters the attempts denominator (#212).
         expect(titled).toMatchObject({ totalAttempts: 2, avgScore: 80, avgCompletionRate: 50 });
-        // The assignment attempt is normalised to its own scale: 6/8 = 75 %.
-        const assignmentRow = body.data.find((row: { title: string | null }) => row.title === null);
+        // The assignment attempt is normalised to its own scale (6/8 = 75 %) and
+        // named after the quiz behind the assignment, not „Untitled Quiz” (#207).
+        const assignmentRow = body.data.find(
+          (row: { title: string | null }) => row.title === quizName,
+        );
         expect(assignmentRow).toMatchObject({
           totalAttempts: 1,
           avgScore: 75,
           avgCompletionRate: 100,
         });
+        expect(body.data.some((row: { title: string | null }) => row.title === null)).toBe(false);
+        expect(
+          body.data.some(
+            (row: { title: string }) => row.title === `seed-quizstats-assignment-${copyId}`,
+          ),
+        ).toBe(false);
         expect(body.data.some((row: { title: string }) => row.title === outsiderTitle)).toBe(false);
       });
 
