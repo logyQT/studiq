@@ -49,8 +49,10 @@ interface InviteRow {
 
 interface InvitationResult {
   success: boolean;
-  data?: { inviteLink?: string };
+  data?: { invitationId?: string; inviteLink?: string };
   error?: string;
+  /** Set once the invitation is revoked, so the dead link is no longer offered. */
+  cancelled?: boolean;
 }
 
 interface Invitation {
@@ -178,6 +180,10 @@ export default function InvitationsPage() {
       const json = await res.json();
       if (json.success) {
         toast.success(t('revoke_success'));
+        // Mark the send result of exactly this invitation as cancelled (#258).
+        setResults((prev) =>
+          prev.map((r) => (r.data?.invitationId === invitationId ? { ...r, cancelled: true } : r)),
+        );
         fetchInvitations();
       }
     } catch {
@@ -281,10 +287,18 @@ export default function InvitationsPage() {
                 className="flex items-center justify-between p-3 bg-muted rounded-lg"
               >
                 <div className="flex items-center gap-2">
-                  <Badge variant={result.success ? 'default' : 'destructive'}>
-                    {result.success ? t('success') : t('failed')}
+                  <Badge
+                    variant={
+                      result.cancelled ? 'outline' : result.success ? 'default' : 'destructive'
+                    }
+                  >
+                    {result.cancelled
+                      ? t('result_cancelled')
+                      : result.success
+                        ? t('success')
+                        : t('failed')}
                   </Badge>
-                  {result.data?.inviteLink && (
+                  {!result.cancelled && result.data?.inviteLink && (
                     <Button
                       variant="ghost"
                       size="sm"

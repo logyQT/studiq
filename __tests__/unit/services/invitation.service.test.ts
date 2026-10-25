@@ -95,7 +95,7 @@ describe('InvitationService', () => {
     function createBuilders({
       membership = { organization_id: 'uni-1' } as any,
       role = { id: 'member' } as any,
-      insert = { token: 'abc123' } as any,
+      insert = { id: 'inv-1', token: 'abc123' } as any,
       insertError = null as any,
     } = {}) {
       const membershipQb = qb(membership);
@@ -122,6 +122,7 @@ describe('InvitationService', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).inviteLink).toContain('abc123');
+      expect((result.data as any).invitationId).toBe('inv-1');
 
       // The membership probe is scoped to the caller AND the target org.
       expect(membershipQb.eq).toHaveBeenCalledWith('organization_id', 'uni-1');

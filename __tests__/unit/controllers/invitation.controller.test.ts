@@ -142,7 +142,9 @@ describe('InvitationController', () => {
 
   describe('createBulk', () => {
     it('returns results for each invitation', async () => {
-      mockService.createInvitation.mockResolvedValue(success({ inviteLink: undefined }));
+      mockService.createInvitation.mockResolvedValue(
+        success({ success: true, invitationId: 'inv-1', inviteLink: undefined }),
+      );
 
       const response = await controller.createBulk(mockCtx, {
         invitations: [
@@ -155,6 +157,7 @@ describe('InvitationController', () => {
       expect(response.statusCode).toBe(200);
       expect((response as any).data).toHaveProperty('results');
       expect((response as any).data.results.length).toBe(2);
+      expect((response as any).data.results[0].data.invitationId).toBe('inv-1');
     });
 
     it('returns UNPROCESSABLE_ENTITY for invalid bulk input', async () => {

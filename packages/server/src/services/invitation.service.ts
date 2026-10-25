@@ -154,7 +154,9 @@ export class InvitationService {
   async createInvitation(
     ctx: RequestContext,
     data: CreateInviteInput,
-  ): Promise<ServiceResult<{ success: boolean; inviteLink: string | undefined }>> {
+  ): Promise<
+    ServiceResult<{ success: boolean; invitationId: string; inviteLink: string | undefined }>
+  > {
     const supabase = await this.createClient();
 
     // The body may only *select* one of the caller's memberships, never extend
@@ -182,7 +184,7 @@ export class InvitationService {
         inviter_id: ctx.userId,
         expires_at: expiresAt.toISOString(),
       })
-      .select('token')
+      .select('id, token')
       .single();
 
     if (insertError) return toDbFailure(insertError);
@@ -195,6 +197,7 @@ export class InvitationService {
 
     return success({
       success: true,
+      invitationId: invitation.id,
       inviteLink: process.env.NODE_ENV === 'development' ? inviteLink : undefined,
     });
   }

@@ -1020,6 +1020,7 @@
     "results_title": "Results",
     "success": "Success",
     "failed": "Failed",
+    "result_cancelled": "Cancelled",
     "link_copied": "Copied!",
     "copy_link": "Copy link",
     "table_title": "Sent invitations",
