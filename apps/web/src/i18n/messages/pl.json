@@ -2074,7 +2074,7 @@
     "suggestion_4": "Wyjaśnij pojęcie",
     "empty_state": "Rozpocznij rozmowę",
     "empty_state_hint": "Poproś AI o pomoc w nauce, tworzeniu fiszek, streszczaniu tekstu lub wyjaśnianiu pojęć",
-    "usage_label": "{current}/{limit} zapytań użytych dzisiaj",
+    "usage_label": "{current}/{limit} tokenów AI wykorzystanych dzisiaj",
     "clear_chat": "Wyczyść czat",
     "new_chat": "Nowa rozmowa",
     "flashcard_count": "Wygenerowano {count} fiszek",
@@ -2102,7 +2102,15 @@
     "cta_response_summarize": "Jasne! Wklej swoje notatki lub prześlij plik, a je podsumuję.",
     "cta_response_explain": "Jakie pojęcie mam Ci wyjaśnić?",
     "cta_response_default": "Jak mogę pomóc Ci w nauce?",
-    "disclaimer": "Sztuczna inteligencja może popełniać błędy. Zawsze weryfikuj ważne informacje."
+    "disclaimer": "Sztuczna inteligencja może popełniać błędy. Zawsze weryfikuj ważne informacje.",
+    "locked_title": "Asystent Q nie jest dostępny w Twoim planie",
+    "locked_desc": "Twój obecny plan nie obejmuje asystenta AI. Ulepsz plan, aby rozmawiać z Q, tworzyć fiszki i streszczenia.",
+    "locked_cta": "Zobacz plany",
+    "error_title": "Nie udało się wysłać wiadomości",
+    "error_usage_limit": "Wykorzystano dzienny limit AI w Twoim planie. Ulepsz plan lub poczekaj do odnowienia limitu.",
+    "error_generic": "Spróbuj ponownie za chwilę.",
+    "error_retry": "Spróbuj ponownie",
+    "error_dismiss": "Zamknij"
   },
   "FlashcardAiPage": {
     "title": "AI Generator Fiszki",

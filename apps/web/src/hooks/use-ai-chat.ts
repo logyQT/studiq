@@ -6,6 +6,7 @@ import { DefaultChatTransport } from 'ai';
 import { useCallback, useMemo } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useApiQuery } from '@/hooks/use-api';
+import { parseAiChatErrorCode } from '@/lib/ai-chat-error';
 import { aiKeys } from '@/lib/query-keys';
 
 interface ChatPart {
@@ -30,6 +31,9 @@ interface UseChatResultRaw {
   setMessages: (updater: (prev: UiMessageRaw[]) => UiMessageRaw[]) => void;
   stop: () => void;
   status: string;
+  error: Error | undefined;
+  clearError: () => void;
+  regenerate: () => Promise<void>;
 }
 
 export interface QuestionData {
@@ -86,6 +90,13 @@ export interface UseAiChatReturn {
   sendLocalResponse: (userText: string, assistantText: string) => void;
   clearChat: () => void;
   abort: () => void;
+  /** App error code of the last failed send (`USAGE_LIMIT_EXCEEDED`, `RATE_LIMITED`, …). */
+  errorCode: string | null;
+  /** `true` whenever the last send failed, including errors without a parseable code. */
+  hasError: boolean;
+  clearError: () => void;
+  /** Dismiss the error and re-send the last user message. */
+  retry: () => void;
 }
 
 function toolLabel(toolName: string): string {
@@ -128,7 +139,7 @@ function toolStateToStatus(state: string): 'thinking' | 'running' | 'complete' {
   return 'complete';
 }
 
-export function useAiChat(): UseAiChatReturn {
+export function useAiChat({ enabled = true }: { enabled?: boolean } = {}): UseAiChatReturn {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
@@ -142,14 +153,16 @@ export function useAiChat(): UseAiChatReturn {
     staleTime: 0,
     // Usage is resolved per user (and active org); fetching before
     // `/api/v1/auth/me` resolves would cache a 401 as the anonymous entry (#458).
-    enabled: !!user,
+    // A locked page (#375) never chats, so it must not spend a request either.
+    enabled: enabled && !!user,
   });
 
   const chatResult = useChat({
     transport: new DefaultChatTransport({ api: '/api/v1/ai/chat' }),
     onFinish: () => {
       // The chat route awaits `trackTokenUsage` before the stream closes, so
-      // refetching here reads the post-message totals (#379).
+      // refetching here reads the post-message totals (#379). The SDK calls
+      // `onFinish` from a `finally`, so a rejected send refetches too.
       queryClient.invalidateQueries({ queryKey: aiKeys.usage });
     },
   }) as unknown as UseChatResultRaw;
@@ -159,6 +172,9 @@ export function useAiChat(): UseAiChatReturn {
     setMessages,
     stop,
     status,
+    error: chatError,
+    clearError,
+    regenerate,
   } = chatResult;
 
   const messages: ChatMessage[] = useMemo(() => {
@@ -439,6 +455,13 @@ export function useAiChat(): UseAiChatReturn {
 
   const clearChat = useCallback(() => {}, []);
 
+  const retry = useCallback(() => {
+    // `regenerate()` re-sends the last user message when the failed request
+    // produced no assistant message, which is exactly the 429/rate-limit case.
+    clearError();
+    void regenerate();
+  }, [clearError, regenerate]);
+
   return {
     messages,
     usage: usageData ?? null,
@@ -447,5 +470,9 @@ export function useAiChat(): UseAiChatReturn {
     sendLocalResponse,
     clearChat,
     abort: stop,
+    errorCode: parseAiChatErrorCode(chatError),
+    hasError: chatError !== undefined,
+    clearError,
+    retry,
   };
 }

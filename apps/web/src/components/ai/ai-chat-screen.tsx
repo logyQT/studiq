@@ -1,7 +1,7 @@
 'use client';
 
 import type { Deck } from '@studiq/server/models/flashcard-deck.model';
-import { Button } from '@studiq/ui';
+import { Button, Skeleton } from '@studiq/ui';
 import { Layers } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -9,6 +9,8 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useMemo, useState } from 'react';
 import { AiChatGreeting } from '@/components/ai/ai-chat-greeting';
 import { AiChatInput } from '@/components/ai/ai-chat-input';
+import { AiChatLockedState } from '@/components/ai/ai-chat-locked-state';
+import { ChatErrorAlert } from '@/components/ai/chat-error-alert';
 import { ChatHistory } from '@/components/ai/chat-history';
 import type { DeckTarget } from '@/components/ai/flashcard-block';
 import { UsageBadge } from '@/components/ai/usage-badge';
@@ -17,9 +19,24 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { ScrollBackToBar } from '@/components/shared/scroll-back-to-bar';
 import { useAiChat } from '@/hooks/use-ai-chat';
 import { useApiQuery } from '@/hooks/use-api';
+import { useFeature } from '@/hooks/use-feature';
+import { useFeatures } from '@/hooks/use-features';
 import { usePermission } from '@/hooks/use-permission';
 import { useScrollToBottom } from '@/hooks/use-scroll-to-bottom';
 import { flashcardKeys } from '@/lib/query-keys';
+
+/** Shown while the feature set resolves, so entitled users never flash the lock. */
+function AiChatSkeleton() {
+  return (
+    <div className="flex flex-1 items-center justify-center p-4">
+      <div className="w-full max-w-3xl space-y-4">
+        <Skeleton className="mx-auto h-10 w-2/3" />
+        <Skeleton className="mx-auto h-4 w-1/2" />
+        <Skeleton className="h-14 w-full rounded-2xl" />
+      </div>
+    </div>
+  );
+}
 
 /** Any UUID shape, including the non-RFC seed ids (`…-4000-8006-…`). */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -30,7 +47,24 @@ interface AiChatScreenProps {
 }
 
 export function AiChatScreen({ deckId }: AiChatScreenProps) {
-  const { messages, usage, isStreaming, sendMessage, sendLocalResponse, abort } = useAiChat();
+  // Same query pair the settings page uses (`useFeature()` + `useFeatures()`)
+  // to keep a provisional `false` from rendering the locked card mid-flight.
+  const feature = useFeature();
+  const { isPending: featuresPending } = useFeatures();
+  const canChat = feature('ai.chat');
+
+  const {
+    messages,
+    usage,
+    isStreaming,
+    sendMessage,
+    sendLocalResponse,
+    abort,
+    errorCode,
+    hasError,
+    clearError,
+    retry,
+  } = useAiChat({ enabled: canChat });
   const { user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -46,7 +80,9 @@ export function AiChatScreen({ deckId }: AiChatScreenProps) {
   const { data: deck } = useApiQuery<Deck>({
     queryKey: flashcardKeys.decks.detail(validDeckId ?? ''),
     url: validDeckId ? `/api/v1/flashcards/decks/${validDeckId}` : '',
-    enabled: !!validDeckId,
+    // A locked page must not fetch a deck it can never use (same rule as the
+    // usage query in `useAiChat`).
+    enabled: !!validDeckId && canChat,
   });
 
   // Mirrors the server check in `flashcardService.bulkCreate`; a read-only or
@@ -95,6 +131,13 @@ export function AiChatScreen({ deckId }: AiChatScreenProps) {
     setActiveContext(null);
   };
 
+  // Plan gate (#375): `ai.chat` is the same entitlement the sidebar uses, so a
+  // direct `/app/ai` must not render a composer every send would 429 on. Both
+  // returns sit below every hook so the hook order is stable when `canChat`
+  // flips once the features query settles.
+  if (featuresPending) return <AiChatSkeleton />;
+  if (!canChat) return <AiChatLockedState />;
+
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
       {deckTarget && (
@@ -119,6 +162,11 @@ export function AiChatScreen({ deckId }: AiChatScreenProps) {
             <div className="mx-auto max-w-3xl px-4 py-6">
               <ChatHistory messages={messages} onAnswer={handleAnswer} deckTarget={deckTarget} />
               <div className="pt-4">
+                {hasError && (
+                  <div className="mb-2">
+                    <ChatErrorAlert errorCode={errorCode} onRetry={retry} onDismiss={clearError} />
+                  </div>
+                )}
                 <AiChatInput
                   onSend={handleSend}
                   isStreaming={isStreaming}
@@ -150,6 +198,12 @@ export function AiChatScreen({ deckId }: AiChatScreenProps) {
             <AnimatePresence>
               <AiChatGreeting userName={firstName} onSuggestion={handleSuggestion} />
             </AnimatePresence>
+
+            {hasError && (
+              <div className="mb-2">
+                <ChatErrorAlert errorCode={errorCode} onRetry={retry} onDismiss={clearError} />
+              </div>
+            )}
 
             <AiChatInput
               onSend={handleSend}

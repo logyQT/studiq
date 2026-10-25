@@ -4,6 +4,7 @@ import { t } from '#test/e2e/utils';
 
 const PASSWORD = 'pass';
 const TEACHER_EMAIL = 'teacher1@dev.local';
+const STUDENT_EMAIL = 'student1@dev.local';
 const MANAGER_EMAIL = 'manager@dev.local';
 
 async function login(page: Page, email: string, landing: RegExp) {
@@ -14,21 +15,38 @@ async function login(page: Page, email: string, landing: RegExp) {
   await page.waitForURL(landing);
 }
 
+/** Live entitlement, so the spec documents both states without hardcoding a seed. */
+async function aiChatEntitled(page: Page): Promise<boolean> {
+  const res = await page.request.get('/api/v1/features/me');
+  expect(res.status()).toBe(200);
+  const { features } = (await res.json()).data as { features: string[] };
+  return features.includes('ai.chat');
+}
+
 /**
  * The reported bug (#134): the teacher sidebar linked to `/edu/ai`, a route that did
  * not exist, so the catch-all rendered the 404 page. The route now exists and every
  * AI nav entry is gated on the `ai.chat` feature, exactly like the student entry.
  */
 test.describe('AI assistant routes (#134)', () => {
-  test('educator /edu/ai renders the chat instead of the 404 page', async ({ page }) => {
+  test('educator /edu/ai renders the AI page instead of the 404 page', async ({ page }) => {
     await login(page, TEACHER_EMAIL, /\/edu/);
 
     const response = await page.goto('/edu/ai');
     expect(response?.status()).toBe(200);
 
-    // Greeting/composer only exist on the AI page; the 404 page shows neither.
-    await expect(page.getByPlaceholder(t('AiChatPage.input_placeholder'))).toBeVisible();
-    await expect(page.getByText(t('AiChatPage.suggestion_2'))).toBeVisible();
+    if (await aiChatEntitled(page)) {
+      // Greeting/composer only exist on the AI page; the 404 page shows neither.
+      await expect(page.getByPlaceholder(t('AiChatPage.input_placeholder'))).toBeVisible();
+      await expect(page.getByText(t('AiChatPage.suggestion_2'))).toBeVisible();
+    } else {
+      // #375: not entitled → the plan gate, never the 404 page.
+      await expect(page.getByText(t('AiChatPage.locked_title'))).toBeVisible();
+      await expect(page.getByText(t('AiChatPage.locked_desc'))).toBeVisible();
+      await expect(page.getByRole('button', { name: t('AiChatPage.locked_cta') })).toBeVisible();
+      await expect(page.getByPlaceholder(t('AiChatPage.input_placeholder'))).toHaveCount(0);
+      await expect(page.getByText(t('AiChatPage.suggestion_2'))).toHaveCount(0);
+    }
   });
 
   test('educator sidebar shows the AI entry only when ai.chat is entitled', async ({ page }) => {
@@ -63,6 +81,38 @@ test.describe('AI assistant routes (#134)', () => {
 });
 
 /**
+ * #375: a Base-plan account reaches `/app/ai` directly (no sidebar entry), the old
+ * page rendered an enabled composer and `POST /api/v1/ai/chat` answered 429 with no
+ * feedback. The page must show the plan gate and must not spend an AI request.
+ */
+test.describe('AI assistant plan gate (#375)', () => {
+  test('base-plan student sees the locked state, not a silent 429', async ({ page }) => {
+    await login(page, STUDENT_EMAIL, /\/app/);
+    // Seed fixture: personal `base`, active org WSB Merito (`launch`) → no ai.chat.
+    expect(await aiChatEntitled(page), 'fixture account must not have ai.chat').toBe(false);
+
+    const aiRequests: string[] = [];
+    page.on('request', (r) => {
+      if (r.url().includes('/api/v1/ai/')) aiRequests.push(r.url());
+    });
+
+    const response = await page.goto('/app/ai');
+    expect(response?.status()).toBe(200);
+
+    await expect(page.getByText(t('AiChatPage.locked_title'))).toBeVisible();
+    await expect(page.getByText(t('AiChatPage.locked_desc'))).toBeVisible();
+    await expect(page.locator('textarea')).toHaveCount(0);
+    await expect(page.getByText(t('AiChatPage.disclaimer'))).toHaveCount(0);
+    await expect(page.getByText(t('AiChatPage.suggestion_2'))).toHaveCount(0);
+    // No `/api/v1/ai/usage` and, above all, no `POST /api/v1/ai/chat`.
+    expect(aiRequests).toEqual([]);
+
+    await page.getByRole('button', { name: t('AiChatPage.locked_cta') }).click();
+    await page.waitForURL(/\/pricing$/);
+  });
+});
+
+/**
  * #386: the deck toolbar linked to `/app/ai?deckId=…`, but nothing read the
  * parameter, so the chat could only save generated cards into a brand-new deck.
  * The chat now shows the target deck and saves into it.
@@ -74,9 +124,17 @@ test.describe('AI assistant deck context (#386)', () => {
   const TEACHER_DECK_NAME = 'O1G1T1';
 
   test('student opening the chat with ?deckId shows the target deck', async ({ page }) => {
-    await login(page, 'student1@dev.local', /\/app/);
+    await login(page, STUDENT_EMAIL, /\/app/);
 
     await page.goto(`/app/ai?deckId=${STUDENT_DECK_ID}`);
+
+    if (!(await aiChatEntitled(page))) {
+      // #375: the plan gate wins even with a valid deck id; no deck target, no composer.
+      await expect(page.getByText(t('AiChatPage.locked_title'))).toBeVisible();
+      await expect(page.getByText(t('AiChatPage.deck_context_target'))).toHaveCount(0);
+      await expect(page.getByPlaceholder(t('AiChatPage.input_placeholder'))).toHaveCount(0);
+      return;
+    }
 
     await expect(page.getByPlaceholder(t('AiChatPage.input_placeholder'))).toBeVisible();
     await expect(page.getByText(t('AiChatPage.deck_context_target'))).toBeVisible();
@@ -84,9 +142,19 @@ test.describe('AI assistant deck context (#386)', () => {
   });
 
   test('student can drop the deck target and fall back to a new deck', async ({ page }) => {
-    await login(page, 'student1@dev.local', /\/app/);
+    await login(page, STUDENT_EMAIL, /\/app/);
 
     await page.goto(`/app/ai?deckId=${STUDENT_DECK_ID}`);
+
+    if (!(await aiChatEntitled(page))) {
+      // #375: the lock replaces the deck bar, so there is nothing to drop.
+      await expect(page.getByText(t('AiChatPage.locked_title'))).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: t('AiChatPage.deck_context_new') }),
+      ).toHaveCount(0);
+      return;
+    }
+
     await page.getByRole('button', { name: t('AiChatPage.deck_context_new') }).click();
 
     await page.waitForURL(/\/app\/ai$/);
@@ -101,13 +169,22 @@ test.describe('AI assistant deck context (#386)', () => {
 
     await page.goto(`/edu/ai?deckId=${TEACHER_DECK_ID}`);
 
+    if (!(await aiChatEntitled(page))) {
+      // #375: the route still resolves (not bounced) but renders the plan gate.
+      await expect(page).toHaveURL(new RegExp(`/edu/ai\\?deckId=${TEACHER_DECK_ID}$`));
+      await expect(page.getByText(t('AiChatPage.locked_title'))).toBeVisible();
+      await expect(page.getByText(t('AiChatPage.deck_context_target'))).toHaveCount(0);
+      await expect(page.getByPlaceholder(t('AiChatPage.input_placeholder'))).toHaveCount(0);
+      return;
+    }
+
     await expect(page.getByPlaceholder(t('AiChatPage.input_placeholder'))).toBeVisible();
     await expect(page.getByText(t('AiChatPage.deck_context_target'))).toBeVisible();
     await expect(page.getByText(TEACHER_DECK_NAME, { exact: true })).toBeVisible();
   });
 
   test('deck toolbar keeps the dashboard and forwards deckId', async ({ page }) => {
-    await login(page, 'student1@dev.local', /\/app/);
+    await login(page, STUDENT_EMAIL, /\/app/);
 
     const featuresResponse = await page.request.get('/api/v1/features/me');
     expect(featuresResponse.status()).toBe(200);
