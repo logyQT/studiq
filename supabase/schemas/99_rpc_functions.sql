@@ -721,3 +721,90 @@ BEGIN
   RETURN v_count;
 END;
 $$;
+
+-- ==========================================
+-- get_teacher_problematic_questions (#204, EDU-ST-02)
+-- Per-question accuracy for the caller's own questions, aggregated in SQL so
+-- the PostgREST 1000-row cap cannot truncate the answer sample. One answer per
+-- (attempt, question) via bool_or, matching the submit scoring rule; `open`
+-- questions are excluded because an ungraded row is `is_correct = false`.
+-- ==========================================
+
+CREATE OR REPLACE FUNCTION public.get_teacher_problematic_questions(
+  p_user_id uuid,
+  p_organization_id uuid DEFAULT NULL,
+  p_bank_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  result jsonb;
+BEGIN
+  IF auth.role() IS DISTINCT FROM 'service_role'
+     AND p_user_id IS DISTINCT FROM auth.uid() THEN
+    RAISE EXCEPTION 'get_teacher_problematic_questions may only be called for the authenticated user'
+      USING ERRCODE = '42501';
+  END IF;
+
+  WITH scoped_questions AS (
+    SELECT q.id, q.type::text AS type, q.content
+    FROM public.questions q
+    WHERE q.created_by = p_user_id
+      AND (p_organization_id IS NULL OR q.organization_id = p_organization_id)
+      AND (p_bank_id IS NULL OR q.bank_id = p_bank_id)
+  ),
+  visible_students AS (
+    SELECT DISTINCT om.user_id
+    FROM public.org_members om
+    JOIN public.org_roles r ON r.id = om.org_role_id
+    WHERE r.name = 'member'
+      AND om.organization_id IN (
+        SELECT mine.organization_id
+        FROM public.org_members mine
+        WHERE mine.user_id = p_user_id
+          AND (p_organization_id IS NULL OR mine.organization_id = p_organization_id)
+      )
+  ),
+  attempt_answers AS (
+    SELECT sa.question_id, sa.attempt_id, bool_or(sa.is_correct) AS was_correct
+    FROM public.student_answers sa
+    JOIN public.quiz_attempts qa ON qa.id = sa.attempt_id
+    JOIN scoped_questions sq ON sq.id = sa.question_id
+    WHERE qa.completed_at IS NOT NULL
+      AND qa.user_id IS DISTINCT FROM p_user_id
+      AND qa.user_id IN (SELECT user_id FROM visible_students)
+    GROUP BY sa.question_id, sa.attempt_id
+  ),
+  answer_stats AS (
+    SELECT question_id,
+           COUNT(*)::int AS total_answers,
+           COUNT(*) FILTER (WHERE was_correct)::int AS correct_answers
+    FROM attempt_answers
+    GROUP BY question_id
+  )
+  SELECT COALESCE(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', sq.id,
+        'content', sq.content,
+        'type', sq.type,
+        'correctRate', ROUND(st.correct_answers::numeric / st.total_answers, 4),
+        'totalAnswers', st.total_answers
+      )
+      ORDER BY st.correct_answers::numeric / st.total_answers ASC, sq.content ASC
+    ),
+    '[]'::jsonb
+  )
+  INTO result
+  FROM scoped_questions sq
+  JOIN answer_stats st ON st.question_id = sq.id
+  WHERE sq.type <> 'open'
+    AND st.correct_answers::numeric / st.total_answers < 0.5;
+
+  RETURN result;
+END;
+$$;

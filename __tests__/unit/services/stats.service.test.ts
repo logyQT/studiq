@@ -42,6 +42,10 @@ describe('StatsService', () => {
   });
 
   describe('getTeacherStats', () => {
+    beforeEach(() => {
+      mock.rpc.mockResolvedValue({ data: [], error: null });
+    });
+
     it('returns totals, the type split and the subject distribution', async () => {
       mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq', bank_id: 'bank-1' }]));
       mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }]));
@@ -53,7 +57,7 @@ describe('StatsService', () => {
       expect(result.data).toEqual({
         totalQuestions: 1,
         totalFlashcards: 1,
-        subject: { byType: { mcq: 1 } },
+        subject: { byType: { mcq: 1 }, problematicQuestions: [] },
         bySubject: [{ subjectId: 'bank-1', subjectName: 'Historia', questionCount: 1 }],
       });
     });
@@ -187,11 +191,76 @@ describe('StatsService', () => {
       expect(result.data).toEqual({
         totalQuestions: 0,
         totalFlashcards: 1,
-        subject: { byType: {} },
+        subject: { byType: {}, problematicQuestions: [] },
         bySubject: [],
       });
       expect(mock.from).toHaveBeenCalledTimes(2);
       expect(mock.from).not.toHaveBeenCalledWith('question_banks');
+    });
+
+    it('returns the problematic questions from the RPC (#204)', async () => {
+      const problematic = [
+        {
+          id: 'q-1',
+          content: 'Który rok uważa się za datę chrztu Polski?',
+          type: 'mcq',
+          correctRate: 0.4,
+          totalAnswers: 5,
+        },
+      ];
+      mock.rpc.mockResolvedValue({ data: problematic, error: null });
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq', bank_id: 'bank-1' }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'bank-1', name: 'Historia' }]));
+
+      const result = await service.getTeacherStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data.subject.problematicQuestions).toEqual(problematic);
+      // No active org: the RPC scopes learners to every org the caller shares.
+      expect(mock.rpc).toHaveBeenCalledWith('get_teacher_problematic_questions', {
+        p_user_id: 'test-user-id',
+        p_organization_id: null,
+        p_bank_id: null,
+      });
+    });
+
+    it('passes the active org and the normalized bank id to the RPC', async () => {
+      const orgCtx: RequestContext = { ...ctx, activeOrgId: 'org-1' };
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq', bank_id: 'bank-his' }]));
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'bank-his', name: 'Historia' }]));
+
+      await service.getTeacherStats(orgCtx, { subjectId: 'BANK-HIS' });
+
+      expect(mock.rpc).toHaveBeenCalledWith('get_teacher_problematic_questions', {
+        p_user_id: 'test-user-id',
+        p_organization_id: 'org-1',
+        p_bank_id: 'bank-his',
+      });
+    });
+
+    it('returns a failure when the problematic-questions RPC fails', async () => {
+      mock.rpc.mockResolvedValue({ data: null, error: { message: 'boom', code: 'XX000' } });
+      mock.from.mockReturnValueOnce(qb([{ id: 'q-1', type: 'mcq', bank_id: 'bank-1' }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'bank-1', name: 'Historia' }]));
+
+      const result = await service.getTeacherStats(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INTERNAL_SERVER');
+    });
+
+    it('falls back to an empty list when the RPC returns null', async () => {
+      mock.rpc.mockResolvedValue({ data: null, error: null });
+      mock.from.mockReturnValueOnce(qb([]));
+      mock.from.mockReturnValueOnce(qb([{ id: 'fc-1' }]));
+
+      const result = await service.getTeacherStats(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.data.subject.problematicQuestions).toEqual([]);
     });
   });
 

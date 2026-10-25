@@ -9,6 +9,17 @@ export const TeacherStatsQuerySchema = registry.register(
 
 export type TeacherStatsQuery = z.infer<typeof TeacherStatsQuerySchema>;
 
+/** Per-question accuracy behind the „Problematyczne pytania” card (#204). */
+export interface ProblematicQuestionStats {
+  id: string;
+  content: string;
+  type: string;
+  /** 0..1 fraction; the UI renders `Math.round(correctRate * 100)`. */
+  correctRate: number;
+  /** Completed learner attempts that answered this question. */
+  totalAnswers: number;
+}
+
 /**
  * A "subject" in the content statistics is a `question_banks` row: the legacy
  * `subjects` table was dropped in favour of question banks, and the seeded
@@ -20,6 +31,12 @@ export type TeacherStatsResponse = {
   /** Type split of all questions, or of the selected subject when filtered. */
   subject: {
     byType: Record<string, number>;
+    /**
+     * Questions answered correctly in fewer than half of the completed learner
+     * attempts, worst first. `open` questions are excluded until they are
+     * teacher-graded. Always an array — empty means nothing to flag.
+     */
+    problematicQuestions: ProblematicQuestionStats[];
   };
   /** Global distribution across question banks; never narrowed by `subjectId`. */
   bySubject: Array<{

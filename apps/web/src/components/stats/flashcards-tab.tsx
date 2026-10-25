@@ -45,6 +45,13 @@ function ExpandableRow({ item }: { item: CardStatsItem }) {
   const t = useTranslations('AppStatsPage');
   const [expanded, setExpanded] = useState(false);
 
+  const intervalLabel =
+    item.intervalValue == null || !item.intervalUnit
+      ? '--'
+      : item.intervalUnit === 'minutes'
+        ? t('interval_minutes', { count: item.intervalValue })
+        : t('interval_days', { count: item.intervalValue });
+
   return (
     <>
       <tr
@@ -79,7 +86,7 @@ function ExpandableRow({ item }: { item: CardStatsItem }) {
         <td className="py-3 px-4 text-sm tabular-nums">
           {item.easinessFactor?.toFixed(2) ?? '--'}
         </td>
-        <td className="py-3 px-4 text-sm tabular-nums">{item.intervalDays ?? '--'}</td>
+        <td className="py-3 px-4 text-sm tabular-nums">{intervalLabel}</td>
         <td className="py-3 px-4 text-right">
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
             {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}

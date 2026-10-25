@@ -1578,6 +1578,8 @@
     "th_accuracy": "Poprawność",
     "th_ef": "EF",
     "th_interval": "Interwał",
+    "interval_minutes": "{count} min",
+    "interval_days": "{count, plural, one {# dzień} other {# dni}}",
     "no_cards": "Nie znaleziono fiszek",
     "question": "Pytanie",
     "answer": "Odpowiedź",

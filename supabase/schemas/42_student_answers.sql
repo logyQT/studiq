@@ -21,3 +21,5 @@ CREATE TABLE public.student_answers (
 );
 
 CREATE INDEX idx_student_answers_attempt ON public.student_answers(attempt_id);
+-- Per-question accuracy aggregation (#204).
+CREATE INDEX idx_student_answers_question ON public.student_answers(question_id);

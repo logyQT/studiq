@@ -227,6 +227,7 @@ describe('FlashcardPracticeService', () => {
       expect(payload.learning_state).toBe('learning');
       expect(payload.learning_step).toBe(1);
       expect(payload.interval_days).toBe(10);
+      expect(payload.interval_unit).toBe('minutes');
       expect(payload.easiness_factor).toBe(2.36);
     });
 
@@ -250,7 +251,79 @@ describe('FlashcardPracticeService', () => {
       expect(payload.learning_state).toBe('learning');
       expect(payload.learning_step).toBe(0);
       expect(payload.interval_days).toBe(1);
+      expect(payload.interval_unit).toBe('minutes');
       expect(payload.easiness_factor).toBe(1.7);
+    });
+
+    it('maps a review card rated Easy to a day-based interval unit', async () => {
+      const mockPractice = {
+        id: 'p-1',
+        user_id: ctx.userId,
+        flashcard_id: 'fc-1',
+        was_correct: true,
+      };
+      const existingState = {
+        user_id: ctx.userId,
+        flashcard_id: 'fc-1',
+        easiness_factor: 2.5,
+        interval_days: 6,
+        interval_unit: 'days',
+        repetitions: 1,
+        learning_state: 'review',
+        learning_step: 0,
+        lapse_count: 0,
+        is_leech: false,
+      };
+
+      const upsertSingleMock = vi.fn().mockResolvedValue({
+        data: { ...existingState, learning_state: 'review' },
+        error: null,
+      });
+      const upsertMock = vi
+        .fn()
+        .mockReturnValue({ select: vi.fn().mockReturnValue({ single: upsertSingleMock }) });
+
+      // Load-balancing reads `next_review_at`; the review-state lookup uses `select('*')`.
+      const loadBalanceChain: any = {};
+      loadBalanceChain.eq = vi.fn(() => loadBalanceChain);
+      loadBalanceChain.gte = vi.fn(() => loadBalanceChain);
+      loadBalanceChain.lt = vi.fn().mockResolvedValue({ data: [], error: null });
+      const lookupChain = chain({ data: existingState, error: null });
+
+      mock.from.mockImplementation((table: string) => {
+        if (table === 'flashcard_practice')
+          return {
+            insert: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: mockPractice, error: null }),
+              }),
+            }),
+          };
+        if (table === 'user_study_settings')
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi
+                .fn()
+                .mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue(defaultSettingsRow) }),
+            }),
+          };
+        if (table === 'flashcard_review_state')
+          return {
+            select: vi.fn((columns: string) =>
+              columns === 'next_review_at' ? loadBalanceChain : lookupChain,
+            ),
+            upsert: upsertMock,
+          };
+        return chain();
+      });
+
+      const result = await service.log('fc-1', true, ctx, undefined, 4);
+
+      expect(result.success).toBe(true);
+      const payload = upsertMock.mock.calls[0][0];
+      expect(payload.learning_state).toBe('review');
+      expect(payload.interval_unit).toBe('days');
+      expect(payload.interval_days).toBeGreaterThanOrEqual(6);
     });
   });
 
@@ -692,6 +765,79 @@ describe('FlashcardPracticeService', () => {
       expect(result.success).toBe(true);
       expect(cardQuery.eq).toHaveBeenCalledWith('created_by', 'test-user-id');
       expect(cardQuery.or).not.toHaveBeenCalled();
+    });
+
+    it('reports the interval magnitude with its unit so 1 min and 1 day differ (#341)', async () => {
+      await mockAccessibleFilter({ created_by: 'test-user-id' });
+
+      const cards = [
+        { id: 'fc-review', front: 'F', back: 'B', created_at: '2026-01-01T00:00:00Z' },
+        { id: 'fc-learning', front: 'F', back: 'B', created_at: '2026-01-01T00:00:00Z' },
+        { id: 'fc-leech', front: 'F', back: 'B', created_at: '2026-01-01T00:00:00Z' },
+        { id: 'fc-new', front: 'F', back: 'B', created_at: '2026-01-01T00:00:00Z' },
+      ];
+      const suspended = chain({ data: [], error: null });
+      const cardQuery = chain({ data: cards, error: null });
+      const states = chain({
+        data: [
+          {
+            flashcard_id: 'fc-review',
+            learning_state: 'review',
+            interval_days: 1,
+            interval_unit: 'days',
+            is_leech: false,
+          },
+          {
+            flashcard_id: 'fc-learning',
+            learning_state: 'learning',
+            interval_days: 1,
+            interval_unit: 'minutes',
+            is_leech: false,
+          },
+          {
+            flashcard_id: 'fc-leech',
+            learning_state: 'review',
+            interval_days: 6,
+            interval_unit: 'days',
+            is_leech: true,
+          },
+        ],
+        error: null,
+      });
+      const practice = chain({ data: [], error: null });
+      mock.from
+        .mockReturnValueOnce(suspended)
+        .mockReturnValueOnce(cardQuery)
+        .mockReturnValueOnce(states)
+        .mockReturnValueOnce(practice);
+
+      const result = await service.getAllCardStats(ctx, { limit: 100 });
+
+      expect(result.success).toBe(true);
+      const items = (result.data as any).items as any[];
+      const byId = new Map(items.map((i) => [i.id, i]));
+
+      expect(byId.get('fc-review')).toMatchObject({
+        state: 'review',
+        intervalValue: 1,
+        intervalUnit: 'days',
+      });
+      expect(byId.get('fc-learning')).toMatchObject({
+        state: 'learning',
+        intervalValue: 1,
+        intervalUnit: 'minutes',
+      });
+      expect(byId.get('fc-leech')).toMatchObject({
+        state: 'leech',
+        intervalValue: 6,
+        intervalUnit: 'days',
+      });
+      expect(byId.get('fc-new')).toMatchObject({
+        state: 'new',
+        intervalValue: null,
+        intervalUnit: null,
+      });
+      expect(items.every((i) => !('intervalDays' in i))).toBe(true);
     });
   });
 

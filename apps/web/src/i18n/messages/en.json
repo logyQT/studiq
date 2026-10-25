@@ -1598,6 +1598,8 @@
     "th_accuracy": "Accuracy",
     "th_ef": "EF",
     "th_interval": "Interval",
+    "interval_minutes": "{count} min",
+    "interval_days": "{count, plural, one {# day} other {# days}}",
     "no_cards": "No cards found",
     "question": "Question",
     "answer": "Answer",

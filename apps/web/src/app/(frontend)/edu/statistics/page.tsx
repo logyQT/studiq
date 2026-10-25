@@ -11,8 +11,7 @@ interface TeacherStats {
   totalFlashcards: number;
   subject?: {
     byType: Record<string, number>;
-    /** Not served by the API yet; the card only renders when it is present. */
-    problematicQuestions?: Array<{
+    problematicQuestions: Array<{
       id: string;
       content: string;
       type: string;

@@ -390,6 +390,86 @@ forEachCopy((copyId) => {
       });
     });
 
+    describe('GET /api/v1/flashcards/practice/cards-stats interval unit (#341)', () => {
+      let units!: BeforeResult;
+
+      beforeAll(async () => {
+        // Own deck + 2 cards, so the `created_by` scope is exactly this user.
+        units = await before({ role: 'student', decks: 1, flashcards: 2 });
+      });
+
+      afterAll(async () => {
+        await cleanupFlashcardPractice(units.user.id);
+        await cleanupFlashcardReviewState(units.user.id);
+        await cleanupFlashcards(units.user.id);
+        await cleanupFlashcardDecks(units.user.id);
+      });
+
+      async function practice(flashcardId: string, confidenceLevel: number) {
+        mockUser(units.user);
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/flashcards/${flashcardId}/practice`,
+          { id: flashcardId },
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wasCorrect: confidenceLevel >= 3, confidenceLevel }),
+          },
+        );
+        const response = await logPractice(request, { params });
+        const body = await response.json();
+        expect(response.status).toBe(201);
+        return body.data.reviewState as {
+          learning_state: string;
+          interval_days: number;
+          interval_unit: string;
+        };
+      }
+
+      it('persists the unit alongside the magnitude so 1 min and 1 day stay distinct', async () => {
+        const [cardA, cardB] = units.created.flashcards;
+
+        // A: „Łatwe” -> review card, one day.
+        const stateA = await practice(cardA, 4);
+        expect(stateA).toMatchObject({
+          learning_state: 'review',
+          interval_days: 1,
+          interval_unit: 'days',
+        });
+
+        // B: „Nie pamiętam” -> learning step, one minute.
+        const stateB = await practice(cardB, 1);
+        expect(stateB).toMatchObject({
+          learning_state: 'learning',
+          interval_days: 1,
+          interval_unit: 'minutes',
+        });
+
+        mockUser(units.user);
+        const response = await getCardsStats(
+          createNextRequest('http://localhost/api/v1/flashcards/practice/cards-stats?limit=100'),
+        );
+        const body = await response.json();
+        expect(response.status).toBe(200);
+
+        const items = body.data.items as Array<Record<string, unknown>>;
+        const itemA = items.find((i) => i.id === cardA);
+        const itemB = items.find((i) => i.id === cardB);
+
+        expect(itemA).toMatchObject({
+          state: 'review',
+          intervalValue: 1,
+          intervalUnit: 'days',
+        });
+        expect(itemB).toMatchObject({
+          state: 'learning',
+          intervalValue: 1,
+          intervalUnit: 'minutes',
+        });
+        expect(items.every((i) => !('intervalDays' in i))).toBe(true);
+      });
+    });
+
     describe('GET /api/v1/flashcards/practice/stats', () => {
       it('returns aggregate stats', async () => {
         mockUser(teacher.user);
