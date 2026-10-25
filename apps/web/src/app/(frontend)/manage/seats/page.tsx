@@ -460,6 +460,7 @@ export default function ManageSeatsPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            aria-label={t('release_seat')}
                             onClick={() => handleUnassign(a.id)}
                             disabled={unassigning === a.id}
                           >

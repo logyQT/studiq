@@ -967,6 +967,7 @@
     "assign_failed": "Failed to assign seat",
     "unassign_success": "Seat unassigned successfully",
     "unassign_failed": "Failed to unassign seat",
+    "release_seat": "Release seat",
     "cancel": "Cancel",
     "assign": "Assign"
   },
