@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
+import { studentStatsKeys } from '@/lib/query-keys';
 
 const DISMISS_KEY = 'app_onboarding_dismissed';
 
@@ -30,9 +31,12 @@ export function OnboardingChecklist() {
       return false;
     }
   });
+  // Same key and options as the dashboard counters so both share one cache
+  // entry and refetch on every mount (#347).
   const { data: stats, isLoading } = useApiQuery<StudentStats>({
-    queryKey: ['stats', 'student'],
+    queryKey: studentStatsKeys.all,
     url: '/api/v1/stats/student',
+    staleTime: 0,
   });
 
   if (dismissed || isLoading) return null;
