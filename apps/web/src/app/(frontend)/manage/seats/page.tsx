@@ -81,6 +81,9 @@ const ROLE_TIER_MAP: Record<string, string> = {
   member: 'student',
 };
 
+/** Storage bound of `org_seat_pools.total` (Postgres int4) — mirrors seat.model.ts. */
+const MAX_SEAT_POOL_TOTAL = 2_147_483_647;
+
 /** Plans available for purchase as seat add-ons. */
 const PURCHASABLE_PLANS: { key: string; label: string; tier: string }[] = [
   { key: 'ace', label: 'StudiQ Ace', tier: 'student' },
@@ -108,7 +111,12 @@ export default function ManageSeatsPage() {
   const [purchasePlanKey, setPurchasePlanKey] = useState('');
   const [purchaseQtyInput, setPurchaseQtyInput] = useState('1');
   const purchaseQty = purchaseQtyInput.trim() === '' ? NaN : Number(purchaseQtyInput);
-  const qtyValid = Number.isInteger(purchaseQty) && purchaseQty >= 1;
+  const existingPlanTotal = pools.find((p) => p.planKey === purchasePlanKey)?.total ?? 0;
+  const maxPurchasable = MAX_SEAT_POOL_TOTAL - existingPlanTotal;
+  const qtyValid =
+    Number.isInteger(purchaseQty) && purchaseQty >= 1 && purchaseQty <= maxPurchasable;
+  const qtyTooLarge = Number.isFinite(purchaseQty) && purchaseQty > maxPurchasable;
+  const qtyInvalid = purchaseQtyInput.trim() !== '' && !qtyValid && !qtyTooLarge;
   const [assigning, setAssigning] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   const [unassigning, setUnassigning] = useState<string | null>(null);
@@ -197,7 +205,9 @@ export default function ManageSeatsPage() {
 
       const data = await res.json();
       if (!data.success) {
-        toast.error(t('purchase_failed'));
+        toast.error(
+          data.error === 'UNPROCESSABLE_ENTITY' ? t('quantity_too_large') : t('purchase_failed'),
+        );
         return;
       }
 
@@ -265,11 +275,21 @@ export default function ManageSeatsPage() {
                   <input
                     type="number"
                     min={1}
+                    max={maxPurchasable}
                     step={1}
                     value={purchaseQtyInput}
                     onChange={(e) => setPurchaseQtyInput(e.target.value)}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   />
+                  {qtyTooLarge ? (
+                    <p role="alert" className="text-xs font-medium text-destructive">
+                      {t('quantity_too_large')}
+                    </p>
+                  ) : qtyInvalid ? (
+                    <p role="alert" className="text-xs font-medium text-destructive">
+                      {t('quantity_invalid')}
+                    </p>
+                  ) : null}
                 </div>
               </div>
               <DialogFooter>

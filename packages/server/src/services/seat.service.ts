@@ -3,10 +3,12 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
-import type {
-  CreateAssignmentInput,
-  CreatePoolInput,
-  UpdatePoolInput,
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
+import {
+  type CreateAssignmentInput,
+  type CreatePoolInput,
+  MAX_SEAT_POOL_TOTAL,
+  type UpdatePoolInput,
 } from '@studiq/server/models/seat.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -83,9 +85,19 @@ export class SeatService {
       .maybeSingle();
 
     if (existing) {
+      // Each value fits int4 on its own (the schema enforces that), but the sum
+      // can still exceed `org_seat_pools.total`'s domain and raise 22003. Reject
+      // it as 422 before writing instead of letting it surface as a 500.
+      const nextTotal = existing.total + input.quantity;
+      if (nextTotal > MAX_SEAT_POOL_TOTAL) {
+        return failure('UNPROCESSABLE_ENTITY', [
+          { code: 'custom', message: ValidationErrorCode.TOO_BIG, path: ['quantity'] },
+        ]);
+      }
+
       const { data, error } = await supabase
         .from('org_seat_pools')
-        .update({ total: existing.total + input.quantity })
+        .update({ total: nextTotal })
         .eq('id', existing.id)
         .select('id, plan_key, total, assigned')
         .maybeSingle();

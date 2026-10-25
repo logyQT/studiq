@@ -1,5 +1,6 @@
 import type { RequestContext } from '@studiq/authz';
 import { SeatController } from '@studiq/server/controllers/seat.controller';
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createMockService() {
@@ -65,6 +66,33 @@ describe('SeatController', () => {
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
     });
+    it('returns 422 when quantity exceeds the int4 range (#266)', async () => {
+      const response = await controller.createPool(mockCtx, {
+        planKey: 'campus',
+        quantity: 99_999_999_999,
+      });
+      expect(response.success).toBe(false);
+      if (response.success) return;
+      expect(response.statusCode).toBe(422);
+      expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(response.details?.[0]?.message).toBe(ValidationErrorCode.TOO_BIG);
+      expect(response.details?.[0]?.path).toEqual(['quantity']);
+    });
+    it('forwards service details for the sum guard', async () => {
+      mockService.addPool.mockResolvedValueOnce({
+        success: false,
+        error: 'UNPROCESSABLE_ENTITY',
+        details: [{ code: 'custom', message: ValidationErrorCode.TOO_BIG, path: ['quantity'] }],
+      });
+      const response = await controller.createPool(mockCtx, {
+        planKey: 'campus',
+        quantity: 2_147_483_647,
+      });
+      expect(response.success).toBe(false);
+      if (response.success) return;
+      expect(response.statusCode).toBe(422);
+      expect(response.details?.[0]?.path).toEqual(['quantity']);
+    });
   });
 
   describe('updatePool', () => {
@@ -77,6 +105,14 @@ describe('SeatController', () => {
       const response = await controller.updatePool(mockCtx, 'pool-1', { capacity: -1 });
       expect(response.success).toBe(false);
       expect(response.statusCode).toBe(422);
+    });
+    it('returns 422 when total exceeds the int4 range', async () => {
+      const response = await controller.updatePool(mockCtx, 'pool-1', { total: 99_999_999_999 });
+      expect(response.success).toBe(false);
+      if (response.success) return;
+      expect(response.statusCode).toBe(422);
+      expect(response.error).toBe('UNPROCESSABLE_ENTITY');
+      expect(response.details?.[0]?.message).toBe(ValidationErrorCode.TOO_BIG);
     });
   });
 
