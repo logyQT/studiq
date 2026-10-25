@@ -42,7 +42,7 @@ interface StudentAnswers {
   quiz_answers: Array<{
     id: string;
     question_id: string;
-    selected_answer_id: string | null;
+    selected_option_id: string | null;
     text_answer: string | null;
     is_correct: boolean;
     teacher_points: number | null;
@@ -155,6 +155,9 @@ export default function StudentGradingClient() {
             );
             const images = getImages(aq.question_id);
             const isAutoGraded = aq.question.type === 'mcq' || aq.question.type === 'true_false';
+            const options = aq.question.question_answers ?? [];
+            const selectedOption = options.find((o) => o.id === studentAnswer?.selected_option_id);
+            const correctOptions = options.filter((o) => o.is_correct);
             const grade = getGrade(aq.question_id);
             const parsedPoints = parseGradePoints(grade.points);
             const tooBig = exceedsGradeMax(parsedPoints, aq.max_points);
@@ -185,27 +188,32 @@ export default function StudentGradingClient() {
                   </div>
                 </div>
 
-                {aq.question.explanation && (
-                  <p className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
-                    {t('correct_answer', { explanation: aq.question.explanation })}
-                  </p>
-                )}
-
-                {isAutoGraded && studentAnswer?.selected_answer_id && (
+                {isAutoGraded && (
                   <div className="text-sm space-y-1">
                     <p className="text-muted-foreground">
-                      {t('selected_answer_id', { id: studentAnswer.selected_answer_id })}
+                      {t('selected_answer', {
+                        answer: selectedOption?.content ?? t('no_answer'),
+                      })}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {t('correct_answer', {
+                        answer: correctOptions.map((o) => o.content).join(', ') || t('no_answer'),
+                      })}
                     </p>
                   </div>
                 )}
 
+                {aq.question.explanation && (
+                  <p className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                    {t('explanation', { text: aq.question.explanation })}
+                  </p>
+                )}
+
                 {!isAutoGraded && (
                   <div className="space-y-3">
-                    {studentAnswer?.text_answer && (
-                      <p className="text-sm whitespace-pre-wrap break-words">
-                        {t('text_answer', { text: studentAnswer.text_answer })}
-                      </p>
-                    )}
+                    <p className="text-sm whitespace-pre-wrap break-words">
+                      {t('text_answer', { text: studentAnswer?.text_answer || t('no_answer') })}
+                    </p>
                     {images.length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         {images.map((img) => (
