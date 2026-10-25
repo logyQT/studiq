@@ -3,6 +3,7 @@
 import { useDraggable } from '@dnd-kit/core';
 import { Badge, Input } from '@studiq/ui';
 import { GripVertical, Plus } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { type ChangeEvent, useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
 
@@ -27,6 +28,7 @@ function BrowserItem({
   onAdd: (q: BrowseQuestion) => void;
   draggable: boolean;
 }) {
+  const t = useTranslations('EduQuizEditPage');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `browser-${question.id}`,
     data: { source: 'browser', question },
@@ -58,7 +60,7 @@ function BrowserItem({
         type="button"
         onClick={() => onAdd(question)}
         className="text-muted-foreground hover:text-primary shrink-0"
-        title="Add to quiz"
+        title={t('add_to_quiz')}
       >
         <Plus className="w-4 h-4" />
       </button>
@@ -67,6 +69,7 @@ function BrowserItem({
 }
 
 export function QuestionBrowser({ existingIds, onAdd, draggable = false }: QuestionBrowserProps) {
+  const t = useTranslations('EduQuizEditPage');
   const [search, setSearch] = useState('');
   const [selectedBankId, setSelectedBankId] = useState<string | undefined>();
 
@@ -98,7 +101,7 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
             setSelectedBankId(e.target.value || undefined);
           }}
         >
-          <option value="">All banks</option>
+          <option value="">{t('all_banks')}</option>
           {(banks ?? []).map((b) => (
             <option key={b.id} value={b.id}>
               {b.name}
@@ -106,7 +109,7 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
           ))}
         </select>
         <Input
-          placeholder="Search questions..."
+          placeholder={t('search_questions_placeholder')}
           value={search}
           onChange={(e: ChangeEvent<HTMLInputElement>) => {
             setSearch(e.target.value);
@@ -119,7 +122,9 @@ export function QuestionBrowser({ existingIds, onAdd, draggable = false }: Quest
           <BrowserItem key={q.id} question={q} onAdd={(q) => onAdd([q])} draggable={draggable} />
         ))}
         {filtered.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-8">No questions found</p>
+          <p className="text-sm text-muted-foreground text-center py-8">
+            {t('no_questions_found')}
+          </p>
         )}
       </div>
     </div>
