@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  attemptPercentage,
   hasTeacherActivity,
   orderedQuestionTypeEntries,
   parseTeacherStatsResponse,
@@ -47,6 +48,30 @@ describe('summarizeWeeklyActivity (#383)', () => {
 describe('weeklyWindowStart (#383)', () => {
   it('matches the server rolling range=7d boundary (UTC date)', () => {
     expect(weeklyWindowStart(NOW)).toBe('2026-10-16');
+  });
+});
+
+describe('attemptPercentage (#321)', () => {
+  it('scores a practice attempt against the question count', () => {
+    expect(attemptPercentage({ score: 3, total_questions: 4, total_points: null })).toBe(75);
+  });
+
+  it('scores an assignment attempt against total_points', () => {
+    expect(attemptPercentage({ score: 3, total_questions: 4, total_points: 5 })).toBe(60);
+  });
+
+  it('falls back to the question count when total_points is missing', () => {
+    expect(attemptPercentage({ score: 2, total_questions: 3 })).toBe(67);
+  });
+
+  it('never divides by zero', () => {
+    expect(attemptPercentage({ score: 0, total_questions: 0, total_points: null })).toBe(0);
+    expect(attemptPercentage({ score: 0, total_questions: 0 })).toBe(0);
+  });
+
+  it('rounds to the nearest integer', () => {
+    expect(attemptPercentage({ score: 1, total_questions: 3 })).toBe(33);
+    expect(attemptPercentage({ score: 2, total_questions: 3 })).toBe(67);
   });
 });
 
