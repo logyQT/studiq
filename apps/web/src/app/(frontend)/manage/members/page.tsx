@@ -295,7 +295,9 @@ export default function MembersPage() {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <span className="text-sm text-muted-foreground">{m.orgRoleName}</span>
+                  <span data-testid="member-role" className="text-sm text-muted-foreground">
+                    {roles.find((r) => r.name === m.orgRoleName)?.displayName ?? m.orgRoleName}
+                  </span>
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-wrap gap-1">
