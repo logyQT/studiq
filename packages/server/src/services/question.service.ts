@@ -170,14 +170,18 @@ export class QuestionService {
     if (data.content) updateFields.content = data.content;
     if (data.explanation !== undefined) updateFields.explanation = data.explanation;
 
-    const { data: question, error: qError } = await supabase
+    let updateQuery = supabase
       .from('questions')
       .update(updateFields)
       .eq('id', id)
-      .eq('created_by', ctx.userId)
-      .eq('organization_id', ctx.activeOrgId)
-      .select()
-      .single();
+      .eq('created_by', ctx.userId);
+
+    // questions.organization_id is nullable (personal questions). Mirror `accessibleFilter`'s
+    // `own` scope: apply the tenant filter only while an org is active. A bare
+    // .eq('organization_id', null) serialises to `eq.null` → 22P02 → 500 (#148).
+    if (ctx.activeOrgId) updateQuery = updateQuery.eq('organization_id', ctx.activeOrgId);
+
+    const { data: question, error: qError } = await updateQuery.select().single();
 
     if (qError && qError.code !== 'PGRST116') return toDbFailure(qError);
     if (!question || (Array.isArray(question) && question.length === 0))
