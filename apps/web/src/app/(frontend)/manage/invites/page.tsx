@@ -349,6 +349,7 @@ export default function InvitationsPage() {
             {results.map((result, index) => (
               <div
                 key={`${index}-${result.email}`}
+                data-testid="invite-result-row"
                 className="flex flex-wrap items-center justify-between gap-2 p-3 bg-muted rounded-lg"
               >
                 <div className="space-y-1">

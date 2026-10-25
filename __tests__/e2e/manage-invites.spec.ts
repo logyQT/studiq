@@ -165,6 +165,7 @@ test.describe('Manage invitations — role defaults (#241)', () => {
                 success: true,
                 invitationId: `inv-${index}`,
                 inviteLink: `http://localhost:3000/join?token=token-${index}`,
+                inviteCode: `code-${index}`,
               },
             })),
           },
@@ -188,13 +189,21 @@ test.describe('Manage invitations — role defaults (#241)', () => {
       page.getByRole('button', { name: t('ManageInvitationsPage.send_invitations') }).click(),
     ]);
 
-    // Each address is rendered once and its own row carries the status/action.
-    for (const email of emails) {
+    // Each address is rendered once and its own row carries the status/actions.
+    for (const [index, email] of emails.entries()) {
       const emailCell = page.getByText(email, { exact: true });
       await expect(emailCell).toHaveCount(1);
 
-      const row = emailCell.locator('..');
+      // Row is anchored by a test id, not by DOM nesting depth, so wrapping the
+      // e-mail + code in a sub-div cannot silently break this guard again.
+      const row = page.getByTestId('invite-result-row').filter({ hasText: email });
+      await expect(row).toHaveCount(1);
+
       await expect(row).toContainText(t('ManageInvitationsPage.success'));
+      await expect(row).toContainText(`code-${index}`);
+      await expect(
+        row.getByRole('button', { name: t('ManageInvitationsPage.copy_code') }),
+      ).toBeVisible();
       await expect(
         row.getByRole('button', { name: t('ManageInvitationsPage.copy_link') }),
       ).toBeVisible();
