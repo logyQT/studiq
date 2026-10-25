@@ -2305,6 +2305,7 @@
     "password_updated": "Hasło zaktualizowane pomyślnie",
     "invalid_current_password": "Obecne hasło jest nieprawidłowe.",
     "password_update_failed": "Nie udało się zaktualizować hasła. Spróbuj ponownie.",
+    "name_update_failed": "Nie udało się zaktualizować nazwy. Spróbuj ponownie.",
     "too_many_attempts": "Zbyt wiele prób. Spróbuj ponownie później.",
     "update_password": "Zaktualizuj hasło",
     "saving": "Zapisywanie...",

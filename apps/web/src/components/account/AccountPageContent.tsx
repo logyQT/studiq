@@ -18,7 +18,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useOrgs } from '@/hooks/use-orgs';
-import { apiPost, apiPut } from '@/lib/api';
+import { apiPost, apiPut, getFieldErrorCode } from '@/lib/api';
 
 export function AccountPageContent() {
   const t = useTranslations('AccountPage');
@@ -43,8 +43,11 @@ export function AccountPageContent() {
     try {
       await apiPut('/api/v1/auth/profile', { name: name.trim() });
       toast.success(t('name_saved'));
-    } catch {
-      toast.error(t('name_saved'));
+    } catch (err) {
+      const validationCode = getFieldErrorCode(err, 'name');
+      toast.error(
+        validationCode && tErr.has(validationCode) ? tErr(validationCode) : t('name_update_failed'),
+      );
     } finally {
       setIsSavingName(false);
     }
