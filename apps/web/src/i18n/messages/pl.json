@@ -1077,7 +1077,7 @@
     "delete_failed": "Nie udało się usunąć roli",
     "cant_delete_system": "Ról systemowych nie można usuwać",
     "cant_delete_has_members": "Usuń wszystkich członków z tej roli przed usunięciem",
-    "perms_title": "Edytuj uprawnienia;{name}",
+    "perms_title": "Edytuj uprawnienia: {name}",
     "perms_save": "Zapisz uprawnienia",
     "perms_saved": "Uprawnienia zaktualizowane",
     "perms_save_failed": "Nie udało się zaktualizować uprawnień",
