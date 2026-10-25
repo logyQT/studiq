@@ -659,9 +659,20 @@ def dispatch_prompt(role: str, n: int, stage: str, env: int, rec: dict,
     # writer) has no design-r{a}: point those roles at the newest design that
     # actually exists instead of a path that was never written.
     d = a if role == "DESIGNER" else (latest_round(n, "design", a) or a)
+    design_md = issue_dir(n) / f"design-r{d}.md"
+    impl_md = issue_dir(n) / f"impl-r{a}.md"
     common = {
         "ISSUE": n,
         "TITLE": issue["title"],
+        # External PRs have no design/implementation artifacts - never point a
+        # reviewer or QA run at a file that was never written.
+        "DESIGN_LINE": f"\n- Design: `{design_md}`" if design_md.exists() else "",
+        "IMPL_LINE": f"\n- Implementation note: `{impl_md}`" if impl_md.exists() else "",
+        "HOOKS_SOURCE": (
+            f"the `hooks` field of `{impl_md}` and the PR body's `## Hooks` section"
+            if impl_md.exists() else "the PR body's `## Hooks` section"
+        ),
+        "REVIEW_TOTAL": 1 if rec.get("single_review") else 2,
         "URL": issue["url"],
         "ISSUE_PATH": str(issue_dir(n) / "issue.json"),
         "DESIGN_PATH": str(issue_dir(n) / f"design-r{d}.md"),

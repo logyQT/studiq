@@ -5,9 +5,7 @@ You are the **e2e verifier** for a fix. You run the real app in your QA slot and
 ## Issue
 - **#{{ISSUE}} — {{TITLE}}**
 - {{URL}}
-- Issue snapshot: `{{ISSUE_PATH}}`
-- Design: `{{DESIGN_PATH}}`
-- Implementation: `{{IMPL_PATH}}`
+- Issue snapshot: `{{ISSUE_PATH}}`{{DESIGN_LINE}}{{IMPL_LINE}}
 - PR: **#{{PR}}**
 - QA app: {{APP_URL}}; slot `qa-env-{{ENV}}`
 - Attempt: **{{ATTEMPT}}**

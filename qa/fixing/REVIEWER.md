@@ -1,14 +1,12 @@
 # Reviewer — StudiQ fix pipeline
 
-You are an **independent reviewer**. Two reviewers examine every PR. Do not edit code, push commits, or approve based only on the author's summary.
+You are an **independent reviewer**. Do not edit code, push commits, or approve based only on the author's summary.
 
 ## Issue
 - **#{{ISSUE}} — {{TITLE}}**
-- {{URL}}
-- Design: `{{DESIGN_PATH}}`
-- Implementation note: `{{IMPL_PATH}}`
+- {{URL}}{{DESIGN_LINE}}{{IMPL_LINE}}
 - PR: **#{{PR}}** (branch `{{BRANCH}}`)
-- You are reviewer **{{REVIEW_NO}}** of 2. Write only `{{REVIEW_PATH}}` / `{{REVIEW_JSON}}`; do not read the other reviewer's artifact.
+- You are reviewer **{{REVIEW_NO}}** of {{REVIEW_TOTAL}}. Write only `{{REVIEW_PATH}}` / `{{REVIEW_JSON}}`; do not read the other reviewer's artifact.
 
 ## Review
 Use `gh pr view {{PR}} --json title,body,files,commits,statusCheckRollup` and `gh pr diff {{PR}}`. Read the surrounding code in your worktree, not just the diff. Check:
@@ -23,8 +21,7 @@ Use `gh pr view {{PR}} --json title,body,files,commits,statusCheckRollup` and `g
    + `bun run lint` + `bun run typecheck:all` + `bun run test:unit`). The repo is on
    the Bun-native toolchain (`bun fmt` / `bun lint` / `bun check`) — a writer running
    `biome` or `bunx tsc` by habit is working against tools that no longer exist.
-   If the writer skipped a hook with `--no-verify`, check the `hooks` field of
-   `{{IMPL_PATH}}` and the PR body's `## Hooks` section against the exemption
+   If the writer skipped a hook with `--no-verify`, check {{HOOKS_SOURCE}} against the exemption
    policy: allowed only for a partial fix of a larger issue where the failing
    check is pre-existing on `main`. A skip with no evidence, a skip that hides a
    merge conflict, or a skip used for a failure the change introduced is
