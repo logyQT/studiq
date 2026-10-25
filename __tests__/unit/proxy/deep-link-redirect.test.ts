@@ -125,3 +125,28 @@ describe('proxy — ?next= deep link (#458)', () => {
     expect(location).toBe('http://localhost/login?next=%2Fapp%2Fstudy%2Fquiz%3Ftype%3Dopen');
   });
 });
+
+describe('proxy — /checkout requires auth (#225)', () => {
+  const checkout =
+    '/checkout?session_id=131bad5e-0f00-496b-83d2-03ce408f55f0&plan_id=hub&org_id=00000000-0000-4000-8000-000000000001';
+
+  it('bounces a signed-out org checkout through /login and keeps the full URL', async () => {
+    signedOut();
+    const { status, location } = await call(checkout);
+
+    expect(status).toBe(307);
+    const login = new URL(location as string);
+    expect(login.pathname).toBe('/login');
+    // The org id is what the page resolves the target organization from, so it
+    // must survive the login round-trip.
+    expect(login.searchParams.get('next')).toBe(checkout);
+  });
+
+  it('lets a signed-in manager straight through', async () => {
+    signedIn(AccountType.MANAGER);
+    const { status, location } = await call(checkout);
+
+    expect(status).toBe(200);
+    expect(location).toBeNull();
+  });
+});

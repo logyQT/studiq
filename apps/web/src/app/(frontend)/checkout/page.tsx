@@ -2,6 +2,9 @@
 
 import type { PlanInfo } from '@studiq/server/services/subscription-plan.service';
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Button,
   Card,
   CardContent,
@@ -10,16 +13,20 @@ import {
   CardTitle,
   Input,
   Label,
+  OrgAvatar,
   Separator,
 } from '@studiq/ui';
-import { Check, CreditCard, Loader2, Lock, Minus } from 'lucide-react';
+import { AlertCircle, Check, CreditCard, Loader2, Lock, Minus } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { getFeatureLabel as getFeatureLabelShared } from '@/lib/pricing-features';
 import { Suspense, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { apiGet, apiPost } from '@/lib/api';
+import { useApiQuery } from '@/hooks/use-api';
+import { apiPost, ApiError } from '@/lib/api';
+import { resolveCheckoutOrg, type CheckoutOrg, type OrgsStatus } from '@/lib/checkout-org';
+import { getHighlightedFeatures, sortFeaturesByPriority } from '@/lib/pricing-benefits';
+import { getFeatureLabel as getFeatureLabelShared } from '@/lib/pricing-features';
 
 const SORTED_LIMIT_KEYS = [
   'max_flashcards',
@@ -33,19 +40,27 @@ const SORTED_LIMIT_KEYS = [
   'max_storage_mb',
 ];
 
+const HIGHLIGHTED_FEATURES = 5;
+
+function FullPageSpinner() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <Loader2 className="size-6 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
+
 function CheckoutContent() {
   const ct = useTranslations('CheckoutPage');
   const pt = useTranslations('PricingPage');
   const locale = useLocale();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const planId = searchParams.get('plan_id');
-  const orgId = searchParams.get('org_id');
-  const { user } = useAuth();
+  const planId = searchParams.get('plan_id')?.trim() || null;
+  const orgId = searchParams.get('org_id')?.trim() || null;
+  const { user, isLoading: isAuthLoading } = useAuth();
 
-  const [plan, setPlan] = useState<PlanInfo | null>(null);
-  const [isLoadingPlan, setIsLoadingPlan] = useState(true);
-  const [planNotFound, setPlanNotFound] = useState(false);
+  const [showAllBenefits, setShowAllBenefits] = useState(false);
 
   const [cardNumber, setCardNumber] = useState('');
   const [expiry, setExpiry] = useState('');
@@ -54,23 +69,43 @@ function CheckoutContent() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDone, setIsDone] = useState(false);
 
+  const planQuery = useApiQuery<PlanInfo>({
+    queryKey: ['subscription-plans', 'detail', planId],
+    url: `/api/v1/subscription-plans/${planId}`,
+    enabled: !!planId,
+  });
+  const plan = planQuery.data;
+  const isOrgPlan = plan?.forAccountType === 'manager';
+
+  // The target org comes from the self-scoped membership list (RLS: members
+  // only) — never from the URL, which is user-editable and goes stale on a
+  // rename. Shared key with the navbar so coming from `/pricing/org` reuses it.
+  const orgsQuery = useApiQuery<CheckoutOrg[]>({
+    queryKey: ['orgs'],
+    url: '/api/v1/me/orgs',
+    enabled: !!user && isOrgPlan,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Cached rows win over a failed background refetch: a 5-minute refetch that
+  // errors must not turn a working checkout into a blocking error card.
+  const orgsStatus: OrgsStatus = orgsQuery.data ? 'ready' : orgsQuery.isError ? 'error' : 'pending';
+  const resolution = resolveCheckoutOrg({
+    isOrgPlan,
+    orgId,
+    orgs: orgsQuery.data,
+    orgsStatus,
+  });
+
+  useEffect(() => {
+    if (!planId) router.replace('/pricing');
+  }, [planId, router]);
+
   const isCardValid = cardNumber.replace(/\s/g, '').length === 16 && cardNumber.length > 0;
   const isExpiryValid = expiry.length === 5;
   const isCvcValid = cvc.length === 3;
   const isNameValid = cardName.trim().length > 0;
   const canSubmit = isCardValid && isExpiryValid && isCvcValid && isNameValid;
-
-  useEffect(() => {
-    if (!planId) {
-      router.push('/pricing');
-      return;
-    }
-    setIsLoadingPlan(true);
-    apiGet<PlanInfo>(`/api/v1/subscription-plans/${planId}`)
-      .then(setPlan)
-      .catch(() => setPlanNotFound(true))
-      .finally(() => setIsLoadingPlan(false));
-  }, [planId, router]);
 
   function formatCardNumber(value: string) {
     const digits = value.replace(/\D/g, '').slice(0, 16);
@@ -87,6 +122,10 @@ function CheckoutContent() {
     e.preventDefault();
     if (!canSubmit || !planId) return;
     if (!user) return;
+    // Send the org the UI actually showed. For a personal plan nothing is
+    // sent: a stray `org_id` in the URL must not reach the mock webhook.
+    const resolvedOrgId = resolution.status === 'ok' ? resolution.org.id : null;
+    if (isOrgPlan && !resolvedOrgId) return;
     setIsProcessing(true);
     try {
       await apiPost('/api/v1/stripe/webhook', {
@@ -94,7 +133,7 @@ function CheckoutContent() {
         session_id: crypto.randomUUID(),
         plan_id: planId,
         user_id: user.id,
-        ...(orgId ? { org_id: orgId } : {}),
+        ...(resolvedOrgId ? { org_id: resolvedOrgId } : {}),
       });
       setIsDone(true);
       setTimeout(() => router.push('/billing/success?redirect=auto'), 2000);
@@ -105,21 +144,35 @@ function CheckoutContent() {
     }
   }
 
-  if (isLoadingPlan) {
+  if (!planId || planQuery.isPending) return <FullPageSpinner />;
+
+  if (planQuery.isError) {
+    const notFound = planQuery.error instanceof ApiError && planQuery.error.status === 404;
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+        <p className="text-muted-foreground">
+          {notFound ? ct('plan_not_found') : ct('load_error')}
+        </p>
+        <div className="flex items-center gap-2">
+          {!notFound && (
+            <Button variant="outline" onClick={() => planQuery.refetch()}>
+              {ct('retry')}
+            </Button>
+          )}
+          <Button onClick={() => router.push('/pricing')}>{ct('back_to_plans')}</Button>
+        </div>
       </div>
     );
   }
 
-  if (planNotFound || !plan) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <p className="text-muted-foreground">{ct('plan_not_found')}</p>
-        <Button onClick={() => router.push('/pricing')}>{ct('back_to_plans')}</Button>
-      </div>
-    );
+  if (!plan) return <FullPageSpinner />;
+
+  // `requireAuth` on `/checkout` makes this unreachable in practice; fail
+  // closed instead of rendering a form that cannot be submitted.
+  if (isAuthLoading) return <FullPageSpinner />;
+
+  if (isOrgPlan && orgId && user && resolution.status === 'loading') {
+    return <FullPageSpinner />;
   }
 
   const formatter = new Intl.NumberFormat(locale, {
@@ -138,6 +191,53 @@ function CheckoutContent() {
   }
 
   const visibleLimits = SORTED_LIMIT_KEYS.filter((k) => k in plan.limits);
+  const featuredFeatures = getHighlightedFeatures(plan.features, HIGHLIGHTED_FEATURES);
+  const allFeatures = sortFeaturesByPriority(plan.features);
+  const visibleFeatures = showAllBenefits ? allFeatures : featuredFeatures;
+  const hasMoreFeatures = allFeatures.length > featuredFeatures.length;
+
+  const targetOrg =
+    resolution.status === 'ok' || resolution.status === 'not-admin' ? resolution.org : null;
+  const isDifferentFromActive =
+    resolution.status === 'ok' || resolution.status === 'not-admin'
+      ? resolution.isDifferentFromActive
+      : false;
+
+  const plansUrl = isOrgPlan ? '/pricing/org' : '/pricing';
+
+  let blockedState: {
+    title: string;
+    description: string;
+    retry?: () => void;
+  } | null = null;
+
+  if (isOrgPlan && !user) {
+    blockedState = {
+      title: ct('org_unavailable_title'),
+      description: ct('org_unavailable_desc'),
+    };
+  } else if (resolution.status === 'missing-org-id') {
+    blockedState = {
+      title: ct('org_missing_title'),
+      description: ct('org_missing_desc'),
+    };
+  } else if (resolution.status === 'load-error') {
+    blockedState = {
+      title: ct('orgs_load_error'),
+      description: ct('org_unavailable_desc'),
+      retry: () => orgsQuery.refetch(),
+    };
+  } else if (resolution.status === 'not-member') {
+    blockedState = {
+      title: ct('org_unavailable_title'),
+      description: ct('org_unavailable_desc'),
+    };
+  } else if (resolution.status === 'not-admin') {
+    blockedState = {
+      title: ct('org_not_admin_title'),
+      description: ct('org_not_admin_desc', { org: resolution.org.name }),
+    };
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-muted/30">
@@ -148,6 +248,25 @@ function CheckoutContent() {
             <CardTitle className="text-base">{ct('summary')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {targetOrg && (
+              <>
+                <div className="flex items-start gap-3">
+                  <OrgAvatar orgId={targetOrg.id} name={targetOrg.name} size={36} />
+                  <div className="min-w-0 space-y-0.5">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      {ct('target_org_label')}
+                    </p>
+                    <p className="font-medium break-words">{targetOrg.name}</p>
+                    <p className="text-xs text-muted-foreground">{ct('target_org_hint')}</p>
+                    {isDifferentFromActive && (
+                      <p className="text-xs text-amber-600">{ct('target_org_not_active')}</p>
+                    )}
+                  </div>
+                </div>
+                <Separator />
+              </>
+            )}
+
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">{plan.name}</span>
               <span className="font-medium">
@@ -156,17 +275,33 @@ function CheckoutContent() {
               </span>
             </div>
 
-            {plan.features.length > 0 && (
+            {visibleFeatures.length > 0 && (
               <>
                 <Separator />
-                <ul className="space-y-2">
-                  {plan.features.map((feature) => (
-                    <li key={feature} className="flex items-center gap-2 text-sm">
-                      <Check className="size-3.5 shrink-0 text-green-500" />
-                      <span>{getFeatureLabel(feature)}</span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">{ct('benefits_title')}</p>
+                  <ul className="space-y-2">
+                    {visibleFeatures.map((feature) => (
+                      <li key={feature} className="flex items-center gap-2 text-sm">
+                        <Check className="size-3.5 shrink-0 text-green-500" />
+                        <span>{getFeatureLabel(feature)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {hasMoreFeatures && (
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={() => setShowAllBenefits((prev) => !prev)}
+                    >
+                      {showAllBenefits
+                        ? ct('benefits_show_less')
+                        : ct('benefits_show_all', { count: allFeatures.length })}
+                    </Button>
+                  )}
+                </div>
               </>
             )}
 
@@ -207,7 +342,7 @@ function CheckoutContent() {
           </CardContent>
         </Card>
 
-        {/* Payment form */}
+        {/* Payment form / blocking state */}
         <Card className="md:col-span-3 md:order-1">
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -221,77 +356,101 @@ function CheckoutContent() {
             </div>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="cardNumber">{ct('card_number')}</Label>
-                <div className="relative">
-                  <Input
-                    id="cardNumber"
-                    placeholder="4242 4242 4242 4242"
-                    value={cardNumber}
-                    onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                    className="pr-10 font-mono"
-                    disabled={isProcessing || isDone}
-                  />
-                  {isCardValid && (
-                    <Check className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-green-500" />
+            {blockedState ? (
+              <div className="space-y-4">
+                <Alert variant="destructive">
+                  <AlertCircle />
+                  <AlertTitle>{blockedState.title}</AlertTitle>
+                  <AlertDescription>{blockedState.description}</AlertDescription>
+                </Alert>
+                <div className="flex flex-wrap items-center gap-2">
+                  {blockedState.retry && (
+                    <Button variant="outline" onClick={blockedState.retry}>
+                      {ct('retry')}
+                    </Button>
                   )}
+                  <Button onClick={() => router.push(plansUrl)}>{ct('back_to_plans')}</Button>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="expiry">{ct('expiry')}</Label>
+                  <Label htmlFor="cardNumber">{ct('card_number')}</Label>
+                  <div className="relative">
+                    <Input
+                      id="cardNumber"
+                      placeholder="4242 4242 4242 4242"
+                      value={cardNumber}
+                      onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                      className="pr-10 font-mono"
+                      disabled={isProcessing || isDone}
+                    />
+                    {isCardValid && (
+                      <Check className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-green-500" />
+                    )}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="expiry">{ct('expiry')}</Label>
+                    <Input
+                      id="expiry"
+                      placeholder="MM/YY"
+                      value={expiry}
+                      onChange={(e) => setExpiry(formatExpiry(e.target.value))}
+                      className="font-mono"
+                      disabled={isProcessing || isDone}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="cvc">{ct('cvc')}</Label>
+                    <Input
+                      id="cvc"
+                      placeholder="123"
+                      value={cvc}
+                      onChange={(e) => setCvc(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                      className="font-mono"
+                      disabled={isProcessing || isDone}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cardName">{ct('card_name')}</Label>
                   <Input
-                    id="expiry"
-                    placeholder="MM/YY"
-                    value={expiry}
-                    onChange={(e) => setExpiry(formatExpiry(e.target.value))}
-                    className="font-mono"
+                    id="cardName"
+                    placeholder="John Doe"
+                    value={cardName}
+                    onChange={(e) => setCardName(e.target.value)}
                     disabled={isProcessing || isDone}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cvc">{ct('cvc')}</Label>
-                  <Input
-                    id="cvc"
-                    placeholder="123"
-                    value={cvc}
-                    onChange={(e) => setCvc(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                    className="font-mono"
-                    disabled={isProcessing || isDone}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="cardName">{ct('card_name')}</Label>
-                <Input
-                  id="cardName"
-                  placeholder="John Doe"
-                  value={cardName}
-                  onChange={(e) => setCardName(e.target.value)}
-                  disabled={isProcessing || isDone}
-                />
-              </div>
 
-              <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2">
-                <Lock className="size-3" />
-                <span>{ct('secured')}</span>
-              </div>
-
-              {isDone ? (
-                <div className="flex items-center justify-center gap-2 text-green-600 font-medium py-3">
-                  <Check className="size-5" />
-                  {ct('success')}
+                <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2">
+                  <Lock className="size-3" />
+                  <span>{ct('secured')}</span>
                 </div>
-              ) : (
-                <Button type="submit" className="w-full" disabled={!canSubmit || isProcessing}>
-                  {isProcessing && <Loader2 className="size-4 mr-2 animate-spin" />}
-                  {isProcessing
-                    ? ct('processing')
-                    : ct('pay', { amount: `${displayPrice}${pt('period_month')}` })}
-                </Button>
-              )}
-            </form>
+
+                {targetOrg && (
+                  <p className="text-xs text-muted-foreground">
+                    {ct('pay_for_org', { org: targetOrg.name })}
+                  </p>
+                )}
+
+                {isDone ? (
+                  <div className="flex items-center justify-center gap-2 text-green-600 font-medium py-3">
+                    <Check className="size-5" />
+                    {ct('success')}
+                  </div>
+                ) : (
+                  <Button type="submit" className="w-full" disabled={!canSubmit || isProcessing}>
+                    {isProcessing && <Loader2 className="size-4 mr-2 animate-spin" />}
+                    {isProcessing
+                      ? ct('processing')
+                      : ct('pay', { amount: `${displayPrice}${pt('period_month')}` })}
+                  </Button>
+                )}
+              </form>
+            )}
           </CardContent>
         </Card>
       </div>

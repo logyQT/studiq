@@ -62,6 +62,15 @@ export const routeRules: RouteRule[] = [
     allowedAccountTypes: [AccountType.EDUCATOR],
   },
 
+  // --- CHECKOUT ROUTES ---
+  // The checkout resolves the target organization from the session-scoped
+  // `/api/v1/me/orgs`, so it cannot function signed out. The proxy keeps the
+  // query string in `?next=`, so a deep link returns to the same checkout URL.
+  {
+    matcher: /^\/checkout(\/.*)?$/,
+    requireAuth: true,
+  },
+
   // --- UI DASHBOARD ROUTES ---
   {
     matcher: /^\/manage(\/.*)?$/,
