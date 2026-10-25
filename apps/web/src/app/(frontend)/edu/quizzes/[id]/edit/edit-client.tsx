@@ -34,6 +34,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { QuestionBrowser } from '@/app/(frontend)/edu/quizzes/[id]/edit/question-browser';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { parsePointsInput } from '@/lib/quiz-editor';
 import { quizKeys } from '@/lib/query-keys';
 
@@ -224,6 +225,9 @@ export function EditQuizClient() {
     queryKey: quizKeys.detail(id),
     url: `/api/v1/teacher/quizzes/${id}`,
   });
+
+  // The quiz name is the breadcrumb label; the raw quiz UUID must never render.
+  useBreadcrumbLabel(id, quiz?.name);
 
   useEffect(() => {
     if (quiz && !initialLoaded.current) {

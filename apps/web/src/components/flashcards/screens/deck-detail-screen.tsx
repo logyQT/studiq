@@ -34,6 +34,7 @@ import { BulkActionBar } from '@/components/shared/bulk-action-bar';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
 import { PageGrid } from '@/components/shared/page-grid';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { useFeature } from '@/hooks/use-feature';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
@@ -147,6 +148,9 @@ export function DeckDetailScreen({
     url: `/api/v1/flashcards/decks/${deckId}`,
     enabled: !!deckId,
   });
+
+  // The deck name is the breadcrumb leaf; the raw deck UUID must never render.
+  useBreadcrumbLabel(deckId, currentDeck?.name);
 
   const { data: allDecksData } = useApiQuery<{
     items: Deck[];

@@ -53,6 +53,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiPost } from '@/lib/api';
 import { dbToDatetimeLocal } from '@/lib/datetime';
@@ -193,6 +194,9 @@ export default function AssignmentDetailClient() {
     queryKey: assignmentKeys.detail(id),
     url: `/api/v1/teacher/assignments/${id}`,
   });
+
+  // The assignment title is the breadcrumb label; the raw UUID must never render.
+  useBreadcrumbLabel(id, assignment?.title);
 
   const { data: groups } = useApiQuery<Group[]>({
     queryKey: groupKeys.list(),

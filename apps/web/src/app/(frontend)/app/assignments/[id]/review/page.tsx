@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { reviewAttemptId, type StudentAssignmentAttemptState } from '@/lib/assignment-attempts';
 import { studentAssignmentKeys } from '@/lib/query-keys';
 
@@ -44,13 +45,16 @@ export default function ReviewAssignmentPage() {
   // A bookmarked /review URL has no attempt id; fall back to the latest
   // submitted attempt — the same row the detail page links to.
   const { data: assignment, isLoading: isAssignmentLoading } = useApiQuery<
-    StudentAssignmentAttemptState & { id: string }
+    StudentAssignmentAttemptState & { id: string; title: string }
   >({
     queryKey: studentAssignmentKeys.detail(id),
     url: `/api/v1/assignments/${id}`,
     enabled: !attemptIdParam,
     staleTime: 0,
   });
+
+  // The assignment title is the breadcrumb label; the raw UUID must never render.
+  useBreadcrumbLabel(id, assignment?.title);
 
   const attemptId = reviewAttemptId(attemptIdParam, assignment);
 

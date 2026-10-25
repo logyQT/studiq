@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { assignmentKeys } from '@/lib/query-keys';
 
 interface Attempt {
@@ -32,6 +33,15 @@ export default function ResultsClient() {
     queryKey: assignmentKeys.results(id),
     url: `/api/v1/teacher/assignments/${id}/results`,
   });
+
+  // Same query key as the detail page, so in-app navigation is a cache hit.
+  const { data: assignment } = useApiQuery<{ title: string }>({
+    queryKey: assignmentKeys.detail(id),
+    url: `/api/v1/teacher/assignments/${id}`,
+  });
+
+  // The assignment title is the breadcrumb label; the raw UUID must never render.
+  useBreadcrumbLabel(id, assignment?.title);
 
   return (
     <div className="p-6 space-y-6">

@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { assignmentKeys } from '@/lib/query-keys';
 
 interface PrintData {
@@ -62,6 +63,9 @@ export default function PrintAssignmentClient() {
     queryKey: assignmentKeys.detail(id),
     url: `/api/v1/teacher/assignments/${id}`,
   });
+
+  // The assignment title is the breadcrumb label; the raw UUID must never render.
+  useBreadcrumbLabel(id, assignment?.title);
 
   useEffect(() => {
     setSettings(loadSettings());

@@ -7,6 +7,7 @@ import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import {
   type GradeDraft,
   exceedsGradeMax,
@@ -64,6 +65,15 @@ export default function StudentGradingClient() {
     queryKey: assignmentKeys.studentResults(id, studentId),
     url: `/api/v1/teacher/assignments/${id}/results/${studentId}`,
   });
+
+  // Same query key as the detail page, so in-app navigation is a cache hit.
+  const { data: assignment } = useApiQuery<{ title: string }>({
+    queryKey: assignmentKeys.detail(id),
+    url: `/api/v1/teacher/assignments/${id}`,
+  });
+
+  // The assignment title is the breadcrumb label; the raw UUID must never render.
+  useBreadcrumbLabel(id, assignment?.title);
 
   const gradeMutation = useApiMutation({
     mutationFn: async ({
