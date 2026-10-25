@@ -63,6 +63,8 @@ describe('active_org_id membership gate (#186)', () => {
   let orgId: string;
   let member: Session;
   let outsider: Session;
+  let orgManager: Session;
+  let outsiderManager: Session;
   let testUsers: TestUserFixture[] = [];
 
   beforeAll(async () => {
@@ -78,6 +80,14 @@ describe('active_org_id membership gate (#186)', () => {
     if (orgError || org?.plan !== 'launch') {
       throw new Error(`[setup] expected a launch-plan org, got ${org?.plan}: ${orgError?.message}`);
     }
+
+    // Give the org a non-default plan so the manager path cannot be confused with
+    // the manager's personal `launch` plan (#181).
+    const { error: planError } = await service
+      .from('organizations')
+      .update({ plan: 'hub' })
+      .eq('id', orgId);
+    if (planError) throw new Error(`[setup] failed to set org plan: ${planError.message}`);
 
     const { data: memberRole, error: roleError } = await service
       .from('org_roles')
@@ -95,10 +105,15 @@ describe('active_org_id membership gate (#186)', () => {
     });
 
     const outsiderUser = await createTestUser({ role: 'student', password: PASSWORD });
+    // Managers have a personal `launch` plan, same as the default org plan, so an
+    // outsider manager is the one that proves the forged cookie is rejected.
+    const outsiderManagerUser = await createTestUser({ role: 'manager', password: PASSWORD });
 
     member = await signIn(memberUser.email, memberUser);
     outsider = await signIn(outsiderUser.email, outsiderUser);
-    testUsers = [managerUser, memberUser, outsiderUser];
+    orgManager = await signIn(managerUser.email, managerUser);
+    outsiderManager = await signIn(outsiderManagerUser.email, outsiderManagerUser);
+    testUsers = [managerUser, memberUser, outsiderUser, outsiderManagerUser];
   });
 
   afterAll(async () => {
@@ -108,7 +123,7 @@ describe('active_org_id membership gate (#186)', () => {
     }
   });
 
-  it('serves the org plan to a legitimate member', async () => {
+  it('serves the personal plan to a student member (#181)', async () => {
     actAs(member);
     const res = await getMyPlan(
       createNextRequest(`${BASE_URL}/api/v1/me/plan`, { method: 'GET' }, { active_org_id: orgId }),
@@ -116,7 +131,18 @@ describe('active_org_id membership gate (#186)', () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.data.key).toBe('launch');
+    expect(body.data.key).toBe('base');
+  });
+
+  it('serves the org plan to the org manager', async () => {
+    actAs(orgManager);
+    const res = await getMyPlan(
+      createNextRequest(`${BASE_URL}/api/v1/me/plan`, { method: 'GET' }, { active_org_id: orgId }),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.key).toBe('hub');
   });
 
   it('ignores a forged active_org_id cookie and falls back to the personal plan', async () => {
@@ -128,6 +154,17 @@ describe('active_org_id membership gate (#186)', () => {
 
     expect(res.status).toBe(200);
     expect(body.data.key).toBe('base');
+  });
+
+  it('ignores a forged active_org_id cookie for an outsider manager', async () => {
+    actAs(outsiderManager);
+    const res = await getMyPlan(
+      createNextRequest(`${BASE_URL}/api/v1/me/plan`, { method: 'GET' }, { active_org_id: orgId }),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.key).toBe('launch');
   });
 
   it('does not report the forged org as active in /me/orgs', async () => {

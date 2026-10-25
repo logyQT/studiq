@@ -1,4 +1,4 @@
-import type { RequestContext } from '@studiq/authz';
+import { AccountType, type RequestContext } from '@studiq/authz';
 import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
@@ -106,12 +106,20 @@ export class SubscriptionPlanService {
     );
   }
 
+  /**
+   * The caller's current plan.
+   *
+   * Organization plans (`subscription_plans.for_account_type = 'manager'`) belong to
+   * managers; a student's/educator's `active_org_id` membership must not replace their
+   * own plan with the organization's (#181). Managers resolve the active org's plan and
+   * fall back to their personal plan when no org plan is available.
+   */
   async getMyPlan(ctx: RequestContext): Promise<ServiceResult<PlanInfo>> {
     const supabase = await this.createClient();
 
     let planKey: string | null = null;
 
-    if (ctx.activeOrgId) {
+    if (ctx.activeOrgId && ctx.accountType === AccountType.MANAGER) {
       const { data: org, error: orgError } = await supabase
         .from('organizations')
         .select('plan')
@@ -123,7 +131,7 @@ export class SubscriptionPlanService {
     }
 
     if (!planKey) {
-      // Fall back to personal plan for standalone users
+      // Non-managers (and managers without an org plan) use their personal plan.
       const { data: profile } = await supabase
         .from('profiles')
         .select('personal_plan_key')
