@@ -120,6 +120,25 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
       messages.AccountPage.password_update_failed,
     );
   });
+
+  /**
+   * #295 — the /terms cookie list prints each `cookies_item*` verbatim inside its own
+   * <li>, so a separator must be a colon + space, never a bare `;` (PUB-06).
+   */
+  it('separates the cookie category from its description', () => {
+    const termsPage = messages.TermsPage as Record<string, string>;
+
+    for (const key of ['cookies_item1', 'cookies_item2', 'cookies_item3'] as const) {
+      const message = termsPage[key];
+
+      expect(message, `TermsPage.${key}`).toBeTypeOf('string');
+      expect(message, `TermsPage.${key}`).toMatch(/^[^;]+: \S/);
+    }
+
+    for (const [key, message] of Object.entries(termsPage)) {
+      expect(message, `TermsPage.${key}`).not.toMatch(/;\S/);
+    }
+  });
 });
 
 describe('i18n message parity', () => {
