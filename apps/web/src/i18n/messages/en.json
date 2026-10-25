@@ -1141,6 +1141,8 @@
   "AppOnboarding": {
     "title": "Getting Started",
     "description": "Complete these steps to start learning",
+    "all_done_title": "All set!",
+    "all_done_desc": "You've completed all the steps. Dismiss this card.",
     "create_deck": "Create your first deck",
     "add_flashcards": "Add flashcards to a deck",
     "take_quiz": "Take your first quiz",
