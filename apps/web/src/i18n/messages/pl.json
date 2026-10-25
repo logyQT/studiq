@@ -1562,7 +1562,8 @@
     "range_7d": "7 dni",
     "range_30d": "30 dni",
     "range_1y": "1 rok",
-    "quizzes_coming_soon": "Brak podejść do testów",
+    "no_quiz_history": "Brak historii quizów",
+    "no_quiz_history_desc": "Rozwiąż quiz, aby zobaczyć swoją historię",
     "score": "Wynik",
     "date": "Data"
   },
