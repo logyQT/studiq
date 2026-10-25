@@ -400,7 +400,9 @@ describe('StatsService', () => {
       expect(membersBuilder.eq).toHaveBeenCalledWith('organization_id', 'org-1');
       expect(membersBuilder.eq).toHaveBeenCalledWith('org_roles.name', 'member');
       expect(attemptsBuilder.in).toHaveBeenCalledWith('user_id', ['s-1']);
-      expect(attemptsBuilder.is).toHaveBeenCalledWith('assignment_id', null);
+      // Assignment attempts are included: each attempt is normalised to its own
+      // percentage, so points and correct-answer counts are comparable (#203).
+      expect(attemptsBuilder.is).not.toHaveBeenCalled();
       expect(attemptsBuilder.not).toHaveBeenCalledWith('completed_at', 'is', null);
 
       expect(result.success).toBe(true);
@@ -409,24 +411,77 @@ describe('StatsService', () => {
           id: 'Quiz A',
           title: 'Quiz A',
           totalAttempts: 2,
-          avgScore: 7,
+          avgScore: 70, // (80 + 60) / 2
           avgCompletionRate: 10,
         },
         {
           id: 'Quiz B',
           title: 'Quiz B',
           totalAttempts: 1,
-          avgScore: 5,
+          avgScore: 25, // 5/20
           avgCompletionRate: 20,
         },
         {
           id: '',
           title: null,
           totalAttempts: 1,
-          avgScore: 0,
+          avgScore: 0, // 0/4
           avgCompletionRate: 4,
         },
       ]);
+    });
+
+    it('normalises assignment attempts by total_points and includes them (#203)', async () => {
+      // The issue's EDU-ST-02 fixture: five completed assignment attempts scored
+      // 3/4, 2/4, 4/4, 3/4, 3/4 → 75 %, not the raw mean of 3 points.
+      const membersBuilder = qb([{ user_id: 's-1' }]);
+      const attemptsBuilder = qb(
+        [3, 2, 4, 3, 3].map((score, index) => ({
+          id: `a-${index}`,
+          score,
+          total_questions: 4,
+          total_points: 4,
+          config: null,
+        })),
+      );
+      mock.from.mockReturnValueOnce(membersBuilder);
+      mock.from.mockReturnValueOnce(attemptsBuilder);
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        {
+          id: '',
+          title: null,
+          totalAttempts: 5,
+          avgScore: 75,
+          avgCompletionRate: 4,
+        },
+      ]);
+    });
+
+    it('guards a zero denominator', async () => {
+      const membersBuilder = qb([{ user_id: 's-1' }]);
+      const attemptsBuilder = qb([
+        { id: 'a-1', score: 0, total_questions: 0, total_points: 0, config: null },
+      ]);
+      mock.from.mockReturnValueOnce(membersBuilder);
+      mock.from.mockReturnValueOnce(attemptsBuilder);
+
+      const result = await service.getTeacherQuizStats(orgCtx);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual([
+        {
+          id: '',
+          title: null,
+          totalAttempts: 1,
+          avgScore: 0,
+          avgCompletionRate: 0,
+        },
+      ]);
+      expect(Number.isNaN(result.data?.[0]?.avgScore)).toBe(false);
     });
 
     it('returns a failure when the org members query fails', async () => {

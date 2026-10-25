@@ -10,6 +10,32 @@ import type {
 } from '@studiq/server/models/stats.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+/**
+ * Max score of an attempt: awarded points for assignment attempts, question
+ * count for practice quizzes. Never 0, so it is always safe as a denominator.
+ */
+function attemptTotal(a: { total_questions: number; total_points?: number | null }): number {
+  return Math.max(a.total_points ?? a.total_questions ?? 0, 1);
+}
+
+/**
+ * Attempt score as a percentage of its own scale, clamped to 0–100.
+ *
+ * Teacher aggregates mix assignment attempts (`score` = awarded points, max =
+ * `total_points`) with practice attempts (`score` = correct answers, max =
+ * `total_questions`), so raw scores are not comparable — each attempt has to be
+ * normalised before averaging. The clamp guards the case where `score` exceeds
+ * the `total_points` snapshot taken when the attempt started.
+ */
+function attemptScorePercent(a: {
+  score: number | null;
+  total_questions: number;
+  total_points?: number | null;
+}): number {
+  const pct = ((a.score ?? 0) / attemptTotal(a)) * 100;
+  return Math.min(100, Math.max(0, pct));
+}
+
 export class StatsService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
@@ -145,10 +171,6 @@ export class StatsService {
     if (dueError) return toDbFailure(dueError);
 
     const totalQuizzes = attempts?.length ?? 0;
-    // Assignment attempts carry total_points (awarded points / max points);
-    // practice quizzes only have a question count.
-    const attemptTotal = (a: { total_questions: number; total_points?: number | null }) =>
-      Math.max(a.total_points ?? a.total_questions, 1);
     // Single rounding rule for per-attempt percentages. avgScore below keeps its
     // own expression on purpose — reusing the helper there would change its
     // rounding and shift existing values by ±1.
@@ -196,13 +218,20 @@ export class StatsService {
   /**
    * Aggregated quiz performance for the caller's active organization.
    *
-   * `quiz_attempts` has no `organization_id` column and RLS is disabled, so the
-   * scope must be applied here: resolve the org's student members (`member`
-   * role) and only aggregate completed attempts made by them. Without an
-   * active org (or without a verified membership — `withAuth` only sets
+   * `quiz_attempts` has no `organization_id` column, so the scope must be
+   * applied here: resolve the org's student members (`member` role) and only
+   * aggregate completed attempts made by them. Without an active org (or
+   * without a verified membership — `withAuth` only sets
    * `activeOrgId`/`orgRoleId` when the caller is actually a member) there is no
    * class to report on, so the list is empty rather than falling back to every
-   * attempt in the deployment.
+   * attempt in the deployment. RLS ("Own or same-org quiz attempts") enforces
+   * the same-org floor independently.
+   *
+   * Assignment attempts are included: they are scored in points (max =
+   * `total_points`) while practice attempts are scored in correct answers (max =
+   * `total_questions`), so each attempt is normalised to its own percentage
+   * before averaging. `avgScore` is therefore 0–100 and the clients just append
+   * `%`; `avgCompletionRate` keeps reporting the mean question count.
    */
   async getTeacherQuizStats(ctx: RequestContext): Promise<ServiceResult<TeacherQuizStatsItem[]>> {
     const supabase = await this.createClient();
@@ -220,21 +249,17 @@ export class StatsService {
     const studentIds = (members ?? []).map((m) => m.user_id as string);
     if (studentIds.length === 0) return success([]);
 
-    // Practice quizzes only: assignment attempts are scored in points
-    // (quiz_attempts.score = awarded points, max = total_points), so mixing
-    // them into these correct-answer-count averages would skew the report.
     const { data, error } = await supabase
       .from('quiz_attempts')
-      .select('id, score, total_questions, started_at, completed_at, config')
+      .select('id, score, total_questions, total_points, started_at, completed_at, config')
       .in('user_id', studentIds)
-      .is('assignment_id', null)
       .not('completed_at', 'is', null);
 
     if (error) return toDbFailure(error);
 
     const quizMap = new Map<
       string,
-      { totalAttempts: number; totalScore: number; totalCompletion: number }
+      { totalAttempts: number; totalPercent: number; totalCompletion: number }
     >();
 
     for (const row of data ?? []) {
@@ -244,12 +269,12 @@ export class StatsService {
       const key = title ?? '';
 
       if (!quizMap.has(key)) {
-        quizMap.set(key, { totalAttempts: 0, totalScore: 0, totalCompletion: 0 });
+        quizMap.set(key, { totalAttempts: 0, totalPercent: 0, totalCompletion: 0 });
       }
 
       const stats = quizMap.get(key)!;
       stats.totalAttempts += 1;
-      stats.totalScore += row.score ?? 0;
+      stats.totalPercent += attemptScorePercent(row);
       stats.totalCompletion += row.total_questions ?? 0;
     }
 
@@ -258,7 +283,9 @@ export class StatsService {
         id: key,
         title: key === '' ? null : key,
         totalAttempts: stats.totalAttempts,
-        avgScore: stats.totalScore / stats.totalAttempts,
+        // Unrounded on purpose: both clients call Math.round, so keeping the
+        // exact mean avoids double-rounding.
+        avgScore: stats.totalPercent / stats.totalAttempts,
         avgCompletionRate: stats.totalCompletion / stats.totalAttempts,
       })),
     );
