@@ -2371,7 +2371,12 @@
     "saving": "Saving...",
     "save_name": "Save",
     "payments_title": "Payment History",
+    "payments_subtitle": "Your completed payments",
     "no_payments": "No payments yet",
+    "payment_plan": "Plan",
+    "payment_amount": "Amount",
+    "payment_date": "Date",
+    "payments_load_failed": "Failed to load payment history.",
     "manage_billing": "Manage billing"
   },
   "EduAssignmentsPage": {

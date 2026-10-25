@@ -25,7 +25,8 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
      public.permissions,
      public.resource_permissions,
      public.user_feature_overrides,
-     public.profiles
+     public.profiles,
+     public.payments
   FROM authenticated;
 
 REVOKE TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public FROM authenticated, anon;

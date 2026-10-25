@@ -42,6 +42,7 @@ describe('anon role grants (#191)', () => {
     'feature_flags',
     'profiles',
     'invitations',
+    'payments',
   ])('anon cannot read %s', async (table) => {
     const { data, error } = await anon.from(table).select('*').limit(1);
     expect(error?.code).toBe('42501');
