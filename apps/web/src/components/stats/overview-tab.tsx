@@ -11,6 +11,7 @@ import { StateBreakdownChart } from '@/components/stats/state-breakdown-chart';
 import { WeakPointsList } from '@/components/stats/weak-points-list';
 import { useApiQuery } from '@/hooks/use-api';
 import { flashcardKeys } from '@/lib/query-keys';
+import { summarizeWeeklyActivity } from '@/lib/stats';
 
 export function OverviewTab() {
   const t = useTranslations('AppStatsPage');
@@ -31,26 +32,22 @@ export function OverviewTab() {
     url: '/api/v1/stats/weak-points',
   });
 
-  const reviewsThisWeek = (activity?.items ?? []).reduce((sum, d) => sum + d.reviews_count, 0);
-  // „Poprawne” pairs with „Powtórki w tym tygodniu”, so it uses the same last-7-days window
-  // even when a wider chart range is selected.
-  const weekStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const correctThisWeek = (activity?.items ?? [])
-    .filter((d) => d.date >= weekStart)
-    .reduce((sum, d) => sum + d.reviews_correct, 0);
+  // „Powtórki w tym tygodniu” and „Poprawne” are a fixed last-7-days metric; the range
+  // selector only recalcs the chart, so both cards read the same weekly window (#383).
+  const weekly = summarizeWeeklyActivity(activity?.items);
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
           title={t('reviews_this_week')}
-          value={activityLoading ? '...' : reviewsThisWeek}
+          value={activityLoading ? '...' : weekly.reviews}
           icon={CalendarDays}
           variant="blue"
         />
         <StatCard
           title={t('correct')}
-          value={activityLoading ? '...' : correctThisWeek}
+          value={activityLoading ? '...' : weekly.correct}
           icon={CheckCircle2}
           variant="emerald"
         />
