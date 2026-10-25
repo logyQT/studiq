@@ -7,12 +7,14 @@ import { describe, expect, it } from 'vitest';
 
 describe('CreateFlashcardSchema', () => {
   it('passes with valid input', () => {
+    const deckId = '550e8400-e29b-41d4-a716-446655440000';
     const result = CreateFlashcardSchema.safeParse({
       front: 'Q',
       back: 'A',
-      deckId: '550e8400-e29b-41d4-a716-446655440000',
+      deckId,
     });
     expect(result.success).toBe(true);
+    expect(result.data?.deckId).toBe(deckId);
   });
 
   it('passes with optional topicIds and deckId', () => {
@@ -44,11 +46,11 @@ describe('CreateFlashcardSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('fails when deckIds contains invalid UUID', () => {
+  it('fails when deckId is an invalid UUID', () => {
     const result = CreateFlashcardSchema.safeParse({
       front: 'Q',
       back: 'A',
-      deckIds: ['not-a-uuid'],
+      deckId: 'not-a-uuid',
     });
     expect(result.success).toBe(false);
   });
@@ -65,13 +67,26 @@ describe('BulkCreateFlashcardsSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('passes with optional topicIds and deckIds', () => {
+  it('keeps the singular deckId the service reads', () => {
+    const deckId = '550e8400-e29b-41d4-a716-446655440001';
     const result = BulkCreateFlashcardsSchema.safeParse({
       topicIds: ['550e8400-e29b-41d4-a716-446655440000'],
+      deckId,
+      cards: [{ front: 'Q1', back: 'A1' }],
+    });
+    expect(result.success).toBe(true);
+    expect(result.data?.deckId).toBe(deckId);
+  });
+
+  // Regression for #386: the AI chat used to send `deckIds: [id]`, which Zod
+  // silently strips, leaving `deckId` undefined and the insert without a deck.
+  it('strips an unknown deckIds array and leaves deckId undefined', () => {
+    const result = BulkCreateFlashcardsSchema.safeParse({
       deckIds: ['550e8400-e29b-41d4-a716-446655440001'],
       cards: [{ front: 'Q1', back: 'A1' }],
     });
     expect(result.success).toBe(true);
+    expect(result.data?.deckId).toBeUndefined();
   });
 
   it('fails with empty cards array', () => {
@@ -86,13 +101,15 @@ describe('UpdateFlashcardSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('passes with optional topicIds and deckIds', () => {
+  it('keeps the singular deckId the service reads', () => {
+    const deckId = '550e8400-e29b-41d4-a716-446655440001';
     const result = UpdateFlashcardSchema.safeParse({
       front: 'Updated Q',
       topicIds: ['550e8400-e29b-41d4-a716-446655440000'],
-      deckIds: ['550e8400-e29b-41d4-a716-446655440001'],
+      deckId,
     });
     expect(result.success).toBe(true);
+    expect(result.data?.deckId).toBe(deckId);
   });
 
   it('fails with empty front', () => {
