@@ -15,11 +15,12 @@ Własna talia.
 
 1. Kliknij „Nowa Fiszka”.
 2. W polu „Przód (Pytanie)” wpisz „Stolica Polski?”, w „Tył (Odpowiedź)” – „Warszawa”.
-3. Użyj paska narzędzi: Pogrubienie, Kursywa, Nagłówek 1–6, lista punktowana/numerowana, Link, Tabela; przełącz „Edytuj/Podgląd”.
+3. Użyj paska narzędzi: Pogrubienie, Kursywa, Nagłówek 1–6, lista punktowana/numerowana, Link, Tabela; sprawdź, czy podgląd po prawej stronie na bieżąco renderuje wpisywany Markdown (bez przełącznika „Edytuj/Podgląd”).
 4. Zapisz („Utwórz”).
 
 ## Expected result
 
 - Toast „Fiszka utworzona pomyślnie”; fiszka widoczna w talii.
 - Podgląd renderuje Markdown (pogrubienie, listy, linki, tabela) zgodnie z formatowaniem.
+- Edytor i podgląd widoczne jednocześnie; brak przełącznika trybu edycji/podglądu.
 - Przycisk „Link” pyta o URL; po zatwierdzeniu wstawia składnię Markdown.
