@@ -2351,7 +2351,12 @@
     "saving": "Zapisywanie...",
     "save_name": "Zapisz",
     "payments_title": "Historia płatności",
+    "payments_subtitle": "Twoje zakończone płatności",
     "no_payments": "Brak płatności",
+    "payment_plan": "Plan",
+    "payment_amount": "Kwota",
+    "payment_date": "Data",
+    "payments_load_failed": "Nie udało się wczytać historii płatności.",
     "manage_billing": "Zarządzaj rozliczeniami"
   },
   "EduAssignmentsPage": {

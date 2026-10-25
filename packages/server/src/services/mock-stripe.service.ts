@@ -23,25 +23,33 @@ export class MockStripeService {
 
   /**
    * A plan can be bought only if it exists, is active and is meant for the buyer's account type.
-   * Reports whether it is an organization plan (bought for an org, not for the buyer).
+   * Reports whether it is an organization plan (bought for an org, not for the buyer) and the
+   * catalog values that are snapshotted into the purchase history.
    */
   private async assertPlanPurchasable(
     planKey: string,
     accountType: string,
-  ): Promise<ServiceResult<{ isOrgPlan: boolean }>> {
+  ): Promise<
+    ServiceResult<{ isOrgPlan: boolean; planName: string; amount: number; currency: string }>
+  > {
     const supabase = await this.createClient();
 
     const { data: plan } = await supabase
       .from('subscription_plans')
-      .select('key, is_active, for_account_type')
+      .select('key, name, is_active, for_account_type, price_monthly, currency')
       .eq('key', planKey)
       .maybeSingle();
 
-    if (!plan || !plan.is_active) return failure('BAD_REQUEST');
+    if (!plan?.is_active) return failure('BAD_REQUEST');
     if (plan.for_account_type && plan.for_account_type !== accountType) {
       return failure('FORBIDDEN');
     }
-    return success({ isOrgPlan: plan.for_account_type === 'manager' });
+    return success({
+      isOrgPlan: plan.for_account_type === 'manager',
+      planName: plan.name ?? plan.key,
+      amount: plan.price_monthly ?? 0,
+      currency: plan.currency ?? 'PLN',
+    });
   }
 
   /** An organization plan can be bought only by an admin of that organization. */
@@ -128,6 +136,26 @@ export class MockStripeService {
       .eq('id', event.user_id);
 
     if (error) return toDbFailure(error);
+
+    // Append-only purchase log for "Historia płatności" (#392). The plan
+    // update above stays the source of truth for entitlements; this row only
+    // records what was bought, at the catalog price read during this request.
+    // `session_id` is unique, so a replayed webhook collapses onto the same row
+    // (`ignoreDuplicates` → ON CONFLICT DO NOTHING).
+    const { error: paymentError } = await admin.from('payments').upsert(
+      {
+        user_id: event.user_id,
+        organization_id: purchasable.data.isOrgPlan ? (event.org_id ?? null) : null,
+        plan_key: event.plan_id,
+        plan_name: purchasable.data.planName,
+        amount: purchasable.data.amount,
+        currency: purchasable.data.currency,
+        session_id: event.session_id,
+      },
+      { onConflict: 'session_id', ignoreDuplicates: true },
+    );
+
+    if (paymentError) return toDbFailure(paymentError);
 
     return success(undefined);
   }
