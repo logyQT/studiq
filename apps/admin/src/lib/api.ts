@@ -1,21 +1,39 @@
 const BASE_URL = '/api/v1';
 
-type ApiResponse<T> =
-  { success: true; data: T } | { success: false; error: string; issues?: unknown };
+/**
+ * Error thrown by the admin API helpers. `message` stays the app error code
+ * (e.g. `CONFLICT`, `NOT_FOUND`, `ERROR_UNAUTHORIZED`) so existing
+ * `error.message === 'CODE'` checks keep working; `status` carries the HTTP
+ * status so retry policy and error UI can tell 4xx from 5xx.
+ */
+export class ApiError extends Error {
+  readonly code: string;
+  readonly status: number;
+
+  constructor(code: string, status: number) {
+    super(code);
+    this.name = 'ApiError';
+    this.code = code;
+    this.status = status;
+  }
+}
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const url = `${BASE_URL}${path}`;
+  const res = await fetch(url, {
     method,
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  const json: ApiResponse<T> = await res.json();
-
-  if (!json.success) {
-    throw new Error(json.error ?? `Request failed: ${res.status}`);
+  // A proxy 401/403 or a non-JSON 5xx page must still surface as an ApiError
+  // with the real status, not as a JSON parse failure.
+  if (!res.ok) {
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(json.error || `${method} ${url} failed`, res.status);
   }
 
+  const json = (await res.json().catch(() => ({}))) as { data?: T };
   return json.data as T;
 }
 

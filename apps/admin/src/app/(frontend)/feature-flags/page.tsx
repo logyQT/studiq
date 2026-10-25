@@ -32,6 +32,7 @@ import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/app/(frontend)/components/confirm-dialog';
+import { QueryError } from '@/app/(frontend)/components/query-error';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
@@ -66,7 +67,12 @@ export default function FeatureFlagsPage() {
   const tc = useTranslations('Common');
   const queryClient = useQueryClient();
 
-  const { data: flags = [], isLoading } = useQuery({
+  const {
+    data: flags = [],
+    error,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: queryKeys.featureFlags.all,
     queryFn: () => apiGet<FeatureFlag[]>('/feature-flags'),
   });
@@ -79,7 +85,7 @@ export default function FeatureFlagsPage() {
 
   const existingKeys = new Set(flags.map((flag) => flag.key));
   const missingKeys = FEATURES.filter((key) => !existingKeys.has(key));
-  const canCreate = !isLoading && missingKeys.length > 0;
+  const canCreate = !isLoading && !isError && missingKeys.length > 0;
 
   function mapError(error: Error): string {
     if (error.message === 'CONFLICT') return t('error_exists');
@@ -159,7 +165,7 @@ export default function FeatureFlagsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
         <div className="flex items-center gap-3">
-          {!isLoading && !canCreate && (
+          {!isLoading && !isError && !canCreate && (
             <span className="text-sm text-muted-foreground">{t('all_flags_exist')}</span>
           )}
           <Button onClick={openCreate} disabled={!canCreate}>
@@ -176,6 +182,8 @@ export default function FeatureFlagsPage() {
         <CardContent>
           {isLoading ? (
             <p className="text-muted-foreground">{tc('loading')}</p>
+          ) : isError ? (
+            <QueryError error={error} />
           ) : (
             <Table>
               <TableHeader>

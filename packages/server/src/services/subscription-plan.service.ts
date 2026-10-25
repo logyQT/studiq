@@ -351,7 +351,13 @@ export class SubscriptionPlanService {
 
     const { error } = await supabase.from('subscription_plans').delete().eq('id', id);
 
-    if (error) return toDbFailure(error);
+    if (error) {
+      // profiles.personal_plan_key / organizations.plan still reference this key
+      // (both FKs are NO ACTION), so the DB rejects the delete. Report it as a
+      // conflict instead of a generic bad request so the admin knows why.
+      if (error.code === '23503') return failure('CONFLICT');
+      return toDbFailure(error);
+    }
 
     return success({ success: true });
   }

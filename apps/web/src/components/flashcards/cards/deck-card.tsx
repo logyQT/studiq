@@ -247,8 +247,8 @@ export const DeckCard = memo(
             )}
           </div>
 
-          <div className="mt-auto flex items-center justify-between pt-1">
-            <div className="flex items-center gap-2">
+          <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-1">
+            <div className="flex min-w-0 items-center gap-2">
               <Badge
                 variant="secondary"
                 className="bg-secondary/50 text-secondary-foreground hover:bg-secondary/70 border-transparent shadow-none font-medium px-2.5 py-0.5"
@@ -267,7 +267,7 @@ export const DeckCard = memo(
                 <Badge
                   key={name}
                   variant="outline"
-                  className="font-medium px-2.5 py-0.5 text-muted-foreground"
+                  className="max-w-full truncate font-medium px-2.5 py-0.5 text-muted-foreground"
                 >
                   {name}
                 </Badge>
@@ -277,7 +277,7 @@ export const DeckCard = memo(
             <Button
               variant="ghost"
               size="sm"
-              className="gap-1.5 text-primary hover:text-primary hover:bg-primary/10 font-semibold px-2 -mr-2 transition-colors"
+              className="ml-auto shrink-0 gap-1.5 text-primary hover:text-primary hover:bg-primary/10 font-semibold px-2 -mr-2 transition-colors"
               onClick={(e) => {
                 e.stopPropagation();
                 router.push(`${basePath}/${deck.id}`);
