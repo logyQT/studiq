@@ -148,12 +148,20 @@ describe('InvitationController', () => {
           {
             email: 'john@example.com',
             success: true,
-            data: { success: true, invitationId: 'inv-1', inviteLink: undefined },
+            data: {
+              success: true,
+              invitationId: 'inv-1',
+              inviteLink: 'http://localhost:3000/join?token=token-1',
+            },
           },
           {
             email: 'jane@example.com',
             success: true,
-            data: { success: true, invitationId: 'inv-2', inviteLink: undefined },
+            data: {
+              success: true,
+              invitationId: 'inv-2',
+              inviteLink: 'http://localhost:3000/join?token=token-2',
+            },
           },
         ]),
       );
@@ -169,6 +177,13 @@ describe('InvitationController', () => {
       expect(response.statusCode).toBe(200);
       expect((response as any).data.results.length).toBe(2);
       expect((response as any).data.results[0].data.invitationId).toBe('inv-1');
+      // #313: the controller passes the copyable link through unchanged.
+      expect((response as any).data.results[0].data.inviteLink).toBe(
+        'http://localhost:3000/join?token=token-1',
+      );
+      expect((response as any).data.results[1].data.inviteLink).toBe(
+        'http://localhost:3000/join?token=token-2',
+      );
       // MGR-INV-02: every row is attributable to the address that was submitted.
       expect((response as any).data.results.map((r: any) => r.email)).toEqual([
         'john@example.com',

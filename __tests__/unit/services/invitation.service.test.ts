@@ -115,7 +115,9 @@ describe('InvitationService', () => {
       const { membershipQb, roleQb, insertQb } = createBuilders();
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
-      vi.stubEnv('NODE_ENV', 'development');
+      // #313: the link is the only delivery path, so it must be returned in a
+      // production build too — not just under NODE_ENV=development.
+      vi.stubEnv('NODE_ENV', 'production');
 
       const result = await service.createInvitation(managerCtx, {
         email: 'john@example.com',
@@ -124,7 +126,11 @@ describe('InvitationService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect((result.data as any).inviteLink).toContain('abc123');
+      expect(result.data).toEqual({
+        success: true,
+        invitationId: 'inv-1',
+        inviteLink: 'http://localhost:3000/join?token=abc123',
+      });
       expect((result.data as any).invitationId).toBe('inv-1');
 
       // The membership probe is scoped to the caller AND the target org.
@@ -273,7 +279,6 @@ describe('InvitationService', () => {
       const { insertQb } = createBuilders();
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
-      vi.stubEnv('NODE_ENV', 'development');
 
       const result = await service.createInvitation(educatorCtx, {
         email: 'john@example.com',
@@ -300,8 +305,8 @@ describe('InvitationService', () => {
       expect(mock.from).not.toHaveBeenCalled();
     });
 
-    it('returns INTERNAL_SERVER when SITE_URL is not set', async () => {
-      createBuilders();
+    it('returns INTERNAL_SERVER when SITE_URL is not set and writes nothing', async () => {
+      const { insertQb } = createBuilders();
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', '');
 
@@ -312,6 +317,9 @@ describe('InvitationService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('INTERNAL_SERVER');
+      // The guard runs before the INSERT: no orphan "Oczekujące" row that can
+      // never be delivered (#313).
+      expect(insertQb.insert).not.toHaveBeenCalled();
 
       vi.unstubAllEnvs();
     });
@@ -369,7 +377,8 @@ describe('InvitationService', () => {
       const { rolesQb, insertQb } = bulkBuilders();
 
       vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'http://localhost:3000');
-      vi.stubEnv('NODE_ENV', 'development');
+      // #313: every row carries its own copyable link, production included.
+      vi.stubEnv('NODE_ENV', 'production');
 
       const result = await service.createInvitationsBulk(
         { ...managerCtx, activeOrgId: 'uni-1' },
@@ -380,12 +389,14 @@ describe('InvitationService', () => {
       const results = (result as any).data as Array<{
         email: string;
         success: boolean;
-        data: { invitationId: string; inviteLink?: string };
+        data: { invitationId: string; inviteLink: string };
       }>;
       // The DB returned the rows in a different order: mapping must follow the
       // request order, not the insert response order.
       expect(results.map((r) => r.data.invitationId)).toEqual(['inv-1', 'inv-2']);
-      expect(results[0].data.inviteLink).toContain('token-1');
+      // Per-row attribution: each address gets the link for its own token.
+      expect(results[0].data.inviteLink).toBe('http://localhost:3000/join?token=token-1');
+      expect(results[1].data.inviteLink).toBe('http://localhost:3000/join?token=token-2');
       // MGR-INV-02: every result names the address it belongs to, in input order.
       expect(results.map((r) => r.email)).toEqual(['john@example.com', 'jane@example.com']);
 

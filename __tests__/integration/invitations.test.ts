@@ -145,6 +145,7 @@ forEachCopy((copyId) => {
     describe('POST /api/v1/organization/invites', () => {
       it('creates an invitation as manager and returns 201', async () => {
         mockUser(fixture.user);
+        const email = `invite-${copyId}-${Date.now()}@example.com`;
 
         const req = createNextRequest(
           'http://localhost/api/v1/organization/invites',
@@ -152,7 +153,7 @@ forEachCopy((copyId) => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              email: `invite-${copyId}-${Date.now()}@example.com`,
+              email,
               targetOrgRoleId: adminRoleId,
               organizationId: orgId,
             }),
@@ -165,6 +166,22 @@ forEachCopy((copyId) => {
 
         expect(response.status).toBe(201);
         expect(body.success).toBe(true);
+        expect(body.data.success).toBe(true);
+
+        // #313: the manager must receive the copyable link in every environment
+        // (this suite does not run under NODE_ENV=development), and it must carry
+        // the token that was actually persisted for this address.
+        const { data: row, error } = await createServiceClient()
+          .from('invitations')
+          .select('token')
+          .eq('email', email)
+          .single();
+        if (error) throw new Error(`Failed to read invitation token: ${error.message}`);
+
+        expect(typeof body.data.inviteLink).toBe('string');
+        const link = new URL(body.data.inviteLink);
+        expect(link.pathname).toBe('/join');
+        expect(link.searchParams.get('token')).toBe(row.token);
       });
 
       // #242: the body-supplied organizationId must not extend the caller's
@@ -597,6 +614,27 @@ forEachCopy((copyId) => {
         expect(Array.isArray(body.data.results)).toBe(true);
         // MGR-INV-02: „Wyniki” needs one attributed status per entered address.
         expect(body.data.results.map((r: { email: string }) => r.email)).toEqual(emails);
+
+        // #313: every manager-visible row is individually deliverable — each
+        // result carries the link for the token persisted against that address.
+        const { data: rows, error } = await createServiceClient()
+          .from('invitations')
+          .select('email, token')
+          .in('email', emails);
+        if (error) throw new Error(`Failed to read invitation tokens: ${error.message}`);
+        const tokenByEmail = new Map(
+          (rows ?? []).map((row) => [row.email as string, row.token as string]),
+        );
+
+        for (const result of body.data.results as Array<{
+          email: string;
+          data: { inviteLink?: string };
+        }>) {
+          expect(typeof result.data.inviteLink).toBe('string');
+          const link = new URL(result.data.inviteLink as string);
+          expect(link.pathname).toBe('/join');
+          expect(link.searchParams.get('token')).toBe(tokenByEmail.get(result.email));
+        }
       });
 
       // #189: the endpoint itself rejects a role the caller may not grant,
