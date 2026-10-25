@@ -54,7 +54,10 @@
     "empty": "No feature flags found.",
     "delete_title": "Delete Feature Flag",
     "delete_desc": "Are you sure you want to delete the flag \"{key}\"? This action cannot be undone.",
-    "save_failed": "Save failed ({code})"
+    "save_failed": "Save failed ({code})",
+    "all_flags_exist": "All code-defined flags already exist",
+    "error_exists": "A flag with this key already exists.",
+    "error_validation": "The submitted flag data is invalid."
   },
   "SubscriptionPlans": {
     "title": "Subscription Plans",
