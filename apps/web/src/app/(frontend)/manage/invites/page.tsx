@@ -365,6 +365,10 @@ export default function InvitationsPage() {
                         : t('failed')}
                   </Badge>
                   {!result.cancelled && result.data?.inviteLink && (
+                    // TODO(#604): keep this copy button as the fallback once
+                    // e-mail delivery lands. Decided future shape: Mailer port +
+                    // SMTP/log adapters, copy-link fallback, per-org rate limit,
+                    // PL/EN templates.
                     <Button
                       variant="ghost"
                       size="sm"
