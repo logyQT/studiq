@@ -49,6 +49,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setSession(null);
       }
     } catch {
+      // Fail closed: the catch treats `/auth/me` as unauthenticated, so keeping
+      // the previous identity's cached rows would be the worse outcome.
       resetUserScopedCache(queryClient, userIdRef.current, null);
       userIdRef.current = null;
       setUser(null);

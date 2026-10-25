@@ -78,7 +78,10 @@ export async function proxy(request: NextRequest) {
       return preserveCookies(supabaseResponse, res);
     } else {
       const loginUrl = new URL('/login', request.url);
-      loginUrl.searchParams.set('next', path);
+      // Keep the query string: a signed-out `/app/study/quiz?type=open` must
+      // come back to that exact URL after login. Re-validated by
+      // `toSafeInternalPath` on the way in and on the login page.
+      loginUrl.searchParams.set('next', `${path}${request.nextUrl.search}`);
       return preserveCookies(supabaseResponse, NextResponse.redirect(loginUrl));
     }
   }

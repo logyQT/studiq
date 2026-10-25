@@ -73,6 +73,37 @@ describe('proxy — ?next= deep link (#458)', () => {
     expect(location).toBe('http://localhost/app');
   });
 
+  // `next=.//evil.com` parses as an internal pathname but normalises to a
+  // protocol-relative `//evil.com`; `new URL('//evil.com', request.url)` would
+  // redirect off-origin. Must fall back to the dashboard, same origin.
+  it('stays same-origin for a normalised protocol-relative next (student)', async () => {
+    signedIn();
+    const { status, location } = await call('/login?next=.//evil.com');
+    expect(status).toBe(307);
+    expect(location).toBe('http://localhost/app');
+  });
+
+  it('stays same-origin for a normalised protocol-relative next (educator)', async () => {
+    signedIn(AccountType.EDUCATOR);
+    const { location } = await call('/login?next=/..//evil.com');
+    expect(location).toBe('http://localhost/edu');
+  });
+
+  // `next` must not bypass role gating: the target re-enters the proxy, so the
+  // account-type rule for `/app` runs on the second hop and sends the educator
+  // to `/edu`.
+  it('account-type precedence wins over the deep link on the second hop', async () => {
+    signedIn(AccountType.EDUCATOR);
+
+    const hop1 = await call('/login?next=/app/study/quiz');
+    expect(hop1.status).toBe(307);
+    expect(hop1.location).toBe('http://localhost/app/study/quiz');
+
+    const hop2 = await call(new URL(hop1.location as string).pathname);
+    expect(hop2.status).toBe(307);
+    expect(hop2.location).toBe('http://localhost/edu');
+  });
+
   it('keeps the existing dashboard redirect when there is no next', async () => {
     signedIn();
     const { status, location } = await call('/login');
@@ -85,5 +116,12 @@ describe('proxy — ?next= deep link (#458)', () => {
     const { status, location } = await call('/app/study/quiz');
     expect(status).toBe(307);
     expect(location).toBe('http://localhost/login?next=%2Fapp%2Fstudy%2Fquiz');
+  });
+
+  it('signed-out deep link keeps its query string in next', async () => {
+    signedOut();
+    const { status, location } = await call('/app/study/quiz?type=open');
+    expect(status).toBe(307);
+    expect(location).toBe('http://localhost/login?next=%2Fapp%2Fstudy%2Fquiz%3Ftype%3Dopen');
   });
 });

@@ -17,10 +17,21 @@ export function toSafeInternalPath(raw: string | null | undefined, base: string)
 
   // Cross-origin / protocol-relative / `javascript:` all resolve to another origin.
   if (parsed.origin !== baseUrl.origin) return null;
+  // WHATWG normalisation can turn `.//evil.com`, `/..//evil.com`, `/%2E//evil.com`
+  // … into a `//evil.com` pathname that still reports the app's origin. The
+  // consumers re-resolve the returned string, which reads a leading `//` as
+  // another host — an open redirect. Only a *leading* `//` is dangerous;
+  // internal double slashes (`/app//x`) stay same-origin and are legitimate.
+  if (parsed.pathname.startsWith('//')) return null;
   if (parsed.pathname.startsWith('/api/')) return null;
   if (AUTH_PATHS.some((p) => parsed.pathname === p || parsed.pathname.startsWith(`${p}/`))) {
     return null;
   }
 
-  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  const destination = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  // Belt-and-braces: whatever the consumers re-resolve must land back here.
+  if (!URL.canParse(destination, base)) return null;
+  if (new URL(destination, base).origin !== baseUrl.origin) return null;
+
+  return destination;
 }
