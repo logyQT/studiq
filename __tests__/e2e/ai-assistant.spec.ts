@@ -31,6 +31,29 @@ test.describe('AI assistant routes (#134)', () => {
     await expect(page.getByText(t('AiChatPage.suggestion_2'))).toBeVisible();
   });
 
+  test('"Nowa rozmowa" / "Wyczyść czat" reset the conversation to the greeting (#378)', async ({
+    page,
+  }) => {
+    await login(page, TEACHER_EMAIL, /\/edu/);
+    await page.goto('/edu/ai');
+
+    const chip = page.getByText(t('AiChatPage.suggestion_2'));
+    const clear = page.getByRole('button', { name: t('AiChatPage.clear_chat') });
+    const fresh = page.getByRole('button', { name: t('AiChatPage.new_chat') });
+
+    await expect(clear).toHaveCount(0);
+    await chip.click();
+    await expect(clear).toBeVisible();
+    await fresh.click();
+    await expect(chip).toBeVisible();
+    await expect(clear).toHaveCount(0);
+
+    await chip.click();
+    await clear.click();
+    await expect(chip).toBeVisible();
+    await expect(clear).toHaveCount(0);
+  });
+
   test('educator sidebar shows the AI entry only when ai.chat is entitled', async ({ page }) => {
     await login(page, TEACHER_EMAIL, /\/edu/);
 

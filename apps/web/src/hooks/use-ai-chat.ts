@@ -412,7 +412,10 @@ export function useAiChat(): UseAiChatReturn {
     [setMessages],
   );
 
-  const clearChat = useCallback(() => {}, []);
+  const clearChat = useCallback(() => {
+    if (status === 'streaming' || status === 'submitted') stop();
+    setMessages(() => []);
+  }, [status, stop, setMessages]);
 
   return {
     messages,
