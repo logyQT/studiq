@@ -33,7 +33,7 @@ export class SeatController {
     }
 
     const result = await this.seatService.addPool(ctx, parsed.data);
-    if (isFailure(result)) return controllerResponse.error(result.error);
+    if (isFailure(result)) return controllerResponse.error(result.error, result.details);
     return controllerResponse.created(result.data);
   }
 
@@ -53,7 +53,7 @@ export class SeatController {
     }
 
     const result = await this.seatService.updatePool(ctx, poolId, parsed.data);
-    if (isFailure(result)) return controllerResponse.error(result.error);
+    if (isFailure(result)) return controllerResponse.error(result.error, result.details);
     return controllerResponse.success(result.data);
   }
 

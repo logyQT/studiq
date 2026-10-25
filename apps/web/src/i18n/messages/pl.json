@@ -967,6 +967,8 @@
     "confirm_purchase": "Kup",
     "purchase_success": "Miejsca dodane do puli",
     "purchase_failed": "Nie udało się kupić miejsc",
+    "quantity_invalid": "Podaj liczbę całkowitą miejsc (co najmniej 1).",
+    "quantity_too_large": "Podana ilość jest zbyt duża.",
     "assign_seat": "Przydziel miejsce",
     "assign_dialog_title": "Przydziel miejsce",
     "assign_dialog_desc": "Wybierz członka i plan miejsca do przydzielenia",

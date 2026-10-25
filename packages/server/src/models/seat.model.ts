@@ -1,4 +1,12 @@
+import { ValidationErrorCode } from '@studiq/server/lib/validation-errors';
 import { registry, z } from '@studiq/server/lib/zod';
+
+/**
+ * `org_seat_pools.total` is a Postgres `integer` (int4). Values above this bound make
+ * Postgres raise 22003 (`numeric_value_out_of_range`), which surfaces as an opaque 500,
+ * so the request has to be rejected as 422 at the boundary instead.
+ */
+export const MAX_SEAT_POOL_TOTAL = 2_147_483_647;
 
 export const CreateAssignmentSchema = registry.register(
   'CreateAssignmentRequest',
@@ -13,7 +21,11 @@ export const CreatePoolSchema = registry.register(
   'CreatePoolRequest',
   z.object({
     planKey: z.string().nonempty(),
-    quantity: z.number().int().positive(),
+    quantity: z
+      .number({ error: ValidationErrorCode.NUMBER })
+      .int({ error: ValidationErrorCode.INTEGER })
+      .positive({ error: ValidationErrorCode.POSITIVE_NUMBER })
+      .max(MAX_SEAT_POOL_TOTAL, { error: ValidationErrorCode.TOO_BIG }),
   }),
 );
 export type CreatePoolInput = z.infer<typeof CreatePoolSchema>;
@@ -21,7 +33,11 @@ export type CreatePoolInput = z.infer<typeof CreatePoolSchema>;
 export const UpdatePoolSchema = registry.register(
   'UpdatePoolRequest',
   z.object({
-    total: z.number().int().min(0),
+    total: z
+      .number({ error: ValidationErrorCode.NUMBER })
+      .int({ error: ValidationErrorCode.INTEGER })
+      .min(0, { error: ValidationErrorCode.TOO_SMALL })
+      .max(MAX_SEAT_POOL_TOTAL, { error: ValidationErrorCode.TOO_BIG }),
   }),
 );
 export type UpdatePoolInput = z.infer<typeof UpdatePoolSchema>;

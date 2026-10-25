@@ -986,6 +986,8 @@
     "confirm_purchase": "Purchase",
     "purchase_success": "Seats added to pool",
     "purchase_failed": "Failed to purchase seats",
+    "quantity_invalid": "Enter a whole number of seats (at least 1).",
+    "quantity_too_large": "That quantity is too large.",
     "assign_seat": "Assign Seat",
     "assign_dialog_title": "Assign a Seat",
     "assign_dialog_desc": "Select a member and a seat plan to assign",

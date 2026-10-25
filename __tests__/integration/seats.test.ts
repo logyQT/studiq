@@ -211,6 +211,119 @@ forEachCopy((copyId) => {
       });
     });
 
+    describe('Seat quantity bounds (#266)', () => {
+      const INT4_MAX = 2_147_483_647;
+
+      const readPools = async () => {
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/seats/pools',
+          undefined,
+          orgCookies(),
+        );
+        const response = await getPools(req);
+        const body = await response.json();
+        return body.data as { id: string; planKey: string; total: number }[];
+      };
+
+      it('returns 422 (not 500) for a quantity above the int4 range and writes nothing', async () => {
+        mockUser(fixture.user);
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/seats/pools',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ planKey: 'campus', quantity: 99_999_999_999 }),
+          },
+          orgCookies(),
+        );
+
+        const response = await createPool(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+        expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+        expect(body.issues.properties.quantity.errors).toContain('VALIDATION_INVALID_TOO_BIG');
+
+        const pools = await readPools();
+        expect(pools.find((p) => p.planKey === 'campus')).toBeUndefined();
+      });
+
+      it('rejects an increment that would overflow int4 and leaves the pool unchanged', async () => {
+        mockUser(fixture.user);
+
+        // Seed a small pool, then try to add int4-max on top of it.
+        const seedReq = createNextRequest(
+          'http://localhost/api/v1/organization/seats/pools',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ planKey: 'pro', quantity: 8 }),
+          },
+          orgCookies(),
+        );
+        const seedRes = await createPool(seedReq);
+        expect(seedRes.status).toBe(201);
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/seats/pools',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ planKey: 'pro', quantity: INT4_MAX }),
+          },
+          orgCookies(),
+        );
+
+        const response = await createPool(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+        expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+        expect(body.issues.properties.quantity.errors).toContain('VALIDATION_INVALID_TOO_BIG');
+
+        const pools = await readPools();
+        expect(pools.find((p) => p.planKey === 'pro')?.total).toBe(8);
+      });
+
+      it('returns 422 for a PUT above the int4 range and leaves the pool unchanged', async () => {
+        mockUser(fixture.user);
+
+        const before = (await readPools()).find((p) => p.id === poolId);
+
+        const { request, params } = createNextRequestWithParams(
+          `http://localhost/api/v1/organization/seats/pools/${poolId}`,
+          { id: poolId },
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ total: 99_999_999_999 }),
+          },
+          orgCookies(),
+        );
+
+        const response = await updatePool(request, { params });
+        const body = await response.json();
+
+        expect(response.status).toBe(422);
+        expect(body.success).toBe(false);
+        expect(body.error).toBe('UNPROCESSABLE_ENTITY');
+
+        const after = (await readPools()).find((p) => p.id === poolId);
+        expect(after?.total).toBe(before?.total);
+      });
+
+      it('never stores a pool total above the int4 bound', async () => {
+        mockUser(fixture.user);
+        const pools = await readPools();
+        for (const pool of pools) {
+          expect(pool.total).toBeLessThanOrEqual(INT4_MAX);
+        }
+      });
+    });
+
     describe('GET /assignments', () => {
       it('returns empty list initially', async () => {
         mockUser(fixture.user);
