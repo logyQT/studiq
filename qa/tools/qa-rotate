@@ -30,6 +30,8 @@ STATE = BOTS / "state.json"
 MEM = ROOT / ".qa-memory"
 ROTATE_LOCK = Path("/tmp/studiq-qa-locks/rotation.lock")
 PROMPT_FILE = ENV_ROOT / "qa" / "fixing" / "FIX-MANAGER.md"
+# the role the current manager session is running (e.g. the review-day caretaker)
+PROMPT_STATE = ROOT / ".qa-fix" / "manager-prompt"
 # Durable memory for the fix manager (distinct from the retired campaign manager).
 MEMORY_NAME = "fix-manager"
 API_BASE = "http://127.0.0.1:4096"
@@ -102,8 +104,19 @@ def read_memory(name: str) -> str:
     return path.read_text(encoding="utf-8").strip() if path.exists() else header(name).strip()
 
 
+def active_prompt_path() -> Path:
+    """The prompt the manager role currently runs: remembered across rotations."""
+    try:
+        remembered = Path(PROMPT_STATE.read_text(encoding="utf-8").strip())
+        if remembered.is_absolute() and remembered.exists():
+            return remembered
+    except (OSError, ValueError):
+        pass
+    return PROMPT_FILE
+
+
 def manager_prompt_base() -> str:
-    text = PROMPT_FILE.read_text(encoding="utf-8")
+    text = active_prompt_path().read_text(encoding="utf-8")
     match = re.search(r"```markdown\s*\n([\s\S]*?)```", text)
     return (match.group(1) if match else text).strip()
 
@@ -142,7 +155,8 @@ def cmd_manager(args) -> None:
     sid = manager_session()
     ctx = context_tokens(sid)
     limit = args.limit
-    result = {"ok": True, "manager": sid, "context": ctx, "limit": limit}
+    result = {"ok": True, "manager": sid, "context": ctx, "limit": limit,
+              "prompt": str(active_prompt_path())}
 
     if ctx < limit:
         print(json.dumps({**result, "action": "skip", "reason": "below limit"}, indent=1))
@@ -153,12 +167,28 @@ def cmd_manager(args) -> None:
             sys.exit(1)
         return
 
-    prompt = (
-        manager_prompt_base()
-        + "\n\n## Durable memory (from the previous session)\n\n"
-        + read_memory(MEMORY_NAME)
-        + "\n\nContinue from this memory. Do not ask me to re-explain anything that is written here."
-    )
+    if getattr(args, "prompt", None):
+        candidate = Path(args.prompt)
+        if not candidate.is_absolute():
+            candidate = ROOT / candidate
+        if not candidate.exists():
+            raise SystemExit(f"prompt not found: {candidate}")
+        PROMPT_STATE.parent.mkdir(parents=True, exist_ok=True)
+        PROMPT_STATE.write_text(str(candidate))
+    role_prompt = active_prompt_path()
+    prompt = manager_prompt_base()
+    if role_prompt == PROMPT_FILE:
+        prompt += (
+            "\n\n## Durable memory (from the previous session)\n\n"
+            + read_memory(MEMORY_NAME)
+            + "\n\nContinue from this memory. Do not ask me to re-explain anything that is written here."
+        )
+    else:
+        prompt += (
+            "\n\n## Rotation note\n\n"
+            "You are resuming this role after a context rotation. The pipeline state in "
+            "`.qa-fix/state.json` is authoritative; do not ask for a recap."
+        )
     if args.dry_run:
         print(
             json.dumps(
@@ -223,7 +253,7 @@ def cmd_probe(args) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--limit", type=int, default=int(os.environ.get("QA_CONTEXT_LIMIT", 500_000)))
+    parser.add_argument("--limit", type=int, default=int(os.environ.get("QA_CONTEXT_LIMIT", 250_000)))
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status")
@@ -232,6 +262,7 @@ def main() -> None:
 
     m = sub.add_parser("manager")
     m.add_argument("--limit", type=int, default=parser.get_default("limit"))
+    m.add_argument("--prompt", help="role prompt to seed (default: the remembered one, else FIX-MANAGER.md)")
     m.add_argument("--dry-run", action="store_true")
     m.add_argument("--no-restart", action="store_true")
     m.add_argument("--auto", action="store_true")
