@@ -211,13 +211,20 @@ export class OrganizationMemberService {
     // cleanup_group_members_on_org_member_delete trigger (no FK exists — see
     // #249). Do not add a duplicate DELETE here: it would be filtered by the
     // group.manage RLS policy while removal is gated on member.manage.
-    const { error } = await supabase
+    const { data: removed, error } = await supabase
       .from('org_members')
       .delete()
       .eq('organization_id', ctx.activeOrgId)
-      .eq('user_id', targetUserId);
+      .eq('user_id', targetUserId)
+      .select('user_id');
 
     if (error) return toDbFailure(error);
+
+    // Same contract as changeRole: a foreign/unknown target is NOT_FOUND, never
+    // a silent no-op 200 (#189). The row is already scoped to the verified
+    // active org, so this cannot distinguish "exists elsewhere" from "does not
+    // exist". Returning here also keeps seats untouched for a no-op.
+    if (!removed || removed.length === 0) return failure('NOT_FOUND');
 
     // A removed member keeps no license. Without this the assignment survives
     // (there is no FK cascade), the pool's `assigned` counter stays consumed,

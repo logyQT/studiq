@@ -270,5 +270,5 @@ Run agent tests: `bunx vitest run __tests__/unit/agents/`
 ## Debugging
 
 - **Trace events:** In-memory store + SQLite in dev (`.dev/traces.db`)
-- **Dev endpoint:** `GET /api/v1/dev/traces?conversationId=xxx` (403 in production)
+- **Dev endpoint:** `GET /api/v1/dev/traces?conversationId=xxx` (403 in production; requires a session in development)
 - **Logs:** Consola structured logging (`log.ai`, `log.providers`)

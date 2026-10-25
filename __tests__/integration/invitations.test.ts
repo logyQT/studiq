@@ -33,8 +33,10 @@ forEachCopy((copyId) => {
 
     let fixture!: BeforeResult;
     let student!: TestUserFixture;
+    let teacher!: TestUserFixture;
     let orgId!: string;
     let adminRoleId!: string;
+    let memberRoleId!: string;
     /** Second manager — under no circumstances may they touch org A's invites. */
     let foreignFixture!: BeforeResult;
     let foreignOrgId!: string;
@@ -62,6 +64,31 @@ forEachCopy((copyId) => {
         .single();
       if (!adminRole) throw new Error('Admin role not found for fixture org');
       adminRoleId = adminRole.id;
+
+      const { data: memberRole } = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('name', 'member')
+        .single();
+      if (!memberRole) throw new Error('Member role not found for fixture org');
+      memberRoleId = memberRole.id;
+
+      // #189: an org teacher is an edu-classroom inviter — may grant the system
+      // member role only, never admin.
+      const { data: teacherRole } = await supabase
+        .from('org_roles')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('name', 'teacher')
+        .single();
+      if (!teacherRole) throw new Error('Teacher role not found for fixture org');
+      teacher = await createTestUser({ role: 'educator' });
+      await seedOrgMembership({
+        organizationId: orgId,
+        userId: teacher.id,
+        orgRoleId: teacherRole.id,
+      });
 
       // MGR-INV-03: a manager of a different organization.
       foreignFixture = await before({ role: 'manager', org: true });
@@ -99,6 +126,7 @@ forEachCopy((copyId) => {
       applyRegisteredMock(copyId);
       await cleanupInvitations(fixture.user.id);
       await cleanupInvitations(student.id);
+      await cleanupInvitations(teacher.id);
       await cleanupInvitations(foreignFixture.user.id);
     });
 
@@ -320,6 +348,59 @@ forEachCopy((copyId) => {
         expect(response.status).toBe(403);
         expect(body.success).toBe(false);
       });
+
+      // #189: grant authority is evaluated by the endpoint, not just by the
+      // INSERT policy — a teacher may only grant the system `member` role.
+      it('returns 403 when an org teacher invites the admin role (#189)', async () => {
+        mockUser(teacher);
+        const email = `qa-teacher-admin-${copyId}-${Date.now()}@example.com`;
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, targetOrgRoleId: adminRoleId }),
+          },
+          { active_org_id: orgId },
+        );
+
+        const response = await invitePost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
+        expect(body.error).toBe('FORBIDDEN');
+
+        const { data } = await createServiceClient()
+          .from('invitations')
+          .select('id')
+          .eq('email', email);
+        expect(data).toEqual([]);
+      });
+
+      // #189 control: teachers must keep inviting students, so the new gate
+      // must not over-restrict the classroom flow.
+      it('allows an org teacher to invite the member role (#189 control)', async () => {
+        mockUser(teacher);
+        const email = `qa-teacher-member-${copyId}-${Date.now()}@example.com`;
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, targetOrgRoleId: memberRoleId }),
+          },
+          { active_org_id: orgId },
+        );
+
+        const response = await invitePost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(201);
+        expect(body.success).toBe(true);
+      });
     });
 
     describe('GET /api/v1/organization/invites?token=...', () => {
@@ -516,6 +597,65 @@ forEachCopy((copyId) => {
         expect(Array.isArray(body.data.results)).toBe(true);
         // MGR-INV-02: „Wyniki” needs one attributed status per entered address.
         expect(body.data.results.map((r: { email: string }) => r.email)).toEqual(emails);
+      });
+
+      // #189: the endpoint itself rejects a role the caller may not grant,
+      // before any write — a teacher may only grant the system member role.
+      it('returns 403 when an org teacher bulk-invites the admin role (#189)', async () => {
+        mockUser(teacher);
+        const email = `qa-bulk-teacher-admin-${copyId}-${Date.now()}@example.com`;
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites/bulk',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              invitations: [{ email, targetOrgRoleId: adminRoleId }],
+            }),
+          },
+          { active_org_id: orgId },
+        );
+
+        const response = await bulkPost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
+        expect(body.error).toBe('FORBIDDEN');
+
+        const { data } = await createServiceClient()
+          .from('invitations')
+          .select('id')
+          .eq('email', email);
+        expect(data).toEqual([]);
+      });
+
+      it('returns 403 when a student bulk-invites (#189)', async () => {
+        mockUser(student);
+
+        const req = createNextRequest(
+          'http://localhost/api/v1/organization/invites/bulk',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              invitations: [
+                {
+                  email: `qa-bulk-student-${copyId}-${Date.now()}@example.com`,
+                  targetOrgRoleId: memberRoleId,
+                },
+              ],
+            }),
+          },
+          { active_org_id: orgId },
+        );
+
+        const response = await bulkPost(req);
+        const body = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(body.success).toBe(false);
       });
 
       it('returns 422 when invitations array is empty', async () => {
