@@ -80,8 +80,8 @@ main ← feat/quiz-bank-ui (PR, merge, delete)
 | `bun run build` / `bun run start` | Production build / start for web (`build:admin`, `start:admin` for admin) |
 | `bun run lint` | `bun scripts/check-bun-version.ts && bun lint --no-script apps/web/src apps/admin/src packages __tests__ && bun scripts/check-import-paths.ts && bun scripts/check-migration-timestamps.ts` — **whole-repo** Bun native linter (apps, packages, tests) + import-path guard + migration-timestamp guard. **Contains no typecheck step.** |
 | `bun run lint:all` | `bun run typecheck:all && bun run lint` — all typechecks + lint in one command |
-| `bun run typecheck` | `bun check` for **`apps/web` only** (`typecheck:admin` → `apps/admin`, `typecheck:packages` → `packages/{server,authz,ui}`) |
-| `bun run typecheck:all` | `typecheck` + `typecheck:admin` + `typecheck:packages` — everything the hooks run |
+| `bun run typecheck` | `bun check` for **`apps/web` only** (`typecheck:admin` → `apps/admin`, `typecheck:packages` → `packages/{server,authz,ui}`, `typecheck:e2e` → `__tests__/e2e` + `playwright.config.ts` + `scripts/e2e-smoke.ts`) |
+| `bun run typecheck:all` | `typecheck` + `typecheck:admin` + `typecheck:packages` + `typecheck:e2e` — everything the hooks run |
 | `bun run format` | `bun fmt .` (whole repo — writes formatting) |
 | `bun run format:check` | `bun fmt --check .` (whole repo, check only) |
 | `bun run clean` | Remove `.next`, `coverage`, cache |
@@ -91,10 +91,11 @@ main ← feat/quiz-bank-ui (PR, merge, delete)
 | `bun run test:watch` | `vitest` (watch mode) |
 | `bun run test:coverage` | `vitest run --coverage` |
 | `bun run test:e2e` | `playwright test` — runs `__tests__/e2e/` specs |
+| `bun run test:e2e:smoke` | `bun scripts/e2e-smoke.ts` — deterministic pre-push Playwright smoke (`student-quiz-open-answer.spec.ts`, Chromium). Needs the seeded local Supabase on a free port; `SKIP_E2E_SMOKE=1` skips it (see `docs/testing.md`) |
 
 > **Footgun — bare `bun test` is NOT Vitest.** `bun test` starts **Bun's built-in test runner**, which scans the whole repo (including integration tests that need live Supabase) and reports differently. Always use `bun run test` / `bun run test:unit`. Bare `bun <script>` shorthand does work for other scripts (e.g. `bun test:unit`).
 
-Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs format-on-staged + `bun run lint` + `bun run typecheck:all`; **pre-push** runs `format:check`, `lint`, `typecheck:all`, `test:unit`, plus a merge-conflict check against `origin/main`. The staged-file formatter and `bun run lint` check the **same** scope, so a commit can never pass the hook and fail the script (or vice versa).
+Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs format-on-staged + `bun run lint` + `bun run typecheck:all`; **pre-push** runs `format:check`, `lint`, `typecheck:all`, `test:unit`, the deterministic Playwright smoke (`test:e2e:smoke` — needs the seeded local Supabase, `SKIP_E2E_SMOKE=1` skips it), plus a merge-conflict check against `origin/main`. The staged-file formatter and `bun run lint` check the **same** scope, so a commit can never pass the hook and fail the script (or vice versa).
 
 ### Custom agent commands
 
@@ -387,7 +388,7 @@ UI dashboards: `/manage` (MANAGER), `/edu` (EDUCATOR), `/app` (STUDENT). Login/r
 |------|-----------|----------|-------|
 | Unit | Vitest | `__tests__/unit/` | Mocked Supabase via `__tests__/setup.ts` |
 | Integration | Vitest | `__tests__/integration/` | Real local Supabase instance |
-| E2E | Playwright | `__tests__/e2e/` | Chromium, Firefox, WebKit |
+| E2E | Playwright | `__tests__/e2e/` | Chromium, Firefox, WebKit; typechecked by `typecheck:e2e`, smoke-gated on pre-push |
 
 - **Mock**: `vi.mock('@studiq/server/lib/supabase/server')` is registered in `__tests__/setup.ts` — unit tests override via the `mockSupabaseClient()` helper
 - **Mock helper**: `__tests__/helpers/supabase-mock.ts`

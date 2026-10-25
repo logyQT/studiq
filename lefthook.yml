@@ -41,3 +41,7 @@ pre-push:
       run: bun run typecheck:all
     test:
       run: bun test:unit
+    e2e-smoke:
+      skip:
+        - run: test "${SKIP_E2E_SMOKE:-0}" = "1"
+      run: bun run test:e2e:smoke

@@ -88,6 +88,7 @@ See [Onboarding Guide](docs/ONBOARDING.md) for full setup instructions (Docker, 
 | `bun test:watch`                     | Vitest watch mode                                                       |
 | `bun test:coverage`                  | Run tests with coverage                                                 |
 | `bun test:e2e`                       | Run Playwright E2E tests (`__tests__/e2e/`)                             |
+| `bun test:e2e:smoke`                 | Pre-push Playwright smoke (quiz #320 spec, Chromium) — needs the seeded local Supabase; `SKIP_E2E_SMOKE=1` skips it |
 | `bun loadtest:seed`                  | Seed load-test accounts via the Supabase Admin API (`--count`, …)       |
 | `bun loadtest:bots`                  | Drive concurrent bot traffic (`--users`, `--shards`, `--duration`)      |
 | `bun loadtest:reset`                 | Delete the seeded load-test accounts                                    |

@@ -51,6 +51,38 @@ Cross-test interference is a tenant leak, not a flake.
 management, quiz editor, invites. Case coverage: [`qa/coverage.md`](../qa/coverage.md) —
 195 e2e · 12 API-level · 8 semantic (campaign parked until the backlog closes).
 
+**Typecheck:** `__tests__/e2e/tsconfig.json` is a dedicated program for the specs,
+`utils.ts`, `playwright.config.ts` and `scripts/e2e-smoke.ts`, wired into
+`bun run typecheck:e2e` and therefore into `typecheck:all` (and the git hooks). The root
+`tsconfig.json` still excludes the folder, so use the e2e program for editor/CI checks.
+
+### E2E smoke gate (#459)
+
+`bun run test:e2e:smoke` is the deterministic subset that runs on **pre-push**: the
+`student-quiz-open-answer.spec.ts` regression for #320, Chromium, one worker. The full suite
+is still manual (`bun test:e2e`) — it is slow and several specs share seeded accounts.
+
+The script (`scripts/e2e-smoke.ts`):
+
+1. checks `NEXT_PUBLIC_SUPABASE_URL`, refuses non-loopback targets
+   (`E2E_SMOKE_ALLOW_REMOTE=1` overrides) and pings `/auth/v1/health`, failing with the
+   `bunx supabase start && bunx supabase db reset` instructions;
+2. deletes the smoke student's (`student-classroom@dev.local`) standalone quiz attempts
+   started today, so `max_quiz_attempts_per_day` (10 on the base plan) cannot turn the gate
+   red on the 11th push of the day (`E2E_SMOKE_KEEP_ATTEMPTS=1` opts out; requires
+   `SUPABASE_SERVICE_ROLE_KEY`);
+3. fails fast when its port is taken — it never reuses another checkout's dev server, which
+   would report green for untested code. Default port `3100` (`E2E_SMOKE_PORT`); or reuse a
+   running app explicitly with `E2E_SMOKE_REUSE=1 PLAYWRIGHT_BASE_URL=http://localhost:<port>`.
+
+Requirements: Docker + `bunx supabase start && bunx supabase db reset` (seeds the Classroom
+open questions and `quiz` on the base plan), `bunx playwright install chromium`, and a `.env`
+in the worktree (same as `bun dev`).
+
+Skip it for one push with `SKIP_E2E_SMOKE=1 git push` (the lefthook `skip` condition); it is
+a local gate only — this repo has no PR CI, so a contributor who does not install lefthook or
+pushes with `--no-verify` bypasses it.
+
 ## Running Tests
 
 ```bash
@@ -59,6 +91,8 @@ bun test:unit         # Run unit tests only
 bun test:integration  # Run integration tests only
 bun test:watch        # Watch mode (re-runs on file changes)
 bun test:coverage     # Run with coverage report
+bun test:e2e          # Full Playwright suite (manual; needs the seeded DB)
+bun test:e2e:smoke    # Pre-push Playwright smoke (deterministic #320 spec)
 ```
 
 ## Manual QA (agent-driven)

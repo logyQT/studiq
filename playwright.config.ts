@@ -9,6 +9,14 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
+// The smoke gate (#459) owns its port so it can never reuse another checkout's
+// dev server; plain `bun test:e2e` keeps the historical :3000 + `!CI` reuse.
+const port = process.env.PLAYWRIGHT_PORT ?? '3000';
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${port}`;
+const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_SERVER
+  ? process.env.PLAYWRIGHT_REUSE_SERVER === '1'
+  : !process.env.CI;
+
 export default defineConfig({
   // Directory where your E2E tests are located
   testDir: './__tests__/e2e',
@@ -29,7 +37,7 @@ export default defineConfig({
   reporter: 'html',
 
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -60,8 +68,8 @@ export default defineConfig({
 
   webServer: {
     command: 'bun dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
+    url: baseURL,
+    reuseExistingServer,
     timeout: 120 * 1000,
   },
 });
