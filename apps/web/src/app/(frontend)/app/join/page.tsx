@@ -10,13 +10,18 @@ import {
   Input,
   Label,
 } from '@studiq/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, LogIn } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { featureKeys, permissionKeys, questionReportKeys } from '@/lib/query-keys';
 
 export default function AppJoinPage() {
   const t = useTranslations('AppJoinPage');
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [token, setToken] = useState('');
   const [isPending, setIsPending] = useState(false);
 
@@ -37,8 +42,16 @@ export default function AppJoinPage() {
         throw new Error(err.error || 'Invalid token');
       }
 
+      // The accept route already set the `active_org_id` cookie, so only client
+      // state is stale. Refresh it in place instead of a hard reload, which
+      // destroyed the toast before it painted (#316). Same pattern as setup/org.
       toast.success(t('success'));
-      window.location.reload();
+      setToken('');
+      await queryClient.invalidateQueries({ queryKey: ['orgs'], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: permissionKeys.all });
+      queryClient.invalidateQueries({ queryKey: featureKeys.all });
+      queryClient.invalidateQueries({ queryKey: questionReportKeys.all });
+      router.refresh();
     } catch {
       toast.error(t('invalid_token'));
     } finally {
