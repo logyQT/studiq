@@ -14,6 +14,7 @@ import {
   useSidebar,
 } from '@studiq/ui';
 import { ChevronsUpDown } from 'lucide-react';
+import { useState } from 'react';
 import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { cn } from '@/lib/utils';
@@ -25,6 +26,7 @@ interface UserMenuProps {
 export function UserMenu({ className }: UserMenuProps) {
   const { user } = useAuth();
   const { isMobile } = useSidebar();
+  const [open, setOpen] = useState(false);
 
   if (!user) {
     return (
@@ -47,7 +49,7 @@ export function UserMenu({ className }: UserMenuProps) {
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <DropdownMenu>
+        <DropdownMenu open={open} onOpenChange={setOpen}>
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
@@ -79,7 +81,7 @@ export function UserMenu({ className }: UserMenuProps) {
               <UserMenuHeader />
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <UserMenuItems />
+            <UserMenuItems onItemClick={() => setOpen(false)} />
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
