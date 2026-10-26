@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { basename, resolve } from 'node:path';
-import { AttachmentBuilder, type Client, type TextChannel } from 'discord.js';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { basename, join, resolve } from 'node:path';
+import { AttachmentBuilder, type Attachment, type Client, type TextChannel } from 'discord.js';
 import type { Config } from './config';
 import type { Logger } from './log';
 import type { OpencodeClient } from './opencode';
@@ -10,6 +11,10 @@ const POLL_MS = 3_000;
 const SESSION_REFRESH_MS = 5_000;
 const MAX_CHUNK = 1_900;
 const REPORT_AS_FILE_OVER = 6_000;
+// Discord attachments are downloaded here so agents can `read` them: the model
+// never sees a Discord CDN URL, and image-only messages used to be dropped.
+const INBOX_DIR = process.env.QA_INBOX_DIR || '/workspaces/studiq/.qa-inbox';
+const MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 
 export interface BridgeOptions {
   label: string;
@@ -89,7 +94,7 @@ export class Bridge {
     if (this.channel) return this.channel;
     try {
       const fetched = await this.client.channels.fetch(this.opts.channelId);
-      if (!fetched || !fetched.isTextBased()) {
+      if (!fetched?.isTextBased()) {
         this.log.error(this.opts.label, `channel ${this.opts.channelId} is not a text channel`);
         return null;
       }
@@ -280,10 +285,60 @@ export class Bridge {
     }
   }
 
+  /** Download a Discord attachment into the shared inbox so agents can `read` it. */
+  private async saveAttachment(att: Attachment): Promise<string | null> {
+    if (!att.size || att.size > MAX_ATTACHMENT_BYTES) return null;
+    try {
+      const res = await fetch(att.url);
+      if (!res.ok) return null;
+      const buf = Buffer.from(await res.arrayBuffer());
+      await mkdir(INBOX_DIR, { recursive: true });
+      const safe = (att.name || 'attachment')
+        .replace(/[^a-zA-Z0-9._-]+/g, '_')
+        .replace(/^_+/, '')
+        .slice(-80);
+      const file = join(INBOX_DIR, `${Date.now()}-${safe}`);
+      await writeFile(file, buf);
+      void this.pruneInbox();
+      return file;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Best-effort: keep the shared inbox from growing without bound. */
+  private async pruneInbox(): Promise<void> {
+    try {
+      const { readdir, stat, unlink } = await import('node:fs/promises');
+      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      for (const name of await readdir(INBOX_DIR)) {
+        const path = join(INBOX_DIR, name);
+        const info = await stat(path);
+        if (info.isFile() && info.mtimeMs < cutoff) await unlink(path);
+      }
+    } catch {
+      /* pruning is cosmetic */
+    }
+  }
+
   /** Discord -> agent. Queues instead of interrupting when the agent is busy. */
-  async sendToAgent(text: string, author: string): Promise<void> {
+  async sendToAgent(text: string, author: string, attachments: Attachment[] = []): Promise<void> {
     const channel = await this.resolveChannel();
     if (!channel) return;
+
+    const saved: string[] = [];
+    for (const att of attachments) {
+      const path = await this.saveAttachment(att);
+      if (path) {
+        saved.push(
+          `${path} (${att.name ?? 'file'}${att.contentType ? `, ${att.contentType}` : ''})`,
+        );
+      }
+    }
+    const message = saved.length
+      ? `${text ? `${text}\n\n` : ''}${saved.map((s) => `[attachment saved: ${s}]`).join('\n')}\n\n` +
+        'Read the saved path with the read tool to see the picture/document.'
+      : text;
 
     if (!this.sessionId) {
       if (this.config.dryRun) {
@@ -300,7 +355,7 @@ export class Bridge {
     if (this.config.dryRun) {
       this.log.info(
         this.opts.label,
-        `[dry-run] would prompt ${this.sessionId}: ${text.slice(0, 120)}`,
+        `[dry-run] would prompt ${this.sessionId}: ${message.slice(0, 120)}`,
       );
       return;
     }
@@ -308,10 +363,10 @@ export class Bridge {
     try {
       const active = await this.opencode.activeSessions().catch(() => new Set<string>());
       const delivery = active.has(this.sessionId) ? 'queue' : undefined;
-      await this.opencode.prompt(this.sessionId, text, delivery);
+      await this.opencode.prompt(this.sessionId, message, delivery);
       this.log.info(
         this.opts.label,
-        `${delivery === 'queue' ? 'queued' : 'sent'} message from ${author} (${text.length} chars)`,
+        `${delivery === 'queue' ? 'queued' : 'sent'} message from ${author} (${message.length} chars, ${saved.length} attachment(s))`,
       );
     } catch (err) {
       this.log.error(

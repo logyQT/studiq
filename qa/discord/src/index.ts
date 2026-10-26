@@ -311,7 +311,8 @@ async function main(): Promise<void> {
           return;
         }
         const text = message.content.trim();
-        if (!text) return;
+        const attachments = [...message.attachments.values()];
+        if (!text && attachments.length === 0) return;
 
         const reply = async (content: string, files?: AttachmentBuilder[]): Promise<void> => {
           const channel = message.channel;
@@ -326,7 +327,7 @@ async function main(): Promise<void> {
         if (text.startsWith('!')) {
           await handleCommand(text, { config, log, qa, status, defaultEnv }, reply);
         } else {
-          await bridge.sendToAgent(text, message.author.username);
+          await bridge.sendToAgent(text, message.author.username, attachments);
         }
       })().catch((err) =>
         log.error(label, `message handler: ${err instanceof Error ? err.message : String(err)}`),
