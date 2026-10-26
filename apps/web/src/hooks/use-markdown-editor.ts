@@ -1,8 +1,11 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useCallback, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { apiUploadFile } from '@/lib/api';
 import { formatMarkdown } from '@/lib/format-markdown';
+import { mediaUploadErrorKey } from '@/lib/media-upload-error';
 
 function wrapSelection(
   textarea: HTMLTextAreaElement | null,
@@ -49,6 +52,7 @@ export function useMarkdownEditor(
   onBackChange: (value: string) => void,
 ) {
   const [activeSide, setActiveSide] = useState<'front' | 'back'>('front');
+  const tUpload = useTranslations('MediaUpload');
   const [uploading, setUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounter = useRef(0);
@@ -94,11 +98,14 @@ export function useMarkdownEditor(
           const name = file.name.replace(/\.[^.]+$/, '');
           insertAtCursor(textarea, activeValue, activeOnChange, `![${name}](${result.url})`);
         }
+      } catch (error) {
+        // The rejection used to escape unhandled: the spinner stopped and nothing was shown.
+        toast.error(tUpload(mediaUploadErrorKey(error)));
       } finally {
         setUploading(false);
       }
     },
-    [getActiveTextarea, activeValue, activeOnChange],
+    [getActiveTextarea, activeValue, activeOnChange, tUpload],
   );
 
   const handlePickFile = useCallback(

@@ -1654,6 +1654,12 @@
     "score": "Score",
     "date": "Date"
   },
+  "MediaUpload": {
+    "too_large": "The file is too large. Choose a smaller file.",
+    "unsupported": "Unsupported file format. Add an image or an audio file.",
+    "offline": "Cannot reach the server. Check your connection and try again.",
+    "failed": "Could not upload the file. Please try again."
+  },
   "LandingPage": {
     "hero_badge": "AI-Powered Learning Platform",
     "hero_title": "Learn Smarter, Not Harder",
