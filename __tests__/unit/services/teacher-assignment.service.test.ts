@@ -2242,6 +2242,8 @@ describe('TeacherAssignmentService', () => {
       );
 
       expect(result.success).toBe(true);
+      // The student's take page renders this URL as the thumbnail of the attached photo (#338).
+      if (result.success) expect(result.data).toEqual({ imageUrl: 'https://example.com/img.png' });
     });
 
     it('returns FORBIDDEN when attempt belongs to another user', async () => {

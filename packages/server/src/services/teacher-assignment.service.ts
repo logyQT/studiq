@@ -1104,7 +1104,7 @@ export class TeacherAssignmentService {
     });
 
     if (error) return toDbFailure(error);
-    return success(null);
+    return success({ imageUrl });
   }
 
   private async verifyOwnership(id: string, ctx: RequestContext): Promise<boolean> {

@@ -2761,6 +2761,8 @@
     "upload_image": "Prześlij zdjęcie (opcjonalnie)",
     "uploading": "Przesyłanie...",
     "upload_photo": "Prześlij zdjęcie",
+    "photo_attached": "Dodano zdjęcie: {name}",
+    "attached_photos": "Dodane zdjęcia",
     "previous": "Poprzednie",
     "next": "Następne",
     "submitting": "Wysyłanie...",

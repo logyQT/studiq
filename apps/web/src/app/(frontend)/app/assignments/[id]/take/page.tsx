@@ -2,6 +2,7 @@
 
 import { Button, Label, RadioGroup, RadioGroupItem, Textarea } from '@studiq/ui';
 import { ArrowLeft, Check, Clock, ImagePlus, Upload } from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -27,6 +28,11 @@ interface AttemptData {
   answers?: Record<string, { selected_answer_id: string | null; text_answer: string | null }>;
 }
 
+interface UploadedPhoto {
+  url: string;
+  name: string;
+}
+
 interface SubmitAnswer {
   questionId: string;
   selectedAnswerId?: string;
@@ -43,6 +49,8 @@ export default function TakeAssignmentPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
+  // Photos attached to each question in this session, so the student can see what was sent (#338).
+  const [photos, setPhotos] = useState<Record<string, UploadedPhoto[]>>({});
   const [submitting, setSubmitting] = useState(false);
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
   const autoSubmitted = useRef(false);
@@ -132,6 +140,18 @@ export default function TakeAssignmentPage() {
           body: formData,
         });
         if (!res.ok) throw new Error(t('upload_failed'));
+
+        const body = (await res.json()) as { data?: { imageUrl?: string } };
+        const url = body.data?.imageUrl;
+        if (url) {
+          setPhotos((prev) => ({
+            ...prev,
+            [questionId]: [...(prev[questionId] ?? []), { url, name: file.name }],
+          }));
+          toast.success(t('photo_attached', { name: file.name }));
+        }
+      } catch {
+        toast.error(t('upload_failed'));
       } finally {
         setUploading((prev) => ({ ...prev, [questionId]: false }));
       }
@@ -291,6 +311,23 @@ export default function TakeAssignmentPage() {
                   )}
                 </Button>
               </div>
+              {(photos[question.id]?.length ?? 0) > 0 && (
+                <ul className="flex flex-wrap gap-3" aria-label={t('attached_photos')}>
+                  {photos[question.id]?.map((photo) => (
+                    <li key={photo.url} className="flex items-center gap-2 text-sm">
+                      <Image
+                        src={photo.url}
+                        alt={photo.name}
+                        width={64}
+                        height={64}
+                        unoptimized
+                        className="size-16 rounded-md border object-cover"
+                      />
+                      <span className="max-w-40 truncate text-muted-foreground">{photo.name}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         )}
