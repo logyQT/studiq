@@ -1252,7 +1252,9 @@
     "type_true_false": "Prawda / Fałsz",
     "type_open": "Otwarta odpowiedź",
     "question_count_label": "Liczba pytań: {count}",
-    "not_enough_questions": "Za mało pytań pasujących do wybranych kryteriów. Zmień filtry lub wybierz mniejszą liczbę pytań."
+    "not_enough_questions": "Za mało pytań pasujących do wybranych kryteriów. Zmień filtry lub wybierz mniejszą liczbę pytań.",
+    "generate_failed": "Nie udało się wygenerować testu",
+    "no_questions_found": "Nie znaleziono pytań spełniających kryteria. Najpierw dodaj pytania!"
   },
   "AppFlashcardsPage": {
     "title": "Fiszki",
@@ -2797,6 +2799,20 @@
     "explanation": "Wyjaśnienie",
     "correct": "Poprawnie",
     "incorrect": "Niepoprawnie"
+  },
+  "AppQuizTakingPage": {
+    "loading": "Ładowanie…",
+    "load_failed": "Nie udało się wczytać testu",
+    "save_failed": "Nie udało się zapisać postępu",
+    "submit_failed": "Nie udało się przesłać testu",
+    "question_of": "Pytanie {current} z {total}",
+    "previous": "Poprzednie",
+    "next": "Następne",
+    "submit": "Zakończ test",
+    "answer_placeholder": "Wpisz swoją odpowiedź…",
+    "type_mcq": "Wielokrotny wybór",
+    "type_true_false": "Prawda / Fałsz",
+    "type_open": "Otwarta odpowiedź"
   },
   "AppQuizReviewPage": {
     "title": "Wyniki testu",

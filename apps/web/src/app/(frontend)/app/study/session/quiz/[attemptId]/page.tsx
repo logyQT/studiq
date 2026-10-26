@@ -17,6 +17,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, Send } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { EntityNotFound } from '@/components/shared/entity-not-found';
@@ -45,7 +46,15 @@ interface AttemptDetails {
 
 const AUTOSAVE_DELAY_MS = 500;
 
+/** Question types the generator produces; anything else falls back to its raw value. */
+const QUESTION_TYPE_KEYS = {
+  mcq: 'type_mcq',
+  true_false: 'type_true_false',
+  open: 'type_open',
+} as const;
+
 export default function QuizTakingPage() {
+  const t = useTranslations('AppQuizTakingPage');
   const params = useParams();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -81,10 +90,10 @@ export default function QuizTakingPage() {
         setLoading(false);
       })
       .catch(() => {
-        toast.error('Failed to load quiz');
+        toast.error(t('load_failed'));
         setLoading(false);
       });
-  }, [attemptId, router]);
+  }, [attemptId, router, t]);
 
   // Autosave the full answer set while the attempt is running (#349).
   useEffect(() => {
@@ -106,13 +115,13 @@ export default function QuizTakingPage() {
         // the student instead of silently restoring the old bug.
         if (!saveFailedRef.current) {
           saveFailedRef.current = true;
-          toast.error('Failed to save progress');
+          toast.error(t('save_failed'));
         }
       }
     }, AUTOSAVE_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [answers, attempt, attemptId]);
+  }, [answers, attempt, attemptId, t]);
 
   // Leaving through the sidebar unmounts the page instantly; flush what the
   // debounce has not sent yet.
@@ -143,11 +152,11 @@ export default function QuizTakingPage() {
       await queryClient.invalidateQueries({ queryKey: quizAttemptKeys.all });
       router.push(`/app/study/session/quiz/${attemptId}/review`);
     } catch {
-      toast.error('Failed to submit quiz');
+      toast.error(t('submit_failed'));
     }
   }
 
-  if (loading) return <div className="flex justify-center py-12">Loading...</div>;
+  if (loading) return <div className="flex justify-center py-12">{t('loading')}</div>;
   if (!attempt)
     return <EntityNotFound titleKey="quiz_not_found" descriptionKey="quiz_not_found_desc" />;
 
@@ -163,7 +172,7 @@ export default function QuizTakingPage() {
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
       <div className="flex justify-end">
         <span className="text-sm text-muted-foreground">
-          Question {currentQ + 1} of {questions.length}
+          {t('question_of', { current: currentQ + 1, total: questions.length })}
         </span>
       </div>
 
@@ -174,7 +183,11 @@ export default function QuizTakingPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Badge variant="outline">{currentQuestion.type.replace('_', ' ')}</Badge>
+            <Badge variant="outline">
+              {QUESTION_TYPE_KEYS[currentQuestion.type as keyof typeof QUESTION_TYPE_KEYS]
+                ? t(QUESTION_TYPE_KEYS[currentQuestion.type as keyof typeof QUESTION_TYPE_KEYS])
+                : currentQuestion.type.replace('_', ' ')}
+            </Badge>
           </div>
           <CardTitle className="mt-3 text-xl">{currentQuestion.content}</CardTitle>
         </CardHeader>
@@ -215,7 +228,7 @@ export default function QuizTakingPage() {
             <Textarea
               value={answers[currentQuestion.id] || ''}
               onChange={(e) => selectAnswer(currentQuestion.id, e.target.value)}
-              placeholder="Type your answer..."
+              placeholder={t('answer_placeholder')}
               rows={4}
             />
           )}
@@ -226,15 +239,15 @@ export default function QuizTakingPage() {
             disabled={currentQ === 0}
             onClick={() => setCurrentQ(currentQ - 1)}
           >
-            <ArrowLeft data-icon="inline-start" /> Previous
+            <ArrowLeft data-icon="inline-start" /> {t('previous')}
           </Button>
           {currentQ < questions.length - 1 ? (
             <Button onClick={() => setCurrentQ(currentQ + 1)}>
-              Next <ArrowRight data-icon="inline-end" />
+              {t('next')} <ArrowRight data-icon="inline-end" />
             </Button>
           ) : (
             <Button onClick={submitQuiz}>
-              Submit Quiz <Send data-icon="inline-end" />
+              {t('submit')} <Send data-icon="inline-end" />
             </Button>
           )}
         </CardFooter>
