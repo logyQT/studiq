@@ -1486,7 +1486,7 @@
     "start_learning": "Rozpocznij naukę",
     "cards_due": "{count, plural, one {fiszka oczekuje na powtórkę} few {fiszki oczekują na powtórkę} many {fiszek oczekuje na powtórkę} other {fiszki oczekuje na powtórkę}}",
     "new_cards_available": "{count, plural, one {nowa karta dostępna do nauki} few {nowe karty dostępne do nauki} many {nowych kart dostępnych do nauki} other {nowej karty dostępnej do nauki}}",
-    "daily_progress": "{remaining} z {total} nowych kart dzisiaj",
+    "daily_progress": "{introduced} z {total} nowych kart dzisiaj",
     "review_title": "Przegląd",
     "review_desc": "Powtarzaj fiszki z powtórkami rozłożonymi w czasie",
     "learn_title": "Nowe karty",
