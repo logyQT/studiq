@@ -39,6 +39,8 @@ interface QuestionTableProps {
   canDelete: (question: Question) => boolean;
   /** Additionally offer the report action; it never replaces the authoring actions. */
   showReportButton?: boolean;
+  /** Replaces the default empty state, e.g. when the viewer cannot add questions. */
+  emptyText?: string;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -58,6 +60,7 @@ export function QuestionTable({
   canUpdate,
   canDelete,
   showReportButton = false,
+  emptyText,
   t,
 }: QuestionTableProps) {
   const filtered = questions.filter((q) => {
@@ -216,7 +219,7 @@ export function QuestionTable({
             {sorted.length === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  {t('no_questions')}
+                  {emptyText ?? t('no_questions')}
                 </TableCell>
               </TableRow>
             )}

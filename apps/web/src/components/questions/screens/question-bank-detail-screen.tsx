@@ -5,7 +5,7 @@ import type { QuestionBank } from '@studiq/server/models/question-bank.model';
 import type { Topic } from '@studiq/server/models/topic.model';
 import { Button } from '@studiq/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus } from 'lucide-react';
+import { ArrowLeft, Eye, Plus } from 'lucide-react';
 import Link from 'next/link';
 import type { useTranslations } from 'next-intl';
 import { useState } from 'react';
@@ -19,6 +19,7 @@ import { useBreadcrumbLabel } from '@/hooks/use-breadcrumbs';
 import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { bankAccess } from '@/lib/bank-access';
 import { questionKeys, topicKeys } from '@/lib/query-keys';
 
 interface QuestionBankDetailScreenProps {
@@ -51,6 +52,11 @@ export function QuestionBankDetailScreen({
     queryFn: () => apiGet<QuestionBank>(`/api/v1/questions/banks/${bankId}`),
     staleTime: Infinity,
   });
+
+  const access = bankAccess(
+    !!bank,
+    !!bank && permission('question_bank.update', { createdBy: bank.created_by }),
+  );
 
   // The bank name is the breadcrumb leaf; the raw bank UUID must never render.
   useBreadcrumbLabel(bankId, bank?.name);
@@ -136,10 +142,22 @@ export function QuestionBankDetailScreen({
             <p className="text-sm text-muted-foreground mt-1">{bank.description}</p>
           )}
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" /> {t('create_question')}
-        </Button>
+        {access.canCreateQuestion && (
+          <Button onClick={openCreate}>
+            <Plus className="mr-2 h-4 w-4" /> {t('create_question')}
+          </Button>
+        )}
       </div>
+
+      {access.readOnly && (
+        <p
+          role="note"
+          className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+        >
+          <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {t('read_only_notice')}
+        </p>
+      )}
 
       <QuestionTable
         questions={questions}
@@ -157,8 +175,13 @@ export function QuestionBankDetailScreen({
         onEdit={openEdit}
         onDelete={setDeleteId}
         onCreateFlashcard={basePath.startsWith('/edu') ? setFlashcardSourceQuestion : undefined}
-        canUpdate={(q) => permission('question.update', { createdBy: q.created_by })}
-        canDelete={(q) => permission('question.delete', { createdBy: q.created_by })}
+        canUpdate={(q) =>
+          access.allowQuestionAction(permission('question.update', { createdBy: q.created_by }))
+        }
+        canDelete={(q) =>
+          access.allowQuestionAction(permission('question.delete', { createdBy: q.created_by }))
+        }
+        emptyText={access.readOnly ? t('no_questions_read_only') : undefined}
         showReportButton={basePath.startsWith('/app')}
         t={t}
       />

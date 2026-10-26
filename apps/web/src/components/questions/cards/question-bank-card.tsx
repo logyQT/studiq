@@ -300,7 +300,7 @@ export const QuestionBankCard = memo(
                 router.push(`${basePath}/${bank.id}`);
               }}
             >
-              {canUpdate ? t('common_manage') : t('common_view')}
+              {canUpdate ? t('common_manage') : t('view_bank')}
               {canUpdate ? <ArrowRight className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
           </div>
