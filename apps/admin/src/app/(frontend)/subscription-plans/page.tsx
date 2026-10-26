@@ -285,7 +285,7 @@ export default function SubscriptionPlansPage() {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{editing ? t('edit') : t('create')}</DialogTitle>
           </DialogHeader>

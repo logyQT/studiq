@@ -99,7 +99,7 @@ export function SingleCardDialogs({
           if (!open) onCopyResultClose();
         }}
       >
-        <DialogContent className="max-w-sm">
+        <DialogContent aria-describedby={undefined} className="max-w-sm">
           <DialogHeader>
             <DialogTitle>{t('copy_success_title')}</DialogTitle>
           </DialogHeader>

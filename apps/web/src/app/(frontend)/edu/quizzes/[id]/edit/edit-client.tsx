@@ -541,7 +541,10 @@ export function EditQuizClient() {
       </div>
 
       <Dialog open={browseOpen} onOpenChange={setBrowseOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent
+          aria-describedby={undefined}
+          className="max-w-2xl max-h-[80vh] overflow-y-auto"
+        >
           <DialogHeader>
             <DialogTitle>{t('add_questions')}</DialogTitle>
           </DialogHeader>

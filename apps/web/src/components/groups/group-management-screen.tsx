@@ -146,7 +146,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                 {t('new_group')}
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent aria-describedby={undefined}>
               <DialogHeader>
                 <DialogTitle>{t('create_title')}</DialogTitle>
               </DialogHeader>
@@ -206,7 +206,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                                 <Pencil className="w-4 h-4" />
                               </Button>
                             </DialogTrigger>
-                            <DialogContent>
+                            <DialogContent aria-describedby={undefined}>
                               <DialogHeader>
                                 <DialogTitle>{t('edit_title')}</DialogTitle>
                               </DialogHeader>
