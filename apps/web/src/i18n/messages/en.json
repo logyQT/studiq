@@ -2798,6 +2798,8 @@
     "upload_image": "Upload Image (optional)",
     "uploading": "Uploading...",
     "upload_photo": "Upload Photo",
+    "photo_attached": "Photo attached: {name}",
+    "attached_photos": "Attached photos",
     "previous": "Previous",
     "next": "Next",
     "submitting": "Submitting...",
