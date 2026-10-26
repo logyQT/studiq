@@ -1505,7 +1505,7 @@
     "start_learning": "Start Learning",
     "cards_due": "{count, plural, one {card due for review} other {cards due for review}}",
     "new_cards_available": "{count, plural, one {new card available to learn} other {new cards available to learn}}",
-    "daily_progress": "{remaining} of {total} daily new cards remaining",
+    "daily_progress": "{introduced} of {total} new cards introduced today",
     "review_title": "Review Due",
     "review_desc": "Review due flashcards with spaced repetition",
     "learn_title": "Learn New",
