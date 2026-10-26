@@ -1,4 +1,11 @@
-import { ApiError, apiPut, getFieldErrorCode, getFieldErrorCodes } from '@/lib/api';
+import {
+  ApiError,
+  apiGet,
+  apiPut,
+  getFieldErrorCode,
+  getFieldErrorCodes,
+  isNetworkError,
+} from '@/lib/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const issueBody = {
@@ -57,6 +64,35 @@ describe('apiPut', () => {
     await expect(apiPut('/api/v1/auth/profile', { name: 'Anna Nowa' })).resolves.toEqual({
       id: 'user-1',
     });
+  });
+});
+
+describe('network failures (#190)', () => {
+  it('turns a failed fetch into ApiError(NETWORK_ERROR) so callers can say the network is down', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+
+    const error = await apiPut('/api/v1/flashcards/decks', { name: 'Deck' }).catch((err) => err);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.code).toBe('NETWORK_ERROR');
+    expect(error.status).toBe(0);
+    expect(isNetworkError(error)).toBe(true);
+  });
+
+  it('does not treat other failures as network errors', async () => {
+    mockFetchResponse({ success: false, error: 'INTERNAL_SERVER' }, 500);
+
+    const error = await apiGet('/api/v1/flashcards/decks').catch((err) => err);
+
+    expect(isNetworkError(error)).toBe(false);
+    expect(isNetworkError(new Error('NETWORK_ERROR'))).toBe(false);
+  });
+
+  it('rethrows errors that are not transport failures', async () => {
+    const abort = new DOMException('aborted', 'AbortError');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abort));
+
+    await expect(apiGet('/api/v1/flashcards/decks')).rejects.toBe(abort);
   });
 });
 
