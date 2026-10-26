@@ -399,7 +399,7 @@ export default function MembersPage() {
       </AlertDialog>
 
       <Dialog open={!!managingMember} onOpenChange={(o) => !o && setManagingMember(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent aria-describedby={undefined} className="max-w-md">
           <DialogHeader>
             <DialogTitle>
               {t('manage_groups_title', {

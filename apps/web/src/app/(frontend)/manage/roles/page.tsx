@@ -213,7 +213,7 @@ export default function RolesPage() {
                 {t('new_role')}
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent aria-describedby={undefined}>
               <DialogHeader>
                 <DialogTitle>{t('create_title')}</DialogTitle>
               </DialogHeader>
@@ -284,7 +284,7 @@ export default function RolesPage() {
                               <Pencil className="w-4 h-4" />
                             </Button>
                           </DialogTrigger>
-                          <DialogContent>
+                          <DialogContent aria-describedby={undefined}>
                             <DialogHeader>
                               <DialogTitle>{t('edit_title')}</DialogTitle>
                             </DialogHeader>
@@ -446,7 +446,10 @@ function PermissionEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent
+        aria-describedby={undefined}
+        className="max-w-2xl max-h-[80vh] overflow-y-auto"
+      >
         <DialogHeader>
           <DialogTitle>{t('perms_title', { name: role?.name ?? '' })}</DialogTitle>
         </DialogHeader>

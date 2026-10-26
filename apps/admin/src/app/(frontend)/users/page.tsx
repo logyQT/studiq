@@ -453,7 +453,7 @@ export default function UsersPage() {
 
       {/* Create user dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{t('create')}</DialogTitle>
           </DialogHeader>
@@ -529,7 +529,7 @@ export default function UsersPage() {
 
       {/* Change role dialog */}
       <Dialog open={!!roleTarget} onOpenChange={(open) => !open && setRoleTarget(null)}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{t('change_role')}</DialogTitle>
           </DialogHeader>

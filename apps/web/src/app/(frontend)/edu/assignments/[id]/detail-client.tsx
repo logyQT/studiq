@@ -654,7 +654,7 @@ export default function AssignmentDetailClient() {
                   <Button variant="outline" onClick={() => setBrowseOpen(true)}>
                     <Plus className="w-4 h-4 mr-1.5" /> {t('browse_questions')}
                   </Button>
-                  <DialogContent className="sm:max-w-2xl">
+                  <DialogContent aria-describedby={undefined} className="sm:max-w-2xl">
                     <DialogHeader>
                       <DialogTitle>{t('browse_questions')}</DialogTitle>
                     </DialogHeader>
@@ -783,7 +783,7 @@ export default function AssignmentDetailClient() {
                   <Button variant="outline" onClick={() => setRandomizeOpen(true)}>
                     <Dices className="w-4 h-4 mr-1.5" /> {t('randomize')}
                   </Button>
-                  <DialogContent>
+                  <DialogContent aria-describedby={undefined}>
                     <DialogHeader>
                       <DialogTitle>{t('randomize')}</DialogTitle>
                     </DialogHeader>
