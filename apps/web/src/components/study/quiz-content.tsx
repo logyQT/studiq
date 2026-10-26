@@ -55,9 +55,9 @@ interface QuizAttempt {
 type CompletedQuizAttempt = QuizAttempt & { completed_at: string };
 
 const QUESTION_TYPE_OPTIONS = [
-  { value: 'mcq', label: 'MCQ' },
-  { value: 'true_false', label: 'True/False' },
-  { value: 'open', label: 'Open' },
+  { value: 'mcq', labelKey: 'type_mcq' },
+  { value: 'true_false', labelKey: 'type_true_false' },
+  { value: 'open', labelKey: 'type_open' },
 ] as const;
 
 /** Radix `Select` cannot use an empty string, so „Wszystkie przedmioty” needs a sentinel. */
@@ -119,13 +119,13 @@ export function QuizContent() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
       if (msg.includes('NOT_FOUND')) {
-        toast.error('No questions found matching your criteria. Create some questions first!');
+        toast.error(tQuiz('no_questions_found'));
       } else if (msg.includes('BAD_REQUEST')) {
-        toast.error('Not enough questions available. Try fewer questions or add more content.');
+        toast.error(tQuiz('not_enough_questions'));
       } else if (msg.includes('UNPROCESSABLE_ENTITY')) {
-        toast.error('Please select at least one question type');
+        toast.error(tQuiz('select_question_type'));
       } else {
-        toast.error('Failed to generate quiz');
+        toast.error(tQuiz('generate_failed'));
       }
     } finally {
       setQuizSubmitting(false);
@@ -259,7 +259,7 @@ export function QuizContent() {
                         onCheckedChange={() => toggleQuizType(opt.value)}
                         id={`quiz-type-${opt.value}`}
                       />
-                      <Label htmlFor={`quiz-type-${opt.value}`}>{opt.label}</Label>
+                      <Label htmlFor={`quiz-type-${opt.value}`}>{tQuiz(opt.labelKey)}</Label>
                     </div>
                   ))}
                 </div>

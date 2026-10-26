@@ -1271,7 +1271,9 @@
     "type_true_false": "True / False",
     "type_open": "Open Answer",
     "question_count_label": "Number of Questions: {count}",
-    "not_enough_questions": "Not enough questions matching your selection. Try adjusting the filters or using fewer questions."
+    "not_enough_questions": "Not enough questions matching your selection. Try adjusting the filters or using fewer questions.",
+    "generate_failed": "Failed to generate the quiz",
+    "no_questions_found": "No questions found matching your criteria. Create some questions first!"
   },
   "AppFlashcardsPage": {
     "title": "Flashcards",
@@ -2815,6 +2817,20 @@
     "explanation": "Explanation",
     "correct": "Correct",
     "incorrect": "Incorrect"
+  },
+  "AppQuizTakingPage": {
+    "loading": "Loading…",
+    "load_failed": "Failed to load the quiz",
+    "save_failed": "Failed to save your progress",
+    "submit_failed": "Failed to submit the quiz",
+    "question_of": "Question {current} of {total}",
+    "previous": "Previous",
+    "next": "Next",
+    "submit": "Submit quiz",
+    "answer_placeholder": "Type your answer…",
+    "type_mcq": "Multiple choice",
+    "type_true_false": "True / False",
+    "type_open": "Open answer"
   },
   "AppQuizReviewPage": {
     "title": "Quiz Review",
