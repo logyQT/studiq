@@ -183,6 +183,7 @@ export function QuestionTable({
                         variant="ghost"
                         size="icon"
                         title={t('create_flashcard_title')}
+                        aria-label={t('create_flashcard_title')}
                         onClick={() => onCreateFlashcard(q)}
                       >
                         <Layers className="h-4 w-4" />
@@ -193,6 +194,7 @@ export function QuestionTable({
                         variant="ghost"
                         size="icon"
                         title={t('common_edit')}
+                        aria-label={t('common_edit')}
                         onClick={() => onEdit(q)}
                       >
                         <Pencil className="h-4 w-4" />
@@ -203,6 +205,7 @@ export function QuestionTable({
                         variant="ghost"
                         size="icon"
                         title={t('common_delete')}
+                        aria-label={t('common_delete')}
                         onClick={() => onDelete(q.id)}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />

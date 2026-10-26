@@ -16,6 +16,7 @@ import { memo } from 'react';
 import { FlashcardContextMenu } from '@/components/flashcards/context-menus/flashcard-context-menu';
 import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { getTopicColorHex } from '@/lib/color-utils';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface FlashcardCardProps {
   fc: Flashcard;
@@ -110,6 +111,7 @@ export const FlashcardCard = memo(function FlashcardCard({
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MoreVertical className="h-3 w-3" />
+                  <SrLabel k="more_actions_flashcard" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -190,6 +192,7 @@ export const FlashcardCard = memo(function FlashcardCard({
                   onClick={(e) => e.stopPropagation()}
                 >
                   <MoreVertical className="h-3 w-3" />
+                  <SrLabel k="more_actions_flashcard" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">

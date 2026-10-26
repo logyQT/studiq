@@ -25,6 +25,7 @@ import { useState } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { featureKeys, permissionKeys } from '@/lib/query-keys';
+import { SrLabel } from '@/components/shared/sr-label';
 
 const ClassroomFormSchema = z.object({
   name: z
@@ -189,6 +190,7 @@ export default function ClassroomPage() {
                         onClick={() => remove(index)}
                       >
                         <X className="size-4" />
+                        <SrLabel k="remove_row" values={{ number: index + 1 }} />
                       </Button>
                     </div>
                   ))}

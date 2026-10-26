@@ -29,6 +29,26 @@
     "groups_placeholder": "Wybierz grupy...",
     "groups_empty": "Nie znaleziono grup"
   },
+  "A11y": {
+    "remove_row": "Usuń wiersz {number}",
+    "copy_invite_link": "Skopiuj link zaproszenia",
+    "remove_member": "Usuń członka {name}",
+    "role_permissions": "Uprawnienia roli {name}",
+    "edit_role": "Edytuj rolę {name}",
+    "delete_role": "Usuń rolę {name}",
+    "stop_generating": "Zatrzymaj generowanie",
+    "send_message": "Wyślij wiadomość",
+    "dismiss_checklist": "Ukryj listę pierwszych kroków",
+    "start_cram": "Rozpocznij wkuwanie: {name}",
+    "more_actions_for": "Więcej akcji: {name}",
+    "more_actions_flashcard": "Więcej akcji fiszki",
+    "more_actions_deck": "Więcej akcji talii",
+    "edit_group": "Edytuj grupę {name}",
+    "delete_group": "Usuń grupę {name}",
+    "back": "Wróć",
+    "remove_answer": "Usuń odpowiedź {number}",
+    "clear_selection": "Wyczyść zaznaczenie"
+  },
   "Errors": {
     "ERROR_INTERNAL_SERVER": "Wystąpił nieoczekiwany błąd serwera. Spróbuj ponownie później.",
     "ERROR_INVALID_INPUT": "Przekazane dane są niepoprawne.",

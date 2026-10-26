@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation';
 import type { useTranslations } from 'next-intl';
 import { memo } from 'react';
 import { getGradientHex } from '@/lib/color-utils';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface QuestionBankCardProps {
   bank: QuestionBank;
@@ -144,6 +145,7 @@ export const QuestionBankCard = memo(
                   className="h-8 w-8 text-muted-foreground/80 hover:text-foreground shrink-0 -mr-1"
                 >
                   <MoreVertical className="h-4 w-4" />
+                  <SrLabel k="more_actions_for" values={{ name: bank.name }} />
                 </Button>
               </DropdownMenuTrigger>
               {/* The menu is portaled to body but stays a React child of the clickable Card,
@@ -238,6 +240,7 @@ export const QuestionBankCard = memo(
                       className="h-8 w-8 text-muted-foreground hover:text-foreground"
                     >
                       <MoreVertical className="h-4 w-4" />
+                      <SrLabel k="more_actions_for" values={{ name: bank.name }} />
                     </Button>
                   </DropdownMenuTrigger>
                   {/* Portaled to body but still in the Card's React subtree — see mobile variant. */}

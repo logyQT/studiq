@@ -39,6 +39,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { formatDate } from '@/lib/datetime';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface GroupInfo {
   id: string;
@@ -346,6 +347,7 @@ export default function MembersPage() {
                       </Select>
                       <Button variant="ghost" size="icon" onClick={() => setRemoveId(m.id)}>
                         <UserMinus className="h-4 w-4 text-destructive" />
+                        <SrLabel k="remove_member" values={{ name: m.full_name || m.email }} />
                       </Button>
                     </div>
                   )}

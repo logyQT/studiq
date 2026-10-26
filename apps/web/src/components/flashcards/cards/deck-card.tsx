@@ -16,6 +16,7 @@ import type { useTranslations } from 'next-intl';
 import { memo } from 'react';
 import { DeckContextMenu } from '@/components/flashcards/context-menus/deck-context-menu';
 import { getGradientHex } from '@/lib/color-utils';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface DeckCardProps {
   deck: Deck;
@@ -144,6 +145,7 @@ export const DeckCard = memo(
                   className="h-8 w-8 text-muted-foreground/80 hover:text-foreground shrink-0 -mr-1"
                 >
                   <MoreVertical className="h-4 w-4" />
+                  <SrLabel k="more_actions_for" values={{ name: deck.name }} />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -216,6 +218,7 @@ export const DeckCard = memo(
                       className="h-8 w-8 text-muted-foreground hover:text-foreground"
                     >
                       <MoreVertical className="h-4 w-4" />
+                      <SrLabel k="more_actions_for" values={{ name: deck.name }} />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">

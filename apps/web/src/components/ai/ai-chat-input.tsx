@@ -14,6 +14,7 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useRef, useState } from 'react';
 import { useAutoResize } from '@/hooks/use-auto-resize';
 import { cn } from '@/lib/utils';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface AiChatInputProps {
   onSend: (text: string, file?: File) => Promise<void>;
@@ -158,6 +159,7 @@ export function AiChatInput({
               className="h-9 w-9 shrink-0 rounded-full"
             >
               <Square className="h-4 w-4" />
+              <SrLabel k="stop_generating" />
             </Button>
           </div>
         ) : (
@@ -170,6 +172,7 @@ export function AiChatInput({
             >
               <Button onClick={handleSend} size="icon" className="h-9 w-9 shrink-0 rounded-full">
                 <ArrowUp className="h-4 w-4" />
+                <SrLabel k="send_message" />
               </Button>
             </motion.div>
           )

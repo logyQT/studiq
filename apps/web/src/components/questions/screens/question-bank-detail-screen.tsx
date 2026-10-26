@@ -20,6 +20,7 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { questionKeys, topicKeys } from '@/lib/query-keys';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface QuestionBankDetailScreenProps {
   bankId: string;
@@ -128,6 +129,7 @@ export function QuestionBankDetailScreen({
         <Button variant="ghost" size="icon" asChild>
           <Link href={`${basePath}`}>
             <ArrowLeft className="h-4 w-4" />
+            <SrLabel k="back" />
           </Link>
         </Button>
         <div className="flex-1">
