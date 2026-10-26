@@ -25,6 +25,7 @@ import { useFeature } from '@/hooks/use-feature';
 import { useFeatures } from '@/hooks/use-features';
 import { useOrgs } from '@/hooks/use-orgs';
 import { apiPut, apiUploadFile } from '@/lib/api';
+import { isDraftSaved, resolveBrandColor } from '@/lib/brand-color';
 import { formatDate } from '@/lib/datetime';
 
 interface OrganizationDetail {
@@ -98,11 +99,13 @@ export default function SettingsPage() {
     enabled: !!activeOrg?.id,
   });
 
-  const [brandColor, setBrandColor] = useState('#000000');
+  // The colour being picked; null until the user changes it (then the saved colour shows).
+  const [draftColor, setDraftColor] = useState<string | null>(null);
+  const displayColor = resolveBrandColor(draftColor, organization?.brand_color);
 
   useEffect(() => {
-    if (organization?.brand_color) setBrandColor(organization.brand_color);
-  }, [organization?.brand_color]);
+    if (isDraftSaved(draftColor, organization?.brand_color)) setDraftColor(null);
+  }, [draftColor, organization?.brand_color]);
 
   const updateColor = useApiMutation({
     mutationFn: (color: string) =>
@@ -133,14 +136,13 @@ export default function SettingsPage() {
 
   async function handleColorSave() {
     try {
-      await updateColor.mutateAsync(brandColor);
+      await updateColor.mutateAsync(displayColor);
       toast.success(t('color_updated'));
     } catch {
       toast.error(t('save_failed'));
     }
   }
 
-  const displayColor = organization?.brand_color ?? brandColor;
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">{t('title')}</h2>
@@ -223,7 +225,7 @@ export default function SettingsPage() {
                       id="brand-color"
                       type="color"
                       value={displayColor}
-                      onChange={(e) => setBrandColor(e.target.value)}
+                      onChange={(e) => setDraftColor(e.target.value)}
                       className="h-9 w-16 p-1"
                     />
                     <span className="text-sm text-muted-foreground">{displayColor}</span>
