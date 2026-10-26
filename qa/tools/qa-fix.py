@@ -285,6 +285,37 @@ def system_login() -> str:
         return ""
 
 
+def operator_login() -> str:
+    """The human this crew works for: issues assigned to them are ours to take."""
+    return os.environ.get("QA_OPERATOR_GH", "logyQT")
+
+
+def live_assignees(n: int) -> list[str]:
+    raw = json.loads(gh(["issue", "view", str(n), "--json", "assignees"]))
+    return [a["login"] for a in (raw.get("assignees") or [])]
+
+
+def foreign_assignees(n: int) -> list[str]:
+    me = operator_login().lower()
+    return [a for a in live_assignees(n) if a.lower() != me]
+
+
+def guard_ownership(n: int, *, assign: bool = False) -> None:
+    """Refuse to dispatch an issue someone else owns; claim it for the operator.
+
+    The map snapshot parks assigned issues, but an assignment can land after the
+    last `sync`. Re-check live at dispatch so a parked issue can never be picked
+    up through a stale map, and claim the issue for our operator when we start.
+    """
+    owners = live_assignees(n)
+    foreign = [a for a in owners if a.lower() != operator_login().lower()]
+    if foreign:
+        fail(f"#{n} is assigned to {', '.join(foreign)} — refusing to dispatch",
+             hint="assigned work belongs to someone else; only the operator can hand it over")
+    if assign and not owners:
+        gh(["issue", "edit", str(n), "--add-assignee", operator_login()])
+
+
 def linked_issue(body: str) -> int | None:
     m = re.search(r"(?:fixes|closes|resolves|refs?)\s+#(\d+)", body or "", re.I)
     return int(m.group(1)) if m else None
@@ -464,13 +495,18 @@ def cmd_assign_migrations(args) -> None:
 
 def normalize_map(raw: list[dict]) -> dict:
     ignore = ignored_assignees()
+    me = operator_login().lower()
     items = []
     for i in raw:
         labels = [l["name"] for l in i["labels"]]
         priority = next((p for p in ("critical", "high", "medium", "low") if p in labels), "none")
         assignees = [a["login"] for a in (i.get("assignees") or [])]
-        parked = sorted(assignees) if "*" in ignore else sorted(
-            a for a in assignees if a.lower() in ignore)
+        # Our own operator is not a blocker: the crew assigns itself on pickup.
+        if "*" in ignore:
+            parked = sorted(a for a in assignees if a.lower() != me)
+        else:
+            parked = sorted(a for a in assignees
+                            if a.lower() in ignore and a.lower() != me)
         items.append({
             "number": i["number"], "title": i["title"], "url": i["url"],
             "labels": labels, "priority": priority,
@@ -861,6 +897,7 @@ def cmd_design(args) -> None:
     if hold and not state["issues"].get(str(n)):
         fail(f"usage hold: {hold.get('line', 'allowance near the limit')}",
              hint="in-flight work continues; new issues wait until qa-usage reports ok")
+    guard_ownership(n, assign=not state["issues"].get(str(n)))
     flex = is_flex(state)
     if args.env:
         env = args.env
@@ -906,6 +943,7 @@ def cmd_implement(args) -> None:
     if rec["stage"] not in ("design_ready", "changes_requested", "qa_failed", "pr_open", "qa_passed") and not impl_dead:
         fail(f"cannot implement from stage {rec['stage']}")
     rebase = rec["stage"] == "qa_passed"
+    guard_ownership(n, assign=True)
     flex = is_flex(state)
     busy = busy_slots()
     if args.env:
@@ -1503,6 +1541,10 @@ def cmd_merge(args) -> None:
     pr = rec.get("pr")
     if not pr:
         fail("no PR recorded on this issue")
+    foreign = foreign_assignees(n)
+    if foreign:
+        fail(f"#{n} is now assigned to {', '.join(foreign)} — holding the merge",
+             hint="ownership changed after dispatch; escalate to the operator instead of merging")
     collisions = migration_collisions(n, int(pr))
     if collisions:
         fail("migration timestamp collision", issue=n, pr=pr,

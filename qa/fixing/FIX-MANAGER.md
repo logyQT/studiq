@@ -85,7 +85,7 @@ to make.
 starting a new design. If two or more PRs are waiting, reviews come first.
 
 ### 1. Design
-**Assigned issues are out of scope.** Any issue with an assignee belongs to a teammate: `next` never offers them, and `design <n>` refuses with the assignee's name. Do not hand-pick them, do not unassign them, do not "help" by designing them.
+**Assigned issues are out of scope.** Any issue with an assignee belongs to a teammate: `next` never offers them, and `design <n>` re-checks GitHub live and refuses with the assignee's name. Do not hand-pick them, do not unassign them, do not "help" by designing them. The tool claims work for your operator on the first dispatch (`QA_OPERATOR_GH`, default `logyQT`) — that is the only assignment the crew ever makes.
 
 Pick `next` (priority order: critical, high, medium, low). Dispatch a free designer:
 
