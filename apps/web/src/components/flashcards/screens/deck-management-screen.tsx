@@ -31,7 +31,7 @@ import { useOrgs } from '@/hooks/use-orgs';
 import { usePermission } from '@/hooks/use-permission';
 import { usePersistedState } from '@/hooks/use-persisted-state';
 import { useSelection } from '@/hooks/use-selection';
-import { apiDelete, apiPost, apiPut } from '@/lib/api';
+import { apiDelete, apiPost, apiPut, isNetworkError } from '@/lib/api';
 import { flashcardKeys } from '@/lib/query-keys';
 
 const ImportDialog = dynamic(
@@ -248,8 +248,8 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
       setDialogOpen(false);
       setEditing(null);
       toast.success(editing ? t('deck_updated') : t('deck_created'));
-    } catch {
-      toast.error(t('save_failed'));
+    } catch (error) {
+      toast.error(isNetworkError(error) ? t('save_failed_offline') : t('save_failed'));
     }
   }
 
@@ -286,8 +286,8 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
       await batchToggleSuspend.mutateAsync({ deckIds: ids, suspended });
       toast.success(suspended ? t('deck_suspended') : t('deck_unsuspended'));
       handleClearSelection();
-    } catch {
-      toast.error(t('save_failed'));
+    } catch (error) {
+      toast.error(isNetworkError(error) ? t('save_failed_offline') : t('save_failed'));
     }
   }
 
@@ -296,8 +296,8 @@ export function DeckManagementScreen({ basePath, t }: DeckManagementScreenProps)
       await apiPut(`/api/v1/flashcards/decks/${deck.id}`, { suspended: !deck.suspended });
       queryClient.invalidateQueries({ queryKey: flashcardKeys.decks.all });
       toast.success(deck.suspended ? t('deck_unsuspended') : t('deck_suspended'));
-    } catch {
-      toast.error(t('save_failed'));
+    } catch (error) {
+      toast.error(isNetworkError(error) ? t('save_failed_offline') : t('save_failed'));
     }
   }
 

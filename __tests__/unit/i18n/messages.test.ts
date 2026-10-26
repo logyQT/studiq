@@ -231,6 +231,15 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
     expect(message).toContain('{count}');
   });
 
+  it('translates the offline save hint in every deck namespace', () => {
+    for (const namespace of ['EduFlashcardDecksPage', 'AppFlashcardDecksPage'] as const) {
+      const message = (messages[namespace] as Record<string, string>).save_failed_offline;
+
+      expect(message, `${namespace}.save_failed_offline`).toBeTypeOf('string');
+      expect(message).not.toHaveLength(0);
+    }
+  });
+
   it('translates the deck group-required hint in every deck namespace', () => {
     for (const namespace of DECK_GROUP_REQUIRED_NAMESPACES) {
       const message = (messages[namespace] as Record<string, string>).groups_required;
