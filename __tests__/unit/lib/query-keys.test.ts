@@ -124,3 +124,40 @@ describe('assignment results grading invalidation (#168)', () => {
     expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(false);
   });
 });
+
+/**
+ * Suspending or restoring a deck changes which cards the statistics include, so the study
+ * statistics must be invalidated together with the deck lists (#365).
+ */
+describe('flashcardKeys.afterDeckSuspend (#365)', () => {
+  const statsKeys = [
+    [...flashcardKeys.all, 'practice', 'cards-stats', { state: 'all', sortBy: 'last_reviewed' }],
+    [...flashcardKeys.practice.states],
+    [...flashcardKeys.practice.dueBreakdown],
+  ];
+  const deckKeys = [
+    [...flashcardKeys.decks.paginated({ owner: 'all' }, 'org-a')],
+    [...flashcardKeys.decks.options('org-a')],
+  ];
+
+  function invalidatedAfterSuspend(keys: readonly (readonly unknown[])[]) {
+    const client = new QueryClient();
+    for (const key of keys) client.setQueryData([...key], 'cached');
+    for (const queryKey of flashcardKeys.afterDeckSuspend) {
+      client.invalidateQueries({ queryKey: [...queryKey] });
+    }
+    return keys.map((key) => client.getQueryState([...key])?.isInvalidated);
+  }
+
+  it('invalidates the statistics queries built from the deck cards', () => {
+    expect(invalidatedAfterSuspend(statsKeys)).toEqual([true, true, true]);
+  });
+
+  it('still invalidates the deck lists', () => {
+    expect(invalidatedAfterSuspend(deckKeys)).toEqual([true, true]);
+  });
+
+  it('leaves unrelated queries alone', () => {
+    expect(invalidatedAfterSuspend([['topics', 'paginated', null, {}]])).toEqual([false]);
+  });
+});
