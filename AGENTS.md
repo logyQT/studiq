@@ -69,6 +69,29 @@ main ← feat/quiz-bank-ui (PR, merge, delete)
 
 ---
 
+## Issue Ownership
+
+**Assigned work belongs to whoever is assigned.** Before you touch an issue, look at it:
+
+```bash
+gh issue view <n> --json number,state,assignees
+```
+
+- **Any assignee other than your operator means stop.** Do not design it, code it, branch for it, or open a PR for it — even if it looks trivial, even if it is unblocked, even if you think you are helping. Say `skipped #<n>: owned by <login>` and move on.
+- **Claim what you pick up.** The first time you start an issue, assign your operator *before* the first commit:
+
+  ```bash
+  gh issue edit <n> --add-assignee <operator-login>
+  ```
+
+  The operator login is the human you work for — `QA_OPERATOR_GH` in automated crews, `logyQT` on this repo. It is **not** the bot/agent account that authors the PR.
+- **Never unassign or reassign** someone else's issue. Only the operator can hand an issue over; if they do, reassign it first, then start.
+- **Bots do not count as owners** (`dependabot`, `github-actions`). An issue assigned only to a bot is fair game.
+
+This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch time and refuses foreign-owned issues, and holds a merge if ownership changes mid-flight. Crews that work outside the pipeline rely on this rule directly.
+
+---
+
 ## Commands
 
 `package.json` at the repo root is the **source of truth** — if anything below disagrees with it, trust `package.json`.
