@@ -1634,6 +1634,12 @@
     "score": "Wynik",
     "date": "Data"
   },
+  "MediaUpload": {
+    "too_large": "Plik jest zbyt duży. Wybierz mniejszy plik.",
+    "unsupported": "Nieobsługiwany format pliku. Dodaj obraz lub plik audio.",
+    "offline": "Brak połączenia z serwerem. Sprawdź internet i spróbuj ponownie.",
+    "failed": "Nie udało się wgrać pliku. Spróbuj ponownie."
+  },
   "LandingPage": {
     "hero_badge": "Platforma edukacyjna oparta na AI",
     "hero_title": "Tylko to, co musisz umieć.",
