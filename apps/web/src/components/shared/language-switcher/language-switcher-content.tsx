@@ -18,6 +18,11 @@ export type LanguageSwitcherContentProps = {
 /**
  * Popover shell for the surfaces that open a layer (footer, navbar, sidebar) —
  * the panel inside is identical everywhere (#634).
+ *
+ * The popover is non-modal, but Radix's `FocusScope loop` still wraps Tab back
+ * into it (verified) — it does **not** dismiss on focus-out. Dismissal is
+ * Escape, an outside click or a selection, and `onCloseAutoFocus` returns focus
+ * to the trigger.
  */
 export function LanguageSwitcherContent({
   onDismiss,

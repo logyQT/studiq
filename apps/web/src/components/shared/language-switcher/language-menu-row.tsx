@@ -3,7 +3,7 @@
 import { DropdownMenuItem } from '@studiq/ui';
 import { ChevronDown, ChevronRight, Globe } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { LanguageSwitcherPanel } from '@/components/shared/language-switcher/language-switcher-panel';
 import { useLocaleSwitcher } from '@/hooks/use-locale-switcher';
 import { cn } from '@/lib/utils';
@@ -35,7 +35,17 @@ export function LanguageMenuRow(props: LanguageMenuRowProps) {
   const t = useTranslations('LanguageSwitcher');
   const { option } = useLocaleSwitcher();
   const panelId = useId();
+  const rowRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+
+  // The inline panel unmounts on selection, taking the focused combobox with
+  // it; without this, focus falls back to the surrounding dialog (mobile
+  // navbar sheet). Focus is moved before React unmounts the panel, so the
+  // unmount cannot steal it.
+  const dismissPanel = () => {
+    setOpen(false);
+    rowRef.current?.focus();
+  };
 
   if (props.variant === 'menu') {
     return (
@@ -51,9 +61,10 @@ export function LanguageMenuRow(props: LanguageMenuRowProps) {
   return (
     <div>
       <button
+        ref={rowRef}
         type="button"
         aria-expanded={open}
-        aria-controls={panelId}
+        aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((previous) => !previous)}
         className={PLAIN_ROW_CLASS}
       >
@@ -70,7 +81,7 @@ export function LanguageMenuRow(props: LanguageMenuRowProps) {
           id={panelId}
           className="mt-1 overflow-hidden rounded-md border bg-popover text-popover-foreground"
         >
-          <LanguageSwitcherPanel autoFocus={false} onDismiss={() => setOpen(false)} />
+          <LanguageSwitcherPanel autoFocus={false} onDismiss={dismissPanel} />
         </div>
       )}
     </div>

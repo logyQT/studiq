@@ -86,6 +86,13 @@ describe('language metadata', () => {
     expect(LOCALES).toContain(DEFAULT_LOCALE);
   });
 
+  it('keeps exactly one option per endonym', () => {
+    // cmdk's item `value` is the endonym and the panel's `aria-activedescendant`
+    // sync subscribes to cmdk's highlighted value — duplicate endonyms would
+    // make both ambiguous.
+    expect(new Set(LANGUAGE_OPTIONS.map((option) => option.endonym)).size).toBe(LOCALES.length);
+  });
+
   it('describes every language in every locale and stays searchable', () => {
     for (const option of LANGUAGE_OPTIONS) {
       expect(option.endonym.trim(), option.code).not.toHaveLength(0);

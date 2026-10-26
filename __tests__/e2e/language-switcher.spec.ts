@@ -73,9 +73,10 @@ test.describe('language switcher', () => {
 
     // Opening announces the current option as the combobox's active descendant.
     const input = page.getByRole('combobox', { name: pl.LanguageSwitcher.search_label });
-    expect(await input.getAttribute('aria-activedescendant')).toBe(
-      await current.getAttribute('id'),
-    );
+    const currentId = await current.getAttribute('id');
+    await expect.poll(() => input.getAttribute('aria-activedescendant')).toBe(currentId);
+    // …and the IDREF actually resolves (no dangling reference).
+    expect(await page.evaluate((id) => !!document.getElementById(id), currentId)).toBe(true);
 
     await page.getByRole('option', { name: 'English' }).click();
 
@@ -117,6 +118,17 @@ test.describe('language switcher', () => {
       await expect(options.first()).toContainText('English');
     }
 
+    // #634 review-1 B1 — the active descendant must follow the filtered list,
+    // not keep pointing at the option that the query just removed.
+    await input.fill('eng');
+    await expect(options).toHaveCount(1);
+    const highlighted = page.locator('[cmdk-item][aria-selected="true"]');
+    await expect(highlighted).toHaveCount(1);
+    await expect(highlighted).toContainText('English');
+    const highlightedId = await highlighted.getAttribute('id');
+    await expect.poll(() => input.getAttribute('aria-activedescendant')).toBe(highlightedId);
+    expect(await page.evaluate((id) => !!document.getElementById(id), highlightedId)).toBe(true);
+
     for (const query of ['pl', 'polski']) {
       await input.fill(query);
       await expect(options).toHaveCount(1);
@@ -125,6 +137,8 @@ test.describe('language switcher', () => {
 
     await input.fill('zzz');
     await expect(options).toHaveCount(0);
+    // No highlight → the attribute must be gone, not dangling.
+    await expect.poll(() => input.getAttribute('aria-activedescendant')).toBeNull();
 
     const empty = page.getByRole('dialog', { name: SWITCHER_LABEL }).locator('[cmdk-empty]');
     await expect(empty).toBeVisible();
@@ -136,6 +150,12 @@ test.describe('language switcher', () => {
     await empty.getByRole('button', { name: pl.LanguageSwitcher.empty_clear }).click();
     await expect(options).toHaveCount(2);
     await expect(input).toBeFocused();
+
+    // Clearing restores the current-first highlight and its active descendant.
+    const current = page.locator('[cmdk-item][data-current="true"]');
+    const currentId = await current.getAttribute('id');
+    await expect.poll(() => input.getAttribute('aria-activedescendant')).toBe(currentId);
+    expect(await page.evaluate((id) => !!document.getElementById(id), currentId)).toBe(true);
 
     // Never render a raw message key.
     await expect(page.getByText(/LanguageSwitcher\./)).toHaveCount(0);
@@ -160,13 +180,24 @@ test.describe('language switcher', () => {
     await expect(input).toBeFocused();
 
     const selected = page.locator('[cmdk-item][aria-selected="true"]');
+    // The manual sync must track cmdk-owned navigation, not only filtering.
+    const expectActiveDescendant = async () => {
+      const id = await selected.getAttribute('id');
+      await expect.poll(() => input.getAttribute('aria-activedescendant')).toBe(id);
+      expect(await page.evaluate((value) => !!document.getElementById(value), id)).toBe(true);
+    };
+
     await expect(selected).toContainText('Polski');
+    await expectActiveDescendant();
     await page.keyboard.press('ArrowDown');
     await expect(selected).toContainText('English');
+    await expectActiveDescendant();
     await page.keyboard.press('Home');
     await expect(selected).toContainText('Polski');
+    await expectActiveDescendant();
     await page.keyboard.press('End');
     await expect(selected).toContainText('English');
+    await expectActiveDescendant();
 
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog', { name: SWITCHER_LABEL })).toBeHidden();
@@ -257,7 +288,9 @@ test.describe('language switcher', () => {
     expect(await page.evaluate(() => document.body.style.pointerEvents)).not.toBe('none');
   });
 
-  test('mobile sheet: the panel expands inline and keeps the sheet open', async ({ page }) => {
+  test('mobile sheet: the panel expands inline, keeps the sheet open and returns focus', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await login(page);
     await page.goto('/pricing');
@@ -268,23 +301,97 @@ test.describe('language switcher', () => {
     const row = sheet.getByRole('button', { name: /Język|Language/ });
     await expect(row).toHaveCount(1);
     await expect(row).toHaveAttribute('aria-expanded', 'false');
+    // Collapsed: no IDREF to a region that is not rendered.
+    await expect(row).not.toHaveAttribute('aria-controls');
 
     await row.click();
 
     // Inline, not a second layer: the sheet is still the only dialog.
     await expect(row).toHaveAttribute('aria-expanded', 'true');
+    const panelId = await row.getAttribute('aria-controls');
+    expect(panelId).toBeTruthy();
+    expect(await page.evaluate((id) => !!document.getElementById(id ?? ''), panelId)).toBe(true);
     await expect(page.locator('[role="dialog"]')).toHaveCount(1);
-    await expect(
-      sheet.getByRole('combobox', { name: pl.LanguageSwitcher.search_label }),
-    ).toBeVisible();
+    const input = sheet.getByRole('combobox', { name: pl.LanguageSwitcher.search_label });
+    await expect(input).toBeVisible();
     await expect(sheet.getByRole('option')).toHaveCount(2);
 
-    await sheet.getByRole('option', { name: 'English' }).click();
+    // Keyboard commit: the panel unmounts, so focus must land back on the row
+    // (not on the surrounding sheet dialog).
+    await input.focus();
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
 
-    // The sheet stays open so the labels flip in place.
-    await expect(sheet).toBeVisible();
-    await expect(sheet.locator('[cmdk-input]')).toHaveCount(0);
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-    await expect(sheet.getByRole('button', { name: /Language/ })).toContainText('English');
+    await expect(row).toHaveAttribute('aria-expanded', 'false');
+    await expect(sheet.locator('[cmdk-input]')).toHaveCount(0);
+    await expect(sheet).toBeVisible();
+    await expect(page.locator('[role="dialog"]')).toHaveCount(1);
+    await expect(row).toBeFocused();
+    await expect(row).toContainText('English');
+
+    // Pointer commit returns focus to the same row.
+    await row.click();
+    await expect(row).toHaveAttribute('aria-expanded', 'true');
+    await sheet.getByRole('option', { name: 'Polski' }).click();
+
+    await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
+    await expect(row).toHaveAttribute('aria-expanded', 'false');
+    await expect(sheet.locator('[cmdk-input]')).toHaveCount(0);
+    await expect(sheet).toBeVisible();
+    await expect(page.locator('[role="dialog"]')).toHaveCount(1);
+    await expect(row).toBeFocused();
+    await expect(row).toContainText('Polski');
+  });
+
+  test('mobile dashboard: sidebar sheet opens the panel as a working nested layer', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await login(page);
+    await page.goto('/app/stats/content');
+
+    // The mobile sidebar is itself a modal Sheet (`role=dialog`).
+    await page.locator('[data-sidebar="trigger"]').click();
+    const sheet = page.locator('[data-slot="sidebar"][data-mobile="true"]');
+    await expect(sheet).toBeVisible();
+
+    const menuTrigger = sheet.locator('[data-sidebar="menu-button"][aria-haspopup="menu"]').last();
+    await menuTrigger.click();
+    await page.getByRole('menuitem', { name: /Język|Language/ }).click();
+
+    const dialog = page.getByRole('dialog', { name: SWITCHER_LABEL });
+    await expect(dialog).toBeVisible();
+    // Sheet + popover, both dialogs, and the popover is the top layer.
+    await expect(page.getByRole('dialog')).toHaveCount(2);
+    expect(await dialog.evaluate((node) => node.closest('[aria-hidden="true"]') !== null)).toBe(
+      false,
+    );
+
+    const input = page.getByRole('combobox', { name: pl.LanguageSwitcher.search_label });
+    await expect(input).toBeFocused();
+    // The layer is interactive — a painted-but-inert popover would fail here.
+    await input.fill('eng');
+    await expect(page.getByRole('option')).toHaveCount(1);
+    await expect(page.getByRole('option').first()).toContainText('English');
+
+    // Escape closes only the panel and restores focus to the sidebar button.
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole('dialog')).toHaveCount(1);
+    await expect(sheet).toBeVisible();
+    await expect(menuTrigger).toBeFocused();
+
+    // Committing keeps the sheet open and returns focus to the sidebar button.
+    await menuTrigger.click();
+    await page.getByRole('menuitem', { name: /Język|Language/ }).click();
+    await expect(dialog).toBeVisible();
+    await page.getByRole('option', { name: 'English' }).click();
+
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    await expect(dialog).toBeHidden();
+    await expect(sheet).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(1);
+    await expect(menuTrigger).toBeFocused();
   });
 });

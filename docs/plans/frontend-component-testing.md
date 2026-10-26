@@ -191,7 +191,7 @@ The testing pyramid for frontend:
 |---|---|---|---|
 | **Tier 0: Pure hooks** | `useMemo`/`useCallback` with no provider deps | `use-ai-chat.ts` (transformation logic) | `renderHook()` from `@testing-library/react`, no provider wrappers needed |
 | **Tier 1: UI primitives** | Shadcn components with zero or minimal app deps | `Badge`, `Alert`, `Spinner`, `Button`, `Card` | Render + assert DOM; no provider wrappers |
-| **Tier 2: Layout/shared** | Components with 1-2 provider deps | `LanguageToggle`, `ThemeToggle`, `PageToolbar`, `Footer` | Render with provider wrapper; mock router + i18n |
+| **Tier 2: Layout/shared** | Components with 1-2 provider deps | `LanguageSwitcher` (`components/shared/language-switcher/`), `ThemeToggle`, `PageToolbar`, `Footer` | Render with provider wrapper; mock router + i18n |
 | **Tier 3: Feature screens** | Full screens with data fetching, RBAC, routing | `DeckManagementScreen`, `QuestionBankManagementScreen` | Heavy mocking; may not be worth it vs. E2E |
 | **Tier 4: Complex interactions** | Drag-and-drop, rich text editor, multi-step forms | `FlashcardEditor`, `ImportDialog` | Interaction testing with `user-event`; slow, fragile |
 
@@ -273,7 +273,7 @@ This is **not a plan** — it's a sequence of decisions to make and work to do, 
 |---|---|---|
 | **Wave 1** | Pure hooks (`use-ai-chat.ts` etc.) — `renderHook()`, no DOM | Small |
 | **Wave 2** | UI primitives from `packages/ui/` — Badge, Alert, Button, Spinner | Small |
-| **Wave 3** | Layout components — LanguageToggle, ThemeToggle, Footer, PageToolbar | Medium |
+| **Wave 3** | Layout components — LanguageSwitcher, ThemeToggle, Footer, PageToolbar | Medium |
 | **Wave 4** | Shared components — DeleteConfirmDialog, BulkActionBar, MarkdownRenderer | Medium |
 | **Wave 5** | Feature components (if in scope) — DeckCard, FlashcardToolbar, etc. | Large |
 

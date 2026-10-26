@@ -23,7 +23,8 @@ Zalogowany użytkownik.
    **ten sam** panel (tylko do góry).
 5. Sprawdź wyszukiwanie bez wyników: wpisz `zzz`, a potem użyj „Wyczyść”.
 6. Na wąskim ekranie (390×844) otwórz menu hamburger: wiersz „Język” rozwija panel **w miejscu**
-   (bez drugiego okna), a arkusz pozostaje otwarty.
+   (bez drugiego okna), a arkusz pozostaje otwarty. Po wybraniu języka (kliknięciem i klawiszem
+   Enter) panel się zwija, arkusz nadal jest otwarty, a fokus wraca **na wiersz „Język”**.
 7. Przełącz język na głębokiej podstronie (np. `/app/stats/content`) i sprawdź adres oraz pozycję
    przewinięcia; następnie odśwież stronę (F5).
 
@@ -39,7 +40,8 @@ Zalogowany użytkownik.
   pozostają, fokus wraca na element, który otworzył panel. Ciasteczko `NEXT_LOCALE` jest ważne rok.
 - Zmiana języka jest komunikowana czytnikowi ekranu **raz**, w języku, w którym użytkownik czytał
   stronę; przy zaznaczonym aktualnym języku widoczny jest ✓.
-- Na telefonie wiersz „Język” rozwija panel w miejscu i nie zamyka arkusza menu.
+- Na telefonie wiersz „Język” rozwija panel w miejscu i nie zamyka arkusza menu; po wybraniu języka
+  fokus wraca na ten wiersz.
 - Wersja angielska nie zawiera polskich fragmentów, a polska – angielskich; liczebniki
   (fiszka/fiszki/fiszek) odmieniają się poprawnie.
 - Język jest zapamiętany po ponownym logowaniu i po odświeżeniu strony.

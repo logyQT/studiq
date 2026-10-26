@@ -1,12 +1,13 @@
 'use client';
 
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@studiq/ui';
+import { useCommandState } from 'cmdk';
 import { Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LocaleFlag } from '@/components/shared/language-switcher/locale-flag';
 import { useLocaleSwitcher } from '@/hooks/use-locale-switcher';
-import { LANGUAGE_OPTIONS, languageOption } from '@/lib/locale';
+import { LANGUAGE_OPTIONS, type Locale, languageOption } from '@/lib/locale';
 import { cn } from '@/lib/utils';
 
 export type LanguageSwitcherPanelProps = {
@@ -17,6 +18,59 @@ export type LanguageSwitcherPanelProps = {
   /** Extra classes for the scrollable list. */
   className?: string;
 };
+
+type ActiveDescendantSyncProps = {
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  query: string;
+  locale: Locale;
+};
+
+/**
+ * Keeps the combobox's `aria-activedescendant` pointing at the highlighted
+ * option.
+ *
+ * cmdk 1.1.1 owns the attribute (`CommandInput` renders it from
+ * `state.selectedItemId`) but only fills `selectedItemId` from a deferred
+ * lookup of `[cmdk-item][aria-selected="true"]` that can run before the DOM
+ * reflects the new highlight — so on open it stays `undefined` and React never
+ * writes *or removes* the attribute, and after filtering it can keep pointing
+ * at an option that no longer exists (a dangling IDREF, invalid ARIA).
+ *
+ * Subscribing to cmdk's public highlight state (`useCommandState`) re-renders
+ * this component on every `emit()` — open/auto-select, typing/filtering,
+ * pointer hover and arrow/Home/End — so the layout effect below runs after the
+ * commit in which `aria-selected` is already correct and the DOM read is
+ * authoritative. No timers, no guessing.
+ *
+ * Must be rendered **inside** `Command`: `useCommandState` reads cmdk's store
+ * context, which only exists below `<Command>`. Coupled to cmdk 1.1.1 — revisit
+ * on upgrade.
+ */
+function ActiveDescendantSync({ inputRef, query, locale }: ActiveDescendantSyncProps) {
+  // Only the change of the highlighted value matters; it re-renders us.
+  const activeValue = useCommandState((state) => state.value);
+
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    const root = input?.closest('[cmdk-root]');
+
+    if (!input || !root) return;
+
+    const active = root.querySelector<HTMLElement>('[cmdk-item][aria-selected="true"]');
+
+    if (!active) {
+      // Empty state (no match) — never leave a dangling IDREF behind.
+      input.removeAttribute('aria-activedescendant');
+      return;
+    }
+
+    if (input.getAttribute('aria-activedescendant') !== active.id) {
+      input.setAttribute('aria-activedescendant', active.id);
+    }
+  }, [activeValue, query, locale, inputRef]);
+
+  return null;
+}
 
 /**
  * The one shared "inside" of every language switcher surface (#634).
@@ -50,49 +104,6 @@ export function LanguageSwitcherPanel({
     const current = languageOption(locale);
     return [current, ...LANGUAGE_OPTIONS.filter((option) => option.code !== locale)];
   }, [locale]);
-
-  /**
-   * cmdk 1.1.1 leaves `aria-activedescendant` unset until the *first value
-   * change*: its auto-highlight runs before the options' `aria-selected` lands,
-   * so the lookup that fills `selectedItemId` finds nothing (verified in dev and
-   * production builds). The current option is highlighted and Enter is still a
-   * no-op, but a screen reader would not hear which option is active on open.
-   * Sync it on open (and after clearing the query); from the first arrow key or
-   * keystroke cmdk owns the attribute again, so this only runs with no query.
-   */
-  useEffect(() => {
-    if (query !== '') return;
-
-    let frame = 0;
-    let cancelled = false;
-    let attempts = 0;
-
-    const syncActiveDescendant = () => {
-      if (cancelled) return;
-
-      const input = inputRef.current;
-      const activeItem = input
-        ?.closest('[cmdk-root]')
-        ?.querySelector<HTMLElement>('[cmdk-item][aria-selected="true"]');
-
-      if (input && activeItem) {
-        if (input.getAttribute('aria-activedescendant') !== activeItem.id) {
-          input.setAttribute('aria-activedescendant', activeItem.id);
-        }
-        return;
-      }
-
-      // cmdk sets `aria-selected` a commit later; retry for a few frames.
-      if (attempts++ < 10) frame = requestAnimationFrame(syncActiveDescendant);
-    };
-
-    frame = requestAnimationFrame(syncActiveDescendant);
-
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(frame);
-    };
-  }, [options, query]);
 
   return (
     <Command label={t('search_label')}>
@@ -133,6 +144,7 @@ export function LanguageSwitcherPanel({
           );
         })}
       </CommandList>
+      <ActiveDescendantSync inputRef={inputRef} query={query} locale={locale} />
       <CommandEmpty className="px-3 py-6 text-center text-sm">
         <p role="status" className="font-medium">
           {t('empty_title')}
