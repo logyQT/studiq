@@ -7,6 +7,7 @@ import type { QueryKey } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowRight,
+  CheckCheck,
   Copy,
   Download,
   Eye,
@@ -72,7 +73,7 @@ import { SpeedDial } from '@/components/shared/speed-dial';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import { useDebounce } from '@/hooks/use-debounce';
 import { usePersistedState } from '@/hooks/use-persisted-state';
-import { useSelection } from '@/hooks/use-selection';
+import { isAllSelected, useSelection } from '@/hooks/use-selection';
 import { getGradientHex } from '@/lib/color-utils';
 
 interface DeckDetailScreenProps {
@@ -269,6 +270,10 @@ export function DeckDetailScreen({
   });
 
   const selection = useSelection();
+  const allSelected = isAllSelected(
+    flashcards.map((fc) => fc.id),
+    selection.selectedIds,
+  );
   const [importOpen, setImportOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [barStyle, setBarStyle] = useState<React.CSSProperties>({});
@@ -739,6 +744,26 @@ export function DeckDetailScreen({
       />
 
       <h3 className="text-lg font-semibold max-sm:block hidden">{t('flashcards_section')}</h3>
+
+      {selection.isSelecting && flashcards.length > 0 && (
+        <div className="flex items-center gap-2 py-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              allSelected
+                ? selection.handleDeselectAll()
+                : selection.handleSelectAll(flashcards.map((fc) => fc.id))
+            }
+          >
+            <CheckCheck className="mr-1.5 h-4 w-4" />
+            {allSelected ? t('deselect_all') : t('select_all')}
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            {t('n_selected', { count: selection.selectedIds.size })}
+          </span>
+        </div>
+      )}
 
       <PageGrid
         isLoading={false}
