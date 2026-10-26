@@ -75,6 +75,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { usePersistedState } from '@/hooks/use-persisted-state';
 import { isAllSelected, useSelection } from '@/hooks/use-selection';
 import { getGradientHex } from '@/lib/color-utils';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface DeckDetailScreenProps {
   deckId: string;
@@ -587,6 +588,7 @@ export function DeckDetailScreen({
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8">
                 <MoreVertical className="h-4 w-4" />
+                <SrLabel k="more_actions_deck" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">

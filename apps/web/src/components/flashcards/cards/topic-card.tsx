@@ -14,6 +14,7 @@ import {
 import { CheckSquare, Eye, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { getGradientHex } from '@/lib/color-utils';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface TopicCardProps {
   topic: Topic;
@@ -107,6 +108,7 @@ export function TopicCard({
                 className="h-8 w-8 text-muted-foreground/80 hover:text-foreground shrink-0 -mr-1"
               >
                 <MoreVertical className="h-4 w-4" />
+                <SrLabel k="more_actions_for" values={{ name: topic.name }} />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -189,6 +191,7 @@ export function TopicCard({
                     className="h-8 w-8 text-muted-foreground hover:text-foreground"
                   >
                     <MoreVertical className="h-4 w-4" />
+                    <SrLabel k="more_actions_for" values={{ name: topic.name }} />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">

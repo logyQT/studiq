@@ -42,6 +42,7 @@ import {
   type GroupMemberRole,
   toGroupMemberOptions,
 } from '@/lib/group-role';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface Group {
   id: string;
@@ -196,6 +197,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                             variant="ghost"
                             size="icon"
                             title={t('manage_members')}
+                            aria-label={t('manage_members')}
                             onClick={() => setManagingMembers(group)}
                           >
                             <Users className="w-4 h-4" />
@@ -204,6 +206,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                             <DialogTrigger asChild>
                               <Button variant="ghost" size="icon" onClick={() => setEditing(group)}>
                                 <Pencil className="w-4 h-4" />
+                                <SrLabel k="edit_group" values={{ name: group.name }} />
                               </Button>
                             </DialogTrigger>
                             <DialogContent aria-describedby={undefined}>
@@ -226,6 +229,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
                           >
                             <Button variant="ghost" size="icon" onClick={() => setDeleting(group)}>
                               <Trash2 className="w-4 h-4 text-destructive" />
+                              <SrLabel k="delete_group" values={{ name: group.name }} />
                             </Button>
                             <DialogContent>
                               <DialogHeader>

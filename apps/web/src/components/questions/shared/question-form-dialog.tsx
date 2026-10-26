@@ -28,6 +28,7 @@ import {
   type QuestionFormError,
   validateQuestionForm,
 } from '@/lib/question-form';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface AnswerForm {
   content: string;
@@ -246,6 +247,7 @@ export function QuestionFormDialog({
                     {type !== 'true_false' && answers.length > 1 && (
                       <Button variant="ghost" size="icon" onClick={() => removeAnswer(i)}>
                         <X className="h-4 w-4" />
+                        <SrLabel k="remove_answer" values={{ number: i + 1 }} />
                       </Button>
                     )}
                   </div>

@@ -36,6 +36,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/datetime';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface OrgRole {
   id: string;
@@ -310,6 +311,7 @@ export default function InvitationsPage() {
                       onClick={() => removeInviteRow(i)}
                     >
                       <X className="size-4" />
+                      <SrLabel k="remove_row" values={{ number: i + 1 }} />
                     </Button>
                   )}
                 </div>

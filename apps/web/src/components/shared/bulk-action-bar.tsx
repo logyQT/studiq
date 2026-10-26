@@ -4,6 +4,7 @@ import { Button } from '@studiq/ui';
 import { X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
+import { SrLabel } from '@/components/shared/sr-label';
 
 interface BulkActionBarProps {
   selectedCount: number;
@@ -23,6 +24,7 @@ export function BulkActionBar({ selectedCount, onClearSelection, children }: Bul
           {children}
           <Button variant="ghost" size="icon-sm" onClick={onClearSelection}>
             <X className="h-4 w-4" />
+            <SrLabel k="clear_selection" />
           </Button>
         </div>
       </div>

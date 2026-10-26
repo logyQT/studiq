@@ -29,6 +29,26 @@
     "groups_placeholder": "Select groups...",
     "groups_empty": "No groups found"
   },
+  "A11y": {
+    "remove_row": "Remove row {number}",
+    "copy_invite_link": "Copy invitation link",
+    "remove_member": "Remove member {name}",
+    "role_permissions": "Permissions of role {name}",
+    "edit_role": "Edit role {name}",
+    "delete_role": "Delete role {name}",
+    "stop_generating": "Stop generating",
+    "send_message": "Send message",
+    "dismiss_checklist": "Hide the getting started checklist",
+    "start_cram": "Start cramming: {name}",
+    "more_actions_for": "More actions: {name}",
+    "more_actions_flashcard": "More flashcard actions",
+    "more_actions_deck": "More deck actions",
+    "edit_group": "Edit group {name}",
+    "delete_group": "Delete group {name}",
+    "back": "Back",
+    "remove_answer": "Remove answer {number}",
+    "clear_selection": "Clear selection"
+  },
   "Errors": {
     "ERROR_INTERNAL_SERVER": "An unexpected server error occurred. Please try again later.",
     "ERROR_INVALID_INPUT": "The provided data is invalid.",

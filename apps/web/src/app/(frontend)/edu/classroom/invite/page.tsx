@@ -24,6 +24,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import { SrLabel } from '@/components/shared/sr-label';
 
 const InviteFormSchema = z.object({
   name: z.string().nonempty().min(1).max(100),
@@ -137,6 +138,7 @@ export default function ClassroomInvitePage() {
                   }}
                 >
                   <Copy className="size-4" />
+                  <SrLabel k="copy_invite_link" />
                 </Button>
               </div>
             </div>

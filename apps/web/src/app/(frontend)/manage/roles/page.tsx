@@ -30,6 +30,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useFeature } from '@/hooks/use-feature';
 import { useFeatures } from '@/hooks/use-features';
+import { SrLabel } from '@/components/shared/sr-label';
 
 const PERMISSION_GROUPS = [
   {
@@ -274,6 +275,7 @@ export default function RolesPage() {
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openPermEditor(role)}>
                           <ShieldCheck className="w-4 h-4" />
+                          <SrLabel k="role_permissions" values={{ name: role.name }} />
                         </Button>
                         <Dialog
                           open={editing?.id === role.id}
@@ -282,6 +284,7 @@ export default function RolesPage() {
                           <DialogTrigger asChild>
                             <Button variant="ghost" size="icon" onClick={() => setEditing(role)}>
                               <Pencil className="w-4 h-4" />
+                              <SrLabel k="edit_role" values={{ name: role.name }} />
                             </Button>
                           </DialogTrigger>
                           <DialogContent aria-describedby={undefined}>
@@ -306,6 +309,7 @@ export default function RolesPage() {
                             <DialogTrigger asChild>
                               <Button variant="ghost" size="icon" onClick={() => setDeleting(role)}>
                                 <Trash2 className="w-4 h-4 text-destructive" />
+                                <SrLabel k="delete_role" values={{ name: role.name }} />
                               </Button>
                             </DialogTrigger>
                             <DialogContent>
