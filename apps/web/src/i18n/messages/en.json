@@ -1013,7 +1013,7 @@
   },
   "ManageMembersPage": {
     "title": "Members",
-    "total_count": "total",
+    "total_count": "{count} total",
     "search_placeholder": "Search members...",
     "role_filter": "Filter by role",
     "all_roles": "All Roles",

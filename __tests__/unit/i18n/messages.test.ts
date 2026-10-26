@@ -225,6 +225,12 @@ describe.each(Object.entries(locales))('i18n messages (%s)', (_locale, messages)
     expect(messages.AccountPage.password_requirements).not.toHaveLength(0);
   });
 
+  it('shows the member count in the manage-members header', () => {
+    const message = (messages.ManageMembersPage as Record<string, string>).total_count;
+
+    expect(message).toContain('{count}');
+  });
+
   it('translates the deck group-required hint in every deck namespace', () => {
     for (const namespace of DECK_GROUP_REQUIRED_NAMESPACES) {
       const message = (messages[namespace] as Record<string, string>).groups_required;

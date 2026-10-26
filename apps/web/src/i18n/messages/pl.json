@@ -994,7 +994,7 @@
   },
   "ManageMembersPage": {
     "title": "Członkowie",
-    "total_count": "łącznie",
+    "total_count": "{count} łącznie",
     "search_placeholder": "Szukaj członków...",
     "role_filter": "Filtruj po roli",
     "all_roles": "Wszystkie role",
