@@ -7,6 +7,8 @@ import {
   DropdownMenuContent,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Popover,
+  PopoverAnchor,
   UserAvatar,
 } from '@studiq/ui';
 import {
@@ -23,12 +25,13 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { DesktopNav } from '@/components/layout/navbar/desktop-nav';
 import { MobileNav } from '@/components/layout/navbar/mobile-nav';
 import type { NavLink } from '@/components/layout/navbar/types';
 import { UserMenuHeader, UserMenuItems } from '@/components/layout/user-menu-content';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { LanguageSwitcherContent } from '@/components/shared/language-switcher/language-switcher-content';
 import { useBranding } from '@/hooks/use-branding';
 
 const studentLinks: NavLink[] = [
@@ -63,6 +66,15 @@ export function Navbar() {
   const { user, isLoading } = useAuth();
   const pathname = usePathname();
   const [avatarOpen, setAvatarOpen] = useState(false);
+  const [languageOpen, setLanguageOpen] = useState(false);
+  const avatarButtonRef = useRef<HTMLButtonElement>(null);
+  /**
+   * Set by the language row, consumed by the menu's `onCloseAutoFocus`: the
+   * panel must mount only after the modal menu has unmounted, otherwise it
+   * inherits `pointer-events: none` and loses focus to the menu's own
+   * close-autofocus.
+   */
+  const pendingLanguageRef = useRef(false);
   const { logoUrl } = useBranding();
 
   const accountType = user?.app_metadata?.account_type as AccountType | undefined;
@@ -140,21 +152,46 @@ export function Navbar() {
           {/* RIGHT — desktop only */}
           <div className="hidden sm:flex items-center gap-2 shrink-0">
             {isLoading ? null : user ? (
-              <DropdownMenu open={avatarOpen} onOpenChange={setAvatarOpen}>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="rounded-full transition hover:scale-105 active:scale-95"
+              <Popover open={languageOpen} onOpenChange={setLanguageOpen}>
+                <DropdownMenu open={avatarOpen} onOpenChange={setAvatarOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <PopoverAnchor asChild>
+                      <button
+                        ref={avatarButtonRef}
+                        type="button"
+                        aria-label={t('user_menu')}
+                        className="rounded-full transition hover:scale-105 active:scale-95"
+                      >
+                        <UserAvatar name={user.user_metadata?.name} email={user.email} size={36} />
+                      </button>
+                    </PopoverAnchor>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className="w-56"
+                    onCloseAutoFocus={(event) => {
+                      if (!pendingLanguageRef.current) return;
+                      pendingLanguageRef.current = false;
+                      event.preventDefault();
+                      setLanguageOpen(true);
+                    }}
                   >
-                    <UserAvatar name={user.user_metadata?.name} email={user.email} size={36} />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <UserMenuHeader />
-                  <DropdownMenuSeparator />
-                  <UserMenuItems onItemClick={() => setAvatarOpen(false)} />
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    <UserMenuHeader />
+                    <DropdownMenuSeparator />
+                    <UserMenuItems
+                      onItemClick={() => setAvatarOpen(false)}
+                      onRequestPanel={() => {
+                        pendingLanguageRef.current = true;
+                      }}
+                    />
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <LanguageSwitcherContent
+                  align="end"
+                  onDismiss={() => setLanguageOpen(false)}
+                  returnFocusRef={avatarButtonRef}
+                />
+              </Popover>
             ) : (
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" asChild>

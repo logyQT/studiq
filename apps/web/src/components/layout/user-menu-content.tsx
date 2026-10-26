@@ -2,25 +2,13 @@
 
 import { AccountType } from '@studiq/authz';
 import { DropdownMenuItem, DropdownMenuSeparator, UserAvatar } from '@studiq/ui';
-import { BadgeCheck, Check, CreditCard, Globe, LogOut, Moon, Sparkles, Sun } from 'lucide-react';
+import { BadgeCheck, CreditCard, LogOut, Moon, Sparkles, Sun } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { LanguageMenuRow } from '@/components/shared/language-switcher/language-menu-row';
 import { cn } from '@/lib/utils';
-
-type Locale = 'pl' | 'en';
-
-function getLocale(): Locale {
-  if (typeof document === 'undefined') return 'pl';
-  const match = document.cookie.match(/NEXT_LOCALE=(pl|en)/);
-  return (match?.[1] as Locale) || 'pl';
-}
-
-function changeLanguage(lang: Locale) {
-  document.cookie = `NEXT_LOCALE=${lang}; path=/; max-age=31536000`;
-  window.location.reload();
-}
 
 export function UserMenuHeader() {
   const { user } = useAuth();
@@ -80,19 +68,37 @@ function MenuDivider({ variant }: { variant: UserMenuVariant }) {
 
 export type UserMenuVariant = 'menu' | 'plain';
 
-export function UserMenuItems({
-  onItemClick,
-  variant = 'menu',
-}: {
-  onItemClick?: () => void;
-  /** 'menu' inside a Radix DropdownMenuContent; 'plain' for non-menu contexts such as a Sheet. */
-  variant?: UserMenuVariant;
-}) {
+export type UserMenuItemsProps =
+  | {
+      variant?: 'menu';
+      onItemClick?: () => void;
+      /**
+       * Menu variant only: the row asks the parent to open the shared language
+       * panel once the menu has closed (`onCloseAutoFocus` handoff).
+       */
+      onRequestPanel: () => void;
+    }
+  | {
+      /** 'plain' — non-menu contexts such as the mobile navbar sheet. */
+      variant: 'plain';
+      onItemClick?: () => void;
+    };
+
+export function UserMenuItems(props: UserMenuItemsProps) {
+  const { onItemClick } = props;
+  const variant: UserMenuVariant = props.variant ?? 'menu';
   const t = useTranslations('DashboardLayout');
   const router = useRouter();
   const { user } = useAuth();
-  const locale = getLocale();
   const { setTheme } = useTheme();
+  // The language row is the only language entry; it owns the panel and the
+  // locale commit (see language-menu-row.tsx) so no surface re-implements them.
+  const languageRow =
+    props.variant === 'plain' ? (
+      <LanguageMenuRow variant="plain" />
+    ) : (
+      <LanguageMenuRow variant="menu" onRequestPanel={props.onRequestPanel} />
+    );
 
   const accountType = user?.app_metadata?.account_type as AccountType | undefined;
   const dashboardPrefix = (() => {
@@ -166,28 +172,7 @@ export function UserMenuItems({
 
       <MenuDivider variant={variant} />
 
-      <MenuEntry
-        variant={variant}
-        onSelect={() => {
-          changeLanguage('pl');
-          onItemClick?.();
-        }}
-      >
-        <Globe className="size-4 text-muted-foreground" />
-        <span>Polski</span>
-        {locale === 'pl' && <Check className="ml-auto size-4" />}
-      </MenuEntry>
-      <MenuEntry
-        variant={variant}
-        onSelect={() => {
-          changeLanguage('en');
-          onItemClick?.();
-        }}
-      >
-        <Globe className="size-4 text-muted-foreground" />
-        <span>English</span>
-        {locale === 'en' && <Check className="ml-auto size-4" />}
-      </MenuEntry>
+      {languageRow}
 
       <MenuDivider variant={variant} />
 

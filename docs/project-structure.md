@@ -28,13 +28,13 @@ studiq/
 │   │   │   │   └── not-found.tsx     # 404 page
 │   │   │   ├── components/           # Domain + layout components
 │   │   │   │   ├── flashcards/ questions/ stats/ study/ ...   # Domain components
-│   │   │   │   ├── layout/           # Navbar, DashboardLayout, Footer, ThemeToggle, LanguageToggle, user-menu
+│   │   │   │   ├── layout/           # Navbar, DashboardLayout, Footer, ThemeToggle, user-menu
 │   │   │   │   ├── providers/        # AuthProvider, ThemeProvider, QueryProvider
-│   │   │   │   ├── shared/           # Shared generic components (entity-not-found, markdown-renderer...)
+│   │   │   │   ├── shared/           # Shared generic components (entity-not-found, markdown-renderer, language-switcher/...)
 │   │   │   │   └── dev/              # Dev utilities (quick-login)
 │   │   │   ├── hooks/                # Custom React hooks (use-api.ts, use-ai-chat.ts, use-permissions.ts, ...)
 │   │   │   ├── i18n/                 # next-intl request config + messages/ (en.json, pl.json)
-│   │   │   ├── lib/                  # Client utilities (api.ts, query-keys.ts, permissions.ts, utils.ts)
+│   │   │   ├── lib/                  # Client utilities (api.ts, query-keys.ts, permissions.ts, locale.ts, utils.ts)
 │   │   │   ├── styles/               # Global CSS (highlight.css)
 │   │   │   ├── types/                # TypeScript type definitions
 │   │   │   └── proxy.ts              # Next.js middleware (session, RBAC route rules)

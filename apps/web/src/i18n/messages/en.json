@@ -96,6 +96,7 @@
     "register": "Register",
     "logout": "Logout",
     "mobile_menu": "Menu",
+    "user_menu": "User menu",
     "account": "Account",
     "billing": "Billing",
     "notifications": "Notifications",
@@ -347,7 +348,6 @@
     "edu_classroom": "Classroom",
     "classroom_invite": "Invite Students",
     "classroom_members": "Members",
-    "language": "Language",
     "theme": "Theme",
     "orgs_label": "Organizations",
     "sidebar_main": "Main",
@@ -2835,5 +2835,15 @@
     "problem": "Service issue",
     "unavailable": "Unable to check status",
     "last_checked": "Last checked"
+  },
+  "LanguageSwitcher": {
+    "label": "Language",
+    "search_label": "Search languages",
+    "search_placeholder": "Search by language or code…",
+    "empty_title": "No matching language",
+    "empty_hint": "Try a name (e.g. “English”) or a code (e.g. “en”).",
+    "empty_clear": "Clear",
+    "current": "current",
+    "changed": "Language changed to {language}."
   }
 }

@@ -139,6 +139,7 @@
     "register": "Rejestracja",
     "logout": "Wyloguj się",
     "mobile_menu": "Menu",
+    "user_menu": "Menu użytkownika",
     "account": "Konto",
     "billing": "Płatności",
     "notifications": "Powiadomienia",
@@ -329,7 +330,6 @@
     "edu_classroom": "Klasa",
     "classroom_invite": "Zaproś studentów",
     "classroom_members": "Członkowie",
-    "language": "Język",
     "theme": "Motyw",
     "orgs_label": "Organizacje",
     "sidebar_main": "Główne",
@@ -2815,5 +2815,15 @@
     "problem": "Problem",
     "unavailable": "Nie można sprawdzić statusu",
     "last_checked": "Ostatnie sprawdzenie"
+  },
+  "LanguageSwitcher": {
+    "label": "Język",
+    "search_label": "Szukaj języka",
+    "search_placeholder": "Szukaj języka lub kodu…",
+    "empty_title": "Brak pasującego języka",
+    "empty_hint": "Wpisz nazwę (np. „polski”) lub kod (np. „pl”).",
+    "empty_clear": "Wyczyść",
+    "current": "bieżący",
+    "changed": "Zmieniono język na {language}."
   }
 }
