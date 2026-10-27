@@ -15,6 +15,7 @@ export const PROFILE_BY_FILE: Record<string, SeedProfile> = {
   'flashcard-detail.spec.ts': 'content',
   'flashcard-selection.spec.ts': 'content',
   'flashcard-topics.spec.ts': 'content',
+  'student-flashcard.spec.ts': 'content',
   'question-bank-crud.spec.ts': 'content',
   'teacher-flashcard.spec.ts': 'content',
 };

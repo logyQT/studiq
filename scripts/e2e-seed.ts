@@ -347,6 +347,20 @@ async function seedTenant(t: Tenant): Promise<void> {
       ),
   ]);
   await run([
+    db.from('deck_groups').upsert(
+      [t.ids.deck, t.ids.deck2].map((deckId) => ({ deck_id: deckId, group_id: t.ids.group })),
+      { onConflict: 'deck_id,group_id' },
+    ),
+    db.from('bank_groups').upsert(
+      [t.ids.bank, t.ids.bank2].map((bankId) => ({ bank_id: bankId, group_id: t.ids.group })),
+      { onConflict: 'bank_id,group_id' },
+    ),
+    db
+      .from('topic_groups')
+      .upsert(
+        { topic_id: t.ids.topic, group_id: t.ids.group },
+        { onConflict: 'topic_id,group_id' },
+      ),
     db.from('flashcards').upsert(
       [0, 1].flatMap((d) =>
         Array.from({ length: 10 }, (_, i) => ({

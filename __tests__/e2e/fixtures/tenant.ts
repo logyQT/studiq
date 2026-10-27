@@ -57,7 +57,13 @@ function tenantFor(info: { file: string; title: string; project: { name: string 
   return tenant;
 }
 
-async function login(page: Page, user: TenantUser, baseURL: string): Promise<void> {
+async function login(
+  page: Page,
+  tenant: Tenant,
+  role: 'teacher' | 'student',
+  baseURL: string,
+): Promise<void> {
+  const user = tenant.users[role];
   const res = await page.request.post('/api/v1/auth/login', {
     data: { email: user.email, password: user.password },
   });
@@ -69,7 +75,14 @@ async function login(page: Page, user: TenantUser, baseURL: string): Promise<voi
   // The suite asserts English copy in places; pin the locale the same way a
   // returning user would (next-intl reads NEXT_LOCALE).
   const host = new URL(baseURL).hostname;
-  await page.context().addCookies([{ name: 'NEXT_LOCALE', value: 'en', domain: host, path: '/' }]);
+  await page.context().addCookies([
+    { name: 'NEXT_LOCALE', value: 'en', domain: host, path: '/' },
+    // Tenant isolation: a seeded user belongs to exactly one org, but the app
+    // only writes this hint when an org is created or switched. Without it the
+    // dashboard races to pick one and `withAuth` scopes the first requests to no
+    // org at all (scopes then fall back to `own`).
+    { name: 'active_org_id', value: tenant.org.id, domain: host, path: '/', httpOnly: true },
+  ]);
   // Boot the app so the proxy redirects to this account's dashboard before the
   // spec starts clicking.
   await page.goto('/login');
@@ -80,7 +93,7 @@ async function login(page: Page, user: TenantUser, baseURL: string): Promise<voi
 export async function signIn(page: Page, role: 'teacher' | 'student'): Promise<void> {
   const info = base.info();
   const tenant = tenantFor(info);
-  await login(page, tenant.users[role], info.project.use.baseURL ?? 'http://localhost:3000');
+  await login(page, tenant, role, info.project.use.baseURL ?? 'http://localhost:3000');
 }
 
 export const test = base.extend<Fixtures>({
@@ -90,7 +103,7 @@ export const test = base.extend<Fixtures>({
 
   loginAs: async ({ page, tenant }, use, testInfo) => {
     await use((role) =>
-      login(page, tenant.users[role], testInfo.project.use.baseURL ?? 'http://localhost:3000'),
+      login(page, tenant, role, testInfo.project.use.baseURL ?? 'http://localhost:3000'),
     );
   },
 });
