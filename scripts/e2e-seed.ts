@@ -21,6 +21,7 @@ import type { Database } from '@studiq/server/types/database';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { shortHash, tenantKey, uuidv5 } from '#test/e2e/fixtures/ids';
+import { profileFor } from '#test/e2e/fixtures/profiles';
 
 type Role = 'teacher' | 'student';
 
@@ -42,6 +43,7 @@ interface Tenant {
   users: Record<Role, TenantUser>;
   ids: {
     group: string;
+    topic: string;
     deck: string;
     deck2: string;
     bank: string;
@@ -130,7 +132,7 @@ function buildTenant(file: string, title: string, project: string): Tenant {
     file,
     title,
     project,
-    profile: 'content',
+    profile: profileFor(file),
     org: { id: orgId, name: `e2e ${tag}` },
     users: {
       teacher: {
@@ -150,6 +152,7 @@ function buildTenant(file: string, title: string, project: string): Tenant {
     },
     ids: {
       group: uuidv5(`${key}:group`),
+      topic: uuidv5(`${key}:topic`),
       deck: uuidv5(`${key}:deck`),
       deck2: uuidv5(`${key}:deck2`),
       bank: uuidv5(`${key}:bank`),
@@ -288,6 +291,16 @@ async function seedTenant(t: Tenant): Promise<void> {
 
   // Content profile: decks, banks, a quiz and a published assignment.
   await run([
+    db.from('topics').upsert(
+      {
+        id: t.ids.topic,
+        organization_id: t.org.id,
+        created_by: teacher.id,
+        name: 'Topic A',
+        visibility: 'group',
+      },
+      { onConflict: 'id' },
+    ),
     db.from('flashcard_decks').upsert(
       [
         {
@@ -378,6 +391,13 @@ async function seedTenant(t: Tenant): Promise<void> {
     ),
   ]);
   await run([
+    db.from('flashcard_topic_assignments').upsert(
+      Array.from({ length: 10 }, (_, i) => ({
+        flashcard_id: uuidv5(`${t.key}:card:0:${i}`),
+        topic_id: t.ids.topic,
+      })),
+      { onConflict: 'flashcard_id,topic_id' },
+    ),
     db.from('question_options').upsert(
       [0, 1].flatMap((b) =>
         [0, 1, 2].flatMap((i) =>

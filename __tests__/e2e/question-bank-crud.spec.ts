@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { t } from '#test/e2e/utils';
+import { sidebarLink, t } from '#test/e2e/utils';
 import { expect, test } from '#test/e2e/fixtures/tenant';
 
 const newBankButton = t('QuestionBankManagement.new_bank');
@@ -37,7 +37,7 @@ function cardMenuTrigger(page: Page, name: string) {
 // Client-side navigation from the already-hydrated dashboard (as other edu specs do):
 // a full page load right after login can still remount the screen and drop dialog state.
 async function openBanksPage(page: Page) {
-  await page.getByRole('link', { name: t('DashboardLayout.edu_questions') }).click();
+  await sidebarLink(page, 'DashboardLayout.edu_questions').click();
   await page.waitForURL(/\/edu\/questions/);
   await expect(page.getByRole('button', { name: newBankButton }).first()).toBeVisible();
 }
@@ -69,8 +69,6 @@ async function deleteBankFromMenu(page: Page, name: string) {
 }
 
 test.describe('Question bank card menu', () => {
-  test.use({ seed: 'content' });
-
   test.beforeEach(async ({ page, loginAs }) => {
     await loginAs('teacher');
     await openBanksPage(page);

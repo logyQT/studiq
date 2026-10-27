@@ -11,7 +11,9 @@
 export type SeedProfile = 'bare' | 'content';
 
 /** Specs that read pre-existing content instead of creating it. */
-export const PROFILE_BY_FILE: Record<string, SeedProfile> = {};
+export const PROFILE_BY_FILE: Record<string, SeedProfile> = {
+  'question-bank-crud.spec.ts': 'content',
+};
 
 export function profileFor(file: string): SeedProfile {
   return PROFILE_BY_FILE[file.split('/').pop() ?? ''] ?? 'bare';
