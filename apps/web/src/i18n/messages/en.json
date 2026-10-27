@@ -1545,6 +1545,28 @@
     "n_selected": "{count} selected",
     "select_cards": "Select Cards"
   },
+  "StudyGoal": {
+    "title": "Daily study goal",
+    "description": "How many cards you want to study each day (every rating counts, cram does not)",
+    "set_goal": "Set a goal",
+    "change": "Change",
+    "not_set": "No goal set. Pick a number of cards per day and your progress shows up here.",
+    "progress": "{done} of {goal}",
+    "reached": "Goal for today reached. Great job!",
+    "remaining": "{count, plural, one {# card} other {# cards}} to go",
+    "field_label": "Cards per day",
+    "field_hint": "A number from 0 to {max}; 0 turns the goal off.",
+    "field_error": "Enter a whole number from 0 to {max}.",
+    "preset_label": "{count, plural, one {# card a day} other {# cards a day}}",
+    "off": "Turn off",
+    "save": "Save goal",
+    "cancel": "Cancel",
+    "goal_saved": "{count, plural, one {Goal: # card a day} other {Goal: # cards a day}}",
+    "goal_off": "Daily goal turned off",
+    "save_failed": "The goal could not be saved. Try again.",
+    "load_error": "The goal could not be loaded.",
+    "retry": "Try again"
+  },
   "AppFlashcardStudyPage": {
     "tab_study": "Study",
     "tab_cram_deck": "Cram Deck",

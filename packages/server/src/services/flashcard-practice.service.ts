@@ -18,6 +18,7 @@ import type {
 } from '@studiq/server/models/flashcard-practice.model';
 import type { IntervalUnit, Rating } from '@studiq/server/models/flashcard-spaced-repetition.model';
 import { flashcardSpacedRepetitionService } from '@studiq/server/services/flashcard-spaced-repetition.service';
+import type { UpdateStudySettingsInput } from '@studiq/server/models/study-settings.model';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /** Zero envelope for `getStateBreakdown` when the call is impossible or the RPC fails. */
@@ -183,6 +184,16 @@ export class FlashcardPracticeService {
     const settings = settingsResult.data as any;
     const budget = Math.max(0, settings.new_cards_per_day - settings.new_cards_introduced);
     const actualNew = await this.countNewCards(ctx);
+
+    // Today's reviews, for the daily goal's progress (same UTC day the daily reset uses).
+    const supabase = await this.createClient();
+    const { data: daily } = await supabase
+      .from('user_daily_activity')
+      .select('reviews_count')
+      .eq('user_id', ctx.userId)
+      .eq('date', new Date().toISOString().split('T')[0])
+      .maybeSingle();
+
     return success({
       learningSteps: settings.learning_steps,
       newCardsPerDay: settings.new_cards_per_day,
@@ -192,7 +203,26 @@ export class FlashcardPracticeService {
       remainingNewCards: Math.min(budget, actualNew),
       totalNewCards: actualNew,
       dailyReviewGoal: settings.daily_review_goal ?? 0,
+      reviewedToday: daily?.reviews_count ?? 0,
     });
+  }
+
+  /** The student's own study settings; today only the daily review goal (0 = off). */
+  async updateSettings(
+    ctx: RequestContext,
+    input: UpdateStudySettingsInput,
+  ): Promise<ServiceResult<unknown>> {
+    const ensured = await this.ensureStudySettings(ctx);
+    if (!ensured.success) return ensured;
+
+    const supabase = await this.createClient();
+    const { error } = await supabase
+      .from('user_study_settings')
+      .update({ daily_review_goal: input.dailyReviewGoal })
+      .eq('user_id', ctx.userId);
+    if (error) return toDbFailure(error);
+
+    return this.getSettings(ctx);
   }
 
   private async countNewCards(ctx: RequestContext): Promise<number> {
