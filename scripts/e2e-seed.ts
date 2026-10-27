@@ -352,8 +352,11 @@ async function seedTenant(t: Tenant): Promise<void> {
         Array.from({ length: 10 }, (_, i) => ({
           id: uuidv5(`${t.key}:card:${d}:${i}`),
           deck_id: d === 0 ? t.ids.deck : t.ids.deck2,
+          organization_id: t.org.id,
+          created_by: teacher.id,
           front: `Card ${d + 1}-${i + 1} front`,
           back: `Card ${d + 1}-${i + 1} back`,
+          visibility: 'group' as const,
         })),
       ),
       { onConflict: 'id' },

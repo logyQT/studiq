@@ -12,6 +12,7 @@ export type SeedProfile = 'bare' | 'content';
 
 /** Specs that read pre-existing content instead of creating it. */
 export const PROFILE_BY_FILE: Record<string, SeedProfile> = {
+  'flashcard-detail.spec.ts': 'content',
   'question-bank-crud.spec.ts': 'content',
 };
 
