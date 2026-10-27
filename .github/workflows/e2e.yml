@@ -29,12 +29,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2.2.0
+      - uses: actions/setup-node@v7
         with:
-          # Pinned: `bun lint` is canary-only, but `bun fmt` output differs
-          # between canary builds — an unpinned canary flags files that are
-          # clean for the developer's build.
-          bun-version: 1.4.4-canary.20261027.1
+          node-version: 22
+      # `bun lint` is canary-only, and canaries are published to npm but not as
+      # GitHub releases (setup-bun resolves releases and 404s on them).
+      - name: Install Bun (pinned canary)
+        run: npm install -g bun@1.4.4-canary.20261027.1
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
@@ -53,12 +54,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2.2.0
+      - uses: actions/setup-node@v7
         with:
-          # Pinned: `bun lint` is canary-only, but `bun fmt` output differs
-          # between canary builds — an unpinned canary flags files that are
-          # clean for the developer's build.
-          bun-version: 1.4.4-canary.20261027.1
+          node-version: 22
+      # `bun lint` is canary-only, and canaries are published to npm but not as
+      # GitHub releases (setup-bun resolves releases and 404s on them).
+      - name: Install Bun (pinned canary)
+        run: npm install -g bun@1.4.4-canary.20261027.1
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
@@ -72,12 +74,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2.2.0
+      - uses: actions/setup-node@v7
         with:
-          # Pinned: `bun lint` is canary-only, but `bun fmt` output differs
-          # between canary builds — an unpinned canary flags files that are
-          # clean for the developer's build.
-          bun-version: 1.4.4-canary.20261027.1
+          node-version: 22
+      # `bun lint` is canary-only, and canaries are published to npm but not as
+      # GitHub releases (setup-bun resolves releases and 404s on them).
+      - name: Install Bun (pinned canary)
+        run: npm install -g bun@1.4.4-canary.20261027.1
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
@@ -123,13 +126,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: oven-sh/setup-bun@v2.2.0
+      - uses: actions/setup-node@v7
         with:
-          # Pinned: `bun lint` is canary-only, but `bun fmt` output differs
-          # between canary builds — an unpinned canary flags files that are
-          # clean for the developer's build. Keep in step with
-          # scripts/check-bun-version.ts (>= 1.4.4).
-          bun-version: 1.4.4-canary.20261027.1
+          node-version: 22
+      # `bun lint` is canary-only, and canaries are published to npm but not as
+      # GitHub releases (setup-bun resolves releases and 404s on them).
+      - name: Install Bun (pinned canary)
+        run: npm install -g bun@1.4.4-canary.20261027.1
 
       - name: Cache bun install
         uses: actions/cache@v6
