@@ -67,7 +67,7 @@ export default function EduBillingPage() {
           </ul>
 
           <div className="flex gap-3 pt-2">
-            <Button onClick={() => router.push('/checkout?plan_id=teacher_license')}>
+            <Button onClick={() => router.push('/edu/upgrade')}>
               <CreditCard className="size-4 mr-2" />
               {t('manage_subscription')}
             </Button>
