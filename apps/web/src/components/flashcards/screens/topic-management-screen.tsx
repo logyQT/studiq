@@ -32,6 +32,7 @@ import { useGroupOptions } from '@/hooks/use-group-options';
 import { useOrgs } from '@/hooks/use-orgs';
 import { useSelection } from '@/hooks/use-selection';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
+import { resolveListEmptyView } from '@/lib/list-empty-view';
 import { flashcardKeys, topicKeys } from '@/lib/query-keys';
 
 interface TopicManagementScreenProps {
@@ -75,6 +76,8 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
     hasNextPage,
     isFetchingNextPage,
     isLoading,
+    isError,
+    refetch,
   } = useInfiniteQuery({
     queryKey: topicKeys.paginated(filters, activeOrg?.id),
     queryFn: ({ pageParam }) =>
@@ -383,6 +386,18 @@ export function TopicManagementScreen({ t }: TopicManagementScreenProps) {
         isFetchingNextPage={isFetchingNextPage}
         loadMoreRef={loadMoreRef}
         isEmpty={topics.length === 0}
+        isError={isError}
+        onRetry={() => refetch()}
+        emptyView={resolveListEmptyView({
+          visibleCount: topics.length,
+          query: debouncedSearch,
+          activeFilters: (owner !== 'all' ? 1 : 0) + groupIds.length,
+        })}
+        onClearFilters={() => {
+          setSearchInput('');
+          setOwner('all');
+          setGroupIds([]);
+        }}
         emptyIcon={<Tags className="h-10 w-10 text-muted-foreground" />}
         emptyTitle={t('no_topics')}
         emptyAction={

@@ -30,6 +30,12 @@
     "groups_empty": "Nie znaleziono grup"
   },
   "EmptyStates": {
+    "load_error": "Nie udało się wczytać listy",
+    "load_error_desc": "Sprawdź połączenie i spróbuj ponownie.",
+    "retry": "Spróbuj ponownie",
+    "no_results_query": "Brak wyników dla \"{query}\"",
+    "no_results_filters": "Nic nie pasuje do wybranych filtrów",
+    "clear_filters": "Wyczyść filtry",
     "hint_dismiss": "Ukryj wskazówkę",
     "hint_decks": "Talia to zbiór fiszek o jednym temacie. Utwórz talię, dodaj do niej fiszki, a potem wróć do nich w zakładce Nauka zgodnie z harmonogramem powtórek.",
     "hint_question_banks": "Bank pytań grupuje pytania do testów i kartkówek. Utwórz bank, dodaj pytania, a potem użyj ich w teście.",

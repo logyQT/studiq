@@ -40,7 +40,8 @@ import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { formatDate } from '@/lib/datetime';
 import { SrLabel } from '@/components/shared/sr-label';
-import { EmptyState } from '@/components/shared/empty-state';
+import { EmptyState, ErrorState, NoResultsState } from '@/components/shared/empty-state';
+import { resolveListEmptyView } from '@/lib/list-empty-view';
 
 interface GroupInfo {
   id: string;
@@ -78,6 +79,7 @@ export default function MembersPage() {
   const [orgGroups, setOrgGroups] = useState<OrgGroup[]>([]);
   const [roles, setRoles] = useState<OrgRole[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState('all');
   const [removeId, setRemoveId] = useState<string | null>(null);
@@ -89,6 +91,7 @@ export default function MembersPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const [membersRes, groupsRes, rolesRes] = await Promise.all([
         fetch('/api/v1/organization/members'),
@@ -100,6 +103,9 @@ export default function MembersPage() {
       const rolesJson = await rolesRes.json();
       if (membersJson.success && Array.isArray(membersJson.data)) {
         setMembers(membersJson.data);
+      } else {
+        // A failed list is an error with a retry, never "no members".
+        setLoadError(true);
       }
       if (groupsJson.success && Array.isArray(groupsJson.data)) {
         setOrgGroups(groupsJson.data);
@@ -107,6 +113,8 @@ export default function MembersPage() {
       if (rolesJson.success && Array.isArray(rolesJson.data)) {
         setRoles(rolesJson.data);
       }
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -122,6 +130,11 @@ export default function MembersPage() {
       (m.full_name?.toLowerCase().includes(search.toLowerCase()) ?? false);
     const matchesRole = filterRole === 'all' || m.orgRoleName === filterRole;
     return matchesSearch && matchesRole;
+  });
+  const emptyView = resolveListEmptyView({
+    visibleCount: filtered.length,
+    query: search,
+    activeFilters: filterRole !== 'all' ? 1 : 0,
   });
 
   function openManageDialog(member: Member) {
@@ -358,7 +371,20 @@ export default function MembersPage() {
             {filtered.length === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="p-0">
-                  <EmptyState compact icon={Users} title={t('no_members')} />
+                  {loadError ? (
+                    <ErrorState compact onRetry={load} />
+                  ) : emptyView.kind === 'no-results' ? (
+                    <NoResultsState
+                      compact
+                      query={emptyView.query}
+                      onClear={() => {
+                        setSearch('');
+                        setFilterRole('all');
+                      }}
+                    />
+                  ) : (
+                    <EmptyState compact icon={Users} title={t('no_members')} />
+                  )}
                 </TableCell>
               </TableRow>
             )}

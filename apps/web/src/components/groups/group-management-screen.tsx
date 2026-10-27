@@ -43,7 +43,7 @@ import {
   toGroupMemberOptions,
 } from '@/lib/group-role';
 import { SrLabel } from '@/components/shared/sr-label';
-import { EmptyState } from '@/components/shared/empty-state';
+import { EmptyState, ErrorState } from '@/components/shared/empty-state';
 
 interface Group {
   id: string;
@@ -67,6 +67,7 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
   const canWrite = useFeature()('group.manage');
   const [data, setData] = useState<Group[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState<Group | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<Group | null>(null);
@@ -74,10 +75,14 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const res = await fetch('/api/v1/organization/groups');
       const json = await res.json();
       if (json.success) setData(json.data);
+      else setLoadError(true);
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -271,7 +276,11 @@ export function GroupManagementScreen({ t }: GroupManagementScreenProps) {
               {(!data || data.length === 0) && (
                 <TableRow>
                   <TableCell colSpan={4} className="p-0">
-                    <EmptyState compact icon={Users} title={t('no_groups')} />
+                    {loadError ? (
+                      <ErrorState compact onRetry={load} />
+                    ) : (
+                      <EmptyState compact icon={Users} title={t('no_groups')} />
+                    )}
                   </TableCell>
                 </TableRow>
               )}

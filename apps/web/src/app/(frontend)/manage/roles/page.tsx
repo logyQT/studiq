@@ -31,7 +31,7 @@ import { toast } from 'sonner';
 import { useFeature } from '@/hooks/use-feature';
 import { useFeatures } from '@/hooks/use-features';
 import { SrLabel } from '@/components/shared/sr-label';
-import { EmptyState } from '@/components/shared/empty-state';
+import { EmptyState, ErrorState } from '@/components/shared/empty-state';
 
 const PERMISSION_GROUPS = [
   {
@@ -88,6 +88,7 @@ export default function RolesPage() {
   const { isPending: featuresPending } = useFeatures();
   const [data, setData] = useState<OrgRole[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState<OrgRole | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<OrgRole | null>(null);
@@ -96,10 +97,14 @@ export default function RolesPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const res = await fetch('/api/v1/organization/roles');
       const json = await res.json();
       if (json.success) setData(json.data);
+      else setLoadError(true);
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -337,7 +342,11 @@ export default function RolesPage() {
               {(!data || data.length === 0) && (
                 <TableRow>
                   <TableCell colSpan={canBuild ? 5 : 4} className="p-0">
-                    <EmptyState compact icon={ShieldCheck} title={t('no_roles')} />
+                    {loadError ? (
+                      <ErrorState compact onRetry={load} />
+                    ) : (
+                      <EmptyState compact icon={ShieldCheck} title={t('no_roles')} />
+                    )}
                   </TableCell>
                 </TableRow>
               )}

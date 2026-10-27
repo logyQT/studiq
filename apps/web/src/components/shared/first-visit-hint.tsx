@@ -4,6 +4,7 @@ import { Button } from '@studiq/ui';
 import { Lightbulb, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { type FirstVisitHintId, hintStorageKey } from '@/lib/first-visit-hint';
 
 interface FirstVisitHintProps {
@@ -20,22 +21,29 @@ interface FirstVisitHintProps {
  */
 export function FirstVisitHint({ id, className }: FirstVisitHintProps) {
   const t = useTranslations('EmptyStates');
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    // Without a signed-in user there is nothing to remember the dismissal under: no tip.
+    if (!userId) {
+      setVisible(false);
+      return;
+    }
     try {
-      setVisible(localStorage.getItem(hintStorageKey(id)) !== '1');
+      setVisible(localStorage.getItem(hintStorageKey(id, userId)) !== '1');
     } catch {
       setVisible(true);
     }
-  }, [id]);
+  }, [id, userId]);
 
   if (!visible) return null;
 
   function dismiss() {
     setVisible(false);
     try {
-      localStorage.setItem(hintStorageKey(id), '1');
+      if (userId) localStorage.setItem(hintStorageKey(id, userId), '1');
     } catch {
       /* storage unavailable: the tip comes back next visit */
     }

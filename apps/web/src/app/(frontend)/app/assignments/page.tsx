@@ -10,7 +10,7 @@ import {
   type StudentAssignmentAttemptState,
 } from '@/lib/assignment-attempts';
 import { studentAssignmentKeys } from '@/lib/query-keys';
-import { EmptyState } from '@/components/shared/empty-state';
+import { EmptyState, ErrorState } from '@/components/shared/empty-state';
 import { FirstVisitHint } from '@/components/shared/first-visit-hint';
 
 interface StudentAssignment extends StudentAssignmentAttemptState {
@@ -70,7 +70,12 @@ export default function StudentAssignmentsPage() {
   const t = useTranslations('AppAssignmentsPage');
   const locale = useLocale();
 
-  const { data: assignments, isLoading } = useApiQuery<StudentAssignment[]>({
+  const {
+    data: assignments,
+    isLoading,
+    isError,
+    refetch,
+  } = useApiQuery<StudentAssignment[]>({
     queryKey: studentAssignmentKeys.all,
     url: '/api/v1/assignments',
   });
@@ -96,6 +101,8 @@ export default function StudentAssignmentsPage() {
             <div key={i} className="h-24 bg-muted animate-pulse rounded-lg" />
           ))}
         </div>
+      ) : isError ? (
+        <ErrorState onRetry={() => refetch()} />
       ) : isEmpty ? (
         <EmptyState icon={ClipboardCheck} title={t('empty')} description={t('empty_desc')} />
       ) : (

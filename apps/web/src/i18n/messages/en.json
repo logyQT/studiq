@@ -30,6 +30,12 @@
     "groups_empty": "No groups found"
   },
   "EmptyStates": {
+    "load_error": "The list could not be loaded",
+    "load_error_desc": "Check your connection and try again.",
+    "retry": "Try again",
+    "no_results_query": "No results for \"{query}\"",
+    "no_results_filters": "Nothing matches the current filters",
+    "clear_filters": "Clear filters",
     "hint_dismiss": "Dismiss the tip",
     "hint_decks": "A deck is a set of flashcards on one subject. Create a deck, add flashcards to it, then come back to them under Study on the review schedule.",
     "hint_question_banks": "A question bank groups the questions for quizzes and tests. Create a bank, add questions, then use them in a quiz.",

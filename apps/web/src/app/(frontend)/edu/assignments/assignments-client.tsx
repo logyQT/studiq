@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { useApiQuery } from '@/hooks/use-api';
 import { assignmentKeys } from '@/lib/query-keys';
-import { EmptyState } from '@/components/shared/empty-state';
+import { EmptyState, ErrorState } from '@/components/shared/empty-state';
 import { FirstVisitHint } from '@/components/shared/first-visit-hint';
 
 interface Assignment {
@@ -24,7 +24,12 @@ export default function EduAssignmentsClient() {
   const t = useTranslations('EduAssignmentsPage');
   const locale = useLocale();
 
-  const { data: assignments, isLoading } = useApiQuery<Assignment[]>({
+  const {
+    data: assignments,
+    isLoading,
+    isError,
+    refetch,
+  } = useApiQuery<Assignment[]>({
     queryKey: assignmentKeys.all,
     url: '/api/v1/teacher/assignments',
   });
@@ -65,6 +70,8 @@ export default function EduAssignmentsClient() {
             </Card>
           ))}
         </div>
+      ) : isError ? (
+        <ErrorState onRetry={() => refetch()} />
       ) : assignments?.length === 0 ? (
         <EmptyState
           icon={FileText}
