@@ -8,7 +8,7 @@ on:
     - cron: '0 3 * * *'
   pull_request:
     paths:
-      - '__tests__/e2e/**'
+      - '__tests__/**'
       - 'scripts/e2e-seed.ts'
       - 'playwright.config.ts'
       - 'apps/**'
@@ -22,11 +22,83 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Cheapest gates first, in the order a failure is cheapest to explain:
+  # formatting, then lint, then types. Everything else waits on this.
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: canary
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - run: bun install --frozen-lockfile
+      - name: Format
+        run: bun run format:check
+      - name: Lint
+        run: bun run lint
+      - name: Typecheck
+        run: bun run typecheck:all
+
+  unit:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: canary
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - run: bun install --frozen-lockfile
+      - run: bun run test:unit
+
+  integration:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: canary
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - run: bun install --frozen-lockfile
+      - name: Start Supabase
+        run: bunx supabase start -x studio,imgproxy,logflare,vector,edge-runtime
+      - name: Write root .env
+        # vitest's loadEnv() reads the repo root; integration imports the route
+        # handlers directly, so no app server is needed.
+        run: |
+          eval "$(bunx supabase status -o env)"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
+            echo "OTEL_SDK_DISABLED=true"
+          } > .env
+      - run: bun run test:integration
+      - name: Stop Supabase
+        if: always()
+        run: bunx supabase stop --no-backup || true
+
   e2e:
     # ubuntu-latest = 4 vCPU / 16 GB / ~14 GB free disk. The suite needs
     # Supabase (~5 GB of images with studio/logflare/edge excluded), node_modules
     # (1.5 GB), the Next build (~1 GB after dropping .next/cache) and two
     # browsers (~0.5 GB) — it fits, but only just.
+    needs: [checks, unit]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -87,7 +159,7 @@ jobs:
       - name: Install browsers
         run: bunx playwright install --with-deps chromium firefox
 
-      # Playwright's webServer builds and starts both apps (bun run build &&
+      # Playwright's webServer builds and starts the app (bun run build &&
       # bun run start), so there is no separate build step to keep in sync.
       - name: Run Playwright
         run: bunx playwright test --shuffle --reporter=line
