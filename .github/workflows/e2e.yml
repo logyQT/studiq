@@ -22,8 +22,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Cheapest gates first, in the order a failure is cheapest to explain:
-  # formatting, then lint, then types. Everything else waits on this.
+  # Lint then types, cheapest first. Formatting is enforced by the git hooks
+  # (pre-commit auto-formats, pre-push checks) and not here: `bun lint` requires
+  # a canary build, and `bun fmt` output drifts between canary builds — a
+  # format gate on a moving formatter fails on files that are clean locally.
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -37,8 +39,6 @@ jobs:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - run: bun install --frozen-lockfile
-      - name: Format
-        run: bun run format:check
       - name: Lint
         run: bun run lint
       - name: Typecheck
