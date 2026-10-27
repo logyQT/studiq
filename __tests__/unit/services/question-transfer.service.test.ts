@@ -106,7 +106,54 @@ describe('QuestionTransferService.exportBank', () => {
         },
         { type: 'open', content: 'Q2', topics: [], answers: [] },
       ],
+      notReimportable: 0,
     });
+  });
+
+  const listed = (rows: unknown[]) => {
+    vi.mocked(questionBankService.getById).mockResolvedValue(success({ name: 'B' }) as any);
+    vi.mocked(questionService.list).mockResolvedValue(success(rows) as any);
+  };
+  const row = (over: Record<string, unknown> = {}) => ({
+    type: 'mcq',
+    content: 'Q',
+    explanation: null,
+    topics: [],
+    question_answers: [
+      { content: 'A', is_correct: true, order_index: 0 },
+      { content: 'B', is_correct: false, order_index: 1 },
+    ],
+    ...over,
+  });
+
+  it('refuses a bank above the cap instead of cutting it off', async () => {
+    listed(Array.from({ length: 1001 }, () => row()));
+
+    const result = await service.exportBank(ctx, 'bank-1');
+
+    expect(result).toMatchObject({ success: false, error: 'UNPROCESSABLE_ENTITY' });
+  });
+
+  it('exports a bank of exactly the cap', async () => {
+    listed(Array.from({ length: 1000 }, () => row()));
+
+    const result = await service.exportBank(ctx, 'bank-1');
+
+    expect(result.success && result.data.questions).toHaveLength(1000);
+  });
+
+  it('counts the questions the importer would reject, and exports them anyway', async () => {
+    const eleven = Array.from({ length: 11 }, (_, i) => ({
+      content: `A${i}`,
+      is_correct: i === 0,
+      order_index: i,
+    }));
+    listed([row(), row({ question_answers: eleven })]);
+
+    const result = await service.exportBank(ctx, 'bank-1');
+
+    expect(result.success && result.data.notReimportable).toBe(1);
+    expect(result.success && result.data.questions).toHaveLength(2);
   });
 
   it('answers NOT_FOUND for a bank the caller cannot read, without listing questions', async () => {
@@ -266,13 +313,18 @@ describe('QuestionTransferController', () => {
 
   it('exports CSV by default with a safe ASCII file name', async () => {
     service.exportBank.mockResolvedValue(
-      success({ bankName: 'Łódź: "Ćwiczenia"/1', questions: [q({ type: 'open', answers: [] })] }),
+      success({
+        bankName: 'Łódź: "Ćwiczenia"/1',
+        questions: [q({ type: 'open', answers: [] })],
+        notReimportable: 0,
+      }),
     );
 
     const response = await controller.exportBank('b', {}, ctx);
 
     expect(response).toMatchObject({ success: true });
     const file = (response as any).data;
+    expect(file.notReimportable).toBe(0);
     expect(file.filename).toBe('questions-lodz-cwiczenia-1.csv');
     expect(file.contentType).toBe('text/csv; charset=utf-8');
     expect(file.body.startsWith('﻿type,content')).toBe(true);

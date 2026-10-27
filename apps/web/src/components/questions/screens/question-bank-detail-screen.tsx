@@ -69,7 +69,8 @@ export function QuestionBankDetailScreen({
       }),
   );
 
-  // Import and export are for people who may change the bank.
+  // Export follows read (reading a bank means having all of it, answer key included); importing
+  // overwrites the bank, so it needs the right to update it.
   const canManageBank = access.canCreateQuestion;
 
   // The bank name is the breadcrumb leaf; the raw bank UUID must never render.
@@ -199,7 +200,7 @@ export function QuestionBankDetailScreen({
             <p className="text-sm text-muted-foreground mt-1">{bank.description}</p>
           )}
         </div>
-        {canManageBank && <QuestionBankTransfer bankId={bankId} />}
+        <QuestionBankTransfer bankId={bankId} canImport={canManageBank} />
         {access.canCreateQuestion && (
           <Button onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" /> {t('create_question')}

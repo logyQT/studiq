@@ -17,6 +17,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Table,
   TableBody,
@@ -319,12 +321,44 @@ function ImportDialog({ bankId, open, onOpenChange }: ImportDialogProps) {
 }
 
 /**
- * Export (CSV / JSON) and import actions of a question bank (#652). Only offered to people
- * who may change the bank; the API enforces the same rules.
+ * Export (CSV / JSON) and import actions of a question bank (#652). Rules, as the API applies
+ * them: reading a bank means having all of it, so anyone who can read it may export it (the
+ * file contains the answer key and explanations); importing adds to the bank, so it needs the
+ * right to update it.
  */
-export function QuestionBankTransfer({ bankId }: { bankId: string }) {
+export function QuestionBankTransfer({
+  bankId,
+  canImport,
+}: {
+  bankId: string;
+  canImport: boolean;
+}) {
   const t = useTranslations('QuestionTransfer');
   const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  // A fetch instead of a plain link: a refusal (bank too large, no access) has to be a message,
+  // not a JSON document in a new tab, and the not-re-importable warning arrives in a header.
+  async function handleExport(format: 'csv' | 'json') {
+    setExporting(true);
+    try {
+      const res = await fetch(`/api/v1/questions/banks/${bankId}/export?format=${format}`);
+      if (!res.ok) {
+        toast.error(res.status === 422 ? t('export_too_large') : t('export_failed'));
+        return;
+      }
+      const filename =
+        /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ??
+        `questions.${format}`;
+      download(filename, await res.text(), res.headers.get('Content-Type') ?? 'text/plain');
+      const skipped = Number(res.headers.get('X-Studiq-Not-Reimportable') ?? 0);
+      if (skipped > 0) toast.warning(t('export_not_reimportable', { count: skipped }));
+    } catch {
+      toast.error(t('export_failed'));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <>
@@ -335,27 +369,31 @@ export function QuestionBankTransfer({ bankId }: { bankId: string }) {
             {t('menu_label')}
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem asChild>
-            <a href={`/api/v1/questions/banks/${bankId}/export?format=csv`} download>
-              <ArrowDownToLine className="mr-2 h-4 w-4" aria-hidden="true" />
-              {t('export_csv')}
-            </a>
+        <DropdownMenuContent align="end" className="max-w-72">
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+            {t('export_note')}
+          </DropdownMenuLabel>
+          <DropdownMenuItem disabled={exporting} onSelect={() => void handleExport('csv')}>
+            <ArrowDownToLine className="mr-2 h-4 w-4" aria-hidden="true" />
+            {t('export_csv')}
           </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <a href={`/api/v1/questions/banks/${bankId}/export?format=json`} download>
-              <ArrowDownToLine className="mr-2 h-4 w-4" aria-hidden="true" />
-              {t('export_json')}
-            </a>
+          <DropdownMenuItem disabled={exporting} onSelect={() => void handleExport('json')}>
+            <ArrowDownToLine className="mr-2 h-4 w-4" aria-hidden="true" />
+            {t('export_json')}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setImportOpen(true)}>
-            <ArrowUpFromLine className="mr-2 h-4 w-4" aria-hidden="true" />
-            {t('import_action')}
-          </DropdownMenuItem>
+          {canImport && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setImportOpen(true)}>
+                <ArrowUpFromLine className="mr-2 h-4 w-4" aria-hidden="true" />
+                {t('import_action')}
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <ImportDialog bankId={bankId} open={importOpen} onOpenChange={setImportOpen} />
+      {canImport && <ImportDialog bankId={bankId} open={importOpen} onOpenChange={setImportOpen} />}
     </>
   );
 }

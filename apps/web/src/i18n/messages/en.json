@@ -2437,6 +2437,10 @@
     "groups_empty": "No groups found"
   },
   "QuestionTransfer": {
+    "export_note": "The export contains the whole bank, answer key and explanations included.",
+    "export_failed": "The export could not be downloaded.",
+    "export_too_large": "This bank is too large to export (1000 questions at most). Split it into smaller banks.",
+    "export_not_reimportable": "{count, plural, one {# question} other {# questions}} in the export would be rejected by an import until fixed (for example too many answers).",
     "menu_label": "Import & export",
     "export_csv": "Export as CSV",
     "export_json": "Export as JSON",

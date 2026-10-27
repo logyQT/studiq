@@ -5,9 +5,11 @@ import { wrapService } from '@studiq/server/lib/observability';
 import { failure, type ServiceResult, success } from '@studiq/server/lib/service-result';
 import { createClient } from '@studiq/server/lib/supabase/server';
 import { toDbFailure } from '@studiq/server/lib/supabase-errors';
-import type {
-  ImportQuestionsResult,
-  TransferQuestion,
+import {
+  EXPORT_MAX_QUESTIONS,
+  type ImportQuestionsResult,
+  type TransferQuestion,
+  TransferQuestionSchema,
 } from '@studiq/server/models/question-transfer.model';
 import { limitsResolver } from '@studiq/server/services/limits.resolver';
 import { questionService } from '@studiq/server/services/question.service';
@@ -26,11 +28,20 @@ interface ListedQuestion {
 export class QuestionTransferService {
   constructor(private createClient: () => Promise<SupabaseClient>) {}
 
-  /** Every question of a bank the caller may read, in the shape both file formats use. */
+  /**
+   * Every question of a bank the caller may read, in the shape both file formats use.
+   *
+   * Export follows read: `questionService.list` already returns the answer key and the
+   * explanation to anyone who can read the bank, so reading a bank means having all of it. A bank
+   * above `EXPORT_MAX_QUESTIONS` is refused (422) instead of being cut off. `notReimportable`
+   * counts the questions the importer would reject (the data is exported as it is).
+   */
   async exportBank(
     ctx: RequestContext,
     bankId: string,
-  ): Promise<ServiceResult<{ bankName: string; questions: TransferQuestion[] }>> {
+  ): Promise<
+    ServiceResult<{ bankName: string; questions: TransferQuestion[]; notReimportable: number }>
+  > {
     // The bank lookup applies the read permission, so a foreign or unknown bank is NOT_FOUND.
     const bank = await questionBankService.getById(bankId, ctx);
     if (!bank.success) return failure(bank.error);
@@ -39,6 +50,7 @@ export class QuestionTransferService {
     if (!listed.success) return failure(listed.error);
 
     const rows = listed.data as ListedQuestion[];
+    if (rows.length > EXPORT_MAX_QUESTIONS) return failure('UNPROCESSABLE_ENTITY');
     const questions = rows.map((row): TransferQuestion => {
       const answers = [...(row.question_answers ?? [])].sort(
         (a, b) => (a.order_index ?? 0) - (b.order_index ?? 0),
@@ -52,7 +64,11 @@ export class QuestionTransferService {
       };
     });
 
-    return success({ bankName: (bank.data as { name: string }).name, questions });
+    const notReimportable = questions.filter(
+      (question) => !TransferQuestionSchema.safeParse(question).success,
+    ).length;
+
+    return success({ bankName: (bank.data as { name: string }).name, questions, notReimportable });
   }
 
   /**

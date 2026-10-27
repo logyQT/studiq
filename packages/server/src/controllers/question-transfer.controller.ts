@@ -20,6 +20,8 @@ export interface QuestionExportFile {
   body: string;
   contentType: string;
   filename: string;
+  /** Exported questions the importer would reject; sent to the client so it can warn. */
+  notReimportable: number;
 }
 
 /** ASCII-only and quote-free, so the name is safe inside a Content-Disposition header. */
@@ -50,7 +52,7 @@ export class QuestionTransferController {
     const result = await this.questionTransferService.exportBank(ctx, bankId);
     if (isFailure(result)) return controllerResponse.error(result.error);
 
-    const { bankName, questions } = result.data;
+    const { bankName, questions, notReimportable } = result.data;
     const base = `questions-${fileSlug(bankName)}`;
     const file: QuestionExportFile =
       parsed.data.format === 'json'
@@ -62,11 +64,13 @@ export class QuestionTransferController {
             ),
             contentType: 'application/json; charset=utf-8',
             filename: `${base}.json`,
+            notReimportable,
           }
         : {
             body: questionsToCsv(questions),
             contentType: 'text/csv; charset=utf-8',
             filename: `${base}.csv`,
+            notReimportable,
           };
 
     return controllerResponse.success(file);

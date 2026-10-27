@@ -4,6 +4,11 @@ import { QuestionTypeEnum } from '@studiq/server/models/question.model';
 
 /** Most questions one import may create; bigger banks are split into several files. */
 export const IMPORT_MAX_QUESTIONS = 500;
+/**
+ * An export never truncates silently: a bank above this size is refused with an explicit error
+ * ("bank too large - split it").
+ */
+export const EXPORT_MAX_QUESTIONS = 1000;
 /** Answers per question, in both formats (the CSV has this many `answer_N` columns). */
 export const TRANSFER_MAX_ANSWERS = 10;
 export const TRANSFER_MAX_TOPICS = 10;

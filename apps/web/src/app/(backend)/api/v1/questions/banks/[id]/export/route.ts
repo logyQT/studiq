@@ -24,6 +24,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       headers: {
         'Content-Type': file.contentType,
         'Content-Disposition': `attachment; filename="${file.filename}"`,
+        // The file holds a whole bank, answer key included: never cache it, never sniff it.
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+        'X-Studiq-Not-Reimportable': String(file.notReimportable),
       },
     });
   });

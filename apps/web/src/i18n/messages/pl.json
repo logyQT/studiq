@@ -2418,6 +2418,10 @@
     "groups_empty": "Nie znaleziono grup"
   },
   "QuestionTransfer": {
+    "export_note": "Eksport zawiera cały bank pytań, razem z kluczem odpowiedzi i wyjaśnieniami.",
+    "export_failed": "Nie udało się pobrać eksportu.",
+    "export_too_large": "Ten bank pytań jest zbyt duży do eksportu (maks. 1000 pytań). Podziel go na mniejsze.",
+    "export_not_reimportable": "{count, plural, one {# pytanie} few {# pytania} other {# pytań}} z eksportu nie przejdzie importu bez poprawek (np. zbyt wiele odpowiedzi).",
     "menu_label": "Import i eksport",
     "export_csv": "Eksportuj do CSV",
     "export_json": "Eksportuj do JSON",
