@@ -1,9 +1,8 @@
 import type { NextResponse } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { forEachCopy, registerMock } from '#test/helpers/concurrent';
 import { createTestUser, type TestUserFixture } from '#test/helpers/test-user';
 import {
-  applyRegisteredMock,
+  useRealSupabase,
   cleanupOrganizationDeep,
   createServiceClient,
   mockUser,
@@ -12,195 +11,193 @@ import { createNextRequest } from '#test/integration/test-utils';
 import { GET as listOrgsGet } from '@/app/(backend)/api/v1/me/orgs/route';
 import { POST } from '@/app/(backend)/api/v1/organization/route';
 
-forEachCopy((copyId) => {
-  describe(`POST /api/v1/organization [${copyId}]`, () => {
-    registerMock(copyId, null);
+const suiteId = crypto.randomUUID().slice(0, 8);
 
-    let educator!: TestUserFixture;
-    let manager!: TestUserFixture;
-    let student!: TestUserFixture;
-    const createdOrgIds: string[] = [];
+describe(`POST /api/v1/organization`, () => {
+  let educator!: TestUserFixture;
+  let manager!: TestUserFixture;
+  let student!: TestUserFixture;
+  const createdOrgIds: string[] = [];
 
-    beforeAll(async () => {
-      educator = await createTestUser({ role: 'educator' });
-      manager = await createTestUser({ role: 'manager' });
-      student = await createTestUser({ role: 'student' });
+  beforeAll(async () => {
+    educator = await createTestUser({ role: 'educator' });
+    manager = await createTestUser({ role: 'manager' });
+    student = await createTestUser({ role: 'student' });
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useRealSupabase();
+  });
+
+  afterAll(async () => {
+    for (const orgId of createdOrgIds) {
+      await cleanupOrganizationDeep(orgId);
+    }
+  });
+
+  it('creates organization as educator and returns 201 with cookie', async () => {
+    mockUser(educator);
+
+    const req = createNextRequest('http://localhost/api/v1/organization', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: `org-create-${suiteId}-edu-${Date.now()}` }),
     });
 
-    beforeEach(() => {
-      vi.clearAllMocks();
-      applyRegisteredMock(copyId);
+    const response = await POST(req);
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.success).toBe(true);
+    expect(body.data.name).toContain(`org-create-${suiteId}-edu-`);
+    expect(body.data.id).toBeDefined();
+    expect(body.data.adminRoleId).toBeDefined();
+    createdOrgIds.push(body.data.id);
+  });
+
+  it('creates organization as manager and returns 201', async () => {
+    mockUser(manager);
+
+    const req = createNextRequest('http://localhost/api/v1/organization', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: `org-create-${suiteId}-mgr-${Date.now()}` }),
     });
 
-    afterAll(async () => {
-      for (const orgId of createdOrgIds) {
-        await cleanupOrganizationDeep(orgId);
-      }
+    const response = await POST(req);
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.success).toBe(true);
+    createdOrgIds.push(body.data.id);
+  });
+
+  it('adds creator as org member with admin role', async () => {
+    mockUser(educator);
+
+    const orgName = `org-create-${suiteId}-member-${Date.now()}`;
+    const req = createNextRequest('http://localhost/api/v1/organization', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: orgName }),
     });
 
-    it('creates organization as educator and returns 201 with cookie', async () => {
-      mockUser(educator);
+    const response = await POST(req);
+    const body = await response.json();
+    expect(response.status).toBe(201);
+    createdOrgIds.push(body.data.id);
 
-      const req = createNextRequest('http://localhost/api/v1/organization', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: `org-create-${copyId}-edu-${Date.now()}` }),
-      });
+    const supabase = createServiceClient();
+    const { data: members } = await supabase
+      .from('org_members')
+      .select('*, org_roles!inner(name)')
+      .eq('organization_id', body.data.id)
+      .eq('user_id', educator.id);
 
-      const response = await POST(req);
-      const body = await response.json();
+    expect(members?.length).toBe(1);
+    expect(members?.[0].org_roles.name).toBe('admin');
+  });
 
-      expect(response.status).toBe(201);
-      expect(body.success).toBe(true);
-      expect(body.data.name).toContain(`org-create-${copyId}-edu-`);
-      expect(body.data.id).toBeDefined();
-      expect(body.data.adminRoleId).toBeDefined();
-      createdOrgIds.push(body.data.id);
+  it('returns 201 with cookie, role ids and default group', async () => {
+    mockUser(educator);
+
+    const req = createNextRequest('http://localhost/api/v1/organization', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: `org-create-${suiteId}-roles-${Date.now()}` }),
     });
 
-    it('creates organization as manager and returns 201', async () => {
-      mockUser(manager);
+    const response = await POST(req);
+    const body = await response.json();
 
-      const req = createNextRequest('http://localhost/api/v1/organization', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: `org-create-${copyId}-mgr-${Date.now()}` }),
-      });
+    expect(response.status).toBe(201);
+    expect(body.success).toBe(true);
+    expect(body.data.adminRoleId).toBeDefined();
+    expect(body.data.teacherRoleId).toBeDefined();
+    expect(body.data.memberRoleId).toBeDefined();
+    expect(body.data.defaultGroupId).toBeDefined();
+    expect((response as NextResponse).cookies.get('active_org_id')?.value).toBe(body.data.id);
+    createdOrgIds.push(body.data.id);
+  });
 
-      const response = await POST(req);
-      const body = await response.json();
+  it('activates the new organization for the creator', async () => {
+    mockUser(manager);
 
-      expect(response.status).toBe(201);
-      expect(body.success).toBe(true);
-      createdOrgIds.push(body.data.id);
+    const req = createNextRequest('http://localhost/api/v1/organization', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: `org-create-${suiteId}-active-${Date.now()}` }),
     });
 
-    it('adds creator as org member with admin role', async () => {
-      mockUser(educator);
+    const response = await POST(req);
+    const body = await response.json();
 
-      const orgName = `org-create-${copyId}-member-${Date.now()}`;
-      const req = createNextRequest('http://localhost/api/v1/organization', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: orgName }),
-      });
+    expect(response.status).toBe(201);
+    createdOrgIds.push(body.data.id);
 
-      const response = await POST(req);
-      const body = await response.json();
-      expect(response.status).toBe(201);
-      createdOrgIds.push(body.data.id);
+    // Creating the organization is what makes it the caller's active org — the
+    // setup screen relies on this instead of calling POST /api/v1/me/orgs/switch (#306).
+    const activeOrgId = (response as NextResponse).cookies.get('active_org_id')?.value;
+    expect(activeOrgId).toBe(body.data.id);
 
-      const supabase = createServiceClient();
-      const { data: members } = await supabase
-        .from('org_members')
-        .select('*, org_roles!inner(name)')
-        .eq('organization_id', body.data.id)
-        .eq('user_id', educator.id);
+    const listResponse = await listOrgsGet(
+      createNextRequest('http://localhost/api/v1/me/orgs', undefined, {
+        active_org_id: activeOrgId as string,
+      }),
+    );
+    const listBody = await listResponse.json();
 
-      expect(members?.length).toBe(1);
-      expect(members?.[0].org_roles.name).toBe('admin');
+    expect(listResponse.status).toBe(200);
+    const created = listBody.data.find((org: { id: string }) => org.id === body.data.id);
+    expect(created).toMatchObject({ isActive: true, orgRoleName: 'admin' });
+  });
+
+  it('returns 403 when student tries to create', async () => {
+    mockUser(student);
+
+    const req = createNextRequest('http://localhost/api/v1/organization', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: `org-create-${suiteId}-forbidden` }),
     });
 
-    it('returns 201 with cookie, role ids and default group', async () => {
-      mockUser(educator);
+    const response = await POST(req);
+    const body = await response.json();
 
-      const req = createNextRequest('http://localhost/api/v1/organization', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: `org-create-${copyId}-roles-${Date.now()}` }),
-      });
+    expect(response.status).toBe(403);
+    expect(body.success).toBe(false);
+  });
 
-      const response = await POST(req);
-      const body = await response.json();
+  it('returns 401 when not authenticated', async () => {
+    mockUser(null);
 
-      expect(response.status).toBe(201);
-      expect(body.success).toBe(true);
-      expect(body.data.adminRoleId).toBeDefined();
-      expect(body.data.teacherRoleId).toBeDefined();
-      expect(body.data.memberRoleId).toBeDefined();
-      expect(body.data.defaultGroupId).toBeDefined();
-      expect((response as NextResponse).cookies.get('active_org_id')?.value).toBe(body.data.id);
-      createdOrgIds.push(body.data.id);
+    const req = createNextRequest('http://localhost/api/v1/organization', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: `org-create-${suiteId}-unauth` }),
     });
 
-    it('activates the new organization for the creator', async () => {
-      mockUser(manager);
+    const response = await POST(req);
+    const body = await response.json();
 
-      const req = createNextRequest('http://localhost/api/v1/organization', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: `org-create-${copyId}-active-${Date.now()}` }),
-      });
+    expect(response.status).toBe(401);
+    expect(body.success).toBe(false);
+  });
 
-      const response = await POST(req);
-      const body = await response.json();
+  it('returns 422 when name is too short', async () => {
+    mockUser(educator);
 
-      expect(response.status).toBe(201);
-      createdOrgIds.push(body.data.id);
-
-      // Creating the organization is what makes it the caller's active org — the
-      // setup screen relies on this instead of calling POST /api/v1/me/orgs/switch (#306).
-      const activeOrgId = (response as NextResponse).cookies.get('active_org_id')?.value;
-      expect(activeOrgId).toBe(body.data.id);
-
-      const listResponse = await listOrgsGet(
-        createNextRequest('http://localhost/api/v1/me/orgs', undefined, {
-          active_org_id: activeOrgId as string,
-        }),
-      );
-      const listBody = await listResponse.json();
-
-      expect(listResponse.status).toBe(200);
-      const created = listBody.data.find((org: { id: string }) => org.id === body.data.id);
-      expect(created).toMatchObject({ isActive: true, orgRoleName: 'admin' });
+    const req = createNextRequest('http://localhost/api/v1/organization', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'AB' }),
     });
 
-    it('returns 403 when student tries to create', async () => {
-      mockUser(student);
+    const response = await POST(req);
+    const body = await response.json();
 
-      const req = createNextRequest('http://localhost/api/v1/organization', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: `org-create-${copyId}-forbidden` }),
-      });
-
-      const response = await POST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(403);
-      expect(body.success).toBe(false);
-    });
-
-    it('returns 401 when not authenticated', async () => {
-      mockUser(null);
-
-      const req = createNextRequest('http://localhost/api/v1/organization', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: `org-create-${copyId}-unauth` }),
-      });
-
-      const response = await POST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(body.success).toBe(false);
-    });
-
-    it('returns 422 when name is too short', async () => {
-      mockUser(educator);
-
-      const req = createNextRequest('http://localhost/api/v1/organization', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'AB' }),
-      });
-
-      const response = await POST(req);
-      const body = await response.json();
-
-      expect(response.status).toBe(422);
-      expect(body.success).toBe(false);
-    });
+    expect(response.status).toBe(422);
+    expect(body.success).toBe(false);
   });
 });

@@ -1,0 +1,68 @@
+{
+  "generatedAt": "2026-10-27",
+  "scope": "Current local suite state after removing the 3x integration duplication and moving integration fixtures onto the shared tenant seeder (__tests__/helpers/tenant-seed.ts).",
+  "commands": {
+    "integration": "bun run test:integration",
+    "unit": "bun run test:unit",
+    "lint": "bun run lint",
+    "typecheck": "bun run typecheck:all + bun check"
+  },
+  "layers": {
+    "unit": "__tests__/unit — in-process; Supabase client is mocked. No app server, no database.",
+    "integration": "__tests__/integration — in-process; imports route handlers (36 files) or services/RPCs directly (17 files). No app HTTP server. Requires only Supabase: API :54321 (PostgREST, GoTrue, Storage) and Postgres :54322.",
+    "e2e": "__tests__/e2e — the only layer that needs the app. Playwright's webServer boots :3000; the admin-api project also boots :4000. Not run for this report."
+  },
+  "summary": {
+    "integration": {
+      "files": 53,
+      "filesPassed": 52,
+      "filesFailed": 1,
+      "tests": 525,
+      "passed": 524,
+      "failed": 1,
+      "skipped": 0,
+      "durationSeconds": 21
+    },
+    "unit": {
+      "files": 178,
+      "filesPassed": 178,
+      "tests": 2616,
+      "passed": 2616,
+      "failed": 0
+    },
+    "lint": "clean",
+    "typecheck": "clean (724 files)"
+  },
+  "failures": [
+    {
+      "id": "integration-active-org-membership-logout",
+      "suite": "integration",
+      "file": "__tests__/integration/active-org-membership.test.ts",
+      "describe": "active_org_id membership gate (#186)",
+      "test": "clears active_org_id on logout",
+      "location": "__tests__/integration/active-org-membership.test.ts:237",
+      "preExisting": true,
+      "reproducesInIsolation": true,
+      "relatedToRecentChanges": false,
+      "error": {
+        "type": "TypeError",
+        "message": "Cannot read properties of undefined (reading 'method')",
+        "stack": [
+          "withRequestInstrumentation (packages/server/src/lib/request-instrumentation.ts:85:40)",
+          "withPublicTracing (packages/server/src/lib/with-public-tracing.ts:22:10)",
+          "POST (apps/web/src/app/(backend)/api/v1/auth/logout/route.ts:8:10)",
+          "__tests__/integration/active-org-membership.test.ts:237:23"
+        ]
+      },
+      "cause": "The test calls `logoutPost()` with no argument. The logout route is wrapped in `withPublicTracing` -> `withRequestInstrumentation`, which reads `req.method`; `req` is undefined.",
+      "expectedBehaviour": "Logout responds 200 and clears the active_org_id cookie (empty value, Expires 1970, no Max-Age).",
+      "suggestedFix": "Pass a request, matching the other auth tests: `logoutPost(createNextRequest('http://localhost/api/v1/auth/logout', { method: 'POST' }))`. No production-code change is needed.",
+      "ownershipNote": "Untouched by the 3x removal and by the tenant-seeder migration; the test file has no forEachCopy usage and did not change."
+    }
+  ],
+  "environmentNotes": [
+    "No test under __tests__/integration needs the web app on :3000 or the admin app on :4000. The `http://localhost` URLs in those tests are only parsed by createNextRequest (__tests__/integration/test-utils.ts); no request is sent to them. The only real HTTP calls go to Supabase REST/Storage on :54321.",
+    "If Supabase local is not running, integration suites fail during setup with `seed <email>: fetch failed` from __tests__/helpers/tenant-seed.ts (ensureAccount). That is an environment failure, not a test failure; start Supabase and re-run.",
+    "Playwright e2e was not run. It is the only layer that needs the app: Playwright boots :3000 itself via `webServer`, and the admin-api project also boots :4000 (skip locally with E2E_SKIP_ADMIN_WS=1)."
+  ]
+}

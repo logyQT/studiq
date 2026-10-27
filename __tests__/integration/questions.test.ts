@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { forEachCopy, registerMock } from '#test/helpers/concurrent';
 import {
   type BeforeResult,
   before,
@@ -7,7 +6,7 @@ import {
   type TestUserFixture,
 } from '#test/helpers/test-user';
 import {
-  applyRegisteredMock,
+  useRealSupabase,
   cleanupFlashcardTopics,
   cleanupOrganizationByName,
   cleanupQuestions,
@@ -20,68 +19,204 @@ import { POST as createBankPost } from '@/app/(backend)/api/v1/questions/banks/r
 import { GET as GET_LIST, POST } from '@/app/(backend)/api/v1/questions/route';
 import { POST as createTopicPost } from '@/app/(backend)/api/v1/topics/route';
 
-forEachCopy((copyId) => {
-  describe(`Questions Integration [${copyId}]`, () => {
-    registerMock(copyId, null);
+const suiteId = crypto.randomUUID().slice(0, 8);
 
-    let educator!: BeforeResult;
-    let student!: TestUserFixture;
-    let manager!: TestUserFixture;
-    let orgId!: string;
+describe(`Questions Integration`, () => {
+  let educator!: BeforeResult;
+  let student!: TestUserFixture;
+  let manager!: TestUserFixture;
+  let orgId!: string;
 
-    beforeAll(async () => {
-      // Educator creates the org via the API and becomes its admin member.
-      educator = await before({ role: 'educator', org: true });
-      orgId = educator.orgId!;
-      student = await createTestUser({ role: 'student' });
-      manager = await createTestUser({ role: 'manager' });
-    });
+  beforeAll(async () => {
+    // Educator creates the org via the API and becomes its admin member.
+    educator = await before({ role: 'educator', org: true });
+    orgId = educator.orgId!;
+    student = await createTestUser({ role: 'student' });
+    manager = await createTestUser({ role: 'manager' });
+  });
 
-    beforeEach(async () => {
-      vi.clearAllMocks();
-      applyRegisteredMock(copyId);
-      // Keep the org's question set clean between tests.
-      // Scope cleanup to THIS copy's questions only via content prefix.
-      await cleanupQuestions(educator.user.id, `copy-${copyId}`);
-      // The create path now enforces `max_question_banks` (#183), so leaked
-      // per-test banks would push later tests over the plan limit. Questions
-      // cascade with their bank.
-      const service = createServiceClient();
-      await service.from('question_banks').delete().eq('created_by', educator.user.id);
-    });
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    useRealSupabase();
+    // Keep the org's question set clean between tests.
+    // Scope cleanup to THIS suite's questions only via content prefix.
+    await cleanupQuestions(educator.user.id, `copy-${suiteId}`);
+    // The create path now enforces `max_question_banks` (#183), so leaked
+    // per-test banks would push later tests over the plan limit. Questions
+    // cascade with their bank.
+    const service = createServiceClient();
+    await service.from('question_banks').delete().eq('created_by', educator.user.id);
+  });
 
-    afterAll(async () => {
-      await cleanupFlashcardTopics(educator.user.id, `q-test-topic-${copyId}`);
-      await cleanupFlashcardTopics(educator.user.id, `copy-${copyId}-topic-`);
-      await cleanupOrganizationByName('seed-org-');
-    });
+  afterAll(async () => {
+    await cleanupFlashcardTopics(educator.user.id, `q-test-topic-${suiteId}`);
+    await cleanupFlashcardTopics(educator.user.id, `copy-${suiteId}-topic-`);
+    await cleanupOrganizationByName('seed-org-');
+  });
 
-    const orgCookies = () => ({ active_org_id: orgId });
+  const orgCookies = () => ({ active_org_id: orgId });
 
-    async function createBank(name: string): Promise<string> {
+  async function createBank(name: string): Promise<string> {
+    mockUser(educator.user);
+    const req = createNextRequest(
+      'http://localhost/api/v1/questions/banks',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      },
+      orgCookies(),
+    );
+    const res = await createBankPost(req);
+    const body = await res.json();
+    if (res.status !== 201) throw new Error(`bank create failed: ${JSON.stringify(body)}`);
+    return body.data.id as string;
+  }
+
+  async function createQuestion(
+    content: string,
+    opts: { type?: 'mcq' | 'true_false'; topicIds?: string[] } = {},
+  ): Promise<{ id: string; bankId: string }> {
+    const bankId = await createBank(`q-test-bank-${suiteId}-${Date.now()}-${Math.random()}`);
+    mockUser(educator.user);
+    const prefixedContent = `copy-${suiteId}-${content}`;
+    const req = createNextRequest(
+      'http://localhost/api/v1/questions',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bankId,
+          type: opts.type ?? 'mcq',
+          content: prefixedContent,
+          answers: [{ content: 'Answer', isCorrect: true, orderIndex: 0 }],
+          ...(opts.topicIds ? { topicIds: opts.topicIds } : {}),
+        }),
+      },
+      orgCookies(),
+    );
+    const res = await POST(req);
+    const body = await res.json();
+    if (res.status !== 201) throw new Error(`question create failed: ${JSON.stringify(body)}`);
+    return { id: body.data.id as string, bankId };
+  }
+
+  async function createTopic(name: string): Promise<string> {
+    mockUser(educator.user);
+    const req = createNextRequest(
+      'http://localhost/api/v1/topics',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      },
+      orgCookies(),
+    );
+    const res = await createTopicPost(req);
+    const body = await res.json();
+    if (res.status !== 201) throw new Error(`topic create failed: ${JSON.stringify(body)}`);
+    return body.data.id as string;
+  }
+
+  describe('POST /api/v1/questions', () => {
+    it('creates a question and returns 201', async () => {
       mockUser(educator.user);
-      const req = createNextRequest(
+
+      const bankReq = createNextRequest(
         'http://localhost/api/v1/questions/banks',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name }),
+          body: JSON.stringify({ name: `q-test-Main Bank-${suiteId}` }),
         },
         orgCookies(),
       );
-      const res = await createBankPost(req);
-      const body = await res.json();
-      if (res.status !== 201) throw new Error(`bank create failed: ${JSON.stringify(body)}`);
-      return body.data.id as string;
-    }
+      const bankRes = await createBankPost(bankReq);
+      const bankBody = await bankRes.json();
+      expect(bankRes.status).toBe(201);
+      expect(bankBody.data.id).toBeDefined();
 
-    async function createQuestion(
-      content: string,
-      opts: { type?: 'mcq' | 'true_false'; topicIds?: string[] } = {},
-    ): Promise<{ id: string; bankId: string }> {
-      const bankId = await createBank(`q-test-bank-${copyId}-${Date.now()}-${Math.random()}`);
+      const req = createNextRequest(
+        'http://localhost/api/v1/questions',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bankId: bankBody.data.id,
+            type: 'mcq',
+            content: `copy-${suiteId}-What is 2+2?`,
+            answers: [
+              { content: '4', isCorrect: true, orderIndex: 0 },
+              { content: '5', isCorrect: false, orderIndex: 1 },
+            ],
+          }),
+        },
+        orgCookies(),
+      );
+
+      const response = await POST(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(body.success).toBe(true);
+      expect(body.data.content).toBe(`copy-${suiteId}-What is 2+2?`);
+      expect(body.data.question_answers).toBeDefined();
+    });
+
+    it('returns 422 when content is empty', async () => {
       mockUser(educator.user);
-      const prefixedContent = `copy-${copyId}-${content}`;
+
+      const req = createNextRequest(
+        'http://localhost/api/v1/questions',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bankId: '00000000-0000-4000-8000-000000000099',
+            type: 'mcq',
+            content: '',
+            answers: [{ content: 'Answer', isCorrect: true }],
+          }),
+        },
+        orgCookies(),
+      );
+
+      const response = await POST(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(422);
+      expect(body.success).toBe(false);
+    });
+
+    it('returns 422 when answers array is empty', async () => {
+      mockUser(educator.user);
+
+      const req = createNextRequest(
+        'http://localhost/api/v1/questions',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bankId: '00000000-0000-4000-8000-000000000099',
+            type: 'mcq',
+            content: 'Question',
+            answers: [],
+          }),
+        },
+        orgCookies(),
+      );
+
+      const response = await POST(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(422);
+      expect(body.success).toBe(false);
+    });
+
+    it('creates an open-answer question without answers and returns 201', async () => {
+      const bankId = await createBank(`q-test-open-bank-${suiteId}`);
+
+      mockUser(educator.user);
       const req = createNextRequest(
         'http://localhost/api/v1/questions',
         {
@@ -89,511 +224,373 @@ forEachCopy((copyId) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             bankId,
-            type: opts.type ?? 'mcq',
-            content: prefixedContent,
-            answers: [{ content: 'Answer', isCorrect: true, orderIndex: 0 }],
-            ...(opts.topicIds ? { topicIds: opts.topicIds } : {}),
+            type: 'open',
+            content: `copy-${suiteId}-Opisz drugą zasadę dynamiki Newtona.`,
+            explanation: 'F = m * a',
+            answers: [],
           }),
         },
         orgCookies(),
       );
-      const res = await POST(req);
-      const body = await res.json();
-      if (res.status !== 201) throw new Error(`question create failed: ${JSON.stringify(body)}`);
-      return { id: body.data.id as string, bankId };
-    }
 
-    async function createTopic(name: string): Promise<string> {
+      const response = await POST(req);
+      const body = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(body.success).toBe(true);
+      expect(body.data.type).toBe('open');
+      expect(body.data.question_answers).toEqual([]);
+
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${body.data.id}`,
+        { id: body.data.id },
+        undefined,
+        orgCookies(),
+      );
+      const getResponse = await GET(request, { params });
+      const getBody = await getResponse.json();
+
+      expect(getResponse.status).toBe(200);
+      expect(getBody.data.id).toBe(body.data.id);
+      expect(getBody.data.question_answers).toEqual([]);
+    });
+
+    it('round-trips topic assignments through create, list and update', async () => {
+      const bankId = await createBank(`q-test-topic-bank-${suiteId}`);
+      const topicName = `q-test-topic-${suiteId}`;
+      const topicId = await createTopic(topicName);
+
       mockUser(educator.user);
-      const req = createNextRequest(
-        'http://localhost/api/v1/topics',
+      const createReq = createNextRequest(
+        'http://localhost/api/v1/questions',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name }),
+          body: JSON.stringify({
+            bankId,
+            type: 'mcq',
+            content: `copy-${suiteId}-Topic question`,
+            topicIds: [topicId],
+            answers: [{ content: 'Answer', isCorrect: true, orderIndex: 0 }],
+          }),
         },
         orgCookies(),
       );
-      const res = await createTopicPost(req);
-      const body = await res.json();
-      if (res.status !== 201) throw new Error(`topic create failed: ${JSON.stringify(body)}`);
-      return body.data.id as string;
-    }
+      const createRes = await POST(createReq);
+      const createBody = await createRes.json();
 
-    describe('POST /api/v1/questions', () => {
-      it('creates a question and returns 201', async () => {
-        mockUser(educator.user);
+      expect(createRes.status).toBe(201);
+      expect(createBody.data.topics).toEqual([{ id: topicId, name: topicName }]);
+      expect(createBody.data.question_topic_assignments).toBeUndefined();
 
-        const bankReq = createNextRequest(
-          'http://localhost/api/v1/questions/banks',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: `q-test-Main Bank-${copyId}` }),
-          },
-          orgCookies(),
-        );
-        const bankRes = await createBankPost(bankReq);
-        const bankBody = await bankRes.json();
-        expect(bankRes.status).toBe(201);
-        expect(bankBody.data.id).toBeDefined();
+      const listReq = createNextRequest(
+        `http://localhost/api/v1/questions?bankId=${bankId}`,
+        undefined,
+        orgCookies(),
+      );
+      const listRes = await GET_LIST(listReq);
+      const listBody = await listRes.json();
 
-        const req = createNextRequest(
-          'http://localhost/api/v1/questions',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              bankId: bankBody.data.id,
-              type: 'mcq',
-              content: `copy-${copyId}-What is 2+2?`,
-              answers: [
-                { content: '4', isCorrect: true, orderIndex: 0 },
-                { content: '5', isCorrect: false, orderIndex: 1 },
-              ],
-            }),
-          },
-          orgCookies(),
-        );
+      expect(listRes.status).toBe(200);
+      expect(listBody.data).toHaveLength(1);
+      expect(listBody.data[0].topics).toEqual([{ id: topicId, name: topicName }]);
 
-        const response = await POST(req);
-        const body = await response.json();
+      // A content edit that resubmits the hydrated topicIds must keep the
+      // assignment — the pre-fix dialog always sent [] here and silently cleared it.
+      const keep = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${createBody.data.id}`,
+        { id: createBody.data.id },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: 'Updated (topic kept)', topicIds: [topicId] }),
+        },
+        orgCookies(),
+      );
+      const keepRes = await PUT(keep.request, { params: keep.params });
+      const keepBody = await keepRes.json();
 
-        expect(response.status).toBe(201);
-        expect(body.success).toBe(true);
-        expect(body.data.content).toBe(`copy-${copyId}-What is 2+2?`);
-        expect(body.data.question_answers).toBeDefined();
+      expect(keepRes.status).toBe(200);
+      expect(keepBody.data.topics).toEqual([{ id: topicId, name: topicName }]);
+
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${createBody.data.id}`,
+        { id: createBody.data.id },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: 'Updated', topicIds: [] }),
+        },
+        orgCookies(),
+      );
+      const putRes = await PUT(request, { params });
+      const putBody = await putRes.json();
+
+      expect(putRes.status).toBe(200);
+      expect(putBody.data.topics).toEqual([]);
+    });
+
+    it('returns 401 when not authenticated', async () => {
+      mockUser(null);
+
+      const req = createNextRequest('http://localhost/api/v1/questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bankId: '00000000-0000-4000-8000-000000000099',
+          type: 'mcq',
+          content: 'Question',
+          answers: [{ content: 'Answer', isCorrect: true }],
+        }),
       });
 
-      it('returns 422 when content is empty', async () => {
-        mockUser(educator.user);
+      const response = await POST(req);
+      const body = await response.json();
 
-        const req = createNextRequest(
-          'http://localhost/api/v1/questions',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              bankId: '00000000-0000-4000-8000-000000000099',
-              type: 'mcq',
-              content: '',
-              answers: [{ content: 'Answer', isCorrect: true }],
-            }),
-          },
-          orgCookies(),
-        );
+      expect(response.status).toBe(401);
+      expect(body.success).toBe(false);
+    });
 
-        const response = await POST(req);
-        const body = await response.json();
+    it('returns 403 when using another users bankId', async () => {
+      // Bank owned by the educator (org admin) — created through the real API.
+      const bankId = await createBank(`q-test-foreign-bank-${suiteId}`);
 
-        expect(response.status).toBe(422);
-        expect(body.success).toBe(false);
-      });
+      mockUser(student);
 
-      it('returns 422 when answers array is empty', async () => {
-        mockUser(educator.user);
-
-        const req = createNextRequest(
-          'http://localhost/api/v1/questions',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              bankId: '00000000-0000-4000-8000-000000000099',
-              type: 'mcq',
-              content: 'Question',
-              answers: [],
-            }),
-          },
-          orgCookies(),
-        );
-
-        const response = await POST(req);
-        const body = await response.json();
-
-        expect(response.status).toBe(422);
-        expect(body.success).toBe(false);
-      });
-
-      it('creates an open-answer question without answers and returns 201', async () => {
-        const bankId = await createBank(`q-test-open-bank-${copyId}`);
-
-        mockUser(educator.user);
-        const req = createNextRequest(
-          'http://localhost/api/v1/questions',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              bankId,
-              type: 'open',
-              content: `copy-${copyId}-Opisz drugą zasadę dynamiki Newtona.`,
-              explanation: 'F = m * a',
-              answers: [],
-            }),
-          },
-          orgCookies(),
-        );
-
-        const response = await POST(req);
-        const body = await response.json();
-
-        expect(response.status).toBe(201);
-        expect(body.success).toBe(true);
-        expect(body.data.type).toBe('open');
-        expect(body.data.question_answers).toEqual([]);
-
-        const { request, params } = createNextRequestWithParams(
-          `http://localhost/api/v1/questions/${body.data.id}`,
-          { id: body.data.id },
-          undefined,
-          orgCookies(),
-        );
-        const getResponse = await GET(request, { params });
-        const getBody = await getResponse.json();
-
-        expect(getResponse.status).toBe(200);
-        expect(getBody.data.id).toBe(body.data.id);
-        expect(getBody.data.question_answers).toEqual([]);
-      });
-
-      it('round-trips topic assignments through create, list and update', async () => {
-        const bankId = await createBank(`q-test-topic-bank-${copyId}`);
-        const topicName = `q-test-topic-${copyId}`;
-        const topicId = await createTopic(topicName);
-
-        mockUser(educator.user);
-        const createReq = createNextRequest(
-          'http://localhost/api/v1/questions',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              bankId,
-              type: 'mcq',
-              content: `copy-${copyId}-Topic question`,
-              topicIds: [topicId],
-              answers: [{ content: 'Answer', isCorrect: true, orderIndex: 0 }],
-            }),
-          },
-          orgCookies(),
-        );
-        const createRes = await POST(createReq);
-        const createBody = await createRes.json();
-
-        expect(createRes.status).toBe(201);
-        expect(createBody.data.topics).toEqual([{ id: topicId, name: topicName }]);
-        expect(createBody.data.question_topic_assignments).toBeUndefined();
-
-        const listReq = createNextRequest(
-          `http://localhost/api/v1/questions?bankId=${bankId}`,
-          undefined,
-          orgCookies(),
-        );
-        const listRes = await GET_LIST(listReq);
-        const listBody = await listRes.json();
-
-        expect(listRes.status).toBe(200);
-        expect(listBody.data).toHaveLength(1);
-        expect(listBody.data[0].topics).toEqual([{ id: topicId, name: topicName }]);
-
-        // A content edit that resubmits the hydrated topicIds must keep the
-        // assignment — the pre-fix dialog always sent [] here and silently cleared it.
-        const keep = createNextRequestWithParams(
-          `http://localhost/api/v1/questions/${createBody.data.id}`,
-          { id: createBody.data.id },
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: 'Updated (topic kept)', topicIds: [topicId] }),
-          },
-          orgCookies(),
-        );
-        const keepRes = await PUT(keep.request, { params: keep.params });
-        const keepBody = await keepRes.json();
-
-        expect(keepRes.status).toBe(200);
-        expect(keepBody.data.topics).toEqual([{ id: topicId, name: topicName }]);
-
-        const { request, params } = createNextRequestWithParams(
-          `http://localhost/api/v1/questions/${createBody.data.id}`,
-          { id: createBody.data.id },
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: 'Updated', topicIds: [] }),
-          },
-          orgCookies(),
-        );
-        const putRes = await PUT(request, { params });
-        const putBody = await putRes.json();
-
-        expect(putRes.status).toBe(200);
-        expect(putBody.data.topics).toEqual([]);
-      });
-
-      it('returns 401 when not authenticated', async () => {
-        mockUser(null);
-
-        const req = createNextRequest('http://localhost/api/v1/questions', {
+      const req = createNextRequest(
+        'http://localhost/api/v1/questions',
+        {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            bankId: '00000000-0000-4000-8000-000000000099',
             type: 'mcq',
             content: 'Question',
+            bankId,
             answers: [{ content: 'Answer', isCorrect: true }],
           }),
-        });
+        },
+        orgCookies(),
+      );
 
-        const response = await POST(req);
-        const body = await response.json();
+      const response = await POST(req);
+      const body = await response.json();
 
-        expect(response.status).toBe(401);
-        expect(body.success).toBe(false);
-      });
-
-      it('returns 403 when using another users bankId', async () => {
-        // Bank owned by the educator (org admin) — created through the real API.
-        const bankId = await createBank(`q-test-foreign-bank-${copyId}`);
-
-        mockUser(student);
-
-        const req = createNextRequest(
-          'http://localhost/api/v1/questions',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'mcq',
-              content: 'Question',
-              bankId,
-              answers: [{ content: 'Answer', isCorrect: true }],
-            }),
-          },
-          orgCookies(),
-        );
-
-        const response = await POST(req);
-        const body = await response.json();
-
-        expect(response.status).toBe(403);
-        expect(body.success).toBe(false);
-      });
-
-      it('returns 404 when bankId does not exist', async () => {
-        mockUser(educator.user);
-
-        const req = createNextRequest(
-          'http://localhost/api/v1/questions',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'mcq',
-              content: 'Question',
-              bankId: '00000000-0000-4000-8000-000000000099',
-              answers: [{ content: 'Answer', isCorrect: true }],
-            }),
-          },
-          orgCookies(),
-        );
-
-        const response = await POST(req);
-        const body = await response.json();
-
-        expect(response.status).toBe(404);
-        expect(body.success).toBe(false);
-      });
+      expect(response.status).toBe(403);
+      expect(body.success).toBe(false);
     });
 
-    describe('GET /api/v1/questions', () => {
-      it('returns questions list', async () => {
-        mockUser(educator.user);
+    it('returns 404 when bankId does not exist', async () => {
+      mockUser(educator.user);
 
-        const req = createNextRequest('http://localhost/api/v1/questions', undefined, orgCookies());
-        const response = await GET_LIST(req);
-        const body = await response.json();
+      const req = createNextRequest(
+        'http://localhost/api/v1/questions',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'mcq',
+            content: 'Question',
+            bankId: '00000000-0000-4000-8000-000000000099',
+            answers: [{ content: 'Answer', isCorrect: true }],
+          }),
+        },
+        orgCookies(),
+      );
 
-        expect(response.status).toBe(200);
-        expect(Array.isArray(body.data)).toBe(true);
-      });
+      const response = await POST(req);
+      const body = await response.json();
 
-      it('filters by type', async () => {
-        // Seed exactly one true_false question via the API (bank + question).
-        await createQuestion('True or False?', { type: 'true_false' });
+      expect(response.status).toBe(404);
+      expect(body.success).toBe(false);
+    });
+  });
 
-        mockUser(educator.user);
-        const req = createNextRequest(
-          'http://localhost/api/v1/questions?type=true_false',
-          undefined,
-          orgCookies(),
-        );
-        const response = await GET_LIST(req);
-        const body = await response.json();
+  describe('GET /api/v1/questions', () => {
+    it('returns questions list', async () => {
+      mockUser(educator.user);
 
-        expect(response.status).toBe(200);
-        expect(body.data.length).toBe(1);
-        expect(body.data[0].type).toBe('true_false');
-      });
+      const req = createNextRequest('http://localhost/api/v1/questions', undefined, orgCookies());
+      const response = await GET_LIST(req);
+      const body = await response.json();
 
-      it('filters by topicIds', async () => {
-        // A fresh topic per copy: no other question in the org can match it.
-        const topicId = await createTopic(`copy-${copyId}-topic-${Date.now()}`);
-        const tagged = await createQuestion('Tagged question', { topicIds: [topicId] });
-        await createQuestion('Untagged question');
-
-        mockUser(educator.user);
-        const req = createNextRequest(
-          `http://localhost/api/v1/questions?topicIds=${topicId}`,
-          undefined,
-          orgCookies(),
-        );
-        const response = await GET_LIST(req);
-        const body = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(body.data.map((q: { id: string }) => q.id)).toEqual([tagged.id]);
-      });
+      expect(response.status).toBe(200);
+      expect(Array.isArray(body.data)).toBe(true);
     });
 
-    describe('GET /api/v1/questions/:id', () => {
-      it('returns question when found', async () => {
-        const { id } = await createQuestion('Get Me');
+    it('filters by type', async () => {
+      // Seed exactly one true_false question via the API (bank + question).
+      await createQuestion('True or False?', { type: 'true_false' });
 
-        mockUser(educator.user);
-        const { request, params } = createNextRequestWithParams(
-          `http://localhost/api/v1/questions/${id}`,
-          { id },
-          undefined,
-          orgCookies(),
-        );
-        const response = await GET(request, { params });
-        const body = await response.json();
+      mockUser(educator.user);
+      const req = createNextRequest(
+        'http://localhost/api/v1/questions?type=true_false',
+        undefined,
+        orgCookies(),
+      );
+      const response = await GET_LIST(req);
+      const body = await response.json();
 
-        expect(response.status).toBe(200);
-        expect(body.data.content).toBe(`copy-${copyId}-Get Me`);
-      });
-
-      it('returns 404 when question does not exist', async () => {
-        mockUser(educator.user);
-
-        const fakeId = '00000000-0000-4000-8000-000000000099';
-        const { request, params } = createNextRequestWithParams(
-          `http://localhost/api/v1/questions/${fakeId}`,
-          { id: fakeId },
-          undefined,
-          orgCookies(),
-        );
-        const response = await GET(request, { params });
-        const body = await response.json();
-
-        expect(response.status).toBe(404);
-        expect(body.success).toBe(false);
-      });
+      expect(response.status).toBe(200);
+      expect(body.data.length).toBe(1);
+      expect(body.data[0].type).toBe('true_false');
     });
 
-    describe('PUT /api/v1/questions/:id', () => {
-      it('updates own question and returns 200', async () => {
-        const { id } = await createQuestion('Original');
+    it('filters by topicIds', async () => {
+      // A fresh topic per suite run: no other question in the org can match it.
+      const topicId = await createTopic(`copy-${suiteId}-topic-${Date.now()}`);
+      const tagged = await createQuestion('Tagged question', { topicIds: [topicId] });
+      await createQuestion('Untagged question');
 
-        mockUser(educator.user);
-        const { request, params } = createNextRequestWithParams(
-          `http://localhost/api/v1/questions/${id}`,
-          { id },
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: 'Updated' }),
-          },
-          orgCookies(),
-        );
-        const response = await PUT(request, { params });
-        const body = await response.json();
+      mockUser(educator.user);
+      const req = createNextRequest(
+        `http://localhost/api/v1/questions?topicIds=${topicId}`,
+        undefined,
+        orgCookies(),
+      );
+      const response = await GET_LIST(req);
+      const body = await response.json();
 
-        expect(response.status).toBe(200);
-        expect(body.data.content).toBe('Updated');
-      });
+      expect(response.status).toBe(200);
+      expect(body.data.map((q: { id: string }) => q.id)).toEqual([tagged.id]);
+    });
+  });
 
-      it('converts an mcq question to open and clears its options', async () => {
-        const { id } = await createQuestion('Convert Me');
+  describe('GET /api/v1/questions/:id', () => {
+    it('returns question when found', async () => {
+      const { id } = await createQuestion('Get Me');
 
-        mockUser(educator.user);
-        const { request, params } = createNextRequestWithParams(
-          `http://localhost/api/v1/questions/${id}`,
-          { id },
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'open', answers: [] }),
-          },
-          orgCookies(),
-        );
-        const response = await PUT(request, { params });
-        const body = await response.json();
+      mockUser(educator.user);
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${id}`,
+        { id },
+        undefined,
+        orgCookies(),
+      );
+      const response = await GET(request, { params });
+      const body = await response.json();
 
-        expect(response.status).toBe(200);
-        expect(body.data.type).toBe('open');
-        expect(body.data.question_answers).toEqual([]);
-      });
-
-      it('returns 403 when updating another user question', async () => {
-        // Educator owns the question; manager (non-member) tries to update it.
-        const { id } = await createQuestion('Teacher Question');
-
-        mockUser(manager);
-        const { request, params } = createNextRequestWithParams(
-          `http://localhost/api/v1/questions/${id}`,
-          { id },
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: 'Hacked' }),
-          },
-          orgCookies(),
-        );
-        const response = await PUT(request, { params });
-        const body = await response.json();
-
-        expect(response.status).toBe(403);
-        expect(body.success).toBe(false);
-      });
+      expect(response.status).toBe(200);
+      expect(body.data.content).toBe(`copy-${suiteId}-Get Me`);
     });
 
-    describe('DELETE /api/v1/questions/:id', () => {
-      it('deletes own question and returns 200', async () => {
-        const { id } = await createQuestion('To Delete');
+    it('returns 404 when question does not exist', async () => {
+      mockUser(educator.user);
 
-        mockUser(educator.user);
-        const { request, params } = createNextRequestWithParams(
-          `http://localhost/api/v1/questions/${id}`,
-          { id },
-          { method: 'DELETE' },
-          orgCookies(),
-        );
-        const response = await DELETE(request, { params });
-        const body = await response.json();
+      const fakeId = '00000000-0000-4000-8000-000000000099';
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${fakeId}`,
+        { id: fakeId },
+        undefined,
+        orgCookies(),
+      );
+      const response = await GET(request, { params });
+      const body = await response.json();
 
-        expect(response.status).toBe(200);
-        expect(body.success).toBe(true);
-      });
+      expect(response.status).toBe(404);
+      expect(body.success).toBe(false);
+    });
+  });
 
-      it('returns 403 when deleting another user question', async () => {
-        const { id } = await createQuestion('Teacher Question');
+  describe('PUT /api/v1/questions/:id', () => {
+    it('updates own question and returns 200', async () => {
+      const { id } = await createQuestion('Original');
 
-        mockUser(manager);
-        const { request, params } = createNextRequestWithParams(
-          `http://localhost/api/v1/questions/${id}`,
-          { id },
-          { method: 'DELETE' },
-          orgCookies(),
-        );
-        const response = await DELETE(request, { params });
-        const body = await response.json();
+      mockUser(educator.user);
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${id}`,
+        { id },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: 'Updated' }),
+        },
+        orgCookies(),
+      );
+      const response = await PUT(request, { params });
+      const body = await response.json();
 
-        expect(response.status).toBe(403);
-        expect(body.success).toBe(false);
-      });
+      expect(response.status).toBe(200);
+      expect(body.data.content).toBe('Updated');
+    });
+
+    it('converts an mcq question to open and clears its options', async () => {
+      const { id } = await createQuestion('Convert Me');
+
+      mockUser(educator.user);
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${id}`,
+        { id },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'open', answers: [] }),
+        },
+        orgCookies(),
+      );
+      const response = await PUT(request, { params });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.data.type).toBe('open');
+      expect(body.data.question_answers).toEqual([]);
+    });
+
+    it('returns 403 when updating another user question', async () => {
+      // Educator owns the question; manager (non-member) tries to update it.
+      const { id } = await createQuestion('Teacher Question');
+
+      mockUser(manager);
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${id}`,
+        { id },
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: 'Hacked' }),
+        },
+        orgCookies(),
+      );
+      const response = await PUT(request, { params });
+      const body = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(body.success).toBe(false);
+    });
+  });
+
+  describe('DELETE /api/v1/questions/:id', () => {
+    it('deletes own question and returns 200', async () => {
+      const { id } = await createQuestion('To Delete');
+
+      mockUser(educator.user);
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${id}`,
+        { id },
+        { method: 'DELETE' },
+        orgCookies(),
+      );
+      const response = await DELETE(request, { params });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.success).toBe(true);
+    });
+
+    it('returns 403 when deleting another user question', async () => {
+      const { id } = await createQuestion('Teacher Question');
+
+      mockUser(manager);
+      const { request, params } = createNextRequestWithParams(
+        `http://localhost/api/v1/questions/${id}`,
+        { id },
+        { method: 'DELETE' },
+        orgCookies(),
+      );
+      const response = await DELETE(request, { params });
+      const body = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(body.success).toBe(false);
     });
   });
 });

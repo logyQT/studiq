@@ -21,8 +21,10 @@ runner), so correctness beats raw speed.
 
 Measured locally (Supabase on 54321/54322, app on :3000):
 
-- **363 tenants in 3.3–6.9 s** (`bun scripts/e2e-seed.ts`), `--reset` included.
-- 50 auth users inserted by SQL: **248 ms**; 50 logins @8 concurrency: **399 ms** (~8 ms each).
+- **363 tenants in ~8–9 s** (`bun scripts/e2e-seed.ts`), `--reset` included. Accounts now go
+  through `auth.admin.createUser` (shared with the integration fixtures) instead of raw SQL,
+  which costs a few seconds and buys one seeder for both suites.
+- 50 logins @8 concurrency: **399 ms** (~8 ms each).
 - `question-bank-crud.spec.ts` migrated: **2/2 green, 8–13 s, 2 workers**.
 
 ---
@@ -72,9 +74,11 @@ production build (`bun run build && bun start`) over `bun dev` for long runs.
 
 1. `bunx playwright test --list --reporter=json` → every test × project.
 2. Key = `<file basename>::<full title>::<project>`. Deduped, then seeded with concurrency 8.
-3. **Auth**: one `INSERT INTO auth.users` per tenant via `Bun.SQL` (bcrypt, exactly like
-   `supabase/seeds/01_seed.sql`). No `auth.identities` needed. Users are
-   `e2e+<hash>+{teacher,student}@test.local`, password `pass`.
+3. **Auth**: accounts go through `auth.admin.createUser` in
+   `__tests__/helpers/tenant-seed.ts` (the module the integration fixtures use too), so
+   `handle_new_user` creates the profile and copies `account_type`. Users are
+   `e2e+<hash>+{teacher,student}@test.local`, password `Seed4Test!` (GoTrue rejects
+   shorter passwords; the index carries it).
 4. **Domain**: `supabase-js` service role, typed against `Database`. Batches respect FKs:
    org → (org_members, groups) → group_members → [content] decks/banks/quizzes →
    cards/questions/assignment → options/quiz_questions/targets.
@@ -187,7 +191,7 @@ E2E_SKIP_ADMIN_WS=1 …                    # do not boot the admin server on :40
 ## 9. File map
 
 ```
-scripts/e2e-seed.ts                     # CLI: enumerate → auth users (SQL) → domain (typed) → index
+scripts/e2e-seed.ts                     # CLI: enumerate → shared tenant graph → content → index
 __tests__/e2e/global-setup.ts           # runs the seeder once per suite (E2E_SKIP_SEED to skip)
 __tests__/e2e/fixtures/ids.ts           # uuidv5 + tenantKey
 __tests__/e2e/fixtures/profiles.ts      # bare/content + PROFILE_BY_FILE
