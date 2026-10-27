@@ -1,0 +1,18 @@
+# Formatting-only commits that `git blame` (and GitHub's blame view) should skip.
+#
+# One commit hash per line. Full 40-char hashes, no indentation. Comments and
+# blank lines are ignored. Newest entries go at the bottom.
+#
+# Why: a repo-wide reformat touches hundreds of lines that nobody reviewed for
+# their content. Listing the commit here keeps `git blame` pointing at the last
+# commit that actually changed each line.
+#
+# Local setup — once per clone (git does not read this file automatically):
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# GitHub applies this file automatically on the default branch, provided the
+# commits listed here exist there. If the formatting commit is squash-merged or
+# rebased, its hash changes — update the entry (or land it with a merge commit).
+
+# style: apply bun fmt across markdown, yaml and toml
+0e27b849330c6c1b45fdfa32d6c7580315e7465e

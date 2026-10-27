@@ -106,7 +106,7 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 | `bun run lint:all`                | `bun run typecheck:all && bun run lint` — all typechecks + lint in one command                                                                                                                                                                                                                                                          |
 | `bun run typecheck`               | `bun check` for **`apps/web` only** (`typecheck:admin` → `apps/admin`, `typecheck:packages` → `packages/{server,authz,ui}`)                                                                                                                                                                                                             |
 | `bun run typecheck:all`           | `typecheck` + `typecheck:admin` + `typecheck:packages` — everything the hooks run                                                                                                                                                                                                                                                       |
-| `bun run format`                  | `bun fmt .` (whole repo — writes formatting)                                                                                                                                                                                                                                                                                            |
+| `bun run format`                  | `bun fmt .` (whole repo — writes formatting for JS/TS/JSON/CSS **and** Markdown/YAML/TOML/HTML)                                                                                                                                                                                                                                         |
 | `bun run format:check`            | `bun fmt --check .` (whole repo, check only)                                                                                                                                                                                                                                                                                            |
 | `bun run clean`                   | Remove `.next`, `coverage`, cache                                                                                                                                                                                                                                                                                                       |
 | `bun run test`                    | `vitest run` — runs all tests (unit + integration)                                                                                                                                                                                                                                                                                      |
@@ -119,6 +119,18 @@ This is enforced by the QA pipeline: `qa-fix.py` re-checks assignees at dispatch
 > **Footgun — bare `bun test` is NOT Vitest.** `bun test` starts **Bun's built-in test runner**, which scans the whole repo (including integration tests that need live Supabase) and reports differently. Always use `bun run test` / `bun run test:unit`. Bare `bun <script>` shorthand does work for other scripts (e.g. `bun test:unit`).
 
 Git hooks (lefthook) enforce this on every commit/push: **pre-commit** runs format-on-staged + `bun run lint` + `bun run typecheck:all`; **pre-push** runs `format:check`, `lint`, `typecheck:all`, `test:unit`, plus a merge-conflict check against `origin/main`. The staged-file formatter and `bun run lint` check the **same** scope, so a commit can never pass the hook and fail the script (or vice versa).
+
+### Formatting scope & blame
+
+`bun fmt` covers JS/TS/JSON/CSS **and** Markdown, YAML, TOML and HTML. Two patterns stay out of scope via `[fmt] ignorePatterns` in `bunfig.toml`: `**/*.jsonc` (bun fmt adds trailing commas, which some JSONC readers reject) and `.agents/skills/**` (vendored skill content, checksummed in `skills-lock.json`).
+
+Repo-wide formatting passes are listed in **`.git-blame-ignore-revs`** so `git blame` blames the last real change instead of the reformat. Enable it once per clone (git does not read the file automatically — GitHub does):
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+Add the commit hash to that file in the same PR when you land a formatting-only change, and land it with a merge commit (squash/rebase rewrites the hash).
 
 ### Custom agent commands
 
